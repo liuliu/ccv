@@ -1,3 +1,8 @@
+/**********************************************************
+ * C-based/Cached/Core Computer Vision Library
+ * Liu Liu, 2010-02-01
+ **********************************************************/
+
 #ifndef _GUARD_ccv_h_
 #define _GUARD_ccv_h_
 
@@ -15,7 +20,7 @@ enum {
 };
 
 typedef struct {
-	int sig;
+	int sig[4];
 	int rows;
 	int cols;
 	int type;
@@ -28,23 +33,30 @@ typedef struct {
 } ccv_dense_matrix_t;
 
 typedef struct {
-	int sig;
+	int sig[4];
 	int type;
 } ccv_sparse_matrix_t;
 
 typedef ccv_matrix_t void;
 
 /* matrix operations */
-ccv_matrix_t* ccv_matrix_new(int rows, int cols, int type, void* data = NULL, int sig = 0);
+ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL);
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL);
+ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
+ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 double ccv_trace(ccv_matrix_t* mat);
 double ccv_norm(ccv_matrix_t* mat, int type);
-void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, ccv_matrix_t* d);
+void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* d, ccv_matrix_t* c = NULL);
+
+/* matrix build blocks */
+
 
 /* numerical algorithms */
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
 void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
+void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k);
