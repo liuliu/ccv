@@ -7,8 +7,9 @@
  */
 
 /* this is only to get definitions for memcpy(), ntohl() and htonl() */
-#include "../git-compat-util.h"
 
+#include <netdb.h>
+#include <string.h>
 #include "sha1.h"
 
 #if defined(__GNUC__) && (defined(__i386__) || defined(__x86_64__))

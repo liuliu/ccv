@@ -13,7 +13,7 @@ typedef struct {
 } ccv_memory_t;
 
 static int __ccv_bits_in_16bits[0x1u << 16];
-static bool __ccv_bits_in_16bits_init = false;
+static int __ccv_bits_in_16bits_init = 0;
 
 static int __ccv_sparse_bitcount(unsigned int n)
 {
@@ -31,7 +31,7 @@ static void __ccv_precomputed_16bits()
 	int i;
 	for (i = 0; i < (0x1u << 16); ++i)
 		__ccv_bits_in_16bits[i] = __ccv_sparse_bitcount(i);
-	__ccv_bits_in_16bits_init = true;
+	__ccv_bits_in_16bits_init = 1;
 }
 
 static int __ccv_sig_match(int* sig1, int* sig2, int k)
@@ -42,11 +42,11 @@ static int __ccv_sig_match(int* sig1, int* sig2, int k)
 	return 1;
 }
 
-bool __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
+int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 {
 	if (!__ccv_bits_in_16bits_init)
 		__ccv_precomputed_16bits();
-	unsigned char* ucsig = (unsigned char*)sig;
+	unsigned char* ucsig = (unsigned char*)m->sig;
 	if (memory->rnum == 0)
 	{
 		if (memory->con == NULL)
@@ -61,44 +61,50 @@ bool __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 		while ((con->i & (1 << spot)) && (k < 32))
 		{
 			if (__ccv_sig_match(m->sig, con->m->sig, k >> 2))
-				return false;
+				return 0;
 			int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
 			con = con->con + p;
 			++k;
 			spot = (ucsig[k >> 1] >> ((k & 0x1) << 2)) & 0xf;
 		}
 		if (k >= 32)
-			return false;
+			return 0;
 		if (con->con == NULL)
 		{
 			con->i = (1 << spot) | 0x10000;
 			con->con = (ccv_memory_index_t*)malloc(sizeof(ccv_memory_index_t));
+			if (con->con == NULL)
+				printf("errrrrrrrrrr\n");
 			con->con->i = 0;
 			con->con->m = m;
 			con->con->con = NULL;
 		} else {
-			int p = bits_in_16bits[con->i & ((1 << spot) - 1)];
+			int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
 			int c = con->i >> 16;
 			con->i |= (1 << spot);
 			con->i += 0x10000;
-			con->con = (ccv_memory_index_t*)realloc(con->con, sizeof(ccv_memory_index_t) * c);
-			memcpy(con->con + p + 1, con->con + p, sizeof(ccv_memory_index_t) * (c - p));
+			con->con = (ccv_memory_index_t*)realloc(con->con, sizeof(ccv_memory_index_t) * (c + 1));
+			if (con->con == NULL)
+				printf("errrrrrrrrrr\n");
+			int i;
+			for (i = c; i > p; --i)
+				con->con[i] = con->con[i - 1];
 			con->con[p].i = 0;
 			con->con[p].m = m;
 			con->con[p].con = NULL;
 		}
 	}
 	++memory->rnum;
-	return true;
+	return 1;
 }
-
+/*
 ccv_dense_matrix_t* __ccv_memory_get_matrix_cache(ccv_memory_t* memory, int* sig)
 {
 	if (memory->rnum == 0)
 		return NULL;
 	if (!__ccv_bits_in_16bits_init)
 		__ccv_precomputed_16bits();
-	unsigned char* ucsig = (unsigned char*)kstr;
+	unsigned char* ucsig = (unsigned char*)sig;
 	ccv_memory_index_t* con = memory->con;
 	if (__ccv_sig_match(sig, con->m->sig, 0))
 		return con->m;
@@ -115,22 +121,27 @@ ccv_dense_matrix_t* __ccv_memory_get_matrix_cache(ccv_memory_t* memory, int* sig
 	}
 	return NULL;
 }
-
+*/
 ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memory, int* sig)
 {
 	if (memory->rnum == 0)
 		return NULL;
+	if (memory->rnum == 1)
+	{
+		if (__ccv_sig_match(sig, memory->con->m->sig, 0))
+		{
+			memory->rnum = 0;
+			ccv_dense_matrix_t* m = memory->con->m;
+			free(memory->con);
+			memory->con = NULL;
+			return m;
+		} else
+			return NULL;
+	}
 	if (!__ccv_bits_in_16bits_init)
 		__ccv_precomputed_16bits();
 	unsigned char* ucsig = (unsigned char*)sig;
 	ccv_memory_index_t* con = memory->con;
-	if (__ccv_sig_match(sig, con->m->sig, 0))
-	{
-		memory->rnum = 0;
-		free(memory->con);
-		memory->con = NULL;
-		return con->m;
-	}
 	ccv_memory_index_t* pcon = NULL;
 	ccv_memory_index_t* found = NULL;
 	int k = 0;
@@ -141,7 +152,7 @@ ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memor
 		{
 			int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
 			pcon = con;
-			con = on->con + p;
+			con = con->con + p;
 			++k;
 			if (__ccv_sig_match(sig, con->m->sig, k >> 2))
 			{
@@ -185,10 +196,10 @@ ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memor
 	int c = pcon->i >> 16;
 	if (c > 0)
 	{
-		ccv_memory_index_t* precon = pcon->con;
-		pcon->con = realloc(pcon->con, sizeof(ccv_memory_index_t) * (c - 1));
-		memcpy(pcon->con + p, precon + p + 1, sizeof(ccv_memory_index_t) * (c - p));
-		free(precon);
+		int i;
+		for (i = p; i < c; ++i)
+			pcon->con[i] = pcon->con[i + 1];
+		pcon->con = realloc(pcon->con, sizeof(ccv_memory_index_t) * c);
 	} else {
 		free(pcon->con);
 		pcon->con = NULL;
@@ -197,14 +208,14 @@ ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memor
 	return m;
 }
 
-ccv_memory_t memory;
+static ccv_memory_t memory = { 0, NULL };
 
-ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL)
+ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig)
 {
 	ccv_dense_matrix_t* mat;
 	if (sig != NULL)
 	{
-		mat = __ccv_memory_get_and_remove_matrix_cache(memory, sig);
+		mat = __ccv_memory_get_and_remove_matrix_cache(&memory, sig);
 		if (mat)
 		{
 			mat->refcount = 1;
@@ -212,8 +223,11 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		}
 	}
 	mat = (ccv_dense_matrix_t*)malloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * cols));
-	mat->sig[0] = mat->sig[1] = mat->sig[2] = mat->sig[3] = 0;
-	mat->type = type;
+	if (sig != NULL)
+		memcpy(mat->sig, sig, 20);
+	else
+		memset(mat->sig, 0, 20);
+	mat->type = type | CCV_DENSE;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
@@ -222,8 +236,9 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	return mat;
 }
 
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL)
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data, int* sig)
 {
+	return NULL;
 }
 
 void ccv_matrix_free(ccv_matrix_t* mat)
@@ -233,29 +248,26 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
 		dmt->refcount = 0;
-		if (CCV_IS_EMPTY_SIGNATURE(dmt))
+		if (CCV_IS_EMPTY_SIGNATURE(dmt) || !__ccv_memory_add_matrix_cache(&memory, dmt))
 			free(dmt);
-		else {
-			__ccv_memory_add_matrix_cache(memory, dmt);
-		}
 	} else if (type & CCV_SPARSE) {
 	}
 }
 
-void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1 = NULL, int* sig2 = NULL, int* sig3 = NULL, int* sig4 = NULL)
+void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1, int* sig2, int* sig3, int* sig4)
 {
-	blk_SHA_CTX ctx;
-	blk_SHA1_Init(&ctx);
+	ccv_SHA_CTX ctx;
+	ccv_SHA1_Init(&ctx);
 	if (sig1 != NULL)
-		blk_SHA1_Update(&ctx, sig1, 5 * sizeof(int));
+		ccv_SHA1_Update(&ctx, sig1, 20);
 	if (sig2 != NULL)
-		blk_SHA1_Update(&ctx, sig2, 5 * sizeof(int));
+		ccv_SHA1_Update(&ctx, sig2, 20);
 	if (sig3 != NULL)
-		blk_SHA1_Update(&ctx, sig3, 5 * sizeof(int));
+		ccv_SHA1_Update(&ctx, sig3, 20);
 	if (sig4 != NULL)
-		blk_SHA1_Update(&ctx, sig4, 5 * sizeof(int));
-	blk_SHA1_Update(&ctx, msg, len);
-	blk_SHA1_Final(sig, &ctx);
+		ccv_SHA1_Update(&ctx, sig4, 20);
+	ccv_SHA1_Update(&ctx, msg, len);
+	ccv_SHA1_Final((unsigned char*)sig, &ctx);
 }
 
 static void __ccv_garbage_collect_impl(ccv_memory_index_t* con)
@@ -271,8 +283,8 @@ static void __ccv_garbage_collect_impl(ccv_memory_index_t* con)
 
 void ccv_garbage_collect()
 {
-	if (memory->rnum > 0)
+	if (memory.rnum > 0)
 	{
-		__ccv_garbage_collect_impl(memory->con);
+		__ccv_garbage_collect_impl(memory.con);
 	}
 }
