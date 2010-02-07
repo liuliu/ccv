@@ -272,12 +272,20 @@ void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1
 
 static void __ccv_garbage_collect_impl(ccv_memory_index_t* con)
 {
-	int i, max = con->i >> 16;
-	ccv_memory_index_t* coni = con->con;
-	for (i = 0; i < max; ++i)
+	if (con != NULL)
 	{
-		__ccv_garbage_collect_impl(coni);
-		++coni;
+		int i, max = con->i >> 16;
+		if (max > 0)
+		{
+			ccv_memory_index_t* coni = con->con;
+			for (i = 0; i < max; ++i)
+			{
+				__ccv_garbage_collect_impl(coni);
+				++coni;
+			}
+			free(con->con);
+		}
+		free(con->m);
 	}
 }
 
@@ -286,5 +294,8 @@ void ccv_garbage_collect()
 	if (memory.rnum > 0)
 	{
 		__ccv_garbage_collect_impl(memory.con);
+		free(memory.con);
+		memory.con = NULL;
+		memory.rnum = 0;
 	}
 }
