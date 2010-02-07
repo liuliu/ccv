@@ -33,7 +33,7 @@ enum {
 
 typedef struct ccv_dense_matrix_t {
 	int type;
-	int sig[4];
+	int sig[5];
 	int refcount;
 	int rows;
 	int cols;
@@ -48,8 +48,10 @@ typedef struct ccv_dense_matrix_t {
 
 typedef struct {
 	int type;
-	int sig[4];
+	int sig[5];
 } ccv_sparse_matrix_t;
+
+#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig[0] == 0 && (x)->sig[1] == 0 && (x)->sig[2] == 0 && (x)->sig[3] == 0)
 
 typedef ccv_matrix_t void;
 
