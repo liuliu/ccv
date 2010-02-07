@@ -26,9 +26,14 @@ const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 #define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[(x) >> 8]
 #define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[(x)]
 
+enum {
+	CCV_DENSE  = 0x010000,
+	CCV_SPARSE = 0x020000,
+};
+
 typedef struct ccv_dense_matrix_t {
-	int sig[4];
 	int type;
+	int sig[4];
 	int refcount;
 	int rows;
 	int cols;
@@ -42,8 +47,8 @@ typedef struct ccv_dense_matrix_t {
 } ccv_dense_matrix_t;
 
 typedef struct {
-	int sig[4];
 	int type;
+	int sig[4];
 } ccv_sparse_matrix_t;
 
 typedef ccv_matrix_t void;

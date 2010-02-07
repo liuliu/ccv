@@ -224,14 +224,14 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		if (mat)
 			return mat;
 	}
-	mat = (ccv_dense_matrix_t*)malloc(sizeof(ccv_dense_matrix_t));
+	mat = (ccv_dense_matrix_t*)malloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * cols));
 	mat->sig[0] = mat->sig[1] = mat->sig[2] = mat->sig[3] = 0;
 	mat->type = type;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
 	mat->refcount = 1;
-	mat->data.ptr = (data) ? (unsigned char*)data : (unsigned char*)malloc(mat->step * mat->cols);
+	mat->data.ptr = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
 	return mat;
 }
 
@@ -241,10 +241,20 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* d
 
 void ccv_matrix_free(ccv_matrix_t* mat)
 {
-	mat->refcount = 0;
+	int type = *(int*)mat;
+	if (type & CCV_DENSE)
+	{
+		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
+		dmt->refcount = 0;
+		if (dmt->sig[0] == 0 && dmt->sig[1] == 0 && dmt->sig[2] == 0 && dmt->sig[3] == 0)
+			free(dmt);
+	} else if (type & CCV_SPARSE) {
+	}
 }
 
-
+void ccv_matrix_sign(ccv_matrix_t* mat, const char* msg, int len)
+{
+}
 
 void ccv_garbage_collect()
 {
