@@ -9,23 +9,32 @@
 enum {
 	CCV_8U  = 0x0100,
 	CCV_32S = 0x0200,
-	CCV_32F = 0x0300,
-	CCV_64F = 0x0400,
+	CCV_32F = 0x0400,
+	CCV_64F = 0x0800,
 };
 
 enum {
 	CCV_C1 = 0x01,
 	CCV_C2 = 0x02,
-	CCV_C3 = 0x03,
+	CCV_C3 = 0x04,
+	CCV_C4 = 0x08,
 };
 
-typedef struct {
+const int __ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
+const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
+
+#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[(x) >> 8]
+#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[(x)]
+
+typedef struct ccv_dense_matrix_t {
 	int sig[4];
+	int type;
+	int refcount;
 	int rows;
 	int cols;
-	int type;
+	int step;
 	union {
-		char* ptr;
+		unsigned char* ptr;
 		int* i;
 		float* fl;
 		double* db;
@@ -42,15 +51,17 @@ typedef ccv_matrix_t void;
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data = NULL, int* sig = NULL);
-ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
-ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
+void ccv_matrix_sign(ccv_matrix_t* mat, const char* msg, int len);
 void ccv_matrix_free(ccv_matrix_t* mat);
+void ccv_garbage_collect();
 double ccv_trace(ccv_matrix_t* mat);
 double ccv_norm(ccv_matrix_t* mat, int type);
-void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* d, ccv_matrix_t* c = NULL);
+void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, ccv_matrix_t* c = NULL);
 
 /* matrix build blocks */
-
+ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
+ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
+int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt = 0, int rows_gt = 0, int cols_lt = 0, int cols_gt = 0);
 
 /* numerical algorithms */
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
