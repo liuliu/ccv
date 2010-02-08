@@ -2,12 +2,20 @@
 
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat)
 {
+	int type = *(int*)mat;
+	if (type & CCV_DENSE)
+		return (ccv_dense_matrix_t*)mat;
+	return NULL;
 }
 
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
 {
+	int type = *(int*)mat;
+	if (type & CCV_SPARSE)
+		return (ccv_sparse_matrix_t*)mat;
+	return NULL;
 }
 
-int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt = 0, int rows_gt = 0, int cols_lt = 0, int cols_gt = 0)
+int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt)
 {
 }

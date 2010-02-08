@@ -70,7 +70,7 @@ void ccv_garbage_collect();
 /* basic algebra algorithm */
 double ccv_trace(ccv_matrix_t* mat);
 double ccv_norm(ccv_matrix_t* mat, int type);
-void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, ccv_matrix_t** d);
+void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, ccv_matrix_t** d);
 
 /* matrix build blocks */
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
