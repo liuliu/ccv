@@ -1,3 +1,9 @@
 src/*.[oa]
 src/*.~
 src/*.swp
+src/3rdparty/*.[oa]
+src/3rdparty/*.~
+src/3rdparty/*.swp
+src/test/*.[oa]
+src/test/*.~
+src/test/*.swp

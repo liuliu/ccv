@@ -36,7 +36,7 @@ enum {
 	CCV_SPARSE = 0x020000,
 };
 
-typedef struct ccv_dense_matrix_t {
+typedef struct {
 	int type;
 	int sig[5];
 	int refcount;
@@ -51,18 +51,50 @@ typedef struct ccv_dense_matrix_t {
 	} data;
 } ccv_dense_matrix_t;
 
+typedef struct ccv_dense_vector_t {
+	int step;
+	int length;
+	union {
+		unsigned char* ptr;
+		int* i;
+		float* fl;
+		double* db;
+	} data;
+	struct ccv_dense_vector_t* prev;
+	struct ccv_dense_vector_t* next;
+} ccv_dense_vector_t;
+
+typedef struct ccv_sparse_cell_t {
+	struct ccv_sparse_cell_t* prev;
+	struct ccv_sparse_cell_t* next;
+} ccv_sparse_cell_t;
+
+enum {
+	CCV_SPARSE_FULL      = 0x00,
+	CCV_SPARSE_ROW_MAJOR = 0x01,
+	CCV_SPARSE_COL_MAJOR = 0x02,
+};
+
 typedef struct {
 	int type;
 	int sig[5];
+	int refcount;
+	int rows;
+	int cols;
+	int major;
+	ccv_dense_vector_t* vector_table;
 } ccv_sparse_matrix_t;
 
 #define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig[0] == 0 && (x)->sig[1] == 0 && (x)->sig[2] == 0 && (x)->sig[3] == 0)
 
 typedef void ccv_matrix_t;
 
+typedef struct {
+} ccv_array_t;
+
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data, int* sig);
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, void* data, int* sig);
 void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1, int* sig2, int* sig3, int* sig4);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
@@ -75,6 +107,8 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, 
 /* matrix build blocks */
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
+ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int idx);
+ccv_sparse_cell_t* ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
 /* numerical algorithms */
