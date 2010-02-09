@@ -236,8 +236,12 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	return mat;
 }
 
+static int __ccv_sparse_magic[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
+
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data, int* sig)
 {
+	ccv_sparse_matrix_t* mat;
+	mat = (ccv_sparse_matrix_t*)malloc(sizeof(ccv_sparse_matrix_t));
 	return NULL;
 }
 

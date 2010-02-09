@@ -6,6 +6,7 @@
 #ifndef _GUARD_ccv_h_
 #define _GUARD_ccv_h_
 
+#include <unistd.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -36,6 +37,13 @@ enum {
 	CCV_SPARSE = 0x020000,
 };
 
+typedef union {
+	unsigned char* ptr;
+	int* i;
+	float* fl;
+	double* db;
+} ccv_matrix_cell_t;
+
 typedef struct {
 	int type;
 	int sig[5];
@@ -43,31 +51,17 @@ typedef struct {
 	int rows;
 	int cols;
 	int step;
-	union {
-		unsigned char* ptr;
-		int* i;
-		float* fl;
-		double* db;
-	} data;
+	ccv_matrix_cell_t data;
 } ccv_dense_matrix_t;
 
 typedef struct ccv_dense_vector_t {
 	int step;
 	int length;
-	union {
-		unsigned char* ptr;
-		int* i;
-		float* fl;
-		double* db;
-	} data;
+	ccv_matrix_cell_t data;
+	int* indice;
 	struct ccv_dense_vector_t* prev;
 	struct ccv_dense_vector_t* next;
 } ccv_dense_vector_t;
-
-typedef struct ccv_sparse_cell_t {
-	struct ccv_sparse_cell_t* prev;
-	struct ccv_sparse_cell_t* next;
-} ccv_sparse_cell_t;
 
 enum {
 	CCV_SPARSE_FULL      = 0x00,
@@ -108,7 +102,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, 
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
 ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int idx);
-ccv_sparse_cell_t* ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
+ccv_sparse_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
 /* numerical algorithms */
