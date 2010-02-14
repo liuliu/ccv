@@ -236,12 +236,25 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	return mat;
 }
 
-static int __ccv_sparse_magic[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
-
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, void* data, int* sig)
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig)
 {
 	ccv_sparse_matrix_t* mat;
 	mat = (ccv_sparse_matrix_t*)malloc(sizeof(ccv_sparse_matrix_t));
+	mat->rows = rows;
+	mat->cols = cols;
+	mat->type = type | CCV_SPARSE;
+	mat->major = major;
+	mat->prime = 0;
+	mat->refcount = 1;
+	mat->vector = (ccv_dense_vector_t*)malloc(CCV_GET_SPARSE_PRIME(mat->prime) * sizeof(ccv_dense_vector_t));
+	int i;
+	for (i = 0; i < CCV_GET_SPARSE_PRIME(mat->prime); i++)
+	{
+		mat->vector[i].index = -1;
+		mat->vector[i].prime = -1;
+		mat->vector[i].length = 0;
+		mat->vector[i].next = mat->vector[i].prev = NULL;
+	}
 	return NULL;
 }
 

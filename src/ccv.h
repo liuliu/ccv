@@ -57,6 +57,8 @@ typedef struct {
 typedef struct ccv_dense_vector_t {
 	int step;
 	int length;
+	int index;
+	int prime;
 	ccv_matrix_cell_t data;
 	int* indice;
 	struct ccv_dense_vector_t* prev;
@@ -76,8 +78,12 @@ typedef struct {
 	int rows;
 	int cols;
 	int major;
-	ccv_dense_vector_t* vector_table;
+	int prime;
+	ccv_dense_vector_t* vector;
 } ccv_sparse_matrix_t;
+
+static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
+#define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
 
 #define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig[0] == 0 && (x)->sig[1] == 0 && (x)->sig[2] == 0 && (x)->sig[3] == 0)
 
@@ -88,7 +94,7 @@ typedef struct {
 
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, void* data, int* sig);
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
 void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1, int* sig2, int* sig3, int* sig4);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
@@ -101,7 +107,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, 
 /* matrix build blocks */
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
-ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int idx);
+ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index);
 ccv_sparse_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
