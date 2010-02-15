@@ -29,5 +29,6 @@ int main(int argc, char** argv)
 				k++;
 			}
 	}
+	ccv_matrix_free(mat);
 	return 0;
 }

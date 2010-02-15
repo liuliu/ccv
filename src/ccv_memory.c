@@ -268,6 +268,24 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 		if (CCV_IS_EMPTY_SIGNATURE(dmt) || !__ccv_memory_add_matrix_cache(&memory, dmt))
 			free(dmt);
 	} else if (type & CCV_SPARSE) {
+		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
+		int i;
+		for (i = 0; i < CCV_GET_SPARSE_PRIME(smt->prime); i++)
+			if (smt->vector[i].index != -1)
+			{
+				ccv_dense_vector_t* iter = &smt->vector[i];
+				free(iter->data.ptr);
+				iter = iter->next;
+				while (iter != NULL)
+				{
+					ccv_dense_vector_t* iter_next = iter->next;
+					free(iter->data.ptr);
+					free(iter);
+					iter = iter_next;
+				}
+			}
+		free(smt->vector);
+		free(smt);
 	}
 }
 
