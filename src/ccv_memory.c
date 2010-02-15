@@ -245,17 +245,17 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 	mat->type = type | CCV_SPARSE;
 	mat->major = major;
 	mat->prime = 0;
+	mat->load_factor = 0;
 	mat->refcount = 1;
 	mat->vector = (ccv_dense_vector_t*)malloc(CCV_GET_SPARSE_PRIME(mat->prime) * sizeof(ccv_dense_vector_t));
 	int i;
 	for (i = 0; i < CCV_GET_SPARSE_PRIME(mat->prime); i++)
 	{
 		mat->vector[i].index = -1;
-		mat->vector[i].prime = -1;
 		mat->vector[i].length = 0;
-		mat->vector[i].next = mat->vector[i].prev = NULL;
+		mat->vector[i].next = NULL;
 	}
-	return NULL;
+	return mat;
 }
 
 void ccv_matrix_free(ccv_matrix_t* mat)

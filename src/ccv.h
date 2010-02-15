@@ -29,8 +29,8 @@ enum {
 static const int __ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
 static const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 
-#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[(x) >> 8]
-#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[(x)]
+#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[((x) & 0xFF00) >> 8]
+#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[(x) & 0XFF]
 
 enum {
 	CCV_DENSE  = 0x010000,
@@ -59,9 +59,9 @@ typedef struct ccv_dense_vector_t {
 	int length;
 	int index;
 	int prime;
+	int load_factor;
 	ccv_matrix_cell_t data;
 	int* indice;
-	struct ccv_dense_vector_t* prev;
 	struct ccv_dense_vector_t* next;
 } ccv_dense_vector_t;
 
@@ -79,6 +79,7 @@ typedef struct {
 	int cols;
 	int major;
 	int prime;
+	int load_factor;
 	ccv_dense_vector_t* vector;
 } ccv_sparse_matrix_t;
 
@@ -108,7 +109,8 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, 
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
 ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index);
-ccv_sparse_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
+ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
+void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
 /* numerical algorithms */
