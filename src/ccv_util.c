@@ -180,7 +180,8 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			i++;
 		i = (h + i * i) % vector->length;
 		vector->indice[i] = col;
-		memcpy(vector->data.ptr + i * cell_width, data, cell_width);
+		if (data != NULL)
+			memcpy(vector->data.ptr + i * cell_width, data, cell_width);
 	} else {
 		if (vector->index == -1)
 		{
@@ -190,7 +191,8 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			vector->step = (vector->length * cell_width + 3) & -4;
 			vector->data.ptr = (unsigned char*)malloc(vector->step);
 		}
-		memcpy(vector->data.ptr + ((mat->major == CCV_SPARSE_COL_MAJOR) ? row : col) * cell_width, data, cell_width);
+		if (data != NULL)
+			memcpy(vector->data.ptr + ((mat->major == CCV_SPARSE_COL_MAJOR) ? row : col) * cell_width, data, cell_width);
 	}
 }
 
