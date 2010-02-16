@@ -36,7 +36,7 @@ static void __ccv_precomputed_16bits()
 
 static int __ccv_sig_match(int* sig1, int* sig2, int k)
 {
-	for (; k < 4; ++k)
+	for (; k < 5; ++k)
 		if (sig1[k] != sig2[k])
 			return 0;
 	return 1;
@@ -58,7 +58,7 @@ int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 		ccv_memory_index_t* con = memory->con;
 		int k = 0;
 		int spot = ucsig[0] & 0xf;
-		while ((con->i & (1 << spot)) && (k < 32))
+		while ((con->i & (1 << spot)) && (k < 40))
 		{
 			if (__ccv_sig_match(m->sig, con->m->sig, k >> 2))
 				return 0;
@@ -67,14 +67,12 @@ int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 			++k;
 			spot = (ucsig[k >> 1] >> ((k & 0x1) << 2)) & 0xf;
 		}
-		if (k >= 32)
+		if (k >= 40)
 			return 0;
 		if (con->con == NULL)
 		{
 			con->i = (1 << spot) | 0x10000;
 			con->con = (ccv_memory_index_t*)malloc(sizeof(ccv_memory_index_t));
-			if (con->con == NULL)
-				printf("errrrrrrrrrr\n");
 			con->con->i = 0;
 			con->con->m = m;
 			con->con->con = NULL;
@@ -84,8 +82,6 @@ int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 			con->i |= (1 << spot);
 			con->i += 0x10000;
 			con->con = (ccv_memory_index_t*)realloc(con->con, sizeof(ccv_memory_index_t) * (c + 1));
-			if (con->con == NULL)
-				printf("errrrrrrrrrr\n");
 			int i;
 			for (i = c; i > p; --i)
 				con->con[i] = con->con[i - 1];
@@ -110,7 +106,7 @@ ccv_dense_matrix_t* __ccv_memory_get_matrix_cache(ccv_memory_t* memory, int* sig
 		return con->m;
 	int k = 0;
 	int spot = ucsig[0] & 0xf;
-	while ((con->i & (1 << spot)) && (k < 32))
+	while ((con->i & (1 << spot)) && (k < 40))
 	{
 		int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
 		con = con->con + p;
@@ -148,7 +144,7 @@ ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memor
 	int spot = ucsig[0] & 0xf;
 	if (!__ccv_sig_match(sig, con->m->sig, 0))
 	{
-		while ((con->i & (1 << spot)) && (k < 32))
+		while ((con->i & (1 << spot)) && (k < 40))
 		{
 			int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
 			pcon = con;
@@ -166,7 +162,7 @@ ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memor
 	if (!found)
 		return NULL;
 	ccv_dense_matrix_t* m = found->m;
-	while (((con->i >> 16) != 0) && (k < 32))
+	while (((con->i >> 16) != 0) && (k < 40))
 	{
 		ccv_memory_index_t* tcon = NULL;
 		int i, max = con->i >> 16;

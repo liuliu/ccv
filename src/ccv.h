@@ -100,6 +100,21 @@ void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
 
+/* basic io */
+enum {
+	CCV_SERIAL_PLAIN_STREAM = 0x01,
+	CCV_SERIAL_DEFLATE_STREAM,
+	CCV_SERIAL_JPEG_STREAM,
+	CCV_SERIAL_PNG_STREAM,
+	CCV_SERIAL_ANY_FILE,
+	CCV_SERIAL_BMP_FILE,
+	CCV_SERIAL_JPEG_FILE,
+	CCV_SERIAL_PNG_FILE,	
+};
+
+ccv_dense_matrix_t* ccv_unserialize(const char* in, int type);
+int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type);
+
 /* basic algebra algorithm */
 double ccv_trace(ccv_matrix_t* mat);
 double ccv_norm(ccv_matrix_t* mat, int type);
@@ -114,14 +129,15 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
 /* numerical algorithms */
-void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
-void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* x);
-void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b);
+void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
+void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
+void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
+void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
+void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
 
 /* modern numerical algorithms */
-void ccv_sparse_coding(ccv_matrix_t* x, int k);
-void ccv_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t* y);
+void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);
+void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
