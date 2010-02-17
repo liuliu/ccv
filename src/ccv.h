@@ -112,6 +112,12 @@ enum {
 	CCV_SERIAL_PNG_FILE,	
 };
 
+enum {
+	CCV_SERIAL_CONTINUE = 0x01,
+	CCV_SERIAL_FINAL,
+	CCV_SERIAL_ERROR,
+};
+
 ccv_dense_matrix_t* ccv_unserialize(const char* in, int type);
 int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type);
 
