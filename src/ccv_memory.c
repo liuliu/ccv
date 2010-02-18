@@ -238,7 +238,7 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 	mat = (ccv_sparse_matrix_t*)malloc(sizeof(ccv_sparse_matrix_t));
 	mat->rows = rows;
 	mat->cols = cols;
-	mat->type = type | CCV_SPARSE;
+	mat->type = type | CCV_SPARSE | ((type & CCV_DENSE_VECTOR) ? CCV_DENSE_VECTOR : CCV_SPARSE_VECTOR);
 	mat->major = major;
 	mat->prime = 0;
 	mat->load_factor = 0;

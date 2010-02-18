@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_FULL, NULL);
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, NULL);
 	int i, j, k, n;
 	k = 0;
 	for (i = 0; i < 1000; i++)

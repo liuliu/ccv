@@ -36,16 +36,17 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 	if (vector != NULL && vector->length > 0)
 	{
 		int cell_width = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL_NUM(mat->type);
-		if (mat->major == CCV_SPARSE_FULL)
+		int vidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? row : col;
+		if (mat->type & CCV_DENSE_VECTOR)
 		{
-			int h = (col * 33) % vector->length, i = 0;
-			while (vector->indice[(h + i * i) % vector->length] != col && vector->indice[(h + i * i) % vector->length] != -1)
+			cell.ptr = vector->data.ptr + cell_width * vidx;
+		} else {
+			int h = (vidx * 33) % vector->length, i = 0;
+			while (vector->indice[(h + i * i) % vector->length] != vidx && vector->indice[(h + i * i) % vector->length] != -1)
 				i++;
 			i = (h + i * i) % vector->length;
 			if (vector->indice[i] != -1)
 				cell.ptr = vector->data.ptr + i * cell_width;
-		} else {
-			cell.ptr = vector->data.ptr + cell_width * ((mat->major == CCV_SPARSE_COL_MAJOR) ? row : col);
 		}
 	}
 	return cell;
@@ -134,6 +135,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 {
 	int i;
 	int index = (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row;
+	int vidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? row : col;
 	int length = CCV_GET_SPARSE_PRIME(mat->prime);
 	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, index);
 	if (vector == NULL)
@@ -155,8 +157,19 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 		}
 	}
 	int cell_width = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL_NUM(mat->type);
-	if (mat->major == CCV_SPARSE_FULL)
+	if (mat->type & CCV_DENSE_VECTOR)
 	{
+		if (vector->index == -1)
+		{
+			vector->prime = -1;
+			vector->length = (mat->major == CCV_SPARSE_COL_MAJOR) ? mat->rows : mat->cols;
+			vector->index = index;
+			vector->step = (vector->length * cell_width + 3) & -4;
+			vector->data.ptr = (unsigned char*)malloc(vector->step);
+		}
+		if (data != NULL)
+			memcpy(vector->data.ptr + vidx * cell_width, data, cell_width);
+	} else {
 		if (vector->index == -1)
 		{
 			vector->prime = 0;
@@ -175,24 +188,13 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			__ccv_dense_vector_expand(mat, vector);
 		}
 		i = 0;
-		int h = (col * 33) % vector->length;
-		while (vector->indice[(h + i * i) % vector->length] != col && vector->indice[(h + i * i) % vector->length] != -1)
+		int h = (vidx * 33) % vector->length;
+		while (vector->indice[(h + i * i) % vector->length] != vidx && vector->indice[(h + i * i) % vector->length] != -1)
 			i++;
 		i = (h + i * i) % vector->length;
-		vector->indice[i] = col;
+		vector->indice[i] = vidx;
 		if (data != NULL)
 			memcpy(vector->data.ptr + i * cell_width, data, cell_width);
-	} else {
-		if (vector->index == -1)
-		{
-			vector->prime = -1;
-			vector->length = (mat->major == CCV_SPARSE_COL_MAJOR) ? mat->rows : mat->cols;
-			vector->index = index;
-			vector->step = (vector->length * cell_width + 3) & -4;
-			vector->data.ptr = (unsigned char*)malloc(vector->step);
-		}
-		if (data != NULL)
-			memcpy(vector->data.ptr + ((mat->major == CCV_SPARSE_COL_MAJOR) ? row : col) * cell_width, data, cell_width);
 	}
 }
 

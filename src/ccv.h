@@ -54,6 +54,11 @@ typedef struct {
 	ccv_matrix_cell_t data;
 } ccv_dense_matrix_t;
 
+enum {
+	CCV_SPARSE_VECTOR = 0x00100000,
+	CCV_DENSE_VECTOR  = 0x00200000,
+};
+
 typedef struct ccv_dense_vector_t {
 	int step;
 	int length;
@@ -66,9 +71,8 @@ typedef struct ccv_dense_vector_t {
 } ccv_dense_vector_t;
 
 enum {
-	CCV_SPARSE_FULL      = 0x00,
-	CCV_SPARSE_ROW_MAJOR = 0x01,
-	CCV_SPARSE_COL_MAJOR = 0x02,
+	CCV_SPARSE_ROW_MAJOR = 0x00,
+	CCV_SPARSE_COL_MAJOR = 0x01,
 };
 
 typedef struct {
@@ -118,7 +122,7 @@ enum {
 	CCV_SERIAL_ERROR,
 };
 
-ccv_dense_matrix_t* ccv_unserialize(const char* in, int type);
+void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type);
 int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type);
 
 /* basic algebra algorithm */
