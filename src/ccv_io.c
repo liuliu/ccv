@@ -39,6 +39,10 @@ void __ccv_unserialize_jpeg_file(const char* file, ccv_dense_matrix_t** x)
 	jpeg_stdio_src(&cinfo, in);
 
 	(void) jpeg_read_header(&cinfo, TRUE);
+	
+	ccv_dense_matrix_t* im = *x;
+	if (im == NULL)
+		*x = im = ccv_dense_matrix_new(cinfo.output_height, cinfo.output_width, CCV_8U | CCV_C3, NULL, NULL);
 
 	(void) jpeg_start_decompress(&cinfo);
 	row_stride = cinfo.output_width * cinfo.output_components;
