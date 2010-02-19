@@ -93,31 +93,7 @@ int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 	++memory->rnum;
 	return 1;
 }
-/*
-ccv_dense_matrix_t* __ccv_memory_get_matrix_cache(ccv_memory_t* memory, int* sig)
-{
-	if (memory->rnum == 0)
-		return NULL;
-	if (!__ccv_bits_in_16bits_init)
-		__ccv_precomputed_16bits();
-	unsigned char* ucsig = (unsigned char*)sig;
-	ccv_memory_index_t* con = memory->con;
-	if (__ccv_sig_match(sig, con->m->sig, 0))
-		return con->m;
-	int k = 0;
-	int spot = ucsig[0] & 0xf;
-	while ((con->i & (1 << spot)) && (k < 40))
-	{
-		int p = __ccv_bits_in_16bits[con->i & ((1 << spot) - 1)];
-		con = con->con + p;
-		if (__ccv_sig_match(sig, con->m->sig, k >> 2))
-			return con->m;
-		++k;
-		spot = (ucsig[k >> 1] >> ((k & 0x1) << 2)) & 0xf;
-	}
-	return NULL;
-}
-*/
+
 ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memory, int* sig)
 {
 	if (memory->rnum == 0)
@@ -226,7 +202,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->type = type | CCV_DENSE;
 	mat->rows = rows;
 	mat->cols = cols;
-	mat->step = (rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
+	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
 	mat->refcount = 1;
 	mat->data.ptr = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
 	return mat;
@@ -285,18 +261,16 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	}
 }
 
-void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1, int* sig2, int* sig3, int* sig4)
+void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...)
 {
 	ccv_SHA_CTX ctx;
 	ccv_SHA1_Init(&ctx);
-	if (sig1 != NULL)
-		ccv_SHA1_Update(&ctx, sig1, 20);
-	if (sig2 != NULL)
-		ccv_SHA1_Update(&ctx, sig2, 20);
-	if (sig3 != NULL)
-		ccv_SHA1_Update(&ctx, sig3, 20);
-	if (sig4 != NULL)
-		ccv_SHA1_Update(&ctx, sig4, 20);
+	int* sigi;
+	va_list arguments;
+	va_start(arguments, sig_start); 
+	for (sigi = sig_start; sigi != NULL; sigi = va_arg(arguments, int*))
+		ccv_SHA1_Update(&ctx, sigi, 20);
+	va_end(arguments);
 	ccv_SHA1_Update(&ctx, msg, len);
 	ccv_SHA1_Final((unsigned char*)sig, &ctx);
 }

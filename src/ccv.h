@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 
 enum {
@@ -100,7 +101,7 @@ typedef struct {
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
-void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig1, int* sig2, int* sig3, int* sig4);
+void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
 
