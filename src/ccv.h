@@ -139,7 +139,7 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
 ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index);
 ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
-int ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
+void ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
 
 /* numerical algorithms */
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
