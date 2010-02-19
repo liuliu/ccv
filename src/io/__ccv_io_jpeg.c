@@ -161,7 +161,7 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x)
 
 	jpeg_stdio_src(&cinfo, in);
 
-	(void) jpeg_read_header(&cinfo, TRUE);
+	jpeg_read_header(&cinfo, TRUE);
 	
 	ccv_dense_matrix_t* im = *x;
 	if (im == NULL)
@@ -183,22 +183,130 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x)
 		}
 	} else {
 		cinfo.out_color_space = JCS_CMYK;
-		/* TODO: */
 		cinfo.out_color_components = 4;
 	}
 
-	(void) jpeg_start_decompress(&cinfo);
+	jpeg_start_decompress(&cinfo);
 	row_stride = cinfo.output_width * 4;
 	buffer = (*cinfo.mem->alloc_sarray)((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
 	unsigned char* ptr = im->data.ptr;
-	while (cinfo.output_scanline < cinfo.output_height)
+	if(cinfo.num_components != 4)
 	{
-		(void) jpeg_read_scanlines(&cinfo, buffer, 1);
-		memcpy(ptr, buffer[0], im->step);
-		ptr += im->step;
+		if ((cinfo.num_components > 1 && (im->type & CCV_C3)) || (cinfo.num_components == 1 && (im->type & CCV_C1)))
+		{
+			/* no format coversion, direct copy */
+			while (cinfo.output_scanline < cinfo.output_height)
+			{
+				jpeg_read_scanlines(&cinfo, buffer, 1);
+				memcpy(ptr, buffer[0], im->step);
+				ptr += im->step;
+			}
+		} else {
+			if (cinfo.num_components > 1 && (im->type & CCV_C1))
+			{
+				/* RGB to gray */
+				while (cinfo.output_scanline < cinfo.output_height)
+				{
+					jpeg_read_scanlines(&cinfo, buffer, 1);
+					int i;
+					unsigned char* g = ptr;
+					unsigned char* rgb = (unsigned char*)buffer[0];
+					for(i = 0; i < im->cols; i++, rgb += 3, g++)
+						*g = (unsigned char)((rgb[0] * 6969 + rgb[1] * 23434 + rgb[2] * 2365) >> 15);
+					ptr += im->step;
+				}
+			} else if (cinfo.num_components == 1 && (im->type & CCV_C3)) {
+				/* gray to RGB */
+				while (cinfo.output_scanline < cinfo.output_height)
+				{
+					jpeg_read_scanlines(&cinfo, buffer, 1);
+					int i;
+					unsigned char* g = (unsigned char*)buffer[0];
+					unsigned char* rgb = ptr;
+					for(i = 0; i < im->cols; i++, rgb += 3, g++)
+						rgb[0] = rgb[1] = rgb[2] = *g;
+					ptr += im->step;
+				}
+			}
+		}
+	} else {
+		if (im->type & CCV_C1)
+		{
+			/* CMYK to gray */
+			while (cinfo.output_scanline < cinfo.output_height)
+			{
+				jpeg_read_scanlines(&cinfo, buffer, 1);
+				int i;
+				unsigned char* cmyk = (unsigned char*)buffer[0];
+				unsigned char* g = ptr;
+				for(i = 0; i < im->cols; i++, g++, cmyk += 4)
+				{
+					int c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
+					c = k - ((255 - c) * k >> 8);
+					m = k - ((255 - m) * k >> 8);
+					y = k - ((255 - y) * k >> 8);
+					*g = (unsigned char)(unsigned char)((c * 6969 + m * 23434 + y * 2365) >> 15);
+				}
+				ptr += im->step;
+			}
+		} else if (im->type & CCV_C3) {
+			/* CMYK to RGB */
+			while (cinfo.output_scanline < cinfo.output_height)
+			{
+				jpeg_read_scanlines(&cinfo, buffer, 1);
+				int i;
+				unsigned char* cmyk = (unsigned char*)buffer[0];
+				unsigned char* rgb = ptr;
+				for(i = 0; i < im->cols; i++, rgb += 3, cmyk += 4)
+				{
+					int c = cmyk[0], m = cmyk[1], y = cmyk[2], k = cmyk[3];
+					c = k - ((255 - c) * k >> 8);
+					m = k - ((255 - m) * k >> 8);
+					y = k - ((255 - y) * k >> 8);
+					rgb[0] = (unsigned char)c;
+					rgb[1] = (unsigned char)m;
+					rgb[2] = (unsigned char)y;
+				}
+				ptr += im->step;
+			}
+		}
 	}
 
-	(void) jpeg_finish_decompress(&cinfo);
+	jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
+}
+
+static void __ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+{
+	struct jpeg_compress_struct cinfo;
+	struct ccv_jpeg_error_mgr_t jerr;
+	jpeg_create_compress(&cinfo);
+    cinfo.err = jpeg_std_error(&jerr.pub);
+	jerr.pub.error_exit = error_exit;
+	jpeg_stdio_dest(&cinfo, fd);
+	if (setjmp(jerr.setjmp_buffer))
+	{
+		jpeg_destroy_compress(&cinfo);
+		return;
+	}
+	cinfo.image_width = mat->cols;
+	cinfo.image_height = mat->rows;
+	cinfo.input_components = (mat->type & CCV_C1) ? 1 : 3;
+	cinfo.in_color_space = (mat->type & CCV_C1) ? JCS_GRAYSCALE : JCS_RGB;
+	jpeg_set_defaults(&cinfo);
+	if (conf == NULL)
+		jpeg_set_quality(&cinfo, 95, TRUE);
+	else
+		jpeg_set_quality(&cinfo, *(int*)conf, TRUE);
+	jpeg_start_compress(&cinfo, TRUE);
+	int i;
+	unsigned char* ptr = mat->data.ptr;
+	for (i = 0; i < mat->rows; i++)
+	{
+		jpeg_write_scanlines(&cinfo, &ptr, 1);
+		ptr += mat->step;
+	}
+	jpeg_finish_compress(&cinfo);
+	jpeg_destroy_compress(&cinfo);
 }

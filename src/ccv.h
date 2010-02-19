@@ -99,6 +99,8 @@ typedef void ccv_matrix_t;
 typedef struct {
 } ccv_array_t;
 
+#define ccv_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
@@ -114,7 +116,7 @@ enum {
 	CCV_SERIAL_JPEG_STREAM    = 0x13,
 	CCV_SERIAL_PNG_STREAM     = 0x14,
 	CCV_SERIAL_ANY_FILE       = 0x20,
-	CCV_SERIAL_BMP_FILE       = 0x21.
+	CCV_SERIAL_BMP_FILE       = 0x21,
 	CCV_SERIAL_JPEG_FILE      = 0x22,
 	CCV_SERIAL_PNG_FILE       = 0x23,	
 };
@@ -126,7 +128,7 @@ enum {
 };
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type);
-int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type);
+int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf);
 
 /* basic algebra algorithm */
 double ccv_trace(ccv_matrix_t* mat);
