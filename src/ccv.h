@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <alloca.h>
 
 enum {
 	CCV_8U  = 0x0100,
@@ -107,14 +108,15 @@ void ccv_garbage_collect();
 
 /* basic io */
 enum {
-	CCV_SERIAL_PLAIN_STREAM = 0x01,
-	CCV_SERIAL_DEFLATE_STREAM,
-	CCV_SERIAL_JPEG_STREAM,
-	CCV_SERIAL_PNG_STREAM,
-	CCV_SERIAL_ANY_FILE,
-	CCV_SERIAL_BMP_FILE,
-	CCV_SERIAL_JPEG_FILE,
-	CCV_SERIAL_PNG_FILE,	
+	CCV_SERIAL_ANY_STREAM     = 0x10,
+	CCV_SERIAL_PLAIN_STREAM   = 0x11,
+	CCV_SERIAL_DEFLATE_STREAM = 0x12,
+	CCV_SERIAL_JPEG_STREAM    = 0x13,
+	CCV_SERIAL_PNG_STREAM     = 0x14,
+	CCV_SERIAL_ANY_FILE       = 0x20,
+	CCV_SERIAL_BMP_FILE       = 0x21.
+	CCV_SERIAL_JPEG_FILE      = 0x22,
+	CCV_SERIAL_PNG_FILE       = 0x23,	
 };
 
 enum {

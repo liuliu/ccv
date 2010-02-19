@@ -1,5 +1,5 @@
 CXX = clang
-LINKFLAG = -pthread -ljpeg
+LINKFLAG = -pthread -ljpeg -lpng
 CXXFLAGS = -O2 -msse2 -Wall
 
 all: cache_test sparse_matrix_test io_test

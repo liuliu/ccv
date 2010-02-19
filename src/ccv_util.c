@@ -52,7 +52,7 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 	return cell;
 }
 
-void __ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector_t* vector)
+static void __ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector_t* vector)
 {
 	if (vector->prime == -1)
 		return;
@@ -83,7 +83,7 @@ void __ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector_t* vec
 	vector->indice = new_indice;
 }
 
-void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
+static void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 {
 	int length = CCV_GET_SPARSE_PRIME(mat->prime);
 	mat->prime++;

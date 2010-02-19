@@ -144,11 +144,8 @@ static int __ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned cha
  * based on a message of Laurent Pinchart on the video4linux mailing list
  ***************************************************************************/
 
-void __ccv_unserialize_jpeg_file(const char* file, ccv_dense_matrix_t** x)
+static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x)
 {
-	FILE* in = fopen(file, "rb");
-	if (in == NULL)
-		return;
 	struct jpeg_decompress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;
 	JSAMPARRAY buffer;
@@ -158,7 +155,6 @@ void __ccv_unserialize_jpeg_file(const char* file, ccv_dense_matrix_t** x)
 	if (setjmp(jerr.setjmp_buffer))
 	{
 		jpeg_destroy_decompress(&cinfo);
-		fclose(in);
 		return;
 	}
 	jpeg_create_decompress(&cinfo);
@@ -205,6 +201,4 @@ void __ccv_unserialize_jpeg_file(const char* file, ccv_dense_matrix_t** x)
 
 	(void) jpeg_finish_decompress(&cinfo);
 	jpeg_destroy_decompress(&cinfo);
-
-	fclose(in);
 }

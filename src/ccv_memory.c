@@ -42,7 +42,7 @@ static int __ccv_sig_match(int* sig1, int* sig2, int k)
 	return 1;
 }
 
-int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
+static int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 {
 	if (!__ccv_bits_in_16bits_init)
 		__ccv_precomputed_16bits();
@@ -94,7 +94,7 @@ int __ccv_memory_add_matrix_cache(ccv_memory_t* memory, ccv_dense_matrix_t* m)
 	return 1;
 }
 
-ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memory, int* sig)
+static ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t* memory, int* sig)
 {
 	if (memory->rnum == 0)
 		return NULL;
