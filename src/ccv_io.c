@@ -2,8 +2,8 @@
 #include <jpeglib.h>
 #include <libpng/png.h>
 
-#include "io/__ccv_io_jpeg.c"
-#include "io/__ccv_io_png.c"
+#include "io/__ccv_io_libjpeg.c"
+#include "io/__ccv_io_libpng.c"
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {

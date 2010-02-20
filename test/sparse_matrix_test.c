@@ -1,4 +1,4 @@
-#include "../ccv.h"
+#include "ccv.h"
 #include <assert.h>
 
 int main(int argc, char** argv)
