@@ -48,8 +48,14 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 		fftw_ap += cols & 1;
 	}
 	/* discrete kernel is always meant to be (0,0) centered, but in most case, it is (0,0) toplefted.
-	 * to compensate that, fourier function will assume it is periodic function, which, will result
-	 * the following interleaving */
+	 * to compensate that, fourier function will assume that it is a periodic function, which, will
+	 * result the following interleaving:
+	 * | 0 1 2 3 |    | A B 8 9 |
+	 * | 4 5 6 7 | to | E F C D |
+	 * | 8 9 A B |    | 2 3 0 1 |
+	 * | C D E F |    | 4 7 4 5 |
+	 * a more classic way to do this is to pad both a and b to be a->rows + b->rows - 1,
+	 * a->cols + b->cols - 1, too expensive. */
 	int rows_bc = rows - b->rows / 2;
 	int cols_bc = cols - b->cols / 2;
 	for (i = 0; i < b->rows; i++)
@@ -58,7 +64,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 
 	fftw_execute_dft_r2c(p, fftw_a, fftw_ac);
 	fftw_execute_dft_r2c(p, fftw_b, fftw_bc);
-	
+
 	fftw_complex* fftw_acp = fftw_ac;
 	fftw_complex* fftw_bcp = fftw_bc;
 	fftw_complex* fftw_xcp = fftw_xc;
@@ -82,19 +88,29 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	fftw_free(fftw_x);
 }
 
+void __ccv_filter_direct(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* x)
+{
+}
+
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	ccv_dense_matrix_t* dx;
+
+	int sig[5];
+	ccv_matrix_generate_signature("ccv_filter", 10, sig, da->sig, db->sig, NULL);
 	if (*x == NULL)
-		*x = dx = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, NULL);
-	else
+		*x = dx = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, sig);
+	else {
 		dx = ccv_get_dense_matrix(*x);
-	/* 100 is the constant to indicate the high cost of FFT (even with O(nlog(n)) */
-	if (db->rows * db->cols < log(da->rows * da->cols) * 100)
+		memcpy(dx->sig, sig, 20);
+	}
+
+	/* 50 is the constant to indicate the high cost of FFT (even with O(nlog(n)) */
+	if (db->rows * db->cols < (log(da->rows * da->cols) + 1) * 50)
 	{
-		printf("not implemented\n");
+		__ccv_filter_direct(da, db, dx);
 	} else {
 		__ccv_filter_fftw(da, db, dx);
 	}
