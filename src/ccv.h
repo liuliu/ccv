@@ -13,6 +13,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <alloca.h>
+#include <math.h>
 
 enum {
 	CCV_8U  = 0x0100,
@@ -142,6 +143,7 @@ ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int i
 ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 void ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt);
+void ccv_convert(ccv_matrix_t* x, ccv_matrix_t* y, int type);
 
 /* numerical algorithms */
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
