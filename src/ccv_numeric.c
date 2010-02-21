@@ -408,6 +408,8 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 		memcpy(dd->sig, sig, 20);
 	}
 
+	assert(da->type == dd->type && da->rows == dd->rows && da->cols == dd->cols);
+
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
 	 * integer image.
 	 * NOTE: FFT has time complexity of O(nlog(n)), however, for convolution, it

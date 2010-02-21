@@ -197,7 +197,3 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			memcpy(vector->data.ptr + i * cell_width, data, cell_width);
 	}
 }
-
-void ccv_matrix_assert(ccv_matrix_t* mat, int type, int rows_lt, int rows_gt, int cols_lt, int cols_gt)
-{
-}
