@@ -316,7 +316,6 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 
 void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
-	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
 	int i, j, y, x, k;
 	int nz = b->rows * b->cols;
 	int* coeff = (int*)alloca(nz * sizeof(int));
@@ -334,9 +333,15 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 			cx[nz] = j;
 			nz++;
 		}
+	ccv_dense_matrix_t* pa = ccv_dense_matrix_new(a->rows + (b->rows - 1) / 2 * 2, a->cols + (b->cols - 1) / 2 * 2, CCV_8U | CCV_C1, NULL, NULL);
+	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
+	for (i = 0; i < pa->rows; i++)
+		for (j = 0; j < pa->cols; j++)
+			pa->data.ptr[i * pa->step + j] = a->data.ptr[ccv_clamp(i - b->rows / 2, 0, a->rows - 1) * a->step + ccv_clamp(j - b->cols / 2, 0, a->cols - 1)];
 	unsigned char* m_ptr = d->data.ptr;
+	unsigned char* a_ptr = pa->data.ptr;
 	/* 0.5 denote the overhead for indexing x and y */
-	if (nz < b->rows * b->cols * 0.5)
+	if (nz < b->rows * b->cols * 0.75)
 	{
 		for (i = 0; i < d->rows; i++)
 		{
@@ -344,14 +349,11 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 			{
 				int z = 0;
 				for (k = 0; k < nz; k++)
-				{
-					int iy = ccv_min(ccv_max(i + cy[k], 0), a->rows - 1);
-					int ix = ccv_min(ccv_max(j + cx[k], 0), a->cols - 1);
-					z += a->data.ptr[iy * a->step + ix] * coeff[k];
-				}
+					z += a_ptr[cy[k] * pa->step + j + cx[k]] * coeff[k];
 				m_ptr[j] = ccv_clamp(z >> 14, 0, 255);
 			}
 			m_ptr += d->step;
+			a_ptr += pa->step;
 		}
 	} else {
 		k = 0;
@@ -367,21 +369,22 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 			{
 				int* c_ptr = coeff;
 				int z = 0;
-				for (y = -b->rows / 2; y < (b->rows + 1) / 2; y++)
+				for (y = 0; y < b->rows; y++)
 				{
-					int iyx = ccv_clamp(i + y, 0, a->rows - 1) * a->step;
-					for (x = -b->cols / 2; x < (b->cols + 1) / 2; x++)
+					int iyx = y * pa->step;
+					for (x = 0; x < b->cols; x++)
 					{
-						int ix = ccv_clamp(j + x, 0, a->cols - 1);
-						z += a->data.ptr[iyx + ix] * c_ptr[0];
+						z += a_ptr[iyx + j + x] * c_ptr[0];
 						c_ptr++;
 					}
 				}
 				m_ptr[j] = ccv_clamp(z >> 14, 0, 255);
 			}
 			m_ptr += d->step;
+			a_ptr += pa->step;
 		}
 	}
+	ccv_matrix_free(pa);
 }
 
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
@@ -405,14 +408,15 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 		memcpy(dd->sig, sig, 20);
 	}
 
-	/* 20 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for integer image.
+	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
+	 * integer image.
 	 * NOTE: FFT has time complexity of O(nlog(n)), however, for convolution, it
 	 * is not the case. Convolving one image (a) to a kernel (b), can be done by
 	 * dividing image a to several blocks proportional to (b). Thus, one don't need
 	 * to do FFT for the whole image. The image can be divided to n/m part, and
 	 * the FFT itself is O(mlog(m)), so, the convolution process has time complexity
 	 * of O(nlog(m)) */
-	if ((db->rows * db->cols < (log(db->rows * db->cols) + 1) * 10) && (da->type & CCV_8U))
+	if ((db->rows * db->cols < (log(db->rows * db->cols) + 1) * 15) && (da->type & CCV_8U))
 	{
 		__ccv_filter_direct_8u(da, db, dd);
 	} else {
