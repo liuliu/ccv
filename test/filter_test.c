@@ -5,7 +5,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = NULL;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(image->rows, image->cols, CCV_32F | CCV_C1, NULL, NULL);
-	ccv_dense_matrix_t* b = ccv_dense_matrix_new(100, 100, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(101, 101, CCV_32F | CCV_C1, NULL, NULL);
 	int i, j;
 	for (i = 0; i < image->rows; i++)
 		for (j = 0; j < image->cols; j++)

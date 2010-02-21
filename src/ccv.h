@@ -101,6 +101,8 @@ typedef struct {
 } ccv_array_t;
 
 #define ccv_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
+#define ccv_min(a, b) (((a) < (b)) ? (a) : (b))
+#define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
@@ -147,10 +149,10 @@ void ccv_convert(ccv_matrix_t* x, ccv_matrix_t* y, int type);
 
 /* numerical algorithms */
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
-void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
-void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
-void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** x);
+void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);
