@@ -32,13 +32,17 @@ enum {
 static const int __ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
 static const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 
-#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[((x) & 0xFF00) >> 8]
-#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[(x) & 0XFF]
+#define CCV_GET_DATA_TYPE(x) ((x) & 0xFF00)
+#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
+#define CCV_GET_CHANNEL(x) ((x) & 0xFF)
+#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[CCV_GET_CHANNEL(x)]
 
 enum {
 	CCV_DENSE  = 0x010000,
 	CCV_SPARSE = 0x020000,
 };
+
+#define CCV_GARBAGE (0x80000000)
 
 typedef union {
 	unsigned char* ptr;
@@ -110,6 +114,30 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
+
+#define ccv_get_dense_matrix_cell(x, row, col) \
+	((((x)->type) & CCV_32S) ? (void*)((x)->data.i + (row) * (x)->cols + (col)) : \
+	((((x)->type) & CCV_32F) ? (void*)((x)->data.fl+ (row) * (x)->cols + (col)) : \
+	((((x)->type) & CCV_64F) ? (void*)((x)->data.db + (row) * (x)->cols + (col)) : \
+	(void*)((x)->data.ptr + (row) * (x)->step + (col)))))
+
+#define ccv_get_dense_matrix_cell_value(x, row, col) \
+	((((x)->type) & CCV_32S) ? (x)->data.i[(row) * (x)->cols + (col)] : \
+	((((x)->type) & CCV_32F) ? (x)->data.fl[(row) * (x)->cols + (col)] : \
+	((((x)->type) & CCV_64F) ? (x)->data.db[(row) * (x)->cols + (col)] : \
+	(x)->data.ptr[(row) * (x)->step + (col)])))
+
+#define ccv_get_value(type, ptr, i) \
+	(((type) & CCV_32S) ? ((int*)(ptr))[(i)] : \
+	(((type) & CCV_32F) ? ((float*)(ptr))[(i)] : \
+	(((type) & CCV_64F) ? ((double*)(ptr))[(i)] : \
+	((unsigned char*)(ptr))[(i)])))
+
+#define ccv_set_value(type, ptr, i, value) switch (CCV_GET_DATA_TYPE((type))) { \
+	case CCV_32S: ((int*)(ptr))[(i)] = (int)(value + 0.5); break; \
+	case CCV_32F: ((float*)(ptr))[(i)] = (float)value; break; \
+	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
+	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value + 0.5), 0, 255); }
 
 /* basic io */
 enum {

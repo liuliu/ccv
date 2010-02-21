@@ -190,6 +190,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		mat = __ccv_memory_get_and_remove_matrix_cache(&memory, sig);
 		if (mat)
 		{
+			mat->type |= CCV_GARBAGE;
 			mat->refcount = 1;
 			return mat;
 		}
@@ -199,7 +200,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		memcpy(mat->sig, sig, 20);
 	else
 		memset(mat->sig, 0, 20);
-	mat->type = type | CCV_DENSE;
+	mat->type = (type | CCV_DENSE) & ~CCV_GARBAGE;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;

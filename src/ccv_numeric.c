@@ -18,6 +18,7 @@ void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 {
 }
 
+/* optimal FFT size table is adopted from OpenCV */
 static const int __ccv_optimal_fft_size[] = {
 	1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30, 32, 36, 40, 45, 48, 
 	50, 54, 60, 64, 72, 75, 80, 81, 90, 96, 100, 108, 120, 125, 128, 135, 144, 150, 160, 
@@ -231,59 +232,77 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	double scale = 1.0 / (rows * cols);
 	p = fftw_plan_dft_r2c_2d(rows, cols, NULL, NULL, FFTW_ESTIMATE);
 	pinv = fftw_plan_dft_c2r_2d(rows, cols, fftw_dc, fftw_d, FFTW_ESTIMATE);
+	double* fftw_ptr;
+	unsigned char* m_ptr;
 
 	/* discrete kernel is always meant to be (0,0) centered, but in most case, it is (0,0) toplefted.
-	 * to compensate that, fourier function will assume that it is a periodic function, which, will
+	 * to compensate that, Fourier function will assume that it is a periodic function, which, will
 	 * result the following interleaving:
 	 * | 0 1 2 3 |    | A B 8 9 |
 	 * | 4 5 6 7 | to | E F C D |
 	 * | 8 9 A B |    | 2 3 0 1 |
 	 * | C D E F |    | 4 7 4 5 |
 	 * a more classic way to do this is to pad both a and b to be a->rows + b->rows - 1,
-	 * a->cols + b->cols - 1, too expensive. */
-	int rows_bc = rows - b->rows / 2;
-	int cols_bc = cols - b->cols / 2;
+	 * a->cols + b->cols - 1, but it is too expensive. In the way we introduced here, we also assume
+	 * a border padding pattern in periodical way: |cd{BORDER}|abcd|{BORDER}ab|. */
 	int i, j;
-	for (i = 0; i < b->rows; i++)
-		for (j = 0; j < b->cols; j++)
-			fftw_b[((i + rows_bc) % rows) * cols_2c + (j + cols_bc) % cols] = b->data.fl[i * b->cols + j];
-
+	if (b->rows > rows || b->cols > cols)
+	{ /* reverse lookup */
+		fftw_ptr = fftw_b;
+		for (i = 0; i < rows; i++)
+		{
+			int y = (i + rows / 2) % rows - rows / 2 + b->rows / 2;
+			for (j = 0; j < cols; j++)
+			{
+				int x = (j + cols / 2) % cols - cols / 2 + b->cols / 2;
+				fftw_ptr[j] = (y >= 0 && y < b->rows && x >= 0 && x < b->cols) ? ccv_get_dense_matrix_cell_value(b, y, x) : 0;
+			}
+			fftw_ptr += cols_2c;
+		}
+	} else { /* forward lookup */
+		int rows_bc = rows - b->rows / 2;
+		int cols_bc = cols - b->cols / 2;
+		for (i = 0; i < b->rows; i++)
+		{
+			int y = (i + rows_bc) % rows;
+			for (j = 0; j < b->cols; j++)
+				fftw_b[y * cols_2c + (j + cols_bc) % cols] = ccv_get_dense_matrix_cell_value(b, i, j);
+		}
+	}
 	fftw_execute_dft_r2c(p, fftw_b, fftw_bc);
 
-	int tile_x = (a->cols + b->cols - 1) / (cols - b->cols);
-	int tile_y = (a->rows + b->rows - 1) / (rows - b->rows);
-	/* do fft by tile */
+	int tile_x = ccv_max(1, (a->cols + b->cols - 1) / (cols - b->cols));
+	int tile_y = ccv_max(1, (a->rows + b->rows - 1) / (rows - b->rows));
+	/* do FFT for each tile */
 	for (i = 0; i < tile_y; i++)
 		for (j = 0; j < tile_x; j++)
 		{
 			int x, y;
 			memset(fftw_a, 0, rows * cols * sizeof(double));
-			double* fftw_ptr;
-			float* m_ptr;
 			int iy = ccv_min(i * (rows - b->rows), a->rows - rows);
 			int ix = ccv_min(j * (cols - b->cols), a->cols - cols);
 			fftw_ptr = fftw_a;
-			m_ptr = a->data.fl + iy * a->cols + ix;
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix);
 			for (y = 0; y < rows; y++)
 			{
 				for (x = 0; x < cols; x++)
-					fftw_ptr[x] = m_ptr[x];
-				m_ptr += a->cols;
+					fftw_ptr[x] = ccv_get_value(a->type, m_ptr, x);
 				fftw_ptr += cols_2c;
+				m_ptr += a->step;
 			}
 			fftw_execute_dft_r2c(p, fftw_a, fftw_ac);
 			for (x = 0; x < rows * (cols / 2 + 1); x++)
 				fftw_dc[x] = (fftw_ac[x] * fftw_bc[x]) * scale;
 			fftw_execute_dft_c2r(pinv, fftw_dc, fftw_d);
 			fftw_ptr = fftw_d + (i > 0) * b->rows / 2 * cols + (j > 0) * b->cols / 2;
-			m_ptr = d->data.fl + (iy + (i > 0) * b->rows / 2) * d->cols + ix + (j > 0) * b->cols / 2;
-			int end_y = (rows - b->rows) + (i == 0) * b->rows / 2 + (i + 1 == tile_y) * (b->rows + 1) / 2;
-			int end_x = (cols - b->cols) + (j == 0) * b->cols / 2 + (j + 1 == tile_x) * (b->cols + 1) / 2;
+			int end_y = ccv_min(d->rows - iy, (rows - b->rows) + (i == 0) * b->rows / 2 + (i + 1 == tile_y) * (b->rows + 1) / 2);
+			int end_x = ccv_min(d->cols - ix, (cols - b->cols) + (j == 0) * b->cols / 2 + (j + 1 == tile_x) * (b->cols + 1) / 2);
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * b->rows / 2, ix + (j > 0) * b->cols / 2);
 			for (y = 0; y < end_y; y++)
 			{
 				for (x = 0; x < end_x; x++)
-					m_ptr[x] = fftw_ptr[x];
-				m_ptr += d->cols;
+					ccv_set_value(d->type, m_ptr, x, fftw_ptr[x]);
+				m_ptr += d->step;
 				fftw_ptr += cols;
 			}
 		}
@@ -297,6 +316,65 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 
 void __ccv_filter_direct(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
+	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
+	int i, j, y, x, k;
+	int nz = b->rows * b->cols;
+	float* coeff = (float*)alloca(nz * sizeof(float));
+	int* cx = (int*)alloca(nz * sizeof(int));
+	int* cy = (int*)alloca(nz * sizeof(int));
+	nz = 0;
+	float* flbp = b->data.fl;
+	for (i = -b->rows / 2; i < (b->rows + 1) / 2; i++)
+		for (j = -b->cols / 2; j < (b->cols + 1) / 2; j++)
+		{
+			if (*flbp == 0)
+			{
+				flbp++;
+				continue;
+			}
+			coeff[nz] = *flbp;
+			cy[nz] = i;
+			cx[nz] = j;
+			nz++;
+			flbp++;
+		}
+	float* fldp = d->data.fl;
+	/* 0.75 denote the overhead for indexing x and y */
+	if (nz < b->rows * b->cols * 0.75)
+	{
+		for (i = 0; i < a->rows; i++)
+			for (j = 0; j < a->cols; j++)
+			{
+				float z = 0;
+				for (k = 0; k < nz; k++)
+				{
+					int iyx = ccv_min(ccv_max(i + cy[k], 0), d->rows - 1) * d->cols;
+					int ix = ccv_min(ccv_max(j + cx[k], 0), d->cols - 1);
+					z += a->data.fl[iyx + ix] * coeff[k];
+				}
+				*fldp = z;
+				fldp++;
+			}
+	} else {
+		for (i = 0; i < a->rows; i++)
+			for (j = 0; j < a->cols; j++)
+			{
+				float* flbp = b->data.fl;
+				float z = 0;
+				for (y = -b->rows / 2; y < (b->rows + 1) / 2; y++)
+				{
+					int iyx = ccv_min(ccv_max(i + y, 0), d->rows - 1) * d->cols;
+					for (x = -b->cols / 2; x < (b->cols + 1) / 2; x++)
+					{
+						int ix = ccv_min(ccv_max(j + x, 0), d->cols - 1);
+						z += a->data.fl[iyx + ix] * flbp[0];
+						flbp++;
+					}
+				}
+				*fldp = z;
+				fldp++;
+			}
+	}
 }
 
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
@@ -308,14 +386,26 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	int sig[5];
 	ccv_matrix_generate_signature("ccv_filter", 10, sig, da->sig, db->sig, NULL);
 	if (*d == NULL)
+	{
 		*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, sig);
-	else {
+		if (dd->type & CCV_GARBAGE)
+		{
+			dd->type &= ~CCV_GARBAGE;
+			return;
+		}
+	} else {
 		dd = ccv_get_dense_matrix(*d);
 		memcpy(dd->sig, sig, 20);
 	}
 
-	/* 50 is the constant to indicate the high cost of FFT (even with O(nlog(n)) */
-	if (db->rows * db->cols < (log(da->rows * da->cols) + 1) * 50)
+	/* 50 is the constant to indicate the high cost of FFT (even with O(nlog(m)).
+	 * NOTE: FFT has time complexity of O(nlog(n)), however, for convolution, it
+	 * is not the case. Convolving one image (a) to a kernel (b), can be done by
+	 * dividing image a to several blocks proportional to (b). Thus, one don't need
+	 * to do FFT for the whole image. The image can be divided to n/m part, and
+	 * the FFT itself is O(mlog(m)), so, the convolution process has time complexity
+	 * of O(nlog(m)) */
+	if (db->rows * db->cols < (log(db->rows * db->cols) + 1) * 50)
 	{
 		__ccv_filter_direct(da, db, dd);
 	} else {
