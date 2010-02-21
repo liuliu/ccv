@@ -314,66 +314,73 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	fftw_free(fftw_dc);
 }
 
-void __ccv_filter_direct(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
+void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
 	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
 	int i, j, y, x, k;
 	int nz = b->rows * b->cols;
-	float* coeff = (float*)alloca(nz * sizeof(float));
+	int* coeff = (int*)alloca(nz * sizeof(int));
 	int* cx = (int*)alloca(nz * sizeof(int));
 	int* cy = (int*)alloca(nz * sizeof(int));
+	int scale = 1 << 14;
 	nz = 0;
-	float* flbp = b->data.fl;
-	for (i = -b->rows / 2; i < (b->rows + 1) / 2; i++)
-		for (j = -b->cols / 2; j < (b->cols + 1) / 2; j++)
+	for (i = 0; i < b->rows; i++)
+		for (j = 0; j < b->cols; j++)
 		{
-			if (*flbp == 0)
-			{
-				flbp++;
+			coeff[nz] = (int)(ccv_get_dense_matrix_cell_value(b, i, j) * scale + 0.5);
+			if (coeff[nz] == 0)
 				continue;
-			}
-			coeff[nz] = *flbp;
 			cy[nz] = i;
 			cx[nz] = j;
 			nz++;
-			flbp++;
 		}
-	float* fldp = d->data.fl;
-	/* 0.75 denote the overhead for indexing x and y */
-	if (nz < b->rows * b->cols * 0.75)
+	unsigned char* m_ptr = d->data.ptr;
+	/* 0.5 denote the overhead for indexing x and y */
+	if (nz < b->rows * b->cols * 0.5)
 	{
-		for (i = 0; i < a->rows; i++)
-			for (j = 0; j < a->cols; j++)
+		for (i = 0; i < d->rows; i++)
+		{
+			for (j = 0; j < d->cols; j++)
 			{
-				float z = 0;
+				int z = 0;
 				for (k = 0; k < nz; k++)
 				{
-					int iyx = ccv_min(ccv_max(i + cy[k], 0), d->rows - 1) * d->cols;
-					int ix = ccv_min(ccv_max(j + cx[k], 0), d->cols - 1);
-					z += a->data.fl[iyx + ix] * coeff[k];
+					int iy = ccv_min(ccv_max(i + cy[k], 0), a->rows - 1);
+					int ix = ccv_min(ccv_max(j + cx[k], 0), a->cols - 1);
+					z += a->data.ptr[iy * a->step + ix] * coeff[k];
 				}
-				*fldp = z;
-				fldp++;
+				m_ptr[j] = ccv_clamp(z >> 14, 0, 255);
 			}
+			m_ptr += d->step;
+		}
 	} else {
-		for (i = 0; i < a->rows; i++)
-			for (j = 0; j < a->cols; j++)
+		k = 0;
+		for (i = 0; i < b->rows; i++)
+			for (j = 0; j < b->cols; j++)
 			{
-				float* flbp = b->data.fl;
-				float z = 0;
+				coeff[k] = (int)(ccv_get_dense_matrix_cell_value(b, i, j) * scale + 0.5);
+				k++;
+			}
+		for (i = 0; i < d->rows; i++)
+		{
+			for (j = 0; j < d->cols; j++)
+			{
+				int* c_ptr = coeff;
+				int z = 0;
 				for (y = -b->rows / 2; y < (b->rows + 1) / 2; y++)
 				{
-					int iyx = ccv_min(ccv_max(i + y, 0), d->rows - 1) * d->cols;
+					int iyx = ccv_clamp(i + y, 0, a->rows - 1) * a->step;
 					for (x = -b->cols / 2; x < (b->cols + 1) / 2; x++)
 					{
-						int ix = ccv_min(ccv_max(j + x, 0), d->cols - 1);
-						z += a->data.fl[iyx + ix] * flbp[0];
-						flbp++;
+						int ix = ccv_clamp(j + x, 0, a->cols - 1);
+						z += a->data.ptr[iyx + ix] * c_ptr[0];
+						c_ptr++;
 					}
 				}
-				*fldp = z;
-				fldp++;
+				m_ptr[j] = ccv_clamp(z >> 14, 0, 255);
 			}
+			m_ptr += d->step;
+		}
 	}
 }
 
@@ -398,16 +405,16 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 		memcpy(dd->sig, sig, 20);
 	}
 
-	/* 50 is the constant to indicate the high cost of FFT (even with O(nlog(m)).
+	/* 20 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for integer image.
 	 * NOTE: FFT has time complexity of O(nlog(n)), however, for convolution, it
 	 * is not the case. Convolving one image (a) to a kernel (b), can be done by
 	 * dividing image a to several blocks proportional to (b). Thus, one don't need
 	 * to do FFT for the whole image. The image can be divided to n/m part, and
 	 * the FFT itself is O(mlog(m)), so, the convolution process has time complexity
 	 * of O(nlog(m)) */
-	if (db->rows * db->cols < (log(db->rows * db->cols) + 1) * 50)
+	if ((db->rows * db->cols < (log(db->rows * db->cols) + 1) * 10) && (da->type & CCV_8U))
 	{
-		__ccv_filter_direct(da, db, dd);
+		__ccv_filter_direct_8u(da, db, dd);
 	} else {
 		__ccv_filter_fftw(da, db, dd);
 	}
