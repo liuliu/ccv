@@ -333,7 +333,7 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 			cx[nz] = j;
 			nz++;
 		}
-	ccv_dense_matrix_t* pa = ccv_dense_matrix_new(a->rows + (b->rows - 1) / 2 * 2, a->cols + (b->cols - 1) / 2 * 2, CCV_8U | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* pa = ccv_dense_matrix_new(a->rows + b->rows / 2 * 2, a->cols + b->cols / 2 * 2, CCV_8U | CCV_C1, NULL, NULL);
 	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
 	for (i = 0; i < pa->rows; i++)
 		for (j = 0; j < pa->cols; j++)
