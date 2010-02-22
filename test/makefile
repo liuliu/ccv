@@ -1,6 +1,6 @@
 CXX = clang
 LINKFLAG = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lm
-CXXFLAGS = -O2 -msse2 -Wall -I"../src"
+CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
 all: libccv.a cache_test sparse_matrix_test io_test filter_test
 

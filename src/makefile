@@ -1,5 +1,5 @@
 CXX = clang
-CXXFLAGS = -O2 -msse2 -Wall
+CXXFLAGS = -O3 -msse2 -Wall
 
 all: libccv.a
 
