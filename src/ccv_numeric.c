@@ -425,3 +425,17 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 		__ccv_filter_fftw(da, db, dd);
 	}
 }
+
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data)
+{
+	int i, j;
+	unsigned char* m_ptr = x->data.ptr;
+	double rows_2 = x->rows * 0.5;
+	double cols_2 = x->cols * 0.5;
+	for (i = 0; i < x->rows; i++)
+	{
+		for (j = 0; j < x->cols; j++)
+			ccv_set_value(x->type, m_ptr, j, func(j - cols_2, i - rows_2, data));
+		m_ptr += x->step;
+	}
+}

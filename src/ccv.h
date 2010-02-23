@@ -181,6 +181,8 @@ void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+typedef double(*ccv_filter_kernel_func)(double x, double y, void* data);
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);
