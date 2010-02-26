@@ -168,7 +168,15 @@ int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* 
 /* basic algebra algorithm */
 double ccv_trace(ccv_matrix_t* mat);
 double ccv_norm(ccv_matrix_t* mat, int type);
-void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t* c, int transpose, ccv_matrix_t** d);
+double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
+
+enum {
+	CCV_A_TRANSPOSE = 0x01,
+	CCV_B_TRANSPOSE = 0X02,
+	CCV_C_TRANSPOSE = 0X04,
+};
+
+void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d);
 
 /* matrix build blocks */
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);

@@ -6,7 +6,7 @@ all: libccv.a
 clean:
 	rm *.o libccv.a
 
-libccv.a: ccv_memory.o 3rdparty/sha1.o ccv_io.o ccv_numeric.o ccv_util.o 3rdparty/sha1.o
+libccv.a: ccv_memory.o 3rdparty/sha1.o ccv_io.o ccv_numeric.o ccv_algebra.o ccv_util.o 3rdparty/sha1.o
 	ar rcs $@ $^
 
 .c.o:
