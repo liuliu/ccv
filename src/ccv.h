@@ -167,6 +167,12 @@ int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* 
 
 /* basic algebra algorithm */
 double ccv_trace(ccv_matrix_t* mat);
+
+enum {
+	CCV_L2_NORM = 0x00,
+	CCV_L1_NORM = 0x01,
+};
+
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 

@@ -3,10 +3,12 @@
 
 double ccv_trace(ccv_matrix_t* mat)
 {
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 }
 
 double ccv_norm(ccv_matrix_t* mat, int type)
 {
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 }
 
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d)
