@@ -103,7 +103,10 @@ static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151,
 typedef void ccv_matrix_t;
 
 typedef struct {
-} ccv_array_t;
+	ccv_matrix_cell_t data;
+	int* col;
+	int* rowidx;
+} ccv_matrix_csr_t;
 
 #define ccv_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
 #define ccv_min(a, b) (((a) < (b)) ? (a) : (b))
