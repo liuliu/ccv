@@ -200,7 +200,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		memcpy(mat->sig, sig, 20);
 	else
 		memset(mat->sig, 0, 20);
-	mat->type = (type | CCV_DENSE) & ~CCV_GARBAGE;
+	mat->type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
@@ -215,7 +215,7 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 	mat = (ccv_sparse_matrix_t*)malloc(sizeof(ccv_sparse_matrix_t));
 	mat->rows = rows;
 	mat->cols = cols;
-	mat->type = type | CCV_SPARSE | ((type & CCV_DENSE_VECTOR) ? CCV_DENSE_VECTOR : CCV_SPARSE_VECTOR);
+	mat->type = type | CCV_MATRIX_SPARSE | ((type & CCV_DENSE_VECTOR) ? CCV_DENSE_VECTOR : CCV_SPARSE_VECTOR);
 	mat->major = major;
 	mat->prime = 0;
 	mat->load_factor = 0;
@@ -234,13 +234,13 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 void ccv_matrix_free(ccv_matrix_t* mat)
 {
 	int type = *(int*)mat;
-	if (type & CCV_DENSE)
+	if (type & CCV_MATRIX_DENSE)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
 		dmt->refcount = 0;
 		if (CCV_IS_EMPTY_SIGNATURE(dmt) || !__ccv_memory_add_matrix_cache(&memory, dmt))
 			free(dmt);
-	} else if (type & CCV_SPARSE) {
+	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
 		int i;
 		for (i = 0; i < CCV_GET_SPARSE_PRIME(smt->prime); i++)
@@ -259,6 +259,10 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 			}
 		free(smt->vector);
 		free(smt);
+	} else if ((type & CCV_MATRIX_CSR) || (type & CCV_MATRIX_CSC)) {
+		ccv_compressed_sparse_matrix_t* csm = (ccv_compressed_sparse_matrix_t*)mat;
+		csm->refcount = 0;
+		free(csm);
 	}
 }
 
