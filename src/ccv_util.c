@@ -310,3 +310,15 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 		}
 	}
 }
+
+void ccv_uncompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
+{
+	ccv_sparse_matrix_t* mat = *smt = ccv_sparse_matrix_new(csm->rows, csm->cols, csm->type & ~CCV_MATRIX_CSR & ~CCV_MATRIX_CSC, (csm->type & CCV_MATRIX_CSR) ? CCV_SPARSE_ROW_MAJOR : CCV_SPARSE_COL_MAJOR, NULL);
+	int i, j;
+	for (i = 0; i < ((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows); i++)
+		for (j = csm->offset[i]; j < csm->offset[i + 1]; j++)
+			if (mat->major == CCV_SPARSE_COL_MAJOR)
+				ccv_set_sparse_matrix_cell(mat, csm->index[j], i, csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
+			else
+				ccv_set_sparse_matrix_cell(mat, i, csm->index[j], csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
+}
