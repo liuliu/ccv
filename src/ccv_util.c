@@ -165,7 +165,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			vector->length = (mat->major == CCV_SPARSE_COL_MAJOR) ? mat->rows : mat->cols;
 			vector->index = index;
 			vector->step = (vector->length * cell_width + 3) & -4;
-			vector->data.ptr = (unsigned char*)malloc(vector->step);
+			vector->data.ptr = (unsigned char*)calloc(vector->step, 1);
 		}
 		if (data != NULL)
 			memcpy(vector->data.ptr + vidx * cell_width, data, cell_width);
@@ -199,6 +199,16 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 }
 
 #define __ccv_indice_less_than(i1, i2, aux) ((i1) < (i2))
+#define __ccv_swap_indice_and_uchar_data(i1, i2, array, aux, t) {  \
+	unsigned char td = (aux)[(int)(&(i1) - (array))];              \
+	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
+	(aux)[(int)(&(i2) - (array))] = td;                            \
+	CCV_SWAP(i1, i2, t); }
+#define __ccv_swap_indice_and_int_data(i1, i2, array, aux, t) {    \
+	int td = (aux)[(int)(&(i1) - (array))];                        \
+	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
+	(aux)[(int)(&(i2) - (array))] = td;                            \
+	CCV_SWAP(i1, i2, t); }
 #define __ccv_swap_indice_and_float_data(i1, i2, array, aux, t) {  \
 	float td = (aux)[(int)(&(i1) - (array))];                      \
 	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
@@ -210,6 +220,8 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 	(aux)[(int)(&(i2) - (array))] = td;                            \
 	CCV_SWAP(i1, i2, t); }
 
+CCV_IMPLEMENT_QSORT_EX(__ccv_indice_uchar_sort, int, __ccv_indice_less_than, __ccv_swap_indice_and_uchar_data, unsigned char*);
+CCV_IMPLEMENT_QSORT_EX(__ccv_indice_int_sort, int, __ccv_indice_less_than, __ccv_swap_indice_and_int_data, int*);
 CCV_IMPLEMENT_QSORT_EX(__ccv_indice_float_sort, int, __ccv_indice_less_than, __ccv_swap_indice_and_float_data, float*);
 CCV_IMPLEMENT_QSORT_EX(__ccv_indice_double_sort, int, __ccv_indice_less_than, __ccv_swap_indice_and_double_data, double*);
 
@@ -224,47 +236,77 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 		while (vector != NULL)
 		{
 			if (vector->index != -1)
-				nnz += vector->load_factor;
+			{
+				if (mat->type & CCV_DENSE_VECTOR)
+				{
+					for (j = 0; j < vector->length; j++)
+						if (ccv_get_value(mat->type, vector->data.ptr, j) != 0)
+							nnz++;
+				} else {
+					nnz += vector->load_factor;
+				}
+			}
 			vector = vector->next;
 		}
 	}
-	ccv_compressed_sparse_matrix_t* cm = *csm = (ccv_compressed_sparse_matrix_t*)malloc(sizeof(ccv_compressed_sparse_matrix_t) + nnz * sizeof(int) + nnz * CCV_GET_DATA_TYPE_SIZE(mat->type) + (mat->rows + 1) * sizeof(int));
-	cm->type = (mat->type & ~CCV_MATRIX_SPARSE) | CCV_MATRIX_CSR;
+	ccv_compressed_sparse_matrix_t* cm = *csm = (ccv_compressed_sparse_matrix_t*)malloc(sizeof(ccv_compressed_sparse_matrix_t) + nnz * sizeof(int) + nnz * CCV_GET_DATA_TYPE_SIZE(mat->type) + (((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows) + 1) * sizeof(int));
+	cm->type = (mat->type & ~CCV_MATRIX_SPARSE & ~CCV_SPARSE_VECTOR & ~CCV_DENSE_VECTOR) | ((mat->major == CCV_SPARSE_COL_MAJOR) ? CCV_MATRIX_CSC : CCV_MATRIX_CSR);
 	cm->nnz = nnz;
 	cm->rows = mat->rows;
 	cm->cols = mat->cols;
 	cm->index = (int*)(cm + 1);
 	cm->offset = cm->index + nnz;
-	cm->data.i = cm->offset + mat->rows + 1;
+	cm->data.i = cm->offset + ((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows) + 1;
 	unsigned char* m_ptr = cm->data.ptr;
 	int* idx = cm->index;
 	cm->offset[0] = 0;
-	for (i = 0; i < mat->rows; i++)
+	for (i = 0; i < ((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows); i++)
 	{
 		ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, i);
 		if (vector == NULL)
 			cm->offset[i + 1] = cm->offset[i];
 		else {
-			int k = 0;
-			for (j = 0; j < vector->length; j++)
-				if (vector->indice[j] != -1)
-				{
-					ccv_set_value(mat->type, m_ptr, k, ccv_get_value(mat->type, vector->data.ptr, j));
-					idx[k] = vector->indice[j];
-					k++;
-				}
-			switch (CCV_GET_DATA_TYPE(mat->type))
+			if (mat->type & CCV_DENSE_VECTOR)
 			{
-				case CCV_32F:
-					__ccv_indice_float_sort(idx, vector->load_factor, (float*)m_ptr);
-					break;
-				case CCV_64F:
-					__ccv_indice_double_sort(idx, vector->load_factor, (double*)m_ptr);
-					break;
+				int k = 0;
+				for (j = 0; j < vector->length; j++)
+					if (ccv_get_value(mat->type, vector->data.ptr, j) != 0)
+					{
+						ccv_set_value(mat->type, m_ptr, k, ccv_get_value(mat->type, vector->data.ptr, j));
+						idx[k] = j;
+						k++;
+					}
+				cm->offset[i + 1] = cm->offset[i] + k;
+				idx += k;
+				m_ptr += k * CCV_GET_DATA_TYPE_SIZE(mat->type);
+			} else {
+				int k = 0;
+				for (j = 0; j < vector->length; j++)
+					if (vector->indice[j] != -1)
+					{
+						ccv_set_value(mat->type, m_ptr, k, ccv_get_value(mat->type, vector->data.ptr, j));
+						idx[k] = vector->indice[j];
+						k++;
+					}
+				switch (CCV_GET_DATA_TYPE(mat->type))
+				{
+					case CCV_8U:
+						__ccv_indice_uchar_sort(idx, vector->load_factor, (unsigned char*)m_ptr);
+						break;
+					case CCV_32S:
+						__ccv_indice_int_sort(idx, vector->load_factor, (int*)m_ptr);
+						break;
+					case CCV_32F:
+						__ccv_indice_float_sort(idx, vector->load_factor, (float*)m_ptr);
+						break;
+					case CCV_64F:
+						__ccv_indice_double_sort(idx, vector->load_factor, (double*)m_ptr);
+						break;
+				}
+				cm->offset[i + 1] = cm->offset[i] + vector->load_factor;
+				idx += vector->load_factor;
+				m_ptr += vector->load_factor * CCV_GET_DATA_TYPE_SIZE(mat->type);
 			}
-			cm->offset[i + 1] = cm->offset[i] + vector->load_factor;
-			idx += vector->load_factor;
-			m_ptr += vector->load_factor * CCV_GET_DATA_TYPE_SIZE(mat->type);
 		}
 	}
 }
