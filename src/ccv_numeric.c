@@ -405,7 +405,6 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 		}
 	} else {
 		dd = ccv_get_dense_matrix(*d);
-		memcpy(dd->sig, sig, 20);
 	}
 
 	assert(da->type == dd->type && da->rows == dd->rows && da->cols == dd->cols);

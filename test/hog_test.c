@@ -19,12 +19,12 @@ int main(int argc, char** argv)
 			a->data.ptr[i * a->step + j] = (image->data.ptr[i * image->step + j * 3] * 29 + image->data.ptr[i * image->step + j * 3 + 1] * 61 + image->data.ptr[i * image->step + j * 3 + 2] * 10) / 100;
 	ccv_dense_matrix_t* x = NULL;
 	unsigned int elapsed_time = get_current_time();
-	ccv_sobel(a, &x, 1, 0);
+	ccv_hog(a, &x, 5);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
-	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(x->rows, x->cols, CCV_8U | CCV_C1, NULL, NULL);
-	for (i = 0; i < x->rows; i++)
-		for (j = 0; j < x->cols; j++)
-			imx->data.ptr[i * imx->step + j] = ccv_clamp(x->data.i[i * x->cols + j] / 4, 0, 255);
+	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(x->rows, x->cols / 8, CCV_8U | CCV_C1, NULL, NULL);
+	for (i = 0; i < imx->rows; i++)
+		for (j = 0; j < imx->cols; j++)
+			imx->data.ptr[i * imx->step + j] = ccv_clamp(x->data.i[i * x->cols + j * 8] / 4, 0, 255);
 	int len;
 	ccv_serialize(imx, argv[2], &len, CCV_SERIAL_JPEG_FILE, NULL);
 	ccv_matrix_free(image);
@@ -34,4 +34,5 @@ int main(int argc, char** argv)
 	ccv_garbage_collect();
 	return 0;
 }
+
 

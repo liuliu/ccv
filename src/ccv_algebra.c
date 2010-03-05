@@ -42,7 +42,6 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 		}
 	} else {
 		dd = ccv_get_dense_matrix(*d);
-		memcpy(dd->sig, sig, 20);
 	
 		assert(da->type == dd->type && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dd->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dd->cols);
 		

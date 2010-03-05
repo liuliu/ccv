@@ -14,6 +14,7 @@
 #include <string.h>
 #include <alloca.h>
 #include <math.h>
+#include <xmmintrin.h>
 #include <assert.h>
 
 enum {
@@ -223,7 +224,7 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy);
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size, int drive);
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size);
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
