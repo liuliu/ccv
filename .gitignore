@@ -7,6 +7,8 @@ src/3rdparty/*.swp
 test/*.[oa]
 test/*.~
 test/*.swp
-opencv/*.[oa]
-opencv/*.~
-opencv/*.swp
+test/*.jpg
+test/*.png
+test/opencv/*.[oa]
+test/opencv/*.~
+test/opencv/*.swp
