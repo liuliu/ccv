@@ -16,18 +16,37 @@ double gabor_kernel(double x, double y, void* data)
 	return exp_kv_x_y * (cos(kv_qu_x_y) - 0.000051723) * kv_kv_si;
 }
 
+double gaussian_deriv_kernel(double x, double y, void* data)
+{
+	int* sg = (int*)data;
+	double qu = sg[1] * 3.141592654 / sg[2];
+	double tx = (x * sin(qu) - y * cos(qu)) * 3;
+	double ty = x * cos(qu) + y * sin(qu);
+	double shift = 3;
+	return exp(-((tx * tx) + (ty * ty)) / (2 * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * sg[0]) * ty * ty / (sg[0] * sg[0] * sg[0] * sg[0]) + exp(-((tx * tx) + (ty * ty)) / (2 * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * sg[0]) - (exp(-((tx * tx) + (ty * ty)) / (2 * shift * shift * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * shift * sg[0]) * ty * ty / (shift * shift * shift * shift * sg[0] * sg[0] * sg[0] * sg[0]) + exp(-((tx * tx) + (ty * ty)) / (2 * shift * shift * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * shift * sg[0]));
+}
+
+double dog_kernel(double x, double y, void* data)
+{
+	int* sg = (int*)data;
+	double shift = 3;
+	return exp(-((x * x) + (y * y)) / (2 * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * sg[0]) - exp(-((x * x) + (y * y)) / (2 * shift * shift * sg[0] * sg[0])) / (sqrt(2 * 3.141592654) * shift * sg[0]);
+}
+
 typedef struct {
 	int label;
-	float desc[48];
+	float desc[45];
 } rich_float_pixel_t;
 
+#define FILTER_BANK_SIZE (42)
 #define KMEANS_GABOR_SIZE (30)
-#define KMEANS_TEXTON_SIZE (12)
+#define KMEANS_TEXTON_SIZE (8)
 
 int colors[] =  { 0, 0, 255, 0, 128, 255, 0, 255, 255, 0, 255, 0, 255, 128, 0, 255, 255, 0, 255, 0, 0, 255, 0, 255, 128, 0, 255, 128, 128, 255, 255, 128, 128, 128, 255, 128 };
 
 int main(int argc, char** argv)
 {
+	int len, quality = 95;
 	ccv_dense_matrix_t* im = NULL;
 	ccv_unserialize(argv[1], &im, CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* imf = ccv_dense_matrix_new(im->rows, im->cols, CCV_32F | CCV_C1, NULL, NULL);
@@ -36,22 +55,56 @@ int main(int argc, char** argv)
 		for (j = 0; j < imf->cols; j++)
 			imf->data.fl[i * imf->cols + j] = (im->data.ptr[i * im->step + j * 3] * 29 + im->data.ptr[i * im->step + j * 3 + 1] * 61 + im->data.ptr[i * im->step + j * 3 + 2] * 10) / 100;
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(48, 48, CCV_32F | CCV_C1, NULL, NULL);
+	// ccv_dense_matrix_t* ku = ccv_dense_matrix_new(48, 48, CCV_8U | CCV_C1, NULL, NULL);
+	// int so[3] = { 4, 1, 6 };
+	// ccv_filter_kernel(kernel, gabor_kernel, so);
+	/*
+	int sg[] = { 3, 1, 6 };
+	ccv_filter_kernel(kernel, gaussian_kernel, sg);
+	for (i = 0; i < kernel->rows; i++)
+		for (j = 0; j < kernel->cols; j++)
+			ku->data.ptr[i * ku->step + j] = ccv_clamp((int)(ccv_get_dense_matrix_cell_value(kernel, i, j) * 1000 + 128), 0, 255);
+	ccv_serialize(ku, argv[2], &len, CCV_SERIAL_PNG_FILE, &quality);
+	return 0;
+	*/
 	rich_float_pixel_t* gim = (rich_float_pixel_t*)malloc(im->rows * im->cols * sizeof(rich_float_pixel_t));
 	ccv_dense_matrix_t* out = NULL;
 	int k = 0;
-	for (i = 0; i < 8; i++)
+	for (i = 2; i < 8; i++)
+	{
 		for (j = 0; j < 6; j++)
 		{
-			int so[3] = { i, j, 6 };
-			ccv_filter_kernel(kernel, gabor_kernel, so);
+			int sg[3] = { i - 2, j, 6 };
+			ccv_filter_kernel(kernel, gabor_kernel, sg);
+			// ccv_filter_kernel(kernel, gaussian_deriv_kernel, sg);
 			ccv_filter(imf, kernel, &out);
 			int x;
 			for (x = 0; x < imf->rows * imf->cols; x++)
-			{
 				gim[x].desc[k] = out->data.fl[x];
-			}
 			k++;
 		}
+		int sg[1] = { i };
+		ccv_filter_kernel(kernel, dog_kernel, sg);
+		ccv_filter(imf, kernel, &out);
+		int x;
+		for (x = 0; x < imf->rows * imf->cols; x++)
+			gim[x].desc[k] = out->data.fl[x];
+		k++;
+	}
+	/*
+	for (i = 0; i < imf->rows; i++)
+		for (j = 0; j < imf->cols; j++)
+			gim[i * imf->cols + j].desc[k] = im->data.ptr[i * im->step + j * 3];
+	k++;
+	for (i = 0; i < imf->rows; i++)
+		for (j = 0; j < imf->cols; j++)
+			gim[i * imf->cols + j].desc[k] = im->data.ptr[i * im->step + j * 3 + 1];
+	k++;
+	for (i = 0; i < imf->rows; i++)
+		for (j = 0; j < imf->cols; j++)
+			gim[i * imf->cols + j].desc[k] = im->data.ptr[i * im->step + j * 3 + 2];
+	k++;
+	*/
 	rich_float_pixel_t cs[KMEANS_GABOR_SIZE];
 
 	gsl_rng_env_setup();
@@ -64,10 +117,10 @@ int main(int argc, char** argv)
 	{
 		k = (int)(gsl_rng_uniform(r) * imf->rows * imf->cols);
 		cs[i].label = k;
-		memcpy(cs[i].desc, gim[k].desc, 48 * sizeof(float));
+		memcpy(cs[i].desc, gim[k].desc, FILTER_BANK_SIZE * sizeof(float));
 	}
 	int epoch = 0;
-	/*
+
 	for (;; epoch++)
 	{
 		int f = 0;
@@ -78,8 +131,10 @@ int main(int argc, char** argv)
 			for (j = 0; j < KMEANS_GABOR_SIZE; j++)
 			{
 				double tmp = 0;
-				for (k = 0; k < 48; k++)
+				for (k = 0; k < FILTER_BANK_SIZE; k++)
 					tmp += (cs[j].desc[k] - gim[i].desc[k]) * (cs[j].desc[k] - gim[i].desc[k]);
+				// for (k = FILTER_BANK_SIZE - 3; k < FILTER_BANK_SIZE; k++)
+				//	tmp += 14 * (cs[j].desc[k] - gim[i].desc[k]) * (cs[j].desc[k] - gim[i].desc[k]);
 				if (dist_i == -1 || tmp < dist)
 				{
 					dist_i = j;
@@ -99,29 +154,29 @@ int main(int argc, char** argv)
 		for (i = 0; i < KMEANS_GABOR_SIZE; i++)
 		{
 			cs[i].label = 0;
-			for (j = 0; j < 48; j++)
+			for (j = 0; j < FILTER_BANK_SIZE; j++)
 				cs[i].desc[j] = 0;
 		}
 		for (i = 0; i < imf->rows * imf->cols; i++)
 		{
 			k = gim[i].label;
-			for (j = 0; j < 48; j++)
+			for (j = 0; j < FILTER_BANK_SIZE; j++)
 				cs[k].desc[j] += gim[i].desc[j];
 			cs[k].label++;
 		}
 		for (i = 0; i < KMEANS_GABOR_SIZE; i++)
-			for (j = 0; j < 48; j++)
+			for (j = 0; j < FILTER_BANK_SIZE; j++)
 				cs[i].desc[j] = cs[i].desc[j] / (float)cs[i].label;
 	}
-	*/
-	FILE* fi = fopen("i.tex", "r");
-	for (i = 0; i < imf->rows * imf->cols; i++)
-		fscanf(fi, "%d", &gim[i].label);
-	fclose(fi);
-	/*
+	
 	FILE* fi = fopen("i.tex", "w+");
 	for (i = 0; i < imf->rows * imf->cols; i++)
 		fprintf(fi, "%d\n", gim[i].label);
+	fclose(fi);
+	/*
+	FILE* fi = fopen("i.tex", "r");
+	for (i = 0; i < imf->rows * imf->cols; i++)
+		fscanf(fi, "%d", &gim[i].label);
 	fclose(fi);
 	*/
 	int tex_rows = imf->rows - 10;
@@ -214,8 +269,6 @@ int main(int argc, char** argv)
 			k++;
 		}
 	*/
-	int len, quality = 95;
-	// ccv_serialize(cl, argv[2], &len, CCV_SERIAL_JPEG_FILE, &quality);
 	ccv_serialize(cl, argv[2], &len, CCV_SERIAL_PNG_FILE, &quality);
 
 	gsl_rng_free(r);

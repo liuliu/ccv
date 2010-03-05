@@ -203,6 +203,12 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 
 /* numerical algorithms */
+/* clarification about algebra and numerical algorithms:
+ * when using the word "algebra", I assume the operation is well established in Mathematic sense
+ * and can be calculated with a straight-forward, finite sequence of operation. The "numerical"
+ * in other word, refer to a class of algorithm that can only approximate/or iteratively found the
+ * solution. Thus, "invert" would be classified as numercial because of the sense that in some case,
+ * it can only be "approximate" (in least-square sense), so to "solve". */
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
@@ -217,7 +223,10 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy);
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size, int drive);
+void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
+void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
