@@ -1,6 +1,6 @@
 CXX = clang
 LINKFLAG = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
-CXXFLAGS = -O3 -msse2 -Wall -I"../src" -ftree-vectorizer-verbose=2
+CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
 all: libccv.a sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test
 
