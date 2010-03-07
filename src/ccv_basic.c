@@ -188,8 +188,132 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size)
 	ccv_matrix_free(mg);
 }
 
+/* area interpolation resample is adopted from OpenCV */
+
+typedef struct {
+	int si, di;
+	float alpha;
+} ccv_decimal_alpha;
+
+void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+{
+	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
+	int ch = CCV_GET_CHANNEL_NUM(a->type);
+	double scale_x = (double)a->cols / b->cols;
+	double scale_y = (double)a->rows / b->rows;
+	double scale = 1.f / (scale_x * scale_y);
+	int dx, dy, sx, sy, i, k;
+	for (dx = 0, k = 0; dx < b->cols; dx++)
+	{
+		double fsx1 = dx * scale_x, fsx2 = fsx1 + scale_x;
+		int sx1 = (int)(fsx1 + 1.0 - 1e-6), sx2 = (int)(fsx2);
+		sx1 = ccv_min(sx1, a->cols - 1);
+		sx2 = ccv_min(sx2, a->cols - 1);
+
+		if (sx1 > fsx1)
+		{
+			xofs[k].di = dx * ch;
+			xofs[k].si = (sx1 - 1) * ch;
+			xofs[k++].alpha = (float)((sx1 - fsx1) * scale);
+		}
+
+		for (sx = sx1; sx < sx2; sx++)
+		{
+			xofs[k].di = dx * ch;
+			xofs[k].si = sx * ch;
+			xofs[k++].alpha = (float)scale;
+		}
+
+		if (fsx2 - sx2 > 1e-3)
+		{
+			xofs[k].di = dx * ch;
+			xofs[k].si = sx2 * ch;
+			xofs[k++].alpha = (float)((fsx2 - sx2) * scale);
+		}
+	}
+	int xofs_count = k;
+	float* buf = (float*)alloca(b->cols * ch * sizeof(float));
+	float* sum = (float*)alloca(b->cols * ch * sizeof(float));
+    for (dx = 0; dx < b->cols; dx++)
+        buf[dx] = sum[dx] = 0;
+	dy = 0;
+	for (sy = 0; sy < a->rows; sy++)
+	{
+		unsigned char* a_ptr = a->data.ptr + a->step * sy;
+		for (k = 0; k < xofs_count; k++)
+		{
+			int dxn = xofs[k].di;
+			float alpha = xofs[k].alpha;
+			for (i = 0; i < ch; i++)
+				buf[dxn + i] += ccv_get_value(a->type, a_ptr, xofs[k].si + i) * alpha;
+		}
+		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1)
+		{
+			float beta = ccv_max(sy + 1 - (dy + 1) * scale_y, 0.f);
+			float beta1 = 1 - beta;
+			unsigned char* b_ptr = b->data.ptr + b->step * dy;
+			if (fabs(beta) < 1e-3)
+			{
+				for (dx = 0; dx < b->cols * ch; dx++)
+				{
+					ccv_set_value(b->type, b_ptr, dx, sum[dx] + buf[dx]);
+					sum[dx] = buf[dx] = 0;
+				}
+			} else {
+				for (dx = 0; dx < b->cols * ch; dx++)
+				{
+					ccv_set_value(b->type, b_ptr, dx, sum[dx] + buf[dx] * beta1);
+					sum[dx] = buf[dx] * beta;
+					buf[dx] = 0;
+				}
+			}
+			dy++;
+		}
+		else
+		{
+			for(dx = 0; dx < b->cols * ch; dx++)
+			{
+				sum[dx] += buf[dx];
+				buf[dx] = 0;
+			}
+		}
+	}
+}
+
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type)
 {
+	int sig[5];
+	char identifier[64];
+	memset(identifier, 0, 64);
+	sprintf(identifier, "ccv_resample(%d,%d,%d)", rows, cols, type);
+	ccv_matrix_generate_signature(identifier, 64, sig, a->sig, NULL);
+	ccv_dense_matrix_t* db;
+	if (*b == NULL)
+	{
+		*b = db = ccv_dense_matrix_new(rows, cols, a->type, NULL, sig);
+		if (db->type & CCV_GARBAGE)
+		{
+			db->type &= ~CCV_GARBAGE;
+			return;
+		}
+	} else {
+		db = *b;
+	}
+	switch (type)
+	{
+		case CCV_INTER_AREA:
+			if (a->rows > db->rows && a->cols > db->cols)
+			{
+				__ccv_resample_area(a, db);
+				break;
+			}
+		case CCV_INTER_LINEAR:
+			break;
+		case CCV_INTER_CUBIC:
+			break;
+		case CCV_INTER_LACZOS:
+			break;
+	}
 }
 
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)

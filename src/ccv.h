@@ -147,10 +147,10 @@ void ccv_garbage_collect();
 	((unsigned char*)(ptr))[(i)])))
 
 #define ccv_set_value(type, ptr, i, value) switch (CCV_GET_DATA_TYPE((type))) { \
-	case CCV_32S: ((int*)(ptr))[(i)] = (int)(value + 0.5); break; \
+	case CCV_32S: ((int*)(ptr))[(i)] = (int)(value); break; \
 	case CCV_32F: ((float*)(ptr))[(i)] = (float)value; break; \
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
-	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value + 0.5), 0, 255); }
+	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value), 0, 255); }
 
 /* basic io */
 enum {
@@ -225,6 +225,14 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size);
+
+enum {
+	CCV_INTER_AREA   = 0x01,
+	CCV_INTER_LINEAR = 0X02,
+	CCV_INTER_CUBIC  = 0X03,
+	CCV_INTER_LACZOS = 0X04,
+};
+
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
