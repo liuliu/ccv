@@ -319,6 +319,21 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
+	int sig[5];
+	ccv_matrix_generate_signature("ccv_sample_down", 15, sig, a->sig, NULL);
+	ccv_dense_matrix_t* db;
+	if (*b == NULL)
+	{
+		*b = db = ccv_dense_matrix_new(a->rows / 2, a->cols / 2, a->type, NULL, sig);
+		if (db->type & CCV_GARBAGE)
+		{
+			db->type &= ~CCV_GARBAGE;
+			return;
+		}
+	} else {
+		db = *b;
+		assert(db->rows == a->rows / 2 && db->cols == a->cols / 2 && db->type == a->type);
+	}
 }
 
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
