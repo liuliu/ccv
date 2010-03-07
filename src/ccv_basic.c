@@ -198,7 +198,7 @@ typedef struct {
 void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
-	int ch = CCV_GET_CHANNEL_NUM(a->type);
+	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
 	double scale_x = (double)a->cols / b->cols;
 	double scale_y = (double)a->rows / b->rows;
 	double scale = 1.f / (scale_x * scale_y);
@@ -234,7 +234,7 @@ void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 	int xofs_count = k;
 	float* buf = (float*)alloca(b->cols * ch * sizeof(float));
 	float* sum = (float*)alloca(b->cols * ch * sizeof(float));
-    for (dx = 0; dx < b->cols; dx++)
+    for (dx = 0; dx < b->cols * ch; dx++)
         buf[dx] = sum[dx] = 0;
 	dy = 0;
 	for (sy = 0; sy < a->rows; sy++)
@@ -298,6 +298,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 		}
 	} else {
 		db = *b;
+		assert(db->rows == rows && db->cols == cols && db->type == a->type);
 	}
 	switch (type)
 	{
