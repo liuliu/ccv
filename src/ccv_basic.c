@@ -234,8 +234,8 @@ void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 	int xofs_count = k;
 	float* buf = (float*)alloca(b->cols * ch * sizeof(float));
 	float* sum = (float*)alloca(b->cols * ch * sizeof(float));
-    for (dx = 0; dx < b->cols * ch; dx++)
-        buf[dx] = sum[dx] = 0;
+	for (dx = 0; dx < b->cols * ch; dx++)
+		buf[dx] = sum[dx] = 0;
 	dy = 0;
 	for (sy = 0; sy < a->rows; sy++)
 	{
@@ -298,7 +298,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 		}
 	} else {
 		db = *b;
-		assert(db->rows == rows && db->cols == cols && db->type == a->type);
+		assert(db->rows == rows && db->cols == cols && CCV_GET_CHANNEL(db->type) == CCV_GET_CHANNEL(a->type));
 	}
 	switch (type)
 	{
@@ -317,6 +317,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 	}
 }
 
+/* the following code is adopted from OpenCV cvPyrDown */
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int sig[5];
@@ -333,6 +334,39 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 	} else {
 		db = *b;
 		assert(db->rows == a->rows / 2 && db->cols == a->cols / 2 && db->type == a->type);
+	}
+	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
+	int cols0 = db->cols - 2 + (a->cols - db->cols * 2);
+	int dy, sy, dx, k;
+	int* buf = alloca(5 * db->cols * ch * sizeof(int));
+	sy = -2;
+	unsigned char* b_ptr = db->data.ptr;
+	for (dy = 0; dy < db->rows; dy++)
+	{
+		for(; sy <= dy * 2 + 2; sy++)
+		{
+			int* row = buf + ((sy + 2) % 5) * db->cols * ch;
+			int _sy = (sy < 0) ? 1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy;
+			unsigned char* a_ptr = a->data.ptr + a->step * _sy;
+
+			for (k = 0; k < ch; k++)
+				row[k] = ccv_get_value(a->type, a_ptr, k) * 10 + ccv_get_value(a->type, a_ptr, ch + k) * 5 + ccv_get_value(a->type, a_ptr, 2 * ch + k);
+			for(dx = ch; dx < cols0 * ch; dx += ch)
+				for (k = 0; k < ch; k++)
+					row[dx + k] = ccv_get_value(a->type, a_ptr, dx * 2 + k) * 6 + (ccv_get_value(a->type, a_ptr, dx * 2 + k - ch) + ccv_get_value(a->type, a_ptr, dx * 2 + k + ch)) * 4 + ccv_get_value(a->type, a_ptr, dx * 2 + k - ch * 2) + ccv_get_value(a->type, a_ptr, dx * 2 + k + ch * 2);
+			if (a->cols - db->cols * 2 == 0)
+				for (k = 0; k < ch; k++)
+					row[(db->cols - 2) * ch + k] = ccv_get_value(a->type, a_ptr, (db->cols - 2) * 2 * ch + k) * 6 + ccv_get_value(a->type, a_ptr, (db->cols - 2) * 2 * ch - ch + k) * 4 + ccv_get_value(a->type, a_ptr, (db->cols - 2) * 2 * ch + ch + k) * 5 + ccv_get_value(a->type, a_ptr, (db->cols - 2) * 2 * ch - 2 * ch + k);
+			for (k = 0; k < ch; k++)
+				row[(db->cols - 1) * ch + k] = ccv_get_value(a->type, a_ptr, a->cols * ch - ch + k) * 10 + ccv_get_value(a->type, a_ptr, (a->cols - 2) * ch + k) * 5 + ccv_get_value(a->type, a_ptr, (a->cols - 3) * ch + k);
+		}
+		int* rows[5];
+		for(k = 0; k < 5; k++)
+			rows[k] = buf + ((dy * 2 - 2 + k + 2) % 5) * db->cols * ch;
+
+		for(dx = 0; dx < db->cols * ch; dx++)
+			ccv_set_value(db->type, b_ptr, dx, ((rows[2][dx] * 6 + (rows[1][dx] + rows[3][dx]) * 4 + rows[0][dx] + rows[4][dx])) / 256);
+		b_ptr += db->step;
 	}
 }
 

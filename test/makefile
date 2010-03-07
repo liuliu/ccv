@@ -2,7 +2,7 @@ CXX = clang
 LINKFLAG = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
 CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
-all: libccv.a sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test
+all: libccv.a sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test
 
 clean:
 	rm *.o ../src/*.o ../src/libccv.a
@@ -16,17 +16,20 @@ atan2_test: atan2_test.o
 algebra_test: algebra_test.o
 	$(CXX) -o $@ $^ $(LINKFLAG)
 
-resample_test: resample_test.o
+sample_down_test: sample_down_test.o
 	$(CXX) -o $@ $^ $(LINKFLAG)	
+
+resample_test: resample_test.o
+	$(CXX) -o $@ $^ $(LINKFLAG)
 
 hog_test: hog_test.o
-	$(CXX) -o $@ $^ $(LINKFLAG)	
+	$(CXX) -o $@ $^ $(LINKFLAG)
 
 sobel_test: sobel_test.o
-	$(CXX) -o $@ $^ $(LINKFLAG)	
+	$(CXX) -o $@ $^ $(LINKFLAG)
 
 filter_test: filter_test.o
-	$(CXX) -o $@ $^ $(LINKFLAG)	
+	$(CXX) -o $@ $^ $(LINKFLAG)
 
 cache_test: cache_test.o
 	$(CXX) -o $@ $^ $(LINKFLAG)
