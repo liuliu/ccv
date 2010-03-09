@@ -239,6 +239,14 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
+typedef struct {
+	double radius;
+	int rad_q_no;
+	int th_q_no;
+	int hist_th_q_no;
+	int normalize_method;
+} ccv_daisy_param_t;
+void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
 
 /* modern machine learning algorithms */
 /* RBM, LLE, APCluster */
