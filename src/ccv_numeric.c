@@ -223,7 +223,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	int cols_2c = 2 * (cols / 2 + 1);
 	double* fftw_a = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
 	double* fftw_b = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
-	memset(fftw_b, 0, rows * cols * sizeof(double));
+	memset(fftw_b, 0, rows * cols_2c * sizeof(double));
 	double* fftw_d = (double*)fftw_malloc(rows * cols * sizeof(double));
 	fftw_complex* fftw_ac = (fftw_complex*)fftw_a;
 	fftw_complex* fftw_bc = (fftw_complex*)fftw_b;
@@ -429,8 +429,8 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void*
 {
 	int i, j;
 	unsigned char* m_ptr = x->data.ptr;
-	double rows_2 = x->rows * 0.5;
-	double cols_2 = x->cols * 0.5;
+	double rows_2 = (x->rows - 1) * 0.5;
+	double cols_2 = (x->cols - 1) * 0.5;
 	for (i = 0; i < x->rows; i++)
 	{
 		for (j = 0; j < x->cols; j++)

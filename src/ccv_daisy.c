@@ -53,6 +53,14 @@ static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, i
 {
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, NULL, NULL);
 	ccv_filter_kernel(kernel, __ccv_gaussian_kernel, &sigma);
+	float total = 0;
+	int i, j;
+	for (i = 0; i < kernel->rows; i++)
+		for (j = 0; j < kernel->cols; j++)
+			total += kernel->data.fl[i * kernel->cols + j];
+	for (i = 0; i < kernel->rows; i++)
+		for (j = 0; j < kernel->cols; j++)
+			kernel->data.fl[i * kernel->cols + j] = kernel->data.fl[i * kernel->cols + j] / total;
 	ccv_filter(a, kernel, b);
 	ccv_matrix_free(kernel);
 }
@@ -122,7 +130,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	double sigma_init = 1.6;
 	double sigma = sqrt(sigma_init * sigma_init - sobel_sigma * sobel_sigma);
 	/* layered_gradient & smooth_layers */
-	for (k = params.hist_th_q_no - 1; k > 0; k--)
+	for (k = params.hist_th_q_no - 1; k >= 0; k--)
 	{
 		float radius = k * 2 * 3.141592654 / params.th_q_no;
 		float kcos = cos(radius);
@@ -135,9 +143,6 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 		ccv_dense_matrix_t* desp = &des;
 		__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
 	}
-	ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, workspace_memory + cube_size, NULL);
-	ccv_dense_matrix_t* desp = &des;
-	__ccv_gaussian_blur(dx, &desp, __ccv_filter_size(sigma), sigma);
 	ccv_matrix_free(dx);
 	ccv_matrix_free(dy);
 	/* compute_smoothed_gradient_layers & compute_histograms (rearrange memory) */
@@ -178,7 +183,9 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 					float* bh = b_ptr + t * params.hist_th_q_no;
 					if (iy < 0 || iy >= a->rows || ix < 0 || ix >= a->cols)
 						continue;
-					/* bilinear interpolation */
+					float* ah = workspace_memory + (r + 1) * cube_size + iy * params.hist_th_q_no * a->cols + ix * params.hist_th_q_no;
+					memcpy(bh, ah, params.hist_th_q_no * sizeof(float));
+					// bilinear interpolation
 					int jy = (int)y;
 					int jx = (int)x;
 					float yr = y - jy, _yr = 1 - yr;
