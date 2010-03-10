@@ -11,6 +11,20 @@ double ccv_norm(ccv_matrix_t* mat, int type)
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 }
 
+double ccv_sum(ccv_matrix_t* mat)
+{
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	double sum = 0;
+	unsigned char* m_ptr = dmt->data.ptr;
+	for (i = 0; i < dmt->rows; i++)
+	{
+		for (j = 0; j < dmt->cols; j++)
+			sum += ccv_get_value(dmt->type, m_ptr, j);
+		m_ptr += dmt->step;
+	}
+	return sum;
+}
+
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);

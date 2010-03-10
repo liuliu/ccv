@@ -185,6 +185,7 @@ enum {
 
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
+double ccv_sum(ccv_matrix_t* mat);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,

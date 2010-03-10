@@ -53,11 +53,8 @@ static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, i
 {
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, NULL, NULL);
 	ccv_filter_kernel(kernel, __ccv_gaussian_kernel, &sigma);
-	float total = 0;
+	float total = ccv_sum(kernel);
 	int i, j;
-	for (i = 0; i < kernel->rows; i++)
-		for (j = 0; j < kernel->cols; j++)
-			total += kernel->data.fl[i * kernel->cols + j];
 	for (i = 0; i < kernel->rows; i++)
 		for (j = 0; j < kernel->cols; j++)
 			kernel->data.fl[i * kernel->cols + j] = kernel->data.fl[i * kernel->cols + j] / total;
@@ -105,7 +102,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	/* compute_cube_sigmas */
 	int i, j, k, r, t;
 	double* cube_sigmas = (double*)identifier;
-	double r_step = (double)params.rad_q_no / params.radius;
+	double r_step = params.radius / (double)params.rad_q_no;
 	for (i = 0; i < params.rad_q_no; i++)
 		cube_sigmas[i] = (i + 1) * r_step / 2;
 	/* compute_grid_points */
@@ -183,8 +180,6 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 					float* bh = b_ptr + t * params.hist_th_q_no;
 					if (iy < 0 || iy >= a->rows || ix < 0 || ix >= a->cols)
 						continue;
-					float* ah = workspace_memory + (r + 1) * cube_size + iy * params.hist_th_q_no * a->cols + ix * params.hist_th_q_no;
-					memcpy(bh, ah, params.hist_th_q_no * sizeof(float));
 					// bilinear interpolation
 					int jy = (int)y;
 					int jx = (int)x;
