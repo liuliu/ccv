@@ -1,4 +1,4 @@
-CXX = gcc
+CXX = clang
 CXXFLAGS = -O3 -msse2 -Wall
 
 all: libccv.a

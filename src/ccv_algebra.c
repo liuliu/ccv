@@ -16,6 +16,7 @@ double ccv_sum(ccv_matrix_t* mat)
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 	double sum = 0;
 	unsigned char* m_ptr = dmt->data.ptr;
+	int i, j;
 	for (i = 0; i < dmt->rows; i++)
 	{
 		for (j = 0; j < dmt->cols; j++)

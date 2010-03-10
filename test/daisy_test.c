@@ -13,7 +13,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = NULL;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(image->rows, image->cols, CCV_8U | CCV_C1, NULL, NULL);
-	int i, j, k;
+	int i, j, k, t;
 	for (i = 0; i < image->rows; i++)
 		for (j = 0; j < image->cols; j++)
 			a->data.ptr[i * a->step + j] = (image->data.ptr[i * image->step + j * 3] * 29 + image->data.ptr[i * image->step + j * 3 + 1] * 61 + image->data.ptr[i * image->step + j * 3 + 2] * 10) / 100;
@@ -28,9 +28,12 @@ int main(int argc, char** argv)
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	j = atoi(argv[2]);
 	i = atoi(argv[3]);
-	for (k = 0; k < 200; k++)
-		printf("%f ", x->data.fl[i * x->cols + j * 200 + k] * 0.25 / 255);
-	printf("\n");
+	for (k = 0; k < 25; k++)
+	{
+		for (t = 0; t < 8; t++)
+			printf("%f ", x->data.fl[i * x->cols + j * 200 + k * 8 + t]);
+		printf("\n");
+	}
 	ccv_matrix_free(image);
 	ccv_matrix_free(a);
 	ccv_matrix_free(x);

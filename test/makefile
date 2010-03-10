@@ -1,4 +1,4 @@
-CXX = gcc
+CXX = clang
 LINKFLAG = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
 CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
