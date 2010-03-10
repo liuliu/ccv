@@ -43,8 +43,30 @@
  * //////////////////////////////////////////////////////////////////////////
  */
 
-void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int filter_size, double sigma)
+static double __ccv_gaussian_kernel(double x, double y, void* data)
 {
+	double sigma = *(double*)data;
+	return exp(-(x * x + y * y) / (2 * sigma * sigma));
+}
+
+static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int filter_size, double sigma)
+{
+	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_filter_kernel(kernel, __ccv_gaussian_kernel, &sigma);
+	ccv_filter(a, kernel, b);
+	ccv_matrix_free(kernel);
+}
+
+static int __ccv_filter_size(double sigma)
+{
+	int fsz = (int)(5 * sigma);
+	// kernel size must be odd
+	if(fsz % 2 == 0)
+		fsz++;
+	// kernel size cannot be smaller than 3
+	if(fsz < 3)
+		fsz = 3;
+   return fsz;
 }
 
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params)
@@ -69,15 +91,18 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	} else {
 		db = *b;
 	}
+	int layer_size = a->rows * a->cols;
+	int cube_size = layer_size * params.hist_th_q_no;
+	float* workspace_memory = (float*)malloc(cube_size * (params.rad_q_no + 2) * sizeof(float));
 	/* compute_cube_sigmas */
-	int i, j, k;
+	int i, j, k, r, t;
 	double* cube_sigmas = (double*)identifier;
 	double r_step = (double)params.rad_q_no / params.radius;
 	for (i = 0; i < params.rad_q_no; i++)
 		cube_sigmas[i] = (i + 1) * r_step / 2;
 	/* compute_grid_points */
 	double t_step = 2 * 3.141592654 / params.th_q_no;
-	double* grid_points = (double*)alloca(grid_point_number * 2);
+	double* grid_points = (double*)alloca(grid_point_number * 2 * sizeof(double));
 	for (i = 0; i < params.rad_q_no; i++)
 		for (j = 0; j < params.th_q_no; j++)
 		{
@@ -85,18 +110,105 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 			grid_points[(i * params.th_q_no + 1 + j) * 2 + 1] = sin(j * t_step) * (i + 1) * r_step;
 		}
 	/* TODO: require 0.5 gaussian smooth before gradient computing */
-	ccv_dense_matrix_t* dx = NULL;
+	/* NOTE: the default sobel already applied a sigma = 0.85 gaussian blur by using a
+	 * | -1  0  1 |   |  0  0  0 |   | 1  2  1 |
+	 * | -2  0  2 | = | -1  0  1 | * | 2  4  2 |
+	 * | -1  0  1 |   |  0  0  0 |   | 1  2  1 | */
+	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
 	ccv_sobel(a, &dx, 1, 0);
-	ccv_dense_matrix_t* dy = NULL;
+	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
 	ccv_sobel(a, &dy, 0, 1);
-	/* layered_gradient */
-	for (k = 0; k < params.th_q_no; k++)
+	double sobel_sigma = sqrt(0.5 / -log(0.5));
+	double sigma_init = 1.6;
+	double sigma = sqrt(sigma_init * sigma_init - sobel_sigma * sobel_sigma);
+	/* layered_gradient & smooth_layers */
+	for (k = params.hist_th_q_no - 1; k > 0; k--)
 	{
 		float radius = k * 2 * 3.141592654 / params.th_q_no;
 		float kcos = cos(radius);
 		float ksin = sin(radius);
-		float* b_ptr = db->data.fl + k * a->rows * a->cols;
-		for (i = 0; i < a->rows * a->cols; i++)
-			b_ptr[i] = ccv_max(0, kcos * dx->data.fl[i] + ksin * dy->data.fl[i]);
+		float* w_ptr = workspace_memory + cube_size + (k - 1) * layer_size;
+		for (i = 0; i < layer_size; i++)
+			w_ptr[i] = ccv_max(0, kcos * dx->data.fl[i] + ksin * dy->data.fl[i]);
+		ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr, NULL);
+		ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr + layer_size, NULL);
+		ccv_dense_matrix_t* desp = &des;
+		__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
 	}
+	ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, workspace_memory + cube_size, NULL);
+	ccv_dense_matrix_t* desp = &des;
+	__ccv_gaussian_blur(dx, &desp, __ccv_filter_size(sigma), sigma);
+	ccv_matrix_free(dx);
+	ccv_matrix_free(dy);
+	/* compute_smoothed_gradient_layers & compute_histograms (rearrange memory) */
+	for (k = 0; k < params.rad_q_no; k++)
+	{
+		sigma = (k == 0) ? cube_sigmas[0] : sqrt(cube_sigmas[k] * cube_sigmas[k] - cube_sigmas[k - 1] * cube_sigmas[k - 1]);
+		float* src_ptr = workspace_memory + (k + 1) * cube_size;
+		float* des_ptr = src_ptr + cube_size;
+		for (i = 0; i < params.hist_th_q_no; i++)
+		{
+			ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, src_ptr + i * layer_size, NULL);
+			ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, des_ptr + i * layer_size, NULL);
+			ccv_dense_matrix_t* desp = &des;
+			__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
+		}
+		float* his_ptr = src_ptr - cube_size;
+		for (i = 0; i < layer_size; i++)
+			for (j = 0; j < params.hist_th_q_no; j++)
+				his_ptr[i * params.hist_th_q_no + j] = src_ptr[i + j * layer_size];
+	}
+	/* petals of the flower */
+	memset(db->data.ptr, 0, db->rows * db->step);
+	for (i = 0; i < a->rows; i++)
+		for (j = 0; j < a->cols; j++)
+		{
+			float* a_ptr = workspace_memory + i * params.hist_th_q_no * a->cols + j * params.hist_th_q_no;
+			float* b_ptr = db->data.fl + i * db->cols + j * desc_size;
+			memcpy(b_ptr, a_ptr, params.hist_th_q_no * sizeof(float));
+			for (r = 0; r < params.rad_q_no; r++)
+			{
+				int rdt = r * params.th_q_no + 1;
+				for (t = rdt; t < rdt + params.th_q_no; t++)
+				{
+					double y = i + grid_points[t * 2];
+					double x = j + grid_points[t * 2 + 1];
+					int iy = (int)(y + 0.5);
+					int ix = (int)(x + 0.5);
+					float* bh = b_ptr + t * params.hist_th_q_no;
+					if (iy < 0 || iy >= a->rows || ix < 0 || ix >= a->cols)
+						continue;
+					/* bilinear interpolation */
+					int jy = (int)y;
+					int jx = (int)x;
+					float yr = y - jy, _yr = 1 - yr;
+					float xr = x - jx, _xr = 1 - xr;
+					if (jy >= 0 && jy < a->rows && jx >= 0 && jx < a->cols)
+					{
+						float* ah = workspace_memory + (r + 1) * cube_size + jy * params.hist_th_q_no * a->cols + jx * params.hist_th_q_no;
+						for (k = 0; k < params.hist_th_q_no; k++)
+							bh[k] += ah[k] * _yr * _xr;
+					}
+					if (jy + 1 >= 0 && jy + 1 < a->rows && jx >= 0 && jx < a->cols)
+					{
+						float* ah = workspace_memory + (r + 1) * cube_size + (jy + 1) * params.hist_th_q_no * a->cols + jx * params.hist_th_q_no;
+						for (k = 0; k < params.hist_th_q_no; k++)
+							bh[k] += ah[k] * yr * _xr;
+					}
+					if (jy >= 0 && jy < a->rows && jx + 1 >= 0 && jx + 1 < a->cols)
+					{
+						float* ah = workspace_memory + (r + 1) * cube_size + jy * params.hist_th_q_no * a->cols + (jx + 1) * params.hist_th_q_no;
+						for (k = 0; k < params.hist_th_q_no; k++)
+							bh[k] += ah[k] * _yr * xr;
+					}
+					if (jy + 1 >= 0 && jy + 1 < a->rows && jx + 1 >= 0 && jx + 1 < a->cols)
+					{
+						float* ah = workspace_memory + (r + 1) * cube_size + (jy + 1) * params.hist_th_q_no * a->cols + (jx + 1) * params.hist_th_q_no;
+						for (k = 0; k < params.hist_th_q_no; k++)
+							bh[k] += ah[k] * yr * xr;
+					}
+				}
+			}
+		}
+	free(workspace_memory);
 }

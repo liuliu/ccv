@@ -209,6 +209,22 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	return mat;
 }
 
+ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, int* sig)
+{
+	ccv_dense_matrix_t mat;
+	if (sig != NULL)
+		memcpy(mat.sig, sig, 20);
+	else
+		memset(mat.sig, 0, 20);
+	mat.type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
+	mat.rows = rows;
+	mat.cols = cols;
+	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
+	mat.refcount = 1;
+	mat.data.ptr = data;
+	return mat;
+}
+
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig)
 {
 	ccv_sparse_matrix_t* mat;
@@ -272,7 +288,7 @@ void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_
 	ccv_SHA1_Init(&ctx);
 	int* sigi;
 	va_list arguments;
-	va_start(arguments, sig_start); 
+	va_start(arguments, sig_start);
 	for (sigi = sig_start; sigi != NULL; sigi = va_arg(arguments, int*))
 		ccv_SHA1_Update(&ctx, sigi, 20);
 	va_end(arguments);

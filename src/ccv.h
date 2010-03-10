@@ -123,6 +123,7 @@ typedef struct {
 
 /* matrix operations */
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
+ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, int* sig);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
 void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
