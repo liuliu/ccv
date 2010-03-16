@@ -19,7 +19,7 @@ int main(int argc, char** argv)
 			a->data.ptr[i * a->step + j] = (image->data.ptr[i * image->step + j * 3] * 29 + image->data.ptr[i * image->step + j * 3 + 1] * 61 + image->data.ptr[i * image->step + j * 3 + 2] * 10) / 100;
 	ccv_dense_matrix_t* x = NULL;
 	unsigned int elapsed_time = get_current_time();
-	ccv_sobel(a, &x, 1, 0);
+	ccv_sobel(a, &x, 0, 1);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(x->rows, x->cols, CCV_8U | CCV_C1, NULL, NULL);
 	for (i = 0; i < x->rows; i++)
