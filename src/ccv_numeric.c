@@ -274,38 +274,41 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	int tile_x = ccv_max(1, (a->cols + b->cols - 1) / (cols - b->cols));
 	int tile_y = ccv_max(1, (a->rows + b->rows - 1) / (rows - b->rows));
 	/* do FFT for each tile */
-	for (i = 0; i < tile_y; i++)
-		for (j = 0; j < tile_x; j++)
-		{
-			int x, y;
-			memset(fftw_a, 0, rows * cols * sizeof(double));
-			int iy = ccv_min(i * (rows - b->rows), a->rows - rows);
-			int ix = ccv_min(j * (cols - b->cols), a->cols - cols);
-			fftw_ptr = fftw_a;
-			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix);
-			for (y = 0; y < rows; y++)
-			{
-				for (x = 0; x < cols; x++)
-					fftw_ptr[x] = ccv_get_value(a->type, m_ptr, x);
-				fftw_ptr += cols_2c;
-				m_ptr += a->step;
-			}
-			fftw_execute_dft_r2c(p, fftw_a, fftw_ac);
-			for (x = 0; x < rows * (cols / 2 + 1); x++)
-				fftw_dc[x] = (fftw_ac[x] * fftw_bc[x]) * scale;
-			fftw_execute_dft_c2r(pinv, fftw_dc, fftw_d);
-			fftw_ptr = fftw_d + (i > 0) * b->rows / 2 * cols + (j > 0) * b->cols / 2;
-			int end_y = ccv_min(d->rows - iy, (rows - b->rows) + (i == 0) * b->rows / 2 + (i + 1 == tile_y) * (b->rows + 1) / 2);
-			int end_x = ccv_min(d->cols - ix, (cols - b->cols) + (j == 0) * b->cols / 2 + (j + 1 == tile_x) * (b->cols + 1) / 2);
-			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * b->rows / 2, ix + (j > 0) * b->cols / 2);
-			for (y = 0; y < end_y; y++)
-			{
-				for (x = 0; x < end_x; x++)
-					ccv_set_value(d->type, m_ptr, x, fftw_ptr[x]);
-				m_ptr += d->step;
-				fftw_ptr += cols;
-			}
+#define for_block(__for_set, __for_get) \
+	for (i = 0; i < tile_y; i++) \
+		for (j = 0; j < tile_x; j++) \
+		{ \
+			int x, y; \
+			memset(fftw_a, 0, rows * cols * sizeof(double)); \
+			int iy = ccv_min(i * (rows - b->rows), a->rows - rows); \
+			int ix = ccv_min(j * (cols - b->cols), a->cols - cols); \
+			fftw_ptr = fftw_a; \
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix); \
+			for (y = 0; y < rows; y++) \
+			{ \
+				for (x = 0; x < cols; x++) \
+					fftw_ptr[x] = __for_get(m_ptr, x); \
+				fftw_ptr += cols_2c; \
+				m_ptr += a->step; \
+			} \
+			fftw_execute_dft_r2c(p, fftw_a, fftw_ac); \
+			for (x = 0; x < rows * (cols / 2 + 1); x++) \
+				fftw_dc[x] = (fftw_ac[x] * fftw_bc[x]) * scale; \
+			fftw_execute_dft_c2r(pinv, fftw_dc, fftw_d); \
+			fftw_ptr = fftw_d + (i > 0) * b->rows / 2 * cols + (j > 0) * b->cols / 2; \
+			int end_y = ccv_min(d->rows - iy, (rows - b->rows) + (i == 0) * b->rows / 2 + (i + 1 == tile_y) * (b->rows + 1) / 2); \
+			int end_x = ccv_min(d->cols - ix, (cols - b->cols) + (j == 0) * b->cols / 2 + (j + 1 == tile_x) * (b->cols + 1) / 2); \
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * b->rows / 2, ix + (j > 0) * b->cols / 2); \
+			for (y = 0; y < end_y; y++) \
+			{ \
+				for (x = 0; x < end_x; x++) \
+					__for_set(m_ptr, x, fftw_ptr[x]); \
+				m_ptr += d->step; \
+				fftw_ptr += cols; \
+			} \
 		}
+	ccv_matrix_setter(d->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
 	fftw_destroy_plan(p);
 	fftw_destroy_plan(pinv);
 	fftw_free(fftw_a);
@@ -431,10 +434,13 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void*
 	unsigned char* m_ptr = x->data.ptr;
 	double rows_2 = (x->rows - 1) * 0.5;
 	double cols_2 = (x->cols - 1) * 0.5;
-	for (i = 0; i < x->rows; i++)
-	{
-		for (j = 0; j < x->cols; j++)
-			ccv_set_value(x->type, m_ptr, j, func(j - cols_2, i - rows_2, data));
-		m_ptr += x->step;
+#define for_block(dummy, __for_set) \
+	for (i = 0; i < x->rows; i++) \
+	{ \
+		for (j = 0; j < x->cols; j++) \
+			__for_set(m_ptr, j, func(j - cols_2, i - rows_2, data)); \
+		m_ptr += x->step; \
 	}
+	ccv_matrix_setter(x->type, for_block);
+#undef for_block
 }

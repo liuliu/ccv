@@ -233,21 +233,24 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 	for (i = 0; i < length; i++)
 	{
 		ccv_dense_vector_t* vector = &mat->vector[i];
-		while (vector != NULL)
-		{
-			if (vector->index != -1)
-			{
-				if (mat->type & CCV_DENSE_VECTOR)
-				{
-					for (j = 0; j < vector->length; j++)
-						if (ccv_get_value(mat->type, vector->data.ptr, j) != 0)
-							nnz++;
-				} else {
-					nnz += vector->load_factor;
-				}
-			}
-			vector = vector->next;
+#define while_block(dummy, __while_get) \
+		while (vector != NULL) \
+		{ \
+			if (vector->index != -1) \
+			{ \
+				if (mat->type & CCV_DENSE_VECTOR) \
+				{ \
+					for (j = 0; j < vector->length; j++) \
+						if (__while_get(vector->data.ptr, j) != 0) \
+							nnz++; \
+				} else { \
+					nnz += vector->load_factor; \
+				} \
+			} \
+			vector = vector->next; \
 		}
+		ccv_matrix_getter(mat->type, while_block);
+#undef while_block
 	}
 	ccv_compressed_sparse_matrix_t* cm = *csm = (ccv_compressed_sparse_matrix_t*)malloc(sizeof(ccv_compressed_sparse_matrix_t) + nnz * sizeof(int) + nnz * CCV_GET_DATA_TYPE_SIZE(mat->type) + (((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows) + 1) * sizeof(int));
 	cm->type = (mat->type & ~CCV_MATRIX_SPARSE & ~CCV_SPARSE_VECTOR & ~CCV_DENSE_VECTOR) | ((mat->major == CCV_SPARSE_COL_MAJOR) ? CCV_MATRIX_CSC : CCV_MATRIX_CSR);
@@ -269,25 +272,31 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 			if (mat->type & CCV_DENSE_VECTOR)
 			{
 				int k = 0;
-				for (j = 0; j < vector->length; j++)
-					if (ccv_get_value(mat->type, vector->data.ptr, j) != 0)
-					{
-						ccv_set_value(mat->type, m_ptr, k, ccv_get_value(mat->type, vector->data.ptr, j));
-						idx[k] = j;
-						k++;
+#define for_block(__for_set, __for_get) \
+				for (j = 0; j < vector->length; j++) \
+					if (__for_get(vector->data.ptr, j) != 0) \
+					{ \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j)); \
+						idx[k] = j; \
+						k++; \
 					}
+				ccv_matrix_setter(mat->type, ccv_matrix_getter, mat->type, for_block);
+#undef for_block
 				cm->offset[i + 1] = cm->offset[i] + k;
 				idx += k;
 				m_ptr += k * CCV_GET_DATA_TYPE_SIZE(mat->type);
 			} else {
 				int k = 0;
-				for (j = 0; j < vector->length; j++)
-					if (vector->indice[j] != -1)
-					{
-						ccv_set_value(mat->type, m_ptr, k, ccv_get_value(mat->type, vector->data.ptr, j));
-						idx[k] = vector->indice[j];
-						k++;
+#define for_block(__for_set, __for_get) \
+				for (j = 0; j < vector->length; j++) \
+					if (vector->indice[j] != -1) \
+					{ \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j)); \
+						idx[k] = vector->indice[j]; \
+						k++; \
 					}
+				ccv_matrix_setter(mat->type, ccv_matrix_getter, mat->type, for_block);
+#undef for_block
 				switch (CCV_GET_DATA_TYPE(mat->type))
 				{
 					case CCV_8U:

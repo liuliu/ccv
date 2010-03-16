@@ -3,12 +3,12 @@
 
 double ccv_trace(ccv_matrix_t* mat)
 {
-	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	return 0;
 }
 
 double ccv_norm(ccv_matrix_t* mat, int type)
 {
-	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	return 0;
 }
 
 double ccv_sum(ccv_matrix_t* mat)
@@ -17,12 +17,15 @@ double ccv_sum(ccv_matrix_t* mat)
 	double sum = 0;
 	unsigned char* m_ptr = dmt->data.ptr;
 	int i, j;
-	for (i = 0; i < dmt->rows; i++)
-	{
-		for (j = 0; j < dmt->cols; j++)
-			sum += ccv_get_value(dmt->type, m_ptr, j);
-		m_ptr += dmt->step;
+#define for_block(dummy, __for_get) \
+	for (i = 0; i < dmt->rows; i++) \
+	{ \
+		for (j = 0; j < dmt->cols; j++) \
+			sum += __for_get(m_ptr, j); \
+		m_ptr += dmt->step; \
 	}
+	ccv_matrix_getter(dmt->type, for_block);
+#undef for_block
 	return sum;
 }
 
