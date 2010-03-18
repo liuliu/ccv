@@ -2,12 +2,15 @@ CXX = clang
 LINKFLAG = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
 CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
-all: libccv.a sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test daisy_test
+all: libccv.a sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test daisy_test daisy_kmeans
 
 clean:
 	rm *.o ../src/*.o ../src/libccv.a
 
 kmeans: kmeans.o
+	$(CXX) -o $@ $^ $(LINKFLAG)
+
+daisy_kmeans: daisy_kmeans.o
 	$(CXX) -o $@ $^ $(LINKFLAG)	
 
 atan2_test: atan2_test.o

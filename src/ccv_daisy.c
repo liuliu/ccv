@@ -228,18 +228,24 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 						float* bh = b_ptr + t * params.hist_th_q_no;
 						for (k = 0; k < params.hist_th_q_no; k++)
 							norm += bh[k] * bh[k];
-						norm = 1.0 / sqrt(norm);
-						for (k = 0; k < params.hist_th_q_no; k++)
-							bh[k] *= norm;
+						if (norm > 1e-6)
+						{
+							norm = 1.0 / sqrt(norm);
+							for (k = 0; k < params.hist_th_q_no; k++)
+								bh[k] *= norm;
+						}
 					}
 					break;
 				case CCV_DAISY_NORMAL_FULL:
 					norm = 0;
 					for (t = 0; t < desc_size; t++)
 						norm += b_ptr[t] * b_ptr[t];
-					norm = 1.0 / sqrt(norm);
-					for (t = 0; t < desc_size; t++)
-						b_ptr[t] *= norm;
+					if (norm > 1e-6)
+					{
+						norm = 1.0 / sqrt(norm);
+						for (t = 0; t < desc_size; t++)
+							b_ptr[t] *= norm;
+					}
 					break;
 				case CCV_DAISY_NORMAL_SIFT:
 					for (iter = 0, changed = 1; changed && iter < 5; iter++)
@@ -247,15 +253,18 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 						norm = 0;
 						for (t = 0; t < desc_size; t++)
 							norm += b_ptr[t] * b_ptr[t];
-						norm = 1.0 / sqrt(norm);
 						changed = 0;
-						for (t = 0; t < desc_size; t++)
+						if (norm > 1e-6)
 						{
-							b_ptr[t] *= norm;
-							if (b_ptr[t] < params.normalize_threshold)
+							norm = 1.0 / sqrt(norm);
+							for (t = 0; t < desc_size; t++)
 							{
-								b_ptr[t] = params.normalize_threshold;
-								changed = 1;
+								b_ptr[t] *= norm;
+								if (b_ptr[t] < params.normalize_threshold)
+								{
+									b_ptr[t] = params.normalize_threshold;
+									changed = 1;
+								}
 							}
 						}
 					}
