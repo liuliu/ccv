@@ -291,8 +291,16 @@ typedef struct {
 	int rad_q_no;
 	int th_q_no;
 	int hist_th_q_no;
+	float normalize_threshold;
 	int normalize_method;
 } ccv_daisy_param_t;
+
+enum {
+	CCV_DAISY_NORMAL_PARTIAL = 0x01,
+	CCV_DAISY_NORMAL_FULL    = 0x02,
+	CCV_DAISY_NORMAL_SIFT    = 0x03,
+};
+
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
 
 /* modern machine learning algorithms */

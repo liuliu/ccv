@@ -80,7 +80,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	int desc_size = grid_point_number * params.hist_th_q_no;
 	int sig[5];
 	char* identifier = (char*)alloca(ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
-	memset(identifier, 0, 64);
+	memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
 	memcpy(identifier, "ccv_daisy", 9);
 	memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
 	ccv_matrix_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, sig, a->sig, NULL);
@@ -104,15 +104,15 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	double* cube_sigmas = (double*)identifier;
 	double r_step = params.radius / (double)params.rad_q_no;
 	for (i = 0; i < params.rad_q_no; i++)
-		cube_sigmas[i] = (i + 1) * r_step / 2;
+		cube_sigmas[i] = (i + 1) * r_step * 0.5;
 	/* compute_grid_points */
 	double t_step = 2 * 3.141592654 / params.th_q_no;
 	double* grid_points = (double*)alloca(grid_point_number * 2 * sizeof(double));
 	for (i = 0; i < params.rad_q_no; i++)
 		for (j = 0; j < params.th_q_no; j++)
 		{
-			grid_points[(i * params.th_q_no + 1 + j) * 2] = cos(j * t_step) * (i + 1) * r_step;
-			grid_points[(i * params.th_q_no + 1 + j) * 2 + 1] = sin(j * t_step) * (i + 1) * r_step;
+			grid_points[(i * params.th_q_no + 1 + j) * 2] = sin(j * t_step) * (i + 1) * r_step;
+			grid_points[(i * params.th_q_no + 1 + j) * 2 + 1] = cos(j * t_step) * (i + 1) * r_step;
 		}
 	/* TODO: require 0.5 gaussian smooth before gradient computing */
 	/* NOTE: the default sobel already applied a sigma = 0.85 gaussian blur by using a
@@ -213,4 +213,53 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 			}
 		}
 	free(workspace_memory);
+	for (i = 0; i < a->rows; i++)
+		for (j = 0; j < a->cols; j++)
+		{
+			float* b_ptr = db->data.fl + i * db->cols + j * desc_size;
+			float norm;
+			int iter, changed;
+			switch (params.normalize_method)
+			{
+				case CCV_DAISY_NORMAL_PARTIAL:
+					for (t = 0; t < grid_point_number; t++)
+					{
+						norm = 0;
+						float* bh = b_ptr + t * params.hist_th_q_no;
+						for (k = 0; k < params.hist_th_q_no; k++)
+							norm += bh[k] * bh[k];
+						norm = 1.0 / sqrt(norm);
+						for (k = 0; k < params.hist_th_q_no; k++)
+							bh[k] *= norm;
+					}
+					break;
+				case CCV_DAISY_NORMAL_FULL:
+					norm = 0;
+					for (t = 0; t < desc_size; t++)
+						norm += b_ptr[t] * b_ptr[t];
+					norm = 1.0 / sqrt(norm);
+					for (t = 0; t < desc_size; t++)
+						b_ptr[t] *= norm;
+					break;
+				case CCV_DAISY_NORMAL_SIFT:
+					for (iter = 0, changed = 1; changed && iter < 5; iter++)
+					{
+						norm = 0;
+						for (t = 0; t < desc_size; t++)
+							norm += b_ptr[t] * b_ptr[t];
+						norm = 1.0 / sqrt(norm);
+						changed = 0;
+						for (t = 0; t < desc_size; t++)
+						{
+							b_ptr[t] *= norm;
+							if (b_ptr[t] < params.normalize_threshold)
+							{
+								b_ptr[t] = params.normalize_threshold;
+								changed = 1;
+							}
+						}
+					}
+					break;
+			}
+		}
 }

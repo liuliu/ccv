@@ -23,15 +23,18 @@ int main(int argc, char** argv)
 	param.rad_q_no = 3;
 	param.th_q_no = 8;
 	param.hist_th_q_no = 8;
+	param.normalize_threshold = 0.154;
+	param.normalize_method = CCV_DAISY_NORMAL_PARTIAL;
 	unsigned int elapsed_time = get_current_time();
 	ccv_daisy(a, &x, param);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	j = atoi(argv[2]);
 	i = atoi(argv[3]);
+	float* x_ptr = x->data.fl + i * x->cols + j * 200;
 	for (k = 0; k < 25; k++)
 	{
 		for (t = 0; t < 8; t++)
-			printf("%f ", x->data.fl[i * x->cols + j * 200 + k * 8 + t]);
+			printf("%f ", x_ptr[k * 8 + t]);
 		printf("\n");
 	}
 	ccv_matrix_free(image);
