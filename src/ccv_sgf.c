@@ -7,27 +7,27 @@ static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, i
 #define nf_at(i) (*(i32c8[feature->nz[i]] + feature->nx[i] + feature->ny[i] * step[feature->nz[i]]))
 	int pmin = pf_at(0), nmax = nf_at(0);
 	/* check if every point in P > every point in N, and take a shortcut */
-	if ( pmin <= nmax )
+	if (pmin <= nmax)
 		return 0;
 	int i;
-	for ( i = 1; i < feature->size; ++i )
+	for (i = 1; i < feature->size; i++)
 	{
-		if ( feature->pz[i] >= 0 )
+		if (feature->pz[i] >= 0)
 		{
 			int p = pf_at(i);
-			if ( p < pmin )
+			if (p < pmin)
 			{
-				if ( p <= nmax )
+				if (p <= nmax)
 					return 0;
 				pmin = p;
 			}
 		}
-		if ( feature->nz[i] >= 0 )
+		if (feature->nz[i] >= 0)
 		{
 			int n = nf_at(i);
-			if ( n > nmax )
+			if (n > nmax)
 			{
-				if ( pmin <= n )
+				if (pmin <= n)
 					return 0;
 				nmax = n;
 			}
@@ -38,6 +38,8 @@ static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, i
 	return 1;
 }
 
+#define HOG_BORDER_SIZE (2)
+
 static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, int** negdata, int negnum)
 {
 	int t, i, j, k, x, y;
@@ -46,16 +48,15 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	int isizs0 = cascade->size.width * cascade->size.height * 8;
 	int isizs1 = ((cascade->size.width >> 1) - HOG_BORDER_SIZE) * ((cascade->size.height >> 1) - HOG_BORDER_SIZE) * 8;
 	int steps[] = { cascade->size.width * 8, ((cascade->size.width >> 1) - HOG_BORDER_SIZE) * 8 };
-	printf("Preparing negative data ...  0%%");
-	CvMemStorage* parent = cvCreateMemStorage(NULL);
-	int* idcheck = (int*)cvAlloc( negnum * sizeof(idcheck[0]) );
-	CvRNG rng = cvRNG( (int64)idcheck );
+	printf("preparing negative data ...  0%%");
+	int* idcheck = (int*)malloc(negnum * sizeof(int));
+	CvRNG rng = cvRNG((int64)idcheck);
 	CvMat* imgs0 = cvCreateMat( cascade->size.height + HOG_BORDER_SIZE * 2, cascade->size.width + HOG_BORDER_SIZE * 2, CV_8UC1 );
 	CvMat* imgs1 = cvCreateMat( imgs0->rows >> 1, imgs0->cols >> 1, CV_8UC1 );
 	int rneg = negtotal;
-	for ( t = 0; negtotal < negnum; ++t )
+	for (t = 0; negtotal < negnum; ++t)
 	{
-		for ( i = 0; i < bgnum; ++i )
+		for (i = 0; i < bgnum; ++i)
 		{
 			negperbg = ( t < 2 ) ? (negnum - negtotal) / ( bgnum - i) + 1 : negnum - negtotal;
 			IplImage* image = cvLoadImage( bgfiles[i], CV_LOAD_IMAGE_GRAYSCALE );
