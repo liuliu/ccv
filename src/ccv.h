@@ -250,6 +250,11 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
 void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 
+/* basic data structures */
+
+typedef struct {
+} ccv_array_t;
+
 /* numerical algorithms */
 /* clarification about algebra and numerical algorithms:
  * when using the word "algebra", I assume the operation is well established in Mathematic sense
