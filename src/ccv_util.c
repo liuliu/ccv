@@ -331,3 +331,35 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 			else
 				ccv_set_sparse_matrix_cell(mat, i, csm->index[j], csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
 }
+
+ccv_array_t* ccv_array_new(int rnum, int rsize)
+{
+	ccv_array_t* array = (ccv_array_t*)malloc(sizeof(ccv_array_t));
+	array->rnum = 0;
+	array->rsize = rsize;
+	array->size = rnum;
+	array->data = malloc(rnum * rsize);
+	return array;
+}
+
+void ccv_array_push(ccv_array_t* array, void* r)
+{
+	array->rnum++;
+	if (array->rnum > array->size)
+	{
+		array->size = array->size * 2;
+		array->data = realloc(array->data, array->size * array->rsize);
+	}
+	memcpy(ccv_array_get(array, array->rnum - 1), r, array->rsize);
+}
+
+void ccv_array_clear(ccv_array_t* array)
+{
+	array->rnum = 0;
+}
+
+void ccv_array_free(ccv_array_t* array)
+{
+	free(array->data);
+	free(array);
+}
