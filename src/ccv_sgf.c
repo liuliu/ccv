@@ -42,11 +42,10 @@ typedef struct {
 	float confidence;
 } ccv_sgf_comp_t;
 
-int ccv_read_sgf_stage_classifier(const char* file, CvSGFStageClassifier* classifier);
-void ccv_create_sgf_classifier_cascade(const CvArr** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_params_t params);
-ccv_array_t* cvSGFDetectObjects(const ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size);
-CvSGFClassifierCascade* cvLoadSGFClassifierCascade( const char* directory );
-void cvReleaseSGFClassifierCascade( CvSGFClassifierCascade** cascade );
+void ccv_sgf_classifier_cascade_new(const CvArr** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_params_t params);
+ccv_array_t* ccv_sgf_detect_objects(const ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size);
+ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory);
+void ccv_sgf_classifier_cascade_free(ccv_sgf_classifier_cascade_t* cascade);
 
 #define CCV_SGF_NO_NESTED (0x10000000)
 
