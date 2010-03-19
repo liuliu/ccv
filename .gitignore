@@ -1,6 +1,7 @@
 src/*.[oa]
 src/*.~
 src/*.swp
+src/tags
 src/3rdparty/*.[oa]
 src/3rdparty/*.~
 src/3rdparty/*.swp
@@ -9,6 +10,12 @@ test/*.~
 test/*.swp
 test/*.jpg
 test/*.png
+test/*.tex
+test/tags
 test/opencv/*.[oa]
 test/opencv/*.~
 test/opencv/*.swp
+test/opencv/*.jpg
+test/opencv/*.png
+test/opencv/tags
+test/w*
