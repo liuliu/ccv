@@ -253,6 +253,36 @@ void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 /* basic data structures */
 
 typedef struct {
+	int width;
+	int height;
+} ccv_size_t;
+
+inline static ccv_size_t ccv_size(int width, int height)
+{
+	ccv_size_t size;
+	size.width = width;
+	size.height = height;
+	return size;
+}
+
+typedef struct {
+	int x;
+	int y;
+	int width;
+	int height;
+} ccv_rect_t;
+
+inline static ccv_rect_t ccv_rect(int x, int y, int width, int height)
+{
+	ccv_rect_t rect;
+	rect.x = x;
+	rect.y = y;
+	rect.width = width;
+	rect.height = height;
+	return rect;
+}
+
+typedef struct {
 	int size;
 	int rsize;
 	int rnum;
@@ -319,6 +349,56 @@ enum {
 
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
 void ccv_sift(ccv_dense_matrix_t* a);
+
+#define CCV_SGF_POINT_MAX (5)
+#define CCV_SGF_POINT_MIN (3)
+
+typedef struct {
+	int size;
+	int px[CCV_SGF_POINT_MAX];
+	int py[CCV_SGF_POINT_MAX];
+	int pz[CCV_SGF_POINT_MAX];
+	int nx[CCV_SGF_POINT_MAX];
+	int ny[CCV_SGF_POINT_MAX];
+	int nz[CCV_SGF_POINT_MAX];
+} ccv_sgf_feature_t;
+
+typedef struct {
+	int count;
+	float threshold;
+	ccv_sgf_feature_t* feature;
+	float* alpha;
+} ccv_sgf_stage_classifier_t;
+
+typedef struct {
+	int count;
+	ccv_size_t size;
+	ccv_sgf_stage_classifier_t* stage_classifier;
+} ccv_sgf_classifier_cascade_t;
+
+typedef struct {
+	double pos_crit;
+	double neg_crit;
+	double balance_k;
+	int layer;
+	int feature_number;
+} ccv_sgf_params_t;
+
+typedef struct {
+	ccv_rect_t rect;
+	int neighbors;
+	int id;
+	float confidence;
+} ccv_sgf_comp_t;
+
+enum {
+	CCV_SGF_NO_NESTED = 0x10000000,
+};
+
+void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_params_t params);
+ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size);
+ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory);
+void ccv_sgf_classifier_cascade_free(ccv_sgf_classifier_cascade_t* cascade);
 
 /* modern machine learning algorithms */
 /* RBM, LLE, APCluster */
