@@ -51,60 +51,64 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	printf("preparing negative data ...  0%%");
 	int* idcheck = (int*)malloc(negnum * sizeof(int));
 	CvRNG rng = cvRNG((int64)idcheck);
-	CvMat* imgs0 = cvCreateMat( cascade->size.height + HOG_BORDER_SIZE * 2, cascade->size.width + HOG_BORDER_SIZE * 2, CV_8UC1 );
-	CvMat* imgs1 = cvCreateMat( imgs0->rows >> 1, imgs0->cols >> 1, CV_8UC1 );
+	ccv_dense_matrix_t* imgs0 = NULL;
+	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2);
+	ccv_dense_matrix_t* imgs1 = NULL;
 	int rneg = negtotal;
-	for (t = 0; negtotal < negnum; ++t)
+	for (t = 0; negtotal < negnum; t++)
 	{
-		for (i = 0; i < bgnum; ++i)
+		for (i = 0; i < bgnum; i++)
 		{
-			negperbg = ( t < 2 ) ? (negnum - negtotal) / ( bgnum - i) + 1 : negnum - negtotal;
-			IplImage* image = cvLoadImage( bgfiles[i], CV_LOAD_IMAGE_GRAYSCALE );
-			if ( image == NULL )
+			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
+			ccv_dense_matrix_t* image = NULL;
+			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_ANY_FILE);
+			if (image == NULL)
 			{
 				printf("\n%s file corrupted\n", bgfiles[i]);
 				continue;
 			}
-			if ( t % 2 != 0 )
+			if (t % 2 != 0)
 				cvFlip( image, NULL, 1 );
-			CvMemStorage* storage = cvCreateChildMemStorage( parent );
-			CvSeq* detected = cvSGFDetectObjects( image, &cascade, 1, storage, 0, 0, cascade->size );
-			for ( j = 0; j < MIN( detected->total, negperbg ); ++j )
+			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
+			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
-				int r = cvRandInt( &rng ) % detected->total;
+				int r = cvRandInt(&rng) % detected->total;
 				int flag = 1;
-				CvRect* rect = (CvRect*)cvGetSeqElem( detected, r );
-				while ( flag ) {
+				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(detected, r);
+				while (flag) {
 					flag = 0;
-					for ( k = 0; k < j; ++k )
-						if ( r == idcheck[k] )
+					for (k = 0; k < j; ++k)
+						if (r == idcheck[k])
 						{
 							flag = 1;
-							r = cvRandInt( &rng ) % detected->total;
+							r = cvRandInt(&rng) % detected->rnum;
 							break;
 						}
-					rect = (CvRect*)cvGetSeqElem( detected, r );
-					if ( (rect->x < 0) || (rect->y < 0) || (rect->width + rect->x >= image->width) || (rect->height + rect->y >= image->height) )
+					rect = (ccv_rect_t*)ccv_array_get(detected, r);
+					if ((rect->x < 0) || (rect->y < 0) || (rect->width + rect->x >= image->cols) || (rect->height + rect->y >= image->rows))
 					{
 						flag = 1;
-						r = cvRandInt( &rng ) % detected->total;
+						r = cvRandInt(&rng) % detected->rnum;
 					}
 				}
 				idcheck[j] = r;
-				cvSetImageROI( image, *rect );
-				CvMat* temp = cvCreateMat( rect->height, rect->width, CV_8UC1 );
-				cvCopy( image, temp );
-				cvResize( temp, imgs0, CV_INTER_AREA );
-				cvReleaseMat( &temp );
-				cvPyrDown( imgs0, imgs1 );
+				cvSetImageROI(image, *rect);
+				ccv_dense_matrix_t* temp = ccv_dense_matrix_new(rect->height, rect->width, CCV_8U | CCV_C1, NULL, NULL);
+				cvCopy(image, temp);
+				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CV_INTER_AREA);
+				ccv_matrix_free(temp);
+				ccv_sample_down(imgs0, &imgs1);
 
-				negdata[negtotal] = (int*)cvAlloc( (isizs0 + isizs1) * sizeof(int) );
+				negdata[negtotal] = (int*)malloc((isizs0 + isizs1) * sizeof(int));
 				int* i32c8s0 = negdata[negtotal];
 				int* i32c8s1 = negdata[negtotal] + isizs0;
 				int* i32c8[] = { i32c8s0, i32c8s1 };
-
-				icvCreateHOG( imgs0, i32c8s0 );
-				icvCreateHOG( imgs1, i32c8s1 );
+				ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, imgs0->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s0, NULL);
+				ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, imgs1->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s1, NULL);
+				ccv_dense_matrix_t* des0p = &des0;
+				ccv_dense_matrix_t* des1p = &des1;
+				ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
+				ccv_hog(imgs1, &des1p, HOG_BORDER_SIZE * 2 + 1);
 
 	/*
 				for ( int y = 0; y < cascade->size.height; ++y )
@@ -120,68 +124,70 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				cvWaitKey(0);
 	*/
 				flag = 1;
-				CvSGFStageClassifier* classifier = cascade->stage_classifier;
-				for ( k = 0; k < cascade->count; ++k, ++classifier )
+				ccv_sgf_stage_classifier_t* classifier = cascade->stage_classifier;
+				for (k = 0; k < cascade->count; ++k, ++classifier)
 				{
 					float sum = 0;
 					float* alpha = classifier->alpha;
-					CvSGFeature* feature = classifier->feature;
-					for ( k = 0; k < classifier->count; ++k, alpha += 2, ++feature )
-						sum += alpha[icvRunSGFeature( feature, steps, i32c8 )];
-					if ( sum < classifier->threshold )
+					ccv_sgf_feature_t* feature = classifier->feature;
+					for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
+						sum += alpha[__ccv_run_sgf_feature(feature, steps, i32c8)];
+					if (sum < classifier->threshold)
 					{
 						flag = 0;
 						break;
 					}
 				}
-				if ( !flag )
-					cvFree( &negdata[negtotal] );
+				if (!flag)
+					free(negdata[negtotal]);
 				else {
 					++negtotal;
-					if ( negtotal >= negnum )
+					if (negtotal >= negnum)
 						break;
 				}
 			}
 
-			cvReleaseMemStorage( &storage );
-			cvReleaseImage( &image );
-			printf( "\rPreparing negative data ... %2d%%", 100 * negtotal / negnum );
+			ccv_matrix_free(image);
+			printf("\rpreparing negative data ... %2d%%", 100 * negtotal / negnum);
 			fflush(NULL);
-			if ( negtotal >= negnum )
+			if (negtotal >= negnum)
 				break;
 		}
-		if ( rneg == negtotal )
+		if (rneg == negtotal)
 			break;
 		rneg = negtotal;
 	}
-	cvFree( &idcheck );
-	cvReleaseMat( &imgs1 );
-	cvReleaseMat( &imgs0 );
-	cvReleaseMemStorage( &parent );
+	free(idcheck);
+	ccv_matrix_free(imgs0);
+	ccv_matrix_free(imgs1);
+	ccv_garbage_collect();
 	printf("\n");
 	return negtotal;
 }
 
 static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posdata, ccv_size_t size, int posnum)
 {
-	printf("Preparing positive data ...  0%%");
+	printf("preparing positive data ...  0%%");
 	int i;
-	for ( i = 0; i < posnum; i++ )
+	for (i = 0; i < posnum; i++)
 	{
-		CvMat imghdr, *imgs0 = cvGetMat( posimg[i], &imghdr );
-		CvMat* imgs1 = cvCreateMat( imgs0->rows >> 1, imgs0->cols >> 1, CV_8UC1 );
-		cvPyrDown( imgs0, imgs1 );
+		ccv_dense_matrix_t* imgs0 = posimg[i];
+		ccv_dense_matrix_t* imgs1 = NULL;
+		ccv_sample_down(imgs0, &imgs1);
 		int isizs0 = size.width * size.height * 8;
 		int isizs1 = ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
 
-		posdata[i] = (int*)cvAlloc( (isizs0 + isizs1) * sizeof(int) );
+		posdata[i] = (int*)malloc((isizs0 + isizs1) * sizeof(int));
 		int* i32c8s0 = posdata[i];
 		int* i32c8s1 = posdata[i] + isizs0;
+		ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, imgs0->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s0, NULL);
+		ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, imgs1->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s1, NULL);
+		ccv_dense_matrix_t* des0p = &des0;
+		ccv_dense_matrix_t* des1p = &des1;
+		ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
+		ccv_hog(imgs1, &des1p, HOG_BORDER_SIZE * 2 + 1);
 
-		icvCreateHOG( imgs0, i32c8s0 );
-		icvCreateHOG( imgs1, i32c8s1 );
-
-		printf( "\rPreparing positive data ... %2d%%", 100 * (i + 1) / posnum );
+		printf("\rpreparing positive data ... %2d%%", 100 * (i + 1) / posnum);
 		fflush(NULL);
 /*
 		for ( int y = 0; y < size.height; ++y )
@@ -196,8 +202,9 @@ static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posda
 		cvShowImage("output", out8u);
 		cvWaitKey(0);
 */
-		cvReleaseMat( &imgs1 );
+		ccv_matrix_free(imgs1);
 	}
+	ccv_garbage_collect();
 	printf("\n");
 }
 
@@ -220,16 +227,16 @@ static inline double __ccv_sgf_error_rate(ccv_sgf_feature_t* feature, int** posd
 	int isizs0 = size.width * size.height * 8;
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	double error = 0;
-	for ( i = 0; i < posnum; ++i )
+	for (i = 0; i < posnum; i++)
 	{
 		int* i32c8[] = { posdata[i], posdata[i] + isizs0 };
-		if ( !icvRunSGFeature( feature, steps, i32c8 ) )
+		if (!__ccv_run_sgf_feature(feature, steps, i32c8))
 			error += pw[i];
 	}
-	for ( i = 0; i < negnum; ++i )
+	for (i = 0; i < negnum; i++)
 	{
 		int* i32c8[] = { negdata[i], negdata[i] + isizs0 };
-		if ( icvRunSGFeature( feature, steps, i32c8 ) )
+		if ( __ccv_run_sgf_feature(feature, steps, i32c8))
 			error += nw[i];
 	}
 	return error;
@@ -244,47 +251,47 @@ static void __ccv_sgf_eval_data(ccv_sgf_stage_classifier_t* classifier, int** po
 	int i, j;
 	int isizs0 = size.width * size.height * 8;
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
-	for ( i = 0; i < posnum; ++i )
+	for (i = 0; i < posnum; i++)
 	{
 		int* i32c8[] = { posdata[i], posdata[i] + isizs0 };
 		float sum = 0;
 		float* alpha = classifier->alpha;
 		ccv_sgf_feature_t* feature = classifier->feature;
-		for ( j = 0; j < classifier->count; ++j, alpha += 2, ++feature )
-			sum += alpha[icvRunSGFeature( feature, steps, i32c8 )];
+		for (j = 0; j < classifier->count; ++j, alpha += 2, ++feature)
+			sum += alpha[__ccv_run_sgf_feature(feature, steps, i32c8)];
 		peval[i] = sum;
 	}
-	for ( i = 0; i < negnum; ++i )
+	for (i = 0; i < negnum; j++)
 	{
 		int* i32c8[] = { negdata[i], negdata[i] + isizs0 };
 		float sum = 0;
 		float* alpha = classifier->alpha;
 		ccv_sgf_feature_t* feature = classifier->feature;
-		for ( j = 0; j < classifier->count; ++j, alpha += 2, ++feature )
-			sum += alpha[icvRunSGFeature( feature, steps, i32c8 )];
+		for (j = 0; j < classifier->count; ++j, alpha += 2, ++feature)
+			sum += alpha[__ccv_run_sgf_feature(feature, steps, i32c8)];
 		neval[i] = sum;
 	}
 }
 
 static void __ccv_prune_positive_data(ccv_sgf_classifier_cascade_t* cascade, int** posdata, int* posnum, ccv_size_t size)
 {
-	float* peval = (float*)cvAlloc( *posnum * sizeof(peval[0]) );
+	float* peval = (float*)malloc(*posnum * sizeof(float));
 	int i, j, k;
-	for ( i = 0; i < cascade->count; ++i )
+	for (i = 0; i < cascade->count; i++)
 	{
-		icvSGFEvalData( cascade->stage_classifier + i, posdata, *posnum, 0, 0, size, peval, 0 );
+		__ccv_sgf_eval_data(cascade->stage_classifier + i, posdata, *posnum, 0, 0, size, peval, 0);
 		k = 0;
-		for ( j = 0; j < *posnum; ++j )
-			if ( peval[j] >= cascade->stage_classifier[i].threshold )
+		for (j = 0; j < *posnum; j++)
+			if (peval[j] >= cascade->stage_classifier[i].threshold)
 			{
 				posdata[k] = posdata[j];
 				++k;
 			} else {
-				cvFree( &posdata[j] );
+				free(posdata[j]);
 			}
 		*posnum = k;
 	}
-	cvFree( &peval );
+	free(peval);
 }
 
 static inline int __ccv_sgf_exist_gene_feature(ccv_sgf_gene_t* gene, int x, int y, int z)
@@ -307,35 +314,35 @@ static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, in
 {
 	int i, j;
 	do {
-		gene->pk = cvRandInt(rng) % (CV_SGF_POINT_MAX - 1) + 1;
-		gene->nk = cvRandInt(rng) % (CV_SGF_POINT_MAX - 1) + 1;
-	} while ( gene->pk + gene->nk < CV_SGF_POINT_MIN ); /* a hard restriction of at least 3 points have to be examed */
-	gene->feature.size = MAX( gene->pk, gene->nk );
+		gene->pk = cvRandInt(rng) % (CCV_SGF_POINT_MAX - 1) + 1;
+		gene->nk = cvRandInt(rng) % (CCV_SGF_POINT_MAX - 1) + 1;
+	} while (gene->pk + gene->nk < CCV_SGF_POINT_MIN); /* a hard restriction of at least 3 points have to be examed */
+	gene->feature.size = ccv_max(gene->pk, gene->nk);
 	gene->age = 0;
-	for ( i = 0; i < CV_SGF_POINT_MAX; ++i )
+	for (i = 0; i < CV_SGF_POINT_MAX; i++)
 	{
 		gene->feature.pz[i] = -1;
 		gene->feature.nz[i] = -1;
 	}
 	int x, y, z;
-	for ( i = 0; i < gene->pk; ++i )
+	for (i = 0; i < gene->pk; i++)
 	{
 		do {
 			z = cvRandInt(rng) % 2;
 			x = cvRandInt(rng) % steps[z];
 			y = cvRandInt(rng) % rows[z];
-		} while ( icvSGFExistGeneFeature( gene, x, y, z ) );
+		} while (__ccv_sgf_exist_gene_feature(gene, x, y, z));
 		gene->feature.pz[i] = z;
 		gene->feature.px[i] = x;
 		gene->feature.py[i] = y;
 	}
-	for ( i = 0; i < gene->nk; ++i )
+	for (i = 0; i < gene->nk; i++)
 	{
 		do {
 			z = cvRandInt(rng) % 2;
 			x = cvRandInt(rng) % steps[z];
 			y = cvRandInt(rng) % rows[z];
-		} while ( icvSGFExistGeneFeature( gene, x, y, z ) );
+		} while ( __ccv_sgf_exist_gene_feature(gene, x, y, z));
 		gene->feature.nz[i] = z;
 		gene->feature.nx[i] = x;
 		gene->feature.ny[i] = y;
@@ -348,36 +355,36 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	CvRNG rng = cvRNG((int64)posdata);
 	int i, j;
 	int pnum = ftnum * 100;
-	CvSGFGene* gene = (CvSGFGene*)cvAlloc( pnum * sizeof(gene[0]) );
+	ccv_sgf_feature_t* gene = (ccv_sgf_feature_t*)malloc( pnum * sizeof(ccv_sgf_feature_t));
 	int rows[] = { size.height, (size.height >> 1) - HOG_BORDER_SIZE };
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
-	for ( i = 0; i < pnum; ++i )
-		icvSGFRandomizeGene( &rng, &gene[i], rows, steps );
+	for (i = 0; i < pnum; i++)
+		__ccv_sgf_randomize_gene(&rng, &gene[i], rows, steps);
 	int nthreads = cvGetNumThreads();
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(nthreads) schedule(dynamic)
 #endif
-	for ( i = 0; i < pnum; ++i )
+	for (i = 0; i < pnum; i++)
 	{
-		gene[i].error = icvSGFErrorRate( &gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw );
-		icvSGFGeneticFitness( &gene[i] );
+		gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		__ccv_sgf_genetic_fitness(&gene[i]);
 	}
 	double best_err = 1;
-	CvSGFeature best;
+	ccv_sgf_feature_t best;
 	int rnum = ftnum * 39;//99;//49;//39; /* number of randomize */
 	int mnum = ftnum * 40;//0;//50;//40; /* number of mutation */
 	int hnum = ftnum * 20;//0;//0;//20; /* number of hybrid */
 	/* iteration stop crit : best no change in 40 iterations */
 	int it = 0, t;
-	for ( t = 0 ; it < 40; ++it, ++t )
+	for (t = 0 ; it < 40; ++it, ++t)
 	{
-		icvSGFGeneticQSort( gene, pnum, 0 );
-		for ( i = 0; i < ftnum; ++i )
+		__ccv_sgf_genetic_qsort(gene, pnum, 0);
+		for (i = 0; i < ftnum; i++)
 			++gene[i].age;
-		for ( i = ftnum; i < ftnum + mnum; ++i )
+		for (i = ftnum; i < ftnum + mnum; i++)
 		{
 			int parent = cvRandInt(&rng) % ftnum;
-			memcpy( gene + i, gene + parent, sizeof(gene[0]) );
+			memcpy(gene + i, gene + parent, sizeof(ccv_sgf_feature_t));
 			/* three mutation strategy : 1. add, 2. remove, 3. refine */
 			int pnm, pn = cvRandInt(&rng) % 2;
 			int* pnk[] = { &gene[i].pk, &gene[i].nk };
@@ -385,31 +392,31 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			int* pny[] = { gene[i].feature.py, gene[i].feature.ny };
 			int* pnz[] = { gene[i].feature.pz, gene[i].feature.nz };
 			int x, y, z;
-			switch ( cvRandInt(&rng) % 3 )
+			switch (cvRandInt(&rng) % 3)
 			{
 				case 0: /* add */
-					if ( gene[i].pk == CV_SGF_POINT_MAX && gene[i].nk == CV_SGF_POINT_MAX )
+					if (gene[i].pk == CV_SGF_POINT_MAX && gene[i].nk == CV_SGF_POINT_MAX)
 						break;
-					while ( *pnk[pn] + 1 > CV_SGF_POINT_MAX )
+					while (*pnk[pn] + 1 > CV_SGF_POINT_MAX)
 						pn = cvRandInt(&rng) % 2;
 					do {
 						z = cvRandInt(&rng) % 2;
 						x = cvRandInt(&rng) % steps[z];
 						y = cvRandInt(&rng) % rows[z];
-					} while ( icvSGFExistGeneFeature( &gene[i], x, y, z ) );
+					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
 					pnz[pn][*pnk[pn]] = z;
 					pnx[pn][*pnk[pn]] = x;
 					pny[pn][*pnk[pn]] = y;
 					++(*pnk[pn]);
-					gene[i].feature.size = MAX( gene[i].pk, gene[i].nk );
+					gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
 					gene[i].age = 0;
 					break;
 				case 1: /* remove */
-					if ( gene[i].pk + gene[i].nk <= CV_SGF_POINT_MIN ) /* at least 3 points have to be examed */
+					if (gene[i].pk + gene[i].nk <= CV_SGF_POINT_MIN) /* at least 3 points have to be examed */
 						break;
-					while ( *pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CV_SGF_POINT_MIN )
+					while (*pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CV_SGF_POINT_MIN)
 						pn = cvRandInt(&rng) % 2;
-					for ( j = cvRandInt(&rng) % *pnk[pn]; j < *pnk[pn] - 1; ++j )
+					for (j = cvRandInt(&rng) % *pnk[pn]; j < *pnk[pn] - 1; j++)
 					{
 						pnz[pn][j] = pnz[pn][j + 1];
 						pnx[pn][j] = pnx[pn][j + 1];
@@ -417,7 +424,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 					}
 					pnz[pn][*pnk[pn] - 1] = -1;
 					--(*pnk[pn]);
-					gene[i].feature.size = MAX( gene[i].pk, gene[i].nk );
+					gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
 					gene[i].age = 0;
 					break;
 				case 2: /* refine */
@@ -426,7 +433,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 						z = cvRandInt(&rng) % 2;
 						x = cvRandInt(&rng) % steps[z];
 						y = cvRandInt(&rng) % rows[z];
-					} while ( icvSGFExistGeneFeature( &gene[i], x, y, z ) );
+					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
 					pnz[pn][pnm] = z;
 					pnx[pn][pnm] = x;
 					pny[pn][pnm] = y;
@@ -434,75 +441,75 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 					break;
 			}
 		}
-		for ( i = ftnum + mnum; i < ftnum + mnum + hnum; ++i )
+		for (i = ftnum + mnum; i < ftnum + mnum + hnum; i++)
 		{
 			/* hybrid strategy: taking positive points from dad, negative points from mum */
 			int dad, mum;
 			do {
 				dad = cvRandInt(&rng) % ftnum;
 				mum = cvRandInt(&rng) % ftnum;
-			} while ( dad == mum || gene[dad].pk + gene[mum].nk < CV_SGF_POINT_MIN ); /* at least 3 points have to be examed */
-			for ( j = 0; j < CV_SGF_POINT_MAX; ++j )
+			} while (dad == mum || gene[dad].pk + gene[mum].nk < CV_SGF_POINT_MIN); /* at least 3 points have to be examed */
+			for (j = 0; j < CV_SGF_POINT_MAX; j++)
 			{
 				gene[i].feature.pz[j] = -1;
 				gene[i].feature.nz[j] = -1;
 			}
 			gene[i].pk = gene[dad].pk;
-			for ( j = 0; j < gene[i].pk; ++j )
+			for (j = 0; j < gene[i].pk; j++)
 			{
 				gene[i].feature.pz[j] = gene[dad].feature.pz[j];
 				gene[i].feature.px[j] = gene[dad].feature.px[j];
 				gene[i].feature.py[j] = gene[dad].feature.py[j];
 			}
 			gene[i].nk = gene[mum].nk;
-			for ( j = 0; j < gene[i].nk; ++j )
+			for (j = 0; j < gene[i].nk; j++)
 			{
 				gene[i].feature.nz[j] = gene[mum].feature.nz[j];
 				gene[i].feature.nx[j] = gene[mum].feature.nx[j];
 				gene[i].feature.ny[j] = gene[mum].feature.ny[j];
 			}
-			gene[i].feature.size = MAX( gene[i].pk, gene[i].nk );
+			gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
 			gene[i].age = 0;
 		}
-		for ( i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; ++i )
-			icvSGFRandomizeGene( &rng, &gene[i], rows, steps );
+		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
+			__ccv_sgf_randomize_gene(&rng, &gene[i], rows, steps);
 #ifdef _OPENMP
 #pragma omp parallel for num_threads(nthreads) schedule(dynamic)
 #endif
-		for ( i = 0; i < pnum; ++i )
+		for (i = 0; i < pnum; i++)
 		{
-			gene[i].error = icvSGFErrorRate( &gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw );
-			icvSGFGeneticFitness( &gene[i] );
+			gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+			__ccv_sgf_genetic_fitness(&gene[i]);
 		}
 		int min_id = 0;
 		double min_err = gene[0].error;
-		for ( i = 1; i < pnum; ++i )
-			if ( gene[i].error < min_err )
+		for (i = 1; i < pnum; i++)
+			if (gene[i].error < min_err)
 			{
 				min_id = i;
 				min_err = gene[i].error;
 			}
-		if ( min_err < best_err )
+		if (min_err < best_err)
 		{
 			best_err = min_err;
-			memcpy( &best, &gene[min_id].feature, sizeof(best) );
-			printf("Best SGFeature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
-			for ( i = 0; i < best.size; ++i)
+			memcpy(&best, &gene[min_id].feature, sizeof(best));
+			printf("best sgf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
+			for (i = 0; i < best.size; i++)
 				printf("(%d %d %d), ", best.px[i], best.py[i], best.pz[i]);
 			printf("\n|-negative point: ");
-			for ( i = 0; i < best.size; ++i)
+			for (i = 0; i < best.size; i++)
 				printf("(%d %d %d), ", best.nx[i], best.ny[i], best.nz[i]);
 			printf("\n");
 			it = 0;
 		}
-		printf( "Minimum error achieved in round %d(%d) : %f\n", t, it, min_err );
+		printf("minimum error achieved in round %d(%d) : %f\n", t, it, min_err);
 	}
 	return best;
 }
 
-int __ccv_read_sgf_stage_classifier( const char* file, ccv_sgf_stage_classifier_t* classifier )
+int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t* classifier)
 {
-	FILE* R = fopen( file, "r" );
+	FILE* R = fopen(file, "r");
 	int stat = 0;
 	if ( R != NULL )
 	{
