@@ -302,6 +302,7 @@ enum {
 };
 
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
+void ccv_sift();
 
 /* modern machine learning algorithms */
 /* RBM, LLE, APCluster */
