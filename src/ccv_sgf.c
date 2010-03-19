@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include <omp.h>
 
-static inline int icvRunSGFeature( CvSGFeature* feature, int* step, int** i32c8 )
+static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
 {
 #define pf_at(i) (*(i32c8[feature->pz[i]] + feature->px[i] + feature->py[i] * step[feature->pz[i]]))
 #define nf_at(i) (*(i32c8[feature->nz[i]] + feature->nx[i] + feature->ny[i] * step[feature->nz[i]]))
@@ -38,13 +38,8 @@ static inline int icvRunSGFeature( CvSGFeature* feature, int* step, int** i32c8 
 	return 1;
 }
 
-static int icvPrepareBackgroundData( CvSGFClassifierCascade* cascade, char** bgfiles, int bgnum, int** negdata, int negnum )
+static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, int** negdata, int negnum)
 {
-/*
-	CvMat* out8u = cvCreateMat( cascade->size.height, cascade->size.width, CV_8UC1 );
-	cvNamedWindow("image", CV_WINDOW_AUTOSIZE);
-	cvNamedWindow("output", CV_WINDOW_AUTOSIZE);
-*/
 	int t, i, j, k, x, y;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
@@ -166,15 +161,10 @@ static int icvPrepareBackgroundData( CvSGFClassifierCascade* cascade, char** bgf
 	return negtotal;
 }
 
-static void icvPreparePositiveData( const CvArr** posimg, int** posdata, CvSize size, int posnum )
+static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posdata, ccv_size_t size, int posnum)
 {
 	printf("Preparing positive data ...  0%%");
 	int i;
-/*
-	CvMat* out8u = cvCreateMat( size.height, size.width, CV_8UC1 );
-	cvNamedWindow("image", CV_WINDOW_AUTOSIZE);
-	cvNamedWindow("output", CV_WINDOW_AUTOSIZE);
-*/
 	for ( i = 0; i < posnum; i++ )
 	{
 		CvMat imghdr, *imgs0 = cvGetMat( posimg[i], &imghdr );
@@ -215,15 +205,15 @@ typedef struct {
 	int pk, nk;
 	int age;
 	double error;
-	CvSGFeature feature;
-} CvSGFGene;
+	ccv_sgf_feature_t feature;
+} ccv_sgf_gene_t;
 
-static inline void icvSGFGeneticFitness( CvSGFGene* gene )
+static inline void __ccv_sgf_genetic_fitness(ccv_sgf_gene_t* gene)
 {
-	gene->fitness = (1 - gene->error) * exp( -0.01 * gene->age ) * exp( (gene->pk + gene->nk) * log(1.015) );
+	gene->fitness = (1 - gene->error) * exp(-0.01 * gene->age) * exp((gene->pk + gene->nk) * log(1.015));
 }
 
-static inline double icvSGFErrorRate( CvSGFeature* feature, int** posdata, int posnum, int** negdata, int negnum, CvSize size, double* pw, double* nw )
+static inline double __ccv_sgf_error_rate(ccv_sgf_feature_t* feature, int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
 	int i;
 	int isizs0 = size.width * size.height * 8;
@@ -243,11 +233,12 @@ static inline double icvSGFErrorRate( CvSGFeature* feature, int** posdata, int p
 	}
 	return error;
 }
+
 #define less_than( a, b ) ((a) < (b))
+CCV_IMPLEMENT_QSORT(__ccv_sort_32f, float, less_than)
+#undef less_than
 
-CV_IMPLEMENT_QSORT( icvSort_32f, float, less_than )
-
-static void icvSGFEvalData( CvSGFStageClassifier* classifier, int** posdata, int posnum, int** negdata, int negnum, CvSize size, float* peval, float* neval )
+static void __ccv_sgf_eval_data(ccv_sgf_stage_classifier_t* classifier, int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size, float* peval, float* neval)
 {
 	int i, j;
 	int isizs0 = size.width * size.height * 8;
@@ -257,7 +248,7 @@ static void icvSGFEvalData( CvSGFStageClassifier* classifier, int** posdata, int
 		int* i32c8[] = { posdata[i], posdata[i] + isizs0 };
 		float sum = 0;
 		float* alpha = classifier->alpha;
-		CvSGFeature* feature = classifier->feature;
+		ccv_sgf_feature_t* feature = classifier->feature;
 		for ( j = 0; j < classifier->count; ++j, alpha += 2, ++feature )
 			sum += alpha[icvRunSGFeature( feature, steps, i32c8 )];
 		peval[i] = sum;
@@ -267,14 +258,14 @@ static void icvSGFEvalData( CvSGFStageClassifier* classifier, int** posdata, int
 		int* i32c8[] = { negdata[i], negdata[i] + isizs0 };
 		float sum = 0;
 		float* alpha = classifier->alpha;
-		CvSGFeature* feature = classifier->feature;
+		ccv_sgf_feature_t* feature = classifier->feature;
 		for ( j = 0; j < classifier->count; ++j, alpha += 2, ++feature )
 			sum += alpha[icvRunSGFeature( feature, steps, i32c8 )];
 		neval[i] = sum;
 	}
 }
 
-static void icvPrunePositiveData( CvSGFClassifierCascade* cascade, int** posdata, int* posnum, CvSize size )
+static void __ccv_prune_positive_data(ccv_sgf_classifier_cascade_t* cascade, int** posdata, int* posnum, ccv_size_t size)
 {
 	float* peval = (float*)cvAlloc( *posnum * sizeof(peval[0]) );
 	int i, j, k;
@@ -295,7 +286,7 @@ static void icvPrunePositiveData( CvSGFClassifierCascade* cascade, int** posdata
 	cvFree( &peval );
 }
 
-static inline int icvSGFExistGeneFeature( CvSGFGene* gene, int x, int y, int z )
+static inline int __ccv_sgf_exist_gene_feature(ccv_sgf_gene_t* gene, int x, int y, int z)
 {
 	int i;
 	for ( i = 0; i < gene->pk; ++i )
@@ -307,11 +298,11 @@ static inline int icvSGFExistGeneFeature( CvSGFGene* gene, int x, int y, int z )
 	return 0;
 }
 
-#define cmp_fit(fit1, fit2) ((fit1).fitness < (fit2).fitness)
+#define less_than(fit1, fit2) ((fit1).fitness < (fit2).fitness)
+static CCV_IMPLEMENT_QSORT(__ccv_sgf_genetic_qsort, ccv_sgf_gene_t, less_than)
+#undef less_than
 
-static CV_IMPLEMENT_QSORT( icvSGFGeneticQSort, CvSGFGene, cmp_fit )
-
-static inline void icvSGFRandomizeGene( CvRNG* rng, CvSGFGene* gene, int* rows, int* steps )
+static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, int* rows, int* steps)
 {
 	int i, j;
 	do {
@@ -350,7 +341,7 @@ static inline void icvSGFRandomizeGene( CvRNG* rng, CvSGFGene* gene, int* rows, 
 	}
 }
 
-static CvSGFeature icvSGFGeneticOptimize( int** posdata, int posnum, int** negdata, int negnum, int ftnum, CvSize size, double* pw, double* nw )
+static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	/* seed (random method) */
 	CvRNG rng = cvRNG((int64)posdata);
@@ -508,7 +499,7 @@ static CvSGFeature icvSGFGeneticOptimize( int** posdata, int posnum, int** negda
 	return best;
 }
 
-bool cvReadSGFStageClassifier( const char* file, CvSGFStageClassifier* classifier )
+int __ccv_read_sgf_stage_classifier( const char* file, ccv_sgf_stage_classifier_t* classifier )
 {
 	FILE* R = fopen( file, "r" );
 	int stat = 0;
@@ -535,7 +526,7 @@ bool cvReadSGFStageClassifier( const char* file, CvSGFStageClassifier* classifie
 	return 0;
 }
 
-bool cvWriteSGFStageClassifier( const char* file, CvSGFStageClassifier* classifier )
+int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t* classifier)
 {
 	FILE* W = fopen( file, "w" );
 	if ( W != NULL )
@@ -559,7 +550,7 @@ bool cvWriteSGFStageClassifier( const char* file, CvSGFStageClassifier* classifi
 	return 0;
 }
 
-static bool icvReadBackgroundData( const char* file, int** negdata, int* negnum, CvSize size )
+static int __ccv_read_background_data(const char* file, int** negdata, int* negnum, ccv_size_t size)
 {
 	int stat = 0;
 	FILE* R = fopen( file, "r" );
@@ -580,7 +571,7 @@ static bool icvReadBackgroundData( const char* file, int** negdata, int* negnum,
 	return 0;
 }
 
-static bool icvWriteBackgroundData( const char* file, int** negdata, int negnum, CvSize size )
+static int __ccv_write_background_data(const char* file, int** negdata, int negnum, ccv_size_t size)
 {
 	FILE* W = fopen( file, "w" );
 	if ( W != NULL )
@@ -600,7 +591,7 @@ static bool icvWriteBackgroundData( const char* file, int** negdata, int negnum,
 	return 0;
 }
 
-static bool icvResumeSGFCascadeTrainingState( const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum )
+static int __ccv_resume_sgf_cascade_training_state(const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum)
 {
 	int stat = 0;
 	FILE* R = fopen( file, "r" );
@@ -618,7 +609,7 @@ static bool icvResumeSGFCascadeTrainingState( const char* file, int* i, int* k, 
 	return 0;
 }
 
-static bool icvSaveSGFCacadeTrainingState( const char* file, int i, int k, int bg, double* pw, double* nw, int posnum, int negnum )
+static int __ccv_save_sgf_cacade_training_state(const char* file, int i, int k, int bg, double* pw, double* nw, int posnum, int negnum)
 {
 	FILE* W = fopen( file, "w" );
 	if ( W != NULL )
@@ -637,18 +628,7 @@ static bool icvSaveSGFCacadeTrainingState( const char* file, int i, int k, int b
 	return 0;
 }
 
-CvSGFTrainParams cvSGFTrainParams( double pos_crit, double neg_crit, double balance_k, int layer, int ftnum )
-{
-	CvSGFTrainParams params;
-	params.pos_crit = pos_crit;
-	params.neg_crit = neg_crit;
-	params.balance_k = balance_k;
-	params.layer = layer;
-	params.feature_number = ftnum;
-	return params;
-}
-
-void cvCreateSGFClassifierCascade( const CvArr** posimg, int posnum, char** bgfiles, int bgnum, int negnum, CvSize size, const char* dir, CvSGFTrainParams params )
+void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_params_t params)
 {
 	int i, j, k;
 	/* allocate memory for usage */
@@ -838,10 +818,10 @@ void cvCreateSGFClassifierCascade( const CvArr** posimg, int posnum, char** bgfi
 	cvFree( &cascade );
 }
 
-static int is_equal( const void* _r1, const void* _r2, void* )
+static int is_equal(const void* _r1, const void* _r2, void*)
 {
-	const CvSGFComp* r1 = (const CvSGFComp*)_r1;
-	const CvSGFComp* r2 = (const CvSGFComp*)_r2;
+	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
+	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
 	int distance = cvRound( r1->rect.width * 0.5 );
 
 	return r2->rect.x <= r1->rect.x + distance &&
@@ -852,10 +832,10 @@ static int is_equal( const void* _r1, const void* _r2, void* )
 		   cvRound( r2->rect.width * 1.5 ) >= r1->rect.width;
 }
 
-static int is_equal_same_class( const void* _r1, const void* _r2, void* )
+static int is_equal_same_class(const void* _r1, const void* _r2, void*)
 {
-	const CvSGFComp* r1 = (const CvSGFComp*)_r1;
-	const CvSGFComp* r2 = (const CvSGFComp*)_r2;
+	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
+	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
 	int distance = cvRound( r1->rect.width * 0.5 );
 
 	return r2->id == r1->id &&
@@ -867,9 +847,7 @@ static int is_equal_same_class( const void* _r1, const void* _r2, void* )
 		   cvRound( r2->rect.width * 1.5 ) >= r1->rect.width;
 }
 
-CvSeq* cvSGFDetectObjects( const CvArr* _img,
-						   CvSGFClassifierCascade** _cascade, int count,
-						   CvMemStorage* storage, int min_neighbors, int flags, CvSize min_size )
+ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size)
 {
 	CvMat imghdr, *img = cvGetMat( _img, &imghdr );
 
@@ -1106,7 +1084,7 @@ CvSeq* cvSGFDetectObjects( const CvArr* _img,
 	return result_seq2;
 }
 
-CvSGFClassifierCascade* cvLoadSGFClassifierCascade( const char* directory )
+ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory)
 {
 	CvSGFClassifierCascade* cascade = (CvSGFClassifierCascade*)cvAlloc( sizeof(CvSGFClassifierCascade) );
 	char buf[1024];
@@ -1128,15 +1106,14 @@ CvSGFClassifierCascade* cvLoadSGFClassifierCascade( const char* directory )
 	return cascade;
 }
 
-void cvReleaseSGFClassifierCascade( CvSGFClassifierCascade** _cascade )
+void ccv_sgf_classifier_cascade_free(ccv_sgf_classifier_cascade_t* cascade)
 {
 	int i;
-	CvSGFClassifierCascade* cascade = *_cascade;
-	for ( i = 0; i < cascade->count; ++i )
+	for (i = 0; i < cascade->count; ++i)
 	{
-		cvFree( &cascade->stage_classifier[i].feature );
-		cvFree( &cascade->stage_classifier[i].alpha );
+		free(cascade->stage_classifier[i].feature);
+		free(cascade->stage_classifier[i].alpha);
 	}
-	cvFree( &cascade->stage_classifier );
-	cvFree( _cascade );
+	free(cascade->stage_classifier);
+	free(cascade);
 }
