@@ -253,7 +253,18 @@ void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 /* basic data structures */
 
 typedef struct {
+	int size;
+	int rsize;
+	int rnum;
+	void* data;
 } ccv_array_t;
+
+ccv_array_t* ccv_array_new(int rnum, int rsize);
+void ccv_array_push(ccv_array_t* array, void* r);
+void ccv_array_clear(ccv_array_t* array);
+void ccv_array_free(ccv_array_t* array);
+
+#define ccv_array_get(a, i) (((char*)((a)->data)) + (a)->rsize * (i))
 
 /* numerical algorithms */
 /* clarification about algebra and numerical algorithms:
