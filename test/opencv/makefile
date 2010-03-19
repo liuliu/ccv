@@ -4,10 +4,12 @@ LINKFLAG = -pthread -lcv -lhighgui -lcvaux
 INCFLAGS = -I"$(OPENCV)/include/opencv"
 CXXFLAGS = -O2 --fast-math -msse2
 
-all: filter_test sobel_test hog_test resample_test sample_down_test
+TARGETS = filter_test sobel_test hog_test resample_test sample_down_test
+
+all: $(TARGETS)
 
 clean:
-	rm *.o
+	rm *.o $(TARGETS)
 
 hog_test: hog_test.o
 	$(CXX) -o $@ $^ $(LINKFLAG)
