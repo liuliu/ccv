@@ -148,6 +148,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			}
 
 			ccv_matrix_free(image);
+			ccv_garbage_collect();
 			printf("\rpreparing negative data ... %2d%%", 100 * negtotal / negnum);
 			fflush(NULL);
 			if (negtotal >= negnum)
@@ -319,7 +320,7 @@ static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, in
 	} while (gene->pk + gene->nk < CCV_SGF_POINT_MIN); /* a hard restriction of at least 3 points have to be examed */
 	gene->feature.size = ccv_max(gene->pk, gene->nk);
 	gene->age = 0;
-	for (i = 0; i < CV_SGF_POINT_MAX; i++)
+	for (i = 0; i < CCV_SGF_POINT_MAX; i++)
 	{
 		gene->feature.pz[i] = -1;
 		gene->feature.nz[i] = -1;
@@ -395,9 +396,9 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			switch (cvRandInt(&rng) % 3)
 			{
 				case 0: /* add */
-					if (gene[i].pk == CV_SGF_POINT_MAX && gene[i].nk == CV_SGF_POINT_MAX)
+					if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
 						break;
-					while (*pnk[pn] + 1 > CV_SGF_POINT_MAX)
+					while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
 						pn = cvRandInt(&rng) % 2;
 					do {
 						z = cvRandInt(&rng) % 2;
@@ -412,9 +413,9 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 					gene[i].age = 0;
 					break;
 				case 1: /* remove */
-					if (gene[i].pk + gene[i].nk <= CV_SGF_POINT_MIN) /* at least 3 points have to be examed */
+					if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
 						break;
-					while (*pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CV_SGF_POINT_MIN)
+					while (*pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
 						pn = cvRandInt(&rng) % 2;
 					for (j = cvRandInt(&rng) % *pnk[pn]; j < *pnk[pn] - 1; j++)
 					{
@@ -448,8 +449,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			do {
 				dad = cvRandInt(&rng) % ftnum;
 				mum = cvRandInt(&rng) % ftnum;
-			} while (dad == mum || gene[dad].pk + gene[mum].nk < CV_SGF_POINT_MIN); /* at least 3 points have to be examed */
-			for (j = 0; j < CV_SGF_POINT_MAX; j++)
+			} while (dad == mum || gene[dad].pk + gene[mum].nk < CCV_SGF_POINT_MIN); /* at least 3 points have to be examed */
+			for (j = 0; j < CCV_SGF_POINT_MAX; j++)
 			{
 				gene[i].feature.pz[j] = -1;
 				gene[i].feature.nz[j] = -1;
@@ -509,130 +510,112 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 
 int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t* classifier)
 {
-	FILE* R = fopen(file, "r");
+	FILE* r = fopen(file, "r");
+	if (r == NULL) return -1;
 	int stat = 0;
-	if ( R != NULL )
+	stat |= fscanf(r, "%d", &classifier->count);
+	stat |= fscanf(r, "%f", &classifier->threshold);
+	classifier->feature = (ccv_sgf_feature_t*)malloc(classifier->count * sizeof(ccv_sgf_feature_t));
+	classifier->alpha = (float*)malloc(classifier->count * 2 * sizeof(ccv_sgf_feature_t));
+	int i, j;
+	for (i = 0; i < classifier->count; i++)
 	{
-		stat |= fscanf( R, "%d", &classifier->count );
-		stat |= fscanf( R, "%f", &classifier->threshold );
-		classifier->feature = (CvSGFeature*)cvAlloc( classifier->count * sizeof(classifier->feature[0]) );
-		classifier->alpha = (float*)cvAlloc( classifier->count * 2 * sizeof(classifier->alpha[0]) );
-		int i, j;
-		for ( i = 0; i < classifier->count; ++i )
+		stat |= fscanf(r, "%d", &classifier->feature[i].size);
+		for (j = 0; j < classifier->feature[i].size; j++)
 		{
-			stat |= fscanf( R, "%d", &classifier->feature[i].size );
-			for ( j = 0; j < classifier->feature[i].size; ++j )
-			{
-				stat |= fscanf( R, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j] );
-				stat |= fscanf( R, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j] );
-			}
-			stat |= fscanf( R, "%f %f", &classifier->alpha[i * 2], &classifier->alpha[i * 2 + 1] );
+			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
+			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
 		}
-		fclose( R );
-		return 1;
+		stat |= fscanf(r, "%f %f", &classifier->alpha[i * 2], &classifier->alpha[i * 2 + 1]);
 	}
+	fclose(r);
 	return 0;
 }
 
 int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t* classifier)
 {
-	FILE* W = fopen( file, "w" );
-	if ( W != NULL )
+	FILE* w = fopen(file, "w");
+	if (w == NULL) return -1;
+	fprintf(w, "%d\n", classifier->count);
+	fprintf(w, "%f\n", classifier->threshold);
+	int i, j;
+	for (i = 0; i < classifier->count; i++)
 	{
-		fprintf( W, "%d\n", classifier->count );
-		fprintf( W, "%f\n", classifier->threshold );
-		int i, j;
-		for ( i = 0; i < classifier->count; ++i )
+		fprintf(w, "%d\n", classifier->feature[i].size);
+		for (j = 0; j < classifier->feature[i].size; j++)
 		{
-			fprintf( W, "%d\n", classifier->feature[i].size );
-			for ( j = 0; j < classifier->feature[i].size; ++j )
-			{
-				fprintf( W, "%d %d %d\n", classifier->feature[i].px[j], classifier->feature[i].py[j], classifier->feature[i].pz[j] );
-				fprintf( W, "%d %d %d\n", classifier->feature[i].nx[j], classifier->feature[i].ny[j], classifier->feature[i].nz[j] );
-			}
-			fprintf( W, "%f %f\n", classifier->alpha[i * 2], classifier->alpha[i * 2 + 1] );
+			fprintf(w, "%d %d %d\n", classifier->feature[i].px[j], classifier->feature[i].py[j], classifier->feature[i].pz[j]);
+			fprintf(w, "%d %d %d\n", classifier->feature[i].nx[j], classifier->feature[i].ny[j], classifier->feature[i].nz[j]);
 		}
-		fclose( W );
-		return 1;
+		fprintf(w, "%f %f\n", classifier->alpha[i * 2], classifier->alpha[i * 2 + 1]);
 	}
+	fclose(w);
 	return 0;
 }
 
 static int __ccv_read_background_data(const char* file, int** negdata, int* negnum, ccv_size_t size)
 {
 	int stat = 0;
-	FILE* R = fopen( file, "r" );
-	if ( R != NULL )
+	FILE* r = fopen(file, "r");
+	if (r == NULL) return -1;
+	stat |= fscanf(r, "%d", negnum);
+	int i, j;
+	int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
+	for (i = 0; i < *negnum; i++)
 	{
-		stat |= fscanf( R, "%d", negnum );
-		int i, j;
-		int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
-		for ( i = 0; i < *negnum; ++i )
-		{
-			negdata[i] = (int*)cvAlloc( isizs01 * sizeof(int) );
-			for ( j = 0; j < isizs01; ++j )
-				stat |= fscanf( R, "%d", &negdata[i][j] );
-		}
-		fclose( R );
-		return 1;
+		negdata[i] = (int*)malloc(isizs01 * sizeof(int));
+		for (j = 0; j < isizs01; j++)
+			stat |= fscanf(r, "%d", &negdata[i][j]);
 	}
+	fclose(r);
 	return 0;
 }
 
 static int __ccv_write_background_data(const char* file, int** negdata, int negnum, ccv_size_t size)
 {
-	FILE* W = fopen( file, "w" );
-	if ( W != NULL )
+	FILE* w = fopen(file, "w");
+	if (w == NULL) return -1;
+	fprintf(w, "%d\n", negnum);
+	int i, j;
+	int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
+	for (i = 0; i < negnum; i++)
 	{
-		fprintf( W, "%d\n", negnum );
-		int i, j;
-		int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
-		for ( i = 0; i < negnum; ++i )
-		{
-			for ( j = 0; j < isizs01; ++j )
-				fprintf( W, "%d ", negdata[i][j] );
-			fprintf( W, "\n" );
-		}
-		fclose( W );
-		return 1;
+		for (j = 0; j < isizs01; j++)
+			fprintf(w, "%d ", negdata[i][j]);
+		fprintf(w, "\n");
 	}
+	fclose(w);
 	return 0;
 }
 
 static int __ccv_resume_sgf_cascade_training_state(const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum)
 {
 	int stat = 0;
-	FILE* R = fopen( file, "r" );
-	if ( R != NULL )
-	{
-		stat |= fscanf( R, "%d %d %d", i, k, bg );
-		int j;
-		for ( j = 0; j < posnum; ++j )
-			stat |= fscanf( R, "%le", &pw[j] );
-		for ( j = 0; j < negnum; ++j )
-			stat |= fscanf( R, "%le", &nw[j] );
-		fclose( R );
-		return 1;
-	}
+	FILE* r = fopen(file, "r");
+	if (r == NULL) return -1;
+	stat |= fscanf(r, "%d %d %d", i, k, bg);
+	int j;
+	for (j = 0; j < posnum; j++)
+		stat |= fscanf(r, "%le", &pw[j]);
+	for (j = 0; j < negnum; j++)
+		stat |= fscanf(r, "%le", &nw[j]);
+	fclose(r);
 	return 0;
 }
 
 static int __ccv_save_sgf_cacade_training_state(const char* file, int i, int k, int bg, double* pw, double* nw, int posnum, int negnum)
 {
-	FILE* W = fopen( file, "w" );
-	if ( W != NULL )
-	{
-		fprintf( W, "%d %d %d\n", i, k, bg );
-		int j;
-		for ( j = 0; j < posnum; ++j )
-			fprintf( W, "%le ", pw[j] );
-		fprintf(W, "\n");
-		for ( j = 0; j < negnum; ++j )
-			fprintf( W, "%le ", nw[j] );
-		fprintf(W, "\n");
-		fclose( W );
-		return 1;
-	}
+	FILE* w = fopen(file, "w");
+	if (w == NULL) return -1;
+	fprintf(w, "%d %d %d\n", i, k, bg);
+	int j;
+	for (j = 0; j < posnum; ++j)
+		fprintf(w, "%le ", pw[j]);
+	fprintf(w, "\n");
+	for (j = 0; j < negnum; ++j)
+		fprintf(w, "%le ", nw[j]);
+	fprintf(w, "\n");
+	fclose(w);
 	return 0;
 }
 
@@ -640,18 +623,18 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 {
 	int i, j, k;
 	/* allocate memory for usage */
-	CvSGFClassifierCascade* cascade = (CvSGFClassifierCascade*)cvAlloc( sizeof(cascade[0]) );
+	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
 	cascade->count = 0;
 	cascade->size = size;
-	cascade->stage_classifier = (CvSGFStageClassifier*)cvAlloc( sizeof(cascade->stage_classifier[0]) );
-	int** posdata = (int**)cvAlloc( posnum * sizeof(posdata[0]) );
-	icvPreparePositiveData( posimg, posdata, cascade->size, posnum );
-	int** negdata = (int**)cvAlloc( negnum * sizeof(negdata[0]) );
+	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(sizeof(ccv_sgf_stage_classifier_t));
+	int** posdata = (int**)malloc(posnum * sizeof(int*));
+	__ccv_prepare_positive_data(posimg, posdata, cascade->size, posnum);
+	int** negdata = (int**)malloc(negnum * sizeof(int*));
 
-	double* pw = (double*)cvAlloc( posnum * sizeof(pw[0]) );
-	double* nw = (double*)cvAlloc( negnum * sizeof(nw[0]) );
-	float* peval = (float*)cvAlloc( posnum * sizeof(peval[0]) );
-	float* neval = (float*)cvAlloc( negnum * sizeof(neval[0]) );
+	double* pw = (double*)malloc(posnum * sizeof(double));
+	double* nw = (double*)malloc(negnum * sizeof(double));
+	float* peval = (float*)malloc(posnum * sizeof(float));
+	float* neval = (float*)malloc(negnum * sizeof(float));
 	double inv_balance_k = 1. / params.balance_k;
 	/* balance factor k, and weighted with 0.01 */
 	params.balance_k *= 0.01;
@@ -666,136 +649,136 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	int cacheK = 10;
 	/* state resume code */
 	char buf[1024];
-	sprintf( buf, "%s/stat.txt", dir );
-	icvResumeSGFCascadeTrainingState( buf, &i, &k, &bg, pw, nw, posnum, negnum );
-	if ( i > 0 )
+	sprintf(buf, "%s/stat.txt", dir);
+	__ccv_resume_sgf_cascade_training_state(buf, &i, &k, &bg, pw, nw, posnum, negnum);
+	if (i > 0)
 	{
 		cascade->count = i;
-		cvFree( &cascade->stage_classifier );
-		cascade->stage_classifier = (CvSGFStageClassifier*)cvAlloc( i * sizeof(cascade->stage_classifier[0]) );
-		for ( j = 0; j < i; ++j )
+		free(cascade->stage_classifier);
+		cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(i * sizeof(ccv_sgf_stage_classifier_t));
+		for (j = 0; j < i; j++)
 		{
-			sprintf( buf, "%s/stage-%d.txt", dir, j );
-			cvReadSGFStageClassifier( buf, &cascade->stage_classifier[j] );
+			sprintf(buf, "%s/stage-%d.txt", dir, j);
+			__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[j]);
 		}
 	}
-	if ( k > 0 )
+	if (k > 0)
 		cacheK = k;
 	int rneg;
-	if ( bg )
+	if (bg)
 	{
-		sprintf( buf, "%s/negs.txt", dir );
-		icvReadBackgroundData( buf, negdata, &rneg, cascade->size );
+		sprintf(buf, "%s/negs.txt", dir);
+		__ccv_read_background_data(buf, negdata, &rneg, cascade->size);
 	}
-	for ( ; i < params.layer; ++i )
+	for (; i < params.layer; i++)
 	{
-		if ( !bg )
+		if (!bg)
 		{
-			rneg = icvPrepareBackgroundData( cascade, bgfiles, bgnum, negdata, negnum );
+			rneg = __ccv_prepare_background_data(cascade, bgfiles, bgnum, negdata, negnum);
 			/* save state of background data */
-			sprintf( buf, "%s/negs.txt", dir );
-			icvWriteBackgroundData( buf, negdata, rneg, cascade->size );
+			sprintf(buf, "%s/negs.txt", dir);
+			__ccv_write_background_data(buf, negdata, rneg, cascade->size);
 			bg = 1;
 		}
 		double totalw;
 		/* save state of cascade : level, weight etc. */
-		sprintf( buf, "%s/stat.txt", dir );
-		icvSaveSGFCacadeTrainingState( buf, i, k, bg, pw, nw, posnum, negnum );
-		CvSGFStageClassifier classifier;
-		if ( k > 0 )
+		sprintf(buf, "%s/stat.txt", dir);
+		__ccv_save_sgf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
+		ccv_sgf_stage_classifier_t classifier;
+		if (k > 0)
 		{
 			/* resume state of classifier */
 			sprintf( buf, "%s/stage-%d.txt", dir, i );
-			cvReadSGFStageClassifier( buf, &classifier );
+			__ccv_read_sgf_stage_classifier(buf, &classifier);
 		} else {
 			/* initialize classifier */
 			totalw = params.balance_k * posnum + inv_balance_k * rneg;
-			for ( j = 0; j < posnum; ++j )
+			for (j = 0; j < posnum; j++)
 				pw[j] = params.balance_k / totalw;
-			for ( j = 0; j < rneg; ++j )
+			for (j = 0; j < rneg; j++)
 				nw[j] = inv_balance_k / totalw;
 			classifier.count = k;
 			classifier.threshold = 0;
-			classifier.feature = (CvSGFeature*)cvAlloc( cacheK * sizeof(classifier.feature[0]) );
-			classifier.alpha = (float*)cvAlloc( cacheK * 2 * sizeof(classifier.alpha[0]) );
+			classifier.feature = (ccv_sgf_feature_t*)malloc(cacheK * sizeof(ccv_sgf_feature_t));
+			classifier.alpha = (float*)malloc(cacheK * 2 * sizeof(float));
 		}
-		icvPrunePositiveData( cascade, posdata, &posnum, cascade->size );
-		printf("%d Postivie Data and %d Negative Data in Training\n", posnum, rneg);
-		for ( ; ; ++k )
+		__ccv_prune_positive_data(cascade, posdata, &posnum, cascade->size);
+		printf("%d postivie data and %d negative data in training\n", posnum, rneg);
+		for (; ; k++)
 		{
 			/* get overall true-positive, false-positive rate and threshold */
 			double tp = 0, fp = 0, etp = 0, efp = 0;
-			icvSGFEvalData( &classifier, posdata, posnum, negdata, rneg, cascade->size, peval, neval );
-			icvSort_32f( peval, posnum, 0 );
+			__ccv_sgf_eval_data(&classifier, posdata, posnum, negdata, rneg, cascade->size, peval, neval);
+			__ccv_sort_32f(peval, posnum, 0);
 			classifier.threshold = peval[(int)((1. - params.pos_crit) * posnum)] - 1e-6;
-			for ( j = 0; j < posnum; ++j )
+			for (j = 0; j < posnum; j++)
 			{
-				if ( peval[j] >= 0 )
+				if (peval[j] >= 0)
 					++tp;
-				if ( peval[j] >= classifier.threshold )
+				if (peval[j] >= classifier.threshold)
 					++etp;
 			}
 			tp /= posnum; etp /= posnum;
-			for ( j = 0; j < rneg; ++j )
+			for (j = 0; j < rneg; j++)
 			{
-				if ( neval[j] >= 0 )
+				if (neval[j] >= 0)
 					++fp;
-				if ( neval[j] >= classifier.threshold )
+				if (neval[j] >= classifier.threshold)
 					++efp;
 			}
 			fp /= rneg; efp /= rneg;
-			printf( "Stage Classifier Real TP rate : %f, FP rate : %f\n", tp, fp );
-			printf( "Stage Classifier TP rate : %f, FP rate : %f at Threshold : %f\n", etp, efp, classifier.threshold );
-			if ( k > 0 )
+			printf("stage classifier real TP rate : %f, FP rate : %f\n", tp, fp);
+			printf("stage classifier TP rate : %f, FP rate : %f at threshold : %f\n", etp, efp, classifier.threshold);
+			if (k > 0)
 			{
 				/* save classifier state */
-				sprintf( buf, "%s/stage-%d.txt", dir, i );
-				cvWriteSGFStageClassifier( buf, &classifier );
-				sprintf( buf, "%s/stat.txt", dir );
-				icvSaveSGFCacadeTrainingState( buf, i, k, bg, pw, nw, posnum, negnum );
+				sprintf(buf, "%s/stage-%d.txt", dir, i);
+				__ccv_write_sgf_stage_classifier(buf, &classifier);
+				sprintf(buf, "%s/stat.txt", dir);
+				__ccv_save_sgf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
 			}
-			if ( etp > params.pos_crit && efp < params.neg_crit )
+			if (etp > params.pos_crit && efp < params.neg_crit)
 				break;
 			/* TODO: more post-process is needed in here */
 
 			/* select the best feature in current distribution through genetic algorithm optimization */
-			CvSGFeature best = icvSGFGeneticOptimize( posdata, posnum, negdata, rneg, params.feature_number, cascade->size, pw, nw );
-			double err = icvSGFErrorRate( &best, posdata, posnum, negdata, rneg, cascade->size, pw, nw );
+			ccv_sgf_feature_t best = __ccv_sgf_genetic_optimize(posdata, posnum, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+			double err = __ccv_sgf_error_rate(&best, posdata, posnum, negdata, rneg, cascade->size, pw, nw);
 			double rw = (1 - err) / err;
 			totalw = 0;
 			/* reweight */
-			for ( j = 0; j < posnum; ++j )
+			for (j = 0; j < posnum; j++)
 			{
 				int* i32c8[] = { posdata[j], posdata[j] + isizs0 };
-				if ( !icvRunSGFeature( &best, steps, i32c8 ) )
+				if (!__ccv_run_sgf_feature(&best, steps, i32c8))
 					pw[j] *= rw;
 				pw[j] *= params.balance_k;
 				totalw += pw[j];
 			}
-			for ( j = 0; j < rneg; ++j )
+			for (j = 0; j < rneg; j++)
 			{
 				int* i32c8[] = { negdata[j], negdata[j] + isizs0 };
-				if ( icvRunSGFeature( &best, steps, i32c8 ) )
+				if (__ccv_run_sgf_feature(&best, steps, i32c8))
 					nw[j] *= rw;
 				nw[j] *= inv_balance_k;
 				totalw += nw[j];
 			}
-			for ( j = 0; j < posnum; ++j )
+			for (j = 0; j < posnum; j++)
 				pw[j] = pw[j] / totalw;
-			for ( j = 0; j < rneg; ++j )
+			for (j = 0; j < rneg; j++)
 				nw[j] = nw[j] / totalw;
-			double c = log( rw );
-			printf( "Coefficient of Feature %d: %f\n", k + 1, c );
+			double c = log(rw);
+			printf("coefficient of feature %d: %f\n", k + 1, c);
 			classifier.count = k + 1;
 			/* resizing classifier */
-			if ( k >= cacheK )
+			if (k >= cacheK)
 			{
-				CvSGFeature* feature = (CvSGFeature*)cvAlloc( cacheK * 2 * sizeof(feature[0]) );
-				memcpy( feature, classifier.feature, cacheK * sizeof(feature[0]) );
-				cvFree( &classifier.feature );
-				float* alpha = (float*)cvAlloc( cacheK * 4 * sizeof(alpha[0]) );
-				memcpy( alpha, classifier.alpha, cacheK * 2 * sizeof(alpha[0]) );
-				cvFree( &classifier.alpha );
+				ccv_sgf_feature_t* feature = (ccv_sgf_feature_t*)malloc(cacheK * 2 * sizeof(ccv_sgf_feature_t));
+				memcpy(feature, classifier.feature, cacheK * sizeof(ccv_sgf_feature_t));
+				free(classifier.feature);
+				float* alpha = (float*)malloc(cacheK * 4 * sizeof(float));
+				memcpy(alpha, classifier.alpha, cacheK * 2 * sizeof(float));
+				free(classifier.alpha);
 				classifier.feature = feature;
 				classifier.alpha = alpha;
 				cacheK *= 2;
@@ -806,24 +789,24 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			classifier.alpha[k * 2 + 1] = c;
 		}
 		cascade->count = i + 1;
-		CvSGFStageClassifier* stage_classifier = (CvSGFStageClassifier*)cvAlloc( cascade->count * sizeof(stage_classifier[0]) );
-		memcpy( stage_classifier, cascade->stage_classifier, i * sizeof(stage_classifier[0]) );
-		cvFree( &cascade->stage_classifier );
+		ccv_sgf_stage_classifier_t* stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
+		memcpy(stage_classifier, cascade->stage_classifier, i * sizeof(ccv_sgf_stage_classifier_t));
+		free(cascade->stage_classifier);
 		stage_classifier[i] = classifier;
 		cascade->stage_classifier = stage_classifier;
 		k = 0;
 		bg = 0;
-		for ( j = 0; j < rneg; ++j )
-			cvFree( &negdata[j] );
+		for (j = 0; j < rneg; j++)
+			free(negdata[j]);
 	}
 
-	cvFree( &neval );
-	cvFree( &peval );
-	cvFree( &nw );
-	cvFree( &pw );
-	cvFree( &negdata );
-	cvFree( &posdata );
-	cvFree( &cascade );
+	free(neval);
+	free(peval);
+	free(nw);
+	free(pw);
+	free(negdata);
+	free(posdata);
+	free(cascade);
 }
 
 static int is_equal(const void* _r1, const void* _r2, void*)
