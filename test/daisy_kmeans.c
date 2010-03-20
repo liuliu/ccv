@@ -48,8 +48,7 @@ int main(int argc, char** argv)
 
 	gsl_rng_env_setup();
 
-	const gsl_rng_type* T = gsl_rng_default;
-	gsl_rng* r = gsl_rng_alloc(T);
+	gsl_rng* r = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(r, 0);
 	
 	for (i = 0; i < KMEANS_DAISY_SIZE; i++)
