@@ -291,6 +291,8 @@ typedef struct {
 
 ccv_array_t* ccv_array_new(int rnum, int rsize);
 void ccv_array_push(ccv_array_t* array, void* r);
+typedef int(*ccv_array_group_func)(const void*, const void*, void*);
+int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_func gfunc, void* data);
 void ccv_array_clear(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
@@ -308,7 +310,7 @@ void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
-typedef double(*ccv_filter_kernel_func)(double x, double y, void* data);
+typedef double(*ccv_filter_kernel_func)(double x, double y, void*);
 void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data);
 
 /* modern numerical algorithms */
