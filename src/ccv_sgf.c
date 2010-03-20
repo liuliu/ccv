@@ -809,128 +809,124 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	free(cascade);
 }
 
-static int is_equal(const void* _r1, const void* _r2, void*)
+static int __ccv_is_equal(const void* _r1, const void* _r2, void*)
 {
 	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
 	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
-	int distance = cvRound( r1->rect.width * 0.5 );
+	int distance = int(r1->rect.width * 0.5 + 0.5);
 
 	return r2->rect.x <= r1->rect.x + distance &&
 		   r2->rect.x >= r1->rect.x - distance &&
 		   r2->rect.y <= r1->rect.y + distance &&
 		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= cvRound( r1->rect.width * 1.5 ) &&
-		   cvRound( r2->rect.width * 1.5 ) >= r1->rect.width;
+		   r2->rect.width <= int(r1->rect.width * 1.5 + 0.5) &&
+		   int(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
-static int is_equal_same_class(const void* _r1, const void* _r2, void*)
+static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void*)
 {
 	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
 	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
-	int distance = cvRound( r1->rect.width * 0.5 );
+	int distance = int(r1->rect.width * 0.5 + 0.5);
 
 	return r2->id == r1->id &&
 		   r2->rect.x <= r1->rect.x + distance &&
 		   r2->rect.x >= r1->rect.x - distance &&
 		   r2->rect.y <= r1->rect.y + distance &&
 		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= cvRound( r1->rect.width * 1.5 ) &&
-		   cvRound( r2->rect.width * 1.5 ) >= r1->rect.width;
+		   r2->rect.width <= int(r1->rect.width * 1.5 + 0.5) &&
+		   int(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
 ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size)
 {
-	CvMat imghdr, *img = cvGetMat( _img, &imghdr );
-
 	int hr = img->rows / min_size.height;
 	int wr = img->cols / min_size.width;
-	int scale_upto = (int)( log( (double)MIN( hr, wr ) ) / log( sqrt(2.) ) );
+	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(sqrt(2.)));
 	/* generate scale-down HOG images */
-	CvMat** pyr = (CvMat**)cvAlloc( (scale_upto + 2) * sizeof(pyr[0]) );
-	if ( min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width )
+	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
+	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
 	{
-		pyr[0] = cvCreateMat( img->rows * _cascade[0]->size.height / min_size.height, img->cols * _cascade[0]->size.width / min_size.width, CV_8UC1 );
-		cvResize( img, pyr[0], CV_INTER_AREA );
+		pyr[0] = NULL;
+		ccv_resample(a, &pyr[0], a->rows * _cascade[0]->size.height / min_size.height, a->cols * _cascade[0]->size.width / min_size.width, CCV_INTER_AREA);
 	} else
-		pyr[0] = img;
+		pyr[0] = a;
 	double sqrt_2 = sqrt(2.);
-	pyr[1] = cvCreateMat( (int)(pyr[0]->rows / sqrt_2), (int)(pyr[0]->cols / sqrt_2), CV_8UC1 );
-	cvResize( pyr[0], pyr[1], CV_INTER_AREA );
+	pyr[1] = NULL;
+	ccv_resample(pyr[0], &pyr[1], (int)(pyr[0]->rows / sqrt_2), (int)(pyr[0]->cols / sqrt_2), CCV_INTER_AREA);
 	int i, j, k, t, x, y;
-	for ( i = 2; i < scale_upto + 2; i += 2 )
+	for (i = 2; i < scale_upto + 2; i += 2)
 	{
-		pyr[i] = cvCreateMat( pyr[i - 2]->rows >> 1, pyr[i - 2]->cols >> 1, CV_8UC1 );
-		cvPyrDown( pyr[i - 2], pyr[i] );
+		pyr[i] = NULL;
+		ccv_sample_down(pyr[i - 2], pyr[i]);
 	}
 	for ( i = 3; i < scale_upto + 2; i += 2 )
 	{
-		pyr[i] = cvCreateMat( pyr[i - 2]->rows >> 1, pyr[i - 2]->cols >> 1, CV_8UC1 );
-		cvPyrDown( pyr[i - 2], pyr[i] );
+		pyr[i] = NULL;
+		ccv_sample_down(pyr[i - 2], pyr[i]);
 	}
-	int* cols = (int*)cvAlloc( (scale_upto + 2) * sizeof(cols[0]) );
-	int* rows = (int*)cvAlloc( (scale_upto + 2) * sizeof(rows[0]) );
-	int** i32c8s = (int**)cvAlloc( (scale_upto + 2) * sizeof(i32c8s[0]) );
-	for ( i = 0; i < scale_upto + 2; ++i )
+	int* cols = (int*)alloca((scale_upto + 2) * sizeof(int));
+	int* rows = (int*)alloca((scale_upto + 2) * sizeof(int));
+	ccv_dense_matrix_t** hogs = (int**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
+	for (i = 0; i < scale_upto + 2; i++)
 	{
 		rows[i] = pyr[i]->rows;
 		cols[i] = pyr[i]->cols;
-		i32c8s[i] = (int*)cvAlloc( (pyr[i]->rows - HOG_BORDER_SIZE * 2) * (pyr[i]->cols - HOG_BORDER_SIZE * 2) * 8 * sizeof(i32c8s[i][0]) );
-		icvCreateHOG( pyr[i], i32c8s[i] );
+		hogs[i] = NULL;
+		ccv_hog(pyr[i], hogs[i], 2 * HOG_BORDER_SIZE + 1);
 	}
-	for ( i = 1; i < scale_upto + 2; ++i )
-		cvReleaseMat( &pyr[i] );
+	for (i = 1; i < scale_upto + 2; i++)
+		ccv_matrix_free(pyr[i]);
 	if ( min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width )
-		cvReleaseMat( &pyr[0] );
-	cvFree( &pyr );
+		ccv_matrix_free(pyr[0]);
 
-	CvMemStorage* temp_storage = cvCreateChildMemStorage( storage );
 	CvSeq* idx_seq;
-	CvSeq* seq = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvSGFComp), temp_storage );
-	CvSeq* seq2 = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvSGFComp), temp_storage );
-	CvSeq* result_seq = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvSGFComp), temp_storage );
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
 	/* detect in multi scale */
-	for ( t = 0; t < count; ++t )
+	for (t = 0; t < count; t++)
 	{
 		CvSGFClassifierCascade* cascade = _cascade[t];
 		float scale_x = (float) min_size.width / (float) cascade->size.width;
 		float scale_y = (float) min_size.height / (float) cascade->size.height;
-		cvClearSeq( seq );
-		for ( i = 0; i < scale_upto; ++i )
+		ccv_array_clear(seq);
+		for (i = 0; i < scale_upto; i++)
 		{
 			int i_rows = rows[i + 2] - HOG_BORDER_SIZE * 2 - (cascade->size.height >> 1);
 			int steps[] = { (cols[i] - HOG_BORDER_SIZE * 2) * 8, (cols[i + 2] - HOG_BORDER_SIZE * 2) * 8 };
 			int cols_pads1 = cols[i + 2] - HOG_BORDER_SIZE * 2 - (cascade->size.width >> 1);
 			int pads1 = (cascade->size.width >> 1) * 8;
 			int pads0 = steps[0] * 2 - (cols_pads1 << 1) * 8;
-			int* i32c8p[] = { i32c8s[i], i32c8s[i + 2] };
-			for ( y = 0; y < i_rows; ++y )
+			int* i32c8p[] = { hogs[i]->data.i, hogs[i + 2]->data.i };
+			for (y = 0; y < i_rows; y++)
 			{
-				for ( x = 0; x < cols_pads1; ++x )
+				for (x = 0; x < cols_pads1; x++)
 				{
 					float sum;
 					int flag = 1;
-					CvSGFStageClassifier* classifier = cascade->stage_classifier;
-					for ( j = 0; j < cascade->count; ++j, ++classifier )
+					ccv_sgf_stage_classifier_t* classifier = cascade->stage_classifier;
+					for (j = 0; j < cascade->count; ++j, ++classifier)
 					{
 						sum = 0;
 						float* alpha = classifier->alpha;
-						CvSGFeature* feature = classifier->feature;
-						for ( k = 0; k < classifier->count; ++k, alpha += 2, ++feature )
-							sum += alpha[icvRunSGFeature( feature, steps, i32c8p )];
-						if ( sum < classifier->threshold )
+						ccv_sgf_feature_t* feature = classifier->feature;
+						for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
+							sum += alpha[__ccv_run_sgf_feature(feature, steps, i32c8p)];
+						if (sum < classifier->threshold)
 						{
 							flag = 0;
 							break;
 						}
 					}
-					if ( flag )
+					if (flag)
 					{
-						CvSGFComp comp;
-						comp.rect = cvRect( (int) ((x * 2 + HOG_BORDER_SIZE) * scale_x), (int) ((y * 2 + HOG_BORDER_SIZE) * scale_y), (int) (cascade->size.width * scale_x), (int) (cascade->size.height * scale_y) );
+						ccv_sgf_comp_t comp;
+						comp.rect = ccv_rect((int)((x * 2 + HOG_BORDER_SIZE) * scale_x), (int)((y * 2 + HOG_BORDER_SIZE) * scale_y), (int)(cascade->size.width * scale_x), (int)(cascade->size.height * scale_y));
 						comp.id = t;
 						comp.neighbors = 1;
 						comp.confidence = sum;
-						cvSeqPush( seq, &comp );
+						ccv_array_push(seq, &comp);
 					}
 					i32c8p[0] += 16;
 					i32c8p[1] += 8;
@@ -945,24 +941,24 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 		/* the following code from OpenCV's haar feature implementation */
 		if( min_neighbors == 0 )
 		{
-			for( i = 0; i < seq->total; i++ )
+			for(i = 0; i < seq->rnum; i++)
 			{
-				CvSGFComp* comp = (CvSGFComp*)cvGetSeqElem( seq, i );
-				cvSeqPush( result_seq, comp );
+				ccv_sgf_comp_t* comp = (ccv_sgf_comp_t*)ccv_array_get(seq, i);
+				ccv_array_push(result_seq, comp);
 			}
 		} else {
 			idx_seq = 0;
-			cvClearSeq( seq2 );
+			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
-			int ncomp = cvSeqPartition( seq, 0, &idx_seq, is_equal_same_class, 0 );
-			CvSGFComp* comps = (CvSGFComp*)cvAlloc( (ncomp + 1) * sizeof(comps[0]) );
-			memset( comps, 0, (ncomp + 1) * sizeof(comps[0]));
+			int ncomp = cvSeqPartition(seq, 0, &idx_seq, __ccv_is_equal_same_class, 0);
+			ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
+			memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
 			// count number of neighbors
-			for( i = 0; i < seq->total; ++i )
+			for(i = 0; i < seq->rnum; i++)
 			{
-				CvSGFComp r1 = *(CvSGFComp*)cvGetSeqElem( seq, i );
-				int idx = *(int*)cvGetSeqElem( idx_seq, i );
+				ccv_sgf_comp_t r1 = *(ccv_sgf_comp_t*)ccv_array_get(seq, i);
+				int idx = *(int*)ccv_array_get(idx_seq, i);
 
 				if (comps[idx].neighbors == 0)
 					comps[idx].confidence = r1.confidence;
@@ -974,74 +970,73 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 				comps[idx].rect.width += r1.rect.width;
 				comps[idx].rect.height += r1.rect.height;
 				comps[idx].id = r1.id;
-				comps[idx].confidence = MAX( comps[idx].confidence, r1.confidence );
+				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
 			}
 
 			// calculate average bounding box
-			for( i = 0; i < ncomp; ++i )
+			for(i = 0; i < ncomp; i++)
 			{
 				int n = comps[i].neighbors;
-				if( n >= min_neighbors )
+				if(n >= min_neighbors)
 				{
-					CvSGFComp comp;
-					comp.rect.x = (comps[i].rect.x * 2 + n)/(2 * n);
-					comp.rect.y = (comps[i].rect.y * 2 + n)/(2 * n);
-					comp.rect.width = (comps[i].rect.width * 2 + n)/(2 * n);
-					comp.rect.height = (comps[i].rect.height * 2 + n)/(2 * n);
+					ccv_sgf_comp_t comp;
+					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
+					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
+					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
+					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
 					comp.neighbors = comps[i].neighbors;
 					comp.id = comps[i].id;
 					comp.confidence = comps[i].confidence;
-
-					cvSeqPush( seq2, &comp );
+					ccv_array_push(seq2, &comp);
 				}
 			}
 
 			// filter out small face rectangles inside large face rectangles
-			for( i = 0; i < seq2->total; ++i )
+			for(i = 0; i < seq2->rnum; i++)
 			{
-				CvSGFComp r1 = *(CvSGFComp*)cvGetSeqElem( seq2, i );
+				ccv_sgf_comp_t r1 = *(ccv_sgf_comp_t*)ccv_array_get(seq2, i);
 				int flag = 1;
 
-				for( j = 0; j < seq2->total; ++j )
+				for(j = 0; j < seq2->rnum; j++)
 				{
-					CvSGFComp r2 = *(CvSGFComp*)cvGetSeqElem( seq2, j );
-					int distance = cvRound( r2.rect.width * 0.5 );
+					ccv_sgf_comp_t r2 = *(ccv_sgf_comp_t*)ccv_array_get(seq2, j);
+					int distance = (int)(r2.rect.width * 0.5 + 0.5);
 
-					if( i != j &&
-						r1.id == r2.id &&
-						r1.rect.x >= r2.rect.x - distance &&
-						r1.rect.y >= r2.rect.y - distance &&
-						r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
-						r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-						(r2.neighbors > MAX( 3, r1.neighbors ) || r1.neighbors < 3) )
+					if(i != j &&
+					   r1.id == r2.id &&
+					   r1.rect.x >= r2.rect.x - distance &&
+					   r1.rect.y >= r2.rect.y - distance &&
+					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+					   (r2.neighbors > MAX( 3, r1.neighbors ) || r1.neighbors < 3))
 					{
 						flag = 0;
 						break;
 					}
 				}
 
-				if( flag )
-					cvSeqPush( result_seq, &r1 );
+				if(flag)
+					ccv_array_push(result_seq, &r1);
 			}
-			cvFree( &comps );
+			free(comps);
 		}
 	}
 
-	CvSeq* result_seq2 = cvCreateSeq( 0, sizeof(CvSeq), sizeof(CvSGFComp), storage );
+	ccv_array_t* result_seq2 = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
 	/* the following code from OpenCV's haar feature implementation */
-	if( flags & CV_SGF_NO_NESTED )
+	if (flags & CV_SGF_NO_NESTED)
 	{
 		idx_seq = 0;
 		// group retrieved rectangles in order to filter out noise
-		int ncomp = cvSeqPartition( result_seq, 0, &idx_seq, is_equal, 0 );
-		CvSGFComp* comps = (CvSGFComp*)cvAlloc( (ncomp + 1) * sizeof(comps[0]) );
-		memset( comps, 0, (ncomp + 1) * sizeof(comps[0]));
+		int ncomp = cvSeqPartition(result_seq, 0, &idx_seq, __ccv_is_equal, 0);
+		ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
+		memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
 		// count number of neighbors
-		for( i = 0; i < result_seq->total; ++i )
+		for(i = 0; i < result_seq->total; i++)
 		{
-			CvSGFComp r1 = *(CvSGFComp*)cvGetSeqElem( result_seq, i );
-			int idx = *(int*)cvGetSeqElem( idx_seq, i );
+			ccv_sgf_comp_t r1 = *(ccv_sgf_comp_t*)ccv_array_get(result_seq, i);
+			int idx = *(int*)ccv_array_get(idx_seq, i);
 
 			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
 			{
@@ -1053,42 +1048,39 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 		}
 
 		// calculate average bounding box
-		for( i = 0; i < ncomp; ++i )
-			if( comps[i].neighbors )
-				cvSeqPush( result_seq2, &comps[i] );
+		for(i = 0; i < ncomp; i++)
+			if(comps[i].neighbors)
+				ccv_array_push(result_seq2, &comps[i]);
 
-		cvFree( &comps );
+		free(comps);
 	} else {
 		for( i = 0; i < result_seq->total; i++ )
 		{
-			CvSGFComp* comp = (CvSGFComp*)cvGetSeqElem( result_seq, i );
-			cvSeqPush( result_seq2, comp );
+			ccv_sgf_comp_t* comp = (ccv_sgf_comp_t*)ccv_array_get(result_seq, i);
+			ccv_array_push(result_seq2, comp);
 		}
 	}
 
-	cvReleaseMemStorage( &temp_storage );
-
 	for ( i = 0; i < scale_upto + 2; ++i )
-		cvFree( &i32c8s[i] );
-	cvFree( &i32c8s );
+		ccv_matrix_free(hogs[i]);
 
 	return result_seq2;
 }
 
 ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory)
 {
-	CvSGFClassifierCascade* cascade = (CvSGFClassifierCascade*)cvAlloc( sizeof(CvSGFClassifierCascade) );
+	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
 	char buf[1024];
-	sprintf( buf, "%s/cascade.txt", directory );
+	sprintf(buf, "%s/cascade.txt", directory);
 	int s, i;
-	FILE* r = fopen( buf, "r" );
-	if ( r != NULL )
-		s = fscanf( r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height );
-	cascade->stage_classifier = (CvSGFStageClassifier*)cvAlloc( cascade->count * sizeof(cascade->stage_classifier[0]) );
-	for ( i = 0; i < cascade->count; ++i )
+	FILE* r = fopen(buf, "r");
+	if (r != NULL)
+		s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
+	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
+	for (i = 0; i < cascade->count; i++)
 	{
-		sprintf( buf, "%s/stage-%d.txt", directory, i );
-		if ( !cvReadSGFStageClassifier( buf, &cascade->stage_classifier[i] ) )
+		sprintf(buf, "%s/stage-%d.txt", directory, i);
+		if (!__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[i]))
 		{
 			cascade->count = i;
 			break;
