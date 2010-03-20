@@ -332,6 +332,11 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 				ccv_set_sparse_matrix_cell(mat, i, csm->index[j], csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
 }
 
+void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols)
+{
+	// TODO: slice a matrix
+}
+
 ccv_array_t* ccv_array_new(int rnum, int rsize)
 {
 	ccv_array_t* array = (ccv_array_t*)malloc(sizeof(ccv_array_t));

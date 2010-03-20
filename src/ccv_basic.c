@@ -479,3 +479,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 }
+
+void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+{
+}
