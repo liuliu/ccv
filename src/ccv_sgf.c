@@ -1,7 +1,9 @@
 #include "ccv.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+#ifdef HAVE_OPENMP
 #include <omp.h>
+#endif
 
 static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
 {
@@ -44,7 +46,7 @@ static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, i
 
 static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, int** negdata, int negnum)
 {
-	int t, i, j, k, x, y;
+	int t, i, j, k;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
 	int isizs0 = cascade->size.width * cascade->size.height * 8;
@@ -59,7 +61,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	gsl_rng_set(rng, (unsigned long int)idcheck);
 
 	ccv_dense_matrix_t* imgs0 = NULL;
-	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2);
+	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2, cascade->size.height + HOG_BORDER_SIZE * 2);
 	ccv_dense_matrix_t* imgs1 = NULL;
 	int rneg = negtotal;
 	for (t = 0; negtotal < negnum; t++)
@@ -74,12 +76,12 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				printf("\n%s file corrupted\n", bgfiles[i]);
 				continue;
 			}
-			if (t % 2 != 0)
-				cvFlip( image, NULL, 1 );
+			// if (t % 2 != 0)
+			//	cvFlip( image, NULL, 1 );
 			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
-				int r = gsl_rng_uniform_int(rng, detected->total);
+				int r = gsl_rng_uniform_int(rng, detected->rnum);
 				int flag = 1;
 				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(detected, r);
 				while (flag) {
@@ -99,10 +101,10 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 					}
 				}
 				idcheck[j] = r;
-				cvSetImageROI(image, *rect);
+				// cvSetImageROI(image, *rect);
 				ccv_dense_matrix_t* temp = ccv_dense_matrix_new(rect->height, rect->width, CCV_8U | CCV_C1, NULL, NULL);
-				cvCopy(image, temp);
-				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CV_INTER_AREA);
+				// cvCopy(image, temp);
+				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CCV_INTER_AREA);
 				ccv_matrix_free(temp);
 				ccv_sample_down(imgs0, &imgs1);
 
@@ -165,6 +167,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			break;
 		rneg = negtotal;
 	}
+	gsl_rng_free(rng);
 	free(idcheck);
 	ccv_matrix_free(imgs0);
 	ccv_matrix_free(imgs1);
@@ -250,7 +253,7 @@ static inline double __ccv_sgf_error_rate(ccv_sgf_feature_t* feature, int** posd
 	return error;
 }
 
-#define less_than( a, b ) ((a) < (b))
+#define less_than(a, b, aux) ((a) < (b))
 CCV_IMPLEMENT_QSORT(__ccv_sort_32f, float, less_than)
 #undef less_than
 
@@ -314,16 +317,16 @@ static inline int __ccv_sgf_exist_gene_feature(ccv_sgf_gene_t* gene, int x, int 
 	return 0;
 }
 
-#define less_than(fit1, fit2) ((fit1).fitness < (fit2).fitness)
+#define less_than(fit1, fit2, aux) ((fit1).fitness < (fit2).fitness)
 static CCV_IMPLEMENT_QSORT(__ccv_sgf_genetic_qsort, ccv_sgf_gene_t, less_than)
 #undef less_than
 
-static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, int* rows, int* steps)
+static inline void __ccv_sgf_randomize_gene(gsl_rng* rng, ccv_sgf_gene_t* gene, int* rows, int* steps)
 {
-	int i, j;
+	int i;
 	do {
-		gene->pk = cvRandInt(rng) % (CCV_SGF_POINT_MAX - 1) + 1;
-		gene->nk = cvRandInt(rng) % (CCV_SGF_POINT_MAX - 1) + 1;
+		gene->pk = gsl_rng_uniform_int(rng, CCV_SGF_POINT_MAX - 1) + 1;
+		gene->nk = gsl_rng_uniform_int(rng, CCV_SGF_POINT_MAX - 1) + 1;
 	} while (gene->pk + gene->nk < CCV_SGF_POINT_MIN); /* a hard restriction of at least 3 points have to be examed */
 	gene->feature.size = ccv_max(gene->pk, gene->nk);
 	gene->age = 0;
@@ -336,9 +339,9 @@ static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, in
 	for (i = 0; i < gene->pk; i++)
 	{
 		do {
-			z = cvRandInt(rng) % 2;
-			x = cvRandInt(rng) % steps[z];
-			y = cvRandInt(rng) % rows[z];
+			z = gsl_rng_uniform_int(rng, 2);
+			x = gsl_rng_uniform_int(rng, steps[z]);
+			y = gsl_rng_uniform_int(rng, rows[z]);
 		} while (__ccv_sgf_exist_gene_feature(gene, x, y, z));
 		gene->feature.pz[i] = z;
 		gene->feature.px[i] = x;
@@ -347,9 +350,9 @@ static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, in
 	for (i = 0; i < gene->nk; i++)
 	{
 		do {
-			z = cvRandInt(rng) % 2;
-			x = cvRandInt(rng) % steps[z];
-			y = cvRandInt(rng) % rows[z];
+			z = gsl_rng_uniform_int(rng, 2);
+			x = gsl_rng_uniform_int(rng, steps[z]);
+			y = gsl_rng_uniform_int(rng, rows[z]);
 		} while ( __ccv_sgf_exist_gene_feature(gene, x, y, z));
 		gene->feature.nz[i] = z;
 		gene->feature.nx[i] = x;
@@ -360,17 +363,18 @@ static inline void __ccv_sgf_randomize_gene(CvRNG* rng, ccv_sgf_gene_t* gene, in
 static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	/* seed (random method) */
-	CvRNG rng = cvRNG((int64)posdata);
+	gsl_rng_env_setup();
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	gsl_rng_set(rng, (unsigned long int)(pw[0] + nw[0]));
 	int i, j;
 	int pnum = ftnum * 100;
-	ccv_sgf_feature_t* gene = (ccv_sgf_feature_t*)malloc( pnum * sizeof(ccv_sgf_feature_t));
+	ccv_sgf_gene_t* gene = (ccv_sgf_gene_t*)malloc( pnum * sizeof(ccv_sgf_gene_t));
 	int rows[] = { size.height, (size.height >> 1) - HOG_BORDER_SIZE };
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	for (i = 0; i < pnum; i++)
-		__ccv_sgf_randomize_gene(&rng, &gene[i], rows, steps);
-	int nthreads = cvGetNumThreads();
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(nthreads) schedule(dynamic)
+		__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
+#ifdef HAVE_OPENMP
+#pragma omp parallel for schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
 	{
@@ -391,26 +395,26 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			++gene[i].age;
 		for (i = ftnum; i < ftnum + mnum; i++)
 		{
-			int parent = cvRandInt(&rng) % ftnum;
+			int parent = gsl_rng_uniform_int(rng, ftnum);
 			memcpy(gene + i, gene + parent, sizeof(ccv_sgf_feature_t));
 			/* three mutation strategy : 1. add, 2. remove, 3. refine */
-			int pnm, pn = cvRandInt(&rng) % 2;
+			int pnm, pn = gsl_rng_uniform_int(rng, 2);
 			int* pnk[] = { &gene[i].pk, &gene[i].nk };
 			int* pnx[] = { gene[i].feature.px, gene[i].feature.nx };
 			int* pny[] = { gene[i].feature.py, gene[i].feature.ny };
 			int* pnz[] = { gene[i].feature.pz, gene[i].feature.nz };
 			int x, y, z;
-			switch (cvRandInt(&rng) % 3)
+			switch (gsl_rng_uniform_int(rng, 3))
 			{
 				case 0: /* add */
 					if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
 						break;
 					while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
-						pn = cvRandInt(&rng) % 2;
+						pn = gsl_rng_uniform_int(rng, 2);
 					do {
-						z = cvRandInt(&rng) % 2;
-						x = cvRandInt(&rng) % steps[z];
-						y = cvRandInt(&rng) % rows[z];
+						z = gsl_rng_uniform_int(rng, 2);
+						x = gsl_rng_uniform_int(rng, steps[z]);
+						y = gsl_rng_uniform_int(rng, rows[z]);
 					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
 					pnz[pn][*pnk[pn]] = z;
 					pnx[pn][*pnk[pn]] = x;
@@ -423,8 +427,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 					if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
 						break;
 					while (*pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
-						pn = cvRandInt(&rng) % 2;
-					for (j = cvRandInt(&rng) % *pnk[pn]; j < *pnk[pn] - 1; j++)
+						pn = gsl_rng_uniform_int(rng, 2);
+					for (j = gsl_rng_uniform_int(rng, *pnk[pn]); j < *pnk[pn] - 1; j++)
 					{
 						pnz[pn][j] = pnz[pn][j + 1];
 						pnx[pn][j] = pnx[pn][j + 1];
@@ -436,11 +440,11 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 					gene[i].age = 0;
 					break;
 				case 2: /* refine */
-					pnm = cvRandInt(&rng) % *pnk[pn];
+					pnm = gsl_rng_uniform_int(rng, *pnk[pn]);
 					do {
-						z = cvRandInt(&rng) % 2;
-						x = cvRandInt(&rng) % steps[z];
-						y = cvRandInt(&rng) % rows[z];
+						z = gsl_rng_uniform_int(rng, 2);
+						x = gsl_rng_uniform_int(rng, steps[z]);
+						y = gsl_rng_uniform_int(rng, rows[z]);
 					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
 					pnz[pn][pnm] = z;
 					pnx[pn][pnm] = x;
@@ -454,8 +458,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			/* hybrid strategy: taking positive points from dad, negative points from mum */
 			int dad, mum;
 			do {
-				dad = cvRandInt(&rng) % ftnum;
-				mum = cvRandInt(&rng) % ftnum;
+				dad = gsl_rng_uniform_int(rng, ftnum);
+				mum = gsl_rng_uniform_int(rng, ftnum);
 			} while (dad == mum || gene[dad].pk + gene[mum].nk < CCV_SGF_POINT_MIN); /* at least 3 points have to be examed */
 			for (j = 0; j < CCV_SGF_POINT_MAX; j++)
 			{
@@ -480,9 +484,9 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			gene[i].age = 0;
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
-			__ccv_sgf_randomize_gene(&rng, &gene[i], rows, steps);
-#ifdef _OPENMP
-#pragma omp parallel for num_threads(nthreads) schedule(dynamic)
+			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
+#ifdef HAVE_OPENMP
+#pragma omp parallel for schedule(dynamic)
 #endif
 		for (i = 0; i < pnum; i++)
 		{
@@ -512,6 +516,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		printf("minimum error achieved in round %d(%d) : %f\n", t, it, min_err);
 	}
+	gsl_rng_free(rng);
 	return best;
 }
 
@@ -816,39 +821,39 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	free(cascade);
 }
 
-static int __ccv_is_equal(const void* _r1, const void* _r2, void*)
+static int __ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
 	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
 	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
-	int distance = int(r1->rect.width * 0.5 + 0.5);
+	int distance = (int)(r1->rect.width * 0.5 + 0.5);
 
 	return r2->rect.x <= r1->rect.x + distance &&
 		   r2->rect.x >= r1->rect.x - distance &&
 		   r2->rect.y <= r1->rect.y + distance &&
 		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= int(r1->rect.width * 1.5 + 0.5) &&
-		   int(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
-static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void*)
+static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
 {
 	const ccv_sgf_comp_t* r1 = (const ccv_sgf_comp_t*)_r1;
 	const ccv_sgf_comp_t* r2 = (const ccv_sgf_comp_t*)_r2;
-	int distance = int(r1->rect.width * 0.5 + 0.5);
+	int distance = (int)(r1->rect.width * 0.5 + 0.5);
 
 	return r2->id == r1->id &&
 		   r2->rect.x <= r1->rect.x + distance &&
 		   r2->rect.x >= r1->rect.x - distance &&
 		   r2->rect.y <= r1->rect.y + distance &&
 		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= int(r1->rect.width * 1.5 + 0.5) &&
-		   int(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
-ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size)
+ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size)
 {
-	int hr = img->rows / min_size.height;
-	int wr = img->cols / min_size.width;
+	int hr = a->rows / min_size.height;
+	int wr = a->cols / min_size.width;
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(sqrt(2.)));
 	/* generate scale-down HOG images */
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
@@ -865,22 +870,22 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 	for (i = 2; i < scale_upto + 2; i += 2)
 	{
 		pyr[i] = NULL;
-		ccv_sample_down(pyr[i - 2], pyr[i]);
+		ccv_sample_down(pyr[i - 2], &pyr[i]);
 	}
 	for ( i = 3; i < scale_upto + 2; i += 2 )
 	{
 		pyr[i] = NULL;
-		ccv_sample_down(pyr[i - 2], pyr[i]);
+		ccv_sample_down(pyr[i - 2], &pyr[i]);
 	}
 	int* cols = (int*)alloca((scale_upto + 2) * sizeof(int));
 	int* rows = (int*)alloca((scale_upto + 2) * sizeof(int));
-	ccv_dense_matrix_t** hogs = (int**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
+	ccv_dense_matrix_t** hogs = (ccv_dense_matrix_t**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
 	for (i = 0; i < scale_upto + 2; i++)
 	{
 		rows[i] = pyr[i]->rows;
 		cols[i] = pyr[i]->cols;
 		hogs[i] = NULL;
-		ccv_hog(pyr[i], hogs[i], 2 * HOG_BORDER_SIZE + 1);
+		ccv_hog(pyr[i], &hogs[i], 2 * HOG_BORDER_SIZE + 1);
 	}
 	for (i = 1; i < scale_upto + 2; i++)
 		ccv_matrix_free(pyr[i]);
@@ -894,7 +899,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 	/* detect in multi scale */
 	for (t = 0; t < count; t++)
 	{
-		CvSGFClassifierCascade* cascade = _cascade[t];
+		ccv_sgf_classifier_cascade_t* cascade = _cascade[t];
 		float scale_x = (float) min_size.width / (float) cascade->size.width;
 		float scale_y = (float) min_size.height / (float) cascade->size.height;
 		ccv_array_clear(seq);
@@ -957,7 +962,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 			idx_seq = NULL;
 			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
-			int ncomp = ccv_array_group(seq, 0, &idx_seq, __ccv_is_equal_same_class, 0);
+			int ncomp = ccv_array_group(seq, &idx_seq, __ccv_is_equal_same_class, 0);
 			ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
 			memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
@@ -1015,7 +1020,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 					   r1.rect.y >= r2.rect.y - distance &&
 					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
 					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-					   (r2.neighbors > MAX( 3, r1.neighbors ) || r1.neighbors < 3))
+					   (r2.neighbors > ccv_max(3, r1.neighbors) || r1.neighbors < 3))
 					{
 						flag = 0;
 						break;
@@ -1035,17 +1040,17 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 
 	ccv_array_t* result_seq2;
 	/* the following code from OpenCV's haar feature implementation */
-	if (flags & CV_SGF_NO_NESTED)
+	if (flags & CCV_SGF_NO_NESTED)
 	{
-		result_seq2 =  = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
+		result_seq2 = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
 		idx_seq = NULL;
 		// group retrieved rectangles in order to filter out noise
-		int ncomp = ccv_array_group(result_seq, 0, &idx_seq, __ccv_is_equal, 0);
+		int ncomp = ccv_array_group(result_seq, &idx_seq, __ccv_is_equal, 0);
 		ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
 		memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
 		// count number of neighbors
-		for(i = 0; i < result_seq->total; i++)
+		for(i = 0; i < result_seq->rnum; i++)
 		{
 			ccv_sgf_comp_t r1 = *(ccv_sgf_comp_t*)ccv_array_get(result_seq, i);
 			int idx = *(int*)ccv_array_get(idx_seq, i);
