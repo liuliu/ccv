@@ -1,4 +1,6 @@
 #include "ccv.h"
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
 #include <omp.h>
 
 static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
@@ -50,7 +52,12 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	int steps[] = { cascade->size.width * 8, ((cascade->size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	printf("preparing negative data ...  0%%");
 	int* idcheck = (int*)malloc(negnum * sizeof(int));
-	CvRNG rng = cvRNG((int64)idcheck);
+
+	gsl_rng_env_setup();
+
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	gsl_rng_set(rng, (unsigned long int)idcheck);
+
 	ccv_dense_matrix_t* imgs0 = NULL;
 	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2);
 	ccv_dense_matrix_t* imgs1 = NULL;
@@ -72,7 +79,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
-				int r = cvRandInt(&rng) % detected->total;
+				int r = gsl_rng_uniform_int(rng, detected->total);
 				int flag = 1;
 				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(detected, r);
 				while (flag) {
@@ -81,14 +88,14 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 						if (r == idcheck[k])
 						{
 							flag = 1;
-							r = cvRandInt(&rng) % detected->rnum;
+							r = gsl_rng_uniform_int(rng, detected->rnum);
 							break;
 						}
 					rect = (ccv_rect_t*)ccv_array_get(detected, r);
 					if ((rect->x < 0) || (rect->y < 0) || (rect->width + rect->x >= image->cols) || (rect->height + rect->y >= image->rows))
 					{
 						flag = 1;
-						r = cvRandInt(&rng) % detected->rnum;
+						r = gsl_rng_uniform_int(rng, detected->rnum);
 					}
 				}
 				idcheck[j] = r;
@@ -880,7 +887,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 	if ( min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width )
 		ccv_matrix_free(pyr[0]);
 
-	CvSeq* idx_seq;
+	ccv_array_t* idx_seq;
 	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
 	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
 	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
@@ -947,10 +954,10 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 				ccv_array_push(result_seq, comp);
 			}
 		} else {
-			idx_seq = 0;
+			idx_seq = NULL;
 			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
-			int ncomp = cvSeqPartition(seq, 0, &idx_seq, __ccv_is_equal_same_class, 0);
+			int ncomp = ccv_array_group(seq, 0, &idx_seq, __ccv_is_equal_same_class, 0);
 			ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
 			memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
@@ -1018,17 +1025,22 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 				if(flag)
 					ccv_array_push(result_seq, &r1);
 			}
+			ccv_array_free(idx_seq);
 			free(comps);
 		}
 	}
 
-	ccv_array_t* result_seq2 = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
+	ccv_array_free(seq);
+	ccv_array_free(seq2);
+
+	ccv_array_t* result_seq2;
 	/* the following code from OpenCV's haar feature implementation */
 	if (flags & CV_SGF_NO_NESTED)
 	{
-		idx_seq = 0;
+		result_seq2 =  = ccv_array_new(64, sizeof(ccv_sgf_comp_t));
+		idx_seq = NULL;
 		// group retrieved rectangles in order to filter out noise
-		int ncomp = cvSeqPartition(result_seq, 0, &idx_seq, __ccv_is_equal, 0);
+		int ncomp = ccv_array_group(result_seq, 0, &idx_seq, __ccv_is_equal, 0);
 		ccv_sgf_comp_t* comps = (ccv_sgf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_sgf_comp_t));
 		memset(comps, 0, (ncomp + 1) * sizeof(ccv_sgf_comp_t));
 
@@ -1052,13 +1064,10 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 			if(comps[i].neighbors)
 				ccv_array_push(result_seq2, &comps[i]);
 
+		ccv_array_free(result_seq);
 		free(comps);
 	} else {
-		for( i = 0; i < result_seq->total; i++ )
-		{
-			ccv_sgf_comp_t* comp = (ccv_sgf_comp_t*)ccv_array_get(result_seq, i);
-			ccv_array_push(result_seq2, comp);
-		}
+		result_seq2 = result_seq;
 	}
 
 	for ( i = 0; i < scale_upto + 2; ++i )
