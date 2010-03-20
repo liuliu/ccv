@@ -200,24 +200,24 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 
 #define __ccv_indice_less_than(i1, i2, aux) ((i1) < (i2))
 #define __ccv_swap_indice_and_uchar_data(i1, i2, array, aux, t) {  \
-	unsigned char td = (aux)[(int)(&(i1) - (array))];              \
+	unsigned char td = (aux)[(int)(&(i1) - (array))];			  \
 	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
-	(aux)[(int)(&(i2) - (array))] = td;                            \
+	(aux)[(int)(&(i2) - (array))] = td;							\
 	CCV_SWAP(i1, i2, t); }
-#define __ccv_swap_indice_and_int_data(i1, i2, array, aux, t) {    \
-	int td = (aux)[(int)(&(i1) - (array))];                        \
+#define __ccv_swap_indice_and_int_data(i1, i2, array, aux, t) {	\
+	int td = (aux)[(int)(&(i1) - (array))];						\
 	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
-	(aux)[(int)(&(i2) - (array))] = td;                            \
+	(aux)[(int)(&(i2) - (array))] = td;							\
 	CCV_SWAP(i1, i2, t); }
 #define __ccv_swap_indice_and_float_data(i1, i2, array, aux, t) {  \
-	float td = (aux)[(int)(&(i1) - (array))];                      \
+	float td = (aux)[(int)(&(i1) - (array))];					  \
 	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
-	(aux)[(int)(&(i2) - (array))] = td;                            \
+	(aux)[(int)(&(i2) - (array))] = td;							\
 	CCV_SWAP(i1, i2, t); }
 #define __ccv_swap_indice_and_double_data(i1, i2, array, aux, t) { \
-	double td = (aux)[(int)(&(i1) - (array))];                     \
+	double td = (aux)[(int)(&(i1) - (array))];					 \
 	(aux)[(int)(&(i1) - (array))] = (aux)[(int)(&(i2) - (array))]; \
-	(aux)[(int)(&(i2) - (array))] = td;                            \
+	(aux)[(int)(&(i2) - (array))] = td;							\
 	CCV_SWAP(i1, i2, t); }
 
 CCV_IMPLEMENT_QSORT_EX(__ccv_indice_uchar_sort, int, __ccv_indice_less_than, __ccv_swap_indice_and_uchar_data, unsigned char*);
@@ -362,4 +362,94 @@ void ccv_array_free(ccv_array_t* array)
 {
 	free(array->data);
 	free(array);
+}
+
+typedef struct ccv_ptree_node_t
+{
+	struct ccv_ptree_node_t* parent;
+	void* element;
+	int rank;
+} ccv_ptree_node_t;
+
+/* the code for grouping array is adopted from OpenCV's cvSeqPartition func, it is essentially a find-union algorithm */
+int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_func gfunc, void* data)
+{
+	int i, j;
+	ccv_ptree_node_t* node = (ccv_ptree_node_t*)malloc(array->rnum * sizeof(ccv_ptree_node_t));
+	for (i = 0; i < array->rnum; i++)
+	{
+		node[i].parent = NULL;
+		node[i].element = ccv_array_get(array, i);
+		node[i].rank = 0;
+	}
+	for (i = 0; i < array->rnum; i++)
+	{
+		if (!node[i].element)
+			continue;
+		ccv_ptree_node_t* root = node + i;
+		while (root->parent)
+			root = root->parent;
+		for (j = 0; j < array->rnum; j++)
+		{
+			if( i != j && node[j].element && gfunc(node[i].element, node[j].element, data))
+			{
+				ccv_ptree_node_t* root2 = node + j;
+
+				while(root2->parent)
+					root2 = root2->parent;
+
+				if(root2 != root)
+				{
+					if(root->rank > root2->rank)
+						root2->parent = root;
+					else
+					{
+						root->parent = root2;
+						root2->rank += root->rank == root2->rank;
+						root = root2;
+					}
+
+					/* compress path from node2 to the root: */
+					ccv_ptree_node_t* node2 = node + j;
+					while(node2->parent)
+					{
+						ccv_ptree_node_t* temp = node2;
+						node2 = node2->parent;
+						temp->parent = root;
+					}
+
+					/* compress path from node to the root: */
+					node2 = node;
+					while(node2->parent)
+					{
+						ccv_ptree_node_t* temp = node2;
+						node2 = node2->parent;
+						temp->parent = root;
+					}
+				}
+			}
+		}
+	}
+	if (*index == NULL)
+		*index = ccv_array_new(array->rnum, sizeof(int));
+	else
+		ccv_array_clear(*index);
+	ccv_array_t* idx = *index;
+
+	int class_idx = 0;
+	for(i = 0; i < array->rnum; i++)
+	{
+		j = -1;
+		ccv_ptree_node_t* node1 = node + i;
+		if(node1->element)
+		{
+			while(node1->parent)
+				node1 = node1->parent;
+			if(node1->rank >= 0)
+				node1->rank = ~class_idx++;
+			j = ~node1->rank;
+		}
+		ccv_array_push(idx, &j);
+	}
+	return class_idx;
 }
