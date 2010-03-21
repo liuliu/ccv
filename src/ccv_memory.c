@@ -195,7 +195,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 			return mat;
 		}
 	}
-	mat = (ccv_dense_matrix_t*)malloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((rows * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * cols));
+	mat = (ccv_dense_matrix_t*)malloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * rows));
 	if (sig != NULL)
 		memcpy(mat->sig, sig, 20);
 	else

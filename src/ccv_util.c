@@ -334,10 +334,44 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols)
 {
-	int type = *(int*)mat;
+	int type = *(int*)a;
 	if (type & CCV_MATRIX_DENSE)
 	{
-		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
+		ccv_dense_matrix_t* da = (ccv_dense_matrix_t*)a;
+		assert(y >= 0 && y + rows <= da->rows && x >= 0 && x + cols <= da->cols);
+		int sig[5];
+		char identifier[128];
+		memset(identifier, 0, 128);
+		sprintf(identifier, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
+		ccv_matrix_generate_signature(identifier, 128, sig, da->sig, NULL);
+		ccv_dense_matrix_t* db;
+		if (*b == NULL)
+		{
+			*b = db = ccv_dense_matrix_new(rows, cols, da->type, NULL, sig);
+			if (db->type & CCV_GARBAGE)
+			{
+				db->type &= ~CCV_GARBAGE;
+				return;
+			}
+		} else {
+			db = *b;
+			assert(da->type == db->type);
+		}
+		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
+		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
+		unsigned char* b_ptr = db->data.ptr;
+#define for_block(__for_set, __for_get) \
+		for (i = 0; i < rows; i++) \
+		{ \
+			for (j = 0; j < cols * ch; j++) \
+			{ \
+				__for_set(b_ptr, j, __for_get(a_ptr, j)); \
+			} \
+			a_ptr += da->step; \
+			b_ptr += db->step; \
+		}
+		ccv_matrix_setter(db->type, ccv_matrix_getter, da->type, for_block);
+#undef for_block
 	} else if (type & CCV_MATRIX_SPARSE) {
 	}
 }
