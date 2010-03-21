@@ -480,6 +480,70 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 }
 
+void __ccv_flip_y_self(ccv_dense_matrix_t* a)
+{
+	int i;
+	unsigned char* buffer = (unsigned char*)alloca(a->step);
+	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* b_ptr = a->data.ptr + (a->rows - 1) * a->step;
+	for (i = 0; i < a->rows / 2; i++)
+	{
+		memcpy(buffer, a_ptr, a->step);
+		memcpy(a_ptr, b_ptr, a->step);
+		memcpy(b_ptr, buffer, a->step);
+		a_ptr += a->step;
+		b_ptr -= a->step;
+	}
+}
+
+void __ccv_flip_x_self(ccv_dense_matrix_t* a)
+{
+	int i, j;
+	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL_NUM(a->type);
+	unsigned char* buffer = (unsigned char*)alloca(len);
+	unsigned char* a_ptr = a->data.ptr;
+	for (i = 0; i < a->rows; i++)
+	{
+		for (j = 0; j < a->cols / 2; j++)
+		{
+			memcpy(buffer, a_ptr + j * len, len);
+			memcpy(a_ptr + j * len, a_ptr + (a->cols - 1 - j) * len, len);
+			memcpy(a_ptr + (a->cols - 1 - j) * len, buffer, len);
+		}
+		a_ptr += a->step;
+	}
+}
+
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
+	int sig[5];
+	memcpy(sig, a->sig, 20);
+	if (type & CCV_FLIP_Y)
+		ccv_matrix_generate_signature("ccv_flip_y", 10, sig, sig, NULL);
+	if (type & CCV_FLIP_X)
+		ccv_matrix_generate_signature("ccv_flip_x", 10, sig, sig, NULL);
+	ccv_dense_matrix_t* db;
+	if (b == NULL)
+	{
+		db = a;
+		memcpy(a->sig, sig, 20);
+	} else {
+		if (*b == NULL)
+		{
+			*b = db = ccv_dense_matrix_new(a->rows, a->cols, a->type, NULL, sig);
+			if (db->type & CCV_GARBAGE)
+			{
+				db->type &= ~CCV_GARBAGE;
+				return;
+			}
+		} else {
+			db = *b;
+			assert(db->rows == a->rows && db->cols == a->cols && db->type == a->type);
+		}
+		memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
+	}
+	if (type & CCV_FLIP_Y)
+		__ccv_flip_y_self(db);
+	if (type & CCV_FLIP_X)
+		__ccv_flip_x_self(db);
 }
