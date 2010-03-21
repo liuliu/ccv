@@ -4,7 +4,7 @@ CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
 TARGETS = sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test daisy_test daisy_kmeans kmeans array_test group_test
 
-all: libccv.a $(TARGETS)
+all: $(TARGETS)
 
 clean:
 	rm *.o ../src/*.o ../src/libccv.a $(TARGETS)

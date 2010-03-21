@@ -334,7 +334,12 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols)
 {
-	// TODO: slice a matrix
+	int type = *(int*)mat;
+	if (type & CCV_MATRIX_DENSE)
+	{
+		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
+	} else if (type & CCV_MATRIX_SPARSE) {
+	}
 }
 
 ccv_array_t* ccv_array_new(int rnum, int rsize)
