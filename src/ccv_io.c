@@ -8,9 +8,10 @@
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
 	FILE* fd;
+	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;
 	if (type & CCV_SERIAL_ANY_FILE)
 		fd = fopen(in, "rb");
-	if (type == CCV_SERIAL_ANY_FILE)
+	if ((type & 0XFF) == CCV_SERIAL_ANY_FILE)
 	{
 		unsigned char sig[8];
 		(void) fread(sig, 1, 8, fd);
@@ -21,14 +22,14 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 		fseek(fd, 0, SEEK_SET);
 
 	}
-	switch (type)
+	switch (type & 0XFF)
 	{
 		case CCV_SERIAL_JPEG_FILE:
-			__ccv_unserialize_jpeg_fd(fd, x);
+			__ccv_unserialize_jpeg_fd(fd, x, ctype);
 			ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
 			break;
 		case CCV_SERIAL_PNG_FILE:
-			__ccv_unserialize_png_fd(fd, x);
+			__ccv_unserialize_png_fd(fd, x, ctype);
 			ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
 			break;
 	}
