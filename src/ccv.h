@@ -249,6 +249,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
 void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
+void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols);
 
 /* basic data structures */
 
@@ -331,6 +332,7 @@ enum {
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
