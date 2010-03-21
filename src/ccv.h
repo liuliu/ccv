@@ -158,19 +158,19 @@ void ccv_garbage_collect();
 #define __ccv_get_32f_value(ptr, i) ((float*)(ptr))[(i)]
 #define __ccv_get_64f_value(ptr, i) ((double*)(ptr))[(i)]
 #define __ccv_get_8u_value(ptr, i) ((unsigned char*)(ptr))[(i)]
-#define ccv_matrix_getter(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_getter(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_get_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_get_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_get_64f_value); break; } \
 	default: { block(rest, __ccv_get_8u_value); } } }
 
-#define ccv_matrix_getter_a(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_getter_a(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_get_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_get_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_get_64f_value); break; } \
 	default: { block(rest, __ccv_get_8u_value); } } }
 
-#define ccv_matrix_getter_b(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_getter_b(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_get_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_get_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_get_64f_value); break; } \
@@ -180,23 +180,29 @@ void ccv_garbage_collect();
 #define __ccv_set_32f_value(ptr, i, value) ((float*)(ptr))[(i)] = (float)(value)
 #define __ccv_set_64f_value(ptr, i, value) ((double*)(ptr))[(i)] = (double)(value)
 #define __ccv_set_8u_value(ptr, i, value) ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value), 0, 255)
-#define ccv_matrix_setter(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_setter(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_set_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_set_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_set_64f_value); break; } \
 	default: { block(rest, __ccv_set_8u_value); } } }
 
-#define ccv_matrix_setter_a(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_setter_a(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_set_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_set_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_set_64f_value); break; } \
 	default: { block(rest, __ccv_set_8u_value); } } }
 
-#define ccv_matrix_setter_b(type, block ,rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+#define ccv_matrix_setter_b(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(rest, __ccv_set_32s_value); break; } \
 	case CCV_32F: { block(rest, __ccv_set_32f_value); break; } \
 	case CCV_64F: { block(rest, __ccv_set_64f_value); break; } \
 	default: { block(rest, __ccv_set_8u_value); } } }
+
+#define ccv_matrix_setter_and_getter(type, block, rest...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(rest, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
+	case CCV_32F: { block(rest, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
+	case CCV_64F: { block(rest, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
+	default: { block(rest, __ccv_set_8u_value, __ccv_get_8u_value); } } }
 
 /* basic io */
 enum {
