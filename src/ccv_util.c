@@ -360,7 +360,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
 		unsigned char* b_ptr = db->data.ptr;
-#define for_block(__for_set, __for_get) \
+#define for_block(dummy, __for_set, __for_get) \
 		for (i = 0; i < rows; i++) \
 		{ \
 			for (j = 0; j < cols * ch; j++) \
@@ -370,7 +370,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 			a_ptr += da->step; \
 			b_ptr += db->step; \
 		}
-		ccv_matrix_setter(db->type, ccv_matrix_getter, da->type, for_block);
+		ccv_matrix_setter_and_getter(da->type, for_block);
 #undef for_block
 	} else if (type & CCV_MATRIX_SPARSE) {
 	}
