@@ -332,6 +332,12 @@ enum {
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+
+enum {
+	CCV_FLIP_X = 0x01,
+	CCV_FLIP_Y = 0x02,
+};
+
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 /* modern computer vision algorithms */

@@ -355,7 +355,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 			}
 		} else {
 			db = *b;
-			assert(da->type == db->type);
+			assert(da->type == db->type && db->rows == rows && db->cols == cols);
 		}
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
