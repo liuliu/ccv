@@ -70,7 +70,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 		{
 			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
 			ccv_dense_matrix_t* image = NULL;
-			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_ANY_FILE);
+			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 			if (image == NULL)
 			{
 				printf("\n%s file corrupted\n", bgfiles[i]);
@@ -527,7 +527,7 @@ int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t
 	stat |= fscanf(r, "%d", &classifier->count);
 	stat |= fscanf(r, "%f", &classifier->threshold);
 	classifier->feature = (ccv_sgf_feature_t*)malloc(classifier->count * sizeof(ccv_sgf_feature_t));
-	classifier->alpha = (float*)malloc(classifier->count * 2 * sizeof(ccv_sgf_feature_t));
+	classifier->alpha = (float*)malloc(classifier->count * 2 * sizeof(float));
 	int i, j;
 	for (i = 0; i < classifier->count; i++)
 	{
@@ -630,7 +630,7 @@ static int __ccv_save_sgf_cacade_training_state(const char* file, int i, int k, 
 	return 0;
 }
 
-void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_params_t params)
+void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_param_t params)
 {
 	int i, j, k;
 	/* allocate memory for usage */
@@ -1093,7 +1093,7 @@ ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* direct
 	for (i = 0; i < cascade->count; i++)
 	{
 		sprintf(buf, "%s/stage-%d.txt", directory, i);
-		if (!__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[i]))
+		if (__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[i]) < 0)
 		{
 			cascade->count = i;
 			break;

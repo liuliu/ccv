@@ -2,7 +2,7 @@ CC = clang
 LDFLAGS = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm
 CXXFLAGS = -O3 -msse2 -Wall -I"../src"
 
-TARGETS = sgfdetect
+TARGETS = sgfdetect sgfcreate
 
 all: libccv.a $(TARGETS)
 
