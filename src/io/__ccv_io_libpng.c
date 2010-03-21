@@ -1,4 +1,4 @@
-static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x)
+static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, type)
 {
 	png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
 	png_infop info_ptr = png_create_info_struct(png_ptr);
@@ -16,7 +16,7 @@ static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x)
 	
 	ccv_dense_matrix_t* im = *x;
 	if (im == NULL)
-		*x = im = ccv_dense_matrix_new((int) height, (int) width, CCV_8U | ((color_type == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), NULL, NULL);
+		*x = im = ccv_dense_matrix_new((int) height, (int) width, (type) ? type : CCV_8U | ((color_type == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), NULL, NULL);
 
 	png_set_strip_alpha(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_PALETTE)

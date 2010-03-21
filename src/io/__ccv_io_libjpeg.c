@@ -144,7 +144,7 @@ static int __ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned cha
  * based on a message of Laurent Pinchart on the video4linux mailing list
  ***************************************************************************/
 
-static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x)
+static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	struct jpeg_decompress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;
@@ -165,7 +165,7 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x)
 	
 	ccv_dense_matrix_t* im = *x;
 	if (im == NULL)
-		*x = im = ccv_dense_matrix_new(cinfo.image_height, cinfo.image_width, CCV_8U | ((cinfo.num_components > 1) ? CCV_C3 : CCV_C1), NULL, NULL);
+		*x = im = ccv_dense_matrix_new(cinfo.image_height, cinfo.image_width, (type) ? type : CCV_8U | ((cinfo.num_components > 1) ? CCV_C3 : CCV_C1), NULL, NULL);
 
 	/* yes, this is a mjpeg image format, so load the correct huffman table */
 	if (cinfo.ac_huff_tbl_ptrs[0] == NULL && cinfo.ac_huff_tbl_ptrs[1] == NULL && cinfo.dc_huff_tbl_ptrs[0] == NULL && cinfo.dc_huff_tbl_ptrs[1] == NULL)
