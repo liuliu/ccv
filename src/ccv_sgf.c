@@ -76,8 +76,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				printf("\n%s file corrupted\n", bgfiles[i]);
 				continue;
 			}
-			// if (t % 2 != 0)
-			//	cvFlip( image, NULL, 1 );
+			if (t % 2 != 0)
+				ccv_flip(image, NULL, CCV_FLIP_X);
 			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
@@ -101,9 +101,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 					}
 				}
 				idcheck[j] = r;
-				// cvSetImageROI(image, *rect);
-				ccv_dense_matrix_t* temp = ccv_dense_matrix_new(rect->height, rect->width, CCV_8U | CCV_C1, NULL, NULL);
-				// cvCopy(image, temp);
+				ccv_dense_matrix_t* temp = NULL;
+				ccv_slice(image, &temp, rect->y, rect->x, rect->height, rect->width);
 				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CCV_INTER_AREA);
 				ccv_matrix_free(temp);
 				ccv_sample_down(imgs0, &imgs1);
