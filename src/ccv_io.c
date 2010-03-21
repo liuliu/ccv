@@ -8,6 +8,7 @@
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
 	FILE* fd;
+	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;
 	if (type & CCV_SERIAL_ANY_FILE)
 		fd = fopen(in, "rb");
 	if ((type & 0XFF) == CCV_SERIAL_ANY_FILE)
@@ -21,7 +22,6 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 		fseek(fd, 0, SEEK_SET);
 
 	}
-	int ctype = (type & 0xF00) >> 8;
 	switch (type & 0XFF)
 	{
 		case CCV_SERIAL_JPEG_FILE:
