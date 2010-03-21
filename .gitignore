@@ -18,4 +18,8 @@ test/opencv/*.swp
 test/opencv/*.jpg
 test/opencv/*.png
 test/opencv/tags
-test/w*
+test/w1/
+test/w2/
+test/w3/
+app/*.jpg
+app/data/
