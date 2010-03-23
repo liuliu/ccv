@@ -4,6 +4,7 @@
 
 #include "io/__ccv_io_libjpeg.c"
 #include "io/__ccv_io_libpng.c"
+#include "io/__ccv_io_bmp.c"
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
@@ -19,9 +20,11 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 			type = CCV_SERIAL_PNG_FILE;
 		else if (memcmp(sig, "\xff\xd8\xff", 3) == 0)
 			type = CCV_SERIAL_JPEG_FILE;
+		else if (memcmp(sig, "BM", 2) == 0)
+			type = CCV_SERIAL_BMP_FILE;
 		fseek(fd, 0, SEEK_SET);
-
 	}
+	ctype = CCV_8U | CCV_C3;
 	switch (type & 0XFF)
 	{
 		case CCV_SERIAL_JPEG_FILE:
@@ -32,6 +35,11 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 			__ccv_unserialize_png_fd(fd, x, ctype);
 			ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
 			break;
+		case CCV_SERIAL_BMP_FILE:
+			__ccv_unserialize_bmp_fd(fd, x, ctype);
+			ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
+			break;
+
 	}
 	if (type & CCV_SERIAL_ANY_FILE)
 		fclose(fd);
