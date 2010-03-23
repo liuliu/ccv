@@ -271,7 +271,7 @@ static void __ccv_sgf_eval_data(ccv_sgf_stage_classifier_t* classifier, int** po
 			sum += alpha[__ccv_run_sgf_feature(feature, steps, i32c8)];
 		peval[i] = sum;
 	}
-	for (i = 0; i < negnum; j++)
+	for (i = 0; i < negnum; i++)
 	{
 		int* i32c8[] = { negdata[i], negdata[i] + isizs0 };
 		float sum = 0;
@@ -367,7 +367,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	gsl_rng_set(rng, (unsigned long int)(pw[0] + nw[0]));
 	int i, j;
 	int pnum = ftnum * 100;
-	ccv_sgf_gene_t* gene = (ccv_sgf_gene_t*)malloc( pnum * sizeof(ccv_sgf_gene_t));
+	ccv_sgf_gene_t* gene = (ccv_sgf_gene_t*)malloc(pnum * sizeof(ccv_sgf_gene_t));
 	int rows[] = { size.height, (size.height >> 1) - HOG_BORDER_SIZE };
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	for (i = 0; i < pnum; i++)
@@ -395,7 +395,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		for (i = ftnum; i < ftnum + mnum; i++)
 		{
 			int parent = gsl_rng_uniform_int(rng, ftnum);
-			memcpy(gene + i, gene + parent, sizeof(ccv_sgf_feature_t));
+			memcpy(gene + i, gene + parent, sizeof(ccv_sgf_gene_t));
 			/* three mutation strategy : 1. add, 2. remove, 3. refine */
 			int pnm, pn = gsl_rng_uniform_int(rng, 2);
 			int* pnk[] = { &gene[i].pk, &gene[i].nk };
@@ -403,54 +403,58 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			int* pny[] = { gene[i].feature.py, gene[i].feature.ny };
 			int* pnz[] = { gene[i].feature.pz, gene[i].feature.nz };
 			int x, y, z;
-			switch (gsl_rng_uniform_int(rng, 3))
-			{
-				case 0: /* add */
-					if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
+			int victim, decay = 1;
+			do {
+				switch (gsl_rng_uniform_int(rng, 3))
+				{
+					case 0: /* add */
+						if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
+							break;
+						while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
+							pn = gsl_rng_uniform_int(rng, 2);
+						do {
+							z = gsl_rng_uniform_int(rng, 2);
+							x = gsl_rng_uniform_int(rng, steps[z]);
+							y = gsl_rng_uniform_int(rng, rows[z]);
+						} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
+						pnz[pn][*pnk[pn]] = z;
+						pnx[pn][*pnk[pn]] = x;
+						pny[pn][*pnk[pn]] = y;
+						++(*pnk[pn]);
+						gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
+						decay = gene[i].age = 0;
 						break;
-					while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
-						pn = gsl_rng_uniform_int(rng, 2);
-					do {
-						z = gsl_rng_uniform_int(rng, 2);
-						x = gsl_rng_uniform_int(rng, steps[z]);
-						y = gsl_rng_uniform_int(rng, rows[z]);
-					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
-					pnz[pn][*pnk[pn]] = z;
-					pnx[pn][*pnk[pn]] = x;
-					pny[pn][*pnk[pn]] = y;
-					++(*pnk[pn]);
-					gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
-					gene[i].age = 0;
-					break;
-				case 1: /* remove */
-					if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
+					case 1: /* remove */
+						if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
+							break;
+						while (*pnk[pn] - 1 <= 0) // || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
+							pn = gsl_rng_uniform_int(rng, 2);
+						victim = gsl_rng_uniform_int(rng, *pnk[pn]);
+						for (j = victim; j < *pnk[pn] - 1; j++)
+						{
+							pnz[pn][j] = pnz[pn][j + 1];
+							pnx[pn][j] = pnx[pn][j + 1];
+							pny[pn][j] = pny[pn][j + 1];
+						}
+						pnz[pn][*pnk[pn] - 1] = -1;
+						--(*pnk[pn]);
+						gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
+						decay = gene[i].age = 0;
 						break;
-					while (*pnk[pn] - 1 <= 0 || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
-						pn = gsl_rng_uniform_int(rng, 2);
-					for (j = gsl_rng_uniform_int(rng, *pnk[pn]); j < *pnk[pn] - 1; j++)
-					{
-						pnz[pn][j] = pnz[pn][j + 1];
-						pnx[pn][j] = pnx[pn][j + 1];
-						pny[pn][j] = pny[pn][j + 1];
-					}
-					pnz[pn][*pnk[pn] - 1] = -1;
-					--(*pnk[pn]);
-					gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
-					gene[i].age = 0;
-					break;
-				case 2: /* refine */
-					pnm = gsl_rng_uniform_int(rng, *pnk[pn]);
-					do {
-						z = gsl_rng_uniform_int(rng, 2);
-						x = gsl_rng_uniform_int(rng, steps[z]);
-						y = gsl_rng_uniform_int(rng, rows[z]);
-					} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
-					pnz[pn][pnm] = z;
-					pnx[pn][pnm] = x;
-					pny[pn][pnm] = y;
-					gene[i].age = 0;
-					break;
-			}
+					case 2: /* refine */
+						pnm = gsl_rng_uniform_int(rng, *pnk[pn]);
+						do {
+							z = gsl_rng_uniform_int(rng, 2);
+							x = gsl_rng_uniform_int(rng, steps[z]);
+							y = gsl_rng_uniform_int(rng, rows[z]);
+						} while (__ccv_sgf_exist_gene_feature(&gene[i], x, y, z));
+						pnz[pn][pnm] = z;
+						pnx[pn][pnm] = x;
+						pny[pn][pnm] = y;
+						decay = gene[i].age = 0;
+						break;
+				}
+			} while (decay);
 		}
 		for (i = ftnum + mnum; i < ftnum + mnum + hnum; i++)
 		{
@@ -620,7 +624,7 @@ static int __ccv_resume_sgf_cascade_training_state(const char* file, int* i, int
 	for (j = 0; j < posnum; j++)
 	{
 		stat |= fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
-		pw[j] = imdi.db;
+		pw[j] = dbi.db;
 	}
 	for (j = 0; j < negnum; j++)
 	{
