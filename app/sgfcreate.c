@@ -1,9 +1,17 @@
 #include "ccv.h"
 
+void print_help()
+{
+	printf("format: sgfcreate posfile posnum negfile negnum\n");
+}
+
 int main(int argc, char** argv)
 {
 	if (argc != 5)
+	{
+		print_help();
 		return -1;
+	}
 	int i, rt;
 	int posnum = atoi(argv[2]);
 	FILE* pf = fopen(argv[1], "r");
