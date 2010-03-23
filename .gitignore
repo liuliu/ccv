@@ -22,4 +22,5 @@ test/w1/
 test/w2/
 test/w3/
 app/*.jpg
-app/data/
+app/data/*
+data/*
