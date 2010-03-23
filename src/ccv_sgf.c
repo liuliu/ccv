@@ -154,7 +154,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 						break;
 				}
 			}
-
+			ccv_array_free(detected);
 			ccv_matrix_free(image);
 			ccv_garbage_collect();
 			printf("\rpreparing negative data ... %2d%%", 100 * negtotal / negnum);
@@ -525,7 +525,9 @@ int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t
 	if (r == NULL) return -1;
 	int stat = 0;
 	stat |= fscanf(r, "%d", &classifier->count);
-	stat |= fscanf(r, "%f", &classifier->threshold);
+	union { float fl; int i; } fli;
+	stat |= fscanf(r, "%d", &fli.i);
+	classifier->threshold = fli.fl;
 	classifier->feature = (ccv_sgf_feature_t*)malloc(classifier->count * sizeof(ccv_sgf_feature_t));
 	classifier->alpha = (float*)malloc(classifier->count * 2 * sizeof(float));
 	int i, j;
@@ -537,7 +539,10 @@ int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t
 			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
 			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
 		}
-		stat |= fscanf(r, "%f %f", &classifier->alpha[i * 2], &classifier->alpha[i * 2 + 1]);
+		union { float fl; int i; } flia, flib;
+		stat |= fscanf(r, "%d %d", &flia.i, &flib.i);
+		classifier->alpha[i * 2] = flia.fl;
+		classifier->alpha[i * 2 + 1] = flib.fl;
 	}
 	fclose(r);
 	return 0;
@@ -548,7 +553,9 @@ int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_
 	FILE* w = fopen(file, "w");
 	if (w == NULL) return -1;
 	fprintf(w, "%d\n", classifier->count);
-	fprintf(w, "%f\n", classifier->threshold);
+	union { float fl; int i; } fli;
+	fli.fl = classifier->threshold;
+	fprintf(w, "%d\n", fli.i);
 	int i, j;
 	for (i = 0; i < classifier->count; i++)
 	{
@@ -558,7 +565,10 @@ int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_
 			fprintf(w, "%d %d %d\n", classifier->feature[i].px[j], classifier->feature[i].py[j], classifier->feature[i].pz[j]);
 			fprintf(w, "%d %d %d\n", classifier->feature[i].nx[j], classifier->feature[i].ny[j], classifier->feature[i].nz[j]);
 		}
-		fprintf(w, "%f %f\n", classifier->alpha[i * 2], classifier->alpha[i * 2 + 1]);
+		union { float fl; int i; } flia, flib;
+		flia.fl = classifier->alpha[i * 2];
+		flib.fl = classifier->alpha[i * 2 + 1];
+		fprintf(w, "%d %d\n", flia.i, flib.i);
 	}
 	fclose(w);
 	return 0;
@@ -606,10 +616,17 @@ static int __ccv_resume_sgf_cascade_training_state(const char* file, int* i, int
 	if (r == NULL) return -1;
 	stat |= fscanf(r, "%d %d %d", i, k, bg);
 	int j;
+	union { double db; int i[2]; } dbi;
 	for (j = 0; j < posnum; j++)
-		stat |= fscanf(r, "%le", &pw[j]);
+	{
+		stat |= fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
+		pw[j] = imdi.db;
+	}
 	for (j = 0; j < negnum; j++)
-		stat |= fscanf(r, "%le", &nw[j]);
+	{
+		stat |= fscanf(r, "%d %d", &dbi.i[0], &dbi.i[1]);
+		nw[j] = dbi.db;
+	}
 	fclose(r);
 	return 0;
 }
@@ -620,11 +637,18 @@ static int __ccv_save_sgf_cacade_training_state(const char* file, int i, int k, 
 	if (w == NULL) return -1;
 	fprintf(w, "%d %d %d\n", i, k, bg);
 	int j;
+	union { double db; int i[2]; } dbi;
 	for (j = 0; j < posnum; ++j)
-		fprintf(w, "%le ", pw[j]);
+	{
+		dbi.db = pw[j];
+		fprintf(w, "%d %d ", dbi.i[0], dbi.i[1]);
+	}
 	fprintf(w, "\n");
 	for (j = 0; j < negnum; ++j)
-		fprintf(w, "%le ", nw[j]);
+	{
+		dbi.db = nw[j];
+		fprintf(w, "%d %d ", dbi.i[0], dbi.i[1]);
+	}
 	fprintf(w, "\n");
 	fclose(w);
 	return 0;
