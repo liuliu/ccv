@@ -23,6 +23,11 @@ static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 		png_set_palette_to_rgb(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
 		png_set_expand_gray_1_2_4_to_8(png_ptr);
+	if (im->type & CCV_C3)
+		png_set_gray_to_rgb(png_ptr);
+	else if (im->type & CCV_C1)
+		png_set_rgb_to_gray(png_ptr, 1, -1, -1);
+
 	unsigned char** row_vectors = (unsigned char**)alloca(im->rows * sizeof(unsigned char*));
 	int i;
 	for (i = 0; i < im->rows; i++)
