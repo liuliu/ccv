@@ -60,6 +60,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)idcheck);
 
+	ccv_dense_matrix_t* imgs0 = NULL;
+	ccv_dense_matrix_t* imgs1 = NULL;
 	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2, cascade->size.height + HOG_BORDER_SIZE * 2);
 	int rneg = negtotal;
 	for (t = 0; negtotal < negnum; t++)
@@ -68,8 +70,9 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 		{
 			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
 			ccv_dense_matrix_t* image = NULL;
+			printf("break0\n");
 			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
-			assert(image->type & CCV_C1);
+			assert((image->type & CCV_C1) && (image->type & CCV_8U));
 			if (image == NULL)
 			{
 				printf("\n%s file corrupted\n", bgfiles[i]);
@@ -77,7 +80,9 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			}
 			if (t % 2 != 0)
 				ccv_flip(image, NULL, CCV_FLIP_X);
+			printf("break1 %s %d %d\n", bgfiles[i], image->rows, image->cols);
 			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
+			printf("break2\n");
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
 				int r = gsl_rng_uniform_int(rng, detected->rnum);
@@ -85,7 +90,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(detected, r);
 				while (flag) {
 					flag = 0;
-					for (k = 0; k < j; ++k)
+					for (k = 0; k < j; k++)
 						if (r == idcheck[k])
 						{
 							flag = 1;
@@ -101,8 +106,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				}
 				idcheck[j] = r;
 				ccv_dense_matrix_t* temp = NULL;
-				ccv_dense_matrix_t* imgs0 = NULL;
-				ccv_dense_matrix_t* imgs1 = NULL;
 				ccv_slice(image, &temp, rect->y, rect->x, rect->height, rect->width);
 				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CCV_INTER_AREA);
 				ccv_matrix_free(temp);
@@ -118,8 +121,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				ccv_dense_matrix_t* des1p = &des1;
 				ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
 				ccv_hog(imgs1, &des1p, HOG_BORDER_SIZE * 2 + 1);
-				ccv_matrix_free(imgs0);
-				ccv_matrix_free(imgs1);
 
 	/*
 				for ( int y = 0; y < cascade->size.height; ++y )
@@ -157,6 +158,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 						break;
 				}
 			}
+			printf("break3\n");
 			ccv_array_free(detected);
 			ccv_matrix_free(image);
 			ccv_garbage_collect();
@@ -171,6 +173,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	}
 	gsl_rng_free(rng);
 	free(idcheck);
+	ccv_matrix_free(imgs0);
+	ccv_matrix_free(imgs1);
 	ccv_garbage_collect();
 	printf("\n");
 	return negtotal;
@@ -184,6 +188,7 @@ static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posda
 	{
 		ccv_dense_matrix_t* imgs0 = posimg[i];
 		ccv_dense_matrix_t* imgs1 = NULL;
+		assert((imgs0->type & CCV_C1) && (imgs0->type & CCV_8U) && imgs0->rows == size.height + HOG_BORDER_SIZE * 2 && imgs0->cols == size.width + HOG_BORDER_SIZE * 2);
 		ccv_sample_down(imgs0, &imgs1);
 		int isizs0 = size.width * size.height * 8;
 		int isizs1 = ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
@@ -917,7 +922,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 	}
 	for (i = 1; i < scale_upto + 2; i++)
 		ccv_matrix_free(pyr[i]);
-	if ( min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width )
+	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
 		ccv_matrix_free(pyr[0]);
 
 	ccv_array_t* idx_seq;
@@ -1103,7 +1108,7 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 		result_seq2 = result_seq;
 	}
 
-	for ( i = 0; i < scale_upto + 2; ++i )
+	for (i = 0; i < scale_upto + 2; i++)
 		ccv_matrix_free(hogs[i]);
 
 	return result_seq2;
