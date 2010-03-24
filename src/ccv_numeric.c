@@ -396,15 +396,20 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	ccv_dense_matrix_t* dd;
 
-	int sig[5];
-	ccv_matrix_generate_signature("ccv_filter", 10, sig, da->sig, db->sig, NULL);
 	if (*d == NULL)
 	{
-		*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, sig);
-		if (dd->type & CCV_GARBAGE)
+		if (CCV_IS_EMPTY_SIGNATURE(da) || CCV_IS_EMPTY_SIGNATURE(db))
 		{
-			dd->type &= ~CCV_GARBAGE;
-			return;
+			*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, NULL);
+		} else {
+			int sig[5];
+			ccv_matrix_generate_signature("ccv_filter", 10, sig, da->sig, db->sig, NULL);
+			*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, sig);
+			if (dd->type & CCV_GARBAGE)
+			{
+				dd->type &= ~CCV_GARBAGE;
+				return;
+			}
 		}
 	} else {
 		dd = ccv_get_dense_matrix(*d);
@@ -443,4 +448,5 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void*
 	}
 	ccv_matrix_setter(x->type, for_block);
 #undef for_block
+	ccv_matrix_generate_signature((char*) x->data.ptr, x->rows * x->step, x->sig, NULL);
 }

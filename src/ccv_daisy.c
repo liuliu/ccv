@@ -78,20 +78,25 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 {
 	int grid_point_number = params.rad_q_no * params.th_q_no + 1;
 	int desc_size = grid_point_number * params.hist_th_q_no;
-	int sig[5];
 	char* identifier = (char*)alloca(ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
-	memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
-	memcpy(identifier, "ccv_daisy", 9);
-	memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
-	ccv_matrix_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, sig, a->sig, NULL);
 	ccv_dense_matrix_t* db;
 	if (*b == NULL)
 	{
-		*b = db = ccv_dense_matrix_new(a->rows, a->cols * desc_size, CCV_32F | CCV_C1, NULL, sig);
-		if (db->type & CCV_GARBAGE)
+		if (CCV_IS_EMPTY_SIGNATURE(a))
 		{
-			db->type &= ~CCV_GARBAGE;
-			return;
+			*b = db = ccv_dense_matrix_new(a->rows, a->cols * desc_size, CCV_32F | CCV_C1, NULL, NULL);
+		} else {
+			int sig[5];
+			memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
+			memcpy(identifier, "ccv_daisy", 9);
+			memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
+			ccv_matrix_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, sig, a->sig, NULL);
+			*b = db = ccv_dense_matrix_new(a->rows, a->cols * desc_size, CCV_32F | CCV_C1, NULL, sig);
+			if (db->type & CCV_GARBAGE)
+			{
+				db->type &= ~CCV_GARBAGE;
+				return;
+			}
 		}
 	} else {
 		db = *b;
