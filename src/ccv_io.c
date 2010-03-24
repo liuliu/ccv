@@ -24,7 +24,6 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 			type = CCV_SERIAL_BMP_FILE;
 		fseek(fd, 0, SEEK_SET);
 	}
-	ctype = CCV_8U | CCV_C3;
 	switch (type & 0XFF)
 	{
 		case CCV_SERIAL_JPEG_FILE:

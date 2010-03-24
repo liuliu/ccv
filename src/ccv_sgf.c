@@ -60,9 +60,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)idcheck);
 
-	ccv_dense_matrix_t* imgs0 = NULL;
 	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2, cascade->size.height + HOG_BORDER_SIZE * 2);
-	ccv_dense_matrix_t* imgs1 = NULL;
 	int rneg = negtotal;
 	for (t = 0; negtotal < negnum; t++)
 	{
@@ -71,6 +69,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
 			ccv_dense_matrix_t* image = NULL;
 			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+			assert(image->type & CCV_C1);
 			if (image == NULL)
 			{
 				printf("\n%s file corrupted\n", bgfiles[i]);
@@ -102,6 +101,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				}
 				idcheck[j] = r;
 				ccv_dense_matrix_t* temp = NULL;
+				ccv_dense_matrix_t* imgs0 = NULL;
+				ccv_dense_matrix_t* imgs1 = NULL;
 				ccv_slice(image, &temp, rect->y, rect->x, rect->height, rect->width);
 				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CCV_INTER_AREA);
 				ccv_matrix_free(temp);
@@ -111,12 +112,14 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				int* i32c8s0 = negdata[negtotal];
 				int* i32c8s1 = negdata[negtotal] + isizs0;
 				int* i32c8[] = { i32c8s0, i32c8s1 };
-				ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, imgs0->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s0, NULL);
-				ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, imgs1->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s1, NULL);
+				ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, (imgs0->cols - HOG_BORDER_SIZE * 2) * 8, CCV_32S | CCV_C1, i32c8s0, NULL);
+				ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, (imgs1->cols - HOG_BORDER_SIZE * 2) * 8, CCV_32S | CCV_C1, i32c8s1, NULL);
 				ccv_dense_matrix_t* des0p = &des0;
 				ccv_dense_matrix_t* des1p = &des1;
 				ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
 				ccv_hog(imgs1, &des1p, HOG_BORDER_SIZE * 2 + 1);
+				ccv_matrix_free(imgs0);
+				ccv_matrix_free(imgs1);
 
 	/*
 				for ( int y = 0; y < cascade->size.height; ++y )
@@ -168,8 +171,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	}
 	gsl_rng_free(rng);
 	free(idcheck);
-	ccv_matrix_free(imgs0);
-	ccv_matrix_free(imgs1);
 	ccv_garbage_collect();
 	printf("\n");
 	return negtotal;
@@ -190,8 +191,8 @@ static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posda
 		posdata[i] = (int*)malloc((isizs0 + isizs1) * sizeof(int));
 		int* i32c8s0 = posdata[i];
 		int* i32c8s1 = posdata[i] + isizs0;
-		ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, imgs0->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s0, NULL);
-		ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, imgs1->cols - HOG_BORDER_SIZE * 2, CCV_32S | CCV_C1, i32c8s1, NULL);
+		ccv_dense_matrix_t des0 = ccv_dense_matrix(imgs0->rows - HOG_BORDER_SIZE * 2, (imgs0->cols - HOG_BORDER_SIZE * 2) * 8, CCV_32S | CCV_C1, i32c8s0, NULL);
+		ccv_dense_matrix_t des1 = ccv_dense_matrix(imgs1->rows - HOG_BORDER_SIZE * 2, (imgs1->cols - HOG_BORDER_SIZE * 2) * 8, CCV_32S | CCV_C1, i32c8s1, NULL);
 		ccv_dense_matrix_t* des0p = &des0;
 		ccv_dense_matrix_t* des1p = &des1;
 		ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
@@ -373,7 +374,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	for (i = 0; i < pnum; i++)
 		__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
 #ifdef HAVE_OPENMP
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for private(i) num_threads(8) schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
 	{
@@ -489,7 +490,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
 			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
 #ifdef HAVE_OPENMP
-#pragma omp parallel for schedule(dynamic)
+#pragma omp parallel for private(i) num_threads(8) schedule(dynamic)
 #endif
 		for (i = 0; i < pnum; i++)
 		{
@@ -978,9 +979,9 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 		}
 
 		/* the following code from OpenCV's haar feature implementation */
-		if( min_neighbors == 0 )
+		if(min_neighbors == 0)
 		{
-			for(i = 0; i < seq->rnum; i++)
+			for (i = 0; i < seq->rnum; i++)
 			{
 				ccv_sgf_comp_t* comp = (ccv_sgf_comp_t*)ccv_array_get(seq, i);
 				ccv_array_push(result_seq, comp);
