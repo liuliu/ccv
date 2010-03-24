@@ -339,19 +339,24 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 	{
 		ccv_dense_matrix_t* da = (ccv_dense_matrix_t*)a;
 		assert(y >= 0 && y + rows <= da->rows && x >= 0 && x + cols <= da->cols);
-		int sig[5];
-		char identifier[128];
-		memset(identifier, 0, 128);
-		sprintf(identifier, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
-		ccv_matrix_generate_signature(identifier, 128, sig, da->sig, NULL);
 		ccv_dense_matrix_t* db;
 		if (*b == NULL)
 		{
-			*b = db = ccv_dense_matrix_new(rows, cols, da->type, NULL, sig);
-			if (db->type & CCV_GARBAGE)
+			if (CCV_IS_EMPTY_SIGNATURE(da))
 			{
-				db->type &= ~CCV_GARBAGE;
-				return;
+				*b = db = ccv_dense_matrix_new(rows, cols, da->type, NULL, NULL);
+			} else {
+				int sig[5];
+				char identifier[128];
+				memset(identifier, 0, 128);
+				sprintf(identifier, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
+				ccv_matrix_generate_signature(identifier, 128, sig, da->sig, NULL);
+				*b = db = ccv_dense_matrix_new(rows, cols, da->type, NULL, sig);
+				if (db->type & CCV_GARBAGE)
+				{
+					db->type &= ~CCV_GARBAGE;
+					return;
+				}
 			}
 		} else {
 			db = *b;
