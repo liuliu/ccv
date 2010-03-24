@@ -35,8 +35,8 @@ int main(int argc, char** argv)
 	}
 	fclose(bgf);
 	ccv_sgf_param_t params;
-	params.pos_crit = 0.9975;
-	params.neg_crit = 0.4;
+	params.pos_crit = 0.995;
+	params.neg_crit = 0.5;
 	params.balance_k = 1.0;
 	params.layer = 24;
 	params.feature_number = 100;
