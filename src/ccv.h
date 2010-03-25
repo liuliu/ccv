@@ -47,6 +47,7 @@ enum {
 };
 
 #define CCV_GARBAGE (0x80000000)
+#define CCV_REUSABLE (0x40000000)
 
 typedef union {
 	unsigned char* ptr;

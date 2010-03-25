@@ -179,20 +179,47 @@ int main(int argc, char** argv)
 		fscanf(fi, "%d", &gim[i].label);
 	fclose(fi);
 	*/
-	int tex_rows = imf->rows - 10;
-	int tex_cols = imf->cols - 10;
-	rich_float_pixel_t* tex = (rich_float_pixel_t*)malloc(tex_rows * tex_cols * sizeof(rich_float_pixel_t));
+	
+	int tex_rows = imf->rows - 16;
+	int tex_cols = imf->cols - 16;
+	int dx0[KMEANS_GABOR_SIZE];
+	int dx1[KMEANS_GABOR_SIZE];
+	int dy0[KMEANS_GABOR_SIZE];
+	int dy1[KMEANS_GABOR_SIZE];
+	// rich_float_pixel_t* tex = (rich_float_pixel_t*)malloc(tex_rows * tex_cols * sizeof(rich_float_pixel_t));
 	int x, y;
+	ccv_dense_matrix_t* cl = ccv_dense_matrix_new(tex_rows, tex_cols, CCV_8U | CCV_C1, NULL, NULL);
 	for (i = 0; i < tex_rows; i++)
 		for (j = 0; j < tex_cols; j++)
 		{
+	//		for (k = 0; k < KMEANS_GABOR_SIZE; k++)
+	//			tex[i * tex_cols + j].desc[k] = 0;
 			for (k = 0; k < KMEANS_GABOR_SIZE; k++)
-				tex[i * tex_cols + j].desc[k] = 0;
-			for (y = i; y <= i + 10; y++)
-				for (x = j; x <= j + 10; x++)
-					tex[i * tex_cols + j].desc[gim[y * imf->cols + x].label]++;
+				dx0[k] = dx1[k] = dy0[k] = dy1[k] = 0;
+			for (y = i; y < i + 16; y++)
+				for (x = j; x < j + 16; x++)
+					if ((x - j - 7.5) * (x - j - 7.5) + (y - i - 7.5) * (y - i - 7.5) <= 7.5 * 7.5)
+					{
+						if (x <= j + 7)
+							dx0[gim[y * imf->cols + x].label]++;
+						else
+							dx1[gim[y * imf->cols + x].label]++;
+						if (y <= i + 7)
+							dy0[gim[y * imf->cols + x].label]++;
+						else
+							dy1[gim[y * imf->cols + x].label]++;
+					}
+			double dx = 0, dy = 0;
+			for (k = 0; k < KMEANS_GABOR_SIZE; k++)
+			{
+				dx += (double)(dx0[k] - dx1[k]) * (dx0[k] - dx1[k]) / (double)(dx0[k] + dx1[k] + 1e-6);
+				dy += (double)(dx0[k] - dx1[k]) * (dy0[k] - dy1[k]) / (double)(dy0[k] + dy1[k] + 1e-6);
+			}
+			
+			cl->data.ptr[i * cl->step + j] = 255 - ccv_clamp(sqrt(dx * dx + dy * dy) + 0.5, 0, 255);
+	//				tex[i * tex_cols + j].desc[gim[y * imf->cols + x].label]++;
 		}
-
+	/*
 	rich_float_pixel_t tcs[KMEANS_TEXTON_SIZE];
 
 	for (i = 0; i < KMEANS_TEXTON_SIZE; i++)
@@ -257,6 +284,7 @@ int main(int argc, char** argv)
 			cl->data.ptr[i * cl->step + j * 3 + 2] =  colors[(tex[k].label % 8) * 3 + 2];
 			k++;
 		}
+	*/
 	/*
 	ccv_dense_matrix_t* cl = ccv_dense_matrix_new(imf->rows, imf->cols, CCV_8U | CCV_C3, NULL, NULL);
 	k = 0;
