@@ -60,8 +60,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)idcheck);
 
-	ccv_dense_matrix_t* imgs0 = NULL;
-	ccv_dense_matrix_t* imgs1 = NULL;
 	ccv_size_t imgsz = ccv_size(cascade->size.width + HOG_BORDER_SIZE * 2, cascade->size.height + HOG_BORDER_SIZE * 2);
 	int rneg = negtotal;
 	for (t = 0; negtotal < negnum; t++)
@@ -70,7 +68,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 		{
 			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
 			ccv_dense_matrix_t* image = NULL;
-			printf("break0\n");
 			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 			assert((image->type & CCV_C1) && (image->type & CCV_8U));
 			if (image == NULL)
@@ -80,9 +77,7 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 			}
 			if (t % 2 != 0)
 				ccv_flip(image, NULL, CCV_FLIP_X);
-			printf("break1 %s %d %d\n", bgfiles[i], image->rows, image->cols);
 			ccv_array_t* detected = ccv_sgf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
-			printf("break2\n");
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
 				int r = gsl_rng_uniform_int(rng, detected->rnum);
@@ -106,6 +101,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				}
 				idcheck[j] = r;
 				ccv_dense_matrix_t* temp = NULL;
+				ccv_dense_matrix_t* imgs0 = NULL;
+				ccv_dense_matrix_t* imgs1 = NULL;
 				ccv_slice(image, &temp, rect->y, rect->x, rect->height, rect->width);
 				ccv_resample(temp, &imgs0, imgsz.height, imgsz.width, CCV_INTER_AREA);
 				ccv_matrix_free(temp);
@@ -121,6 +118,8 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				ccv_dense_matrix_t* des1p = &des1;
 				ccv_hog(imgs0, &des0p, HOG_BORDER_SIZE * 2 + 1);
 				ccv_hog(imgs1, &des1p, HOG_BORDER_SIZE * 2 + 1);
+				ccv_matrix_free(imgs0);
+				ccv_matrix_free(imgs1);
 
 	/*
 				for ( int y = 0; y < cascade->size.height; ++y )
@@ -158,7 +157,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 						break;
 				}
 			}
-			printf("break3\n");
 			ccv_array_free(detected);
 			ccv_matrix_free(image);
 			ccv_garbage_collect();
@@ -173,8 +171,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 	}
 	gsl_rng_free(rng);
 	free(idcheck);
-	ccv_matrix_free(imgs0);
-	ccv_matrix_free(imgs1);
 	ccv_garbage_collect();
 	printf("\n");
 	return negtotal;
