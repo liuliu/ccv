@@ -361,6 +361,62 @@ static inline void __ccv_sgf_randomize_gene(gsl_rng* rng, ccv_sgf_gene_t* gene, 
 	}
 }
 
+#ifdef USE_OPENCL
+#include <CL/cl.h>
+
+static const char *__ccv_opencl_kernel_code =
+"__kernel void __ccv_cl_error_rate(__global int* posdata, __global int posnum, __global int* negdata, __global int negnum, __global double* dw, __global double* nw)\n"
+"{\n"
+"	 dst[get_global_id(0)] = get_global_id(0);\n"
+"}\n";
+
+cl_context __ccv_sgf_opencl_context;
+cl_command_queue __ccv_sgf_opencl_queue;
+cl_kernel __ccv_sgf_opencl_kernel;
+
+static void __ccv_sgf_initialize_opencl()
+{
+	 // 1. Get a platform.
+	cl_platform_id platform;
+	clGetPlatformIDs(1, &platform, NULL);
+	// 2. Find a gpu device.
+	cl_device_id device;
+	clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
+	// 3. Create a context and command queue on that device.
+	__ccv_sgf_opencl_context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
+	__ccv_sgf_opencl_queue = clCreateCommandQueue(context, device, 0, NULL);
+	// 4. Perform runtime source compilation, and obtain kernel entry point.
+	cl_program program = clCreateProgramWithSource(__ccv_sgf_opencl_context, 1, &source, NULL, NULL);
+	clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+	__ccv_sgf_opencl_kernel = clCreateKernel(program, "__ccv_cl_error_rate", NULL);
+}
+
+struct {
+	cl_mem posdata;
+	int posnum;
+	cl_mem negdata;
+	int negnum;
+	cl_mem pw;
+	cl_mem nw;
+} __ccv_sgf_opencl_buffer;
+
+static void __ccv_sgf_opencl_kernel_setup(int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size)
+{
+	int isizs0 = size.width * size.height * 8;
+	int isizs1 = ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
+	// 5. Create a data buffer.
+	__ccv_sgf_opencl_buffer.posdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * posnum * sizeof(cl_int), NULL, NULL);
+	__ccv_sgf_opencl_buffer.negdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * negnum * sizeof(cl_int), NULL, NULL);
+	__ccv_sgf_opencl_buffer.pw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, posnum * sizeof(cl_uint), NULL, NULL);
+}
+
+static void __ccv_sgf_opencl_kernel_execute()
+{
+	clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+	clFinish(queue);
+}
+#endif
+
 static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	/* seed (random method) */
@@ -374,8 +430,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	for (i = 0; i < pnum; i++)
 		__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
-#ifdef HAVE_OPENMP
-#pragma omp parallel for private(i) num_threads(8) schedule(dynamic)
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
 	{
@@ -490,8 +546,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
 			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
-#ifdef HAVE_OPENMP
-#pragma omp parallel for private(i) num_threads(8) schedule(dynamic)
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
 #endif
 		for (i = 0; i < pnum; i++)
 		{

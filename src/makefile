@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O3 -msse2 -Wall -fopenmp -D HAVE_OPENMP
+CFLAGS = -O3 -msse2 -Wall -fopenmp -D USE_OPENMP
 
 all: libccv.a
 

@@ -1,6 +1,6 @@
 CC = gcc
 LDFLAGS = -L"../src" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm -lgomp
-CXXFLAGS = -O3 -msse2 -Wall -I"../src" -fopenmp -D HAVE_OPENMP
+CXXFLAGS = -O3 -msse2 -Wall -I"../src" -fopenmp -D USE_OPENMP
 
 TARGETS = sgfdetect sgfcreate
 
