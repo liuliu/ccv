@@ -408,6 +408,8 @@ static void __ccv_sgf_opencl_kernel_setup(int** posdata, int posnum, int** negda
 	__ccv_sgf_opencl_buffer.posdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * posnum * sizeof(cl_int), NULL, NULL);
 	__ccv_sgf_opencl_buffer.negdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * negnum * sizeof(cl_int), NULL, NULL);
 	__ccv_sgf_opencl_buffer.pw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, posnum * sizeof(cl_uint), NULL, NULL);
+	__ccv_sgf_opencl_buffer.nw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, negnum * sizeof(cl_uint), NULL, NULL);
+
 }
 
 static void __ccv_sgf_opencl_kernel_execute()
