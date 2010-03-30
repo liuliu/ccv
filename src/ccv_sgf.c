@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
-#ifdef HAVE_OPENMP
+#ifdef USE_OPENMP
 #include <omp.h>
 #endif
 
