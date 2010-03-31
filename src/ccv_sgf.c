@@ -364,15 +364,42 @@ static inline void __ccv_sgf_randomize_gene(gsl_rng* rng, ccv_sgf_gene_t* gene, 
 #ifdef USE_OPENCL
 #include <CL/cl.h>
 
-static const char *__ccv_opencl_kernel_code =
-"__kernel void __ccv_cl_error_rate(__global int* posdata, __global int posnum, __global int* negdata, __global int negnum, __global double* dw, __global double* nw)\n"
+static const char* __ccv_sgf_opencl_kernel_code =
+"__kernel void __ccv_cl_error_rate(__global unsigned int* err_rate, __global int* feature, __global int* data, int num, __global unsigned int* w, int pn, int s, int isiz0, int isiz01, int step0, int step1)\n"
 "{\n"
-"	 dst[get_global_id(0)] = get_global_id(0);\n"
+"	__global int* of = feature + get_global_id(0) * 30;\n"
+"	__global unsigned int* er = err_rate + get_global_id(0);\n"
+"	er[0] = 0;\n"
+"	int k, i;\n"
+"	int step[] = { step0, step1 };\n"
+"	for (k = 0; k < num; k++)\n"
+"	{\n"
+"		int pmin = data[k * isiz01 + of[0] * isiz0 + of[1] + of[2] * step[of[0]]];\n"
+"		int nmax = data[k * isiz01 + of[3] * isiz0 + of[4] + of[5] * step[of[3]]];\n"
+"		for (i = 0; i < 5; i++)\n"
+"		{\n"
+"			if (of[i * 6] >= 0)\n"
+"			{\n"
+"				int p = data[k * isiz01 + of[i * 6] * isiz0 + of[i * 6 + 1] + of[i * 6 + 2] * step[of[i * 6]]];\n"
+"				if (p < pmin)\n"
+"					pmin = p;\n"
+"			}\n"
+"			if (of[i * 6 + 3] >= 0)\n"
+"			{\n"
+"				int n = data[k * isiz01 + of[i * 6 + 3] * isiz0 + of[i * 6 + 4] + of[i * 6 + 5] * step[of[i * 6 + 3]]];\n"
+"				if (n > nmax)\n"
+"					nmax = n;\n"
+"			}\n"
+"		}\n"
+"		if ((pn && pmin <= nmax) || (!pn && pmin > nmax))\n"
+"			er[0] += w[s + k];\n"
+"	}\n"
 "}\n";
 
 cl_context __ccv_sgf_opencl_context;
 cl_command_queue __ccv_sgf_opencl_queue;
 cl_kernel __ccv_sgf_opencl_kernel;
+cl_ulong __ccv_sgf_opencl_max_alloc_size;
 
 static void __ccv_sgf_initialize_opencl()
 {
@@ -384,38 +411,167 @@ static void __ccv_sgf_initialize_opencl()
 	clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
 	// 3. Create a context and command queue on that device.
 	__ccv_sgf_opencl_context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
-	__ccv_sgf_opencl_queue = clCreateCommandQueue(context, device, 0, NULL);
+	__ccv_sgf_opencl_queue = clCreateCommandQueue(__ccv_sgf_opencl_context, device, 0, NULL);
 	// 4. Perform runtime source compilation, and obtain kernel entry point.
-	cl_program program = clCreateProgramWithSource(__ccv_sgf_opencl_context, 1, &source, NULL, NULL);
-	clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+	cl_program program = clCreateProgramWithSource(__ccv_sgf_opencl_context, 1, &__ccv_sgf_opencl_kernel_code, NULL, NULL);
+	cl_int ret = clBuildProgram(program, 1, &device, NULL, NULL, NULL);
+	if(ret != CL_SUCCESS)
+	{
+		printf("clBuildProgram failed: %d\n", ret);
+		char buf[0x10000];
+		clGetProgramBuildInfo( program,
+							  device,
+							  CL_PROGRAM_BUILD_LOG,
+							  0x10000,
+							  buf,
+							  NULL);
+		printf("\n%s\n", buf);
+		exit(-1);
+	}
+	clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(__ccv_sgf_opencl_max_alloc_size), &__ccv_sgf_opencl_max_alloc_size, NULL);
 	__ccv_sgf_opencl_kernel = clCreateKernel(program, "__ccv_cl_error_rate", NULL);
 }
 
 struct {
-	cl_mem posdata;
+	int pnum;
+	cl_mem err_rate;
+	cl_uint* hpos;
 	int posnum;
-	cl_mem negdata;
+	cl_uint* hneg;
 	int negnum;
 	cl_mem pw;
 	cl_mem nw;
+	cl_uint* hpw;
+	cl_uint* hnw;
+	int swap_size;
+	ccv_size_t size;
 } __ccv_sgf_opencl_buffer;
 
-static void __ccv_sgf_opencl_kernel_setup(int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size)
+static void __ccv_sgf_opencl_kernel_setup(int pnum, int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size)
 {
-	int isizs0 = size.width * size.height * 8;
-	int isizs1 = ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
+	int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
+	__ccv_sgf_opencl_buffer.size = size;
 	// 5. Create a data buffer.
-	__ccv_sgf_opencl_buffer.posdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * posnum * sizeof(cl_int), NULL, NULL);
-	__ccv_sgf_opencl_buffer.negdata = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, (isizs0 + isizs1) * negnum * sizeof(cl_int), NULL, NULL);
-	__ccv_sgf_opencl_buffer.pw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, posnum * sizeof(cl_uint), NULL, NULL);
-	__ccv_sgf_opencl_buffer.nw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, negnum * sizeof(cl_uint), NULL, NULL);
-
+	__ccv_sgf_opencl_buffer.pnum = pnum;
+	__ccv_sgf_opencl_buffer.err_rate = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_WRITE_ONLY, pnum * sizeof(cl_uint), NULL, NULL);
+	__ccv_sgf_opencl_buffer.hpos = (cl_uint*)malloc(isizs01 * posnum * sizeof(cl_int));
+	__ccv_sgf_opencl_buffer.hneg = (cl_uint*)malloc(isizs01 * negnum * sizeof(cl_int));
+	int i, j;
+	for (i = 0; i < posnum; i++)
+		for (j = 0; j < isizs01; j++)
+			__ccv_sgf_opencl_buffer.hpos[i * isizs01 + j] = posdata[i][j];
+	for (i = 0; i < negnum; i++)
+		for (j = 0; j < isizs01; j++)
+			__ccv_sgf_opencl_buffer.hneg[i * isizs01 + j] = negdata[i][j];
+	__ccv_sgf_opencl_buffer.posnum = posnum;
+	__ccv_sgf_opencl_buffer.negnum = negnum;
+	__ccv_sgf_opencl_buffer.swap_size = ccv_min(negnum, ccv_min(posnum, __ccv_sgf_opencl_max_alloc_size / (isizs01 * sizeof(cl_int))));
+	__ccv_sgf_opencl_buffer.hpw = (cl_uint*)malloc(__ccv_sgf_opencl_buffer.posnum * sizeof(cl_uint));
+	__ccv_sgf_opencl_buffer.hnw = (cl_uint*)malloc(__ccv_sgf_opencl_buffer.negnum * sizeof(cl_uint));
 }
 
-static void __ccv_sgf_opencl_kernel_execute()
+static void __ccv_sgf_opencl_kernel_free()
 {
-	clEnqueueNDRangeKernel(queue, kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
-	clFinish(queue);
+	free(__ccv_sgf_opencl_buffer.hpos);
+	free(__ccv_sgf_opencl_buffer.hneg);
+	free(__ccv_sgf_opencl_buffer.hpw);
+	free(__ccv_sgf_opencl_buffer.hpw);
+}
+
+static void __ccv_sgf_opencl_kernel_opt_setup(double* pw, double* nw)
+{
+	int i;
+	for (i = 0; i < __ccv_sgf_opencl_buffer.posnum; i++)
+		__ccv_sgf_opencl_buffer.hpw[i] = (unsigned int)(pw[i] * 0x80000000);
+	for (i = 0; i < __ccv_sgf_opencl_buffer.negnum; i++)
+		__ccv_sgf_opencl_buffer.hnw[i] = (unsigned int)(nw[i] * 0x80000000);
+	__ccv_sgf_opencl_buffer.pw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, __ccv_sgf_opencl_buffer.posnum * sizeof(cl_uint), __ccv_sgf_opencl_buffer.hpw, NULL);
+	__ccv_sgf_opencl_buffer.nw = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, __ccv_sgf_opencl_buffer.negnum * sizeof(cl_uint), __ccv_sgf_opencl_buffer.hnw, NULL);
+}
+
+static void __ccv_sgf_opencl_kernel_opt_free()
+{
+	clReleaseMemObject(__ccv_sgf_opencl_buffer.pw);
+	clReleaseMemObject(__ccv_sgf_opencl_buffer.nw);
+}
+
+static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
+{
+	int i, j;
+	cl_int* feature = (cl_int*)malloc(__ccv_sgf_opencl_buffer.pnum * sizeof(cl_int) * CCV_SGF_POINT_MAX * 6);
+	for (i = 0; i < __ccv_sgf_opencl_buffer.pnum; i++)
+		for (j = 0; j < CCV_SGF_POINT_MAX; j++)
+		{
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6] = gene[i].feature.pz[j];
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6 + 1] = gene[i].feature.px[j];
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6 + 2] = gene[i].feature.py[j];
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6 + 3] = gene[i].feature.nz[j];
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6 + 4] = gene[i].feature.nx[j];
+			feature[i * CCV_SGF_POINT_MAX * 6 + j * 6 + 5] = gene[i].feature.ny[j];
+		}
+	cl_mem mem_ft = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_COPY_HOST_PTR, __ccv_sgf_opencl_buffer.pnum * sizeof(cl_int) * CCV_SGF_POINT_MAX * 6, feature, NULL);
+	for (i = 0; i < __ccv_sgf_opencl_buffer.posnum; i += __ccv_sgf_opencl_buffer.swap_size)
+	{
+		int isizs0 = __ccv_sgf_opencl_buffer.size.width * __ccv_sgf_opencl_buffer.size.height * 8;
+		int isizs01 = isizs0 + ((__ccv_sgf_opencl_buffer.size.width >> 1) - HOG_BORDER_SIZE) * ((__ccv_sgf_opencl_buffer.size.height >> 1) - HOG_BORDER_SIZE) * 8;
+		int num = ccv_min(__ccv_sgf_opencl_buffer.posnum - i, __ccv_sgf_opencl_buffer.swap_size);
+		cl_int ret;
+		cl_mem data = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hpos + i, &ret);
+		printf("error %d\n", ret);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 0, sizeof(void*), &__ccv_sgf_opencl_buffer.err_rate);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 1, sizeof(void*), &mem_ft);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 2, sizeof(void*), &data);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 3, sizeof(num), &num);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 4, sizeof(void*), &__ccv_sgf_opencl_buffer.pw);
+		int pn = 1;
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 5, sizeof(pn), &pn);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 6, sizeof(i), &i);
+		int steps[] = { __ccv_sgf_opencl_buffer.size.width * 8, ((__ccv_sgf_opencl_buffer.size.width >> 1) - HOG_BORDER_SIZE) * 8 };
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 7, sizeof(isizs0), &isizs0);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 8, sizeof(isizs01), &isizs01);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 9, sizeof(steps[0]), &steps[0]);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 10, sizeof(steps[1]), &steps[1]);
+		cl_event ev;
+		cl_int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_kernel, 1, NULL, &__ccv_sgf_opencl_buffer.pnum, NULL, 0, NULL, &ev);
+		printf("%d\n", status);
+		clWaitForEvents(1, &ev);
+		status = clReleaseMemObject(data);
+		printf("release %d\n", status);
+		clFinish(__ccv_sgf_opencl_queue);
+	}
+	printf("xxxx\n");
+	for (i = 0; i < __ccv_sgf_opencl_buffer.negnum; i += __ccv_sgf_opencl_buffer.swap_size)
+	{
+		int isizs0 = __ccv_sgf_opencl_buffer.size.width * __ccv_sgf_opencl_buffer.size.height * 8;
+		int isizs01 = isizs0 + ((__ccv_sgf_opencl_buffer.size.width >> 1) - HOG_BORDER_SIZE) * ((__ccv_sgf_opencl_buffer.size.height >> 1) - HOG_BORDER_SIZE) * 8;
+		int num = ccv_min(__ccv_sgf_opencl_buffer.negnum - i, __ccv_sgf_opencl_buffer.swap_size);
+		cl_int ret;
+		cl_mem data = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY | CL_MEM_USE_HOST_PTR, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hneg + i, &ret);
+		printf("error %d\n", ret);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 0, sizeof(void*), &__ccv_sgf_opencl_buffer.err_rate);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 1, sizeof(void*), &mem_ft);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 2, sizeof(void*), &data);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 3, sizeof(num), &num);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 4, sizeof(void*), &__ccv_sgf_opencl_buffer.pw);
+		int pn = 0;
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 5, sizeof(pn), &pn);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 6, sizeof(i), &i);
+		int steps[] = { __ccv_sgf_opencl_buffer.size.width * 8, ((__ccv_sgf_opencl_buffer.size.width >> 1) - HOG_BORDER_SIZE) * 8 };
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 7, sizeof(isizs0), &isizs0);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 8, sizeof(isizs01), &isizs01);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 9, sizeof(steps[0]), &steps[0]);
+		clSetKernelArg(__ccv_sgf_opencl_kernel, 10, sizeof(steps[1]), &steps[1]);
+		cl_event ev;
+		cl_int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_kernel, 1, NULL, &__ccv_sgf_opencl_buffer.pnum, NULL, 0, NULL, &ev);
+		printf("%d\n", status);
+		clWaitForEvents(1, &ev);
+		clReleaseMemObject(data);
+		clFinish(__ccv_sgf_opencl_queue);
+	}
+	clReleaseMemObject(mem_ft);
+	cl_uint* err_rate = (cl_uint*)clEnqueueMapBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.err_rate, CL_TRUE, CL_MAP_READ, 0, __ccv_sgf_opencl_buffer.pnum * sizeof(cl_uint), 0, NULL, NULL, NULL);
+	for (i = 0; i < __ccv_sgf_opencl_buffer.pnum; i++)
+		gene[i].error = (double)err_rate[i] / (double)0x80000000;
 }
 #endif
 
@@ -432,14 +588,24 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	for (i = 0; i < pnum; i++)
 		__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
+#ifdef USE_OPENCL
+	__ccv_sgf_opencl_kernel_opt_setup(pw, nw);
+	__ccv_sgf_opencl_kernel_execute(gene);
+	for (i = 0; i < pnum; i++)
+	{
+		double error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		if (i < 100)
+			printf("%f %f\n", gene[i].error, error);
+	}
+#else
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
-	{
 		gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+#endif
+	for (i = 0; i < pnum; i++)
 		__ccv_sgf_genetic_fitness(&gene[i]);
-	}
 	double best_err = 1;
 	ccv_sgf_feature_t best;
 	int rnum = ftnum * 39;//99;//49;//39; /* number of randomize */
@@ -548,14 +714,17 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
 			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
+#ifdef USE_OPENCL
+		__ccv_sgf_opencl_kernel_execute(gene);
+#else
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
 #endif
 		for (i = 0; i < pnum; i++)
-		{
 			gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+#endif
+		for (i = 0; i < pnum; i++)
 			__ccv_sgf_genetic_fitness(&gene[i]);
-		}
 		int min_id = 0;
 		double min_err = gene[0].error;
 		for (i = 1; i < pnum; i++)
@@ -579,6 +748,9 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		printf("minimum error achieved in round %d(%d) : %f\n", t, it, min_err);
 	}
+#ifdef USE_OPENCL
+	__ccv_sgf_opencl_kernel_opt_free();
+#endif
 	gsl_rng_free(rng);
 	return best;
 }
@@ -739,6 +911,10 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	params.balance_k *= 0.01;
 	inv_balance_k *= 0.01;
 
+#ifdef USE_OPENCL
+	__ccv_sgf_initialize_opencl();
+#endif
+
 	int isizs0 = cascade->size.width * cascade->size.height * 8;
 	int steps[] = { cascade->size.width * 8, ((cascade->size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	
@@ -769,6 +945,7 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 		sprintf(buf, "%s/negs.txt", dir);
 		__ccv_read_background_data(buf, negdata, &rneg, cascade->size);
 	}
+
 	for (; i < params.layer; i++)
 	{
 		if (!bg)
@@ -803,6 +980,9 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 		}
 		__ccv_prune_positive_data(cascade, posdata, &posnum, cascade->size);
 		printf("%d postivie data and %d negative data in training\n", posnum, rneg);
+#if USE_OPENCL
+		__ccv_sgf_opencl_kernel_setup(params.feature_number * 100, posdata, posnum, negdata, rneg, cascade->size);
+#endif
 		for (; ; k++)
 		{
 			/* get overall true-positive, false-positive rate and threshold */
@@ -887,6 +1067,9 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			classifier.alpha[k * 2] = -c;
 			classifier.alpha[k * 2 + 1] = c;
 		}
+#if USE_OPENCL
+		__ccv_sgf_opencl_kernel_free();
+#endif
 		cascade->count = i + 1;
 		ccv_sgf_stage_classifier_t* stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
 		memcpy(stage_classifier, cascade->stage_classifier, i * sizeof(ccv_sgf_stage_classifier_t));

@@ -1,5 +1,5 @@
 CC = gcc
-CFLAGS = -O3 -msse2 -Wall -fopenmp -D USE_OPENMP
+CFLAGS = -O3 -msse2 -Wall -fopenmp -D USE_OPENMP # -D USE_OPENCL -I"/opt/ati-stream-sdk/include/"
 
 all: libccv.a
 
