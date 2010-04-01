@@ -606,7 +606,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	for (i = 0; i < pnum; i++)
 		__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
-	unsigned int old_time = get_current_time();
+	unsigned int timer = get_current_time();
 #ifdef USE_OPENCL
 	__ccv_sgf_opencl_kernel_opt_setup(pw, nw);
 	__ccv_sgf_opencl_kernel_execute(gene);
@@ -617,7 +617,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	for (i = 0; i < pnum; i++)
 		gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
 #endif
-	printf("time : %d\n", get_current_time() - old_time);
+	timer = get_current_time() - timer;
 	for (i = 0; i < pnum; i++)
 		__ccv_sgf_genetic_fitness(&gene[i]);
 	double best_err = 1;
@@ -629,17 +629,6 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	int it = 0, t;
 	for (t = 0 ; it < 40; ++it, ++t)
 	{
-		__ccv_sgf_genetic_qsort(gene, pnum, 0);
-#ifdef USE_OPENCL
-#ifdef USE_OPENMP
-#pragma omp parallel for private(i) schedule(dynamic)
-#endif
-		for (i = 0; i < ftnum * 10; i++)
-			gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-		for (i = 0; i < ftnum * 10; i++)
-			__ccv_sgf_genetic_fitness(&gene[i]);
-		__ccv_sgf_genetic_qsort(gene, ftnum * 10, 0);
-#endif
 		int min_id = 0;
 		double min_err = gene[0].error;
 		for (i = 1; i < pnum; i++)
@@ -650,7 +639,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			}
 		if (min_err < best_err)
 		{
-			best_err = min_err;
+			best_err = gene[min_id].error;
 			memcpy(&best, &gene[min_id].feature, sizeof(best));
 			printf("best sgf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
 			for (i = 0; i < best.size; i++)
@@ -661,7 +650,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 			printf("\n");
 			it = 0;
 		}
-		printf("minimum error achieved in round %d(%d) : %f\n", t, it, min_err);
+		printf("minimum error achieved in round %d(%d) : %f with %d ms\n", t, it, min_err, timer);
+		__ccv_sgf_genetic_qsort(gene, pnum, 0);
 		for (i = 0; i < ftnum; i++)
 			++gene[i].age;
 		for (i = ftnum; i < ftnum + mnum; i++)
@@ -760,7 +750,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
 			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
-		old_time = get_current_time();
+		timer = get_current_time();
 #ifdef USE_OPENCL
 		__ccv_sgf_opencl_kernel_execute(gene);
 #else
@@ -770,7 +760,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		for (i = 0; i < pnum; i++)
 			gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
 #endif
-		printf("time : %d\n", get_current_time() - old_time);
+		timer = get_current_time() - timer;
 		for (i = 0; i < pnum; i++)
 			__ccv_sgf_genetic_fitness(&gene[i]);
 	}
