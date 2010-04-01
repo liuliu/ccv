@@ -547,7 +547,7 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 	for (i = 0; i < __ccv_sgf_opencl_buffer.posnum; i += __ccv_sgf_opencl_buffer.swap)
 	{
 		int num = ccv_min(__ccv_sgf_opencl_buffer.posnum - i, __ccv_sgf_opencl_buffer.swap);
-		clEnqueueWriteBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.data, CL_TRUE, 0, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hpos + i, 0, NULL, NULL);
+		clEnqueueWriteBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.data, CL_TRUE, 0, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hpos + i * isizs01, 0, NULL, NULL);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 0, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.err_rate);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 1, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.feature);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 2, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.data);
@@ -565,7 +565,7 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 	for (i = 0; i < __ccv_sgf_opencl_buffer.negnum; i += __ccv_sgf_opencl_buffer.swap)
 	{
 		int num = ccv_min(__ccv_sgf_opencl_buffer.negnum - i, __ccv_sgf_opencl_buffer.swap);
-		clEnqueueWriteBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.data, CL_TRUE, 0, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hneg + i, 0, NULL, NULL);
+		clEnqueueWriteBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.data, CL_TRUE, 0, isizs01 * num * sizeof(cl_int), __ccv_sgf_opencl_buffer.hneg + i * isizs01, 0, NULL, NULL);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 0, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.err_rate);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 1, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.feature);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 2, sizeof(cl_mem), &__ccv_sgf_opencl_buffer.data);
