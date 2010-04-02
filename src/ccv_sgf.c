@@ -623,6 +623,8 @@ static inline void __ccv_sgf_opencl_auto_tune(ccv_sgf_gene_t* gene)
 		cpu_timer = __ccv_sgf_time_measure() - cpu_timer;
 		clEnqueueUnmapMemObject(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.err_rate, err_rate, 0, NULL, NULL);
 		clFinish(__ccv_sgf_opencl_queue);
+		/* we want to balance the cpu load with gpu load (swap size), thus, cpu load * cpu time == gpu load * gpu time
+		 * so that either of them will become the bottleneck, in practice, openmp is costs, so a 0.33 factor used */
 		__ccv_sgf_opencl_cpu_load = (int)((double)gpu_timer * (double)__ccv_sgf_opencl_buffer.swap / (double)cpu_timer * 0.33);
 	}
 }
@@ -717,8 +719,7 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 	{
 		unsigned int error = __ccv_sgf_uint_pos_error_rate(&gene[i].feature, __ccv_sgf_opencl_buffer.hpos, __ccv_sgf_opencl_buffer.posnum, __ccv_sgf_opencl_buffer.hpw, __ccv_sgf_opencl_buffer.size) + __ccv_sgf_uint_neg_error_rate(&gene[i].feature, __ccv_sgf_opencl_buffer.hneg, __ccv_sgf_opencl_buffer.negnum, __ccv_sgf_opencl_buffer.hnw, __ccv_sgf_opencl_buffer.size);
 		assert(err_rate[i] == error);
-	}
-	*/
+	} */
 	for (i = 0; i < __ccv_sgf_opencl_buffer.pnum; i++)
 		gene[i].error = (double)err_rate[i] / (double)0xffffffff;
 	free(err_rate);
@@ -746,12 +747,8 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	for (i = 0; i < pnum; i++)
 	{
 		double error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-		if (fabs(error - gene[i].error) > 1e-3)
-		{
-			printf("%d %f %f\n", i, error, gene[i].error);
-			exit(-1);
-		}
-	} */
+		assert(fabs(error - gene[i].error) < 1e-3);
+	}*/
 #else
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
