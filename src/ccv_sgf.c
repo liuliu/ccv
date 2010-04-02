@@ -366,15 +366,14 @@ static inline void __ccv_sgf_randomize_gene(gsl_rng* rng, ccv_sgf_gene_t* gene, 
 
 #ifdef USE_OPENCL
 static const char* __ccv_sgf_opencl_kernel_code =
-"__kernel void __ccv_cl_pos_error_rate(__global unsigned int* err_rate, __constant int* feature, __constant int* data, int num, __constant unsigned int* w, int s, int isiz0, int isiz01, int step0, int step1, __local int* shared)\n"
+"__kernel void __ccv_cl_pos_error_rate(__global uint* err_rate, __constant int* feature, __constant int* data, int num, __constant uint* w, int s, int isiz0, int isiz01, int step0, int step1, __local int* shared)\n"
 "{\n"
 "	int igrid = get_global_id(0);\n"
 "	int lsize = get_local_size(0);\n"
 "	int lid = get_local_id(0);\n"
 "	int of[30], *ofp;\n"
 "	int* ofc = of + feature[igrid * 31];\n"
-"	int step[] = { step0, step1 };\n"
-"	unsigned int e = 0;\n"
+"	uint e = 0;\n"
 "	int k, i;\n"
 "	for (i = 0; i < 30; i++)\n"
 "		of[i] = feature[igrid * 31 + 1 + i];\n"
@@ -385,16 +384,16 @@ static const char* __ccv_sgf_opencl_kernel_code =
 "			if (i + lid < isiz01)\n"
 "				shared[i + lid] = kd[i + lid];\n"
 "		barrier(CLK_LOCAL_MEM_FENCE);\n"
-"		int pmin = shared[of[0] * isiz0 + of[1] + of[2] * step[of[0]]];\n"
-"		int nmax = shared[of[3] * isiz0 + of[4] + of[5] * step[of[3]]];\n"
+"		int pmin = (of[0] == 0) ? shared[of[1] + of[2] * step0] : shared[isiz0 + of[1] + of[2] * step1];\n"
+"		int nmax = (of[3] == 0) ? shared[of[4] + of[5] * step0] : shared[isiz0 + of[4] + of[5] * step1];\n"
 "		for (ofp = of + 6; ofp < ofc; ofp += 6)\n"
 "		{\n"
 "			if (pmin <= nmax)\n"
 "				break;\n"
 "			if (ofp[0] >= 0)\n"
-"				pmin = min(pmin, shared[ofp[0] * isiz0 + ofp[1] + ofp[2] * step[ofp[0]]]);\n"
+"				pmin = min(pmin, (ofp[0] == 0) ? shared[ofp[1] + ofp[2] * step0] : shared[isiz0 + ofp[1] + ofp[2] * step1]);\n"
 "			if (ofp[3] >= 0)\n"
-"				nmax = max(nmax, shared[ofp[3] * isiz0 + ofp[4] + ofp[5] * step[ofp[3]]]);\n"
+"				nmax = max(nmax, (ofp[3] == 0) ? shared[ofp[4] + ofp[5] * step0] : shared[isiz0 + ofp[4] + ofp[5] * step1]);\n"
 "		}\n"
 "		if (pmin <= nmax)\n"
 "			e += w[s + k];\n"
@@ -402,15 +401,14 @@ static const char* __ccv_sgf_opencl_kernel_code =
 "	}\n"
 "	err_rate[igrid] += e;\n"
 "}\n"
-"__kernel void __ccv_cl_neg_error_rate(__global unsigned int* err_rate, __constant int* feature, __constant int* data, int num, __constant unsigned int* w, int s, int isiz0, int isiz01, int step0, int step1, __local int* shared)\n"
+"__kernel void __ccv_cl_neg_error_rate(__global uint* err_rate, __constant int* feature, __constant int* data, int num, __constant uint* w, int s, int isiz0, int isiz01, int step0, int step1, __local int* shared)\n"
 "{\n"
 "	int igrid = get_global_id(0);\n"
 "	int lsize = get_local_size(0);\n"
 "	int lid = get_local_id(0);\n"
 "	int of[30], *ofp;\n"
 "	int* ofc = of + feature[igrid * 31];\n"
-"	int step[] = { step0, step1 };\n"
-"	unsigned int e = 0;\n"
+"	uint e = 0;\n"
 "	int k, i;\n"
 "	for (i = 0; i < 30; i++)\n"
 "		of[i] = feature[igrid * 31 + 1 + i];\n"
@@ -421,16 +419,16 @@ static const char* __ccv_sgf_opencl_kernel_code =
 "			if (i + lid < isiz01)\n"
 "				shared[i + lid] = kd[i + lid];\n"
 "		barrier(CLK_LOCAL_MEM_FENCE);\n"
-"		int pmin = shared[of[0] * isiz0 + of[1] + of[2] * step[of[0]]];\n"
-"		int nmax = shared[of[3] * isiz0 + of[4] + of[5] * step[of[3]]];\n"
+"		int pmin = (of[0] == 0) ? shared[of[1] + of[2] * step0] : shared[isiz0 + of[1] + of[2] * step1];\n"
+"		int nmax = (of[3] == 0) ? shared[of[4] + of[5] * step0] : shared[isiz0 + of[4] + of[5] * step1];\n"
 "		for (ofp = of + 6; ofp < ofc; ofp += 6)\n"
 "		{\n"
 "			if (pmin <= nmax)\n"
 "				break;\n"
 "			if (ofp[0] >= 0)\n"
-"				pmin = min(pmin, shared[ofp[0] * isiz0 + ofp[1] + ofp[2] * step[ofp[0]]]);\n"
+"				pmin = min(pmin, (ofp[0] == 0) ? shared[ofp[1] + ofp[2] * step0] : shared[isiz0 + ofp[1] + ofp[2] * step1]);\n"
 "			if (ofp[3] >= 0)\n"
-"				nmax = max(nmax, shared[ofp[3] * isiz0 + ofp[4] + ofp[5] * step[ofp[3]]]);\n"
+"				nmax = max(nmax, (ofp[3] == 0) ? shared[ofp[4] + ofp[5] * step0] : shared[isiz0 + ofp[4] + ofp[5] * step1]);\n"
 "		}\n"
 "		if (pmin > nmax)\n"
 "			e += w[s + k];\n"
@@ -452,7 +450,7 @@ static void __ccv_sgf_initialize_opencl()
 	clGetPlatformIDs(1, &platform, NULL);
 	// 2. Find a gpu device.
 	cl_device_id device;
-	clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU, 1, &device, NULL);
+	clGetDeviceIDs(platform, CL_DEVICE_TYPE_CPU, 1, &device, NULL);
 	// 3. Create a context and command queue on that device.
 	__ccv_sgf_opencl_context = clCreateContext(NULL, 1, &device, NULL, NULL, NULL);
 	__ccv_sgf_opencl_queue = clCreateCommandQueue(__ccv_sgf_opencl_context, device, 0, NULL);
@@ -547,32 +545,62 @@ static void __ccv_sgf_opencl_kernel_opt_free()
 
 static inline unsigned int __ccv_sgf_uint_pos_error_rate(ccv_sgf_feature_t* feature, int* data, int num, unsigned int* w, ccv_size_t size, int s)
 {
-	int i;
+	int i, j;
 	int isizs0 = size.width * size.height * 8;
 	int isizs01 = isizs0 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	unsigned int error = 0;
 	for (i = 0; i < num; i++)
 	{
+		int pmin = data[i * isizs01 + feature->pz[0] * isizs0 + feature->px[0] + feature->py[0] * steps[feature->pz[0]]];
+		int nmax = data[i * isizs01 + feature->nz[0] * isizs0 + feature->nx[0] + feature->ny[0] * steps[feature->nz[0]]];
+		for (j = 1; j < feature->size; j++)
+		{
+			if (pmin <= nmax)
+				break;
+			if (feature->pz[j] >= 0)
+				pmin = ccv_min(pmin, data[i * isizs01 + feature->pz[j] * isizs0 + feature->px[j] + feature->py[j] * steps[feature->pz[j]]]);
+			if (feature->nz[j] >= 0)
+				nmax = ccv_max(nmax,  data[i * isizs01 + feature->nz[j] * isizs0 + feature->nx[j] + feature->ny[j] * steps[feature->nz[j]]]);
+		}
+		if (pmin <= nmax)
+			error += w[s + i];
+		/*
 		int* i32c8[] = { data + i * isizs01, data + i * isizs01 + isizs0 };
 		if (!__ccv_run_sgf_feature(feature, steps, i32c8))
 			error += w[i + s];
+		*/
 	}
 	return error;
 }
 
 static inline unsigned int __ccv_sgf_uint_neg_error_rate(ccv_sgf_feature_t* feature, int* data, int num, unsigned int* w, ccv_size_t size, int s)
 {
-	int i;
+	int i, j;
 	int isizs0 = size.width * size.height * 8;
 	int isizs01 = isizs0 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
 	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	unsigned int error = 0;
 	for (i = 0; i < num; i++)
 	{
+		int pmin = data[i * isizs01 + feature->pz[0] * isizs0 + feature->px[0] + feature->py[0] * steps[feature->pz[0]]];
+		int nmax = data[i * isizs01 + feature->nz[0] * isizs0 + feature->nx[0] + feature->ny[0] * steps[feature->nz[0]]];
+		for (j = 1; j < feature->size; j++)
+		{
+			if (pmin <= nmax)
+				break;
+			if (feature->pz[j] >= 0)
+				pmin = ccv_min(pmin, data[i * isizs01 + feature->pz[j] * isizs0 + feature->px[j] + feature->py[j] * steps[feature->pz[j]]]);
+			if (feature->nz[j] >= 0)
+				nmax = ccv_max(nmax,  data[i * isizs01 + feature->nz[j] * isizs0 + feature->nx[j] + feature->ny[j] * steps[feature->nz[j]]]);
+		}
+		if (pmin > nmax)
+			error += w[s + i];
+		/*
 		int* i32c8[] = { data + i * isizs01, data + i * isizs01 + isizs0 };
 		if (__ccv_run_sgf_feature(feature, steps, i32c8))
 			error += w[i + s];
+		*/
 	}
 	return error;
 }
@@ -618,10 +646,10 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 8, sizeof(steps[0]), &steps[0]);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 9, sizeof(steps[1]), &steps[1]);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 10, isizs01 * sizeof(int), NULL);
-		size_t global_work_size = __ccv_sgf_opencl_buffer.pnum;
-		cl_int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_pos_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		size_t global_work_size = 1;//__ccv_sgf_opencl_buffer.pnum;
+		clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_pos_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		cl_int status = clFinish(__ccv_sgf_opencl_queue);
 		printf("%d %d\n", status, i);
-		clFinish(__ccv_sgf_opencl_queue);
 	}
 	for (i = 0; i < __ccv_sgf_opencl_buffer.negnum; i += __ccv_sgf_opencl_buffer.swap)
 	{
@@ -638,10 +666,10 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 8, sizeof(steps[0]), &steps[0]);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 9, sizeof(steps[1]), &steps[1]);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 10, isizs01 * sizeof(int), NULL);
-		size_t global_work_size = __ccv_sgf_opencl_buffer.pnum;
-		int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_neg_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		size_t global_work_size = 1; //__ccv_sgf_opencl_buffer.pnum;
+		clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_neg_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		cl_int status = clFinish(__ccv_sgf_opencl_queue);
 		printf("%d %d\n", status, i);
-		clFinish(__ccv_sgf_opencl_queue);
 	}
 	err_rate = (cl_uint*)clEnqueueMapBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.err_rate, CL_TRUE, CL_MAP_READ, 0, __ccv_sgf_opencl_buffer.pnum * sizeof(cl_uint), 0, NULL, NULL, NULL);
 	for (i = 0; i < __ccv_sgf_opencl_buffer.pnum; i++)
