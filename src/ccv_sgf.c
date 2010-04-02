@@ -4,6 +4,9 @@
 #ifdef USE_OPENMP
 #include <omp.h>
 #endif
+#ifdef USE_OPENCL
+#include <CL/cl.h>
+#endif
 
 static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
 {
@@ -362,8 +365,6 @@ static inline void __ccv_sgf_randomize_gene(gsl_rng* rng, ccv_sgf_gene_t* gene, 
 }
 
 #ifdef USE_OPENCL
-#include <CL/cl.h>
-
 static const char* __ccv_sgf_opencl_kernel_code =
 "__kernel void __ccv_cl_pos_error_rate(__global unsigned int* err_rate, __constant int* feature, __constant int* data, int num, __constant unsigned int* w, int s, int isiz0, int isiz01, int step0, int step1, __local int* shared)\n"
 "{\n"
@@ -495,7 +496,7 @@ static void __ccv_sgf_opencl_kernel_setup(int pnum, int** posdata, int posnum, i
 	// 5. Create a data buffer.
 	__ccv_sgf_opencl_buffer.pnum = pnum;
 	__ccv_sgf_opencl_buffer.feature = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_ONLY, __ccv_sgf_opencl_buffer.pnum * sizeof(cl_int) * (CCV_SGF_POINT_MAX * 6 + 1), NULL, NULL);
-	__ccv_sgf_opencl_buffer.err_rate = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_WRITE_ONLY, pnum * sizeof(cl_uint), NULL, NULL);
+	__ccv_sgf_opencl_buffer.err_rate = clCreateBuffer(__ccv_sgf_opencl_context, CL_MEM_READ_WRITE, pnum * sizeof(cl_uint), NULL, NULL);
 	__ccv_sgf_opencl_buffer.hpos = (cl_uint*)malloc(isizs01 * posnum * sizeof(cl_int));
 	__ccv_sgf_opencl_buffer.hneg = (cl_uint*)malloc(isizs01 * negnum * sizeof(cl_int));
 	int i, j;
@@ -541,8 +542,7 @@ static void __ccv_sgf_opencl_kernel_opt_setup(double* pw, double* nw)
 
 static void __ccv_sgf_opencl_kernel_opt_free()
 {
-	clReleaseMemObject(__ccv_sgf_opencl_buffer.pw);
-	clReleaseMemObject(__ccv_sgf_opencl_buffer.nw);
+	/* for future usage */
 }
 
 static inline unsigned int __ccv_sgf_uint_pos_error_rate(ccv_sgf_feature_t* feature, int* data, int num, unsigned int* w, ccv_size_t size, int s)
@@ -619,7 +619,8 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 9, sizeof(steps[1]), &steps[1]);
 		clSetKernelArg(__ccv_sgf_opencl_pos_kernel, 10, isizs01 * sizeof(int), NULL);
 		size_t global_work_size = __ccv_sgf_opencl_buffer.pnum;
-		clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_pos_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		cl_int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_pos_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		printf("%d %d\n", status, i);
 		clFinish(__ccv_sgf_opencl_queue);
 	}
 	for (i = 0; i < __ccv_sgf_opencl_buffer.negnum; i += __ccv_sgf_opencl_buffer.swap)
@@ -638,7 +639,8 @@ static void __ccv_sgf_opencl_kernel_execute(ccv_sgf_gene_t* gene)
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 9, sizeof(steps[1]), &steps[1]);
 		clSetKernelArg(__ccv_sgf_opencl_neg_kernel, 10, isizs01 * sizeof(int), NULL);
 		size_t global_work_size = __ccv_sgf_opencl_buffer.pnum;
-		clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_neg_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		int status = clEnqueueNDRangeKernel(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_neg_kernel, 1, NULL, &global_work_size, NULL, 0, NULL, NULL);
+		printf("%d %d\n", status, i);
 		clFinish(__ccv_sgf_opencl_queue);
 	}
 	err_rate = (cl_uint*)clEnqueueMapBuffer(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.err_rate, CL_TRUE, CL_MAP_READ, 0, __ccv_sgf_opencl_buffer.pnum * sizeof(cl_uint), 0, NULL, NULL, NULL);
