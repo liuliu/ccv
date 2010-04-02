@@ -441,11 +441,30 @@ static const char* __ccv_sgf_opencl_kernel_code =
 "	err_rate[igrid] += e;\n"
 "}\n";
 
-cl_context __ccv_sgf_opencl_context;
-cl_command_queue __ccv_sgf_opencl_queue;
-cl_kernel __ccv_sgf_opencl_pos_kernel;
-cl_kernel __ccv_sgf_opencl_neg_kernel;
-cl_ulong __ccv_sgf_opencl_max_alloc_size;
+static cl_context __ccv_sgf_opencl_context;
+static cl_command_queue __ccv_sgf_opencl_queue;
+static cl_kernel __ccv_sgf_opencl_pos_kernel;
+static cl_kernel __ccv_sgf_opencl_neg_kernel;
+static cl_ulong __ccv_sgf_opencl_max_alloc_size;
+
+static struct {
+	int pnum;
+	cl_mem data;
+	cl_mem feature;
+	cl_mem err_rate;
+	cl_int* hpos;
+	int posnum;
+	cl_int* hneg;
+	int negnum;
+	cl_mem pw;
+	cl_mem nw;
+	cl_uint* hpw;
+	cl_uint* hnw;
+	int swap;
+	ccv_size_t size;
+} __ccv_sgf_opencl_buffer;
+
+static int __ccv_sgf_opencl_cpu_load = -1;
 
 static void __ccv_sgf_initialize_opencl()
 {
@@ -473,23 +492,6 @@ static void __ccv_sgf_initialize_opencl()
 	__ccv_sgf_opencl_pos_kernel = clCreateKernel(program, "__ccv_cl_pos_error_rate", NULL);
 	__ccv_sgf_opencl_neg_kernel = clCreateKernel(program, "__ccv_cl_neg_error_rate", NULL);
 }
-
-static struct {
-	int pnum;
-	cl_mem data;
-	cl_mem feature;
-	cl_mem err_rate;
-	cl_int* hpos;
-	int posnum;
-	cl_int* hneg;
-	int negnum;
-	cl_mem pw;
-	cl_mem nw;
-	cl_uint* hpw;
-	cl_uint* hnw;
-	int swap;
-	ccv_size_t size;
-} __ccv_sgf_opencl_buffer;
 
 static void __ccv_sgf_opencl_kernel_setup(int pnum, int** posdata, int posnum, int** negdata, int negnum, ccv_size_t size)
 {
@@ -578,8 +580,6 @@ static inline unsigned int __ccv_sgf_uint_neg_error_rate(ccv_sgf_feature_t* feat
 	}
 	return error;
 }
-
-static int __ccv_sgf_opencl_cpu_load = -1;
 
 static inline void __ccv_sgf_opencl_auto_tune(ccv_sgf_gene_t* gene)
 {
