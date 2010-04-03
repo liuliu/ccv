@@ -525,7 +525,7 @@ static void __ccv_sgf_opencl_kernel_free()
 	free(__ccv_sgf_opencl_buffer.hpos);
 	free(__ccv_sgf_opencl_buffer.hneg);
 	free(__ccv_sgf_opencl_buffer.hpw);
-	free(__ccv_sgf_opencl_buffer.hpw);
+	free(__ccv_sgf_opencl_buffer.hnw);
 	clReleaseMemObject(__ccv_sgf_opencl_buffer.data);
 	clReleaseMemObject(__ccv_sgf_opencl_buffer.feature);
 	clReleaseMemObject(__ccv_sgf_opencl_buffer.pw);
@@ -624,8 +624,8 @@ static inline void __ccv_sgf_opencl_auto_tune(ccv_sgf_gene_t* gene)
 		clEnqueueUnmapMemObject(__ccv_sgf_opencl_queue, __ccv_sgf_opencl_buffer.err_rate, err_rate, 0, NULL, NULL);
 		clFinish(__ccv_sgf_opencl_queue);
 		/* we want to balance the cpu load with gpu load (swap size), thus, cpu load * cpu time == gpu load * gpu time
-		 * so that either of them will become the bottleneck, in practice, openmp is costs, so a 0.33 factor used */
-		__ccv_sgf_opencl_cpu_load = (int)((double)gpu_timer * (double)__ccv_sgf_opencl_buffer.swap / (double)cpu_timer * 0.33);
+		 * so that either of them will become the bottleneck, in practice, openmp is costs, so a 0.75 factor used */
+		__ccv_sgf_opencl_cpu_load = (int)((double)gpu_timer * (double)__ccv_sgf_opencl_buffer.swap / (double)cpu_timer * 0.75);
 	}
 }
 
