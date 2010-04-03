@@ -1,5 +1,5 @@
 CC = clang
-CFLAGS = -O3 -msse2 -Wall
+CFLAGS = -O3 -msse2 -Wall -D HAVE_LIBJPEG -D HAVE_LIBPNG -D HAVE_FFTW3
 
 all: libccv.a
 
