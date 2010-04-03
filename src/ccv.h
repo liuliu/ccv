@@ -12,10 +12,15 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
-#include <alloca.h>
 #include <math.h>
 #include <xmmintrin.h>
 #include <assert.h>
+#ifdef _WIN32
+#include <malloc.h>
+#define alloca _malloca
+#else
+#include <alloca.h>
+#endif
 
 enum {
 	CCV_8U  = 0x0100,

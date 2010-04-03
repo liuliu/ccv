@@ -1,6 +1,8 @@
 #include "ccv.h"
+#ifdef HAVE_FFTW3
 #include <complex.h>
 #include <fftw3.h>
+#endif
 
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b)
 {
@@ -216,6 +218,7 @@ static int __ccv_get_optimal_fft_size(int size)
     return __ccv_optimal_fft_size[b];
 }
 
+#ifdef HAVE_FFTW3
 static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
 	int rows = ccv_min(a->rows, __ccv_get_optimal_fft_size(b->rows * 3));
@@ -316,6 +319,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	fftw_free(fftw_d);
 	fftw_free(fftw_dc);
 }
+#endif
 
 void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
@@ -429,7 +433,9 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	{
 		__ccv_filter_direct_8u(da, db, dd);
 	} else {
+#ifdef HAVE_FFTW3
 		__ccv_filter_fftw(da, db, dd);
+#endif
 	}
 }
 
