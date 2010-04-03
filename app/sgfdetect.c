@@ -10,6 +10,7 @@ unsigned int get_current_time()
 
 int main(int argc, char** argv)
 {
+	assert(argc >= 3);
 	int i;
 	ccv_dense_matrix_t* image = NULL;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);

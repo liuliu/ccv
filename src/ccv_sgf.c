@@ -1,6 +1,13 @@
 #include "ccv.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+#include <sys/time.h>
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
+#ifdef USE_OPENCL
+#include <CL/cl.h>
+#endif
 
 static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
 {
@@ -1507,8 +1514,8 @@ ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* direct
 	sprintf(buf, "%s/cascade.txt", directory);
 	int s, i;
 	FILE* r = fopen(buf, "r");
-	if (r != NULL)
-		s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
+	if (r == NULL) return NULL;
+	s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
 	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
 	for (i = 0; i < cascade->count; i++)
 	{
@@ -1519,19 +1526,52 @@ ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* direct
 			break;
 		}
 	}
+	fclose(r);
 	return cascade;
 }
 
 ccv_sgf_classifier_cascade_t* ccv_sgf_classifier_cascade_read_binary(char* s)
 {
+	int i;
 	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
 	memcpy(&cascade->count, s, sizeof(cascade->count)); s += sizeof(cascade->count);
 	memcpy(&cascade->size.width, s, sizeof(cascade->size.width)); s += sizeof(cascade->size.width);
 	memcpy(&cascade->size.height, s, sizeof(cascade->size.height)); s += sizeof(cascade->size.height);
-	cascade->stage_classifier = (ccv_sgf_classifier_cascade_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
-	for (i = 0; i < cascade->count; i++)
+	ccv_sgf_stage_classifier_t* classifier = cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
+	for (i = 0; i < cascade->count; i++, classifier++)
 	{
+		memcpy(&classifier->count, s, sizeof(classifier->count)); s += sizeof(classifier->count);
+		memcpy(&classifier->threshold, s, sizeof(classifier->threshold)); s += sizeof(classifier->threshold);
+		classifier->feature = (ccv_sgf_feature_t*)malloc(classifier->count * sizeof(ccv_sgf_feature_t));
+		classifier->alpha = (float*)malloc(classifier->count * 2 * sizeof(float));
+		memcpy(classifier->feature, s, classifier->count * sizeof(ccv_sgf_feature_t)); s += classifier->count * sizeof(ccv_sgf_feature_t);
+		memcpy(classifier->alpha, s, classifier->count * 2 * sizeof(float)); s += classifier->count * 2 * sizeof(float);
 	}
+	return cascade;
+}
+
+int ccv_sgf_classifier_cascade_write_binary(ccv_sgf_classifier_cascade_t* cascade, char* s, int slen)
+{
+	int i;
+	int len = sizeof(cascade->count) + sizeof(cascade->size.width) + sizeof(cascade->size.height);
+	ccv_sgf_stage_classifier_t* classifier = cascade->stage_classifier;
+	for (i = 0; i < cascade->count; i++, classifier++)
+		len += sizeof(classifier->count) + sizeof(classifier->threshold) + classifier->count * sizeof(ccv_sgf_feature_t) + classifier->count * 2 * sizeof(float);
+	if (slen >= len)
+	{
+		memcpy(s, &cascade->count, sizeof(cascade->count)); s += sizeof(cascade->count);
+		memcpy(s, &cascade->size.width, sizeof(cascade->size.width)); s += sizeof(cascade->size.width);
+		memcpy(s, &cascade->size.height, sizeof(cascade->size.height)); s += sizeof(cascade->size.height);
+		classifier = cascade->stage_classifier;
+		for (i = 0; i < cascade->count; i++, classifier++)
+		{
+			memcpy(s, &classifier->count, sizeof(classifier->count)); s += sizeof(classifier->count);
+			memcpy(s, &classifier->threshold, sizeof(classifier->threshold)); s += sizeof(classifier->threshold);
+			memcpy(s, classifier->feature, classifier->count * sizeof(ccv_sgf_feature_t)); s += classifier->count * sizeof(ccv_sgf_feature_t);
+			memcpy(s, classifier->alpha, classifier->count * 2 * sizeof(float)); s += classifier->count * 2 * sizeof(float);
+		}
+	}
+	return len;
 }
 
 void ccv_sgf_classifier_cascade_free(ccv_sgf_classifier_cascade_t* cascade)
