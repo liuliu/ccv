@@ -1,13 +1,6 @@
 #include "ccv.h"
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
-#ifdef USE_OPENMP
-#include <omp.h>
-#endif
-#ifdef USE_OPENCL
-#include <CL/cl.h>
-#endif
-#include <sys/time.h>
 
 static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, int** i32c8)
 {
@@ -1527,6 +1520,18 @@ ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* direct
 		}
 	}
 	return cascade;
+}
+
+ccv_sgf_classifier_cascade_t* ccv_sgf_classifier_cascade_read_binary(char* s)
+{
+	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
+	memcpy(&cascade->count, s, sizeof(cascade->count)); s += sizeof(cascade->count);
+	memcpy(&cascade->size.width, s, sizeof(cascade->size.width)); s += sizeof(cascade->size.width);
+	memcpy(&cascade->size.height, s, sizeof(cascade->size.height)); s += sizeof(cascade->size.height);
+	cascade->stage_classifier = (ccv_sgf_classifier_cascade_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
+	for (i = 0; i < cascade->count; i++)
+	{
+	}
 }
 
 void ccv_sgf_classifier_cascade_free(ccv_sgf_classifier_cascade_t* cascade)
