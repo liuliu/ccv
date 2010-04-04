@@ -171,7 +171,7 @@ static ccv_dense_matrix_t* __ccv_memory_get_and_remove_matrix_cache(ccv_memory_t
 		int i;
 		for (i = p; i < c; ++i)
 			pcon->con[i] = pcon->con[i + 1];
-		pcon->con = realloc(pcon->con, sizeof(ccv_memory_index_t) * c);
+		pcon->con = (ccv_memory_index_t*)realloc(pcon->con, sizeof(ccv_memory_index_t) * c);
 	} else {
 		free(pcon->con);
 		pcon->con = NULL;
@@ -223,7 +223,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, in
 	mat.cols = cols;
 	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
 	mat.refcount = 1;
-	mat.data.ptr = data;
+	mat.data.ptr = (unsigned char*)data;
 	return mat;
 }
 

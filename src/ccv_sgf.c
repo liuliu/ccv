@@ -1,7 +1,11 @@
 #include "ccv.h"
+#ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+#endif
+#ifndef _WIN32
 #include <sys/time.h>
+#endif
 #ifdef USE_OPENMP
 #include <omp.h>
 #endif
@@ -47,6 +51,8 @@ static inline int __ccv_run_sgf_feature(ccv_sgf_feature_t* feature, int* step, i
 }
 
 #define HOG_BORDER_SIZE (2)
+
+#ifdef HAVE_GSL
 
 static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, int** negdata, int negnum)
 {
@@ -1046,6 +1052,29 @@ static int __ccv_save_sgf_cacade_training_state(const char* file, int i, int k, 
 	return 0;
 }
 
+ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory)
+{
+	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
+	char buf[1024];
+	sprintf(buf, "%s/cascade.txt", directory);
+	int s, i;
+	FILE* r = fopen(buf, "r");
+	if (r == NULL) return NULL;
+	s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
+	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
+	for (i = 0; i < cascade->count; i++)
+	{
+		sprintf(buf, "%s/stage-%d.txt", directory, i);
+		if (__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[i]) < 0)
+		{
+			cascade->count = i;
+			break;
+		}
+	}
+	fclose(r);
+	return cascade;
+}
+
 void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_sgf_param_t params)
 {
 	int i, j, k;
@@ -1246,6 +1275,7 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	free(posdata);
 	free(cascade);
 }
+#endif
 
 static int __ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
@@ -1505,29 +1535,6 @@ ccv_array_t* ccv_sgf_detect_objects(ccv_dense_matrix_t* a, ccv_sgf_classifier_ca
 		ccv_matrix_free(hogs[i]);
 
 	return result_seq2;
-}
-
-ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade(const char* directory)
-{
-	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));
-	char buf[1024];
-	sprintf(buf, "%s/cascade.txt", directory);
-	int s, i;
-	FILE* r = fopen(buf, "r");
-	if (r == NULL) return NULL;
-	s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
-	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));
-	for (i = 0; i < cascade->count; i++)
-	{
-		sprintf(buf, "%s/stage-%d.txt", directory, i);
-		if (__ccv_read_sgf_stage_classifier(buf, &cascade->stage_classifier[i]) < 0)
-		{
-			cascade->count = i;
-			break;
-		}
-	}
-	fclose(r);
-	return cascade;
 }
 
 ccv_sgf_classifier_cascade_t* ccv_sgf_classifier_cascade_read_binary(char* s)

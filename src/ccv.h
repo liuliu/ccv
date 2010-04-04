@@ -6,7 +6,9 @@
 #ifndef _GUARD_ccv_h_
 #define _GUARD_ccv_h_
 
-#ifndef _WIN32
+#ifdef _WIN32
+typedef unsigned __int64     uint64_t;
+#else
 #include <unistd.h>
 #include <stdint.h>
 #endif
@@ -19,7 +21,6 @@
 #include <assert.h>
 #ifdef _WIN32
 #include <malloc.h>
-#define alloca _malloca
 #else
 #include <alloca.h>
 #endif

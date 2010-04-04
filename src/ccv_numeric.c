@@ -429,7 +429,7 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	 * to do FFT for the whole image. The image can be divided to n/m part, and
 	 * the FFT itself is O(mlog(m)), so, the convolution process has time complexity
 	 * of O(nlog(m)) */
-	if ((db->rows * db->cols < (log(db->rows * db->cols) + 1) * 15) && (da->type & CCV_8U))
+	if ((db->rows * db->cols < (log((double)(db->rows * db->cols)) + 1) * 15) && (da->type & CCV_8U))
 	{
 		__ccv_filter_direct_8u(da, db, dd);
 	} else {

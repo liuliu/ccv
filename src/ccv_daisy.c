@@ -58,7 +58,7 @@ static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, i
 	for (i = 0; i < kernel->rows; i++)
 		for (j = 0; j < kernel->cols; j++)
 			kernel->data.fl[i * kernel->cols + j] = kernel->data.fl[i * kernel->cols + j] / total;
-	ccv_filter(a, kernel, b);
+	ccv_filter(a, kernel, (ccv_matrix_t**)b);
 	ccv_matrix_free(kernel);
 }
 

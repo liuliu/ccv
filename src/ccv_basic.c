@@ -462,7 +462,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
 	int cols0 = db->cols - 2 + (a->cols - db->cols * 2);
 	int dy, sy, dx, k;
-	int* buf = alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
+	int* buf = (int*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	sy = -2;
 	unsigned char* b_ptr = db->data.ptr;
 #define for_block(__for_get_a, __for_get, __for_set, __for_set_b) \
