@@ -779,7 +779,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		min_err = gene[min_id].error = __ccv_sgf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
 		if (min_err < best_err)
 		{
-			best_err = gene[min_id].error;
+			best_err = min_err;
 			memcpy(&best, &gene[min_id].feature, sizeof(best));
 			printf("best sgf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
 			for (i = 0; i < best.size; i++)

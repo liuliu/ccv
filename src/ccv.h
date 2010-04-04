@@ -6,9 +6,11 @@
 #ifndef _GUARD_ccv_h_
 #define _GUARD_ccv_h_
 
+#ifndef _WIN32
 #include <unistd.h>
-#include <stdio.h>
 #include <stdint.h>
+#endif
+#include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
