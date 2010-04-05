@@ -8,7 +8,11 @@
 
 /* this is only to get definitions for memcpy(), ntohl() and htonl() */
 
+#ifdef _WIN32
+#include <Winsock2.h>
+#else
 #include <netdb.h>
+#endif
 #include <string.h>
 #include "sha1.h"
 
@@ -255,7 +259,7 @@ void blk_SHA1_Update(blk_SHA_CTX *ctx, const void *data, unsigned long len)
 		blk_SHA1_Block(ctx, ctx->W);
 	}
 	while (len >= 64) {
-		blk_SHA1_Block(ctx, data);
+		blk_SHA1_Block(ctx, (const unsigned int *)data);
 		data = ((const char *)data + 64);
 		len -= 64;
 	}

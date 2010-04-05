@@ -1,5 +1,7 @@
 #include "ccv.h"
+#ifdef HAVE_CBLAS
 #include <cblas.h>
+#endif
 
 double ccv_trace(ccv_matrix_t* mat)
 {
@@ -71,7 +73,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 		if (dd != dc)
 			memcpy(dd->data.ptr, dc->data.ptr, dc->step * dc->rows);
 	}
-
+#ifdef HAVE_CBLAS
 	switch (CCV_GET_DATA_TYPE(dd->type))
 	{
 		case CCV_32F:
@@ -81,4 +83,5 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 			cblas_dgemm(CblasRowMajor, (transpose & CCV_A_TRANSPOSE) ? CblasTrans : CblasNoTrans, (transpose & CCV_B_TRANSPOSE) ? CblasTrans : CblasNoTrans, dd->rows, dd->cols, (transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols, alpha, da->data.db, da->cols, db->data.db, db->cols, beta, dd->data.db, dd->cols);
 			break;
 	}
+#endif
 }
