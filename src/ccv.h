@@ -6,9 +6,7 @@
 #ifndef _GUARD_ccv_h_
 #define _GUARD_ccv_h_
 
-#ifdef _WIN32
-typedef unsigned __int64     uint64_t;
-#else
+#ifndef _MSC_VER
 #include <unistd.h>
 #include <stdint.h>
 #endif
