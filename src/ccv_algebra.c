@@ -1,5 +1,5 @@
 #include "ccv.h"
-#ifdef HAVE_CLBAS
+#ifdef HAVE_CBLAS
 #include <cblas.h>
 #endif
 
