@@ -94,8 +94,8 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 	int i = 0;
 	float scale = (float)(180 / 3.141592654);
 
-	static const int iabsmask[] = {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff};
-	__m128 eps = _mm_set1_ps((float)1e-6), absmask = _mm_load_ps((const float*)iabsmask);
+	union { int i; float fl; } iabsmask; iabsmask.i = 0x7fffffff;
+	__m128 eps = _mm_set1_ps((float)1e-6), absmask = _mm_set1_ps(iabsmask.fl);
 	__m128 _90 = _mm_set1_ps((float)(3.141592654 * 0.5)), _180 = _mm_set1_ps((float)3.141592654), _360 = _mm_set1_ps((float)(3.141592654 * 2));
 	__m128 zero = _mm_setzero_ps(), _0_28 = _mm_set1_ps(0.28f), scale4 = _mm_set1_ps(scale);
 	
@@ -414,6 +414,15 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 	} else {
 		db = *b;
 		assert(db->rows == rows && db->cols == cols && CCV_GET_CHANNEL(db->type) == CCV_GET_CHANNEL(a->type));
+	}
+	if (a->rows == db->rows && a->cols == db->cols)
+	{
+		if (a->type == db->type)
+			memcpy(a->data.ptr, db->data.ptr, a->rows * a->step);
+		else {
+			/* format convert */
+		}
+		return;
 	}
 	switch (type)
 	{
