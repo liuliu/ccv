@@ -415,6 +415,15 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 		db = *b;
 		assert(db->rows == rows && db->cols == cols && CCV_GET_CHANNEL(db->type) == CCV_GET_CHANNEL(a->type));
 	}
+	if (a->rows == db->rows && a->cols == db->cols)
+	{
+		if (a->type == db->type)
+			memcpy(a->data.ptr, db->data.ptr, a->rows * a->step);
+		else {
+			/* format convert */
+		}
+		return;
+	}
 	switch (type)
 	{
 		case CCV_INTER_AREA:
