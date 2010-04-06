@@ -121,7 +121,7 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 		_mm_storeu_ps(angle + i, a4);
 		_mm_storeu_ps(mag + i, m4);
 	}
-	
+
 	for(; i < len; i++)
 	{
 		float xf = x[i], yf = y[i];
