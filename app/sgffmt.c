@@ -6,7 +6,7 @@ void write_code(ccv_sgf_classifier_cascade_t* cascade)
 
 	printf("ccv_sgf_classifier_cascade_t* ccv_load_sgf_classifier_cascade()\n"
 		   "{\n"
-		   "	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)mlloc(sizeof(ccv_sgf_classifier_cascade_t));\n"
+		   "	ccv_sgf_classifier_cascade_t* cascade = (ccv_sgf_classifier_cascade_t*)malloc(sizeof(ccv_sgf_classifier_cascade_t));\n"
 		   "	cascade->count = %d;\n"
 		   "	cascade->size = ccv_size(%d, %d);\n"
 		   "	cascade->stage_classifier = (ccv_sgf_stage_classifier_t*)malloc(cascade->count * sizeof(ccv_sgf_stage_classifier_t));\n",
