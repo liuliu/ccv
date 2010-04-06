@@ -978,14 +978,13 @@ static int __ccv_read_background_data(const char* file, int** negdata, int* negn
 	int stat = 0;
 	FILE* r = fopen(file, "r");
 	if (r == NULL) return -1;
-	stat |= fscanf(r, "%d", negnum);
-	int i, j;
+	stat |= fread(negnum, sizeof(int), 1, r);
+	int i;
 	int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
 	for (i = 0; i < *negnum; i++)
 	{
 		negdata[i] = (int*)malloc(isizs01 * sizeof(int));
-		for (j = 0; j < isizs01; j++)
-			stat |= fscanf(r, "%d", &negdata[i][j]);
+		stat |= fread(negdata[i], sizeof(int), isizs01, r);
 	}
 	fclose(r);
 	return 0;
@@ -995,15 +994,11 @@ static int __ccv_write_background_data(const char* file, int** negdata, int negn
 {
 	FILE* w = fopen(file, "w");
 	if (w == NULL) return -1;
-	fprintf(w, "%d\n", negnum);
-	int i, j;
+	fwrite(&negnum, sizeof(int), 1, w);
+	int i;
 	int isizs01 = size.width * size.height * 8 + ((size.width >> 1) - HOG_BORDER_SIZE) * ((size.height >> 1) - HOG_BORDER_SIZE) * 8;
 	for (i = 0; i < negnum; i++)
-	{
-		for (j = 0; j < isizs01; j++)
-			fprintf(w, "%d ", negdata[i][j]);
-		fprintf(w, "\n");
-	}
+		fwrite(negdata[i], sizeof(int), isizs01, w);
 	fclose(w);
 	return 0;
 }
