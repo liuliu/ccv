@@ -295,15 +295,15 @@ static void __ccv_sgf_eval_data(ccv_sgf_stage_classifier_t* classifier, int** po
 	}
 }
 
-static void __ccv_prune_positive_data(ccv_sgf_classifier_cascade_t* cascade, int** posdata, int* posnum, ccv_size_t size)
+static int __ccv_prune_positive_data(ccv_sgf_classifier_cascade_t* cascade, int** posdata, int posnum, ccv_size_t size)
 {
-	float* peval = (float*)malloc(*posnum * sizeof(float));
-	int i, j, k;
+	float* peval = (float*)malloc(posnum * sizeof(float));
+	int i, j, k, rpos = posnum;
 	for (i = 0; i < cascade->count; i++)
 	{
-		__ccv_sgf_eval_data(cascade->stage_classifier + i, posdata, *posnum, 0, 0, size, peval, 0);
+		__ccv_sgf_eval_data(cascade->stage_classifier + i, posdata, rpos, 0, 0, size, peval, 0);
 		k = 0;
-		for (j = 0; j < *posnum; j++)
+		for (j = 0; j < rpos; j++)
 			if (peval[j] >= cascade->stage_classifier[i].threshold)
 			{
 				posdata[k] = posdata[j];
@@ -311,9 +311,10 @@ static void __ccv_prune_positive_data(ccv_sgf_classifier_cascade_t* cascade, int
 			} else {
 				free(posdata[j]);
 			}
-		*posnum = k;
+		rpos = k;
 	}
 	free(peval);
+	return rpos;
 }
 
 static inline int __ccv_sgf_exist_gene_feature(ccv_sgf_gene_t* gene, int x, int y, int z)
@@ -1124,7 +1125,7 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	}
 	if (k > 0)
 		cacheK = k;
-	int rneg;
+	int rpos, rneg;
 	if (bg)
 	{
 		sprintf(buf, "%s/negs.txt", dir);
@@ -1153,36 +1154,45 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			__ccv_read_sgf_stage_classifier(buf, &classifier);
 		} else {
 			/* initialize classifier */
-			totalw = params.balance_k * posnum + inv_balance_k * rneg;
 			for (j = 0; j < posnum; j++)
-				pw[j] = params.balance_k / totalw;
+				pw[j] = params.balance_k;
 			for (j = 0; j < rneg; j++)
-				nw[j] = inv_balance_k / totalw;
+				nw[j] = inv_balance_k;
 			classifier.count = k;
 			classifier.threshold = 0;
 			classifier.feature = (ccv_sgf_feature_t*)malloc(cacheK * sizeof(ccv_sgf_feature_t));
 			classifier.alpha = (float*)malloc(cacheK * 2 * sizeof(float));
 		}
-		__ccv_prune_positive_data(cascade, posdata, &posnum, cascade->size);
-		printf("%d postivie data and %d negative data in training\n", posnum, rneg);
+		rpos = __ccv_prune_positive_data(cascade, posdata, posnum, cascade->size);
+		printf("%d postivie data and %d negative data in training\n", rpos, rneg);
+		/* reweight to 1.00 */
+		totalw = 0;
+		for (j = 0; j < rpos; j++)
+			totalw += pw[j];
+		for (j = 0; j < rneg; j++)
+			totalw += nw[j];
+		for (j = 0; j < rpos; j++)
+			pw[j] = pw[j] / totalw;
+		for (j = 0; j < rneg; j++)
+			nw[j] = nw[j] / totalw;
 #if USE_OPENCL
-		__ccv_sgf_opencl_kernel_setup(params.feature_number * 100, posdata, posnum, negdata, rneg, cascade->size);
+		__ccv_sgf_opencl_kernel_setup(params.feature_number * 100, posdata, rpos, negdata, rneg, cascade->size);
 #endif
 		for (; ; k++)
 		{
 			/* get overall true-positive, false-positive rate and threshold */
 			double tp = 0, fp = 0, etp = 0, efp = 0;
-			__ccv_sgf_eval_data(&classifier, posdata, posnum, negdata, rneg, cascade->size, peval, neval);
-			__ccv_sort_32f(peval, posnum, 0);
-			classifier.threshold = peval[(int)((1. - params.pos_crit) * posnum)] - 1e-6;
-			for (j = 0; j < posnum; j++)
+			__ccv_sgf_eval_data(&classifier, posdata, rpos, negdata, rneg, cascade->size, peval, neval);
+			__ccv_sort_32f(peval, rpos, 0);
+			classifier.threshold = peval[(int)((1. - params.pos_crit) * rpos)] - 1e-6;
+			for (j = 0; j < rpos; j++)
 			{
 				if (peval[j] >= 0)
 					++tp;
 				if (peval[j] >= classifier.threshold)
 					++etp;
 			}
-			tp /= posnum; etp /= posnum;
+			tp /= rpos; etp /= rpos;
 			for (j = 0; j < rneg; j++)
 			{
 				if (neval[j] >= 0)
@@ -1206,12 +1216,12 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			/* TODO: more post-process is needed in here */
 
 			/* select the best feature in current distribution through genetic algorithm optimization */
-			ccv_sgf_feature_t best = __ccv_sgf_genetic_optimize(posdata, posnum, negdata, rneg, params.feature_number, cascade->size, pw, nw);
-			double err = __ccv_sgf_error_rate(&best, posdata, posnum, negdata, rneg, cascade->size, pw, nw);
+			ccv_sgf_feature_t best = __ccv_sgf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+			double err = __ccv_sgf_error_rate(&best, posdata, rpos, negdata, rneg, cascade->size, pw, nw);
 			double rw = (1 - err) / err;
 			totalw = 0;
 			/* reweight */
-			for (j = 0; j < posnum; j++)
+			for (j = 0; j < rpos; j++)
 			{
 				int* i32c8[] = { posdata[j], posdata[j] + isizs0 };
 				if (!__ccv_run_sgf_feature(&best, steps, i32c8))
@@ -1227,7 +1237,7 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 				nw[j] *= inv_balance_k;
 				totalw += nw[j];
 			}
-			for (j = 0; j < posnum; j++)
+			for (j = 0; j < rpos; j++)
 				pw[j] = pw[j] / totalw;
 			for (j = 0; j < rneg; j++)
 				nw[j] = nw[j] / totalw;
