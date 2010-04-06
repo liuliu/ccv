@@ -417,8 +417,8 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 	}
 	if (a->rows == db->rows && a->cols == db->cols)
 	{
-		if (a->type == db->type)
-			memcpy(a->data.ptr, db->data.ptr, a->rows * a->step);
+		if (CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(db->type) && CCV_GET_DATA_TYPE(db->type) == CCV_GET_DATA_TYPE(a->type))
+			memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
 		else {
 			/* format convert */
 		}
