@@ -94,7 +94,7 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 	int i = 0;
 	float scale = (float)(180 / 3.141592654);
 
-	static const int iabsmask[] = {0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff};
+	const int iabsmask[] = { 0x7fffffff, 0x7fffffff, 0x7fffffff, 0x7fffffff };
 	__m128 eps = _mm_set1_ps((float)1e-6), absmask = _mm_load_ps((const float*)iabsmask);
 	__m128 _90 = _mm_set1_ps((float)(3.141592654 * 0.5)), _180 = _mm_set1_ps((float)3.141592654), _360 = _mm_set1_ps((float)(3.141592654 * 2));
 	__m128 zero = _mm_setzero_ps(), _0_28 = _mm_set1_ps(0.28f), scale4 = _mm_set1_ps(scale);
@@ -121,7 +121,7 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 		_mm_storeu_ps(angle + i, a4);
 		_mm_storeu_ps(mag + i, m4);
 	}
-	
+
 	for(; i < len; i++)
 	{
 		float xf = x[i], yf = y[i];
