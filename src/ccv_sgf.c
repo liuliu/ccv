@@ -738,7 +738,9 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	gsl_rng_set(rng, (unsigned long int)(pw[0] + nw[0]));
+	union { unsigned long int li; double db } dbli;
+	dbli.db = pw[0] + nw[0];
+	gsl_rng_set(rng, dbli.li);
 	int i, j;
 	int pnum = ftnum * 100;
 	ccv_sgf_gene_t* gene = (ccv_sgf_gene_t*)malloc(pnum * sizeof(ccv_sgf_gene_t));
