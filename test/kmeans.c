@@ -196,15 +196,15 @@ int main(int argc, char** argv)
 	//			tex[i * tex_cols + j].desc[k] = 0;
 			for (k = 0; k < KMEANS_GABOR_SIZE; k++)
 				dx0[k] = dx1[k] = dy0[k] = dy1[k] = 0;
-			for (y = i; y < i + 16; y++)
-				for (x = j; x < j + 16; x++)
-					if ((x - j - 7.5) * (x - j - 7.5) + (y - i - 7.5) * (y - i - 7.5) <= 7.5 * 7.5)
+			for (y = i; y < i + 8; y++)
+				for (x = j; x < j + 8; x++)
+					if ((x - j - 3.5) * (x - j - 3.5) + (y - i - 3.5) * (y - i - 3.5) <= 3.5 * 3.5)
 					{
-						if (x <= j + 7)
+						if (x <= j + 3)
 							dx0[gim[y * imf->cols + x].label]++;
 						else
 							dx1[gim[y * imf->cols + x].label]++;
-						if (y <= i + 7)
+						if (y <= i + 3)
 							dy0[gim[y * imf->cols + x].label]++;
 						else
 							dy1[gim[y * imf->cols + x].label]++;
@@ -213,10 +213,10 @@ int main(int argc, char** argv)
 			for (k = 0; k < KMEANS_GABOR_SIZE; k++)
 			{
 				dx += (double)(dx0[k] - dx1[k]) * (dx0[k] - dx1[k]) / (double)(dx0[k] + dx1[k] + 1e-6);
-				dy += (double)(dx0[k] - dx1[k]) * (dy0[k] - dy1[k]) / (double)(dy0[k] + dy1[k] + 1e-6);
+				dy += (double)(dy0[k] - dy1[k]) * (dy0[k] - dy1[k]) / (double)(dy0[k] + dy1[k] + 1e-6);
 			}
-			
-			cl->data.ptr[i * cl->step + j] = 255 - ccv_clamp(sqrt(dx * dx + dy * dy) + 0.5, 0, 255);
+
+			cl->data.ptr[i * cl->step + j] = 255 - ccv_clamp(sqrt(dx * dx + dy * dy) * 8 + 0.5, 0, 255);
 	//				tex[i * tex_cols + j].desc[gim[y * imf->cols + x].label]++;
 		}
 	/*
