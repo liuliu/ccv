@@ -1096,8 +1096,6 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	__ccv_sgf_initialize_opencl();
 #endif
 
-	__ccv_prepare_positive_data(posimg, posdata, cascade->size, posnum);
-
 	int isizs0 = cascade->size.width * cascade->size.height * 8;
 	int steps[] = { cascade->size.width * 8, ((cascade->size.width >> 1) - HOG_BORDER_SIZE) * 8 };
 	
@@ -1160,6 +1158,7 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			classifier.feature = (ccv_sgf_feature_t*)malloc(cacheK * sizeof(ccv_sgf_feature_t));
 			classifier.alpha = (float*)malloc(cacheK * 2 * sizeof(float));
 		}
+		__ccv_prepare_positive_data(posimg, posdata, cascade->size, posnum);
 		rpos = __ccv_prune_positive_data(cascade, posdata, posnum, cascade->size);
 		printf("%d postivie data and %d negative data in training\n", rpos, rneg);
 		/* reweight to 1.00 */
@@ -1270,6 +1269,8 @@ void ccv_sgf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 		cascade->stage_classifier = stage_classifier;
 		k = 0;
 		bg = 0;
+		for (j = 0; j < rpos; j++)
+			free(posdata[j]);
 		for (j = 0; j < rneg; j++)
 			free(negdata[j]);
 	}
