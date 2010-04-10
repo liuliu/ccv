@@ -93,7 +93,7 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 {
 	int i = 0;
 	float scale = (float)(180 / 3.141592654);
-
+#ifndef _WIN32
 	union { int i; float fl; } iabsmask; iabsmask.i = 0x7fffffff;
 	__m128 eps = _mm_set1_ps((float)1e-6), absmask = _mm_set1_ps(iabsmask.fl);
 	__m128 _90 = _mm_set1_ps((float)(3.141592654 * 0.5)), _180 = _mm_set1_ps((float)3.141592654), _360 = _mm_set1_ps((float)(3.141592654 * 2));
@@ -121,7 +121,7 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 		_mm_storeu_ps(angle + i, a4);
 		_mm_storeu_ps(mag + i, m4);
 	}
-
+#endif
 	for(; i < len; i++)
 	{
 		float xf = x[i], yf = y[i];
