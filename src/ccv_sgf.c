@@ -951,7 +951,7 @@ int __ccv_read_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t
 
 int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_t* classifier)
 {
-	FILE* w = fopen(file, "w");
+	FILE* w = fopen(file, "wb");
 	if (w == NULL) return -1;
 	fprintf(w, "%d\n", classifier->count);
 	union { float fl; int i; } fli;
@@ -978,7 +978,7 @@ int __ccv_write_sgf_stage_classifier(const char* file, ccv_sgf_stage_classifier_
 static int __ccv_read_background_data(const char* file, int** negdata, int* negnum, ccv_size_t size)
 {
 	int stat = 0;
-	FILE* r = fopen(file, "r");
+	FILE* r = fopen(file, "rb");
 	if (r == NULL) return -1;
 	stat |= fread(negnum, sizeof(int), 1, r);
 	int i;
