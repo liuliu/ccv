@@ -468,7 +468,7 @@ int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_fun
 					}
 
 					/* compress path from node to the root: */
-					node2 = node;
+					node2 = node + i;
 					while(node2->parent)
 					{
 						ccv_ptree_node_t* temp = node2;
