@@ -31,6 +31,12 @@ double ccv_sum(ccv_matrix_t* mat)
 	return sum;
 }
 
+void ccv_zero(ccv_matrix_t* mat)
+{
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	memset(dmt->data.ptr, 0, dmt->step * dmt->rows);
+}
+
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
