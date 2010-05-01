@@ -246,6 +246,7 @@ enum {
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
+void ccv_zero(ccv_matrix_t* mat);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,
@@ -324,7 +325,19 @@ void ccv_array_free(ccv_array_t* array);
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
-void ccv_minimize(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+
+typedef struct {
+	double interp;
+	double extrap;
+	int max_iter;
+	double ratio;
+	double rho;
+	double sig;
+} ccv_minimize_param_t;
+
+typedef int(*ccv_minimize_custom_func)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
+void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_custom_func func, ccv_minimize_param_t params, void* data);
+
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
 typedef double(*ccv_filter_kernel_func)(double x, double y, void*);
 void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data);
