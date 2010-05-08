@@ -131,19 +131,6 @@ static int __ccv_prepare_background_data(ccv_sgf_classifier_cascade_t* cascade, 
 				ccv_matrix_free(imgs0);
 				ccv_matrix_free(imgs1);
 
-	/*
-				for ( int y = 0; y < cascade->size.height; ++y )
-					for ( int x = 0; x < cascade->size.width; ++x )
-						if ( i32c8s0[x * 8 + 1 + y * cascade->size.width * 8] > 255 )
-							out8u->data.ptr[x + y * out8u->step] = 255;
-						else if ( i32c8s0[x * 8 + 1 + y * cascade->size.width * 8] < 0 )
-							out8u->data.ptr[x + y * out8u->step] = 0;
-						else
-							out8u->data.ptr[x + y * out8u->step] = i32c8s0[x * 8 + 1 + y * cascade->size.width * 8];
-				cvShowImage("image", imgs0 );
-				cvShowImage("output", out8u);
-				cvWaitKey(0);
-	*/
 				flag = 1;
 				ccv_sgf_stage_classifier_t* classifier = cascade->stage_classifier;
 				for (k = 0; k < cascade->count; ++k, ++classifier)
@@ -211,19 +198,7 @@ static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, int** posda
 
 		printf("\rpreparing positive data ... %2d%%", 100 * (i + 1) / posnum);
 		fflush(NULL);
-/*
-		for ( int y = 0; y < size.height; ++y )
-			for ( int x = 0; x < size.width; ++x )
-				if ( i32c8s0[x * 8 + 1 + y * size.width * 8] > 255 )
-					out8u->data.ptr[x + y * out8u->step] = 255;
-				else if ( i32c8s0[x * 8 + 1 + y * size.width * 8] < 0 )
-					out8u->data.ptr[x + y * out8u->step] = 0;
-				else
-					out8u->data.ptr[x + y * out8u->step] = i32c8s0[x * 8 + 1 + y * size.width * 8];
-		cvShowImage("image", imgs0 );
-		cvShowImage("output", out8u);
-		cvWaitKey(0);
-*/
+
 		ccv_matrix_free(imgs1);
 	}
 	ccv_garbage_collect();
@@ -738,7 +713,7 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	union { unsigned long int li; double db } dbli;
+	union { unsigned long int li; double db; } dbli;
 	dbli.db = pw[0] + nw[0];
 	gsl_rng_set(rng, dbli.li);
 	int i, j;
@@ -899,6 +874,105 @@ static ccv_sgf_feature_t __ccv_sgf_genetic_optimize(int** posdata, int posnum, i
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
 			__ccv_sgf_randomize_gene(rng, &gene[i], rows, steps);
+		timer = __ccv_sgf_time_measure();
+#ifdef USE_OPENCL
+		__ccv_sgf_opencl_kernel_execute(gene);
+#else
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
+#endif
+		for (i = 0; i < pnum; i++)
+			gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+#endif
+		timer = __ccv_sgf_time_measure() - timer;
+		for (i = 0; i < pnum; i++)
+			__ccv_sgf_genetic_fitness(&gene[i]);
+	}
+#ifdef USE_OPENCL
+	__ccv_sgf_opencl_kernel_opt_free();
+#endif
+	gsl_rng_free(rng);
+	return best;
+}
+
+static ccv_sgf_feature_t __ccv_sgf_convex_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
+{
+	/* seed (random method) */
+	gsl_rng_env_setup();
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	union { unsigned long int li; double db; } dbli;
+	dbli.db = pw[0] + nw[0];
+	gsl_rng_set(rng, dbli.li);
+	int i, j, k, m;
+	int rows[] = { size.height, (size.height >> 1) - HOG_BORDER_SIZE };
+	int steps[] = { size.width * 8, ((size.width >> 1) - HOG_BORDER_SIZE) * 8 };
+	ccv_sgf_gene_t* gene = (ccv_sgf_gene_t*)malloc((rows[0] * steps[0] + rows[1] * steps[1]) * sizeof(ccv_sgf_gene_t));
+	int pnum;
+	double best_err;
+	ccv_sgf_feature_t best;
+	int z = gsl_rng_uniform_int(rng, 2);
+	int x = gsl_rng_uniform_int(rng, steps[z]);
+	int y = gsl_rng_uniform_int(rng, rows[z]);
+	m = 0;
+	for (i = 0; i < 2; i++)
+		for (j = 0; j < steps[i]; j++)
+			for (k = 0; k < rows[i]; k++)
+			{
+				gene[m].pk = gene[m].nk = 1;
+				gene[m].feature.pz[0] = z;
+				gene[m].feature.px[0] = x;
+				gene[m].feature.py[0] = y;
+				gene[m].feature.nz[0] = i;
+				gene[m].feature.nx[0] = j;
+				gene[m].feature.ny[0] = k;
+				gene[m].feature.size = 1;
+				m++;
+			}
+	unsigned int timer = __ccv_sgf_time_measure();
+#ifdef USE_OPENCL
+	__ccv_sgf_opencl_kernel_opt_setup(pw, nw);
+	__ccv_sgf_opencl_kernel_execute(gene);
+	/* verify it, only useful for debug
+	for (i = 0; i < pnum; i++)
+	{
+		double error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		assert(fabs(error - gene[i].error) < 1e-3);
+	}*/
+#else
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
+#endif
+	for (i = 0; i < pnum; i++)
+		gene[i].error = __ccv_sgf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+#endif
+	timer = __ccv_sgf_time_measure() - timer;
+	/* iteration stop crit : best no change in 40 iterations */
+	int it = 0, t;
+	for (t = 0 ; it < 40; ++it, ++t)
+	{
+		int min_id = 0;
+		double min_err = gene[0].error;
+		for (i = 1; i < pnum; i++)
+			if (gene[i].error < min_err)
+			{
+				min_id = i;
+				min_err = gene[i].error;
+			}
+		min_err = gene[min_id].error = __ccv_sgf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		if (min_err < best_err)
+		{
+			best_err = min_err;
+			memcpy(&best, &gene[min_id].feature, sizeof(best));
+			printf("best sgf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
+			for (i = 0; i < best.size; i++)
+				printf("(%d %d %d), ", best.px[i], best.py[i], best.pz[i]);
+			printf("\n|-negative point: ");
+			for (i = 0; i < best.size; i++)
+				printf("(%d %d %d), ", best.nx[i], best.ny[i], best.nz[i]);
+			printf("\n");
+			it = 0;
+		}
+		printf("minimum error achieved in round %d(%d) : %f with %d ms\n", t, it, min_err, timer / 1000);
 		timer = __ccv_sgf_time_measure();
 #ifdef USE_OPENCL
 		__ccv_sgf_opencl_kernel_execute(gene);

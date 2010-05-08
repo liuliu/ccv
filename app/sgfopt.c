@@ -13,9 +13,7 @@ typedef struct {
 ccv_sample_t samples[100];
 double w[100];
 
-int flag = 0;
-
-double cont_f(ccv_dense_matrix_t* x)
+double cont_f(const ccv_dense_matrix_t* x)
 {
 	int i, j;
 	double f = 0;
@@ -48,33 +46,32 @@ double cont_f(ccv_dense_matrix_t* x)
 	return f;
 }
 
-int cont_sgf_feature(ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
+int cont_sgf_feature(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
-	//if (flag == 0)
 	*f = cont_f(x);
 	printf("%f\n", *f);
 	int i, j, k;
 	ccv_zero(df);
-	for (k = 0; k < 200; k++)
+	/*for (k = 0; k < 200; k++)
 	{
-		x->data.db[k] += 0.01;
-		df->data.db[k] = (cont_f(x) - *f) / 0.01;
-		x->data.db[k] -= 0.01;
-	}
-		/*
-	for (k = 0; k < 10; k++)
+		x->data.db[k] += 0.0001;
+		df->data.db[k] = (cont_f(x) - *f) / 0.0001;
+		x->data.db[k] -= 0.0001;
+	}*/
+	double eps = 1;
+	for (k = 0; k < 100; k++)
 	{
-		df->data.db[k] = (x->data.db[k] > 0) ? 0.01 : -0.5;
+		df->data.db[k] = 0.02 * exp(-x->data.db[k] * x->data.db[k]) * x->data.db[k];
 		for (i = 0; i < 100; i++)
 		{
 			double m0 = 0, m1 = 0;
 			double n0 = 0, n1 = 0;
-			for (j = 0; j < 10; j++)
+			for (j = 0; j < 100; j++)
 			{
-				m0 += samples[i].m0x[j] * x->data.db[j];
-				m1 += samples[i].m1x[j] * x->data.db[j];
-				n0 += samples[i].n0x[j] * x->data.db[j + 10];
-				n1 += samples[i].n1x[j] * x->data.db[j + 10];
+				m0 += samples[i].m0x[j] * ccv_max(x->data.db[j], 0);
+				m1 += samples[i].m1x[j] * ccv_max(x->data.db[j], 0);
+				n0 += samples[i].n0x[j] * ccv_max(x->data.db[j + 100], 0);
+				n1 += samples[i].n1x[j] * ccv_max(x->data.db[j + 100], 0);
 			}
 			if (samples[i].y)
 			{
@@ -85,37 +82,31 @@ int cont_sgf_feature(ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, v
 				df->data.db[k] += w[i] * 1 * e / ((1 + e) * (1 + e)) * (samples[i].m0x[k] / (m1 + eps) - samples[i].m1x[k] * m0 / ((m1 + eps) * (m1 + eps)));
 			}
 		}
-	//	if (flag == 0)
-	//	printf("%f\n", df->data.db[k]);
 	}
-	for (k = 0; k < 10; k++)
+	for (k = 0; k < 100; k++)
 	{
-		df->data.db[k + 10] = (x->data.db[k + 10] > 0) ? 0.01 : -0.5;
+		df->data.db[k + 100] = 0.02 * exp(-x->data.db[k + 100] * x->data.db[k + 100]) * x->data.db[k + 100];
 		for (i = 0; i < 100; i++)
 		{
-			double m0 = 0, m1 = 1e-6;
-			double n0 = 0, n1 = 1e-6;
-			for (j = 0; j < 10; j++)
+			double m0 = 0, m1 = 0;
+			double n0 = 0, n1 = 0;
+			for (j = 0; j < 100; j++)
 			{
-				m0 += samples[i].m0x[j] * x->data.db[j];
-				m1 += samples[i].m1x[j] * x->data.db[j];
-				n0 += samples[i].n0x[j] * x->data.db[j + 10];
-				n1 += samples[i].n1x[j] * x->data.db[j + 10];
+				m0 += samples[i].m0x[j] * ccv_max(x->data.db[j], 0);
+				m1 += samples[i].m1x[j] * ccv_max(x->data.db[j], 0);
+				n0 += samples[i].n0x[j] * ccv_max(x->data.db[j + 100], 0);
+				n1 += samples[i].n1x[j] * ccv_max(x->data.db[j + 100], 0);
 			}
 			if (samples[i].y)
 			{
 				double e = exp(-1 * (n0 / (n1 + eps) - m0 / (m1 + eps) + 0.1));
-				df->data.db[k + 10] += -w[i] * 1 * e / ((1 + e) * (1 + e)) * (samples[i].n0x[k] / (n1 + eps) - samples[i].n1x[k] * n0 / ((n1 + eps) * (n1 + eps)));
+				df->data.db[k + 100] += w[i] * 1 * e / ((1 + e) * (1 + e)) * (samples[i].n0x[k] / (n1 + eps) - samples[i].n1x[k] * n0 / ((n1 + eps) * (n1 + eps)));
 			} else {
 				double e = exp(-1 * (n0 / (n1 + eps) - m0 / (m1 + eps) + 0.1));
-				df->data.db[k + 10] += w[i] * 1 * e / ((1 + e) * (1 + e)) * (samples[i].n0x[k] / (n1 + eps) - samples[i].n1x[k] * n0 / ((n1 + eps) * (n1 + eps)));
+				df->data.db[k + 100] += -w[i] * 1 * e / ((1 + e) * (1 + e)) * (samples[i].n0x[k] / (n1 + eps) - samples[i].n1x[k] * n0 / ((n1 + eps) * (n1 + eps)));
 			}
 		}
-	//	if (flag == 0)
-	//	printf("%f\n", df->data.db[k + 10]);
 	}
-		*/
-	flag = 1;
 	return 0;
 }
 
