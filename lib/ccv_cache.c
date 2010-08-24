@@ -123,10 +123,11 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 			ccv_cache_index_t t = *branch;
 			uint64_t j = 63;
 			j = j << (depth * 6);
+			int dice, udice;
 			for (i = depth; i < 10; i++)
 			{
-				int dice = (t.terminal.sign & j) >> (i * 6);
-				int udice = (sign & j) >> (i * 6);
+				dice = (t.terminal.sign & j) >> (i * 6);
+				udice = (sign & j) >> (i * 6);
 				if (dice == udice)
 				{
 					branch->branch.bitmap = on << dice;
@@ -155,7 +156,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 		uint32_t start = compute_bits(m);
 		uint32_t total = compute_bits(branch->branch.bitmap);
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
-		set = realloc(sizeof(ccv_cache_index_t) * (total + 1));
+		set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total + 1));
 		assert(((uint64_t)set & 0x3) == 0);
 		memmove(set + start + 1, set + start, total - start);
 		set[start].terminal.off = (uint64_t)x | 0x1;
@@ -247,7 +248,7 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 		{
 			parent->branch.bitmap &= ~k;
 			memmove(set + start, set + start + 1, total - start - 1);
-			set = (ccv_cache_index_t*)realloc(sizeof(ccv_cache_index_t) * (total - 1));
+			set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total - 1));
 			parent->branch.set = (uint64_t)set;
 		} else {
 			ccv_cache_index_t t = set[1 - start];

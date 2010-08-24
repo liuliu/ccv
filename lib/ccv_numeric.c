@@ -16,7 +16,7 @@ void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 {
 }
 
-void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_custom_func func, ccv_minimize_param_t params, void* data)
+void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data)
 {
 	ccv_dense_matrix_t* df0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
 	ccv_zero(df0);
@@ -689,7 +689,7 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	}
 }
 
-void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data)
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data)
 {
 	int i, j;
 	unsigned char* m_ptr = x->data.ptr;

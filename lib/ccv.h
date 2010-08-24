@@ -308,8 +308,8 @@ typedef struct {
 
 ccv_array_t* ccv_array_new(int rnum, int rsize);
 void ccv_array_push(ccv_array_t* array, void* r);
-typedef int(*ccv_array_group_func)(const void*, const void*, void*);
-int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_func gfunc, void* data);
+typedef int(*ccv_array_group_f)(const void*, const void*, void*);
+int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
 void ccv_array_clear(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
@@ -335,12 +335,12 @@ typedef struct {
 	double sig;
 } ccv_minimize_param_t;
 
-typedef int(*ccv_minimize_custom_func)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
-void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_custom_func func, ccv_minimize_param_t params, void* data);
+typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
+void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
-typedef double(*ccv_filter_kernel_func)(double x, double y, void*);
-void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data);
+typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);

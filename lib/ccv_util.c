@@ -421,7 +421,7 @@ typedef struct ccv_ptree_node_t
 } ccv_ptree_node_t;
 
 /* the code for grouping array is adopted from OpenCV's cvSeqPartition func, it is essentially a find-union algorithm */
-int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_func gfunc, void* data)
+int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data)
 {
 	int i, j;
 	ccv_ptree_node_t* node = (ccv_ptree_node_t*)malloc(array->rnum * sizeof(ccv_ptree_node_t));
