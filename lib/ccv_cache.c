@@ -1,21 +1,5 @@
 #include "ccv.h"
 
-typedef union {
-	struct {
-		uint64_t bitmap;
-		uint64_t set;
-	} branch;
-	struct {
-		uint64_t sign;
-		uint64_t off;
-	} terminal;
-} ccv_cache_index_t;
-
-typedef struct {
-	ccv_cache_index_t origin;
-	uint32_t rnum;
-} ccv_cache_t;
-
 void ccv_cache_init(ccv_cache_t* cache)
 {
 	memset(&cache->origin, 0, sizeof(ccv_cache_index_t));
@@ -104,6 +88,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 	{
 		cache->origin.terminal.off = (uint64_t)x | 0x1;
 		cache->origin.terminal.sign = sign;
+		cache->rnum = 1;
 		return 0;
 	}
 	int i, depth = -1;
@@ -112,11 +97,12 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 		return -1;
 	int leaf = branch->terminal.off & 0x1;
 	uint64_t on = 1;
+	assert(depth >= 0);
 	if (leaf)
 	{
 		if (sign == branch->terminal.sign)
 		{
-			ccv_matrix_free((ccv_matrix_t*)(branch->terminal.off - (branch->terminal.off & 0x3)));
+			free((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 			branch->terminal.off = (uint64_t)x | 0x1;
 			return 1;
 		} else {
@@ -158,7 +144,8 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
 		set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total + 1));
 		assert(((uint64_t)set & 0x3) == 0);
-		memmove(set + start + 1, set + start, total - start);
+		for (i = total; i > start; i--)
+			set[i] = set[i - 1];
 		set[start].terminal.off = (uint64_t)x | 0x1;
 		set[start].terminal.sign = sign;
 		branch->branch.set = (uint64_t)set;
@@ -184,6 +171,8 @@ static void ccv_cache_cleanup(ccv_cache_index_t* branch)
 				ccv_cache_cleanup(set + i);
 		}
 		free(set);
+	} else {
+		free((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 	}
 }
 
@@ -247,7 +236,8 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 		if (total > 2 || (total == 2 && !(set[1 - start].terminal.off & 0x1)))
 		{
 			parent->branch.bitmap &= ~k;
-			memmove(set + start, set + start + 1, total - start - 1);
+			for (i = start + 1; i < total; i++)
+				set[i - 1] = set[i];
 			set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total - 1));
 			parent->branch.set = (uint64_t)set;
 		} else {

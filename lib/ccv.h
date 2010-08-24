@@ -112,6 +112,29 @@ static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151,
 
 typedef void ccv_matrix_t;
 
+/* the explicit cache mechanism */
+typedef union {
+	struct {
+		uint64_t bitmap;
+		uint64_t set;
+	} branch;
+	struct {
+		uint64_t sign;
+		uint64_t off;
+	} terminal;
+} ccv_cache_index_t;
+
+typedef struct {
+	ccv_cache_index_t origin;
+	uint32_t rnum;
+} ccv_cache_t;
+
+void ccv_cache_init(ccv_cache_t* cache);
+ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
+int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
+void ccv_cache_close(ccv_cache_t* cache);
+
 typedef struct {
 	int type;
 	int sig[5];
