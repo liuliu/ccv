@@ -64,7 +64,7 @@ typedef union {
 
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -95,7 +95,7 @@ enum {
 
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -108,7 +108,7 @@ typedef struct {
 static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
 #define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
 
-#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig[0] == 0 && (x)->sig[1] == 0 && (x)->sig[2] == 0 && (x)->sig[3] == 0)
+#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig == 0)
 
 typedef void ccv_matrix_t;
 
@@ -129,6 +129,8 @@ typedef struct {
 	uint32_t rnum;
 } ccv_cache_t;
 
+extern ccv_cache_t ccv_cache;
+
 void ccv_cache_init(ccv_cache_t* cache);
 ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
@@ -137,7 +139,7 @@ void ccv_cache_close(ccv_cache_t* cache);
 
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -152,10 +154,10 @@ typedef struct {
 #define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* matrix operations */
-ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
-ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, int* sig);
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
-void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...);
+ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
+uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
 

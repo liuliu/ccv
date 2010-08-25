@@ -3,18 +3,17 @@
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy)
 {
 	ccv_dense_matrix_t* db;
-	if (*b == NULL)
+	if (*b == 0)
 	{
 		if (CCV_IS_EMPTY_SIGNATURE(a))
 		{
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, NULL, NULL);
+			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, 0);
 		} else {
-			int sig[5];
 			char identifier[64];
 			memset(identifier, 0, 64);
 			sprintf(identifier, "ccv_sobel(%d,%d)", dx, dy);
-			ccv_matrix_generate_signature(identifier, 64, sig, a->sig, NULL);
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, NULL, sig);
+			uint64_t sig = ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
+			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, sig);
 			if (db->type & CCV_GARBAGE)
 			{
 				db->type &= ~CCV_GARBAGE;
@@ -27,7 +26,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy)
 	int i, j;
 	unsigned char* a_ptr = a->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, 0);
 	int* c_ptr = c->data.i;
 	if (dx > dy)
 	{
