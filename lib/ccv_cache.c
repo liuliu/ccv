@@ -30,7 +30,7 @@ static uint32_t compute_bits(uint64_t m) {
 			bits_in_16bits[(m >> 32) & 0xffff] + bits_in_16bits[(m >> 48) & 0xffff]);
 }
 
-static ccv_cache_index_t* ccv_cache_seek(ccv_cache_index_t* branch, uint64_t sign, int* depth)
+static ccv_cache_index_t* __ccv_cache_seek(ccv_cache_index_t* branch, uint64_t sign, int* depth)
 {
 	if (!bits_in_16bits_init)
 		precomputed_16bits();
@@ -71,7 +71,7 @@ static ccv_cache_index_t* ccv_cache_seek(ccv_cache_index_t* branch, uint64_t sig
 
 ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 {
-	ccv_cache_index_t* branch = ccv_cache_seek(&cache->origin, sign, 0);
+	ccv_cache_index_t* branch = __ccv_cache_seek(&cache->origin, sign, 0);
 	if (!branch)
 		return 0;
 	int leaf = branch->terminal.off & 0x1;
@@ -92,7 +92,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 		return 0;
 	}
 	int i, depth = -1;
-	ccv_cache_index_t* branch = ccv_cache_seek(&cache->origin, sign, &depth);
+	ccv_cache_index_t* branch = __ccv_cache_seek(&cache->origin, sign, &depth);
 	if (!branch)
 		return -1;
 	int leaf = branch->terminal.off & 0x1;
@@ -157,7 +157,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 	return 0;
 }
 
-static void ccv_cache_cleanup(ccv_cache_index_t* branch)
+static void __ccv_cache_cleanup(ccv_cache_index_t* branch)
 {
 	int leaf = branch->terminal.off & 0x1;
 	if (!leaf)
@@ -168,7 +168,24 @@ static void ccv_cache_cleanup(ccv_cache_index_t* branch)
 		for (i = 0; i < total; i++)
 		{
 			if (!(set[i].terminal.off & 0x1))
-				ccv_cache_cleanup(set + i);
+				__ccv_cache_cleanup(set + i);
+		}
+		free(set);
+	}
+}
+
+static void __ccv_cache_nuke(ccv_cache_index_t* branch)
+{
+	int leaf = branch->terminal.off & 0x1;
+	if (!leaf)
+	{
+		int i;
+		uint64_t total = compute_bits(branch->branch.bitmap);
+		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
+		for (i = 0; i < total; i++)
+		{
+			if (!(set[i].terminal.off & 0x1))
+				__ccv_cache_nuke(set + i);
 		}
 		free(set);
 	} else {
@@ -211,7 +228,7 @@ ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 				uint64_t m = (k - 1) & branch->branch.bitmap;
 				branch = set + compute_bits(m);
 			} else {
-				return -1;
+				return 0;
 			}
 		}
 		j <<= 6;
@@ -242,9 +259,8 @@ ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 			set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total - 1));
 			parent->branch.set = (uint64_t)set;
 		} else {
-			/* TODO: needs more reviews on this */
 			ccv_cache_index_t t = set[1 - start];
-			ccv_cache_cleanup(uncle);
+			__ccv_cache_cleanup(uncle);
 			*uncle = t;
 		}
 		cache->rnum--;
@@ -265,6 +281,6 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 
 void ccv_cache_close(ccv_cache_t* cache)
 {
-	ccv_cache_cleanup(&cache->origin);
+	__ccv_cache_nuke(&cache->origin);
 	cache->rnum = 0;
 }

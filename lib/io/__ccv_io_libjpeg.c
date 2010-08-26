@@ -124,9 +124,9 @@ static int __ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned cha
 		if (index < 0 || index >= NUM_HUFF_TBLS)
 			return -1;
 
-		if (*hufftbl == NULL)
+		if (*hufftbl == 0)
 			*hufftbl = jpeg_alloc_huff_table ((j_common_ptr)info);
-		if (*hufftbl == NULL)
+		if (*hufftbl == 0)
 			return -1;
 
 		memcpy((*hufftbl)->bits, bits, sizeof (*hufftbl)->bits);
@@ -164,11 +164,11 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type
 	jpeg_read_header(&cinfo, TRUE);
 	
 	ccv_dense_matrix_t* im = *x;
-	if (im == NULL)
-		*x = im = ccv_dense_matrix_new(cinfo.image_height, cinfo.image_width, (type) ? type : CCV_8U | ((cinfo.num_components > 1) ? CCV_C3 : CCV_C1), NULL, NULL);
+	if (im == 0)
+		*x = im = ccv_dense_matrix_new(cinfo.image_height, cinfo.image_width, (type) ? type : CCV_8U | ((cinfo.num_components > 1) ? CCV_C3 : CCV_C1), 0, 0);
 
 	/* yes, this is a mjpeg image format, so load the correct huffman table */
-	if (cinfo.ac_huff_tbl_ptrs[0] == NULL && cinfo.ac_huff_tbl_ptrs[1] == NULL && cinfo.dc_huff_tbl_ptrs[0] == NULL && cinfo.dc_huff_tbl_ptrs[1] == NULL)
+	if (cinfo.ac_huff_tbl_ptrs[0] == 0 && cinfo.ac_huff_tbl_ptrs[1] == 0 && cinfo.dc_huff_tbl_ptrs[0] == 0 && cinfo.dc_huff_tbl_ptrs[1] == 0)
 		__ccv_jpeg_load_dht(&cinfo, __ccv_jpeg_odml_dht, cinfo.ac_huff_tbl_ptrs, cinfo.dc_huff_tbl_ptrs);
 
 	if(cinfo.num_components != 4)
@@ -295,7 +295,7 @@ static void __ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* con
 	cinfo.input_components = (mat->type & CCV_C1) ? 1 : 3;
 	cinfo.in_color_space = (mat->type & CCV_C1) ? JCS_GRAYSCALE : JCS_RGB;
 	jpeg_set_defaults(&cinfo);
-	if (conf == NULL)
+	if (conf == 0)
 		jpeg_set_quality(&cinfo, 95, TRUE);
 	else
 		jpeg_set_quality(&cinfo, *(int*)conf, TRUE);

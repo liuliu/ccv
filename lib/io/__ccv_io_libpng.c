@@ -15,8 +15,8 @@ static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	png_get_IHDR(png_ptr, info_ptr, &width, &height, &bit_depth, &color_type, 0, 0, 0);
 	
 	ccv_dense_matrix_t* im = *x;
-	if (im == NULL)
-		*x = im = ccv_dense_matrix_new((int) height, (int) width, (type) ? type : CCV_8U | ((color_type == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), NULL, NULL);
+	if (im == 0)
+		*x = im = ccv_dense_matrix_new((int) height, (int) width, (type) ? type : CCV_8U | ((color_type == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), 0, 0);
 
 	png_set_strip_alpha(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_PALETTE)
@@ -49,7 +49,7 @@ static void __ccv_serialize_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf
 	}
 	png_init_io(png_ptr, fd);
 	int compression_level = 0;
-	if (conf != NULL)
+	if (conf != 0)
 		compression_level = ccv_clamp(*(int*)conf, 0, MAX_MEM_LEVEL);
 	if(compression_level > 0)
 	{

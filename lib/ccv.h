@@ -44,6 +44,8 @@ static const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 #define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
 #define CCV_GET_CHANNEL(x) ((x) & 0xFF)
 #define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[CCV_GET_CHANNEL(x)]
+#define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64F)
+#define CCV_ALL_CHANNEL (CCV_C1 | CCV_C2 | CCV_C3 | CCV_C4)
 
 enum {
 	CCV_MATRIX_DENSE  = 0x010000,
@@ -134,6 +136,7 @@ extern ccv_cache_t ccv_cache;
 void ccv_cache_init(ccv_cache_t* cache);
 ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
+ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
 void ccv_cache_close(ccv_cache_t* cache);
 
@@ -154,6 +157,7 @@ typedef struct {
 #define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* matrix operations */
+ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);

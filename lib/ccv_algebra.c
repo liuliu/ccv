@@ -41,44 +41,23 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
-	ccv_dense_matrix_t* dc = (c == NULL) ? NULL : ccv_get_dense_matrix(c);
-	ccv_dense_matrix_t* dd;
+	ccv_dense_matrix_t* dc = (c == 0) ? 0 : ccv_get_dense_matrix(c);
 
 	assert(da->type == db->type && ((transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols) == ((transpose & CCV_B_TRANSPOSE) ? db->cols : db->rows));
 
-	if (dc != NULL)
+	if (dc != 0)
 		assert(dc->type == da->type && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dc->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dc->cols);
-	
-	if (*d == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(da) || CCV_IS_EMPTY_SIGNATURE(db) || (dc != NULL && CCV_IS_EMPTY_SIGNATURE(dc)))
-		{
-			*d = dd = ccv_dense_matrix_new((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows, (transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols, da->type, NULL, NULL);
-		} else {
-			int sig[5];
-			char identifier[20];
-			memset(identifier, 0, 20);
-			sprintf(identifier, "ccv_gemm(%d)", transpose);
-			if (dc == NULL)
-				ccv_matrix_generate_signature(identifier, 20, sig, da->sig, db->sig, NULL);
-			else
-				ccv_matrix_generate_signature(identifier, 20, sig, da->sig, db->sig, dc->sig, NULL);
 
-			*d = dd = ccv_dense_matrix_new((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows, (transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols, da->type, NULL, sig);
-			if (dd->type & CCV_GARBAGE)
-			{
-				dd->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		dd = ccv_get_dense_matrix(*d);
-	
-		assert(da->type == dd->type && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dd->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dd->cols);
-		
-		if (dd != dc)
-			memcpy(dd->data.ptr, dc->data.ptr, dc->step * dc->rows);
-	}
+	char identifier[20];
+	memset(identifier, 0, 20);
+	sprintf(identifier, "ccv_gemm(%d)", transpose);
+	uint64_t sig = (dc == 0) ? ((da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, db->sig, 0)) : ((da->sig == 0 || db->sig == 0 || dc->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, db->sig, dc->sig, 0));
+
+	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, (transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows, (transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols, da->type, da->type, sig);
+
+	if (dd != dc)
+		memcpy(dd->data.ptr, dc->data.ptr, dc->step * dc->rows);
+
 #ifdef HAVE_CBLAS
 	switch (CCV_GET_DATA_TYPE(dd->type))
 	{

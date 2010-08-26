@@ -51,7 +51,7 @@ static double __ccv_gaussian_kernel(double x, double y, void* data)
 
 static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int filter_size, double sigma)
 {
-	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, 0, 0);
 	ccv_filter_kernel(kernel, __ccv_gaussian_kernel, &sigma);
 	float total = ccv_sum(kernel);
 	int i, j;
@@ -79,28 +79,11 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	int grid_point_number = params.rad_q_no * params.th_q_no + 1;
 	int desc_size = grid_point_number * params.hist_th_q_no;
 	char* identifier = (char*)alloca(ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
-	ccv_dense_matrix_t* db;
-	if (*b == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(a))
-		{
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols * desc_size, CCV_32F | CCV_C1, NULL, NULL);
-		} else {
-			int sig[5];
-			memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
-			memcpy(identifier, "ccv_daisy", 9);
-			memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
-			ccv_matrix_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, sig, a->sig, NULL);
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols * desc_size, CCV_32F | CCV_C1, NULL, sig);
-			if (db->type & CCV_GARBAGE)
-			{
-				db->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		db = *b;
-	}
+	memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
+	memcpy(identifier, "ccv_daisy", 9);
+	memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols * desc_size, CCV_C1 | CCV_ALL_DATA_TYPE, CCV_32F | CCV_C1, sig);
 	int layer_size = a->rows * a->cols;
 	int cube_size = layer_size * params.hist_th_q_no;
 	float* workspace_memory = (float*)malloc(cube_size * (params.rad_q_no + 2) * sizeof(float));
@@ -124,9 +107,9 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 	 * | -1  0  1 |   |  0  0  0 |   | 1  2  1 |
 	 * | -2  0  2 | = | -1  0  1 | * | 2  4  2 |
 	 * | -1  0  1 |   |  0  0  0 |   | 1  2  1 | */
-	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	ccv_sobel(a, &dx, 1, 0);
-	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	ccv_sobel(a, &dy, 0, 1);
 	double sobel_sigma = sqrt(0.5 / -log(0.5));
 	double sigma_init = 1.6;
@@ -140,8 +123,8 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 		float* w_ptr = workspace_memory + cube_size + (k - 1) * layer_size;
 		for (i = 0; i < layer_size; i++)
 			w_ptr[i] = ccv_max(0, kcos * dx->data.fl[i] + ksin * dy->data.fl[i]);
-		ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr, NULL);
-		ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr + layer_size, NULL);
+		ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr, 0);
+		ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr + layer_size, 0);
 		ccv_dense_matrix_t* desp = &des;
 		__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
 	}
@@ -155,8 +138,8 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 		float* des_ptr = src_ptr + cube_size;
 		for (i = 0; i < params.hist_th_q_no; i++)
 		{
-			ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, src_ptr + i * layer_size, NULL);
-			ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, des_ptr + i * layer_size, NULL);
+			ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, src_ptr + i * layer_size, 0);
+			ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, des_ptr + i * layer_size, 0);
 			ccv_dense_matrix_t* desp = &des;
 			__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
 		}

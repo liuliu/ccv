@@ -2,27 +2,11 @@
 
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy)
 {
-	ccv_dense_matrix_t* db;
-	if (*b == 0)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(a))
-		{
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, 0);
-		} else {
-			char identifier[64];
-			memset(identifier, 0, 64);
-			sprintf(identifier, "ccv_sobel(%d,%d)", dx, dy);
-			uint64_t sig = ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
-			*b = db = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, sig);
-			if (db->type & CCV_GARBAGE)
-			{
-				db->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		db = *b;
-	}
+	char identifier[64];
+	memset(identifier, 0, 64);
+	sprintf(identifier, "ccv_sobel(%d,%d)", dx, dy);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_CHANNEL | CCV_ALL_DATA_TYPE, CCV_32S | CCV_C1, sig);
 	int i, j;
 	unsigned char* a_ptr = a->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
@@ -88,7 +72,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy)
 }
 
 /* the fast arctan function adopted from OpenCV */
-void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
+static void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 {
 	int i = 0;
 	float scale = (float)(180 / 3.141592654);
@@ -137,31 +121,14 @@ void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size)
 {
 	int border_size = size / 2;
-	ccv_dense_matrix_t* db;
-	if (*b == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(a))
-		{
-			*b = db = ccv_dense_matrix_new(a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_32S | CCV_C1, NULL, NULL);
-		} else {
-			int sig[5];
-			ccv_matrix_generate_signature("ccv_hog", 7, sig, a->sig, NULL);
-			*b = db = ccv_dense_matrix_new(a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_32S | CCV_C1, NULL, sig);
-			if (db->type & CCV_GARBAGE)
-			{
-				db->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		db = *b;
-	}
-	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
-	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_hog", 7, a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_C1 | CCV_ALL_DATA_TYPE, CCV_32S | CCV_C1, sig);
+	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	ccv_sobel(a, &dx, 1, 0);
 	ccv_sobel(a, &dy, 0, 1);
-	ccv_dense_matrix_t* ag = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
-	ccv_dense_matrix_t* mg = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* ag = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* mg = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	__ccv_atan2(dx->data.fl, dy->data.fl, ag->data.fl, mg->data.fl, a->rows * a->cols);
 	int i, j, x, y;
 	ag->type = (ag->type & ~CCV_32F) | CCV_32S;
@@ -210,7 +177,7 @@ typedef struct {
 	unsigned int alpha;
 } ccv_int_alpha;
 
-void __ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+static void __ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_int_alpha* xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
@@ -301,7 +268,7 @@ typedef struct {
 	float alpha;
 } ccv_decimal_alpha;
 
-void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
@@ -391,29 +358,11 @@ void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type)
 {
-	ccv_dense_matrix_t* db;
-	if (*b == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(a))
-		{
-			*b = db = ccv_dense_matrix_new(rows, cols, a->type, NULL, NULL);
-		} else {
-			int sig[5];
-			char identifier[64];
-			memset(identifier, 0, 64);
-			sprintf(identifier, "ccv_resample(%d,%d,%d)", rows, cols, type);
-			ccv_matrix_generate_signature(identifier, 64, sig, a->sig, NULL);
-			*b = db = ccv_dense_matrix_new(rows, cols, a->type, NULL, sig);
-			if (db->type & CCV_GARBAGE)
-			{
-				db->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		db = *b;
-		assert(db->rows == rows && db->cols == cols && CCV_GET_CHANNEL(db->type) == CCV_GET_CHANNEL(a->type));
-	}
+	char identifier[64];
+	memset(identifier, 0, 64);
+	sprintf(identifier, "ccv_resample(%d,%d,%d)", rows, cols, type);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, a->type, a->type, sig);
 	if (a->rows == db->rows && a->cols == db->cols)
 	{
 		if (CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(db->type) && CCV_GET_DATA_TYPE(db->type) == CCV_GET_DATA_TYPE(a->type))
@@ -447,26 +396,8 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int c
 /* the following code is adopted from OpenCV cvPyrDown */
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
-	ccv_dense_matrix_t* db;
-	if (*b == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(a))
-		{
-			*b = db = ccv_dense_matrix_new(a->rows / 2, a->cols / 2, a->type, NULL, NULL);
-		} else {
-			int sig[5];
-			ccv_matrix_generate_signature("ccv_sample_down", 15, sig, a->sig, NULL);
-			*b = db = ccv_dense_matrix_new(a->rows / 2, a->cols / 2, a->type, NULL, sig);
-			if (db->type & CCV_GARBAGE)
-			{
-				db->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		db = *b;
-		assert(db->rows == a->rows / 2 && db->cols == a->cols / 2 && db->type == a->type);
-	}
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_sample_down", 15, a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows / 2, a->cols / 2, a->type, a->type, sig);
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
 	int cols0 = db->cols - 2 + (a->cols - db->cols * 2);
 	int dy, sy, dx, k;
@@ -544,36 +475,19 @@ void __ccv_flip_x_self(ccv_dense_matrix_t* a)
 
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
-	int sig[5];
-	memcpy(sig, a->sig, 20);
+	uint64_t sig = a->sig;
 	if (type & CCV_FLIP_Y)
-		ccv_matrix_generate_signature("ccv_flip_y", 10, sig, sig, NULL);
+		sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_flip_y", 10, sig, 0);
 	if (type & CCV_FLIP_X)
-		ccv_matrix_generate_signature("ccv_flip_x", 10, sig, sig, NULL);
+		sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_flip_x", 10, sig, 0);
 	ccv_dense_matrix_t* db;
-	if (b == NULL)
+	if (b == 0)
 	{
 		db = a;
-		if (!CCV_IS_EMPTY_SIGNATURE(a))
-			memcpy(a->sig, sig, 20);
+		if (!(a->sig == 0))
+			a->sig = sig;
 	} else {
-		if (*b == NULL)
-		{
-			if (CCV_IS_EMPTY_SIGNATURE(a))
-			{
-				*b = db = ccv_dense_matrix_new(a->rows, a->cols, a->type, NULL, NULL);
-			} else {
-				*b = db = ccv_dense_matrix_new(a->rows, a->cols, a->type, NULL, sig);
-				if (db->type & CCV_GARBAGE)
-				{
-					db->type &= ~CCV_GARBAGE;
-					return;
-				}
-			}
-		} else {
-			db = *b;
-			assert(db->rows == a->rows && db->cols == a->cols && db->type == a->type);
-		}
+		*b = db = ccv_dense_matrix_renew(*b, a->rows, a->cols, a->type, a->type, sig);
 		memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
 	}
 	if (type & CCV_FLIP_Y)

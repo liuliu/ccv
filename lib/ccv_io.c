@@ -36,21 +36,21 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 #ifdef HAVE_LIBJPEG
 		case CCV_SERIAL_JPEG_FILE:
 			__ccv_unserialize_jpeg_fd(fd, x, ctype);
-			if (*x != NULL)
-				ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
+			if (*x != 0)
+				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
 			break;
 #endif
 #ifdef HAVE_LIBPNG
 		case CCV_SERIAL_PNG_FILE:
 			__ccv_unserialize_png_fd(fd, x, ctype);
-			if (*x != NULL)
-				ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
+			if (*x != 0)
+				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
 			break;
 #endif
 		case CCV_SERIAL_BMP_FILE:
 			__ccv_unserialize_bmp_fd(fd, x, ctype);
-			if (*x != NULL)
-				ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, (*x)->sig, NULL);
+			if (*x != 0)
+				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
 			break;
 
 	}

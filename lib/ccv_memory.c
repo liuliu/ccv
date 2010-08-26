@@ -12,10 +12,9 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	ccv_dense_matrix_t* mat;
 	if (sig != 0)
 	{
-		mat = (ccv_dense_matrix_t*)ccv_cache_get(&ccv_cache, sig);
+		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig);
 		if (mat)
 		{
-			ccv_cache_delete(&ccv_cache, sig);
 			mat->type |= CCV_GARBAGE;
 			mat->refcount = 1;
 			return mat;
@@ -96,7 +95,7 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
 		dmt->refcount = 0;
-		if (!(dmt->type & CCV_REUSABLE) || CCV_IS_EMPTY_SIGNATURE(dmt))
+		if (!(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
 			free(dmt);
 		else
 			ccv_cache_put(&ccv_cache, dmt->sig, dmt);
@@ -133,7 +132,7 @@ uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_st
 	uint64_t sigi;
 	va_list arguments;
 	va_start(arguments, sig_start);
-	for (sigi = sig_start; sigi != 0; sigi = va_arg(arguments, int*))
+	for (sigi = sig_start; sigi != 0; sigi = va_arg(arguments, uint64_t))
 		ccv_SHA1_Update(&ctx, &sigi, 8);
 	va_end(arguments);
 	ccv_SHA1_Update(&ctx, msg, len);

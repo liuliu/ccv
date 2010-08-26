@@ -60,7 +60,6 @@ int main(int argc, char** argv)
 		{
 			assert(x);
 			assert(mems[i] == x);
-			free(mems[i]);
 		} else
 	 		assert(x == 0);
 	}

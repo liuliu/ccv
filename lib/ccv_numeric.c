@@ -18,17 +18,17 @@ void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data)
 {
-	ccv_dense_matrix_t* df0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* df0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(df0);
-	ccv_dense_matrix_t* df3 = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* df3 = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(df3);
-	ccv_dense_matrix_t* dF0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* dF0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(dF0);
-	ccv_dense_matrix_t* s = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* s = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(s);
-	ccv_dense_matrix_t* x0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* x0 = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(x0);
-	ccv_dense_matrix_t* xn = ccv_dense_matrix_new(x->rows, x->cols, x->type, NULL, NULL);
+	ccv_dense_matrix_t* xn = ccv_dense_matrix_new(x->rows, x->cols, x->type, 0, 0);
 	ccv_zero(xn);
 	
 	double F0 = 0, f0 = 0, f1 = 0, f2 = 0, f3 = 0, f4 = 0;
@@ -483,7 +483,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	fftw_complex* fftw_dc = (fftw_complex*)fftw_malloc(rows * (cols / 2 + 1) * sizeof(fftw_complex));
 	fftw_plan p, pinv;
 	double scale = 1.0 / (rows * cols);
-	p = fftw_plan_dft_r2c_2d(rows, cols, NULL, NULL, FFTW_ESTIMATE);
+	p = fftw_plan_dft_r2c_2d(rows, cols, 0, 0, FFTW_ESTIMATE);
 	pinv = fftw_plan_dft_c2r_2d(rows, cols, fftw_dc, fftw_d, FFTW_ESTIMATE);
 	double* fftw_ptr;
 	unsigned char* m_ptr;
@@ -590,7 +590,7 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 			cx[nz] = j;
 			nz++;
 		}
-	ccv_dense_matrix_t* pa = ccv_dense_matrix_new(a->rows + b->rows / 2 * 2, a->cols + b->cols / 2 * 2, CCV_8U | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* pa = ccv_dense_matrix_new(a->rows + b->rows / 2 * 2, a->cols + b->cols / 2 * 2, CCV_8U | CCV_C1, 0, 0);
 	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
 	for (i = 0; i < pa->rows; i++)
 		for (j = 0; j < pa->cols; j++)
@@ -648,28 +648,8 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
-	ccv_dense_matrix_t* dd;
-
-	if (*d == NULL)
-	{
-		if (CCV_IS_EMPTY_SIGNATURE(da) || CCV_IS_EMPTY_SIGNATURE(db))
-		{
-			*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, NULL);
-		} else {
-			int sig[5];
-			ccv_matrix_generate_signature("ccv_filter", 10, sig, da->sig, db->sig, NULL);
-			*d = dd = ccv_dense_matrix_new(da->rows, da->cols, da->type, NULL, sig);
-			if (dd->type & CCV_GARBAGE)
-			{
-				dd->type &= ~CCV_GARBAGE;
-				return;
-			}
-		}
-	} else {
-		dd = ccv_get_dense_matrix(*d);
-	}
-
-	assert(da->type == dd->type && da->rows == dd->rows && da->cols == dd->cols);
+	uint64_t sig = (da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_filter", 10, da->sig, db->sig, 0);
+	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, da->type, da->type, sig);
 
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
 	 * integer image.
@@ -704,5 +684,5 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 	}
 	ccv_matrix_setter(x->type, for_block);
 #undef for_block
-	ccv_matrix_generate_signature((char*) x->data.ptr, x->rows * x->step, x->sig, NULL);
+	ccv_matrix_generate_signature((char*) x->data.ptr, x->rows * x->step, x->sig, 0);
 }
