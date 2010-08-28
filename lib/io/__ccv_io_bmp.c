@@ -26,8 +26,8 @@ void __ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 		/* TODO: not finished */
 	}
 	ccv_dense_matrix_t* im = *x;
-	if (im == NULL)
-		*x = im = ccv_dense_matrix_new(height, width, (type) ? type : CCV_8U | ((bpp > 8) ? CCV_C3 : CCV_C1), NULL, NULL);
+	if (im == 0)
+		*x = im = ccv_dense_matrix_new(height, width, (type) ? type : CCV_8U | ((bpp > 8) ? CCV_C3 : CCV_C1), 0, 0);
 	fseek(in, offset, SEEK_SET);
 	int i, j;
 	unsigned char* ptr = im->data.ptr + (im->rows - 1) * im->step;

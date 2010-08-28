@@ -1,25 +1,68 @@
 #include "ccv.h"
-#include <assert.h>
+
+uint64_t uniqid()
+{
+	union {
+		uint64_t u;
+		uint8_t chr[8];
+	} sign;
+	int i;
+	for (i = 0; i < 8; i++)
+		sign.chr[i] = rand() & 0xff;
+	return sign.u;
+}
+
+#define N (500000)
 
 int main(int argc, char** argv)
 {
+	ccv_cache_t cache;
+	ccv_cache_init(&cache);
+	uint64_t sigs[N];
+	void* mems[N];
 	int i;
-	for (i = 0; i < 50000; i++)
+	for (i = 0; i < N; i++)
 	{
-		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, NULL, NULL);
-		dmt->data.i[0] = i;
-		ccv_matrix_generate_signature((const char*)&i, 4, dmt->sig, NULL);
-		ccv_matrix_free(dmt);
+		sigs[i] = uniqid();
+		mems[i] = malloc(1);
+		ccv_cache_put(&cache, sigs[i], mems[i]);
 	}
-	// ccv_garbage_collect();
-	for (i = 0; i < 50000; i++)
+	uint8_t deleted[N];
+	for (i = 0; i < N; i++)
 	{
-		int sig[5];
-		ccv_matrix_generate_signature((const char*)&i, 4, sig, NULL);
-		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, NULL, sig);
-		assert(i == dmt->data.i[0]);
-		ccv_matrix_free(dmt);
+		deleted[i] = 1;
+		if (deleted[i])
+			ccv_cache_delete(&cache, sigs[i]);
 	}
-	ccv_garbage_collect();
+	for (i = 0; i < N; i++)
+	{
+		deleted[i] = (rand() % 3 == 0);
+		if (!deleted[i])
+		{
+			mems[i] = malloc(1);
+			ccv_cache_put(&cache, sigs[i], mems[i]);
+		}
+	}
+	for (i = 0; i < N; i++)
+	{
+		deleted[i] = (rand() % 3 == 0);
+		if (deleted[i])
+			ccv_cache_delete(&cache, sigs[i]);
+		else {
+			mems[i] = malloc(1);
+			ccv_cache_put(&cache, sigs[i], mems[i]);
+		}
+	}
+	for (i = 0; i < N; i++)
+	{
+		ccv_matrix_t* x = ccv_cache_get(&cache, sigs[i]);
+		if (!deleted[i])
+		{
+			assert(x);
+			assert(mems[i] == x);
+		} else
+	 		assert(x == 0);
+	}
+	ccv_cache_close(&cache);
 	return 0;
 }

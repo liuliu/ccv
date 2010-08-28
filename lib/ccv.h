@@ -44,6 +44,8 @@ static const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 #define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
 #define CCV_GET_CHANNEL(x) ((x) & 0xFF)
 #define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[CCV_GET_CHANNEL(x)]
+#define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64F)
+#define CCV_ALL_CHANNEL (CCV_C1 | CCV_C2 | CCV_C3 | CCV_C4)
 
 enum {
 	CCV_MATRIX_DENSE  = 0x010000,
@@ -64,7 +66,7 @@ typedef union {
 
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -95,7 +97,7 @@ enum {
 
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -108,13 +110,39 @@ typedef struct {
 static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
 #define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
 
-#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig[0] == 0 && (x)->sig[1] == 0 && (x)->sig[2] == 0 && (x)->sig[3] == 0)
+#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig == 0)
 
 typedef void ccv_matrix_t;
 
+/* the explicit cache mechanism */
+typedef union {
+	struct {
+		uint64_t bitmap;
+		uint64_t set;
+	} branch;
+	struct {
+		uint64_t sign;
+		uint64_t off;
+	} terminal;
+} ccv_cache_index_t;
+
+typedef struct {
+	ccv_cache_index_t origin;
+	uint32_t rnum;
+} ccv_cache_t;
+
+extern ccv_cache_t ccv_cache;
+
+void ccv_cache_init(ccv_cache_t* cache);
+ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
+ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
+int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
+void ccv_cache_close(ccv_cache_t* cache);
+
 typedef struct {
 	int type;
-	int sig[5];
+	uint64_t sig;
 	int refcount;
 	int rows;
 	int cols;
@@ -129,10 +157,11 @@ typedef struct {
 #define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* matrix operations */
-ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, int* sig);
-ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, int* sig);
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, int* sig);
-void ccv_matrix_generate_signature(const char* msg, int len, int* sig, int* sig_start, ...);
+ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
+ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
+uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
 
@@ -308,8 +337,8 @@ typedef struct {
 
 ccv_array_t* ccv_array_new(int rnum, int rsize);
 void ccv_array_push(ccv_array_t* array, void* r);
-typedef int(*ccv_array_group_func)(const void*, const void*, void*);
-int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_func gfunc, void* data);
+typedef int(*ccv_array_group_f)(const void*, const void*, void*);
+int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
 void ccv_array_clear(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
@@ -335,12 +364,12 @@ typedef struct {
 	double sig;
 } ccv_minimize_param_t;
 
-typedef int(*ccv_minimize_custom_func)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
-void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_custom_func func, ccv_minimize_param_t params, void* data);
+typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
+void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
 void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
-typedef double(*ccv_filter_kernel_func)(double x, double y, void*);
-void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_func func, void* data);
+typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);
