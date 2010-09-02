@@ -332,6 +332,42 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 				ccv_set_sparse_matrix_cell(mat, i, csm->index[j], csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
 }
 
+int ccv_matrix_equal(ccv_matrix_t* a, ccv_matrix_t* b)
+{
+	int a_type = *(int*)a;
+	int b_type = *(int*)b;
+	if ((a_type & CCV_MATRIX_DENSE) && (b_type & CCV_MATRIX_DENSE))
+	{
+		ccv_dense_matrix_t* da = (ccv_dense_matrix_t*)a;
+		ccv_dense_matrix_t* db = (ccv_dense_matrix_t*)b;
+		if (CCV_GET_DATA_TYPE(da->type) != CCV_GET_DATA_TYPE(db->type))
+			return -1;
+		if (CCV_GET_CHANNEL(da->type) != CCV_GET_CHANNEL(db->type))
+			return -1;
+		if (da->rows != db->rows)
+			return -1;
+		if (da->cols != db->cols)
+			return -1;
+		int i, j;
+		unsigned char* a_ptr = da->data.ptr;
+		unsigned char* b_ptr = db->data.ptr;
+#define for_block(dummy, __for_get) \
+		for (i = 0; i < da->rows; i++) \
+		{ \
+			for (j = 0; j < da->cols * ch; j++) \
+			{ \
+				if (fabs(__for_get(b_ptr, j) - __for_get(a_ptr, j)) > 1e-6) \
+					return -1; \
+			} \
+			a_ptr += da->step; \
+			b_ptr += db->step; \
+		}
+		ccv_matrix_getter(da->type, for_block);
+#undef for_block
+	}
+	return 0;
+}
+
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols)
 {
 	int type = *(int*)a;
