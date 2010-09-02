@@ -32,7 +32,7 @@ int main(int argc, char** argv)
 	params.ratio = 10.0;
 	params.sig = 0.1;
 	params.rho = 0.05;
-	ccv_minimize(x, -25, 1.0, rosenbrock, params, &steps);
+	ccv_minimize(x, 25, 1.0, rosenbrock, params, &steps);
 	printf("step(s) : %d\n", steps);
 	int i = 0;
 	for (i = 0; i < 2; i++)
