@@ -47,7 +47,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 		for (j = 0; j < x->cols; j++)
 		{
 			double ss = ccv_get_value(x->type, df0p, j);
-			ccv_set_value(x->type, sp, j, -ss);
+			ccv_set_value(x->type, sp, j, -ss, 0);
 			d0 += -ss * ss;
 		}
 		df0p += x->step;
@@ -80,7 +80,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 				for (i = 0; i < x->rows; i++)
 				{
 					for (j = 0; j < x->cols; j++)
-						ccv_set_value(x->type, xnp, j, x3 * ccv_get_value(x->type, sp, j) + ccv_get_value(x->type, xp, j));
+						ccv_set_value(x->type, xnp, j, x3 * ccv_get_value(x->type, sp, j) + ccv_get_value(x->type, xp, j), 0);
 					sp += x->step;
 					xp += x->step;
 					xnp += x->step;
@@ -150,7 +150,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
-					ccv_set_value(x->type, xnp, j, x3 * ccv_get_value(x->type, sp, j) + ccv_get_value(x->type, xp, j));
+					ccv_set_value(x->type, xnp, j, x3 * ccv_get_value(x->type, sp, j) + ccv_get_value(x->type, xp, j), 0);
 				sp += x->step;
 				xp += x->step;
 				xnp += x->step;
@@ -201,7 +201,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
-					ccv_set_value(x->type, sp, j, slr * ccv_get_value(x->type, sp, j) - ccv_get_value(x->type, df3p, j));
+					ccv_set_value(x->type, sp, j, slr * ccv_get_value(x->type, sp, j) - ccv_get_value(x->type, df3p, j), 0);
 				df3p += x->step;
 				sp += x->step;
 			}
@@ -229,7 +229,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 					for (j = 0; j < x->cols; j++)
 					{
 						double ss = ccv_get_value(x->type, df0p, j);
-						ccv_set_value(x->type, sp, j, -ss);
+						ccv_set_value(x->type, sp, j, -ss, 0);
 						d0 += -ss * ss;
 					}
 					df0p += x->step;
@@ -252,7 +252,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 				for (j = 0; j < x->cols; j++)
 				{
 					double ss = ccv_get_value(x->type, df0p, j);
-					ccv_set_value(x->type, sp, j, -ss);
+					ccv_set_value(x->type, sp, j, -ss, 0);
 					d0 += -ss * ss;
 				}
 				df0p += x->step;
@@ -524,8 +524,8 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	}
 	fftw_execute_dft_r2c(p, fftw_b, fftw_bc);
 
-	int tile_x = ccv_max(1, (a->cols + b->cols - 1) / (cols - b->cols));
-	int tile_y = ccv_max(1, (a->rows + b->rows - 1) / (rows - b->rows));
+	int tile_x = ccv_max(1, (a->cols + cols - b->cols - 1) / (cols - b->cols));
+	int tile_y = ccv_max(1, (a->rows + rows - b->rows - 1) / (rows - b->rows));
 	/* do FFT for each tile */
 #define for_block(__for_set, __for_get) \
 	for (i = 0; i < tile_y; i++) \
@@ -555,7 +555,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 			for (y = 0; y < end_y; y++) \
 			{ \
 				for (x = 0; x < end_x; x++) \
-					__for_set(m_ptr, x, fftw_ptr[x]); \
+					__for_set(m_ptr, x, fftw_ptr[x], 0); \
 				m_ptr += d->step; \
 				fftw_ptr += cols; \
 			} \
@@ -679,7 +679,7 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 	for (i = 0; i < x->rows; i++) \
 	{ \
 		for (j = 0; j < x->cols; j++) \
-			__for_set(m_ptr, j, func(j - cols_2, i - rows_2, data)); \
+			__for_set(m_ptr, j, func(j - cols_2, i - rows_2, data), 0); \
 		m_ptr += x->step; \
 	}
 	ccv_matrix_setter(x->type, for_block);

@@ -43,37 +43,6 @@
  * //////////////////////////////////////////////////////////////////////////
  */
 
-static double __ccv_gaussian_kernel(double x, double y, void* data)
-{
-	double sigma = *(double*)data;
-	return exp(-(x * x + y * y) / (2 * sigma * sigma));
-}
-
-static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int filter_size, double sigma)
-{
-	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(filter_size, filter_size, CCV_32F | CCV_C1, 0, 0);
-	ccv_filter_kernel(kernel, __ccv_gaussian_kernel, &sigma);
-	float total = ccv_sum(kernel);
-	int i, j;
-	for (i = 0; i < kernel->rows; i++)
-		for (j = 0; j < kernel->cols; j++)
-			kernel->data.fl[i * kernel->cols + j] = kernel->data.fl[i * kernel->cols + j] / total;
-	ccv_filter(a, kernel, (ccv_matrix_t**)b);
-	ccv_matrix_free(kernel);
-}
-
-static int __ccv_filter_size(double sigma)
-{
-	int fsz = (int)(5 * sigma);
-	// kernel size must be odd
-	if(fsz % 2 == 0)
-		fsz++;
-	// kernel size cannot be smaller than 3
-	if(fsz < 3)
-		fsz = 3;
-   return fsz;
-}
-
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params)
 {
 	int grid_point_number = params.rad_q_no * params.th_q_no + 1;
@@ -126,7 +95,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 		ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr, 0);
 		ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr + layer_size, 0);
 		ccv_dense_matrix_t* desp = &des;
-		__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
+		ccv_blur(&src, &desp, sigma);
 	}
 	ccv_matrix_free(dx);
 	ccv_matrix_free(dy);
@@ -141,7 +110,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t 
 			ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, src_ptr + i * layer_size, 0);
 			ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, des_ptr + i * layer_size, 0);
 			ccv_dense_matrix_t* desp = &des;
-			__ccv_gaussian_blur(&src, &desp, __ccv_filter_size(sigma), sigma);
+			ccv_blur(&src, &desp, sigma);
 		}
 		float* his_ptr = src_ptr - cube_size;
 		for (i = 0; i < layer_size; i++)

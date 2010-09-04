@@ -276,7 +276,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 				for (j = 0; j < vector->length; j++) \
 					if (__for_get(vector->data.ptr, j) != 0) \
 					{ \
-						__for_set(m_ptr, k, __for_get(vector->data.ptr, j)); \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j), 0); \
 						idx[k] = j; \
 						k++; \
 					}
@@ -291,7 +291,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 				for (j = 0; j < vector->length; j++) \
 					if (vector->indice[j] != -1) \
 					{ \
-						__for_set(m_ptr, k, __for_get(vector->data.ptr, j)); \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j), 0); \
 						idx[k] = vector->indice[j]; \
 						k++; \
 					}
@@ -348,7 +348,7 @@ int ccv_matrix_equal(ccv_matrix_t* a, ccv_matrix_t* b)
 			return -1;
 		if (da->cols != db->cols)
 			return -1;
-		int i, j;
+		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr;
 		unsigned char* b_ptr = db->data.ptr;
 #define for_block(dummy, __for_get) \
@@ -388,7 +388,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 		{ \
 			for (j = 0; j < cols * ch; j++) \
 			{ \
-				__for_set(b_ptr, j, __for_get(a_ptr, j)); \
+				__for_set(b_ptr, j, __for_get(a_ptr, j), 0); \
 			} \
 			a_ptr += da->step; \
 			b_ptr += db->step; \

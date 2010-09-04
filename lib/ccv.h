@@ -110,8 +110,6 @@ typedef struct {
 static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
 #define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
 
-#define CCV_IS_EMPTY_SIGNATURE(x) ((x)->sig == 0)
-
 typedef void ccv_matrix_t;
 
 /* the explicit cache mechanism */
@@ -183,11 +181,11 @@ void ccv_garbage_collect();
 	(((type) & CCV_64F) ? ((double*)(ptr))[(i)] : \
 	((unsigned char*)(ptr))[(i)])))
 
-#define ccv_set_value(type, ptr, i, value) switch (CCV_GET_DATA_TYPE((type))) { \
-	case CCV_32S: ((int*)(ptr))[(i)] = (int)(value); break; \
+#define ccv_set_value(type, ptr, i, value, factor) switch (CCV_GET_DATA_TYPE((type))) { \
+	case CCV_32S: ((int*)(ptr))[(i)] = (int)(value) >> factor; break; \
 	case CCV_32F: ((float*)(ptr))[(i)] = (float)value; break; \
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
-	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value), 0, 255); }
+	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
 /* unswitch for loop macros */
 #define __ccv_get_32s_value(ptr, i) ((int*)(ptr))[(i)]
@@ -212,10 +210,28 @@ void ccv_garbage_collect();
 	case CCV_64F: { block(__VA_ARGS__, __ccv_get_64f_value); break; } \
 	default: { block(__VA_ARGS__, __ccv_get_8u_value); } } }
 
-#define __ccv_set_32s_value(ptr, i, value) ((int*)(ptr))[(i)] = (int)(value)
-#define __ccv_set_32f_value(ptr, i, value) ((float*)(ptr))[(i)] = (float)(value)
-#define __ccv_set_64f_value(ptr, i, value) ((double*)(ptr))[(i)] = (double)(value)
-#define __ccv_set_8u_value(ptr, i, value) ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value), 0, 255)
+#define ccv_matrix_typeof_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(__VA_ARGS__, int); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double); break; } \
+	default: { block(__VA_ARGS__, unsigned char); } } }
+
+#define ccv_matrix_typeof_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(__VA_ARGS__, int); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double); break; } \
+	default: { block(__VA_ARGS__, unsigned char); } } }
+
+#define ccv_matrix_typeof_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(__VA_ARGS__, int); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double); break; } \
+	default: { block(__VA_ARGS__, unsigned char); } } }
+
+#define __ccv_set_32s_value(ptr, i, value, factor) ((int*)(ptr))[(i)] = (int)(value) >> factor
+#define __ccv_set_32f_value(ptr, i, value, factor) ((float*)(ptr))[(i)] = (float)(value)
+#define __ccv_set_64f_value(ptr, i, value, factor) ((double*)(ptr))[(i)] = (double)(value)
+#define __ccv_set_8u_value(ptr, i, value, factor) ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255)
 #define ccv_matrix_setter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value); break; } \
 	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value); break; } \
@@ -239,6 +255,20 @@ void ccv_garbage_collect();
 	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
 	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
 	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+
+#define ccv_matrix_setter_and_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+
+#define ccv_matrix_setter_and_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
+	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+
+
 
 /* basic io */
 enum {
@@ -396,6 +426,7 @@ enum {
 };
 
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
@@ -415,6 +446,30 @@ enum {
 };
 
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
+
+typedef struct {
+	float x, y;
+	union {
+		struct {
+			double a, b;
+			double c, d;
+		} affine;
+		struct {
+			double scale;
+			double orientation;
+		} regular;
+	};
+	union {
+		unsigned char* ptr;
+		int* i;
+		float* fl;
+		double* db;
+	} desc;
+} ccv_keypoint_t;
+
+typedef struct {
+} ccv_sift_param_t;
+
 void ccv_sift(ccv_dense_matrix_t* a);
 
 #define CCV_SGF_POINT_MAX (5)
