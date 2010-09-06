@@ -37,16 +37,43 @@ void ccv_zero(ccv_matrix_t* mat)
 	memset(dmt->data.ptr, 0, dmt->step * dmt->rows);
 }
 
+void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
+	assert(da->rows == db->rows && da->cols == db->cols && CCV_GET_DATA_TYPE(da->type) == CCV_GET_DATA_TYPE(db->type) && CCV_GET_CHANNEL(da->type) == CCV_GET_CHANNEL(db->type));
+	uint64_t sig = ccv_matrix_generate_signature("ccv_substract", 13, da->sig, db->sig, 0);
+	int no_8u_type = (da->type & CCV_8U) ? CCV_32S : da->type;
+	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), no_8u_type | CCV_GET_CHANNEL(da->type), sig);
+	int i, j;
+	unsigned char* aptr = da->data.ptr;
+	unsigned char* bptr = db->data.ptr;
+	unsigned char* cptr = dc->data.ptr;
+#define for_block(__for_get, __for_set) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols; j++) \
+		{ \
+			__for_set(cptr, j, __for_get(aptr, j) - __for_get(bptr, j), 0); \
+		} \
+		aptr += da->step; \
+		bptr += db->step; \
+		cptr += dc->step; \
+	}
+	ccv_matrix_getter(da->type, ccv_matrix_setter, dc->type, for_block);
+#undef for_block
+}
+
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	ccv_dense_matrix_t* dc = (c == 0) ? 0 : ccv_get_dense_matrix(c);
 
-	assert(da->type == db->type && ((transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols) == ((transpose & CCV_B_TRANSPOSE) ? db->cols : db->rows));
+	assert(CCV_GET_DATA_TYPE(da->type) == CCV_GET_DATA_TYPE(db->type) && CCV_GET_CHANNEL_NUM(da->type) == 1 && CCV_GET_CHANNEL_NUM(db->type) == 1 && ((transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols) == ((transpose & CCV_B_TRANSPOSE) ? db->cols : db->rows));
 
 	if (dc != 0)
-		assert(dc->type == da->type && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dc->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dc->cols);
+		assert(CCV_GET_DATA_TYPE(dc->type) == CCV_GET_DATA_TYPE(da->type) && CCV_GET_CHANNEL_NUM(dc->type) == 1 && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dc->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dc->cols);
 
 	char identifier[20];
 	memset(identifier, 0, 20);

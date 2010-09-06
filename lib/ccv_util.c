@@ -393,7 +393,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 			a_ptr += da->step; \
 			b_ptr += db->step; \
 		}
-		ccv_matrix_setter_and_getter(da->type, for_block);
+		ccv_matrix_setter_getter(da->type, for_block);
 #undef for_block
 	} else if (type & CCV_MATRIX_SPARSE) {
 	}

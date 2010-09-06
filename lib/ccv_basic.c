@@ -531,7 +531,7 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma)
 	/* horizontal */
 	unsigned char* aptr = a->data.ptr;
 	unsigned char* bptr = db->data.ptr;
-#define for_block(__for_type, __for_set_a, __for_get_a, __for_set_b, __for_get_b) \
+#define for_block(__for_type, __for_set_b, __for_get_b, __for_set_a, __for_get_a) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
 		for (j = 0; j < hfz; j++) \
@@ -554,11 +554,11 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma)
 		aptr += a->step; \
 		bptr += db->step; \
 	}
-	ccv_matrix_typeof_getter(no_8u_type, ccv_matrix_setter_and_getter_a, a->type, ccv_matrix_setter_and_getter_b, no_8u_type, for_block);
+	ccv_matrix_typeof_setter_getter(no_8u_type, ccv_matrix_setter_getter, a->type, for_block);
 #undef for_block
 	/* vertical */
 	bptr = db->data.ptr;
-#define for_block(__for_type, __for_set_a, __for_get_a, __for_set_b, __for_get_b) \
+#define for_block(__for_type, __for_set_b, __for_get_b, __for_set_a, __for_get_a) \
 	for (i = 0; i < a->cols * ch; i++) \
 	{ \
 		for (j = 0; j < hfz; j++) \
@@ -577,6 +577,6 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma)
 		for (j = 0; j < a->rows; j++) \
 			__for_set_a(bptr + j * a->step, i, __for_get_b(buf, j), 0); \
 	}
-	ccv_matrix_typeof_getter(no_8u_type, ccv_matrix_setter_and_getter_a, a->type, ccv_matrix_setter_and_getter_b, no_8u_type, for_block);
+	ccv_matrix_typeof_setter_getter(no_8u_type, ccv_matrix_setter_getter, a->type, for_block);
 #undef for_block
 }
