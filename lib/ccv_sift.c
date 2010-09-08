@@ -3,11 +3,11 @@
 ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
 {
 	ccv_dense_matrix_t** g = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * params.nlevels * params.noctaves);
-	memset(g, sizeof(ccv_dense_matrix_t*) * params.nlevels * params.noctaves, 0);
+	memset(g, 0, sizeof(ccv_dense_matrix_t*) * params.nlevels * params.noctaves);
 	ccv_dense_matrix_t** dog = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
-	memset(dog, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves, 0);
+	memset(dog, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
 	int i, j;
-	g[0] = a;
+	ccv_convert(a, &g[0], CCV_32S, 8, 0);
 	for (j = 1; j < params.nlevels; j++)
 	{
 		ccv_blur(g[j - 1], &g[j], params.sigma);

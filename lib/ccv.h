@@ -188,10 +188,10 @@ void ccv_garbage_collect();
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
 /* unswitch for loop macros */
-#define __ccv_get_32s_value(ptr, i) ((int*)(ptr))[(i)]
-#define __ccv_get_32f_value(ptr, i) ((float*)(ptr))[(i)]
-#define __ccv_get_64f_value(ptr, i) ((double*)(ptr))[(i)]
-#define __ccv_get_8u_value(ptr, i) ((unsigned char*)(ptr))[(i)]
+#define __ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
+#define __ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
+#define __ccv_get_64f_value(ptr, i, factor) ((double*)(ptr))[(i)]
+#define __ccv_get_8u_value(ptr, i, factor) (((unsigned char*)(ptr))[(i)] << factor)
 #define ccv_matrix_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, __ccv_get_32s_value); break; } \
 	case CCV_32F: { block(__VA_ARGS__, __ccv_get_32f_value); break; } \
@@ -322,8 +322,6 @@ void ccv_garbage_collect();
 	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
 	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value, __ccv_get_8u_value); } } }
 
-
-
 /* basic io */
 enum {
 	CCV_SERIAL_GRAY           = 0x100,
@@ -360,6 +358,8 @@ double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
 void ccv_zero(ccv_matrix_t* mat);
+void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
+void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,
@@ -377,7 +377,6 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
-void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols);
 
 /* basic data structures */
@@ -527,7 +526,7 @@ typedef struct {
 	double sigma;
 } ccv_sift_param_t;
 
-void ccv_sift(ccv_dense_matrix_t* a);
+ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params);
 
 #define CCV_SGF_POINT_MAX (5)
 #define CCV_SGF_POINT_MIN (3)

@@ -23,7 +23,7 @@ double ccv_sum(ccv_matrix_t* mat)
 	for (i = 0; i < dmt->rows; i++) \
 	{ \
 		for (j = 0; j < dmt->cols; j++) \
-			sum += __for_get(m_ptr, j); \
+			sum += __for_get(m_ptr, j, 0); \
 		m_ptr += dmt->step; \
 	}
 	ccv_matrix_getter(dmt->type, for_block);
@@ -35,6 +35,31 @@ void ccv_zero(ccv_matrix_t* mat)
 {
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 	memset(dmt->data.ptr, 0, dmt->step * dmt->rows);
+}
+
+void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	char identifier[64];
+	memset(identifier, 0, 64);
+	sprintf(identifier, "ccv_convert(%d,%d,%d)", type, lr, rr);
+	uint64_t sig = ccv_matrix_generate_signature(identifier, 64, da->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type), sig); 
+	int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
+	unsigned char* aptr = da->data.ptr;
+	unsigned char* bptr = db->data.ptr;
+#define for_block(__for_get, __for_set) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols * ch; j++) \
+		{ \
+			__for_set(bptr, j, __for_get(aptr, j, lr), rr); \
+		} \
+		aptr += da->step; \
+		bptr += db->step; \
+	}
+	ccv_matrix_getter(da->type, ccv_matrix_setter, db->type, for_block);
+#undef for_block
 }
 
 void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c)
@@ -54,7 +79,7 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c)
 	{ \
 		for (j = 0; j < da->cols; j++) \
 		{ \
-			__for_set(cptr, j, __for_get(aptr, j) - __for_get(bptr, j), 0); \
+			__for_set(cptr, j, __for_get(aptr, j, 0) - __for_get(bptr, j, 0), 0); \
 		} \
 		aptr += da->step; \
 		bptr += db->step; \

@@ -241,7 +241,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 				if (mat->type & CCV_DENSE_VECTOR) \
 				{ \
 					for (j = 0; j < vector->length; j++) \
-						if (__while_get(vector->data.ptr, j) != 0) \
+						if (__while_get(vector->data.ptr, j, 0) != 0) \
 							nnz++; \
 				} else { \
 					nnz += vector->load_factor; \
@@ -274,9 +274,9 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 				int k = 0;
 #define for_block(__for_set, __for_get) \
 				for (j = 0; j < vector->length; j++) \
-					if (__for_get(vector->data.ptr, j) != 0) \
+					if (__for_get(vector->data.ptr, j, 0) != 0) \
 					{ \
-						__for_set(m_ptr, k, __for_get(vector->data.ptr, j), 0); \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j, 0), 0); \
 						idx[k] = j; \
 						k++; \
 					}
@@ -291,7 +291,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 				for (j = 0; j < vector->length; j++) \
 					if (vector->indice[j] != -1) \
 					{ \
-						__for_set(m_ptr, k, __for_get(vector->data.ptr, j), 0); \
+						__for_set(m_ptr, k, __for_get(vector->data.ptr, j, 0), 0); \
 						idx[k] = vector->indice[j]; \
 						k++; \
 					}
@@ -356,7 +356,7 @@ int ccv_matrix_equal(ccv_matrix_t* a, ccv_matrix_t* b)
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
 			{ \
-				if (fabs(__for_get(b_ptr, j) - __for_get(a_ptr, j)) > 1e-6) \
+				if (fabs(__for_get(b_ptr, j, 0) - __for_get(a_ptr, j, 0)) > 1e-6) \
 					return -1; \
 			} \
 			a_ptr += da->step; \
@@ -388,7 +388,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 		{ \
 			for (j = 0; j < cols * ch; j++) \
 			{ \
-				__for_set(b_ptr, j, __for_get(a_ptr, j), 0); \
+				__for_set(b_ptr, j, __for_get(a_ptr, j, 0), 0); \
 			} \
 			a_ptr += da->step; \
 			b_ptr += db->step; \

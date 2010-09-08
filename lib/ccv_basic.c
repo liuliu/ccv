@@ -319,7 +319,7 @@ static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 			int dxn = xofs[k].di; \
 			float alpha = xofs[k].alpha; \
 			for (i = 0; i < ch; i++) \
-				buf[dxn + i] += __for_get(a_ptr, xofs[k].si + i) * alpha; \
+				buf[dxn + i] += __for_get(a_ptr, xofs[k].si + i, 0) * alpha; \
 		} \
 		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1) \
 		{ \
@@ -413,21 +413,21 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 			int _sy = (sy < 0) ? 1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
 			unsigned char* a_ptr = a->data.ptr + a->step * _sy; \
 			for (k = 0; k < ch; k++) \
-				__for_set(row, k, __for_get_a(a_ptr, k) * 10 + __for_get_a(a_ptr, ch + k) * 5 + __for_get_a(a_ptr, 2 * ch + k), 0); \
+				__for_set(row, k, __for_get_a(a_ptr, k, 0) * 10 + __for_get_a(a_ptr, ch + k, 0) * 5 + __for_get_a(a_ptr, 2 * ch + k, 0), 0); \
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
 				for (k = 0; k < ch; k++) \
-					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + k) * 6 + (__for_get_a(a_ptr, dx * 2 + k - ch) + __for_get_a(a_ptr, dx * 2 + k + ch)) * 4 + __for_get_a(a_ptr, dx * 2 + k - ch * 2) + __for_get_a(a_ptr, dx * 2 + k + ch * 2), 0); \
+					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + k, 0) * 6 + (__for_get_a(a_ptr, dx * 2 + k - ch, 0) + __for_get_a(a_ptr, dx * 2 + k + ch, 0)) * 4 + __for_get_a(a_ptr, dx * 2 + k - ch * 2, 0) + __for_get_a(a_ptr, dx * 2 + k + ch * 2, 0), 0); \
 			if (a->cols - db->cols * 2 == 0) \
 				for (k = 0; k < ch; k++) \
-					__for_set(row, (db->cols - 2) * ch + k, __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + k) * 6 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - ch + k) * 4 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + ch + k) * 5 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - 2 * ch + k), 0); \
+					__for_set(row, (db->cols - 2) * ch + k, __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + k, 0) * 6 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - ch + k, 0) * 4 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + ch + k, 0) * 5 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - 2 * ch + k, 0), 0); \
 			for (k = 0; k < ch; k++) \
-				__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch - ch + k) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + k) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + k), 0); \
+				__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch - ch + k, 0) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + k, 0), 0); \
 		} \
 		int* rows[5]; \
 		for(k = 0; k < 5; k++) \
 			rows[k] = buf + ((dy * 2 - 2 + k + 2) % 5) * db->cols * ch; \
 		for(dx = 0; dx < db->cols * ch; dx++) \
-			__for_set_b(b_ptr, dx, (__for_get(rows[2], dx) * 6 + (__for_get(rows[1], dx) + __for_get(rows[3], dx)) * 4 + __for_get(rows[0], dx) + __for_get(rows[4], dx)) / 256, 0); \
+			__for_set_b(b_ptr, dx, (__for_get(rows[2], dx, 0) * 6 + (__for_get(rows[1], dx, 0) + __for_get(rows[3], dx, 0)) * 4 + __for_get(rows[0], dx, 0) + __for_get(rows[4], dx, 0)) / 256, 0); \
 		b_ptr += db->step; \
 	}
 	int no_8u_type = (a->type & CCV_8U) ? CCV_32S : a->type;
@@ -536,21 +536,21 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma)
 	{ \
 		for (j = 0; j < hfz; j++) \
 			for (k = 0; k < ch; k++) \
-				__for_set_b(buf, j * ch + k, __for_get_a(aptr, k), 0); \
+				__for_set_b(buf, j * ch + k, __for_get_a(aptr, k, 0), 0); \
 		for (j = 0; j < a->cols * ch; j++) \
-			__for_set_b(buf, j + hfz * ch, __for_get_a(aptr, j), 0); \
+			__for_set_b(buf, j + hfz * ch, __for_get_a(aptr, j, 0), 0); \
 		for (j = a->cols; j < hfz + a->cols; j++) \
 			for (k = 0; k < ch; k++) \
-				__for_set_b(buf, j * ch + hfz * ch + k, __for_get_a(aptr, (a->cols - 1) * ch + k), 0); \
+				__for_set_b(buf, j * ch + hfz * ch + k, __for_get_a(aptr, (a->cols - 1) * ch + k, 0), 0); \
 		for (j = 0; j < a->cols * ch; j++) \
 		{ \
 			__for_type sum = 0; \
 			for (k = 0; k < fsz; k++) \
-				sum += __for_get_b(buf, k * ch + j) * __for_get_b(filter, k); \
+				sum += __for_get_b(buf, k * ch + j, 0) * __for_get_b(filter, k, 0); \
 			__for_set_b(buf, j, sum, 8); \
 		} \
 		for (j = 0; j < a->cols * ch; j++) \
-			__for_set_a(bptr, j, __for_get_b(buf, j), 0); \
+			__for_set_a(bptr, j, __for_get_b(buf, j, 0), 0); \
 		aptr += a->step; \
 		bptr += db->step; \
 	}
@@ -562,20 +562,20 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma)
 	for (i = 0; i < a->cols * ch; i++) \
 	{ \
 		for (j = 0; j < hfz; j++) \
-			__for_set_b(buf, j, __for_get_a(bptr, i), 0); \
+			__for_set_b(buf, j, __for_get_a(bptr, i, 0), 0); \
 		for (j = 0; j < a->rows; j++) \
-			__for_set_b(buf, j + hfz, __for_get_a(bptr + j * a->step, i), 0); \
+			__for_set_b(buf, j + hfz, __for_get_a(bptr + j * a->step, i, 0), 0); \
 		for (j = a->rows; j < hfz + a->rows; j++) \
-			__for_set_b(buf, j + hfz, __for_get_a(bptr + (a->rows - 1) * a->step, i), 0); \
+			__for_set_b(buf, j + hfz, __for_get_a(bptr + (a->rows - 1) * a->step, i, 0), 0); \
 		for (j = 0; j < a->rows; j++) \
 		{ \
 			__for_type sum = 0; \
 			for (k = 0; k < fsz; k++) \
-				sum += __for_get_b(buf, k + j) * __for_get_b(filter, k); \
+				sum += __for_get_b(buf, k + j, 0) * __for_get_b(filter, k, 0); \
 			__for_set_b(buf, j, sum, 8); \
 		} \
 		for (j = 0; j < a->rows; j++) \
-			__for_set_a(bptr + j * a->step, i, __for_get_b(buf, j), 0); \
+			__for_set_a(bptr + j * a->step, i, __for_get_b(buf, j, 0), 0); \
 	}
 	ccv_matrix_typeof_setter_getter(no_8u_type, ccv_matrix_setter_getter, a->type, for_block);
 #undef for_block

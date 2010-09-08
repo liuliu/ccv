@@ -540,7 +540,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 			for (y = 0; y < rows; y++) \
 			{ \
 				for (x = 0; x < cols; x++) \
-					fftw_ptr[x] = __for_get(m_ptr, x); \
+					fftw_ptr[x] = __for_get(m_ptr, x, 0); \
 				fftw_ptr += cols_2c; \
 				m_ptr += a->step; \
 			} \
