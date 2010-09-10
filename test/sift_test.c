@@ -10,14 +10,13 @@ unsigned int get_current_time()
 
 int main(int argc, char** argv)
 {
-	int i, j;
 	ccv_dense_matrix_t* image = NULL;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 	unsigned int elapsed_time = get_current_time();
 	ccv_sift_param_t param;
 	param.noctaves = 3;
-	param.nlevels = 5;
-	param.sigma = 1.2;
+	param.nlevels = 6;
+	param.peak_threshold = 2000;
 	ccv_sift(image, param);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	ccv_matrix_free(image);

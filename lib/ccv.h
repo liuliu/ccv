@@ -523,7 +523,7 @@ typedef struct {
 typedef struct {
 	int noctaves;
 	int nlevels;
-	double sigma;
+	int peak_threshold;
 } ccv_sift_param_t;
 
 ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params);
