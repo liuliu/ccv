@@ -45,8 +45,6 @@ ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int 
 	if (x == 0)
 	{
 		x = ccv_dense_matrix_new(rows, cols, prefer_type, 0, sig);
-		if (x->type & CCV_GARBAGE)
-			x->type &= ~CCV_GARBAGE;
 	} else {
 		x->sig = sig;
 	}

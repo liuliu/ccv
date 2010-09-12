@@ -107,7 +107,7 @@ typedef struct {
 	ccv_dense_vector_t* vector;
 } ccv_sparse_matrix_t;
 
-static int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
+extern int __ccv_get_sparse_prime[];
 #define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
 
 typedef void ccv_matrix_t;
@@ -130,6 +130,11 @@ typedef struct {
 } ccv_cache_t;
 
 extern ccv_cache_t ccv_cache;
+
+#define ccv_cache_return(x, retval) { \
+	if ((x)->type & CCV_GARBAGE) { \
+		(x)->type &= ~CCV_GARBAGE; \
+		return retval; } }
 
 void ccv_cache_init(ccv_cache_t* cache);
 ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
@@ -228,10 +233,10 @@ void ccv_garbage_collect();
 	case CCV_64F: { block(__VA_ARGS__, double); break; } \
 	default: { block(__VA_ARGS__, unsigned char); } } }
 
-#define __ccv_set_32s_value(ptr, i, value, factor) ((int*)(ptr))[(i)] = (int)(value) >> factor
-#define __ccv_set_32f_value(ptr, i, value, factor) ((float*)(ptr))[(i)] = (float)(value)
-#define __ccv_set_64f_value(ptr, i, value, factor) ((double*)(ptr))[(i)] = (double)(value)
-#define __ccv_set_8u_value(ptr, i, value, factor) ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255)
+#define __ccv_set_32s_value(ptr, i, value, factor) (((int*)(ptr))[(i)] = (int)(value) >> factor)
+#define __ccv_set_32f_value(ptr, i, value, factor) (((float*)(ptr))[(i)] = (float)(value))
+#define __ccv_set_64f_value(ptr, i, value, factor) (((double*)(ptr))[(i)] = (double)(value))
+#define __ccv_set_8u_value(ptr, i, value, factor) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255))
 #define ccv_matrix_setter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value); break; } \
 	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value); break; } \
@@ -512,18 +517,13 @@ typedef struct {
 			double orientation;
 		} regular;
 	};
-	union {
-		unsigned char* ptr;
-		int* i;
-		float* fl;
-		double* db;
-	} data;
 } ccv_keypoint_t;
 
 typedef struct {
 	int noctaves;
 	int nlevels;
-	int peak_threshold;
+	float edge_threshold;
+	float peak_threshold;
 } ccv_sift_param_t;
 
 ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params);

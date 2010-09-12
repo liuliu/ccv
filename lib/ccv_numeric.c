@@ -650,6 +650,7 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	uint64_t sig = (da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_filter", 10, da->sig, db->sig, 0);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, da->type, da->type, sig);
+	ccv_cache_return(dd, );
 
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
 	 * integer image.

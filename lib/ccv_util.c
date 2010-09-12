@@ -1,5 +1,7 @@
 #include "ccv.h"
 
+int __ccv_get_sparse_prime[] = { 53, 97, 193, 389, 769, 1543, 3079, 6151, 12289, 24593, 49157, 98317, 196613, 393241, 786433, 1572869 };
+
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat)
 {
 	int type = *(int*)mat;
@@ -14,6 +16,32 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
 	if (type & CCV_MATRIX_SPARSE)
 		return (ccv_sparse_matrix_t*)mat;
 	return 0;
+}
+
+void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	char identifier[64];
+	memset(identifier, 0, 64);
+	snprintf(identifier, 64, "ccv_convert(%d,%d,%d)", type, lr, rr);
+	uint64_t sig = ccv_matrix_generate_signature(identifier, 64, da->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type), sig); 
+	ccv_cache_return(db, );
+	int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
+	unsigned char* aptr = da->data.ptr;
+	unsigned char* bptr = db->data.ptr;
+#define for_block(__for_get, __for_set) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols * ch; j++) \
+		{ \
+			__for_set(bptr, j, __for_get(aptr, j, lr), rr); \
+		} \
+		aptr += da->step; \
+		bptr += db->step; \
+	}
+	ccv_matrix_getter(da->type, ccv_matrix_setter, db->type, for_block);
+#undef for_block
 }
 
 ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index)
@@ -377,9 +405,10 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 		assert(y >= 0 && y + rows <= da->rows && x >= 0 && x + cols <= da->cols);
 		char identifier[128];
 		memset(identifier, 0, 128);
-		sprintf(identifier, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
+		snprintf(identifier, 128, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
 		uint64_t sig = (da->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 128, da->sig, 0);
 		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, da->type, da->type, sig);
+		ccv_cache_return(db, );
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
 		unsigned char* b_ptr = db->data.ptr;
