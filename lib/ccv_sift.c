@@ -1,6 +1,6 @@
 #include "ccv.h"
 
-inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, ccv_keypoint_t* kp)
+inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, int iy, ccv_keypoint_t* kp)
 {
 	float Dxx = (N9[1][3] - 2 * N9[1][4] + N9[1][5]) * 4; 
 	float Dyy = (N9[1][1] - 2 * N9[1][4] + N9[1][7]) * 4;
@@ -92,7 +92,7 @@ ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
 											 uf[x - 1], uf[x], uf[x + 1],
 											 uf[x + cols - 1], uf[x + cols], uf[x + cols + 1] } };
 						ccv_keypoint_t kp;
-						if (__ccv_keypoint_interpolate(N9, params.edge_threshold, &kp) == 0)
+						if (__ccv_keypoint_interpolate(N9, params.edge_threshold, x, y, &kp) == 0)
 						{
 							imx->data.ptr[x * s + y * s * imx->step] = 255;
 							t++;
