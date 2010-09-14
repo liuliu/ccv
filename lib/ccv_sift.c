@@ -2,15 +2,22 @@
 
 inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, int iy, ccv_keypoint_t* kp)
 {
-	float Dxx = (N9[1][3] - 2 * N9[1][4] + N9[1][5]) * 4; 
-	float Dyy = (N9[1][1] - 2 * N9[1][4] + N9[1][7]) * 4;
-	float Dxy = N9[1][8] - N9[1][6] - N9[1][2] + N9[1][0];
-	float Dxxyy = (Dxx + Dyy) * (Dxx + Dyy);
-	float Dxyxy = (Dxx * Dyy - Dxy * Dxy);
-	if (Dxxyy * te >= (te + 1) * (te + 1) * Dxyxy || (Dxxyy * Dxyxy) < 0)
+	double Dxx = N9[1][3] - 2 * N9[1][4] + N9[1][5]; 
+	double Dyy = N9[1][1] - 2 * N9[1][4] + N9[1][7];
+	double Dxy = (N9[1][8] - N9[1][6] - N9[1][2] + N9[1][0]) * 0.25;
+	double score = (Dxx + Dyy) * (Dxx + Dyy) / (Dxx * Dyy - Dxy * Dxy);
+	if (score >= (te + 1) * (te + 1) / te  || score < 0)
 		return -1;
-	float Dx = (N9[1][3] - N9[1][5]) * 2;
-	float Dy = (N9[1][1] - N9[1][7]) * 2;
+	double Dx = (N9[1][5] - N9[1][3]) * 0.5;
+	double Dy = (N9[1][7] - N9[1][1]) * 0.5;
+	double Ds = (N9[2][4] - N9[0][4]) * 0.5;
+	double Dxs = (N9[2][5] + N9[0][3] - N9[2][3] - N9[0][5]) * 0.25;
+	double dys = (N9[2][7] + N9[0][1] - N9[2][1] - N9[0][7]) * 0.25;
+	double Dss = N9[0][4] - 2 * N9[1][4] + N9[2][4];
+	double A[3][3] = { { Dxx, Dxy, Dxs },
+					   { Dxy, Dyy, Dys },
+					   { Dxs, Dys, Dss } };
+	double b[3] = { -Dx, -Dy, -Ds };
 	return 0;
 }
 
