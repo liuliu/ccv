@@ -1,6 +1,6 @@
 #include "ccv.h"
 
-inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, int iy, ccv_keypoint_t* kp)
+inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, int iy, int is, ccv_keypoint_t* kp)
 {
 	double Dxx = N9[1][3] - 2 * N9[1][4] + N9[1][5]; 
 	double Dyy = N9[1][1] - 2 * N9[1][4] + N9[1][7];
@@ -12,12 +12,76 @@ inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, i
 	double Dy = (N9[1][7] - N9[1][1]) * 0.5;
 	double Ds = (N9[2][4] - N9[0][4]) * 0.5;
 	double Dxs = (N9[2][5] + N9[0][3] - N9[2][3] - N9[0][5]) * 0.25;
-	double dys = (N9[2][7] + N9[0][1] - N9[2][1] - N9[0][7]) * 0.25;
+	double Dys = (N9[2][7] + N9[0][1] - N9[2][1] - N9[0][7]) * 0.25;
 	double Dss = N9[0][4] - 2 * N9[1][4] + N9[2][4];
 	double A[3][3] = { { Dxx, Dxy, Dxs },
 					   { Dxy, Dyy, Dys },
 					   { Dxs, Dys, Dss } };
 	double b[3] = { -Dx, -Dy, -Ds };
+	/* Gauss elimination */
+	int i, j, ii, jj;
+	for(j = 0; j < 3; j++)
+	{
+		double maxa = 0;
+		double maxabsa = 0;
+		int maxi = -1;
+		double tmp;
+
+		/* look for the maximally stable pivot */
+		for (i = j; i < 3; i++)
+		{
+			double a = A[i][j];
+			double absa = fabs(a);
+			if (absa > maxabsa)
+			{
+				maxa = a;
+				maxabsa = absa;
+				maxi = i;
+			}
+		}
+
+		/* if singular give up */
+		if (maxabsa < 1e-10f)
+		{
+			b[0] = b[1] = b[2] = 0;
+			break;
+		}
+
+		i = maxi;
+
+		/* swap j-th row with i-th row and normalize j-th row */
+		for(jj = j; jj < 3; jj++)
+		{
+			tmp = A[i][jj];
+			A[i][jj] = A[j][jj];
+			A[j][jj] = tmp;
+			A[j][jj] /= maxa;
+		}
+		tmp = b[j];
+		b[j] = b[i];
+		b[i] = tmp;
+		b[j] /= maxa;
+
+		/* elimination */
+		for (ii = j + 1; ii < 3; ii++)
+		{
+			double x = A[ii][j];
+			for (jj = j; jj < 3; jj++)
+				A[ii][jj] -= x * A[j][jj];
+			b[ii] -= x * b[j];
+		}
+	}
+
+	/* backward substitution */
+	for (i = 2; i > 0; i--)
+	{
+		double x = b[i];
+		for (ii = i - 1; ii >= 0; ii++)
+		  b[ii] -= x * A[ii][i];
+	}
+	kp->x = (ix + b[0]) * is;
+	kp->y = (iy + b[1]) * is;
+	kp->regular.scale = is + b[2];
 	return 0;
 }
 
@@ -99,9 +163,11 @@ ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
 											 uf[x - 1], uf[x], uf[x + 1],
 											 uf[x + cols - 1], uf[x + cols], uf[x + cols + 1] } };
 						ccv_keypoint_t kp;
-						if (__ccv_keypoint_interpolate(N9, params.edge_threshold, x, y, &kp) == 0)
+						if (__ccv_keypoint_interpolate(N9, params.edge_threshold, x, y, s, &kp) == 0 && kp.x >= 0 && kp.x <= a->cols -1 && kp.y >= 0 && kp.y <= a->rows - 1)
 						{
-							imx->data.ptr[x * s + y * s * imx->step] = 255;
+							int ix = (int)(kp.x + 0.5);
+							int iy = (int)(kp.y + 0.5);
+							imx->data.ptr[ix + iy * imx->step] = 255;
 							t++;
 						}
 					}
