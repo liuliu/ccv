@@ -166,7 +166,10 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 void ccv_matrix_free(ccv_matrix_t* mat);
+void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_garbage_collect();
+void ccv_disable_cache();
+void ccv_enable_cache();
 
 #define ccv_get_dense_matrix_cell(x, row, col) \
 	((((x)->type) & CCV_32S) ? (void*)((x)->data.i + (row) * (x)->cols + (col)) : \
@@ -363,8 +366,8 @@ double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
 void ccv_zero(ccv_matrix_t* mat);
-void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
-void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c);
+void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
+void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,
@@ -372,7 +375,7 @@ enum {
 	CCV_C_TRANSPOSE = 0X04,
 };
 
-void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d);
+void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type);
 
 /* matrix build blocks */
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
@@ -382,7 +385,7 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
-void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols);
+void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int type, int y, int x, int rows, int cols);
 
 /* basic data structures */
 
@@ -439,9 +442,9 @@ void ccv_array_free(ccv_array_t* array);
  * in other word, refer to a class of algorithm that can only approximate/or iteratively found the
  * solution. Thus, "invert" would be classified as numercial because of the sense that in some case,
  * it can only be "approximate" (in least-square sense), so to "solve". */
-void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b);
-void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
+void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
+void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 
 typedef struct {
 	double interp;
@@ -455,17 +458,17 @@ typedef struct {
 typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
-void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d);
+void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
 void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
 
 /* modern numerical algorithms */
-void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, ccv_matrix_t** y);
-void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y);
+void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
+void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
 /* basic computer vision algorithms / or build blocks */
-void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int dx, int dy);
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int size);
+void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
 
 enum {
 	CCV_INTER_AREA   = 0x01,
@@ -474,17 +477,17 @@ enum {
 	CCV_INTER_LACZOS = 0X04,
 };
 
-void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int rows, int cols, int type);
-void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
-void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
+void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 enum {
 	CCV_FLIP_X = 0x01,
 	CCV_FLIP_Y = 0x02,
 };
 
-void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
-void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double sigma);
+void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
+void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
@@ -503,7 +506,7 @@ enum {
 	CCV_DAISY_NORMAL_SIFT    = 0x03,
 };
 
-void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_daisy_param_t params);
+void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params);
 
 typedef struct {
 	float x, y;
@@ -526,7 +529,7 @@ typedef struct {
 	float peak_threshold;
 } ccv_sift_param_t;
 
-ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params);
+void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
 
 #define CCV_SGF_POINT_MAX (5)
 #define CCV_SGF_POINT_MIN (3)

@@ -21,13 +21,10 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		}
 	}
 	mat = (ccv_dense_matrix_t*)malloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * rows));
-	if (sig != 0)
-	{
-		mat->sig = sig;
-		mat->type |= CCV_REUSABLE;
-	} else
-		mat->sig = 0;
+	mat->sig = sig;
 	mat->type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
+	if (data == 0)
+		mat->type |= CCV_REUSABLE;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
@@ -38,10 +35,14 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 
 ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig)
 {
-	if (x != 0 && (x->rows != rows || x->cols != cols || !(CCV_GET_DATA_TYPE(x->type) & types) || !(CCV_GET_CHANNEL(x->type) & types))) {
+	if (x != 0 && (x->rows != rows || x->cols != cols || !(CCV_GET_DATA_TYPE(x->type) & types) || !(CCV_GET_CHANNEL(x->type) & types)))
+	{
 		ccv_matrix_free(x);
 		x = 0;
+	} else if (x != 0) {
+		prefer_type = CCV_GET_DATA_TYPE(x->type) | CCV_GET_CHANNEL(x->type);
 	}
+	sig = ccv_matrix_generate_signature((const char*)&prefer_type, sizeof(int), sig, 0);
 	if (x == 0)
 	{
 		x = ccv_dense_matrix_new(rows, cols, prefer_type, 0, sig);

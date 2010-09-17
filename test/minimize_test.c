@@ -22,7 +22,7 @@ int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, v
 
 int main(int argc, char** argv)
 {
-	ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 2, CCV_64F | CCV_C1, NULL, NULL);
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 2, CCV_64F | CCV_C1, 0, 0);
 	ccv_zero(x);
 	int steps = 0;
 	ccv_minimize_param_t params;

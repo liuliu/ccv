@@ -4,15 +4,15 @@
 #include <fftw3.h>
 #endif
 
-void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b)
+void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 {
 }
 
-void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
+void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 {
 }
 
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
+void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 {
 }
 
@@ -644,12 +644,13 @@ void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_de
 	ccv_matrix_free(pa);
 }
 
-void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d)
+void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	uint64_t sig = (da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_filter", 10, da->sig, db->sig, 0);
-	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, da->type, da->type, sig);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
+	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
 	ccv_cache_return(dd, );
 
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for

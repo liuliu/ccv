@@ -1,13 +1,11 @@
 #include "ccv.h"
 
-inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, int iy, int is, ccv_keypoint_t* kp)
+inline static double __ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
 {
 	double Dxx = N9[1][3] - 2 * N9[1][4] + N9[1][5]; 
 	double Dyy = N9[1][1] - 2 * N9[1][4] + N9[1][7];
 	double Dxy = (N9[1][8] - N9[1][6] - N9[1][2] + N9[1][0]) * 0.25;
 	double score = (Dxx + Dyy) * (Dxx + Dyy) / (Dxx * Dyy - Dxy * Dxy);
-	if (score >= (te + 1) * (te + 1) / te  || score < 0)
-		return -1;
 	double Dx = (N9[1][5] - N9[1][3]) * 0.5;
 	double Dy = (N9[1][7] - N9[1][1]) * 0.5;
 	double Ds = (N9[2][4] - N9[0][4]) * 0.5;
@@ -76,47 +74,50 @@ inline static int __ccv_keypoint_interpolate(float N9[3][9], float te, int ix, i
 	for (i = 2; i > 0; i--)
 	{
 		double x = b[i];
-		for (ii = i - 1; ii >= 0; ii++)
+		for (ii = i - 1; ii >= 0; ii--)
 		  b[ii] -= x * A[ii][i];
 	}
-	kp->x = (ix + b[0]) * is;
-	kp->y = (iy + b[1]) * is;
+	kp->x = (ix + ccv_min(ccv_max(b[0], -1), 1)) * is;
+	kp->y = (iy + ccv_min(ccv_max(b[1], -1), 1)) * is;
 	kp->regular.scale = is + b[2];
-	return 0;
+	return score;
 }
 
-ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
+void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params)
 {
+	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
 	ccv_dense_matrix_t** g = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * params.noctaves);
 	memset(g, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * params.noctaves);
 	ccv_dense_matrix_t** dog = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
 	memset(dog, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
-	int i, j;
+	int i, j, k;
 	double sigma0 = 1.6;
 	double sigmak = pow(2.0, 1.0 / (params.nlevels - 3));
 	double dsigma0 = sigma0 * sigmak * sqrt(1.0 - 1.0 / (sigmak * sigmak));
 	double sd = sqrt(sigma0 * sigma0 - 0.25);
-	ccv_convert(a, &g[0], CCV_32F, 0, 0);
-	ccv_blur(g[0], &g[1], sd);
+	g[0] = a;
+	ccv_blur(g[0], &g[1], CCV_32F | CCV_C1, sd);
 	for (j = 1; j < params.nlevels; j++)
 	{
 		sd = dsigma0 * pow(sigmak, j - 1);
-		ccv_blur(g[j], &g[j + 1], sd);
-		ccv_substract(g[j + 1], g[j], &dog[j - 1]);
+		ccv_blur(g[j], &g[j + 1], 0, sd);
+		ccv_substract(g[j + 1], g[j], (ccv_matrix_t**)&dog[j - 1], 0);
 		ccv_matrix_free(g[j]);
 	}
 	ccv_matrix_free(g[params.nlevels]);
 	for (i = 1; i < params.noctaves; i++)
 	{
-		ccv_sample_down(g[(i - 1) * (params.nlevels + 1)], &g[i * (params.nlevels + 1)]);
-		ccv_matrix_free(g[(i - 1) * (params.nlevels + 1)]);
+		ccv_sample_down(g[(i - 1) * (params.nlevels + 1)], &g[i * (params.nlevels + 1)], 0);
+		if (i - 1 > 0)
+			ccv_matrix_free(g[(i - 1) * (params.nlevels + 1)]);
 		sd = sqrt(sigma0 * sigma0 - 0.25);
-		ccv_blur(g[i * (params.nlevels + 1)], &g[i * (params.nlevels + 1) + 1], sd);
+		g[i * (params.nlevels + 1) + 1] = ccv_dense_matrix_new(g[i * (params.nlevels + 1)]->rows, g[i * (params.nlevels + 1)]->cols, CCV_C1 | CCV_32F, 0, 0);
+		ccv_blur(g[i * (params.nlevels + 1)], &g[i * (params.nlevels + 1) + 1], CCV_32F | CCV_C1, sd);
 		for (j = 1; j < params.nlevels; j++)
 		{
 			sd = dsigma0 * pow(sigmak, j - 1);
-			ccv_blur(g[i * (params.nlevels + 1) + j], &g[i * (params.nlevels + 1) + j + 1], sd);
-			ccv_substract(g[i * (params.nlevels + 1) + j + 1], g[i * (params.nlevels + 1) + j], &dog[i * (params.nlevels - 1) + j - 1]);
+			ccv_blur(g[i * (params.nlevels + 1) + j], &g[i * (params.nlevels + 1) + j + 1], 0, sd);
+			ccv_substract(g[i * (params.nlevels + 1) + j + 1], g[i * (params.nlevels + 1) + j], (ccv_matrix_t**)&dog[i * (params.nlevels - 1) + j - 1], 0);
 			ccv_matrix_free(g[i * (params.nlevels + 1) + j]);
 		}
 		ccv_matrix_free(g[i * (params.nlevels + 1) + params.nlevels]);
@@ -153,20 +154,41 @@ ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
 	 v CMP uf[x + cols - 1] && v CMP uf[x + cols] && v CMP uf[x + cols + 1])
 					if (locality_if(<, -) || locality_if(>, +))
 					{
-						float N9[3][9] = { { bf[x - cols - 1], bf[x - cols], bf[x - cols + 1],
-											 bf[x - 1], bf[x], bf[x + 1],
-											 bf[x + cols - 1], bf[x + cols], bf[x + cols + 1] },
-										   { cf[x - cols - 1], cf[x - cols], cf[x - cols + 1],
-											 cf[x - 1], v, cf[x + 1],
-											 cf[x + cols - 1], cf[x + cols], cf[x + cols + 1] },
-										   { uf[x - cols - 1], uf[x - cols], uf[x - cols + 1],
-											 uf[x - 1], uf[x], uf[x + 1],
-											 uf[x + cols - 1], uf[x + cols], uf[x + cols + 1] } };
 						ccv_keypoint_t kp;
-						if (__ccv_keypoint_interpolate(N9, params.edge_threshold, x, y, s, &kp) == 0 && kp.x >= 0 && kp.x <= a->cols -1 && kp.y >= 0 && kp.y <= a->rows - 1)
+						int ix = x, iy = y;
+						double score = -1;
+						int cvg = 0;
+						int offset = ix + (iy - y) * cols;
+						for (k = 0; k < 5; k++)
 						{
-							int ix = (int)(kp.x + 0.5);
-							int iy = (int)(kp.y + 0.5);
+							offset = ix + (iy - y) * cols;
+							float N9[3][9] = { { bf[offset - cols - 1], bf[offset - cols], bf[offset - cols + 1],
+												 bf[offset - 1], bf[offset], bf[offset + 1],
+												 bf[offset + cols - 1], bf[offset + cols], bf[offset + cols + 1] },
+											   { cf[offset - cols - 1], cf[offset - cols], cf[offset - cols + 1],
+												 cf[offset - 1], cf[offset], cf[offset + 1],
+												 cf[offset + cols - 1], cf[offset + cols], cf[offset + cols + 1] },
+											   { uf[offset - cols - 1], uf[offset - cols], uf[offset - cols + 1],
+												 uf[offset - 1], uf[offset], uf[offset + 1],
+												 uf[offset + cols - 1], uf[offset + cols], uf[offset + cols + 1] } };
+							score = __ccv_keypoint_interpolate(N9, ix, iy, s, &kp);
+							if (kp.x >= 0 && kp.x <= a->cols -1 && kp.y >= 0 && kp.y <= a->rows - 1)
+							{
+								int nx = (int)(kp.x / s + 0.5);
+								int ny = (int)(kp.y / s + 0.5);
+								if (ix == nx && iy == ny)
+									break;
+								ix = nx;
+								iy = ny;
+							} else {
+								cvg = -1;
+								break;
+							}
+						}
+						if (cvg == 0 && score >= 0 && score < (params.edge_threshold + 1) * (params.edge_threshold + 1) / params.edge_threshold)
+						{
+							ix = (int)(kp.x + 0.5);
+							iy = (int)(kp.y + 0.5);
 							imx->data.ptr[ix + iy * imx->step] = 255;
 							t++;
 						}
@@ -186,5 +208,4 @@ ccv_array_t* ccv_sift(ccv_dense_matrix_t* a, ccv_sift_param_t params)
 	ccv_matrix_free(imx);
 	for (i = 0; i < (params.nlevels - 1) * params.noctaves; i++)
 		ccv_matrix_free(dog[i]);
-	return 0;
 }

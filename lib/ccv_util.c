@@ -18,14 +18,15 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
 	return 0;
 }
 
-void ccv_convert(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
+void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	char identifier[64];
 	memset(identifier, 0, 64);
-	snprintf(identifier, 64, "ccv_convert(%d,%d,%d)", type, lr, rr);
+	snprintf(identifier, 64, "ccv_shift(%d,%d)", lr, rr);
 	uint64_t sig = ccv_matrix_generate_signature(identifier, 64, da->sig, 0);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type), sig); 
+	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig); 
 	ccv_cache_return(db, );
 	int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 	unsigned char* aptr = da->data.ptr;
@@ -396,7 +397,7 @@ int ccv_matrix_equal(ccv_matrix_t* a, ccv_matrix_t* b)
 	return 0;
 }
 
-void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int cols)
+void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int rows, int cols)
 {
 	int type = *(int*)a;
 	if (type & CCV_MATRIX_DENSE)
@@ -407,7 +408,8 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int y, int x, int rows, int co
 		memset(identifier, 0, 128);
 		snprintf(identifier, 128, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols);
 		uint64_t sig = (da->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 128, da->sig, 0);
-		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, da->type, da->type, sig);
+		btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(btype) | CCV_GET_CHANNEL(da->type);
+		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), btype, sig);
 		ccv_cache_return(db, );
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;

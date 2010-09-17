@@ -4,7 +4,7 @@
 unsigned int get_current_time()
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	gettimeofday(&tv, 0);
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
@@ -23,7 +23,7 @@ static void __ccv_gaussian_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, i
 	for (i = 0; i < kernel->rows; i++)
 		for (j = 0; j < kernel->cols; j++)
 			kernel->data.fl[i * kernel->cols + j] = kernel->data.fl[i * kernel->cols + j] / total;
-	ccv_filter(a, kernel, (ccv_matrix_t**)b);
+	ccv_filter(a, kernel, (ccv_matrix_t**)b, 0);
 	ccv_matrix_free(kernel);
 }
 
@@ -46,7 +46,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* x = 0;
 	unsigned int elapsed_time = get_current_time();
 	double sigma = 10;
-	ccv_blur(image, &x, sigma);
+	ccv_blur(image, &x, 0, sigma);
 	printf("ccv_blur elpased time : %d\n", get_current_time() - elapsed_time);
 	elapsed_time = get_current_time();
 	ccv_dense_matrix_t* y = 0;

@@ -4,7 +4,7 @@
 unsigned int get_current_time()
 {
 	struct timeval tv;
-	gettimeofday(&tv, NULL);
+	gettimeofday(&tv, 0);
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 	param.nlevels = 6;
 	param.edge_threshold = 10;
 	param.peak_threshold = 0;
-	ccv_sift(image, param);
+	ccv_sift(image, 0, 0, 0, param);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	ccv_matrix_free(image);
 	ccv_garbage_collect();

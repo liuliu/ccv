@@ -207,7 +207,7 @@ int main(int argc, char** argv)
 	for (y = 0; y < 1024; y++)
 		for (x = 0; x < 1024; x++)
 			angle += (int)(atan2(y, x) * 180 / 3.141592654 + 0.5);
-	printf("atan2 : %dms\n", get_current_time() - elpased_time);
+	printf("atan2 : %dms x 100\n", get_current_time() - elpased_time);
 	elpased_time = get_current_time();
 	for (i = 0; i < 100; i++)
 	for (y = 0; y < 1024; y++)
