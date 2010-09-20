@@ -468,6 +468,7 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
+void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
 
 enum {
@@ -510,6 +511,8 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 
 typedef struct {
 	float x, y;
+	int octave;
+	int level;
 	union {
 		struct {
 			double a, b;
@@ -517,7 +520,7 @@ typedef struct {
 		} affine;
 		struct {
 			double scale;
-			double orientation;
+			double angle;
 		} regular;
 	};
 } ccv_keypoint_t;

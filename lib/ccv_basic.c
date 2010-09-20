@@ -120,6 +120,29 @@ static void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 	}
 }
 
+void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype)
+{
+	uint64_t tsig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_gradient_theta", 18, a->sig, 0);
+	uint64_t msig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_gradient_m", 14, a->sig, 0);
+	ccv_dense_matrix_t* dtheta = *theta = ccv_dense_matrix_renew(*theta, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, tsig);
+	ccv_dense_matrix_t* dm = *m = ccv_dense_matrix_renew(*m, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, msig);
+	if ((dtheta->type & CCV_GARBAGE) && (dm->type & CCV_GARBAGE))
+	{
+		dtheta->type &= ~CCV_GARBAGE;
+		dm->type &= ~CCV_GARBAGE;
+		return;
+	}
+	dtheta->type &= ~CCV_GARBAGE;
+	dm->type &= ~CCV_GARBAGE;
+	ccv_dense_matrix_t* dx = 0;
+	ccv_dense_matrix_t* dy = 0;
+	ccv_sobel(a, &dx, CCV_32F | CCV_C1, 1, 0);
+	ccv_sobel(a, &dy, CCV_32F | CCV_C1, 0, 1);
+	__ccv_atan2(dx->data.fl, dy->data.fl, dtheta->data.fl, dm->data.fl, a->rows * a->cols);
+	ccv_matrix_free(dx);
+	ccv_matrix_free(dy);
+}
+
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 {
 	int border_size = size / 2;
@@ -127,13 +150,9 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_cache_return(db, );
-	ccv_dense_matrix_t* dx = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* dy = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
-	ccv_sobel(a, &dx, type, 1, 0);
-	ccv_sobel(a, &dy, type, 0, 1);
-	ccv_dense_matrix_t* ag = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* mg = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
-	__ccv_atan2(dx->data.fl, dy->data.fl, ag->data.fl, mg->data.fl, a->rows * a->cols);
+	ccv_dense_matrix_t* ag = 0;
+	ccv_dense_matrix_t* mg = 0;
+	ccv_gradient(a, &ag, 0, &mg, 0);
 	int i, j, x, y;
 	ag->type = (ag->type & ~CCV_32F) | CCV_32S;
 	for (i = 0; i < a->rows * a->cols; i++)
@@ -168,8 +187,6 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 		agi += border_size * 2;
 		mgfl += border_size * 2;
 	}
-	ccv_matrix_free(dx);
-	ccv_matrix_free(dy);
 	ccv_matrix_free(ag);
 	ccv_matrix_free(mg);
 }
