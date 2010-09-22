@@ -100,7 +100,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		keypoints = *_keypoints = ccv_array_new(10, sizeof(ccv_keypoint_t));
 	else
 		custom_keypoints = 1;
-	int i, j, k;
+	int i, j, k, x, y;
 	double sigma0 = 1.6;
 	double sigmak = pow(2.0, 1.0 / (params.nlevels - 3));
 	double dsigma0 = sigma0 * sigmak * sqrt(1.0 - 1.0 / (sigmak * sigmak));
@@ -142,7 +142,6 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	{
 		for (i = 0; i < params.noctaves; i++)
 		{
-			int x, y;
 			int rows = dog[i * (params.nlevels - 1)]->rows;
 			int cols = dog[i * (params.nlevels - 1)]->cols;
 			for (j = 1; j < params.nlevels - 2; j++)
@@ -217,13 +216,29 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			s *= 2;
 		}
 	}
+	double const winf = 1.5;
 	for (i = 0; i < keypoints->rnum; i++)
 	{
 		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
 		double s = pow(2.0, kp->octave);
 		double x = kp->x / s;
 		double y = kp->y / s;
-		double sigma = kp->
+		double sigma = sigma0 * sigmak * pow(2.0, kp->level / (params.nlevels - 3));
+		int ix = (int)(x + 0.5);
+		int iy = (int)(y + 0.5);
+		double const sigmaw = winf * sigma;
+		int wz = ccv_max((int)(3.0 * sigmaw + 0.5), 1);
+		ccv_dense_matrix_t* tho = th[kp->octave * (params.nlevels - 3) + kp->level - 1];
+		ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
+		if (ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows)
+		{
+			for (y = -wz; y <= wz; y++)
+			{
+				for (x = ix - wz; x <= ix + wz; x++)
+				{
+				}
+			}
+		}
 	}
 	for (i = 0; i < (params.nlevels - 1) * params.noctaves; i++)
 		ccv_matrix_free(dog[i]);
