@@ -217,6 +217,8 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		}
 	}
 	double const winf = 1.5;
+	double bins[36], maxb;
+	memset(bins, 0, 36 * sizeof(double));
 	for (i = 0; i < keypoints->rnum; i++)
 	{
 		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
@@ -232,10 +234,13 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
 		if (ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows)
 		{
+			float* theta = tho->data.fl + ix + iy * tho->cols;
+			float* magnitude = mdo->data.fl + ix + iy * mdo->cols;
 			for (y = -wz; y <= wz; y++)
 			{
 				for (x = ix - wz; x <= ix + wz; x++)
 				{
+					float fbin = 36 * theta[x] / (2 * 3.1415926);
 				}
 			}
 		}
