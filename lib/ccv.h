@@ -365,6 +365,7 @@ enum {
 };
 
 double ccv_norm(ccv_matrix_t* mat, int type);
+double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
 void ccv_zero(ccv_matrix_t* mat);
@@ -532,6 +533,7 @@ typedef struct {
 	int nlevels;
 	float edge_threshold;
 	float peak_threshold;
+	float norm_threshold;
 } ccv_sift_param_t;
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);

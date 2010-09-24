@@ -1,4 +1,13 @@
-/* The code is adopted from VLFeat, which is licenced under GPLv2 */
+/* The code is adopted from VLFeat with heavily rewrite.
+ * The original code is licenced under GPLv2, should be compatible
+ * with New BSD Licence used by ccv. The original Copyright:
+ *
+ * AUTORIGHTS
+ * Copyright (C) 2007-10 Andrea Vedaldi and Brian Fulkerson
+ *
+ * This file is part of VLFeat, available under the terms of the
+ * GNU GPLv2, or (at your option) any later version.
+ */
 
 #include "ccv.h"
 
@@ -362,7 +371,8 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			float dy = kp->y / ds;
 			int ix = (int)(dx + 0.5);
 			int iy = (int)(dy + 0.5);
-			int wz = ccv_max((int)(3.0 * kp->regular.scale + 0.5), 1);
+			double SBP = 3.0 * kp->regular.scale;
+			int wz = ccv_max((int)(SBP * sqrt(2.0) * 2.5 + 0.5), 1);
 			ccv_dense_matrix_t* tho = th[kp->octave * (params.nlevels - 3) + kp->level - 1];
 			ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
 			assert(tho->rows == mdo->rows && tho->cols == mdo->cols);
@@ -371,15 +381,46 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			float* magnitude = mdo->data.fl + ccv_max(iy - wz, 0) * mdo->cols;
 			float ca = cos(kp->regular.angle);
 			float sa = sin(kp->regular.angle);
+			float sigmaw = 2.0;
+			/* sidenote: NBP = 4, NBO = 8 */
 			for (y = ccv_max(iy - wz, 0); y <= ccv_min(iy + wz, tho->rows - 1); y++)
 			{
 				for (x = ccv_max(ix - wz, 0); x <= ccv_min(ix + wz, tho->cols - 1); x++)
 				{
-					float nx = (ca * (x - dx) + sa * (y - dy)) / wz;
-					float ny = (-sa * (x - dx) + ca * (y - dy)) / wz;
+					float nx = (ca * (x - dx) + sa * (y - dy)) / SBP;
+					float ny = (-sa * (x - dx) + ca * (y - dy)) / SBP;
+					float nt = 8.0 * __ccv_mod_2pi(theta[x] * CCV_PI / 180.0 - kp->regular.angle) / (2.0 * CCV_PI);
+					float weight = __ccv_expn((nx * nx + ny * ny) / (2.0 * sigmaw * sigmaw));
+					int binx = __ccv_floor(nx - 0.5);
+					int biny = __ccv_floor(ny - 0.5);
+					int bint = __ccv_floor(nt);
+					float rbinx = nx - (binx + 0.5);
+					float rbiny = ny - (biny + 0.5);
+					float rbint = nt - bint;
+					int dbinx, dbiny, dbint;
+					/* Distribute the current sample into the 8 adjacent bins*/
+					for(dbinx = 0; dbinx < 2; dbinx++)
+						for(dbiny = 0; dbiny < 2; dbiny++)
+							for(dbint = 0; dbint < 2; dbint++)
+								if (binx + dbinx >= -2 && binx + dbinx < 2 && biny + dbiny >= -2 && biny + dbiny < 2)
+									fdesc[(2 + biny + dbiny) * 32 + (2 + binx + dbinx) * 8 + (bint + dbint) % 8] += weight * magnitude[x] * fabs(1 - dbinx - rbinx) * fabs(1 - dbiny - rbiny) * fabs(1 - dbint - rbint);
 				}
 				theta += tho->cols;
 				magnitude += mdo->cols;
+			}
+			ccv_dense_matrix_t tm = ccv_dense_matrix(1, 128, CCV_32F | CCV_C1, fdesc, 0);
+			ccv_dense_matrix_t* tmp = &tm;
+ 			double norm = ccv_normalize(&tm, &tmp, 0, CCV_L2_NORM);
+			int num = (ccv_min(iy + wz, tho->rows - 1) - ccv_max(iy - wz, 0) + 1) * (ccv_min(ix + wz, tho->cols - 1) - ccv_max(ix - wz, 0) + 1);
+			if (params.norm_threshold && norm < params.norm_threshold * num)
+			{
+				for (j = 0; j < 128; j++)
+					fdesc[j] = 0;
+			} else {
+				for (j = 0; j < 128; j++)
+					if (fdesc[j] > 0.2)
+						fdesc[j] = 0.2;
+				ccv_normalize(&tm, &tmp, 0, CCV_L2_NORM);
 			}
 			fdesc += 128;
 		}

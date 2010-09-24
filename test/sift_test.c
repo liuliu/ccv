@@ -26,13 +26,14 @@ int main(int argc, char** argv)
 	param.noctaves = 3;
 	param.nlevels = 6;
 	param.edge_threshold = 10;
+	param.norm_threshold = 0;
 	param.peak_threshold = 0;
 	ccv_array_t* keypoints = 0;
 	ccv_sift(image, &keypoints, 0, 0, param);
 	printf("%d\n", keypoints->rnum);
 	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(image->rows, image->cols, CCV_8U | CCV_C1, 0, 0);
 	memset(imx->data.ptr, 0, imx->rows * imx->step);
-	int i;
+	int i, j;
 	for (i = 0; i < keypoints->rnum; i++)
 	{
 		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
