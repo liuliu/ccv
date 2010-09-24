@@ -23,6 +23,8 @@
 #include <alloca.h>
 #endif
 
+#define CCV_PI (3.141592653589793)
+
 enum {
 	CCV_8U  = 0x0100,
 	CCV_32S = 0x0200,
@@ -468,7 +470,7 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
-void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype);
+void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
 
 enum {

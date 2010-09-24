@@ -1,3 +1,5 @@
+/* The code is adopted from VLFeat, which is licenced under GPLv2 */
+
 #include "ccv.h"
 
 inline static double __ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
@@ -83,6 +85,51 @@ inline static double __ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, 
 	return score;
 }
 
+static float __ccv_mod_2pi(float x)
+{
+	while (x > 2 * CCV_PI)
+		x -= 2 * CCV_PI;
+	while (x < 0)
+		x += 2 * CCV_PI;
+	return x;
+}
+
+static int __ccv_floor(float x)
+{
+	int xi = (int)x;
+	if (x >= 0 || (float)xi == x)
+		return xi;
+	return xi - 1;
+}
+
+#define EXPN_SZ  256 /* fast_expn table size */
+#define EXPN_MAX 25.0 /* fast_expn table max */
+static double __ccv_expn_tab[EXPN_SZ + 1]; /* fast_expn table */
+static int __ccv_expn_init = 0;
+
+static inline double __ccv_expn(double x)
+{
+	double a, b, r;
+	int i;
+	assert(0 <= x && x <= EXPN_MAX);
+	if (x > EXPN_MAX)
+		return 0.0;
+	x *= EXPN_SZ / EXPN_MAX;
+	i = (int)x;
+	r = x - i;
+	a = __ccv_expn_tab[i];
+	b = __ccv_expn_tab[i + 1];
+	return a + r * (b - a);
+}
+
+static void __ccv_precomputed_expn()
+{
+	int i;
+	for(i = 0; i < EXPN_SZ + 1; i++)
+		__ccv_expn_tab[i] = exp(-(double)i * (EXPN_MAX / EXPN_SZ));
+	__ccv_expn_init = 1;
+}
+
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_t** _desc, int type, ccv_sift_param_t params)
 {
 	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
@@ -106,6 +153,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	double dsigma0 = sigma0 * sigmak * sqrt(1.0 - 1.0 / (sigmak * sigmak));
 	double sd = sqrt(sigma0 * sigma0 - 0.25);
 	g[0] = a;
+	/* generate gaussian pyramid (g, dog) & gradient pyramid (th, md) */
 	ccv_blur(g[0], &g[1], CCV_32F | CCV_C1, sd);
 	for (j = 1; j < params.nlevels; j++)
 	{
@@ -113,7 +161,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		ccv_blur(g[j], &g[j + 1], 0, sd);
 		ccv_substract(g[j + 1], g[j], (ccv_matrix_t**)&dog[j - 1], 0);
 		if (j > 1 && j < params.nlevels - 1)
-			ccv_gradient(g[j], &th[j - 2], 0, &md[j - 2], 0);
+			ccv_gradient(g[j], &th[j - 2], 0, &md[j - 2], 0, 1, 1);
 		ccv_matrix_free(g[j]);
 	}
 	ccv_matrix_free(g[params.nlevels]);
@@ -131,7 +179,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			ccv_blur(g[i * (params.nlevels + 1) + j], &g[i * (params.nlevels + 1) + j + 1], 0, sd);
 			ccv_substract(g[i * (params.nlevels + 1) + j + 1], g[i * (params.nlevels + 1) + j], (ccv_matrix_t**)&dog[i * (params.nlevels - 1) + j - 1], 0);
 			if (j > 1 && j < params.nlevels - 1)
-				ccv_gradient(g[i * (params.nlevels + 1) + j], &th[i * (params.nlevels - 3) + j - 2], 0, &md[i * (params.nlevels - 3) + j - 2], 0);
+				ccv_gradient(g[i * (params.nlevels + 1) + j], &th[i * (params.nlevels - 3) + j - 2], 0, &md[i * (params.nlevels - 3) + j - 2], 0, 1, 1);
 			ccv_matrix_free(g[i * (params.nlevels + 1) + j]);
 		}
 		ccv_matrix_free(g[i * (params.nlevels + 1) + params.nlevels]);
@@ -140,6 +188,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	int s = 1;
 	if (!custom_keypoints)
 	{
+		/* detect keypoint */
 		for (i = 0; i < params.noctaves; i++)
 		{
 			int rows = dog[i * (params.nlevels - 1)]->rows;
@@ -171,6 +220,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 							double score = -1;
 							int cvg = 0;
 							int offset = ix + (iy - y) * cols;
+							/* iteratively converge to meet subpixel accuracy */
 							for (k = 0; k < 5; k++)
 							{
 								offset = ix + (iy - y) * cols;
@@ -203,6 +253,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 								kp.y *= s;
 								kp.octave = i;
 								kp.level = j;
+								kp.regular.scale = sigma0 * sigmak * pow(2.0, kp.regular.scale / (double)(params.nlevels - 3));
 								ccv_array_push(keypoints, &kp);
 							}
 						}
@@ -216,33 +267,121 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			s *= 2;
 		}
 	}
-	double const winf = 1.5;
-	double bins[36], maxb;
-	memset(bins, 0, 36 * sizeof(double));
-	for (i = 0; i < keypoints->rnum; i++)
+	/* repeatable orientation/angle (p.s. it will push more keypoints (with different angles) to array) */
+	float const winf = 1.5;
+	double bins[36];
+	int kpnum = keypoints->rnum;
+	if (!__ccv_expn_init)
+		__ccv_precomputed_expn();
+	for (i = 0; i < kpnum; i++)
 	{
 		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
-		double s = pow(2.0, kp->octave);
-		double x = kp->x / s;
-		double y = kp->y / s;
-		double sigma = sigma0 * sigmak * pow(2.0, kp->level / (params.nlevels - 3));
-		int ix = (int)(x + 0.5);
-		int iy = (int)(y + 0.5);
-		double const sigmaw = winf * sigma;
+		float ds = pow(2.0, kp->octave);
+		float dx = kp->x / ds;
+		float dy = kp->y / ds;
+		int ix = (int)(dx + 0.5);
+		int iy = (int)(dy + 0.5);
+		float const sigmaw = winf * kp->regular.scale;
 		int wz = ccv_max((int)(3.0 * sigmaw + 0.5), 1);
 		ccv_dense_matrix_t* tho = th[kp->octave * (params.nlevels - 3) + kp->level - 1];
 		ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
+		assert(tho->rows == mdo->rows && tho->cols == mdo->cols);
 		if (ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows)
 		{
-			float* theta = tho->data.fl + ix + iy * tho->cols;
-			float* magnitude = mdo->data.fl + ix + iy * mdo->cols;
-			for (y = -wz; y <= wz; y++)
+			float* theta = tho->data.fl + ccv_max(iy - wz, 0) * tho->cols;
+			float* magnitude = mdo->data.fl + ccv_max(iy - wz, 0) * mdo->cols;
+			memset(bins, 0, 36 * sizeof(double));
+			/* oriented histogram with bilinear interpolation */
+			for (y = ccv_max(iy - wz, 0); y <= ccv_min(iy + wz, tho->rows - 1); y++)
 			{
-				for (x = ix - wz; x <= ix + wz; x++)
+				for (x = ccv_max(ix - wz, 0); x <= ccv_min(ix + wz, tho->cols - 1); x++)
 				{
-					float fbin = 36 * theta[x] / (2 * 3.1415926);
+					float r2 = (x - dx) * (x - dx) + (y - dy) * (y - dy);
+					if (r2 > wz * wz + 0.6)
+						continue;
+					float weight = __ccv_expn(r2 / (2.0 * sigmaw * sigmaw));
+					float fbin = theta[x] * 0.1;
+					int ibin = __ccv_floor(fbin - 0.5);
+					float rbin = fbin - ibin - 0.5;
+					/* bilinear interpolation */
+					bins[(ibin + 36) % 36] += (1 - rbin) * magnitude[x] * weight;
+					bins[(ibin + 1) % 36] += rbin * magnitude[x] * weight;
 				}
+				theta += tho->cols;
+				magnitude += mdo->cols;
 			}
+			/* smoothing histogram */
+			for (j = 0; j < 6; j++)
+			{
+				double first = bins[0];
+				double prev = bins[35];
+				for (k = 0; k < 35; k++)
+				{
+					double nb = (prev + bins[k] + bins[k + 1]) / 3.0;
+					prev = bins[k];
+					bins[k] = nb;
+				}
+				bins[35] = (prev + bins[35] + first) / 3.0;
+			}
+			int maxib = 0;
+			for (j = 1; j < 36; j++)
+				if (bins[j] > bins[maxib])
+					maxib = j;
+			double maxb = bins[maxib];
+			double bm = bins[(maxib + 35) % 36];
+			double bp = bins[(maxib + 1) % 36];
+			double di = -0.5 * (bp - bm) / (bp + bm - 2 * maxb);
+			kp->regular.angle = 2 * CCV_PI * (maxib + di + 0.5) / 36.0;
+			maxb *= 0.8;
+			for (j = 0; j < 36; j++)
+				if (j != maxib)
+				{
+					bm = bins[(j + 35) % 36];
+					bp = bins[(j + 1) % 36];
+					if (bins[j] > maxb && bins[j] > bm && bins[j] > bp)
+					{
+						di = -0.5 * (bp - bm) / (bp + bm - 2 * bins[j]);
+						ccv_keypoint_t nkp = *kp;
+						nkp.regular.angle = 2 * CCV_PI * (j + di + 0.5) / 36.0;
+						ccv_array_push(keypoints, &nkp);
+					}
+				}
+		}
+	}
+	/* calculate descriptor */
+	if (_desc != 0)
+	{
+		ccv_dense_matrix_t* desc = *_desc = ccv_dense_matrix_new(keypoints->rnum, 128, CCV_32F | CCV_C1, 0, 0);
+		float* fdesc = desc->data.fl;
+		memset(fdesc, 0, sizeof(float) * keypoints->rnum * 128);
+		for (i = 0; i < keypoints->rnum; i++)
+		{
+			ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
+			float ds = pow(2.0, kp->octave);
+			float dx = kp->x / ds;
+			float dy = kp->y / ds;
+			int ix = (int)(dx + 0.5);
+			int iy = (int)(dy + 0.5);
+			int wz = ccv_max((int)(3.0 * kp->regular.scale + 0.5), 1);
+			ccv_dense_matrix_t* tho = th[kp->octave * (params.nlevels - 3) + kp->level - 1];
+			ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
+			assert(tho->rows == mdo->rows && tho->cols == mdo->cols);
+			assert(ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows);
+			float* theta = tho->data.fl + ccv_max(iy - wz, 0) * tho->cols;
+			float* magnitude = mdo->data.fl + ccv_max(iy - wz, 0) * mdo->cols;
+			float ca = cos(kp->regular.angle);
+			float sa = sin(kp->regular.angle);
+			for (y = ccv_max(iy - wz, 0); y <= ccv_min(iy + wz, tho->rows - 1); y++)
+			{
+				for (x = ccv_max(ix - wz, 0); x <= ccv_min(ix + wz, tho->cols - 1); x++)
+				{
+					float nx = (ca * (x - dx) + sa * (y - dy)) / wz;
+					float ny = (-sa * (x - dx) + ca * (y - dy)) / wz;
+				}
+				theta += tho->cols;
+				magnitude += mdo->cols;
+			}
+			fdesc += 128;
 		}
 	}
 	for (i = 0; i < (params.nlevels - 1) * params.noctaves; i++)

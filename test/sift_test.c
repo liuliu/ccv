@@ -8,6 +8,15 @@ unsigned int get_current_time()
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+float __ccv_mod_2pi(float x)
+{
+	while (x > 2 * CCV_PI)
+		x -= 2 * CCV_PI;
+	while (x < 0)
+		x += 2 * CCV_PI;
+	return x;
+}
+
 int main(int argc, char** argv)
 {
 	ccv_dense_matrix_t* image = 0;
@@ -31,7 +40,6 @@ int main(int argc, char** argv)
 		int iy = (int)(kp->y + 0.5);
 		imx->data.ptr[ix + iy * imx->step] = 255;
 	}
-	ccv_array_free(keypoints);
 	int len;
 	ccv_serialize(imx, "keypoint.png", &len, CCV_SERIAL_PNG_FILE, 0);
 	ccv_matrix_free(imx);
@@ -43,12 +51,47 @@ int main(int argc, char** argv)
 	memset(image->data.ptr, 0, image->step * image->rows);
 	FILE* frame = fopen("box.frame", "r");
 	float x, y, s0, s1;
+	ccv_array_t* gtkp = ccv_array_new(10, sizeof(ccv_keypoint_t));
 	while (fscanf(frame, "%f %f %f %f", &x, &y, &s0, &s1) != EOF)
 	{
 		image->data.ptr[(int)(y + 0.5) * image->step + (int)(x + 0.5)] = 255;
+		ccv_keypoint_t nkp;
+		nkp.x = x;
+		nkp.y = y;
+		nkp.regular.scale = s0;
+		nkp.regular.angle = s1;
+		ccv_array_push(gtkp, &nkp);
 	}
 	fclose(frame);
 	ccv_serialize(image, "mixkp.png", &len, CCV_SERIAL_PNG_FILE, 0);
+	int match = 0, angle_match = 0;
+	for (i = 0; i < keypoints->rnum; i++)
+	{
+		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
+		double mind = 10000;
+		int j, minj = -1;
+		for (j = 0; j < gtkp->rnum; j++)
+		{
+			ccv_keypoint_t* gk = (ccv_keypoint_t*)ccv_array_get(gtkp, j);
+			if ((gk->x - kp->x) * (gk->x - kp->x) + (gk->y - kp->y) * (gk->y - kp->y) + __ccv_mod_2pi(gk->regular.angle - kp->regular.angle) < mind)
+			{
+				minj = j;
+				mind = (gk->x - kp->x) * (gk->x - kp->x) + (gk->y - kp->y) * (gk->y - kp->y) + __ccv_mod_2pi(gk->regular.angle - kp->regular.angle);
+			}
+		}
+		ccv_keypoint_t* gk = (ccv_keypoint_t*)ccv_array_get(gtkp, minj);
+		mind = (gk->x - kp->x) * (gk->x - kp->x) + (gk->y - kp->y) * (gk->y - kp->y);
+		if (mind < 0.05)
+		{
+			match++;
+			if (__ccv_mod_2pi(gk->regular.angle - kp->regular.angle) < 0.1)
+				angle_match++;
+		}
+	}
+	printf("%.2f%% keypoint matched within 0.05 pixel\n", (float)match * 100.0 / (float)keypoints->rnum);
+	printf("%.2f%% angle matched within 0.1 radius\n", (float)angle_match * 100.0 / (float)match);
+	ccv_array_free(keypoints);
+	ccv_array_free(gtkp);
 	ccv_matrix_free(image);
 	ccv_garbage_collect();
 	return 0;
