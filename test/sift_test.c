@@ -54,6 +54,25 @@ int main(int argc, char** argv)
 	FILE* frame = fopen("box.frame", "r");
 	float x, y, s0, s1;
 	ccv_array_t* gtkp = ccv_array_new(10, sizeof(ccv_keypoint_t));
+	/*
+	int gt, dl;
+	fscanf(frame, "%d %d", &gt, &dl);
+	for (i = 0; i < gt; i++)
+	{
+		fscanf(frame, "%f %f %f %f", &y, &x, &s0, &s1);
+		int j;
+		float dummy;
+		for (j = 0; j < dl; j++)
+			fscanf(frame, "%f", &dummy);
+		ccv_keypoint_t nkp;
+		nkp.x = x;
+		nkp.y = y;
+		nkp.regular.scale = s0;
+		nkp.regular.angle = s1;
+		image->data.ptr[(int)(y + 0.5) * image->step + (int)(x + 0.5)] = 255;
+		ccv_array_push(gtkp, &nkp);
+	}
+	*/
 	while (fscanf(frame, "%f %f %f %f", &x, &y, &s0, &s1) != EOF)
 	{
 		image->data.ptr[(int)(y + 0.5) * image->step + (int)(x + 0.5)] = 255;
