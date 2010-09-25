@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 		for (j = 0; j < b->cols; j++)
 			b->data.fl[i * b->cols + j] /= tb;
 	ccv_dense_matrix_t* x = 0;
-	ccv_filter(a, b, &x, 0);
+	ccv_filter(a, b, (ccv_matrix_t**)&x, 0);
 	
 	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(x->rows, x->cols, CCV_8U | CCV_C1, 0, 0);
 	for (i = 0; i < x->rows; i++)

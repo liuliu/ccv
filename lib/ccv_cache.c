@@ -84,6 +84,7 @@ ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 {
+	assert(((uint64_t)x & 0x3) == 0);
 	if (cache->rnum == 0)
 	{
 		cache->origin.terminal.off = (uint64_t)x | 0x1;
@@ -110,6 +111,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 			uint64_t j = 63;
 			j = j << (depth * 6);
 			int dice, udice;
+			assert(depth < 10);
 			for (i = depth; i < 10; i++)
 			{
 				dice = (t.terminal.sign & j) >> (i * 6);
@@ -183,10 +185,7 @@ static void __ccv_cache_nuke(ccv_cache_index_t* branch)
 		uint64_t total = compute_bits(branch->branch.bitmap);
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
 		for (i = 0; i < total; i++)
-		{
-			if (!(set[i].terminal.off & 0x1))
-				__ccv_cache_nuke(set + i);
-		}
+			__ccv_cache_nuke(set + i);
 		free(set);
 	} else {
 		free((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));

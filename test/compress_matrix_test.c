@@ -2,7 +2,7 @@
 
 int main(int argc, char** argv)
 {
-	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(3, 3, CCV_32F | CCV_C1, CCV_SPARSE_ROW_MAJOR, NULL);
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(3, 3, CCV_32F | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	float cell;
 	cell = 1.0;
 	ccv_set_sparse_matrix_cell(mat, 0, 0, &cell);
@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 	ccv_set_sparse_matrix_cell(mat, 2, 1, &cell);
 	cell = 6.0;
 	ccv_set_sparse_matrix_cell(mat, 2, 2, &cell);
-	ccv_compressed_sparse_matrix_t* csm = NULL;
+	ccv_compressed_sparse_matrix_t* csm = 0;
 	ccv_compress_sparse_matrix(mat, &csm);
 	int i, j;
 	for (i = 0; i < csm->nnz; i++)
@@ -28,14 +28,14 @@ int main(int argc, char** argv)
 	for (i = 0; i < csm->rows + 1; i++)
 		printf("%d ", csm->offset[i]);
 	printf("\n");
-	ccv_sparse_matrix_t* smt = NULL;
+	ccv_sparse_matrix_t* smt = 0;
 	ccv_decompress_sparse_matrix(csm, &smt);
 	for (i = 0; i < 3; i++)
 	{
 		for (j = 0; j < 3; j++)
 		{
 			ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(smt, i, j);
-			printf("%f ", (cell.ptr != NULL) ? cell.fl[0] : 0);
+			printf("%f ", (cell.ptr != 0) ? cell.fl[0] : 0);
 		}
 		printf("\n");
 	}

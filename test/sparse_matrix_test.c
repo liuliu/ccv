@@ -3,7 +3,7 @@
 
 int main(int argc, char** argv)
 {
-	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, NULL);
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	int i, j, k, n;
 	k = 0;
 	for (i = 0; i < 1000; i++)
@@ -20,7 +20,7 @@ int main(int argc, char** argv)
 			for (j = 0; j < 1000; j++)
 			{
 				ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(mat, i, j);
-				if (cell.ptr != NULL)
+				if (cell.ptr != 0)
 					assert(cell.i[0] == k);
 				else {
 					printf("ERROR: %d %d\n", i, j);

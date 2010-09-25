@@ -18,8 +18,8 @@ int main(int argc, char** argv)
 	unsigned int elapsed_time = get_current_time();
 	ccv_sift_param_t param;
 	param.noctaves = 3;
-	param.nlevels = 6;
-	param.upsample = 0;
+	param.nlevels = 8;
+	param.up2x = 1;
 	param.edge_threshold = 10;
 	param.norm_threshold = 0;
 	param.peak_threshold = 0;
@@ -33,6 +33,7 @@ int main(int argc, char** argv)
 	int i, j, k;
 	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(image->rows, image->cols, CCV_8U | CCV_C1, 0, 0);
 	memset(imx->data.ptr, 0, imx->rows * imx->step);
+	int match = 0;
 	for (i = 0; i < obj_keypoints->rnum; i++)
 	{
 		float* odesc = obj_desc->data.fl + i * 128;
@@ -63,10 +64,13 @@ int main(int argc, char** argv)
 			int ix = (int)(kp->x + 0.5);
 			int iy = (int)(kp->y + 0.5);
 			imx->data.ptr[ix + iy * imx->step] = 255;
+			match++;
 		}
 	}
+	printf("%d keypoints out of %d are matched\n", match, obj_keypoints->rnum);
 	int len;
 	ccv_serialize(imx, "match.png", &len, CCV_SERIAL_PNG_FILE, 0);
+	ccv_matrix_free(imx);
 	ccv_array_free(obj_keypoints);
 	ccv_array_free(image_keypoints);
 	ccv_matrix_free(obj_desc);

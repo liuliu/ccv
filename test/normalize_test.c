@@ -7,7 +7,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 10, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 10; i++)
 		dmt->data.fl[i] = i;
-	ccv_normalize(dmt, &dmt, 0, CCV_L2_NORM);
+	ccv_normalize(dmt, (ccv_matrix_t**)&dmt, 0, CCV_L2_NORM);
 	for (i = 0; i < 10; i++)
 		printf("%f ", dmt->data.fl[i]);
 	printf("\n");

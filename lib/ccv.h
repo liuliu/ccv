@@ -167,8 +167,8 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
-void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
+void ccv_matrix_free(ccv_matrix_t* mat);
 void ccv_garbage_collect();
 void ccv_disable_cache();
 void ccv_enable_cache();
@@ -529,7 +529,7 @@ typedef struct {
 } ccv_keypoint_t;
 
 typedef struct {
-	int upsample;
+	int up2x;
 	int noctaves;
 	int nlevels;
 	float edge_threshold;

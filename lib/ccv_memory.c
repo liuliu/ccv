@@ -87,6 +87,40 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 	return mat;
 }
 
+void ccv_matrix_free_immediately(ccv_matrix_t* mat)
+{
+	int type = *(int*)mat;
+	if (type & CCV_MATRIX_DENSE)
+	{
+		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
+		dmt->refcount = 0;
+		free(dmt);
+	} else if (type & CCV_MATRIX_SPARSE) {
+		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
+		int i;
+		for (i = 0; i < CCV_GET_SPARSE_PRIME(smt->prime); i++)
+			if (smt->vector[i].index != -1)
+			{
+				ccv_dense_vector_t* iter = &smt->vector[i];
+				free(iter->data.ptr);
+				iter = iter->next;
+				while (iter != 0)
+				{
+					ccv_dense_vector_t* iter_next = iter->next;
+					free(iter->data.ptr);
+					free(iter);
+					iter = iter_next;
+				}
+			}
+		free(smt->vector);
+		free(smt);
+	} else if ((type & CCV_MATRIX_CSR) || (type & CCV_MATRIX_CSC)) {
+		ccv_compressed_sparse_matrix_t* csm = (ccv_compressed_sparse_matrix_t*)mat;
+		csm->refcount = 0;
+		free(csm);
+	}
+}
+
 void ccv_matrix_free(ccv_matrix_t* mat)
 {
 	int type = *(int*)mat;

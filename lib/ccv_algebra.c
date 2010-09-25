@@ -23,7 +23,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 	uint64_t sig = (da->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, 0);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
-	ccv_cache_return(db, );
+	ccv_cache_return(db, 0);
 	double sum = 0;
 	int i, j;
 	unsigned char* a_ptr = da->data.ptr;

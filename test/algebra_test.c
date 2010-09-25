@@ -17,7 +17,7 @@ int main(int argc, char** argv)
 	b->data.db[4] = 1031;
 	b->data.db[5] = 1032;
 	ccv_dense_matrix_t* y = 0;
-	ccv_gemm(a, b, 1, 0, 0, CCV_A_TRANSPOSE, &y, 0);
+	ccv_gemm(a, b, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&y, 0);
 	printf("%f %f\n%f %f\n", y->data.db[0], y->data.db[1], y->data.db[2], y->data.db[3]);
 	ccv_matrix_free(a);
 	ccv_matrix_free(b);

@@ -77,7 +77,6 @@ static int FastAtan2_32f(const float *Y, const float *X, float *angle, int len )
 		
 		// a4 <- (x < y ? a4 - z4 : a4 + z4)
 		a4 = _mm_mul_ps(_mm_add_ps(_mm_xor_ps(z4, _mm_andnot_ps(absmask, xly)), a4), scale4);
-		__m128 m4 = _mm_sqrt_ps(_mm_add_ps(xq4, yq4));
 		_mm_storeu_ps(angle + i, a4);
 	}
 #endif
