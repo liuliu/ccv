@@ -529,6 +529,7 @@ typedef struct {
 } ccv_keypoint_t;
 
 typedef struct {
+	int upsample;
 	int noctaves;
 	int nlevels;
 	float edge_threshold;

@@ -142,14 +142,21 @@ static void __ccv_precomputed_expn()
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_t** _desc, int type, ccv_sift_param_t params)
 {
 	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
-	ccv_dense_matrix_t** g = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * params.noctaves);
-	memset(g, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * params.noctaves);
-	ccv_dense_matrix_t** dog = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
-	memset(dog, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * params.noctaves);
-	ccv_dense_matrix_t** th = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * params.noctaves);
-	memset(th, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * params.noctaves);
-	ccv_dense_matrix_t** md = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * params.noctaves);
-	memset(md, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * params.noctaves);
+	ccv_dense_matrix_t** g = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	memset(g, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels + 1) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	ccv_dense_matrix_t** dog = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	memset(dog, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 1) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	ccv_dense_matrix_t** th = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	memset(th, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	ccv_dense_matrix_t** md = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	memset(md, 0, sizeof(ccv_dense_matrix_t*) * (params.nlevels - 3) * (params.upsample ? params.noctaves + 1 : params.noctaves));
+	if (params.upsample)
+	{
+		g += params.nlevels + 1;
+		dog += params.nlevels - 1;
+		th += params.nlevels - 3;
+		md += params.nlevels - 3;
+	}
 	ccv_array_t* keypoints = *_keypoints;
 	int custom_keypoints = 0;
 	if (keypoints == 0)
@@ -160,6 +167,22 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	double sigma0 = 1.6;
 	double sigmak = pow(2.0, 1.0 / (params.nlevels - 3));
 	double dsigma0 = sigma0 * sigmak * sqrt(1.0 - 1.0 / (sigmak * sigmak));
+	if (params.upsample)
+	{
+		ccv_sample_up(a, &g[-(params.nlevels + 1)], 0);
+		double sd = sqrt(sigma0 * sigma0 - 1.0);
+		ccv_blur(g[-(params.nlevels + 1)], &g[-(params.nlevels + 1) + 1], CCV_32F | CCV_C1, sd);
+		ccv_matrix_free(g[-(params.nlevels + 1)]);
+		for (j = 1; j < params.nlevels; j++)
+		{
+			sd = dsigma0 * pow(sigmak, j - 1);
+			ccv_blur(g[-(params.nlevels + 1) + j], &g[-(params.nlevels + 1) + j + 1], 0, sd);
+			ccv_substract(g[-(params.nlevels + 1) + j + 1], g[-(params.nlevels + 1) + j], (ccv_matrix_t**)&dog[-(params.nlevels - 1) + j - 1], 0);
+			if (j > 1 && j < params.nlevels - 1)
+				ccv_gradient(g[-(params.nlevels + 1) + j], &th[-(params.nlevels - 3) + j - 2], 0, &md[-(params.nlevels - 3) + j - 2], 0, 1, 1);
+			ccv_matrix_free(g[-(params.nlevels + 1) + j]);
+		}
+	}
 	double sd = sqrt(sigma0 * sigma0 - 0.25);
 	g[0] = a;
 	/* generate gaussian pyramid (g, dog) & gradient pyramid (th, md) */
@@ -180,7 +203,6 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		if (i - 1 > 0)
 			ccv_matrix_free(g[(i - 1) * (params.nlevels + 1)]);
 		sd = sqrt(sigma0 * sigma0 - 0.25);
-		g[i * (params.nlevels + 1) + 1] = ccv_dense_matrix_new(g[i * (params.nlevels + 1)]->rows, g[i * (params.nlevels + 1)]->cols, CCV_C1 | CCV_32F, 0, 0);
 		ccv_blur(g[i * (params.nlevels + 1)], &g[i * (params.nlevels + 1) + 1], CCV_32F | CCV_C1, sd);
 		for (j = 1; j < params.nlevels; j++)
 		{
@@ -194,12 +216,12 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		ccv_matrix_free(g[i * (params.nlevels + 1) + params.nlevels]);
 	}
 	ccv_matrix_free(g[(params.noctaves - 1) * (params.nlevels + 1)]);
-	int s = 1;
 	if (!custom_keypoints)
 	{
 		/* detect keypoint */
-		for (i = 0; i < params.noctaves; i++)
+		for (i = (params.upsample ? -1 : 0); i < params.noctaves; i++)
 		{
+			double s = pow(2.0, i);
 			int rows = dog[i * (params.nlevels - 1)]->rows;
 			int cols = dog[i * (params.nlevels - 1)]->cols;
 			for (j = 1; j < params.nlevels - 2; j++)
@@ -256,7 +278,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 									break;
 								}
 							}
-							if (cvg == 0 && fabs(cf[offset]) > params.peak_threshold && score >= 0 && score < (params.edge_threshold + 1) * (params.edge_threshold + 1) / params.edge_threshold)
+							if (cvg == 0 && fabs(cf[offset]) > params.peak_threshold && score >= 0 && score < (params.edge_threshold + 1) * (params.edge_threshold + 1) / params.edge_threshold && kp.regular.scale > 0 && kp.regular.scale < params.nlevels - 1)
 							{
 								kp.x *= s;
 								kp.y *= s;
@@ -273,7 +295,6 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 					uf += cols;
 				}
 			}
-			s *= 2;
 		}
 	}
 	/* repeatable orientation/angle (p.s. it will push more keypoints (with different angles) to array) */
@@ -410,7 +431,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			}
 			ccv_dense_matrix_t tm = ccv_dense_matrix(1, 128, CCV_32F | CCV_C1, fdesc, 0);
 			ccv_dense_matrix_t* tmp = &tm;
- 			double norm = ccv_normalize(&tm, &tmp, 0, CCV_L2_NORM);
+ 			double norm = ccv_normalize(&tm, (ccv_matrix_t**)&tmp, 0, CCV_L2_NORM);
 			int num = (ccv_min(iy + wz, tho->rows - 1) - ccv_max(iy - wz, 0) + 1) * (ccv_min(ix + wz, tho->cols - 1) - ccv_max(ix - wz, 0) + 1);
 			if (params.norm_threshold && norm < params.norm_threshold * num)
 			{
@@ -420,14 +441,14 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 				for (j = 0; j < 128; j++)
 					if (fdesc[j] > 0.2)
 						fdesc[j] = 0.2;
-				ccv_normalize(&tm, &tmp, 0, CCV_L2_NORM);
+				ccv_normalize(&tm, (ccv_matrix_t**)&tmp, 0, CCV_L2_NORM);
 			}
 			fdesc += 128;
 		}
 	}
-	for (i = 0; i < (params.nlevels - 1) * params.noctaves; i++)
+	for (i = (params.upsample ? -(params.nlevels - 1) : 0); i < (params.nlevels - 1) * params.noctaves; i++)
 		ccv_matrix_free(dog[i]);
-	for (i = 0; i < (params.nlevels - 3) * params.noctaves; i++)
+	for (i = (params.upsample ? -(params.nlevels - 3) : 0); i < (params.nlevels - 3) * params.noctaves; i++)
 	{
 		ccv_matrix_free(th[i]);
 		ccv_matrix_free(md[i]);

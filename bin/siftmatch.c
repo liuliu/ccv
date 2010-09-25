@@ -19,6 +19,7 @@ int main(int argc, char** argv)
 	ccv_sift_param_t param;
 	param.noctaves = 3;
 	param.nlevels = 6;
+	param.upsample = 0;
 	param.edge_threshold = 10;
 	param.norm_threshold = 0;
 	param.peak_threshold = 0;
