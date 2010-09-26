@@ -539,6 +539,66 @@ typedef struct {
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
 
+/* this is open source implementation of object detection algorithm: brightness binary feature
+ * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
+ * computation and higher accuracy (current highest accuracy close-source face detector is based
+ * on the same algorithm */
+
+#define CCV_BBF_POINT_MAX (5)
+#define CCV_BBF_POINT_MIN (3)
+
+typedef struct {
+	int size;
+	int px[CCV_BBF_POINT_MAX];
+	int py[CCV_BBF_POINT_MAX];
+	int pz[CCV_BBF_POINT_MAX];
+	int nx[CCV_BBF_POINT_MAX];
+	int ny[CCV_BBF_POINT_MAX];
+	int nz[CCV_BBF_POINT_MAX];
+} ccv_bbf_feature_t;
+
+typedef struct {
+	int count;
+	float threshold;
+	ccv_bbf_feature_t* feature;
+	float* alpha;
+} ccv_bbf_stage_classifier_t;
+
+typedef struct {
+	int count;
+	ccv_size_t size;
+	ccv_bbf_stage_classifier_t* stage_classifier;
+} ccv_bbf_classifier_cascade_t;
+
+typedef struct {
+	double pos_crit;
+	double neg_crit;
+	double balance_k;
+	int layer;
+	int feature_number;
+} ccv_bbf_param_t;
+
+typedef struct {
+	ccv_rect_t rect;
+	int neighbors;
+	int id;
+	float confidence;
+} ccv_bbf_comp_t;
+
+enum {
+	CCV_SGF_NO_NESTED = 0x10000000,
+};
+
+void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_param_t params);
+ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size);
+ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory);
+ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s);
+int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
+void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
+
+/* following is proprietary implementation of sparse gradient feature, another object detection algorithm
+ * which should have better accuracy to shape focused object (pedestrian, vehicle etc.) */
+
 #define CCV_SGF_POINT_MAX (5)
 #define CCV_SGF_POINT_MIN (3)
 
