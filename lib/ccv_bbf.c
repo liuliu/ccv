@@ -13,6 +13,8 @@
 #include <CL/cl.h>
 #endif
 
+#define __ccv_width_padding(x) (((x) + 3) & -4)
+
 static unsigned int __ccv_bbf_time_measure()
 {
 	struct timeval tv;
@@ -55,6 +57,160 @@ static inline int __ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, u
 #undef pf_at
 #undef nf_at
 	return 1;
+}
+
+static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, int** negdata, int negnum)
+{
+	int t, i, j, k;
+	int negperbg = negnum / bgnum + 1;
+	int negtotal = 0;
+	int steps[] = { __ccv_width_padding(cascade->size.width),
+					__ccv_width_padding(cascade->size.width >> 1),
+					__ccv_width_padding(cascade->size.width >> 2) };
+	int isizs0 = steps[0] * cascade->size.height;
+	int isizs1 = steps[1] * (cascade->size.height >> 1);
+	int isizs2 = steps[2] * (cascade->size.height >> 2);
+	printf("preparing negative data ...  0%%");
+	int* idcheck = (int*)malloc(negnum * sizeof(int));
+
+	gsl_rng_env_setup();
+
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	gsl_rng_set(rng, (unsigned long int)idcheck);
+
+	ccv_size_t imgsz = cascade->size;
+	int rneg = negtotal;
+	for (t = 0; negtotal < negnum; t++)
+	{
+		for (i = 0; i < bgnum; i++)
+		{
+			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
+			ccv_dense_matrix_t* image = 0;
+			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+			assert((image->type & CCV_C1) && (image->type & CCV_8U));
+			if (image == 0)
+			{
+				printf("\n%s file corrupted\n", bgfiles[i]);
+				continue;
+			}
+			if (t % 2 != 0)
+				ccv_flip(image, 0, 0, CCV_FLIP_X);
+			ccv_array_t* detected = ccv_bbf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
+			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
+			{
+				int r = gsl_rng_uniform_int(rng, detected->rnum);
+				int flag = 1;
+				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(detected, r);
+				while (flag) {
+					flag = 0;
+					for (k = 0; k < j; k++)
+						if (r == idcheck[k])
+						{
+							flag = 1;
+							r = gsl_rng_uniform_int(rng, detected->rnum);
+							break;
+						}
+					rect = (ccv_rect_t*)ccv_array_get(detected, r);
+					if ((rect->x < 0) || (rect->y < 0) || (rect->width + rect->x >= image->cols) || (rect->height + rect->y >= image->rows))
+					{
+						flag = 1;
+						r = gsl_rng_uniform_int(rng, detected->rnum);
+					}
+				}
+				idcheck[j] = r;
+				ccv_dense_matrix_t* temp = 0;
+				ccv_dense_matrix_t* imgs0 = 0;
+				ccv_dense_matrix_t* imgs1 = 0;
+				ccv_dense_matrix_t* imgs2 = 0;
+				ccv_slice(image, (ccv_matrix_t**)&temp, 0, rect->y, rect->x, rect->height, rect->width);
+				ccv_resample(temp, &imgs0, 0, imgsz.height, imgsz.width, CCV_INTER_AREA);
+				ccv_matrix_free(temp);
+				ccv_sample_down(imgs0, &imgs1, 0);
+				ccv_sample_down(imgs1, &imgs2, 0);
+
+				negdata[negtotal] = (unsigned char*)malloc(isizs0 + isizs1 + isizs2);
+				unsigned char* u8s0 = negdata[negtotal];
+				unsigned char* u8s1 = negdata[negtotal] + isizs0;
+				unsigned char* u8s2 = negdata[negtotal] + isizs0 + isizs1;
+				unsigned char* u8[] = { u8s0, u8s1, u8s2 };
+				memcpy(u8s0, imgs0->data.ptr, imgs0->rows * imgs0->step);
+				ccv_matrix_free(imgs0);
+				memcpy(u8s1, imgs1->data.ptr, imgs1->rows * imgs1->step);
+				ccv_matrix_free(imgs1);
+				memcpy(u8s2, imgs2->data.ptr, imgs2->rows * imgs2->step);
+				ccv_matrix_free(imgs2);
+
+				flag = 1;
+				ccv_bbf_stage_classifier_t* classifier = cascade->stage_classifier;
+				for (k = 0; k < cascade->count; ++k, ++classifier)
+				{
+					float sum = 0;
+					float* alpha = classifier->alpha;
+					ccv_bbf_feature_t* feature = classifier->feature;
+					for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
+						sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
+					if (sum < classifier->threshold)
+					{
+						flag = 0;
+						break;
+					}
+				}
+				if (!flag)
+					free(negdata[negtotal]);
+				else {
+					++negtotal;
+					if (negtotal >= negnum)
+						break;
+				}
+			}
+			ccv_array_free(detected);
+			ccv_matrix_free(image);
+			ccv_garbage_collect();
+			printf("\rpreparing negative data ... %2d%%", 100 * negtotal / negnum);
+			fflush(0);
+			if (negtotal >= negnum)
+				break;
+		}
+		if (rneg == negtotal)
+			break;
+		rneg = negtotal;
+	}
+	gsl_rng_free(rng);
+	free(idcheck);
+	ccv_garbage_collect();
+	printf("\n");
+	return negtotal;
+}
+
+static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned char** posdata, ccv_size_t size, int posnum)
+{
+	printf("preparing positive data ...  0%%");
+	int i;
+	for (i = 0; i < posnum; i++)
+	{
+		ccv_dense_matrix_t* imgs0 = posimg[i];
+		ccv_dense_matrix_t* imgs1 = 0;
+		ccv_dense_matrix_t* imgs2 = 0;
+		assert((imgs0->type & CCV_C1) && (imgs0->type & CCV_8U) && imgs0->rows == size.height && imgs0->cols == size.width);
+		ccv_sample_down(imgs0, &imgs1, 0);
+		ccv_sample_down(imgs1, &imgs2, 0);
+		int isizs0 = imgs0->rows * imgs0->step;
+		int isizs1 = imgs1->rows * imgs1->step;
+		int isizs2 = imgs2->rows * imgs2->step;
+
+		posdata[i] = (unsigned char*)malloc(isizs0 + isizs1 + isizs2);
+		memcpy(posdata[i], imgs0->data.ptr, isizs0);
+		memcpy(posdata[i] + isizs0, imgs1->data.ptr, isizs1);
+		memcpy(posdata[i] + isizs0 + isizs1, imgs2->data.ptr, isizs2);
+
+		printf("\rpreparing positive data ... %2d%%", 100 * (i + 1) / posnum);
+		fflush(0);
+
+		ccv_matrix_free(imgs1);
+		ccv_matrix_free(imgs2);
+	}
+	ccv_garbage_collect();
+	printf("\n");
 }
 
 typedef struct {
@@ -119,6 +275,10 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 		gene->feature.nx[i] = x;
 		gene->feature.ny[i] = y;
 	}
+}
+
+static ccv_bbf_gene_t __ccv_bbf_best_gene()
+{
 }
 
 static ccv_bbf_feature_t __ccv_bbf_convex_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
@@ -534,8 +694,264 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	free(cascade);
 }
 
+static int __ccv_is_equal(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_bbf_comp_t* r1 = (const ccv_bbf_comp_t*)_r1;
+	const ccv_bbf_comp_t* r2 = (const ccv_bbf_comp_t*)_r2;
+	int distance = (int)(r1->rect.width * 0.5 + 0.5);
+
+	return r2->rect.x <= r1->rect.x + distance &&
+		   r2->rect.x >= r1->rect.x - distance &&
+		   r2->rect.y <= r1->rect.y + distance &&
+		   r2->rect.y >= r1->rect.y - distance &&
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+}
+
+static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_bbf_comp_t* r1 = (const ccv_bbf_comp_t*)_r1;
+	const ccv_bbf_comp_t* r2 = (const ccv_bbf_comp_t*)_r2;
+	int distance = (int)(r1->rect.width * 0.5 + 0.5);
+
+	return r2->id == r1->id &&
+		   r2->rect.x <= r1->rect.x + distance &&
+		   r2->rect.x >= r1->rect.x - distance &&
+		   r2->rect.y <= r1->rect.y + distance &&
+		   r2->rect.y >= r1->rect.y - distance &&
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+}
+
 ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, int min_neighbors, int flags, ccv_size_t min_size)
 {
+	int hr = a->rows / min_size.height;
+	int wr = a->cols / min_size.width;
+	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(sqrt(2.)));
+	/* generate scale-down HOG images */
+	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
+	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
+	{
+		pyr[0] = 0;
+		ccv_resample(a, &pyr[0], 0, a->rows * _cascade[0]->size.height / min_size.height, a->cols * _cascade[0]->size.width / min_size.width, CCV_INTER_AREA);
+	} else
+		pyr[0] = a;
+	double sqrt_2 = sqrt(2.);
+	pyr[1] = 0;
+	ccv_resample(pyr[0], &pyr[1], 0, (int)(pyr[0]->rows / sqrt_2), (int)(pyr[0]->cols / sqrt_2), CCV_INTER_AREA);
+	int i, j, k, t, x, y;
+	for (i = 2; i < scale_upto + 2; i += 2)
+	{
+		pyr[i] = 0;
+		ccv_sample_down(pyr[i - 2], &pyr[i], 0);
+	}
+	for ( i = 3; i < scale_upto + 2; i += 2 )
+	{
+		pyr[i] = 0;
+		ccv_sample_down(pyr[i - 2], &pyr[i], 0);
+	}
+	int* cols = (int*)alloca((scale_upto + 2) * sizeof(int));
+	int* rows = (int*)alloca((scale_upto + 2) * sizeof(int));
+	ccv_dense_matrix_t** hogs = (ccv_dense_matrix_t**)alloca((scale_upto + 2) * sizeof(ccv_dense_matrix_t*));
+	for (i = 0; i < scale_upto + 2; i++)
+	{
+		rows[i] = pyr[i]->rows;
+		cols[i] = pyr[i]->cols;
+		hogs[i] = 0;
+		ccv_hog(pyr[i], &hogs[i], 0, 2 * HOG_BORDER_SIZE + 1);
+	}
+	for (i = 1; i < scale_upto + 2; i++)
+		ccv_matrix_free(pyr[i]);
+	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
+		ccv_matrix_free(pyr[0]);
+
+	ccv_array_t* idx_seq;
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+	/* detect in multi scale */
+	for (t = 0; t < count; t++)
+	{
+		ccv_bbf_classifier_cascade_t* cascade = _cascade[t];
+		float scale_x = (float) min_size.width / (float) cascade->size.width;
+		float scale_y = (float) min_size.height / (float) cascade->size.height;
+		ccv_array_clear(seq);
+		for (i = 0; i < scale_upto; i++)
+		{
+			int i_rows = rows[i + 2] - HOG_BORDER_SIZE * 2 - (cascade->size.height >> 1);
+			int steps[] = { (cols[i] - HOG_BORDER_SIZE * 2) * 8, (cols[i + 2] - HOG_BORDER_SIZE * 2) * 8 };
+			int cols_pads1 = cols[i + 2] - HOG_BORDER_SIZE * 2 - (cascade->size.width >> 1);
+			int pads1 = (cascade->size.width >> 1) * 8;
+			int pads0 = steps[0] * 2 - (cols_pads1 << 1) * 8;
+			int* i32c8p[] = { hogs[i]->data.i, hogs[i + 2]->data.i };
+			for (y = 0; y < i_rows; y++)
+			{
+				for (x = 0; x < cols_pads1; x++)
+				{
+					float sum;
+					int flag = 1;
+					ccv_bbf_stage_classifier_t* classifier = cascade->stage_classifier;
+					for (j = 0; j < cascade->count; ++j, ++classifier)
+					{
+						sum = 0;
+						float* alpha = classifier->alpha;
+						ccv_bbf_feature_t* feature = classifier->feature;
+						for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
+							sum += alpha[__ccv_run_bbf_feature(feature, steps, i32c8p)];
+						if (sum < classifier->threshold)
+						{
+							flag = 0;
+							break;
+						}
+					}
+					if (flag)
+					{
+						ccv_bbf_comp_t comp;
+						comp.rect = ccv_rect((int)((x * 2 + HOG_BORDER_SIZE) * scale_x), (int)((y * 2 + HOG_BORDER_SIZE) * scale_y), (int)(cascade->size.width * scale_x), (int)(cascade->size.height * scale_y));
+						comp.id = t;
+						comp.neighbors = 1;
+						comp.confidence = sum;
+						ccv_array_push(seq, &comp);
+					}
+					i32c8p[0] += 16;
+					i32c8p[1] += 8;
+				}
+				i32c8p[0] += pads0;
+				i32c8p[1] += pads1;
+			}
+			scale_x *= sqrt_2;
+			scale_y *= sqrt_2;
+		}
+
+		/* the following code from OpenCV's haar feature implementation */
+		if(min_neighbors == 0)
+		{
+			for (i = 0; i < seq->rnum; i++)
+			{
+				ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+				ccv_array_push(result_seq, comp);
+			}
+		} else {
+			idx_seq = 0;
+			ccv_array_clear(seq2);
+			// group retrieved rectangles in order to filter out noise
+			int ncomp = ccv_array_group(seq, &idx_seq, __ccv_is_equal_same_class, 0);
+			ccv_bbf_comp_t* comps = (ccv_bbf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_bbf_comp_t));
+			memset(comps, 0, (ncomp + 1) * sizeof(ccv_bbf_comp_t));
+
+			// count number of neighbors
+			for(i = 0; i < seq->rnum; i++)
+			{
+				ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(seq, i);
+				int idx = *(int*)ccv_array_get(idx_seq, i);
+
+				if (comps[idx].neighbors == 0)
+					comps[idx].confidence = r1.confidence;
+
+				++comps[idx].neighbors;
+
+				comps[idx].rect.x += r1.rect.x;
+				comps[idx].rect.y += r1.rect.y;
+				comps[idx].rect.width += r1.rect.width;
+				comps[idx].rect.height += r1.rect.height;
+				comps[idx].id = r1.id;
+				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
+			}
+
+			// calculate average bounding box
+			for(i = 0; i < ncomp; i++)
+			{
+				int n = comps[i].neighbors;
+				if(n >= min_neighbors)
+				{
+					ccv_bbf_comp_t comp;
+					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
+					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
+					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
+					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
+					comp.neighbors = comps[i].neighbors;
+					comp.id = comps[i].id;
+					comp.confidence = comps[i].confidence;
+					ccv_array_push(seq2, &comp);
+				}
+			}
+
+			// filter out small face rectangles inside large face rectangles
+			for(i = 0; i < seq2->rnum; i++)
+			{
+				ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(seq2, i);
+				int flag = 1;
+
+				for(j = 0; j < seq2->rnum; j++)
+				{
+					ccv_bbf_comp_t r2 = *(ccv_bbf_comp_t*)ccv_array_get(seq2, j);
+					int distance = (int)(r2.rect.width * 0.5 + 0.5);
+
+					if(i != j &&
+					   r1.id == r2.id &&
+					   r1.rect.x >= r2.rect.x - distance &&
+					   r1.rect.y >= r2.rect.y - distance &&
+					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+					   (r2.neighbors > ccv_max(3, r1.neighbors) || r1.neighbors < 3))
+					{
+						flag = 0;
+						break;
+					}
+				}
+
+				if(flag)
+					ccv_array_push(result_seq, &r1);
+			}
+			ccv_array_free(idx_seq);
+			free(comps);
+		}
+	}
+
+	ccv_array_free(seq);
+	ccv_array_free(seq2);
+
+	ccv_array_t* result_seq2;
+	/* the following code from OpenCV's haar feature implementation */
+	if (flags & CCV_SGF_NO_NESTED)
+	{
+		result_seq2 = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+		idx_seq = 0;
+		// group retrieved rectangles in order to filter out noise
+		int ncomp = ccv_array_group(result_seq, &idx_seq, __ccv_is_equal, 0);
+		ccv_bbf_comp_t* comps = (ccv_bbf_comp_t*)malloc((ncomp + 1) * sizeof(ccv_bbf_comp_t));
+		memset(comps, 0, (ncomp + 1) * sizeof(ccv_bbf_comp_t));
+
+		// count number of neighbors
+		for(i = 0; i < result_seq->rnum; i++)
+		{
+			ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(result_seq, i);
+			int idx = *(int*)ccv_array_get(idx_seq, i);
+
+			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
+			{
+				comps[idx].confidence = r1.confidence;
+				comps[idx].neighbors = 1;
+				comps[idx].rect = r1.rect;
+				comps[idx].id = r1.id;
+			}
+		}
+
+		// calculate average bounding box
+		for(i = 0; i < ncomp; i++)
+			if(comps[i].neighbors)
+				ccv_array_push(result_seq2, &comps[i]);
+
+		ccv_array_free(result_seq);
+		free(comps);
+	} else {
+		result_seq2 = result_seq;
+	}
+
+	for (i = 0; i < scale_upto + 2; i++)
+		ccv_matrix_free(hogs[i]);
+
+	return result_seq2;
 }
 
 ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory)
