@@ -277,11 +277,59 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 	}
 }
 
-static ccv_bbf_gene_t __ccv_bbf_best_gene()
+static inline double __ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
+	int i;
+	int steps[] = { __ccv_width_padding(size.width),
+					__ccv_width_padding(size.width >> 1),
+					__ccv_width_padding(size.width >> 2) };
+	int isizs0 = steps[0] * size.height;
+	int isizs01 = steps[0] * size.height + steps[1] * (size.height >> 1);
+	double error = 0;
+	for (i = 0; i < posnum; i++)
+	{
+		unsigned char* u8[] = { posdata[i], posdata[i] + isizs0, posdata[i] + isizs01 };
+		if (!__ccv_run_bbf_feature(feature, steps, u8))
+			error += pw[i];
+	}
+	for (i = 0; i < negnum; i++)
+	{
+		unsigned char* u8[] = { negdata[i], negdata[i] + isizs0, negdata[i] + isizs01 };
+		if ( __ccv_run_bbf_feature(feature, steps, u8))
+			error += nw[i];
+	}
+	return error;
 }
 
-static ccv_bbf_feature_t __ccv_bbf_convex_optimize(int** posdata, int posnum, int** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
+static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
+{
+	int i;
+	unsigned int timer = __ccv_bbf_time_measure();
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
+#endif
+	for (i = 0; i < pnum; i++)
+		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+	timer = __ccv_bbf_time_measure() - timer;
+	int min_id = 0;
+	double min_err = gene[0].error;
+	for (i = 1; i < pnum; i++)
+		if (gene[i].error < min_err)
+		{
+			min_id = i;
+			min_err = gene[i].error;
+		}
+	printf("local best bbf feature with error %f\n|-size: %d\n|-positive point: ", min_err, gene[min_id].feature.size);
+	for (i = 0; i < gene[min_id].feature.size; i++)
+		printf("(%d %d %d), ", gene[min_id].feature.px[i], gene[min_id].feature.py[i], gene[min_id].feature.pz[i]);
+	printf("\n|-negative point: ");
+	for (i = 0; i < gene[min_id].feature.size; i++)
+		printf("(%d %d %d), ", gene[min_id].feature.nx[i], gene[min_id].feature.ny[i], gene[min_id].feature.nz[i]);
+	printf("\nthe computation takes %d ms\n", timer / 1000);
+	return gene[min_id];
+}
+
+static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	/* seed (random method) */
 	gsl_rng_env_setup();
@@ -292,11 +340,18 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(int** posdata, int posnum, in
 	int i, j, k, m;
 	int rows[] = { size.height, size.height >> 1, size.height >> 2 };
 	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
+	int steps[] = { __ccv_width_padding(size.width),
+					__ccv_width_padding(size.width >> 1),
+					__ccv_width_padding(size.width >> 2) };
 	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)malloc((rows[0] * cols[0] + rows[1] * cols[1] + rows[2] * cols[2]) * sizeof(ccv_bbf_gene_t));
 	int pnum;
 	double best_err;
 	ccv_bbf_feature_t best;
-	int z = gsl_rng_uniform_int(rng, 2);
+	/* bootstrapping the best feature, start from two pixels, one for positive, one for negative
+	 * the bootstrapping process go like this: first, it will assign a random pixel as positive
+	 * and enumerate every possible pixel as negative, and pick the best one. Then, enumerate every
+	 * possible pixel as positive, and pick the best one, until it converges */
+	int z = gsl_rng_uniform_int(rng, 3);
 	int x = gsl_rng_uniform_int(rng, steps[z]);
 	int y = gsl_rng_uniform_int(rng, rows[z]);
 	m = 0;
@@ -315,49 +370,10 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(int** posdata, int posnum, in
 					gene[m].feature.size = 1;
 					m++;
 				}
-	unsigned int timer = __ccv_bbf_time_measure();
-#ifdef USE_OPENMP
-#pragma omp parallel for private(i) schedule(dynamic)
-#endif
-	for (i = 0; i < pnum; i++)
-		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-	timer = __ccv_bbf_time_measure() - timer;
 	/* iteration stop crit : best no change in 40 iterations */
 	int it = 0, t;
 	for (t = 0 ; it < 40; ++it, ++t)
 	{
-		int min_id = 0;
-		double min_err = gene[0].error;
-		for (i = 1; i < pnum; i++)
-			if (gene[i].error < min_err)
-			{
-				min_id = i;
-				min_err = gene[i].error;
-			}
-		min_err = gene[min_id].error = __ccv_bbf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-		if (min_err < best_err)
-		{
-			best_err = min_err;
-			memcpy(&best, &gene[min_id].feature, sizeof(best));
-			printf("best bbf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
-			for (i = 0; i < best.size; i++)
-				printf("(%d %d %d), ", best.px[i], best.py[i], best.pz[i]);
-			printf("\n|-negative point: ");
-			for (i = 0; i < best.size; i++)
-				printf("(%d %d %d), ", best.nx[i], best.ny[i], best.nz[i]);
-			printf("\n");
-			it = 0;
-		}
-		printf("minimum error achieved in round %d(%d) : %f with %d ms\n", t, it, min_err, timer / 1000);
-		timer = __ccv_bbf_time_measure();
-#ifdef USE_OPENMP
-#pragma omp parallel for private(i) schedule(dynamic)
-#endif
-		for (i = 0; i < pnum; i++)
-			gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-		timer = __ccv_bbf_time_measure() - timer;
-		for (i = 0; i < pnum; i++)
-			__ccv_bbf_genetic_fitness(&gene[i]);
 	}
 	gsl_rng_free(rng);
 	return best;

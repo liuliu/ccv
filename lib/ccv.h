@@ -542,7 +542,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
  * computation and higher accuracy (current highest accuracy close-source face detector is based
- * on the same algorithm */
+ * on the same algorithm) */
 
 #define CCV_BBF_POINT_MAX (5)
 #define CCV_BBF_POINT_MIN (3)
