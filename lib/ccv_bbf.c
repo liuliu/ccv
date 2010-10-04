@@ -238,6 +238,38 @@ static inline int __ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int 
 	return 0;
 }
 
+static inline int __ccv_bbf_identical_feature(ccv_bbf_gene_t* ga, ccv_bbf_gene_t* gb)
+{
+	if (ga->pk != gb->pk || ga->nk != gb->nk)
+		return 0;
+	int i, j, k;
+	for (i = 0; i < ga->pk; i++)
+	{
+		k = 0;
+		for (j = 0; j < gb->pk; j++)
+			if (ga->feature.pz[i] == gb->feature.pz[j] && ga->feature.px[i] == gb->feature.px[j] && ga->feature.py[i] == gb->feature.py[j])
+			{
+				k = 1;
+				break;
+			}
+		if (!k)
+			return 0;
+	}
+	for (i = 0; i < ga->nk; i++)
+	{
+		k = 0;
+		for (j = 0; j < gb->nk; j++)
+			if (ga->feature.nz[i] == gb->feature.nz[j] && ga->feature.nx[i] == gb->feature.nx[j] && ga->feature.ny[i] == gb->feature.ny[j])
+			{
+				k = 1;
+				break;
+			}
+		if (!k)
+			return 0;
+	}
+	return 1;
+}
+
 static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
 {
 	int i;
@@ -337,43 +369,146 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	union { unsigned long int li; double db; } dbli;
 	dbli.db = pw[0] + nw[0];
 	gsl_rng_set(rng, dbli.li);
-	int i, j, k, m;
+	int i, j, k, q, g;
 	int rows[] = { size.height, size.height >> 1, size.height >> 2 };
 	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
-	int steps[] = { __ccv_width_padding(size.width),
-					__ccv_width_padding(size.width >> 1),
-					__ccv_width_padding(size.width >> 2) };
-	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)malloc((rows[0] * cols[0] + rows[1] * cols[1] + rows[2] * cols[2]) * sizeof(ccv_bbf_gene_t));
-	int pnum;
-	double best_err;
-	ccv_bbf_feature_t best;
+	int pnum = rows[0] * cols[0] + rows[1] * cols[1] + rows[2] * cols[2];
+	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)malloc((pnum * (CCV_BBF_POINT_MAX + 1) * 2 + CCV_BBF_POINT_MAX * 2 + 1) * sizeof(ccv_bbf_gene_t));
+	ccv_bbf_gene_t best_gene;
 	/* bootstrapping the best feature, start from two pixels, one for positive, one for negative
 	 * the bootstrapping process go like this: first, it will assign a random pixel as positive
 	 * and enumerate every possible pixel as negative, and pick the best one. Then, enumerate every
 	 * possible pixel as positive, and pick the best one, until it converges */
-	int z = gsl_rng_uniform_int(rng, 3);
-	int x = gsl_rng_uniform_int(rng, steps[z]);
-	int y = gsl_rng_uniform_int(rng, rows[z]);
-	m = 0;
-	for (i = 0; i < 3; i++)
-		for (j = 0; j < cols[i]; j++)
-			for (k = 0; k < rows[i]; k++)
-				if (i != z && j != x && k != y)
-				{
-					gene[m].pk = gene[m].nk = 1;
-					gene[m].feature.pz[0] = z;
-					gene[m].feature.px[0] = x;
-					gene[m].feature.py[0] = y;
-					gene[m].feature.nz[0] = i;
-					gene[m].feature.nx[0] = j;
-					gene[m].feature.ny[0] = k;
-					gene[m].feature.size = 1;
-					m++;
-				}
-	/* iteration stop crit : best no change in 40 iterations */
-	int it = 0, t;
-	for (t = 0 ; it < 40; ++it, ++t)
+	for (i = 0; i < CCV_BBF_POINT_MAX; i++)
+		best_gene.feature.pz[i] = best_gene.feature.nz[i] = -1;
+	best_gene.pk = 1;
+	best_gene.nk = 0;
+	best_gene.feature.size = 1;
+	best_gene.feature.pz[0] = gsl_rng_uniform_int(rng, 3);
+	best_gene.feature.px[0] = gsl_rng_uniform_int(rng, steps[best_gene.feature.pz[0]]);
+	best_gene.feature.py[0] = gsl_rng_uniform_int(rng, rows[best_gene.feature.pz[0]]);
+	int t;
+	for (t = 0; ; ++it)
 	{
+		if (it % 2 == 0)
+		{
+			g = 0;
+			for (i = 0; i < 3; i++)
+				for (j = 0; j < cols[i]; j++)
+					for (k = 0; k < rows[i]; k++)
+						if (i != z && j != x && k != y)
+						{
+							gene[g] = best_gene;
+							gene[g].pk = gene[g].nk = 1;
+							gene[g].feature.nz[0] = i;
+							gene[g].feature.nx[0] = j;
+							gene[g].feature.ny[0] = k;
+							g++;
+						}
+		} else {
+			g = 0;
+			for (i = 0; i < 3; i++)
+				for (j = 0; j < cols[i]; j++)
+					for (k = 0; k < rows[i]; k++)
+						if (i != z && j != x && k != y)
+						{
+							gene[g] = best_gene;
+							gene[g].pk = gene[g].nk = 1;
+							gene[g].feature.pz[0] = i;
+							gene[g].feature.px[0] = j;
+							gene[g].feature.py[0] = k;
+							g++;
+						}
+		}
+		printf("bootstrapping round : %d\n", t);
+		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, posdata, posnum, negdata, negnum, size, pw, nw);
+		if (__ccv_bbf_identical_feature(&local_gene, best_gene))
+			break;
+		best_gene = local_gene;
+	}
+	/* after bootstrapping, the float search technique will do the following permutations:
+	 * a). add a new point to positive or negative
+	 * b). remove a point from positive or negative
+	 * c). move an existing point in positive or negative to another position
+	 * the three rules applied exhaustively, no heuristic used. */
+	for (t = 0; ; ++t)
+	{
+		int g;
+		for (i = 0; i < 3; i++)
+			for (j = 0; j < cols[i]; j++)
+				for (k = 0; k < rows[i]; k++)
+					if (!__ccv_bbf_exist_gene_feature(&best_gene, j, k, i))
+					{
+						if (best_gene.pk < CCV_BBF_POINT_MAX - 1)
+						{
+							gene[g] = best_gene;
+							gene[g].feature.pz[gene[g].pk] = i;
+							gene[g].feature.px[gene[g].pk] = j;
+							gene[g].feature.py[gene[g].pk] = k;
+							gene[g].pk++;
+							g++;
+						}
+						if (best_gene.nk < CCV_BBF_POINT_MAX - 1)
+						{
+							gene[g] = best_gene;
+							gene[g].feature.pz[gene[g].nk] = i;
+							gene[g].feature.px[gene[g].nk] = j;
+							gene[g].feature.py[gene[g].nk] = k;
+							gene[g].nk++;
+							g++;
+						}
+						for (q = 0; q < best_gene.pk; q++)
+						{
+							gene[g] = best_gene;
+							gene[g].feature.pz[q] = i;
+							gene[g].feature.px[q] = j;
+							gene[g].feature.py[q] = k;
+							g++;
+						}
+						for (q = 0; q < best_gene.nk; q++)
+						{
+							gene[g] = best_gene;
+							gene[g].feature.nz[q] = i;
+							gene[g].feature.nx[q] = j;
+							gene[g].feature.ny[q] = k;
+							g++;
+						}
+					}
+		if (best_gene.pk > 1)
+			for (q = 0; q < best_gene.pk; q++)
+			{
+				gene[g] = best_gene;
+				for (i = q; i < best_gene.pk; i++)
+				{
+					gene[g].feature.pz[i] = gene[g].feature.pz[i + 1];
+					gene[g].feature.px[i] = gene[g].feature.px[i + 1];
+					gene[g].feature.py[i] = gene[g].feature.py[i + 1];
+				}
+				gene[g].feature.pz[gene[g].pk - 1] = -1;
+				gene[g].pk--;
+				g++;
+			}
+		if (best_gene.nk > 1)
+			for (q = 0; q < best_gene.nk; q++)
+			{
+				gene[g] = best_gene;
+				for (i = q; i < best_gene.nk; i++)
+				{
+					gene[g].feature.nz[i] = gene[g].feature.nz[i + 1];
+					gene[g].feature.nx[i] = gene[g].feature.nx[i + 1];
+					gene[g].feature.ny[i] = gene[g].feature.ny[i + 1];
+				}
+				gene[g].feature.nz[gene[g].nk - 1] = -1;
+				gene[g].nk--;
+				g++;
+			}
+		gene[g] = best_gene;
+		g++;
+		printf("float search round : %d\n", t);
+		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, posdata, posnum, negdata, negnum, size, pw, nw);
+		if (__ccv_bbf_identical_feature(&local_gene, best_gene))
+			break;
+		best_gene = local_gene;
 	}
 	gsl_rng_free(rng);
 	return best;
