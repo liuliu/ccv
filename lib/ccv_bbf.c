@@ -446,6 +446,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 							gene[g].feature.px[gene[g].pk] = j;
 							gene[g].feature.py[gene[g].pk] = k;
 							gene[g].pk++;
+							gene[g].feature.size = ccv_max(gene[g].pk, gene[g].nk);
 							g++;
 						}
 						if (best_gene.nk < CCV_BBF_POINT_MAX - 1)
@@ -455,6 +456,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 							gene[g].feature.px[gene[g].nk] = j;
 							gene[g].feature.py[gene[g].nk] = k;
 							gene[g].nk++;
+							gene[g].feature.size = ccv_max(gene[g].pk, gene[g].nk);
 							g++;
 						}
 						for (q = 0; q < best_gene.pk; q++)
@@ -486,6 +488,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 				}
 				gene[g].feature.pz[gene[g].pk - 1] = -1;
 				gene[g].pk--;
+				gene[g].feature.size = ccv_max(gene[g].pk, gene[g].nk);
 				g++;
 			}
 		if (best_gene.nk > 1)
@@ -500,6 +503,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 				}
 				gene[g].feature.nz[gene[g].nk - 1] = -1;
 				gene[g].nk--;
+				gene[g].feature.size = ccv_max(gene[g].pk, gene[g].nk);
 				g++;
 			}
 		gene[g] = best_gene;
