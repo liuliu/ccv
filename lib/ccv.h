@@ -494,7 +494,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
 /* modern computer vision algorithms */
-/* SIFT, DAISY, SURF, MSER, SGF, SSD, FAST */
+/* SIFT, DAISY, SURF, MSER, BBF, SGF, SSD, FAST */
 typedef struct {
 	double radius;
 	int rad_q_no;
@@ -586,7 +586,7 @@ typedef struct {
 } ccv_bbf_comp_t;
 
 enum {
-	CCV_SGF_NO_NESTED = 0x10000000,
+	CCV_BBF_NO_NESTED = 0x10000000,
 };
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_param_t params);
