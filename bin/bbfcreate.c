@@ -37,7 +37,7 @@ int main(int argc, char** argv)
 	ccv_bbf_param_t params;
 	params.pos_crit = 0.995;
 	params.neg_crit = 0.50;
-	params.balance_k = 2.0;
+	params.balance_k = 1.0;
 	params.layer = 24;
 	params.feature_number = 100;
 	ccv_bbf_classifier_cascade_new(posimg, posnum, bgfiles, bgnum, negnum, ccv_size(32, 32), "data", params);

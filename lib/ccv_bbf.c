@@ -389,7 +389,184 @@ static inline double __ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned c
 	return error;
 }
 
-static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
+#define less_than(fit1, fit2, aux) ((fit1).fitness >= (fit2).fitness)
+static CCV_IMPLEMENT_QSORT(__ccv_bbf_genetic_qsort, ccv_bbf_gene_t, less_than)
+#undef less_than
+
+static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
+{
+	/* seed (random method) */
+	gsl_rng_env_setup();
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	union { unsigned long int li; double db; } dbli;
+	dbli.db = pw[0] + nw[0];
+	gsl_rng_set(rng, dbli.li);
+	int i, j;
+	int pnum = ftnum * 100;
+	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)malloc(pnum * sizeof(ccv_bbf_gene_t));
+	int rows[] = { size.height, size.height >> 1, size.height >> 2 };
+	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
+	for (i = 0; i < pnum; i++)
+		__ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
+	unsigned int timer = __ccv_bbf_time_measure();
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
+#endif
+	for (i = 0; i < pnum; i++)
+		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+	timer = __ccv_bbf_time_measure() - timer;
+	for (i = 0; i < pnum; i++)
+		__ccv_bbf_genetic_fitness(&gene[i]);
+	double best_err = 1;
+	ccv_bbf_feature_t best;
+	int rnum = ftnum * 39; /* number of randomize */
+	int mnum = ftnum * 40; /* number of mutation */
+	int hnum = ftnum * 20; /* number of hybrid */
+	/* iteration stop crit : best no change in 40 iterations */
+	int it = 0, t;
+	for (t = 0 ; it < 40; ++it, ++t)
+	{
+		int min_id = 0;
+		double min_err = gene[0].error;
+		for (i = 1; i < pnum; i++)
+			if (gene[i].error < min_err)
+			{
+				min_id = i;
+				min_err = gene[i].error;
+			}
+		min_err = gene[min_id].error = __ccv_bbf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		if (min_err < best_err)
+		{
+			best_err = min_err;
+			memcpy(&best, &gene[min_id].feature, sizeof(best));
+			printf("best bbf feature with error %f\n|-size: %d\n|-positive point: ", best_err, best.size);
+			for (i = 0; i < best.size; i++)
+				printf("(%d %d %d), ", best.px[i], best.py[i], best.pz[i]);
+			printf("\n|-negative point: ");
+			for (i = 0; i < best.size; i++)
+				printf("(%d %d %d), ", best.nx[i], best.ny[i], best.nz[i]);
+			printf("\n");
+			it = 0;
+		}
+		printf("minimum error achieved in round %d(%d) : %f with %d ms\n", t, it, min_err, timer / 1000);
+		__ccv_bbf_genetic_qsort(gene, pnum, 0);
+		for (i = 0; i < ftnum; i++)
+			++gene[i].age;
+		for (i = ftnum; i < ftnum + mnum; i++)
+		{
+			int parent = gsl_rng_uniform_int(rng, ftnum);
+			memcpy(gene + i, gene + parent, sizeof(ccv_bbf_gene_t));
+			/* three mutation strategy : 1. add, 2. remove, 3. refine */
+			int pnm, pn = gsl_rng_uniform_int(rng, 2);
+			int* pnk[] = { &gene[i].pk, &gene[i].nk };
+			int* pnx[] = { gene[i].feature.px, gene[i].feature.nx };
+			int* pny[] = { gene[i].feature.py, gene[i].feature.ny };
+			int* pnz[] = { gene[i].feature.pz, gene[i].feature.nz };
+			int x, y, z;
+			int victim, decay = 1;
+			do {
+				switch (gsl_rng_uniform_int(rng, 3))
+				{
+					case 0: /* add */
+						if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
+							break;
+						while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
+							pn = gsl_rng_uniform_int(rng, 2);
+						do {
+							z = gsl_rng_uniform_int(rng, 3);
+							x = gsl_rng_uniform_int(rng, cols[z]);
+							y = gsl_rng_uniform_int(rng, rows[z]);
+						} while (__ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
+						pnz[pn][*pnk[pn]] = z;
+						pnx[pn][*pnk[pn]] = x;
+						pny[pn][*pnk[pn]] = y;
+						++(*pnk[pn]);
+						gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
+						decay = gene[i].age = 0;
+						break;
+					case 1: /* remove */
+						if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
+							break;
+						while (*pnk[pn] - 1 <= 0) // || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
+							pn = gsl_rng_uniform_int(rng, 2);
+						victim = gsl_rng_uniform_int(rng, *pnk[pn]);
+						for (j = victim; j < *pnk[pn] - 1; j++)
+						{
+							pnz[pn][j] = pnz[pn][j + 1];
+							pnx[pn][j] = pnx[pn][j + 1];
+							pny[pn][j] = pny[pn][j + 1];
+						}
+						pnz[pn][*pnk[pn] - 1] = -1;
+						--(*pnk[pn]);
+						gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
+						decay = gene[i].age = 0;
+						break;
+					case 2: /* refine */
+						pnm = gsl_rng_uniform_int(rng, *pnk[pn]);
+						do {
+							z = gsl_rng_uniform_int(rng, 3);
+							x = gsl_rng_uniform_int(rng, cols[z]);
+							y = gsl_rng_uniform_int(rng, rows[z]);
+						} while (__ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
+						pnz[pn][pnm] = z;
+						pnx[pn][pnm] = x;
+						pny[pn][pnm] = y;
+						decay = gene[i].age = 0;
+						break;
+				}
+			} while (decay);
+		}
+		for (i = ftnum + mnum; i < ftnum + mnum + hnum; i++)
+		{
+			/* hybrid strategy: taking positive points from dad, negative points from mum */
+			int dad, mum;
+			do {
+				dad = gsl_rng_uniform_int(rng, ftnum);
+				mum = gsl_rng_uniform_int(rng, ftnum);
+			} while (dad == mum || gene[dad].pk + gene[mum].nk < CCV_SGF_POINT_MIN); /* at least 3 points have to be examed */
+			for (j = 0; j < CCV_SGF_POINT_MAX; j++)
+			{
+				gene[i].feature.pz[j] = -1;
+				gene[i].feature.nz[j] = -1;
+			}
+			gene[i].pk = gene[dad].pk;
+			for (j = 0; j < gene[i].pk; j++)
+			{
+				gene[i].feature.pz[j] = gene[dad].feature.pz[j];
+				gene[i].feature.px[j] = gene[dad].feature.px[j];
+				gene[i].feature.py[j] = gene[dad].feature.py[j];
+			}
+			gene[i].nk = gene[mum].nk;
+			for (j = 0; j < gene[i].nk; j++)
+			{
+				gene[i].feature.nz[j] = gene[mum].feature.nz[j];
+				gene[i].feature.nx[j] = gene[mum].feature.nx[j];
+				gene[i].feature.ny[j] = gene[mum].feature.ny[j];
+			}
+			gene[i].feature.size = ccv_max(gene[i].pk, gene[i].nk);
+			gene[i].age = 0;
+		}
+		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
+			__ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
+		timer = __ccv_bbf_time_measure();
+#ifdef USE_OPENMP
+#pragma omp parallel for private(i) schedule(dynamic)
+#endif
+		for (i = 0; i < pnum; i++)
+			gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		timer = __ccv_bbf_time_measure() - timer;
+		for (i = 0; i < pnum; i++)
+			__ccv_bbf_genetic_fitness(&gene[i]);
+	}
+	gsl_rng_free(rng);
+	return best;
+}
+
+#define less_than(fit1, fit2, aux) ((fit1).error < (fit2).error)
+static CCV_IMPLEMENT_QSORT(__ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
+#undef less_than
+
+static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
 	int i;
 	unsigned int timer = __ccv_bbf_time_measure();
@@ -399,13 +576,15 @@ static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, unsign
 	for (i = 0; i < pnum; i++)
 		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
 	timer = __ccv_bbf_time_measure() - timer;
+	__ccv_bbf_best_qsort(gene, pnum, 0);
 	int min_id = 0;
 	double min_err = gene[0].error;
-	for (i = 1; i < pnum; i++)
-		if (gene[i].error < min_err)
+	for (i = 0; i < pnum; i++)
+		if (gene[i].nk + gene[i].pk >= point_min)
 		{
 			min_id = i;
 			min_err = gene[i].error;
+			break;
 		}
 	printf("local best bbf feature with error %f\n|-size: %d\n|-positive point: ", min_err, gene[min_id].feature.size);
 	for (i = 0; i < gene[min_id].feature.size; i++)
@@ -417,7 +596,7 @@ static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, unsign
 	return gene[min_id];
 }
 
-static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
+static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
 	/* seed (random method) */
 	gsl_rng_env_setup();
@@ -447,13 +626,13 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	int t;
 	for (t = 0; ; ++t)
 	{
+		g = 0;
 		if (t % 2 == 0)
 		{
-			g = 0;
 			for (i = 0; i < 3; i++)
 				for (j = 0; j < cols[i]; j++)
 					for (k = 0; k < rows[i]; k++)
-						if (i != best_gene.feature.pz[0] && j != best_gene.feature.px[0] && k != best_gene.feature.py[0])
+						if (i != best_gene.feature.pz[0] || j != best_gene.feature.px[0] || k != best_gene.feature.py[0])
 						{
 							gene[g] = best_gene;
 							gene[g].pk = gene[g].nk = 1;
@@ -463,11 +642,10 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 							g++;
 						}
 		} else {
-			g = 0;
 			for (i = 0; i < 3; i++)
 				for (j = 0; j < cols[i]; j++)
 					for (k = 0; k < rows[i]; k++)
-						if (i != best_gene.feature.nz[0] && j != best_gene.feature.nx[0] && k != best_gene.feature.ny[0])
+						if (i != best_gene.feature.nz[0] || j != best_gene.feature.nx[0] || k != best_gene.feature.ny[0])
 						{
 							gene[g] = best_gene;
 							gene[g].pk = gene[g].nk = 1;
@@ -478,7 +656,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 						}
 		}
 		printf("bootstrapping round : %d\n", t);
-		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, posdata, posnum, negdata, negnum, size, pw, nw);
+		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, 2, posdata, posnum, negdata, negnum, size, pw, nw);
 		if (__ccv_bbf_identical_feature(&local_gene, &best_gene))
 			break;
 		best_gene = local_gene;
@@ -566,7 +744,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 		gene[g] = best_gene;
 		g++;
 		printf("float search round : %d\n", t);
-		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, posdata, posnum, negdata, negnum, size, pw, nw);
+		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, CCV_BBF_POINT_MIN, posdata, posnum, negdata, negnum, size, pw, nw);
 		if (__ccv_bbf_identical_feature(&local_gene, &best_gene))
 			break;
 		best_gene = local_gene;
@@ -844,7 +1022,8 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			/* TODO: more post-process is needed in here */
 
 			/* select the best feature in current distribution through genetic algorithm optimization */
-			ccv_bbf_feature_t best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+			ccv_bbf_feature_t best = __ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+			// ccv_bbf_feature_t best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, cascade->size, pw, nw);
 			double err = __ccv_bbf_error_rate(&best, posdata, rpos, negdata, rneg, cascade->size, pw, nw);
 			double rw = (1 - err) / err;
 			totalw = 0;
