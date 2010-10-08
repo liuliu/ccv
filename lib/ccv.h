@@ -570,12 +570,18 @@ typedef struct {
 	ccv_bbf_stage_classifier_t* stage_classifier;
 } ccv_bbf_classifier_cascade_t;
 
+enum {
+	CCV_BBF_GENETIC_OPT,
+	CCV_BBF_FLOAT_OPT
+};
+
 typedef struct {
 	double pos_crit;
 	double neg_crit;
 	double balance_k;
 	int layer;
 	int feature_number;
+	int optimizer;
 } ccv_bbf_param_t;
 
 typedef struct {
