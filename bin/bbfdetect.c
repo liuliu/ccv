@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
 	unsigned int elapsed_time = get_current_time();
-	ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 0, 0, ccv_size(32, 32));
+	ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 0, 0, ccv_size(24, 24));
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	for (i = 0; i < seq->rnum; i++)
 	{

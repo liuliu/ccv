@@ -39,9 +39,9 @@ int main(int argc, char** argv)
 	params.neg_crit = 0.50;
 	params.balance_k = 1.0;
 	params.layer = 24;
-	params.feature_number = 25;
+	params.feature_number = 100;
 	params.optimizer = CCV_BBF_GENETIC_OPT;
-	ccv_bbf_classifier_cascade_new(posimg, posnum, bgfiles, bgnum, negnum, ccv_size(32, 32), "data", params);
+	ccv_bbf_classifier_cascade_new(posimg, posnum, bgfiles, bgnum, negnum, ccv_size(24, 24), "data", params);
 	for (i = 0; i < bgnum; i++)
 		free(bgfiles[i]);
 	for (i = 0; i < posnum; i++)

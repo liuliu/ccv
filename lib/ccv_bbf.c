@@ -117,7 +117,7 @@ static int __ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsi
 
 static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
 {
-	int t, i, j, k;
+	int t, i, j, k, q;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
 	int steps[] = { __ccv_width_padding(cascade->size.width),
@@ -152,6 +152,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 			if (t % 2 != 0)
 				ccv_flip(image, 0, 0, CCV_FLIP_X);
 			ccv_array_t* detected = ccv_bbf_detect_objects(image, &cascade, 1, 0, 0, cascade->size);
+			memset(idcheck, 0, ccv_min(detected->rnum, negperbg) * sizeof(int));
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
 				int r = gsl_rng_uniform_int(rng, detected->rnum);
@@ -203,7 +204,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 					float sum = 0;
 					float* alpha = classifier->alpha;
 					ccv_bbf_feature_t* feature = classifier->feature;
-					for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
+					for (q = 0; q < classifier->count; ++q, alpha += 2, ++feature)
 						sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
 					if (sum < classifier->threshold)
 					{
@@ -211,6 +212,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 						break;
 					}
 				}
+				printf("%d\n", i);
 				if (!flag)
 					free(negdata[negtotal]);
 				else {
@@ -665,6 +667,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 		}
 	} else {
 		best_gene.feature = *best_feature;
+		best_gene.pk = best_gene.nk = best_gene.feature.size;
 		for (i = 0; i < CCV_BBF_POINT_MAX; i++)
 			if (best_feature->pz[i] == -1)
 			{
@@ -1233,9 +1236,9 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		ccv_array_clear(seq);
 		for (i = 0; i < scale_upto; i++)
 		{
-			int i_rows = pyr[i + 4]->rows - (cascade->size.height >> 1);
+			int i_rows = pyr[i + 4]->rows - (cascade->size.height >> 2);
 			int steps[] = { pyr[i]->step, pyr[i + 2]->step, pyr[i + 4]->step };
-			int i_cols = pyr[i + 4]->cols - (cascade->size.width >> 1);
+			int i_cols = pyr[i + 4]->cols - (cascade->size.width >> 2);
 			int paddings[] = { pyr[i]->step - i_cols * 4,
 							   pyr[i + 2]->step - i_cols * 2,
 							   pyr[i + 4]->step - i_cols };
