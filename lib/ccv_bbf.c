@@ -298,38 +298,6 @@ static inline int __ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int 
 	return 0;
 }
 
-static inline int __ccv_bbf_identical_feature(ccv_bbf_gene_t* ga, ccv_bbf_gene_t* gb)
-{
-	if (ga->pk != gb->pk || ga->nk != gb->nk)
-		return 0;
-	int i, j, k;
-	for (i = 0; i < ga->pk; i++)
-	{
-		k = 0;
-		for (j = 0; j < gb->pk; j++)
-			if (ga->feature.pz[i] == gb->feature.pz[j] && ga->feature.px[i] == gb->feature.px[j] && ga->feature.py[i] == gb->feature.py[j])
-			{
-				k = 1;
-				break;
-			}
-		if (!k)
-			return 0;
-	}
-	for (i = 0; i < ga->nk; i++)
-	{
-		k = 0;
-		for (j = 0; j < gb->nk; j++)
-			if (ga->feature.nz[i] == gb->feature.nz[j] && ga->feature.nx[i] == gb->feature.nx[j] && ga->feature.ny[i] == gb->feature.ny[j])
-			{
-				k = 1;
-				break;
-			}
-		if (!k)
-			return 0;
-	}
-	return 1;
-}
-
 static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
 {
 	int i;
@@ -663,7 +631,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 			}
 			printf("bootstrapping round : %d\n", t);
 			ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, 2, posdata, posnum, negdata, negnum, size, pw, nw);
-			if (__ccv_bbf_identical_feature(&local_gene, &best_gene))
+			if (local_gene.error >= best_gene.error - 1e-10)
 				break;
 			best_gene = local_gene;
 		}
@@ -815,7 +783,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 		g++;
 		printf("float search round : %d\n", t);
 		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, CCV_BBF_POINT_MIN, posdata, posnum, negdata, negnum, size, pw, nw);
-		if (__ccv_bbf_identical_feature(&local_gene, &best_gene))
+		if (local_gene.error >= best_gene.error - 1e-10)
 			break;
 		best_gene = local_gene;
 	}
