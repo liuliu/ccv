@@ -388,6 +388,7 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
+void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x);
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int type, int y, int x, int rows, int cols);
 
 /* basic data structures */
@@ -571,8 +572,8 @@ typedef struct {
 } ccv_bbf_classifier_cascade_t;
 
 enum {
-	CCV_BBF_GENETIC_OPT,
-	CCV_BBF_FLOAT_OPT
+	CCV_BBF_GENETIC_OPT = 0x01,
+	CCV_BBF_FLOAT_OPT = 0x02
 };
 
 typedef struct {

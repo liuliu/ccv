@@ -430,6 +430,38 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int r
 	}
 }
 
+void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
+{
+	int type = *(int*)a;
+	if (type & CCV_MATRIX_DENSE)
+	{
+		ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+		char identifier[128];
+		memset(identifier, 0, 128);
+		snprintf(identifier, 128, "ccv_move(%d,%d)", y, x);
+		uint64_t sig = (da->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 128, da->sig, 0);
+		btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(btype) | CCV_GET_CHANNEL(da->type);
+		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), btype, sig);
+		ccv_cache_return(db, );
+		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
+		unsigned char* a_ptr = da->data.ptr + ccv_max(x, 0) * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + ccv_max(y, 0) * da->step;
+		unsigned char* b_ptr = db->data.ptr + ccv_max(-x, 0) * ch * CCV_GET_DATA_TYPE_SIZE(db->type) + ccv_max(-y, 0) * db->step;
+#define for_block(dummy, __for_set, __for_get) \
+		for (i = abs(y); i < db->rows; i++) \
+		{ \
+			for (j = abs(x) * ch; j < db->cols * ch; j++) \
+			{ \
+				__for_set(b_ptr, j, __for_get(a_ptr, j, 0), 0); \
+			} \
+			a_ptr += da->step; \
+			b_ptr += db->step; \
+		}
+		ccv_matrix_setter_getter(da->type, for_block);
+#undef for_block
+	} else if (type & CCV_MATRIX_SPARSE) {
+	}
+}
+
 ccv_array_t* ccv_array_new(int rnum, int rsize)
 {
 	ccv_array_t* array = (ccv_array_t*)malloc(sizeof(ccv_array_t));

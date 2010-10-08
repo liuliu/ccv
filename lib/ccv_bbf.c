@@ -181,9 +181,12 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 				ccv_dense_matrix_t* imgs2 = 0;
 				ccv_slice(image, (ccv_matrix_t**)&temp, 0, rect->y, rect->x, rect->height, rect->width);
 				ccv_resample(temp, &imgs0, 0, imgsz.height, imgsz.width, CCV_INTER_AREA);
+				assert(imgs0->step == steps[0]);
 				ccv_matrix_free(temp);
 				ccv_sample_down(imgs0, &imgs1, 0);
+				assert(imgs1->step == steps[1]);
 				ccv_sample_down(imgs1, &imgs2, 0);
+				assert(imgs2->step == steps[2]);
 
 				negdata[negtotal] = (unsigned char*)malloc(isizs0 + isizs1 + isizs2);
 				unsigned char* u8s0 = negdata[negtotal];
@@ -212,7 +215,6 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 						break;
 					}
 				}
-				printf("%d\n", i);
 				if (!flag)
 					free(negdata[negtotal]);
 				else {
@@ -1095,9 +1097,11 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			if (params.optimizer == CCV_BBF_GENETIC_OPT)
 			{
 				best = __ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
-				best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, &best, cascade->size, pw, nw);
 			} else if (params.optimizer == CCV_BBF_FLOAT_OPT) {
 				best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, 0, cascade->size, pw, nw);
+			} else {
+				best = __ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+				best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, &best, cascade->size, pw, nw);
 			}
 			double err = __ccv_bbf_error_rate(&best, posdata, rpos, negdata, rneg, cascade->size, pw, nw);
 			double rw = (1 - err) / err;
@@ -1201,7 +1205,6 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	int hr = a->rows / min_size.height;
 	int wr = a->cols / min_size.width;
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(sqrt(2.)));
-	/* generate scale-down HOG images */
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + 4) * sizeof(ccv_dense_matrix_t*));
 	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
 	{
@@ -1239,8 +1242,8 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			int i_rows = pyr[i + 4]->rows - (cascade->size.height >> 2);
 			int steps[] = { pyr[i]->step, pyr[i + 2]->step, pyr[i + 4]->step };
 			int i_cols = pyr[i + 4]->cols - (cascade->size.width >> 2);
-			int paddings[] = { pyr[i]->step - i_cols * 4,
-							   pyr[i + 2]->step - i_cols * 2,
+			int paddings[] = { pyr[i]->step * 4 - i_cols * 4,
+							   pyr[i + 2]->step * 2 - i_cols * 2,
 							   pyr[i + 4]->step - i_cols };
 			unsigned char* u8[] = { pyr[i]->data.ptr, pyr[i + 2]->data.ptr, pyr[i + 4]->data.ptr };
 			for (y = 0; y < i_rows; y++)
