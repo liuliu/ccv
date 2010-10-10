@@ -483,8 +483,8 @@ enum {
 };
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
-void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
-void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y);
+void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y);
 
 enum {
 	CCV_FLIP_X = 0x01,

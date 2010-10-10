@@ -453,40 +453,50 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 }
 
 /* the following code is adopted from OpenCV cvPyrDown */
-void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y)
 {
-	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_sample_down", 15, a->sig, 0);
+	assert(off_x >= 0 && off_y >= 0);
+	char identifier[64];
+	memset(identifier, 0, 64);
+	snprintf(identifier, 64, "ccv_sample_down(%d,%d)", off_x, off_y);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows / 2, a->cols / 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_cache_return(db, );
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
-	int cols0 = db->cols - 2 + (a->cols - db->cols * 2);
-	int dy, sy = -2, dx, k;
+	int cols0 = db->cols - 1 - off_x;
+	int dy, sy = -2 + off_y, sx = off_x * ch, dx, k;
+	int* tab = (int*)alloca((a->cols + off_x + 2) * ch * sizeof(int));
+	for (dx = 0; dx < a->cols + off_x + 2; dx++)
+		for (k = 0; k < ch; k++)
+			tab[dx * ch + k] = ((dx >= a->cols) ? a->cols * 2 - 1 - dx : dx) * ch + k;
 	unsigned char* buf = (unsigned char*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 	unsigned char* b_ptr = db->data.ptr;
 #define for_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 	for (dy = 0; dy < db->rows; dy++) \
 	{ \
-		for(; sy <= dy * 2 + 2; sy++) \
+		for(; sy <= dy * 2 + 2 + off_y; sy++) \
 		{ \
-			unsigned char* row = buf + ((sy + 2) % 5) * bufstep; \
+			unsigned char* row = buf + ((sy + off_y * 4 + 2) % 5) * bufstep; \
 			int _sy = (sy < 0) ? 1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
 			unsigned char* a_ptr = a->data.ptr + a->step * _sy; \
 			for (k = 0; k < ch; k++) \
-				__for_set(row, k, __for_get_a(a_ptr, k, 0) * 10 + __for_get_a(a_ptr, ch + k, 0) * 5 + __for_get_a(a_ptr, 2 * ch + k, 0), 0); \
+				__for_set(row, k, __for_get_a(a_ptr, sx + k, 0) * 10 + __for_get_a(a_ptr, ch + sx + k, 0) * 5 + __for_get_a(a_ptr, 2 * ch + sx + k, 0), 0); \
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
 				for (k = 0; k < ch; k++) \
-					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + k, 0) * 6 + (__for_get_a(a_ptr, dx * 2 + k - ch, 0) + __for_get_a(a_ptr, dx * 2 + k + ch, 0)) * 4 + __for_get_a(a_ptr, dx * 2 + k - ch * 2, 0) + __for_get_a(a_ptr, dx * 2 + k + ch * 2, 0), 0); \
-			if (a->cols - db->cols * 2 == 0) \
+					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + sx + k, 0) * 6 + (__for_get_a(a_ptr, dx * 2 + sx + k - ch, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch, 0)) * 4 + __for_get_a(a_ptr, dx * 2 + sx + k - ch * 2, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch * 2, 0), 0); \
+			if (off_x > 0) \
+				for (dx = cols0 * ch; dx < db->cols * ch; dx += ch) \
+					for (k = 0; k < ch; k++) \
+						__for_set(row, dx + k, __for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (__for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + __for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0); \
+			else \
 				for (k = 0; k < ch; k++) \
-					__for_set(row, (db->cols - 2) * ch + k, __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + k, 0) * 6 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - ch + k, 0) * 4 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch + ch + k, 0) * 5 + __for_get_a(a_ptr, (db->cols - 2) * 2 * ch - 2 * ch + k, 0), 0); \
-			for (k = 0; k < ch; k++) \
-				__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch - ch + k, 0) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + k, 0), 0); \
+					__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0); \
 		} \
 		unsigned char* rows[5]; \
 		for(k = 0; k < 5; k++) \
-			rows[k] = buf + ((dy * 2 - 2 + k + 2) % 5) * bufstep; \
+			rows[k] = buf + ((dy * 2 + k) % 5) * bufstep; \
 		for(dx = 0; dx < db->cols * ch; dx++) \
 			__for_set_b(b_ptr, dx, (__for_get(rows[2], dx, 0) * 6 + (__for_get(rows[1], dx, 0) + __for_get(rows[3], dx, 0)) * 4 + __for_get(rows[0], dx, 0) + __for_get(rows[4], dx, 0)) / 256, 0); \
 		b_ptr += db->step; \
@@ -496,16 +506,20 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 #undef for_block
 }
 
-void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y)
 {
-	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_sample_up", 15, a->sig, 0);
+	assert(off_x >= 0 && off_y >= 0);
+	char identifier[64];
+	memset(identifier, 0, 64);
+	snprintf(identifier, 64, "ccv_sample_up(%d,%d)", off_x, off_y);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows * 2, a->cols * 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_cache_return(db, );
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
 	unsigned char* buf = (unsigned char*)alloca(3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
-	int y, x, sy = -1, k;
+	int y, x, sy = -1 + off_y, k;
 	unsigned char* b_ptr = db->data.ptr;
 #define for_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 	for (y = 0; y < a->rows; y++) \

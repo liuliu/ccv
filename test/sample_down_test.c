@@ -14,7 +14,7 @@ int main(int argc, char** argv)
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* x = 0;
 	unsigned int elapsed_time = get_current_time();
-	ccv_sample_down(image, &x, 0);
+	ccv_sample_down(image, &x, 0, 200, 150);
 	printf("elpased time : %d\n", get_current_time() - elapsed_time);
 	int len;
 	ccv_serialize(x, argv[2], &len, CCV_SERIAL_JPEG_FILE, 0);

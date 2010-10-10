@@ -169,7 +169,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	double dsigma0 = sigma0 * sigmak * sqrt(1.0 - 1.0 / (sigmak * sigmak));
 	if (params.up2x)
 	{
-		ccv_sample_up(a, &g[-(params.nlevels + 1)], 0);
+		ccv_sample_up(a, &g[-(params.nlevels + 1)], 0, 0, 0);
 		/* since there is a gaussian filter in sample_up function already,
 		 * the default sigma for upsampled image is sqrt(2) */
 		double sd = sqrt(sigma0 * sigma0 - 2.0);
@@ -202,7 +202,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	ccv_matrix_free(g[params.nlevels]);
 	for (i = 1; i < params.noctaves; i++)
 	{
-		ccv_sample_down(g[(i - 1) * (params.nlevels + 1)], &g[i * (params.nlevels + 1)], 0);
+		ccv_sample_down(g[(i - 1) * (params.nlevels + 1)], &g[i * (params.nlevels + 1)], 0, 0, 0);
 		if (i - 1 > 0)
 			ccv_matrix_free(g[(i - 1) * (params.nlevels + 1)]);
 		sd = sqrt(sigma0 * sigma0 - 0.25);
