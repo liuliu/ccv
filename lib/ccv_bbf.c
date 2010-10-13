@@ -658,7 +658,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	 * the three rules applied exhaustively, no heuristic used. */
 	for (t = 0; ; ++t)
 	{
-		int g = 0;
+		g = 0;
 		for (i = 0; i < 3; i++)
 			for (j = 0; j < cols[i]; j++)
 				for (k = 0; k < rows[i]; k++)
