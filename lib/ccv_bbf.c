@@ -1186,7 +1186,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		pyr[0] = a;
 	int i, j, k, t, x, y, q;
 	for (i = 1; i <= interval; i++)
-		ccv_resample(pyr[i * 4 - 4], &pyr[i * 4], 0, (int)(pyr[i * 4 - 4]->rows / scale), (int)(pyr[i * 4 - 4]->cols / scale), CCV_INTER_AREA);
+		ccv_resample(pyr[0], &pyr[i * 4], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4], 0, 0, 0);
 	for (i = next * 2; i < scale_upto + next * 2; i++)
@@ -1242,7 +1242,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 						if (flag)
 						{
 							ccv_bbf_comp_t comp;
-							comp.rect = ccv_rect((int)((x * 4 + dx[q] * 2) * scale_x), (int)((y * 4 + dy[q] * 2) * scale_y), (int)(cascade->size.width * scale_x), (int)(cascade->size.height * scale_y));
+							comp.rect = ccv_rect((int)((x * 4 + dx[q] * 2) * scale_x + 0.5), (int)((y * 4 + dy[q] * 2) * scale_y + 0.5), (int)(cascade->size.width * scale_x + 0.5), (int)(cascade->size.height * scale_y + 0.5));
 							comp.id = t;
 							comp.neighbors = 1;
 							comp.confidence = sum;
@@ -1323,7 +1323,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 				for(j = 0; j < seq2->rnum; j++)
 				{
 					ccv_bbf_comp_t r2 = *(ccv_bbf_comp_t*)ccv_array_get(seq2, j);
-					int distance = (int)(r2.rect.width * 0.5 + 0.5);
+					int distance = (int)(r2.rect.width * 0.25 + 0.5);
 
 					if(i != j &&
 					   r1.id == r2.id &&
