@@ -1,25 +1,20 @@
 #!/usr/bin/env ruby
 
-if ARGV.length != 2
-	exit
-end
+exit unless ARGV.length == 2
 
 truth = Hash.new
 total = 0
 
 File.new(ARGV[0]).each_line do |line|
 	args = line.split(" ")
-	name = args[0].split(".")
-	name = name[0].downcase
-	if !truth[name]
-		truth[name] = Array.new
-	end
-	truth[name].push({ :left_eye => { :x => args[1].to_f, :y => args[2].to_f },
-					   :right_eye => { :x => args[3].to_f, :y => args[4].to_f },
-					   :nose => { :x => args[5].to_f, :y => args[6].to_f },
-					   :left_mouth => { :x => args[7].to_f, :y => args[8].to_f },
-					   :center_mouth => { :x => args[9].to_f, :y => args[10].to_f },
-					   :right_mouth => { :x => args[11].to_f, :y => args[12].to_f } })
+	name = args[0].split(".")[0].downcase
+	truth[name] = Array.new if truth[name].nil?
+	truth[name].push({:left_eye => {:x => args[1].to_f, :y => args[2].to_f},
+					  :right_eye => {:x => args[3].to_f, :y => args[4].to_f},
+					  :nose => {:x => args[5].to_f, :y => args[6].to_f},
+					  :left_mouth => {:x => args[7].to_f, :y => args[8].to_f},
+					  :center_mouth => {:x => args[9].to_f, :y => args[10].to_f},
+					  :right_mouth => {:x => args[11].to_f, :y => args[12].to_f}})
 	total += 1
 end
 
@@ -28,8 +23,7 @@ tp = 0
 
 File.new(ARGV[1]).each_line do |line|
 	args = line.split(" ")
-	name = args[0].split(".")
-	name = name[0].downcase
+	name = args[0].split(".")[0].downcase
 	if !truth[name]
 		fa += 1
 	else
