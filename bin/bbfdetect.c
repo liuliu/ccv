@@ -1,5 +1,6 @@
 #include "ccv.h"
 #include <sys/time.h>
+#include <ctype.h>
 
 unsigned int get_current_time()
 {
@@ -12,21 +13,49 @@ int main(int argc, char** argv)
 {
 	assert(argc >= 3);
 	int i;
-	ccv_dense_matrix_t* image = NULL;
-	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_dense_matrix_t* image = 0;
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
-	unsigned int elapsed_time = get_current_time();
-	ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 3, 2, 0, ccv_size(24, 24));
-	printf("elpased time : %d\n", get_current_time() - elapsed_time);
-	for (i = 0; i < seq->rnum; i++)
+	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	if (image != 0)
 	{
-		ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
-		printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+		unsigned int elapsed_time = get_current_time();
+		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 5, 2, 0, ccv_size(24, 24));
+		printf("elpased time : %d\n", get_current_time() - elapsed_time);
+		for (i = 0; i < seq->rnum; i++)
+		{
+			ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+			printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+		}
+		printf("total : %d\n", seq->rnum);
+		ccv_array_free(seq);
+		ccv_matrix_free(image);
+		ccv_garbage_collect();
+	} else {
+		FILE* r = fopen(argv[1], "rt");
+		if(r)
+		{
+			char file[1000 + 1];
+			while(fgets(file, 1000, r))
+			{
+				int len = (int)strlen(file);
+				while(len > 0 && isspace(file[len - 1]))
+					len--;
+				file[len] = '\0';
+				ccv_dense_matrix_t* image = 0;
+				ccv_unserialize(file, &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 5, 2, 0, ccv_size(24, 24));
+				for (i = 0; i < seq->rnum; i++)
+				{
+					ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+				}
+				ccv_array_free(seq);
+				ccv_matrix_free(image);
+				ccv_garbage_collect();
+			}
+			fclose(r);
+		}
 	}
-	printf("total : %d\n", seq->rnum);
 	ccv_bbf_classifier_cascade_free(cascade);
-	ccv_array_free(seq);
-	ccv_matrix_free(image);
-	ccv_garbage_collect();
 	return 0;
 }
