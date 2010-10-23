@@ -29,10 +29,8 @@ int main(int argc, char** argv)
 	ccv_array_t* image_keypoints = 0;
 	ccv_dense_matrix_t* image_desc = 0;
 	ccv_sift(image, &image_keypoints, &image_desc, 0, param);
-	printf("elpased time : %d\n", get_current_time() - elapsed_time);
+	elapsed_time = get_current_time() - elapsed_time;
 	int i, j, k;
-	ccv_dense_matrix_t* imx = ccv_dense_matrix_new(image->rows, image->cols, CCV_8U | CCV_C1, 0, 0);
-	memset(imx->data.ptr, 0, imx->rows * imx->step);
 	int match = 0;
 	for (i = 0; i < obj_keypoints->rnum; i++)
 	{
@@ -60,17 +58,15 @@ int main(int argc, char** argv)
 		}
 		if (mind < mind2 * 0.6)
 		{
+			ccv_keypoint_t* op = (ccv_keypoint_t*)ccv_array_get(obj_keypoints, i);
 			ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(image_keypoints, minj);
-			int ix = (int)(kp->x + 0.5);
-			int iy = (int)(kp->y + 0.5);
-			imx->data.ptr[ix + iy * imx->step] = 255;
+			printf("%f %f => %f %f\n", op->x, op->y, kp->x, kp->y);
 			match++;
 		}
 	}
+	printf("%dx%d on %dx%d\n", object->cols, object->rows, image->cols, image->rows);
 	printf("%d keypoints out of %d are matched\n", match, obj_keypoints->rnum);
-	int len;
-	ccv_serialize(imx, "match.png", &len, CCV_SERIAL_PNG_FILE, 0);
-	ccv_matrix_free(imx);
+	printf("elpased time : %d\n", elapsed_time);
 	ccv_array_free(obj_keypoints);
 	ccv_array_free(image_keypoints);
 	ccv_matrix_free(obj_desc);

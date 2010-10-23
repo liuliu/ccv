@@ -545,7 +545,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
  * computation and higher accuracy (current highest accuracy close-source face detector is based
  * on the same algorithm) */
 
-#define CCV_BBF_POINT_MAX (5)
+#define CCV_BBF_POINT_MAX (6)
 #define CCV_BBF_POINT_MIN (3)
 
 typedef struct {
