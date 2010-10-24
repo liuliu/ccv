@@ -16,7 +16,7 @@ How it works?
 That's a long story, please read the paper. But at least I can show you how to
 use the magic:
 
-./bbfdetect <Your Image contains Faces> ../samples/face | ./bbfdraw.rb <Your Image contains Faces> output.png
+	./bbfdetect <Your Image contains Faces> ../samples/face | ./bbfdraw.rb <Your Image contains Faces> output.png
 
 Check out the output.png, now you get the idea.
 
