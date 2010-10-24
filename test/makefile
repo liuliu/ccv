@@ -1,4 +1,4 @@
-CC = clang
+CC = gcc
 LDFLAGS = -L"../lib" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
 CXXFLAGS = -O3 -msse2 -Wall -I"../lib"
 
