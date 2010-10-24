@@ -32,7 +32,7 @@ Download the tarball, copy out files in newtest/ test/ and test-low/ to a single
 folder, let's say: all/. Since ccv doesn't support gif format, you need to do file
 format conversion by your own. If you have ImageMagick, it is handy:
 
-for i in *.gif; do convert $i `basename $i .gif`.png; done;
+	for i in *.gif; do convert $i `basename $i .gif`.png; done;
 
 For the ground truth data, you can copy them out from
 http://vasc.ri.cmu.edu/idb/images/face/frontal_images/list.html Only Test Set A,
@@ -41,24 +41,26 @@ B, C are needed.
 bbfdetect needs a list of files, you can generate them by run the command in the
 same directory of bbfdetect binary:
 
-find <the directory of converted files>/*.png > filelist.txt
+	find <the directory of converted files>/*.png > filelist.txt
 
 Speed-wise:
 
-run time ./bbfdetect filelist.txt ../samples/face > result.txt
+run
+
+	time ./bbfdetect filelist.txt ../samples/face > result.txt
 
 On my computer, it reports:
 
-real    0m9.304s
-user    0m9.270s
-sys     0m0.010s
+	real    0m9.304s
+	user    0m9.270s
+	sys     0m0.010s
 
 How about OpenCV's face detector? I run OpenCV with default setting on the same
 computer, and it reports:
 
-real    0m27.977s
-user    0m27.860s
-sys     0m0.050s
+	real    0m27.977s
+	user    0m27.860s
+	sys     0m0.050s
 
 You see the difference.
 
@@ -72,22 +74,22 @@ Basically, the result.txt file will contain the full path to the file, for which
 we only need the filename, use your favorite editor to remove the directory
 information, for me, it is:
 
-sed -i "s/\.\.\/test\/faces\///g" result.txt
+	sed -i "s/\.\.\/test\/faces\///g" result.txt
 
 Suppose you have copied the ground truth to truth.txt file, run the validator:
 
-./validator.rb truth.txt result
+	./validator.rb truth.txt result
 
 My result for bbfdetect is:
 
-82.97% (12)
+	82.97% (12)
 
 The former one is detection rate (how many faces are detected), the later one is
 the number of false alarms (how many non-face regions are detected as faces)
 
 The result for OpenCV default face detector is:
 
-86.69% (15)
+	86.69% (15)
 
 Well, we are a little behind, but you can train the detector yourself, just get
 a better data source!
@@ -111,21 +113,21 @@ First, you need to create a directory called data/ under the same directory of
 bbfcreate. Then, you need to create two filelists of positive data and negative
 images, for me, it is:
 
-find ../data/faces/*.bmp > faces.dat
-find ../data/negs/*.jpg > negs.dat
+	find ../data/faces/*.bmp > faces.dat
+	find ../data/negs/*.jpg > negs.dat
 
 One quirk thing of bbfcreate is, the negs.dat needs to include how many files in
 it in the first line. Thus, you need to modify negs.dat file to be like something:
 
-8059
-../data/facedata/negs/2115168574_235742f2bb_b.jpg
-../data/facedata/negs/2290943030_06e4e366ca_b.jpg
-../data/facedata/negs/2643165035_1aab9dd0d8_b.jpg
+	8059
+	../data/facedata/negs/2115168574_235742f2bb_b.jpg
+	../data/facedata/negs/2290943030_06e4e366ca_b.jpg
+	../data/facedata/negs/2643165035_1aab9dd0d8_b.jpg
 
 That's all! Just find a computer power enough and run the following line for several
 days:
 
-./bbfcreate faces.dat 13125 negs.dat 26250
+	./bbfcreate faces.dat 13125 negs.dat 26250
 
 The fourth parameter denotes how many negative samples extracted for each round,
 experimentally, it is something about twice of the number of your positive ones.
