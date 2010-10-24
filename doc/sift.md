@@ -7,6 +7,9 @@ What's SIFT?
 SIFT paper refers to:
 Distinctive Image Features from Scale-Invariant Keypoints, David G. Lowe
 
+The current implementation in ccv was largely influenced by VLFeat:
+http://www.vlfeat.org/
+
 How to run the sample program?
 ------------------------------
 
@@ -31,3 +34,7 @@ like this:
 	./siftmatch ../samples/book.png ../samples/scene.png | ./siftdraw.rb ../samples/book.png ../samples/scene.png output.png <directory to homest>/homest_demo
 
 You see, somehow, SIFT recognized the book in the scene, amazing, ah?
+
+I haven't decided yet that if I need to include some functions like ccv_find_homography
+in the future release, homest is a good research package but for industrial use, I have
+some doubts.
