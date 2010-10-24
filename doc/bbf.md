@@ -1,6 +1,8 @@
 BBF: Brightness Binary Feature
+==============================
 
 What's BBF?
+-----------
 
 The original paper refers to:
 YEF∗ Real-Time Object Detection, Yotam Abramson and Bruno Steux
@@ -9,6 +11,7 @@ The improved version refers to:
 High-Performance Rotation Invariant Multiview Face Detection, Chang Huang, Haizhou Ai, Yuan Li and Shihong Lao
 
 How it works?
+-------------
 
 That's a long story, please read the paper. But at least I can show you how to
 use the magic:
@@ -18,6 +21,7 @@ use the magic:
 Check out the output.png, now you get the idea.
 
 What about the performance?
+---------------------------
 
 The tests are performed with MIT+CMU face detection dataset
 (http://vasc.ri.cmu.edu/idb/html/face/frontal_images/index.html)
@@ -89,6 +93,7 @@ Well, we are a little behind, but you can train the detector yourself, just get
 a better data source!
 
 How to train my own detector?
+-----------------------------
 
 In this chapter, I will go over how I trained the face detector myself. To be
 honest, I lost my face detector training data several years ago. Just like
