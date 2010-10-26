@@ -124,7 +124,7 @@ it in the first line. Thus, you need to modify negs.dat file to be like somethin
 	../data/facedata/negs/2290943030_06e4e366ca_b.jpg
 	../data/facedata/negs/2643165035_1aab9dd0d8_b.jpg
 
-That's all! Just find a computer power enough and run the following line for several
+That's all! Just find a computer powerful enough and run the following line for several
 days:
 
 	./bbfcreate faces.dat 13125 negs.dat 26250
@@ -141,5 +141,5 @@ You can stop bbfcreate at any time you want, the most recent result will be save
 in data/ directory, clean up the directory to restart.
 
 I probably will implement MPI support in near future so that you can run this with
-many more computers, but who nowadays have OpenMPI setup besides supercomputing
+many computers in parallel, but who nowadays have OpenMPI setup besides supercomputing
 centers?
