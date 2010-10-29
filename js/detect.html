@@ -13,6 +13,12 @@ URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:10px
 <script type="text/javascript" src="face.js"></script>
 <script type="text/javascript">
 
+window.onload = function () {
+	var url = window.location.hash.substr(1);
+	if (url.length > 7)
+		document.getElementById("image").value = decodeURIComponent(url);
+}
+
 function resizeCanvas(image, canvas) {
 	document.body.appendChild(image);
 	canvas.width = image.offsetWidth;
@@ -40,6 +46,7 @@ function grayscale(image) {
 function detect() {
 	var image = new Image();
 	var url = document.getElementById("image").value;
+	window.location.hash = "#" + encodeURIComponent(url);
 	image.src = "loader.php?src=" + encodeURIComponent((url.substr(0, 7).toLowerCase() == "http://") ? url : "http://" + url);
 	var canvas = document.getElementById("output");
 	var ctx = canvas.getContext("2d");
