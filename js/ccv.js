@@ -275,7 +275,7 @@ var ccv = {
 			for(i = 0; i < seq2.length; i++)
 			{
 				var r1 = seq2[i];
-				var flag = 1;
+				var flag = true;
 				for(j = 0; j < seq2.length; j++)
 				{
 					var r2 = seq2[j];
@@ -288,7 +288,7 @@ var ccv = {
 					   r1.y + r1.height <= r2.y + r2.height + distance &&
 					   (r2.neighbors > Math.max(3, r1.neighbors) || r1.neighbors < 3))
 					{
-						flag = 0;
+						flag = false;
 						break;
 					}
 				}

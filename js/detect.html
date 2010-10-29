@@ -11,35 +11,52 @@
 <script type="text/javascript" src="ccv.js"></script>
 <script type="text/javascript" src="face.js"></script>
 <script type="text/javascript">
+
+function resizeCanvas(image, canvas) {
+	document.body.appendChild(image);
+	canvas.width = image.offsetWidth;
+	canvas.style.width = image.offsetWidth.toString() + "px";
+	canvas.height = image.offsetHeight;
+	canvas.style.height = image.offsetHeight.toString() + "px";
+	document.body.removeChild(image);
+}
+
+function grayscale(image) {
+	var canvas = document.createElement("canvas");
+	var ctx = canvas.getContext("2d");
+	/* detect_objects requires gray-scale image */
+	resizeCanvas(image, canvas);
+	ctx.drawImage(image, 0, 0);
+	var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+	var data = imageData.data;
+	var pix1, pix2, pix = canvas.width * canvas.height * 4;
+	while (pix > 0)
+		data[pix -= 4] = data[pix1 = pix + 1] = data[pix2 = pix + 2] = (data[pix] * 0.3 + data[pix1] * 0.59 + data[pix2] * 0.11);
+	ctx.putImageData(imageData, 0, 0);
+	return canvas;
+}
+
 function detect() {
 	var image = new Image();
-	image.src = document.getElementById("image").value;
+	var url = document.getElementById("image").value;
+	image.src = "loader.php?src=" + encodeURIComponent((url.substr(0, 7).toLowerCase() == "http://") ? url : "http://" + url);
 	var canvas = document.getElementById("output");
 	var ctx = canvas.getContext("2d");
 	image.onload = function () {
-		document.body.appendChild(image);
-		canvas.width = image.offsetWidth;
-		canvas.style.width = image.offsetWidth.toString() + "px";
-		canvas.height = image.offsetHeight;
-		canvas.style.height = image.offsetHeight.toString() + "px";
-		ctx.drawImage(image, 0, 0);
-		document.body.removeChild(image);
-		var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-		var data = imageData.data;
-		var pix1, pix2, pix = canvas.width * canvas.height * 4;
-		while (pix > 0)
-			data[pix -= 4] = data[pix1 = pix + 1] = data[pix2 = pix + 2] = (data[pix] * 0.3 + data[pix1] * 0.59 + data[pix2] * 0.11);
-		ctx.putImageData(imageData, 0, 0);
+		/* call main detect_objects function */
 		var elapsed_time = (new Date()).getTime();
-		comp = ccv.detect_objects(canvas, cascade, 3, 2);
+		comp = ccv.detect_objects(grayscale(image), cascade, 3, 2);
 		document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
-		// ctx.drawImage(image, 0, 0);
+		resizeCanvas(image, canvas);
+		ctx.drawImage(image, 0, 0);
 		ctx.lineWidth = 3;
 		ctx.strokeStyle = "#f00";
+		/* draw detected area */
 		for (var i = 0; i < comp.length; i++)
 			ctx.strokeRect(comp[i].x, comp[i].y, comp[i].width, comp[i].height);
 	}
 }
+
 </script>
 </body>
 </html>
