@@ -46,7 +46,7 @@ function detect() {
 	image.onload = function () {
 		/* call main detect_objects function */
 		var elapsed_time = (new Date()).getTime();
-		comp = ccv.detect_objects(grayscale(image), cascade, 3, 2);
+		comp = ccv.detect_objects(grayscale(image), cascade, 5, 1);
 		document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
 		resizeCanvas(image, canvas);
 		ctx.drawImage(image, 0, 0);
