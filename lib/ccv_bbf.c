@@ -1210,14 +1210,14 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		{
 			int dx[] = {0, 1, 0, 1};
 			int dy[] = {0, 0, 1, 1};
+			int i_rows = pyr[i * 4 + next * 8]->rows - (cascade->size.height >> 2);
+			int steps[] = { pyr[i * 4]->step, pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8]->step };
+			int i_cols = pyr[i * 4 + next * 8]->cols - (cascade->size.width >> 2);
+			int paddings[] = { pyr[i * 4]->step * 4 - i_cols * 4,
+							   pyr[i * 4 + next * 4]->step * 2 - i_cols * 2,
+							   pyr[i * 4 + next * 8]->step - i_cols };
 			for (q = 0; q < 4; q++)
 			{
-				int i_rows = pyr[i * 4 + next * 8]->rows - (cascade->size.height >> 2);
-				int steps[] = { pyr[i * 4]->step, pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8]->step };
-				int i_cols = pyr[i * 4 + next * 8]->cols - (cascade->size.width >> 2);
-				int paddings[] = { pyr[i * 4]->step * 4 - i_cols * 4,
-								   pyr[i * 4 + next * 4]->step * 2 - i_cols * 2,
-								   pyr[i * 4 + next * 8]->step - i_cols };
 				unsigned char* u8[] = { pyr[i * 4]->data.ptr + dx[q] * 2 + dy[q] * pyr[i * 4]->step * 2, pyr[i * 4 + next * 4]->data.ptr + dx[q] + dy[q] * pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8 + q]->data.ptr };
 				for (y = 0; y < i_rows; y++)
 				{
