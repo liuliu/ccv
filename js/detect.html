@@ -6,6 +6,7 @@
 </head>
 <body>
 <input type="text" id="image" size=50 /><input style="margin-left:10px" type="button" value="Detect" onclick="detect()" />
+<div id="elapsed_time" style="margin-top:20px"></div>
 <div style="margin-top:20px"><canvas id="output"></canvas></div>
 <script type="text/javascript" src="ccv.js"></script>
 <script type="text/javascript" src="face.js"></script>
@@ -29,8 +30,10 @@ function detect() {
 		while (pix > 0)
 			data[pix -= 4] = data[pix1 = pix + 1] = data[pix2 = pix + 2] = (data[pix] * 0.3 + data[pix1] * 0.59 + data[pix2] * 0.11);
 		ctx.putImageData(imageData, 0, 0);
+		var elapsed_time = (new Date()).getTime();
 		comp = ccv.detect_objects(canvas, cascade, 3, 2);
-		ctx.drawImage(image, 0, 0);
+		document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
+		// ctx.drawImage(image, 0, 0);
 		ctx.lineWidth = 3;
 		ctx.strokeStyle = "#f00";
 		for (var i = 0; i < comp.length; i++)
