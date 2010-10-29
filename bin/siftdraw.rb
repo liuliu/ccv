@@ -18,8 +18,8 @@ STDIN.each_line do |line|
 		image_size = {:width => image_size[0].to_i, :height => image_size[1].to_i}
 	else
 		if matches.nil?
-			pairs.push({:object => {:x => args[0].to_f, :y => args[1].to_f},
-						:image => {:x => args[3].to_f, :y => args[4].to_f}})
+			pairs << {:object => {:x => args[0].to_f, :y => args[1].to_f},
+					  :image => {:x => args[3].to_f, :y => args[4].to_f}}
 		else
 			matches.puts args[0] + " " + args[1] + " " + args[3] + " " + args[4] + "\n"
 		end
@@ -54,7 +54,7 @@ else
 		x = h[0][0] * point[:x] + h[0][1] * point[:y] + h[0][2]
 		y = h[1][0] * point[:x] + h[1][1] * point[:y] + h[1][2]
 		z = h[2][0] * point[:x] + h[2][1] * point[:y] + h[2][2]
-		frame.push({:x => x / z, :y => y / z})
+		frame << {:x => x / z, :y => y / z}
 	end
 	%x[#{sprintf("convert %s -stroke red -strokewidth 3 -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" %s", ARGV[1], frame[0][:x], frame[0][:y], frame[1][:x], frame[1][:y], frame[1][:x], frame[1][:y], frame[2][:x], frame[2][:y], frame[2][:x], frame[2][:y], frame[3][:x], frame[3][:y], frame[3][:x], frame[3][:y], frame[0][:x], frame[0][:y], ARGV[2])}]
 end
