@@ -71,7 +71,7 @@ var ccv = {
 			}
 			idx[i] = j;
 		}
-		return {"index" : idx, "class" : class_idx};
+		return {"index" : idx, "cat" : class_idx};
 	},
 
 	detect_objects : function (canvas, cascade, interval, min_neighbors) {
@@ -227,7 +227,7 @@ var ccv = {
 					   r2.width <= Math.floor(r1.width * 1.5 + 0.5) &&
 					   Math.floor(r2.width * 1.5 + 0.5) >= r1.width;
 			});
-			var ncomp = result.class;
+			var ncomp = result.cat;
 			var idx_seq = result.index;
 			var comps = new Array(ncomp + 1);
 			for (i = 0; i < comps.length; i++)
