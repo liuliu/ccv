@@ -49,7 +49,7 @@
 		background:#444;
 	}
 	a:link, a:visited, a:active, a:hover {
-		color:white;
+		color:lightyellow;
 		text-decoration:none;	
 	}
 	a:hover {
@@ -59,11 +59,11 @@
 		border:2px solid white;	
 		box-shadow:0px 0px 5px #000; -moz-box-shadow:0px 0px 5px #000; -webkit-box-shadow:0px 0px 5px #000;
 	}
-	#demo  {
-		position:absolute;
-		top:30px;	
-		left:50%;
-		margin-left:-210px;:
+	#demo,
+	#info {   
+	  	text-align:center;
+	  	margin:5px auto; 
+	  	width:440px;
 	}
 	#demo img {
 		border:1px solid white;	
@@ -75,12 +75,37 @@
 		padding:10px;
 		font-weight:bold;
 	}
+	pre {
+	    background:whitesmoke;
+	    color:gray;
+	    text-align:left;
+	    border:1px solid white;
+	    padding:10px;
+	    margin:10px;
+	}
 	</style>
 </head>
 <body>
+	<div id="info">
+	    <h1>Face detection jQuery Plugin</h1>
+	    <p>
+	    Plugin by <a href="http://jaysalvat.com">Jay Salvat</a>, 
+	    Source on <a href="https://github.com/jaysalvat/jquery.facedetection">Github</a>
+	    <br>
+	    Original algorithm by <a href="https://github.com/liuliu/ccv">Liu Liu</a>.
+	    </p>
+<pre>
+$(function() {
+    var coords = $('#myPicture').faceDetection();    
+});
+</pre>
+	
+	</div>
+	
 	<div id="demo">
 		<img src="img/faces.jpg">
 		<a href="#" id="detect">Start detection</a>
 	</div>
+
 </body>
 </html>
