@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<title>Face Detection jQuery Plugin</title>
+	<script src="http://code.jquery.com/jquery-1.4.3.min.js"></script> 
+	<script src="js/facedetection/ccv.js"></script> 
+	<script src="js/facedetection/face.js"></script>
+	<script src="js/jquery.facedetection.js"></script> 
+	<script>
+	$(function() {
+		$('#detect').click(function() {
+			
+			var coords = $('#demo img').faceDetection({
+				start:function(img) {
+					$('.face').remove();
+					$('#detect').text('Processing...');
+				},
+				complete:function(img, coords) {
+					$('#detect').text('Completed...');
+				},
+				error:function(img, code, message) {
+					alert('Error '+code+': '+message);	
+				}
+			});
+			
+			for (var i = 0; i < coords.length; i++) {
+				$('<div>', {
+					'class':'face',
+					'css': {
+						'position':	'absolute',
+						'left':		coords[i].positionX	+'px',
+						'top':		coords[i].positionY	+'px',
+						'width': 	coords[i].width		+'px',
+						'height': 	coords[i].height	+'px'
+					}
+				})
+				.appendTo('#demo');
+			}
+			
+			return false;
+		});
+	});
+	</script>
+	<style>
+	body {
+		font:12px Verdana;
+		color:white;
+		background:#444;
+	}
+	a:link, a:visited, a:active, a:hover {
+		color:white;
+		text-decoration:none;	
+	}
+	a:hover {
+		text-decoration:underline;	
+	}
+	.face {
+		border:2px solid white;	
+		box-shadow:0px 0px 5px #000; -moz-box-shadow:0px 0px 5px #000; -webkit-box-shadow:0px 0px 5px #000;
+	}
+	#demo  {
+		position:absolute;
+		top:30px;	
+		left:50%;
+		margin-left:-210px;:
+	}
+	#demo img {
+		border:1px solid white;	
+		box-shadow:0px 2px 10px #000; -moz-box-shadow:0px 2px 10px #000; -webkit-box-shadow:0px 2px 10px #000;
+	}
+	#detect {
+		display:block;	
+		text-align:center;
+		padding:10px;
+		font-weight:bold;
+	}
+	</style>
+</head>
+<body>
+	<div id="demo">
+		<img src="img/faces.jpg">
+		<a href="#" id="detect">Start detection</a>
+	</div>
+</body>
+</html>
