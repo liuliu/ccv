@@ -36,68 +36,42 @@ Results
 
 Returns an array with found faces object:
 
-**x**
+**x:** Y coord of the face
 
-Y coord of the face
+**y:** Y coord of the face
 
-**y**
+**width:** Width of the face
 
-Y coord of the face
+**height:** Height of the face
 
-**width**
+**positionX:** X position relative to the document
 
-Width of the face
+**positionY:** Y position relative to the document
 
-**height**
+**offsetX:** X position relative to the offset parent
 
-Height of the face
+**offsetY:** Y position relative to the offset parent
 
-**positionX**
-
-X position relative to the document
-
-**positionY**
-
-Y position relative to the document
-
-**offsetX**
-
-X position relative to the offset parent
-
-**offsetY**
-
-Y position relative to the offset parent
-
-**confidence**
-
-Level of confidence
+**confidence:** Level of confidence
 
 Settings
 --------
 
-**confidence
+**confidence:** Minimum level of confidence
 
-Minimum level of confidence
-
-**start**
-
-Callback function trigged just before the process starts. **DOES'NT WORK PROPERLY**
+**start:** Callback function trigged just before the process starts. **DOES'NT WORK PROPERLY**
 
 	start:function(img) {
 		// ...
 	}
 
-**complete**
-
-Callback function trigged after the detection is completed
+**complete:** Callback function trigged after the detection is completed
 
 	complete:function(img, coords) {
 		// ...
 	}
 
-**error**
-
-Callback function trigged on errors
+**error:** Callback function trigged on errors
 
 	error:function(img, code, message) {
 		// ...
