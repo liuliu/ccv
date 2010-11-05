@@ -13,11 +13,11 @@
 			
 			var coords = $('#demo img').faceDetection({
 				start:function(img) {
-					$('.face').remove();
-					$('#detect').text('Processing...');
+					alert('Début de traitement de '+img.attr('src'));	
 				},
 				complete:function(img, coords) {
-					$('#detect').text('Completed...');
+					alert('Fin de traitement de '+img.attr('src'));
+					console.log(coords);
 				},
 				error:function(img, code, message) {
 					alert('Error '+code+': '+message);	
@@ -37,8 +37,6 @@
 				})
 				.appendTo('#demo');
 			}
-			
-			return false;
 		});
 	});
 	</script>
@@ -60,7 +58,8 @@
 		box-shadow:0px 0px 5px #000; -moz-box-shadow:0px 0px 5px #000; -webkit-box-shadow:0px 0px 5px #000;
 	}
 	#demo,
-	#info {   
+	#info,
+	#donate {   
 	  	text-align:center;
 	  	margin:5px auto; 
 	  	width:440px;
@@ -99,13 +98,32 @@ $(function() {
     var coords = $('#myPicture').faceDetection();    
 });
 </pre>
-	
 	</div>
 	
 	<div id="demo">
 		<img src="img/faces.jpg">
-		<a href="#" id="detect">Start detection</a>
+		<a href="#" id="detect">Click to start detection (and wait)</a>
 	</div>
 
+	<div id="donate">
+		<h2>Like it? Buy me a beer !</h2>
+		<form action="https://www.paypal.com/cgi-bin/webscr" method="post">
+			<input type="text" name="amount" value="3.00" size="6" style="text-align:right;" />
+			<select name="currency_code">
+				<option value="EUR">&euro;</option>
+				<option value="USD">$</option>
+			</select>
+			<input type="submit" name="submit" value="Thanks!" />
+			<input type="hidden" name="cmd" value="_xclick" />
+			<input type="hidden" name="business" value="jay.salvat@gmail.com" />
+			<input type="hidden" name="item_name" value="facedetection_plugin" />
+			<input type="hidden" name="item_number" value="FACEDETECTION-DONATE" />
+			<input type="hidden" name="no_shipping" value="1" />
+			<input type="hidden" name="no_note" value="1" />
+			<input type="hidden" name="tax" value="0" />
+			<input type="hidden" name="bn" value="PP-DonationsBF" />
+			<input type="hidden" name="lc" value="US" />
+		</form>
+	</div>
 </body>
 </html>
