@@ -1,0 +1,52 @@
+body {
+	background:#222;
+	color:white;
+	font:12px/1.7 Arial;
+	text-shadow:0px 5px 0px #000;
+}
+a:link, a:visited, a:active {
+	color:#33AACC;
+	text-decoration:none;	
+}
+img {
+	border:1px solid #FFF;	
+}
+h1, h2 {
+	font:bold 50px Arial;
+	letter-spacing:-3px;
+	margin:0;
+	padding:0; 
+}
+h2 {
+	font:25px Arial;
+	letter-spacing:0px;
+	margin-bottom:5px;
+}
+ul {
+	margin:10px 0;
+}
+ul, li {
+	list-style:none;
+	margin:0;
+	padding:0; 
+}
+pre {
+	background:#333;
+	margin:10px 0;
+	padding:20px;
+}
+#container {   
+  	margin:5px auto; 
+  	text-align:center;
+}
+#try {
+	display:block;
+	font:bold 16px Arial;
+	margin:10px;
+	outline:none;
+}
+#footer {
+	background:#333;
+	margin:10px 0;
+	padding:20px;
+}
