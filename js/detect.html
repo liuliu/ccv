@@ -5,8 +5,9 @@
 <title>Face Detector</title>
 </head>
 <body>
-<div style="margin-bottom:6px">Source Code: <a href="http://github.com/liuliu/ccv/tree/current/js">Here</a></div>
-URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:10px" type="button" value="Detect" onclick="detect()" />
+URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:16px" type="button" value="Detect" onclick="detect()" /><input style="margin-left:16px" type="button" value="Detect in Background (BETA)" onclick="backgroundDetect()" />
+<div style="margin-top:6px">Source Code: <a href="http://github.com/liuliu/ccv/tree/current/js">Here</a></div>
+<div style="margin-top:6px">Using web worker, but serialization in Google Chrome makes it unusable.</div>
 <div id="elapsed_time" style="margin-top:20px"></div>
 <div style="margin-top:20px"><canvas id="output"></canvas></div>
 <script type="text/javascript" src="ccv.js"></script>
@@ -28,21 +29,6 @@ function resizeCanvas(image, canvas) {
 	document.body.removeChild(image);
 }
 
-function grayscale(image) {
-	var canvas = document.createElement("canvas");
-	var ctx = canvas.getContext("2d");
-	/* detect_objects requires gray-scale image */
-	resizeCanvas(image, canvas);
-	ctx.drawImage(image, 0, 0);
-	var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-	var data = imageData.data;
-	var pix1, pix2, pix = canvas.width * canvas.height * 4;
-	while (pix > 0)
-		data[pix -= 4] = data[pix1 = pix + 1] = data[pix2 = pix + 2] = (data[pix] * 0.3 + data[pix1] * 0.59 + data[pix2] * 0.11);
-	ctx.putImageData(imageData, 0, 0);
-	return canvas;
-}
-
 function detect() {
 	var image = new Image();
 	var url = document.getElementById("image").value;
@@ -53,7 +39,10 @@ function detect() {
 	image.onload = function () {
 		/* call main detect_objects function */
 		var elapsed_time = (new Date()).getTime();
-		comp = ccv.detect_objects(grayscale(image), cascade, 5, 1);
+		var comp = ccv.detect_objects({ "canvas" : ccv.grayscale(ccv.pre(image)),
+										"cascade" : cascade,
+										"interval" : 5,
+										"min_neighbors" : 1 });
 		document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
 		resizeCanvas(image, canvas);
 		ctx.drawImage(image, 0, 0);
@@ -62,6 +51,35 @@ function detect() {
 		/* draw detected area */
 		for (var i = 0; i < comp.length; i++)
 			ctx.strokeRect(comp[i].x, comp[i].y, comp[i].width, comp[i].height);
+	}
+}
+
+function backgroundDetect() {
+	var image = new Image();
+	var url = document.getElementById("image").value;
+	window.location.hash = "#" + encodeURIComponent(url);
+	image.src = "loader.php?src=" + encodeURIComponent((url.substr(0, 7).toLowerCase() == "http://") ? url : "http://" + url);
+	var canvas = document.getElementById("output");
+	var ctx = canvas.getContext("2d");
+	image.onload = function () {
+		/* call main detect_objects function */
+		var elapsed_time = (new Date()).getTime();
+		function complete(comp) {
+			document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
+			resizeCanvas(image, canvas);
+			ctx.drawImage(image, 0, 0);
+			ctx.lineWidth = 3;
+			ctx.strokeStyle = "#f00";
+			/* draw detected area */
+			for (var i = 0; i < comp.length; i++)
+				ctx.strokeRect(comp[i].x, comp[i].y, comp[i].width, comp[i].height);
+		}
+		ccv.detect_objects({ "canvas" : ccv.grayscale(ccv.pre(image)),
+							 "cascade" : cascade,
+							 "interval" : 5,
+							 "min_neighbors" : 1,
+							 "complete" : complete,
+							 "worker_num" : 1});
 	}
 }
 

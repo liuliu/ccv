@@ -57,38 +57,38 @@ void write_json(ccv_bbf_classifier_cascade_t* cascade)
 	int i, j, k;
 	for (i = 0; i < cascade->count; i++)
 	{
-		printf("{\"count\" : %d, \"threshold\" : %f, \"feature\" : [",
+		printf("{\"count\":%d,\"threshold\":%le,\"feature\":[",
 			   cascade->stage_classifier[i].count, cascade->stage_classifier[i].threshold);
 		for (j = 0; j < cascade->stage_classifier[i].count; j++)
 		{
-			printf("{\"size\" : %d, \"px\" : [%d", cascade->stage_classifier[i].feature[j].size, cascade->stage_classifier[i].feature[j].px[0]);
+			printf("{\"size\":%d,\"px\":[%d", cascade->stage_classifier[i].feature[j].size, cascade->stage_classifier[i].feature[j].px[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].px[k]);
-			printf("], \"py\" : [%d", cascade->stage_classifier[i].feature[j].py[0]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].px[k]);
+			printf("],\"py\":[%d", cascade->stage_classifier[i].feature[j].py[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].py[k]);
-			printf("], \"pz\" : [%d", cascade->stage_classifier[i].feature[j].pz[0]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].py[k]);
+			printf("],\"pz\":[%d", cascade->stage_classifier[i].feature[j].pz[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].pz[k]);
-			printf("], \"nx\" : [%d", cascade->stage_classifier[i].feature[j].nx[0]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].pz[k]);
+			printf("],\"nx\":[%d", cascade->stage_classifier[i].feature[j].nx[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].nx[k]);
-			printf("], \"ny\" : [%d", cascade->stage_classifier[i].feature[j].ny[0]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].nx[k]);
+			printf("],\"ny\":[%d", cascade->stage_classifier[i].feature[j].ny[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].ny[k]);
-			printf("], \"nz\" : [%d", cascade->stage_classifier[i].feature[j].nz[0]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].ny[k]);
+			printf("],\"nz\":[%d", cascade->stage_classifier[i].feature[j].nz[0]);
 			for (k = 1; k < cascade->stage_classifier[i].feature[j].size; k++)
-				printf(", %d", cascade->stage_classifier[i].feature[j].nz[k]);
+				printf(",%d", cascade->stage_classifier[i].feature[j].nz[k]);
 			if (j < cascade->stage_classifier[i].count - 1)
-				printf("]}, ");
+				printf("]},");
 			else
 				printf("]}");
 		}
-		printf("], \"alpha\" : [%f, %f", cascade->stage_classifier[i].alpha[0], cascade->stage_classifier[i].alpha[1]);
+		printf("],\"alpha\":[%le,%le", cascade->stage_classifier[i].alpha[0], cascade->stage_classifier[i].alpha[1]);
 		for (j = 1; j < cascade->stage_classifier[i].count; j++)
-			printf(", %f, %f", cascade->stage_classifier[i].alpha[j * 2], cascade->stage_classifier[i].alpha[j * 2 + 1]);
+			printf(",%le,%le", cascade->stage_classifier[i].alpha[j * 2], cascade->stage_classifier[i].alpha[j * 2 + 1]);
 		if (i < cascade->count - 1)
-			printf("]}, ");
+			printf("]},");
 		else
 			printf("]}");
 	}
