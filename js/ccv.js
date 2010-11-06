@@ -134,10 +134,12 @@ var ccv = {
 
 	detect_objects : function (canvas, cascade, interval, min_neighbors, complete, worker_num, setup) {
 		var params = ccv.__get_named_arguments(arguments, ["canvas", "cascade", "interval", "min_neighbors", "complete", "worker_num", "setup"]);
-		var cascade = params.cascade;
-		var scale = Math.pow(2, 1 / (params.interval + 1));
-		var next = params.interval + 1;
-		var scale_upto = (cascade !== undefined) ? Math.floor(Math.log(Math.min(cascade.width, cascade.height)) / Math.log(scale)) : 0;
+		if (!params.setup) {
+			var cascade = params.cascade;
+			var scale = Math.pow(2, 1 / (params.interval + 1));
+			var next = params.interval + 1;
+			var scale_upto = Math.floor(Math.log(Math.min(params.canvas.width / cascade.width, params.canvas.height / cascade.height)) / Math.log(scale));
+		}
 		var pre = function () {
 			var pyr = new Array((scale_upto + next * 2) * 4);
 			var ret = new Array((scale_upto + next * 2) * 4);
@@ -196,7 +198,7 @@ var ccv = {
 			var cascade = params.cascade;
 			var scale = Math.pow(2, 1 / (params.interval + 1));
 			var next = params.interval + 1;
-			var scale_upto = Math.floor(Math.log(Math.min(cascade.width, cascade.height)) / Math.log(scale));
+			var scale_upto = Math.floor(Math.log(Math.min(pyr[0].width / cascade.width, pyr[0].height / cascade.height)) / Math.log(scale));
 			var i, j, k, x, y, q;
 			var scale_x = 1, scale_y = 1;
 			var dx = [0, 1, 0, 1];
