@@ -1,3 +1,81 @@
+if (parallable === undefined) {
+	var parallable = function (file, funct) {
+		parallable.core[funct.toString()] = funct().core;
+		return function () {
+			var i;
+			var async, worker_num, params;
+			if (arguments.length > 1) {
+				async = arguments[arguments.length - 2];
+				worker_num = arguments[arguments.length - 1];
+				params = new Array(arguments.length - 2);
+				for (i = 0; i < arguments.length - 2; i++)
+					params[i] = arguments[i];
+			} else {
+				async = arguments[0].async;
+				worker_num = arguments[0].worker;
+				params = arguments[0];
+				delete params["async"];
+				delete params["worker"];
+				params = [params];
+			}
+			var scope = { "shared" : {} };
+			var ctrl = funct.apply(scope, params);
+			if (async) {
+				var executed = 0;
+				var outputs = new Array(worker_num);
+				var inputs = ctrl.pre.apply(scope, [worker_num]);
+				/* sanitize scope shared because for Chrome/WebKit, worker only support JSONable data */
+				for (i in scope.shared)
+					/* delete function, if any */
+					if (typeof scope.shared[i] == "function")
+						delete scope.shared[i];
+					/* delete DOM object, if any */
+					else if (scope.shared[i].tagName !== undefined)
+						delete scope.shared[i];
+				return function (complete, error) {
+					for (i = 0; i < worker_num; i++) {
+						var worker = new Worker(file);
+						worker.onmessage = (function (i) {
+							return function (event) {
+								outputs[i] = (typeof event.data == "string") ? JSON.parse(event.data) : event.data;
+								executed++;
+								if (executed == worker_num)
+									complete(ctrl.post.apply(scope, [outputs]));
+							}
+						})(i);
+						var msg = { "input" : inputs[i],
+									"name" : funct.toString(),
+									"shared" : scope.shared,
+									"id" : i,
+									"worker" : params.worker_num };
+						try {
+							worker.postMessage(msg);
+						} catch (e) {
+							worker.postMessage(JSON.stringify(msg));
+						}
+					}
+				}
+			} else {
+				return ctrl.post.apply(scope, [[ctrl.core.apply(scope, [ctrl.pre.apply(scope, [1])[0], 0, 1])]]);
+			}
+		}
+	};
+	parallable.core = {};
+}
+
+function get_named_arguments(params, names) {
+	if (params.length > 1) {
+		var new_params = {};
+		for (var i = 0; i < names.length; i++)
+			new_params[names[i]] = params[i];
+		return new_params;
+	} else if (params.length == 1) {
+		return params[0];
+	} else {
+		return {};
+	}
+}
+
 var ccv = {
 	pre : function (image) {
 		if (image.tagName.toLowerCase() == "img") {
@@ -26,37 +104,6 @@ var ccv = {
 		return canvas;
 	},
 
-	__get_named_arguments : function (params, names) {
-		if (params.length > 1) {
-			var new_params = {};
-			for (var i = 0; i < names.length; i++)
-				new_params[names[i]] = params[i];
-			return new_params;
-		}
-		return params[0];
-	},
-
-	__worker_scripts : {},
-
-	spawn : function (pre, script, params, post, complete, worker_num) {
-		var params = ccv.__get_named_arguments(arguments, ["pre", "script", "params", "post", "complete", "worker_num"]);
-		var worker = new Worker("ccv.js");
-		worker.onmessage = function (event) {
-			params.complete(params.post((typeof event.data == "string") ? JSON.parse(event.data) : event.data));
-		};
-		var msg = { "data" : params.pre(),
-					"script" : params.script,
-					"params" : params.params,
-					"id" : 0,
-					"worker_num" : params.worker_num };
-		try {
-			worker.postMessage(msg);
-		} catch (e) {
-			worker.postMessage(JSON.stringify(msg));
-		}
-		return worker;
-	},
-
 	array_group : function (seq, gfunc) {
 		var i, j;
 		var node = new Array(seq.length);
@@ -64,28 +111,23 @@ var ccv = {
 			node[i] = {"parent" : -1,
 					   "element" : seq[i],
 					   "rank" : 0};
-		for (i = 0; i < seq.length; i++)
-		{
+		for (i = 0; i < seq.length; i++) {
 			if (!node[i].element)
 				continue;
 			var root = i;
 			while (node[root].parent != -1)
 				root = node[root].parent;
-			for (j = 0; j < seq.length; j++)
-			{
-				if( i != j && node[j].element && gfunc(node[i].element, node[j].element))
-				{
+			for (j = 0; j < seq.length; j++) {
+				if( i != j && node[j].element && gfunc(node[i].element, node[j].element)) {
 					var root2 = j;
 
 					while (node[root2].parent != -1)
 						root2 = node[root2].parent;
 
-					if(root2 != root)
-					{
+					if(root2 != root) {
 						if(node[root].rank > node[root2].rank)
 							node[root2].parent = root;
-						else
-						{
+						else {
 							node[root].parent = root2;
 							if (node[root].rank == node[root2].rank)
 							node[root2].rank++;
@@ -94,8 +136,7 @@ var ccv = {
 
 						/* compress path from node2 to the root: */
 						var temp, node2 = j;
-						while (node[node2].parent != -1)
-						{
+						while (node[node2].parent != -1) {
 							temp = node2;
 							node2 = node[node2].parent;
 							node[temp].parent = root;
@@ -103,8 +144,7 @@ var ccv = {
 
 						/* compress path from node to the root: */
 						node2 = i;
-						while (node[node2].parent != -1)
-						{
+						while (node[node2].parent != -1) {
 							temp = node2;
 							node2 = node[node2].parent;
 							node[temp].parent = root;
@@ -115,12 +155,10 @@ var ccv = {
 		}
 		var idx = new Array(seq.length);
 		var class_idx = 0;
-		for(i = 0; i < seq.length; i++)
-		{
+		for(i = 0; i < seq.length; i++) {
 			j = -1;
 			var node1 = i;
-			if(node[node1].element)
-			{
+			if(node[node1].element) {
 				while (node[node1].parent != -1)
 					node1 = node[node1].parent;
 				if(node[node1].rank >= 0)
@@ -132,23 +170,34 @@ var ccv = {
 		return {"index" : idx, "cat" : class_idx};
 	},
 
-	detect_objects : function (canvas, cascade, interval, min_neighbors, complete, worker_num, setup) {
-		var params = ccv.__get_named_arguments(arguments, ["canvas", "cascade", "interval", "min_neighbors", "complete", "worker_num", "setup"]);
-		if (!params.setup) {
-			var cascade = params.cascade;
-			var scale = Math.pow(2, 1 / (params.interval + 1));
-			var next = params.interval + 1;
-			var scale_upto = Math.floor(Math.log(Math.min(params.canvas.width / cascade.width, params.canvas.height / cascade.height)) / Math.log(scale));
+	detect_objects : parallable("ccv.js", function (canvas, cascade, interval, min_neighbors) {
+		if (this.shared !== undefined) {
+			var params = get_named_arguments(arguments, ["canvas", "cascade", "interval", "min_neighbors"]);
+			this.shared.canvas = params.canvas;
+			this.shared.interval = params.interval;
+			this.shared.min_neighbors = params.min_neighbors;
+			this.shared.cascade = params.cascade;
+			this.shared.scale = Math.pow(2, 1 / (params.interval + 1));
+			this.shared.next = params.interval + 1;
+			this.shared.scale_upto = Math.floor(Math.log(Math.min(params.canvas.width / params.cascade.width, params.canvas.height / params.cascade.height)) / Math.log(this.shared.scale));
+			var i;
+			for (i = 0; i < this.shared.cascade.stage_classifier.length; i++)
+				this.shared.cascade.stage_classifier[i].orig_feature = this.shared.cascade.stage_classifier[i].feature;
 		}
-		var pre = function () {
+		function pre(worker_num) {
+			var canvas = this.shared.canvas;
+			var interval = this.shared.interval;
+			var scale = this.shared.scale;
+			var next = this.shared.next;
+			var scale_upto = this.shared.scale_upto;
 			var pyr = new Array((scale_upto + next * 2) * 4);
 			var ret = new Array((scale_upto + next * 2) * 4);
-			pyr[0] = params.canvas;
+			pyr[0] = canvas;
 			ret[0] = { "width" : pyr[0].width,
 					   "height" : pyr[0].height,
 					   "data" : pyr[0].getContext("2d").getImageData(0, 0, pyr[0].width, pyr[0].height).data };
 			var i;
-			for (i = 1; i <= params.interval; i++) {
+			for (i = 1; i <= interval; i++) {
 				pyr[i * 4] = document.createElement("canvas");
 				pyr[i * 4].width = Math.floor(pyr[0].width / Math.pow(scale, i));
 				pyr[i * 4].height = Math.floor(pyr[0].height / Math.pow(scale, i));
@@ -189,16 +238,15 @@ var ccv = {
 								   "height" : pyr[i * 4 + 3].height,
 								   "data" : pyr[i * 4 + 3].getContext("2d").getImageData(0, 0, pyr[i * 4 + 3].width, pyr[i * 4 + 3].height).data };
 			}
-			for (i = 0; i < cascade.stage_classifier.length; i++)
-				cascade.stage_classifier[i].orig_feature = cascade.stage_classifier[i].feature;
-			return ret;
+			return [ret];
 		};
 
-		var work = function (pyr, params, id, worker_num) {
-			var cascade = params.cascade;
-			var scale = Math.pow(2, 1 / (params.interval + 1));
-			var next = params.interval + 1;
-			var scale_upto = Math.floor(Math.log(Math.min(pyr[0].width / cascade.width, pyr[0].height / cascade.height)) / Math.log(scale));
+		function core(pyr, id, worker_num) {
+			var cascade = this.shared.cascade;
+			var interval = this.shared.interval;
+			var scale = this.shared.scale;
+			var next = this.shared.next;
+			var scale_upto = this.shared.scale_upto;
 			var i, j, k, x, y, q;
 			var scale_x = 1, scale_y = 1;
 			var dx = [0, 1, 0, 1];
@@ -300,11 +348,18 @@ var ccv = {
 			return seq;
 		};
 
-		var post = function (seq) {
+		function post(seq) {
+			var min_neighbors = this.shared.min_neighbors;
+			var cascade = this.shared.cascade;
+			var interval = this.shared.interval;
+			var scale = this.shared.scale;
+			var next = this.shared.next;
+			var scale_upto = this.shared.scale_upto;
 			var i, j;
 			for (i = 0; i < cascade.stage_classifier.length; i++)
 				cascade.stage_classifier[i].feature = cascade.stage_classifier[i].orig_feature;
-			if (!(params.min_neighbors > 0))
+			seq = seq[0];
+			if (!(min_neighbors > 0))
 				return seq;
 			else {
 				var result = ccv.array_group(seq, function (r1, r2) {
@@ -351,7 +406,7 @@ var ccv = {
 				for(i = 0; i < ncomp; i++)
 				{
 					var n = comps[i].neighbors;
-					if (n >= params.min_neighbors)
+					if (n >= min_neighbors)
 						seq2.push({"x" : (comps[i].x * 2 + n) / (2 * n),
 								   "y" : (comps[i].y * 2 + n) / (2 * n),
 								   "width" : (comps[i].width * 2 + n) / (2 * n),
@@ -389,24 +444,14 @@ var ccv = {
 				return result_seq;
 			}
 		};
-		if (params.setup) {
-			ccv.__worker_scripts.detect_objects = work;
-		} else {
-			if (params.complete === undefined) {
-				return post(work(pre(), params, 0, 1));
-			} else {
-				ccv.spawn(pre, "detect_objects", { "cascade" : params.cascade,
-												   "interval" : params.interval,
-												   "min_neighbors" : params.min_neighbors }, post, params.complete, params.worker_num);
-			}
-		}
-	}
+		return { "pre" : pre, "core" : core, "post" : post };
+	})
 }
 
 onmessage = function (event) {
 	var data = (typeof event.data == "string") ? JSON.parse(event.data) : event.data;
-	ccv[data.script]({"setup" : true});
-	var result = ccv.__worker_scripts[data.script](data.data, data.params, data.id, data.worker_num);
+	var scope = { "shared" : data.shared };
+	var result = parallable.core[data.name].apply(scope, [data.input, data.id, data.worker]);
 	try {
 		postMessage(result);
 	} catch (e) {

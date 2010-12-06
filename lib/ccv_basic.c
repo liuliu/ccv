@@ -227,6 +227,136 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 	ccv_matrix_free(mg);
 }
 
+/* canny detector is adopted from OpenCV */
+void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double low_thresh, double high_thresh)
+{
+	char identifier[64];
+	memset(identifier, 0, 64);
+	snprintf(identifier, 64, "ccv_canny(%lf,%lf)", low_thresh, high_thresh);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 64, a->sig, 0);
+	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
+	ccv_cache_return(db, );
+	ccv_dense_matrix_t* dx = 0;
+	ccv_dense_matrix_t* dy = 0;
+	ccv_sobel(a, &dx, 0, 1, 0);
+	ccv_sobel(a, &dy, 0, 0, 1);
+	int low = (int)(low_thresh + 0.5);
+	int high = (int)(high_thresh + 0.5);
+	unsigned char* buffer = (unsigned char*)malloc((a->rows + 2 + 3 * sizeof(int)) * (a->cols + 2));
+	int mapstep = a->cols + 2;
+	int* mbuf[3];
+	mbuf[0] = (int*)buffer;
+	mbuf[1] = mbuf[0] + a->cols + 2;
+	mbuf[2] = mbuf[1] + a->cols + 2;
+
+	unsigned char* map = (unsigned char*)(mbuf[2] + a->cols + 2);
+	memset(mbuf[0], 0, (a->cols + 2) * sizeof(int));
+	memset(map, 1, mapstep);
+	memset(map + mapstep * (a->rows + 1), 1, mapstep);
+	int maxsize = a->rows * a->cols;
+	unsigned char** stack = (unsigned char**)malloc(maxsize * sizeof(unsigned char*));
+	unsigned char** stack_bottom = stack;
+	unsigned char** stack_top = stack;
+#define __canny_push(d) *(d) = (unsigned char)2, *stack_top++ = (d)
+#define __canny_pop(d) (d) = *--stack_top
+	int i, j;
+	for (i = 0; i <= a->rows; i++)
+	{
+		int* mg = mbuf[(i > 0) + 1] + 1;
+		const int* _dx = dx->data.i + dx->cols * i;
+		const int* _dy = dy->data.i + dy->cols * i;
+		int x, y;
+		if (i < a->rows)
+		{
+			mg[-1] = mg[a->cols] = 0;
+			for (j = 0; j < a->cols; j++)
+				mg[j] = abs(_dx[j]) + abs(_dy[j]);
+		} else
+			memset(mg - 1, 0, (a->cols + 2) * sizeof(int));
+		if (i == 0)
+			continue;
+		int magstep1 = (int)(mbuf[2] - mbuf[1]);
+		int magstep2 = (int)(mbuf[0] - mbuf[1]);
+		unsigned char* _map = map + mapstep * i + 1;
+		_map[-1] = _map[a->cols] = 1;
+		mg = mbuf[1] + 1;
+		_dx = dx->data.i + dx->cols * (i - 1);
+		_dy = dy->data.i + dy->cols * (i - 1);
+		int prev_flag = 0;
+		for (j = 0; j < a->cols; j++)
+		{
+#define CANNY_SHIFT 15
+#define TG22 (int)(0.4142135623730950488016887242097 * (1 << CANNY_SHIFT) + 0.5)
+#define __ccv_high_watermark { if (m > high && !prev_flag && _map[j - mapstep] != 2) \
+	{ \
+		__canny_push(_map + j); \
+		prev_flag = 1; \
+	} else \
+		_map[j] = 0; \
+	continue; }
+			x = abs(_dx[j]);
+			y = abs(_dy[j]);
+			int s = _dx[j] ^ _dy[j];
+			int m = mg[j];
+			if (m > low)
+			{
+				int tg22x = x * TG22;
+				int tg67x = tg22x + ((x + x) << CANNY_SHIFT);
+				y <<= CANNY_SHIFT;
+				if (y < tg22x)
+				{
+					if (m > mg[j - 1] && m >= mg[j + 1])
+						__ccv_high_watermark;
+				} else if (y > tg67x) {
+					if (m > mg[j + magstep2] && m >= mg[j + magstep1])
+						__ccv_high_watermark;
+				} else {
+					s = s < 0 ? - 1 : 1;
+					if (m > mg[j + magstep2 - s] && m > mg[j + magstep1 + s])
+						__ccv_high_watermark;
+				}
+			}
+			prev_flag = 0;
+			_map[j] = 1;
+#undef __ccv_high_watermark
+#undef TG22
+#undef CANNY_SHIFT
+		}
+		mg = mbuf[0];
+		mbuf[0] = mbuf[1];
+		mbuf[1] = mbuf[2];
+		mbuf[2] = mg;
+	}
+	int dr[] = {-1, 1, -mapstep - 1, -mapstep, -mapstep + 1, mapstep - 1, mapstep, mapstep + 1};
+	while (stack_top > stack_bottom)
+	{
+		unsigned char* m;
+		if ((stack_top - stack_bottom) + 8 > maxsize)
+		{
+			int sz = (int)(stack_top - stack_bottom);
+			maxsize = ccv_max(maxsize * 3 / 2, maxsize + 8);
+			stack = (unsigned char**)realloc(stack, maxsize * sizeof(unsigned char*));
+			stack_bottom = stack;
+			stack_top = stack_bottom + sz;
+		}
+		__canny_pop(m);
+		for (i = 0; i < 8; i++)
+			if (!m[dr[i]])
+				__canny_push(m + dr[i]);
+	}
+#undef __canny_pop
+#undef __canny_push
+	for (i = 0; i < a->rows; i++)
+	{
+		const unsigned char* _map = map + mapstep * (i + 1) + 1;
+		for (j = 0; j < a->cols; j++)
+			db->data.i[j + i * db->cols] = (unsigned char)-(_map[j] >> 1);
+	}
+	free(buffer);
+	free(stack);
+}
+
 /* area interpolation resample is adopted from OpenCV */
 
 typedef struct {

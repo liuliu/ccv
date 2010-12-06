@@ -474,6 +474,7 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
+void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double low_thresh, double high_thresh);
 
 enum {
 	CCV_INTER_AREA   = 0x01,
@@ -545,7 +546,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
  * computation and higher accuracy (current highest accuracy close-source face detector is based
  * on the same algorithm) */
 
-#define CCV_BBF_POINT_MAX (6)
+#define CCV_BBF_POINT_MAX (8)
 #define CCV_BBF_POINT_MIN (3)
 
 typedef struct {

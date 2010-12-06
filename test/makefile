@@ -1,8 +1,8 @@
-CC = gcc
+CC = clang
 LDFLAGS = -L"../lib" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
 CXXFLAGS = -O3 -msse2 -Wall -I"../lib"
 
-TARGETS = sobel_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test sample_up_test daisy_test array_test group_test slice_test flip_test minimize_test gc_test blur_test sift_test normalize_test
+TARGETS = sobel_test canny_test hog_test cache_test sparse_matrix_test io_test filter_test algebra_test compress_matrix_test atan2_test resample_test sample_down_test sample_up_test daisy_test array_test group_test slice_test flip_test minimize_test gc_test blur_test sift_test normalize_test
 
 all: $(TARGETS)
 

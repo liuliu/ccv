@@ -5,7 +5,7 @@
 <title>Face Detector</title>
 </head>
 <body>
-URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:16px" type="button" value="Detect" onclick="detect()" /><input style="margin-left:16px" type="button" value="Detect in Background (BETA)" onclick="backgroundDetect()" />
+URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:16px" type="button" value="Detect" onclick="detect()" /><input style="margin-left:16px" type="button" value="Detect with Web Worker (BETA)" onclick="detectAsync()" />
 <div style="margin-top:6px">Source Code: <a href="http://github.com/liuliu/ccv/tree/current/js">Here</a></div>
 <div style="margin-top:6px">Using web worker, but serialization in Google Chrome makes it unusable.</div>
 <div id="elapsed_time" style="margin-top:20px"></div>
@@ -34,16 +34,18 @@ function detect() {
 	var url = document.getElementById("image").value;
 	window.location.hash = "#" + encodeURIComponent(url);
 	image.src = "loader.php?src=" + encodeURIComponent((url.substr(0, 7).toLowerCase() == "http://") ? url : "http://" + url);
+	document.getElementById("elapsed_time").innerHTML = "Loading image from web ...";
 	var canvas = document.getElementById("output");
 	var ctx = canvas.getContext("2d");
 	image.onload = function () {
+		document.getElementById("elapsed_time").innerHTML = "Detecting ...";
 		/* call main detect_objects function */
 		var elapsed_time = (new Date()).getTime();
 		var comp = ccv.detect_objects({ "canvas" : ccv.grayscale(ccv.pre(image)),
 										"cascade" : cascade,
 										"interval" : 5,
 										"min_neighbors" : 1 });
-		document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
+		document.getElementById("elapsed_time").innerHTML = "Elapsed time : " + ((new Date()).getTime() - elapsed_time).toString() + "ms";
 		resizeCanvas(image, canvas);
 		ctx.drawImage(image, 0, 0);
 		ctx.lineWidth = 3;
@@ -54,18 +56,25 @@ function detect() {
 	}
 }
 
-function backgroundDetect() {
+function detectAsync() {
 	var image = new Image();
 	var url = document.getElementById("image").value;
 	window.location.hash = "#" + encodeURIComponent(url);
 	image.src = "loader.php?src=" + encodeURIComponent((url.substr(0, 7).toLowerCase() == "http://") ? url : "http://" + url);
+	document.getElementById("elapsed_time").innerHTML = "Loading image from web ...";
 	var canvas = document.getElementById("output");
 	var ctx = canvas.getContext("2d");
 	image.onload = function () {
 		/* call main detect_objects function */
 		var elapsed_time = (new Date()).getTime();
-		function complete(comp) {
-			document.getElementById("elapsed_time").innerHTML = ((new Date()).getTime() - elapsed_time).toString() + "ms";
+		document.getElementById("elapsed_time").innerHTML = "Detecting ...";
+		ccv.detect_objects({ "canvas" : ccv.grayscale(ccv.pre(image)),
+							 "cascade" : cascade,
+							 "interval" : 5,
+							 "min_neighbors" : 1,
+							 "async" : true,
+							 "worker" : 1 })(function (comp) {
+			document.getElementById("elapsed_time").innerHTML = "Elapsed time : " + ((new Date()).getTime() - elapsed_time).toString() + "ms";
 			resizeCanvas(image, canvas);
 			ctx.drawImage(image, 0, 0);
 			ctx.lineWidth = 3;
@@ -73,13 +82,7 @@ function backgroundDetect() {
 			/* draw detected area */
 			for (var i = 0; i < comp.length; i++)
 				ctx.strokeRect(comp[i].x, comp[i].y, comp[i].width, comp[i].height);
-		}
-		ccv.detect_objects({ "canvas" : ccv.grayscale(ccv.pre(image)),
-							 "cascade" : cascade,
-							 "interval" : 5,
-							 "min_neighbors" : 1,
-							 "complete" : complete,
-							 "worker_num" : 1});
+		});
 	}
 }
 
