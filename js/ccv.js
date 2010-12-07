@@ -21,18 +21,18 @@ if (parallable === undefined) {
 			var scope = { "shared" : {} };
 			var ctrl = funct.apply(scope, params);
 			if (async) {
-				var executed = 0;
-				var outputs = new Array(worker_num);
-				var inputs = ctrl.pre.apply(scope, [worker_num]);
-				/* sanitize scope shared because for Chrome/WebKit, worker only support JSONable data */
-				for (i in scope.shared)
-					/* delete function, if any */
-					if (typeof scope.shared[i] == "function")
-						delete scope.shared[i];
-					/* delete DOM object, if any */
-					else if (scope.shared[i].tagName !== undefined)
-						delete scope.shared[i];
 				return function (complete, error) {
+					var executed = 0;
+					var outputs = new Array(worker_num);
+					var inputs = ctrl.pre.apply(scope, [worker_num]);
+					/* sanitize scope shared because for Chrome/WebKit, worker only support JSONable data */
+					for (i in scope.shared)
+						/* delete function, if any */
+						if (typeof scope.shared[i] == "function")
+							delete scope.shared[i];
+						/* delete DOM object, if any */
+						else if (scope.shared[i].tagName !== undefined)
+							delete scope.shared[i];
 					for (i = 0; i < worker_num; i++) {
 						var worker = new Worker(file);
 						worker.onmessage = (function (i) {
