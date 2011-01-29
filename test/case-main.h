@@ -263,7 +263,7 @@ int main(int argc, char** argv)
 			if (result == 0)
 			{
 				pass++;
-				printf("\r\033[0;34m[%d/%d]\033[0;30m \033[1;32m[PASS]\033[0;30m %s\n", j, total, test_suite->name);
+				printf("\r\033[0;34m[%d/%d]\033[0;30m \033[1;32m[PASS]\033[0;30m %s    \n", j, total, test_suite->name);
 			} else {
 				fail++;
 				printf("\n\033[0;34m[%d/%d]\033[0;30m \033[1;31m[FAIL]\033[0;30m %s\n", j, total, test_suite->name);
