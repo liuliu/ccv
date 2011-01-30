@@ -345,6 +345,7 @@ enum {
 	CCV_SERIAL_BMP_FILE       = 0x021,
 	CCV_SERIAL_JPEG_FILE      = 0x022,
 	CCV_SERIAL_PNG_FILE       = 0x023,
+	CCV_SERIAL_BINARY_FILE    = 0x024,
 };
 
 enum {
@@ -389,6 +390,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
 void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x);
+int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b);
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int type, int y, int x, int rows, int cols);
 
 /* basic data structures */

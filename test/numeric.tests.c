@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "case.h"
 
 int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
@@ -20,7 +21,7 @@ int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, v
 	return 0;
 }
 
-int main(int argc, char** argv)
+TEST_CASE("minimize rosenbrock")
 {
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 2, CCV_64F | CCV_C1, 0, 0);
 	ccv_zero(x);
@@ -33,9 +34,14 @@ int main(int argc, char** argv)
 	params.sig = 0.1;
 	params.rho = 0.05;
 	ccv_minimize(x, 25, 1.0, rosenbrock, params, &steps);
-	printf("step(s) : %d\n", steps);
-	int i = 0;
-	for (i = 0; i < 2; i++)
-		printf("%f\n", x->data.db[i]);
-	return 0;
+	double dx[2] = { 1, 1 };
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, x->data.db, dx, 2, 1e-6, "the global minimal should be at (1.0, 1.0)");
+	ccv_matrix_free(x);
+	ccv_garbage_collect();
 }
+
+TEST_CASE("fftw-based filter on Gaussian kernel")
+{
+}
+
+#include "case_main.h"

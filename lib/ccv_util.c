@@ -361,7 +361,7 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 				ccv_set_sparse_matrix_cell(mat, i, csm->index[j], csm->data.ptr + CCV_GET_DATA_TYPE_SIZE(csm->type) * j);
 }
 
-int ccv_matrix_equal(ccv_matrix_t* a, ccv_matrix_t* b)
+int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 {
 	int a_type = *(int*)a;
 	int b_type = *(int*)b;

@@ -12,6 +12,7 @@
 #include "io/__ccv_io_libpng.c"
 #endif
 #include "io/__ccv_io_bmp.c"
+#include "io/__ccv_io_binary.c"
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
@@ -29,6 +30,8 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 			type = CCV_SERIAL_JPEG_FILE;
 		else if (memcmp(sig, "BM", 2) == 0)
 			type = CCV_SERIAL_BMP_FILE;
+		else if (memcmp(sig, "CCVBINDM", 8) == 0)
+			type = CCV_SERIAL_BINARY_FILE;
 		fseek(fd, 0, SEEK_SET);
 	}
 	switch (type & 0XFF)
@@ -36,32 +39,23 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 #ifdef HAVE_LIBJPEG
 		case CCV_SERIAL_JPEG_FILE:
 			__ccv_unserialize_jpeg_fd(fd, x, ctype);
-			if (*x != 0)
-			{
-				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
-				(*x)->type &= ~CCV_REUSABLE;
-			}
 			break;
 #endif
 #ifdef HAVE_LIBPNG
 		case CCV_SERIAL_PNG_FILE:
 			__ccv_unserialize_png_fd(fd, x, ctype);
-			if (*x != 0)
-			{
-				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
-				(*x)->type &= ~CCV_REUSABLE;
-			}
 			break;
 #endif
 		case CCV_SERIAL_BMP_FILE:
 			__ccv_unserialize_bmp_fd(fd, x, ctype);
-			if (*x != 0)
-			{
-				(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
-				(*x)->type &= ~CCV_REUSABLE;
-			}
 			break;
-
+		case CCV_SERIAL_BINARY_FILE:
+			__ccv_unserialize_binary_fd(fd, x, ctype);
+	}
+	if (*x != 0)
+	{
+		(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
+		(*x)->type &= ~CCV_REUSABLE;
 	}
 	if (type & CCV_SERIAL_ANY_FILE)
 		fclose(fd);
@@ -86,6 +80,10 @@ int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* 
 			*len = 0;
 			break;
 #endif
+		case CCV_SERIAL_BINARY_FILE:
+			__ccv_serialize_binary_fd(mat, fd, conf);
+			*len = 0;
+			break;
 	}
 	if (type & CCV_SERIAL_ANY_FILE)
 		fclose(fd);

@@ -20,7 +20,7 @@ TEST_CASE("matrix multiplication")
 	ccv_dense_matrix_t* y = 0;
 	ccv_gemm(a, b, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&y, 0);
 	double hy[4] = {470.760000, 471.220000, 572.860000, 573.420000};
-	REQUIRE_EQ_ARRAY_WITH_TOLERANCE(double, hy, y->data.db, 4, 1e-6, "2x3, 3x2 matrix multiplication failure");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, hy, y->data.db, 4, 1e-6, "2x3, 3x2 matrix multiplication failure");
 	ccv_matrix_free(a);
 	ccv_matrix_free(b);
 	ccv_matrix_free(y);
@@ -50,9 +50,9 @@ TEST_CASE("vector L2 normalize")
 		dmt->data.fl[i] = i;
 	ccv_normalize(dmt, (ccv_matrix_t**)&dmt, 0, CCV_L2_NORM);
 	float hm[10] = {0.000000, 0.243382, 0.486764, 0.730147, 0.973529, 1.216911, 1.460293, 1.703675, 1.947057, 2.190440};
-	REQUIRE_EQ_ARRAY_WITH_TOLERANCE(float, hm, dmt->data.fl, 10, 1e-6, "10d vector L2 normalize failure");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hm, dmt->data.fl, 10, 1e-6, "10d vector L2 normalize failure");
 	ccv_matrix_free(dmt);
 	ccv_garbage_collect();
 }
 
-#include "case-main.h"
+#include "case_main.h"
