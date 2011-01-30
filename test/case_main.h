@@ -238,13 +238,13 @@ int main(int argc, char** argv)
 		buf = case_parse_map_entry(buf, &start, &end, (char**)&prot, &maj_dev, 0);
 		if (buf == NULL)
 			break;
-	} while ((unsigned long int)start >= (unsigned long int)&__test_header__ || (unsigned long int)&__test_header__ >= (unsigned long int)end);
+	} while ((uint64_t)start >= (uint64_t)&__test_header__ || (uint64_t)&__test_header__ >= (uint64_t)end);
 	char* start_pointer = (char*)start;
 	int total = 0;
 #ifndef offsetof
 #define offsetof(st, m) __builtin_offsetof(st, m)
 #endif
-	int len = (unsigned long int)end - (unsigned long int)start - (sizeof(case_t) - offsetof(case_t, sig));
+	int len = (uint64_t)end - (uint64_t)start - (sizeof(case_t) - offsetof(case_t, sig));
 	int i;
 	for (i = 0; i < len; i++)
 	{

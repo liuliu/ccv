@@ -2,6 +2,7 @@
 #define _GUARD_case_h_
 
 #include <stdio.h>
+#include <stdint.h>
 
 /* the following 3 lines to generate unique name was taken from Catch: https://github.com/philsquared/Catch
  * here is the licence:
@@ -36,7 +37,7 @@ typedef void (*case_f)(char*, int*);
 
 typedef struct {
 	case_f driver;
-	unsigned long int sig;
+	uint64_t sig;
 	char* name;
 } case_t;
 
