@@ -57,9 +57,9 @@ ssize_t case_repeat_read(int fd, char *buf, size_t count)
     return num_read;
 }
 
-/* Determine the length of a file by incrementally reading it into a 	*/
-/* This would be sily to use on a file supporting lseek, but Linux	*/
-/* /proc files usually do not.						*/
+/* Determine the length of a file by incrementally reading it into a buffer */
+/* This would be silly to use on a file supporting lseek, but Linux	*/
+/* /proc files usually do not.	*/
 size_t case_get_file_len(int f)
 {
     size_t total = 0;
