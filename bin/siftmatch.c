@@ -18,7 +18,7 @@ int main(int argc, char** argv)
 	unsigned int elapsed_time = get_current_time();
 	ccv_sift_param_t param;
 	param.noctaves = 3;
-	param.nlevels = 8;
+	param.nlevels = 6;
 	param.up2x = 1;
 	param.edge_threshold = 10;
 	param.norm_threshold = 0;
@@ -56,7 +56,7 @@ int main(int argc, char** argv)
 				mind2 = d;
 			}
 		}
-		if (mind < mind2 * 0.6)
+		if (mind < mind2 * 0.36)
 		{
 			ccv_keypoint_t* op = (ccv_keypoint_t*)ccv_array_get(obj_keypoints, i);
 			ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(image_keypoints, minj);

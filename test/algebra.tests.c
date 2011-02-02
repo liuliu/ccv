@@ -49,7 +49,7 @@ TEST_CASE("vector L2 normalize")
 	for (i = 0; i < 10; i++)
 		dmt->data.fl[i] = i;
 	ccv_normalize(dmt, (ccv_matrix_t**)&dmt, 0, CCV_L2_NORM);
-	float hm[10] = {0.000000, 0.243382, 0.486764, 0.730147, 0.973529, 1.216911, 1.460293, 1.703675, 1.947057, 2.190440};
+	float hm[10] = {0.000000, 0.059235, 0.118470, 0.177705, 0.236940, 0.296174, 0.355409, 0.414644, 0.473879, 0.533114};
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hm, dmt->data.fl, 10, 1e-6, "10d vector L2 normalize failure");
 	ccv_matrix_free(dmt);
 	ccv_garbage_collect();

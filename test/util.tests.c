@@ -123,7 +123,7 @@ TEST_CASE("compress sparse matrix")
 TEST_CASE("matrix slice")
 {
 	ccv_dense_matrix_t* image = 0;
-	ccv_unserialize("data/chessbox.png", &image, CCV_SERIAL_ANY_FILE);
+	ccv_unserialize("../samples/chessbox.png", &image, CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* b = 0;
 	ccv_slice(image, (ccv_matrix_t**)&b, 0, 33, 41, 111, 91);
 	REQUIRE_MATRIX_FILE_EQ(b, "data/chessbox.slice.bin", "should have data/chessbox.png sliced at (33, 41) with 111 x 91");

@@ -24,12 +24,32 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
 	ccv_cache_return(db, 0);
-	double sum = 0;
+	double sum = 0, inv;
 	int i, j;
 	unsigned char* a_ptr = da->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
 	switch (l_type)
 	{
+		case CCV_L1_NORM:
+#define for_block(__for_set, __for_get) \
+			for (i = 0; i < da->rows; i++) \
+			{ \
+				for (j = 0; j < da->cols; j++) \
+					sum += __for_get(a_ptr, j, 0); \
+				a_ptr += da->step; \
+			} \
+			inv = 1.0 / sum; \
+			a_ptr = da->data.ptr; \
+			for (i = 0; i < da->rows; i++) \
+			{ \
+				for (j = 0; j < da->cols; j++) \
+					__for_set(b_ptr, j, __for_get(a_ptr, j, 0) * inv, 0); \
+				a_ptr += da->step; \
+				b_ptr += db->step; \
+			}
+			ccv_matrix_setter(db->type, ccv_matrix_getter, da->type, for_block);
+#undef for_block
+			break;
 		case CCV_L2_NORM:
 #define for_block(__for_set, __for_get) \
 			for (i = 0; i < da->rows; i++) \
@@ -39,7 +59,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 				a_ptr += da->step; \
 			} \
 			sum = sqrt(sum); \
-			double inv = 1.0 / sqrt(sum); \
+			inv = 1.0 / sum; \
 			a_ptr = da->data.ptr; \
 			for (i = 0; i < da->rows; i++) \
 			{ \
