@@ -71,18 +71,21 @@ int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* 
 #ifdef HAVE_LIBJPEG
 		case CCV_SERIAL_JPEG_FILE:
 			__ccv_serialize_jpeg_fd(mat, fd, conf);
-			*len = 0;
+			if (len != 0)
+				*len = 0;
 			break;
 #endif
 #ifdef HAVE_LIBPNG
 		case CCV_SERIAL_PNG_FILE:
 			__ccv_serialize_png_fd(mat, fd, conf);
-			*len = 0;
+			if (len != 0)
+				*len = 0;
 			break;
 #endif
 		case CCV_SERIAL_BINARY_FILE:
 			__ccv_serialize_binary_fd(mat, fd, conf);
-			*len = 0;
+			if (len != 0)
+				*len = 0;
 			break;
 	}
 	if (type & CCV_SERIAL_ANY_FILE)

@@ -197,6 +197,9 @@ void ccv_enable_cache();
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
+/* the new added macro in order to do for loop expansion in a way that, you can
+ * expand a for loop by inserting different code snippet */
+#define ccv_unswitch(param, block, ...) { block(__VA_ARGS__, param); }
 /* unswitch for loop macros */
 #define __ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
 #define __ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
@@ -486,8 +489,8 @@ enum {
 };
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
-void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y);
-void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int off_x, int off_y);
+void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
+void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
 
 enum {
 	CCV_FLIP_X = 0x01,
