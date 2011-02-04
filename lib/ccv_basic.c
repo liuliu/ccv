@@ -558,7 +558,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 		if (CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(db->type) && CCV_GET_DATA_TYPE(db->type) == CCV_GET_DATA_TYPE(a->type))
 			memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
 		else {
-			/* format convert */
+			ccv_shift(a, (ccv_matrix_t**)&db, 0, 0, 0);
 		}
 		return;
 	}
@@ -610,7 +610,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	 * it is not desirable to have that offset when we try to wrap it into our 5-row buffer (
 	 * because in later rearrangement, we have no src_y to backup the arrangement). In
 	 * such micro scope, we managed to stripe 5 addition into one shift and addition. */
-#define for_block(boundary_x_handler, __for_get_a, __for_get, __for_set, __for_set_b) \
+#define for_block(x_block, __for_get_a, __for_get, __for_set, __for_set_b) \
 	for (dy = 0; dy < db->rows; dy++) \
 	{ \
 		for(; sy <= dy * 2 + 2 + src_y; sy++) \
@@ -623,7 +623,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
 				for (k = 0; k < ch; k++) \
 					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + sx + k, 0) * 6 + (__for_get_a(a_ptr, dx * 2 + sx + k - ch, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch, 0)) * 4 + __for_get_a(a_ptr, dx * 2 + sx + k - ch * 2, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch * 2, 0), 0); \
-			boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b); \
+			x_block(__for_get_a, __for_get, __for_set, __for_set_b); \
 		} \
 		unsigned char* rows[5]; \
 		for(k = 0; k < 5; k++) \
@@ -636,18 +636,18 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	/* here is the new technique to expand for loop with condition in manual way */
 	if (src_x > 0)
 	{
-#define boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 		for (dx = cols0 * ch; dx < db->cols * ch; dx += ch) \
 			for (k = 0; k < ch; k++) \
 				__for_set(row, dx + k, __for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (__for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + __for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0);
-		ccv_unswitch(boundary_x_handler, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
-#undef boundary_x_handler
+		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+#undef x_block
 	} else {
-#define boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 		for (k = 0; k < ch; k++) \
 			__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0);
-		ccv_unswitch(boundary_x_handler, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
-#undef boundary_x_handler
+		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+#undef x_block
 	}
 #undef for_block
 }
@@ -673,7 +673,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 	unsigned char* b_ptr = db->data.ptr;
 	/* why src_y * 2: the same argument as in ccv_sample_down */
-#define for_block(boundary_x_handler, __for_get_a, __for_get, __for_set, __for_set_b) \
+#define for_block(x_block, __for_get_a, __for_get, __for_set, __for_set_b) \
 	for (y = 0; y < a->rows; y++) \
 	{ \
 		for (; sy <= y + 1 + src_y; sy++) \
@@ -703,7 +703,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 					__for_set(row, x * 2 + ch + k, (__for_get_a(a_ptr, x + sx + k, 0) + __for_get_a(a_ptr, x + sx + ch + k, 0)) * 4, 0); \
 				} \
 			} \
-			boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b); \
+			x_block(__for_get_a, __for_get, __for_set, __for_set_b); \
 		} \
 		unsigned char* rows[3]; \
 		for (k = 0; k < 3; k++) \
@@ -719,24 +719,24 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	/* unswitch if condition in manual way */
 	if (src_x > 0)
 	{
-#define boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 		for (x = cols0 * ch; x < a->cols * ch; x += ch) \
 			for (k = 0; k < ch; k++) \
 			{ \
 				__for_set(row, x * 2 + k, __for_get_a(a_ptr, tab[x + sx - ch + k], 0) + __for_get_a(a_ptr, tab[x + sx + k], 0) * 6 + __for_get_a(a_ptr, tab[x + sx + ch + k], 0), 0); \
 				__for_set(row, x * 2 + ch + k, (__for_get_a(a_ptr, tab[x + sx + k], 0) + __for_get_a(a_ptr, tab[x + sx + ch + k], 0)) * 4, 0); \
 			}
-		ccv_unswitch(boundary_x_handler, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
-#undef boundary_x_handler
+		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+#undef x_block
 	} else {
-#define boundary_x_handler(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
 		for (k = 0; k < ch; k++) \
 		{ \
 			__for_set(row, (a->cols - 1) * 2 * ch + k, __for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) + __for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 7, 0); \
 			__for_set(row, (a->cols - 1) * 2 * ch + ch + k, __for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 4, 0); \
 		}
-		ccv_unswitch(boundary_x_handler, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
-#undef boundary_x_handler
+		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+#undef x_block
 	}
 #undef for_block
 }

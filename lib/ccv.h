@@ -197,10 +197,15 @@ void ccv_enable_cache();
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
+
+/* unswitch for loop macros */
 /* the new added macro in order to do for loop expansion in a way that, you can
  * expand a for loop by inserting different code snippet */
-#define ccv_unswitch(param, block, ...) { block(__VA_ARGS__, param); }
-/* unswitch for loop macros */
+#define ccv_unswitch_block(param, block, ...) { block(__VA_ARGS__, param); }
+#define ccv_unswitch_block_a(param, block, ...) { block(__VA_ARGS__, param); }
+#define ccv_unswitch_block_b(param, block, ...) { block(__VA_ARGS__, param); }
+/* the factor used to provide higher accuracy in integer type (all integer
+ * computation in some cases) */
 #define __ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
 #define __ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
 #define __ccv_get_64f_value(ptr, i, factor) ((double*)(ptr))[(i)]

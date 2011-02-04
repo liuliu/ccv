@@ -16,10 +16,13 @@
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
-	FILE* fd;
+	FILE* fd = 0;
 	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;
 	if (type & CCV_SERIAL_ANY_FILE)
+	{
 		fd = fopen(in, "rb");
+		assert(fd != 0);
+	}
 	if ((type & 0XFF) == CCV_SERIAL_ANY_FILE)
 	{
 		unsigned char sig[8];
@@ -63,9 +66,12 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 
 int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
 {
-	FILE* fd;
+	FILE* fd = 0;
 	if (type & CCV_SERIAL_ANY_FILE)
+	{
 		fd = fopen(out, "wb");
+		assert(fd != 0);
+	}
 	switch (type)
 	{
 #ifdef HAVE_LIBJPEG

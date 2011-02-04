@@ -43,20 +43,16 @@ TEST_CASE("minimize rosenbrock")
 
 double gaussian(double x, double y, void* data)
 {
-	return exp(-(x * x + y * y) / 20);
+	return exp(-(x * x + y * y) / 20) / sqrt(CCV_PI * 20);
 }
 
 TEST_CASE("FFTW-based filter on Gaussian kernel")
 {
 	ccv_dense_matrix_t* image = 0;
-	ccv_unserialize("../samples/nature.png", &image, CCV_SERIAL_ANY_FILE);
-	ccv_dense_matrix_t* gray = ccv_dense_matrix_new(image->rows, image->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_unserialize("../samples/nature.png", &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_dense_matrix_t* gray = 0;ccv_dense_matrix_new(image->rows, image->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_shift(image, (ccv_matrix_t**)&gray, CCV_32F | CCV_C1, 0, 0);
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(10, 10, CCV_32F | CCV_C1, 0, 0);
-	/* grayscale conversion, at this point, ccv doesn't support grayscale conversion yet */
-	int i, j;
-	for (i = 0; i < image->rows; i++)
-		for (j = 0; j < image->cols; j++)
-			gray->data.fl[i * gray->cols + j] = (image->data.ptr[i * image->step + j * 3] * 29 + image->data.ptr[i * image->step + j * 3 + 1] * 61 + image->data.ptr[i * image->step + j * 3 + 2] * 10) / 100;
 	ccv_filter_kernel(kernel, gaussian, 0);
 	ccv_normalize(kernel, (ccv_matrix_t**)&kernel, 0, CCV_L1_NORM);
 	ccv_dense_matrix_t* x = 0;

@@ -5,7 +5,7 @@ static void __ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	(void) fread(&offset, 4, 1, in);
 	int size;
 	(void) fread(&size, 4, 1, in);
-	int width, height, bpp, rle_code, clrused;
+	int width = 0, height = 0, bpp = 0, rle_code = 0, clrused = 0;
 	if (size >= 36)
 	{
 		(void) fread(&width, 4, 1, in);
@@ -24,6 +24,8 @@ static void __ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 		bpp = bpp >> 16;
 		/* TODO: not finished */
 	}
+	if (width == 0 || height == 0 || bpp == 0)
+		return;
 	ccv_dense_matrix_t* im = *x;
 	if (im == 0)
 		*x = im = ccv_dense_matrix_new(height, width, (type) ? type : CCV_8U | ((bpp > 8) ? CCV_C3 : CCV_C1), 0, 0);
