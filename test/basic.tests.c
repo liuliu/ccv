@@ -8,13 +8,29 @@ TEST_CASE("sobel operation")
 	ccv_unserialize("../samples/chessbox.png", &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 	ccv_dense_matrix_t* x = 0;
 	ccv_sobel(image, &x, 0, 0, 1);
+	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.sobel.x.bin", "should be sobel of partial derivative on x");
 	ccv_dense_matrix_t* y = 0;
 	ccv_sobel(image, &y, 0, 1, 0);
-	ccv_matrix_free(image);
-	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.sobel.x.bin", "should be sobel of partial derivative on x");
 	REQUIRE_MATRIX_FILE_EQ(y, "data/chessbox.sobel.y.bin", "should be sobel of partial derivative on y");
+	ccv_dense_matrix_t* x3 = 0;
+	ccv_sobel(image, &x3, 0, 0, 3);
+	REQUIRE_MATRIX_FILE_EQ(x3, "data/chessbox.sobel.x.3.bin", "should be sobel of partial derivative on x within 3x3 window");
+	ccv_dense_matrix_t* y3 = 0;
+	ccv_sobel(image, &y3, 0, 3, 0);
+	REQUIRE_MATRIX_FILE_EQ(y3, "data/chessbox.sobel.y.3.bin", "should be sobel of partial derivative on y within 3x3 window");
+	ccv_dense_matrix_t* x5 = 0;
+	ccv_sobel(image, &x5, 0, 0, 5);
+	REQUIRE_MATRIX_FILE_EQ(x5, "data/chessbox.sobel.x.5.bin", "should be sobel of partial derivative on x within 5x5 window");
+	ccv_dense_matrix_t* y5 = 0;
+	ccv_sobel(image, &y5, 0, 5, 0);
+	REQUIRE_MATRIX_FILE_EQ(y5, "data/chessbox.sobel.y.5.bin", "should be sobel of partial derivative on y within 5x5 window");
+	ccv_matrix_free(image);
 	ccv_matrix_free(x);
 	ccv_matrix_free(y);
+	ccv_matrix_free(x3);
+	ccv_matrix_free(y3);
+	ccv_matrix_free(x5);
+	ccv_matrix_free(y5);
 	ccv_garbage_collect();
 }
 

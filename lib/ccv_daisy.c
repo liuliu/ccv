@@ -56,7 +56,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols * desc_size, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	int layer_size = a->rows * a->cols;
 	int cube_size = layer_size * params.hist_th_q_no;
-	float* workspace_memory = (float*)malloc(cube_size * (params.rad_q_no + 2) * sizeof(float));
+	float* workspace_memory = (float*)ccmalloc(cube_size * (params.rad_q_no + 2) * sizeof(float));
 	/* compute_cube_sigmas */
 	int i, j, k, r, t;
 	double* cube_sigmas = (double*)identifier;
@@ -170,7 +170,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 				}
 			}
 		}
-	free(workspace_memory);
+	ccfree(workspace_memory);
 	for (i = 0; i < a->rows; i++)
 		for (j = 0; j < a->cols; j++)
 		{

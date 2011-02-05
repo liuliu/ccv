@@ -677,7 +677,7 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 	unsigned char* m_ptr = x->data.ptr;
 	double rows_2 = (x->rows - 1) * 0.5;
 	double cols_2 = (x->cols - 1) * 0.5;
-#define for_block(dummy, __for_set) \
+#define for_block(_, __for_set) \
 	for (i = 0; i < x->rows; i++) \
 	{ \
 		for (j = 0; j < x->cols; j++) \

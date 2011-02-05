@@ -90,7 +90,7 @@ static void __ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector
 	int cell_width = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL_NUM(mat->type);
 	int new_step = (new_length * cell_width + 3) & -4;
 	ccv_matrix_cell_t new_data;
-	new_data.ptr = (unsigned char*)malloc(new_step + sizeof(int) * new_length);
+	new_data.ptr = (unsigned char*)ccmalloc(new_step + sizeof(int) * new_length);
 	int* new_indice = (int*)(new_data.ptr + new_step);
 	int i;
 	for (i = 0; i < new_length; i++)
@@ -107,7 +107,7 @@ static void __ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector
 			memcpy(new_data.ptr + j * cell_width, vector->data.ptr + i * cell_width, cell_width);
 		}
 	vector->length = new_length;
-	free(vector->data.ptr);
+	ccfree(vector->data.ptr);
 	vector->data = new_data;
 	vector->indice = new_indice;
 }
@@ -117,7 +117,7 @@ static void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 	int length = CCV_GET_SPARSE_PRIME(mat->prime);
 	mat->prime++;
 	int new_length = CCV_GET_SPARSE_PRIME(mat->prime);
-	ccv_dense_vector_t* new_vector = (ccv_dense_vector_t*)malloc(new_length * sizeof(ccv_dense_vector_t));
+	ccv_dense_vector_t* new_vector = (ccv_dense_vector_t*)ccmalloc(new_length * sizeof(ccv_dense_vector_t));
 	int i;
 	for (i = 0; i < new_length; i++)
 	{
@@ -134,7 +134,7 @@ static void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 				memcpy(new_vector + h, mat->vector + i, sizeof(ccv_dense_vector_t));
 				new_vector[h].next = 0;
 			} else {
-				ccv_dense_vector_t* t = (ccv_dense_vector_t*)malloc(sizeof(ccv_dense_vector_t));
+				ccv_dense_vector_t* t = (ccv_dense_vector_t*)ccmalloc(sizeof(ccv_dense_vector_t));
 				memcpy(t, mat->vector + i, sizeof(ccv_dense_vector_t));
 				t->next = new_vector[h].next;
 				new_vector[h].next = t;
@@ -148,7 +148,7 @@ static void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 				{
 					memcpy(new_vector + h, iter, sizeof(ccv_dense_vector_t));
 					new_vector[h].next = 0;
-					free(iter);
+					ccfree(iter);
 				} else {
 					iter->next = new_vector[h].next;
 					new_vector[h].next = iter;
@@ -156,7 +156,7 @@ static void __ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 				iter = iter_next;
 			}
 		}
-	free(mat->vector);
+	ccfree(mat->vector);
 	mat->vector = new_vector;
 }
 
@@ -178,7 +178,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 		vector = &mat->vector[(index * 33) % length];
 		if (vector->index != -1)
 		{
-			vector = (ccv_dense_vector_t*)malloc(sizeof(ccv_dense_vector_t));
+			vector = (ccv_dense_vector_t*)ccmalloc(sizeof(ccv_dense_vector_t));
 			vector->index = -1;
 			vector->length = 0;
 			vector->next = mat->vector[(index * 33) % length].next;
@@ -206,7 +206,7 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 			vector->length = CCV_GET_SPARSE_PRIME(vector->prime);
 			vector->index = index;
 			vector->step  = (vector->length * cell_width + 3) & -4;
-			vector->data.ptr = (unsigned char*)malloc(vector->step + sizeof(int) * vector->length);
+			vector->data.ptr = (unsigned char*)ccmalloc(vector->step + sizeof(int) * vector->length);
 			vector->indice = (int*)(vector->data.ptr + vector->step);
 			for (i = 0; i < vector->length; i++)
 				vector->indice[i] = -1;
@@ -262,7 +262,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 	for (i = 0; i < length; i++)
 	{
 		ccv_dense_vector_t* vector = &mat->vector[i];
-#define while_block(dummy, __while_get) \
+#define while_block(_, __while_get) \
 		while (vector != 0) \
 		{ \
 			if (vector->index != -1) \
@@ -281,7 +281,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 		ccv_matrix_getter(mat->type, while_block);
 #undef while_block
 	}
-	ccv_compressed_sparse_matrix_t* cm = *csm = (ccv_compressed_sparse_matrix_t*)malloc(sizeof(ccv_compressed_sparse_matrix_t) + nnz * sizeof(int) + nnz * CCV_GET_DATA_TYPE_SIZE(mat->type) + (((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows) + 1) * sizeof(int));
+	ccv_compressed_sparse_matrix_t* cm = *csm = (ccv_compressed_sparse_matrix_t*)ccmalloc(sizeof(ccv_compressed_sparse_matrix_t) + nnz * sizeof(int) + nnz * CCV_GET_DATA_TYPE_SIZE(mat->type) + (((mat->major == CCV_SPARSE_COL_MAJOR) ? mat->cols : mat->rows) + 1) * sizeof(int));
 	cm->type = (mat->type & ~CCV_MATRIX_SPARSE & ~CCV_SPARSE_VECTOR & ~CCV_DENSE_VECTOR) | ((mat->major == CCV_SPARSE_COL_MAJOR) ? CCV_MATRIX_CSC : CCV_MATRIX_CSR);
 	cm->nnz = nnz;
 	cm->rows = mat->rows;
@@ -380,7 +380,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr;
 		unsigned char* b_ptr = db->data.ptr;
-#define for_block(dummy, __for_get) \
+#define for_block(_, __for_get) \
 		for (i = 0; i < da->rows; i++) \
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
@@ -414,7 +414,7 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int r
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
 		unsigned char* b_ptr = db->data.ptr;
-#define for_block(dummy, __for_set, __for_get) \
+#define for_block(_, __for_set, __for_get) \
 		for (i = 0; i < rows; i++) \
 		{ \
 			for (j = 0; j < cols * ch; j++) \
@@ -446,7 +446,7 @@ void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
 		int i, j, ch = CCV_GET_CHANNEL_NUM(da->type);
 		unsigned char* a_ptr = da->data.ptr + ccv_max(x, 0) * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + ccv_max(y, 0) * da->step;
 		unsigned char* b_ptr = db->data.ptr + ccv_max(-x, 0) * ch * CCV_GET_DATA_TYPE_SIZE(db->type) + ccv_max(-y, 0) * db->step;
-#define for_block(dummy, __for_set, __for_get) \
+#define for_block(_, __for_set, __for_get) \
 		for (i = abs(y); i < db->rows; i++) \
 		{ \
 			for (j = abs(x) * ch; j < db->cols * ch; j++) \
@@ -464,11 +464,11 @@ void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
 
 ccv_array_t* ccv_array_new(int rnum, int rsize)
 {
-	ccv_array_t* array = (ccv_array_t*)malloc(sizeof(ccv_array_t));
+	ccv_array_t* array = (ccv_array_t*)ccmalloc(sizeof(ccv_array_t));
 	array->rnum = 0;
 	array->rsize = rsize;
 	array->size = rnum;
-	array->data = malloc(rnum * rsize);
+	array->data = ccmalloc(rnum * rsize);
 	return array;
 }
 
@@ -490,8 +490,8 @@ void ccv_array_clear(ccv_array_t* array)
 
 void ccv_array_free(ccv_array_t* array)
 {
-	free(array->data);
-	free(array);
+	ccfree(array->data);
+	ccfree(array);
 }
 
 typedef struct ccv_ptree_node_t
@@ -505,7 +505,7 @@ typedef struct ccv_ptree_node_t
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data)
 {
 	int i, j;
-	ccv_ptree_node_t* node = (ccv_ptree_node_t*)malloc(array->rnum * sizeof(ccv_ptree_node_t));
+	ccv_ptree_node_t* node = (ccv_ptree_node_t*)ccmalloc(array->rnum * sizeof(ccv_ptree_node_t));
 	for (i = 0; i < array->rnum; i++)
 	{
 		node[i].parent = 0;

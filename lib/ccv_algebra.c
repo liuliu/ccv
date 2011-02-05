@@ -81,7 +81,7 @@ double ccv_sum(ccv_matrix_t* mat)
 	double sum = 0;
 	unsigned char* m_ptr = dmt->data.ptr;
 	int i, j;
-#define for_block(dummy, __for_get) \
+#define for_block(_, __for_get) \
 	for (i = 0; i < dmt->rows; i++) \
 	{ \
 		for (j = 0; j < dmt->cols; j++) \

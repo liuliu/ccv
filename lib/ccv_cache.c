@@ -103,7 +103,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 	{
 		if (sign == branch->terminal.sign)
 		{
-			free((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
+			ccfree((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 			branch->terminal.off = (uint64_t)x | 0x1;
 			return 1;
 		} else {
@@ -119,7 +119,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 				if (dice == udice)
 				{
 					branch->branch.bitmap = on << dice;
-					ccv_cache_index_t* set = (ccv_cache_index_t*)malloc(sizeof(ccv_cache_index_t));
+					ccv_cache_index_t* set = (ccv_cache_index_t*)ccmalloc(sizeof(ccv_cache_index_t));
 					assert(((uint64_t)set & 0x3) == 0);
 					branch->branch.set = (uint64_t)set;
 					branch = set;
@@ -129,7 +129,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 				j <<= 6;
 			}
 			branch->branch.bitmap = (on << dice) | (on << udice);
-			ccv_cache_index_t* set = (ccv_cache_index_t*)malloc(sizeof(ccv_cache_index_t) * 2);
+			ccv_cache_index_t* set = (ccv_cache_index_t*)ccmalloc(sizeof(ccv_cache_index_t) * 2);
 			assert(((uint64_t)set & 0x3) == 0);
 			branch->branch.set = (uint64_t)set;
 			int u = dice < udice;
@@ -172,7 +172,7 @@ static void __ccv_cache_cleanup(ccv_cache_index_t* branch)
 			if (!(set[i].terminal.off & 0x1))
 				__ccv_cache_cleanup(set + i);
 		}
-		free(set);
+		ccfree(set);
 	}
 }
 
@@ -186,9 +186,9 @@ static void __ccv_cache_nuke(ccv_cache_index_t* branch)
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
 		for (i = 0; i < total; i++)
 			__ccv_cache_nuke(set + i);
-		free(set);
+		ccfree(set);
 	} else {
-		free((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
+		ccfree((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 	}
 }
 
@@ -272,7 +272,7 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 	ccv_matrix_t* result = ccv_cache_out(cache, sign);
 	if (result != 0)
 	{
-		free(result);
+		ccfree(result);
 		return 0;
 	}
 	return -1;

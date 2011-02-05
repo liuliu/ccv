@@ -24,6 +24,8 @@
 #endif
 
 #define CCV_PI (3.141592653589793)
+#define ccmalloc malloc
+#define ccfree free
 
 enum {
 	CCV_8U  = 0x0100,
@@ -144,6 +146,9 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
 ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
 void ccv_cache_close(ccv_cache_t* cache);
+
+/* deprecated methods, often these implemented in another way and no longer suitable for newer computer architecture */
+void ccv_canny_deprecated(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
 
 typedef struct {
 	int type;
@@ -484,7 +489,7 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
-void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double low_thresh, double high_thresh);
+void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
 
 enum {
 	CCV_INTER_AREA   = 0x01,
