@@ -148,7 +148,7 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
 void ccv_cache_close(ccv_cache_t* cache);
 
 /* deprecated methods, often these implemented in another way and no longer suitable for newer computer architecture */
-void ccv_canny_deprecated(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
+/* 0 */
 
 typedef struct {
 	int type;
