@@ -276,7 +276,7 @@ int main(int argc, char** argv)
 		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;30m\n");
 	else
 		printf("\033[0;31m%d of %d test case(s) passed\033[0;30m\n", pass, fail + pass);
-	return 0;
+	return fail;
 }
 
 #endif

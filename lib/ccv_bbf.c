@@ -975,7 +975,7 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	}
 	if (k > 0)
 		cacheK = k;
-	int rpos, rneg;
+	int rpos, rneg = 0;
 	if (bg)
 	{
 		sprintf(buf, "%s/negs.txt", dir);

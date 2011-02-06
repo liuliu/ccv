@@ -4,6 +4,7 @@
  * here includes 2 special case impl (for 1x3/3x1, 3x3) and one general impl */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
 {
+	assert(a->type & CCV_C1);
 	char identifier[64];
 	memset(identifier, 0, 64);
 	snprintf(identifier, 64, "ccv_sobel(%d,%d)", dx, dy);
@@ -246,6 +247,7 @@ static void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy)
 {
+	assert(a->type & CCV_C1);
 	uint64_t tsig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_gradient_theta", 18, a->sig, 0);
 	uint64_t msig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_gradient_m", 14, a->sig, 0);
 	ccv_dense_matrix_t* dtheta = *theta = ccv_dense_matrix_renew(*theta, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, tsig);
@@ -269,6 +271,7 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 {
+	assert(a->type & CCV_C1);
 	int border_size = size / 2;
 	uint64_t sig = (a->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_hog", 7, a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
@@ -320,6 +323,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
  * profiling, the current implementation still uses integer to speed up */
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
 {
+	assert(a->type & CCV_C1);
 	char identifier[64];
 	memset(identifier, 0, 64);
 	snprintf(identifier, 64, "ccv_canny(%d,%lf,%lf)", size, low_thresh, high_thresh);
@@ -448,7 +452,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, (map_ptr[j] >> 1), 0); \
+				__for_set(b_ptr, j, (map_ptr[j] == 2), 0); \
 			map_ptr += map_cols; \
 			b_ptr += db->step; \
 		}

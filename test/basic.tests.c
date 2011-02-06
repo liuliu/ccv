@@ -102,4 +102,16 @@ TEST_CASE("flip operation")
 	ccv_garbage_collect();
 }
 
+TEST_CASE("canny edge detector")
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_unserialize("../samples/blackbox.png", &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_dense_matrix_t* x = 0;
+	ccv_canny(image, &x, 0, 3, 36, 36 * 3);
+	REQUIRE_MATRIX_FILE_EQ(x, "data/blackbox.canny.bin", "Canny edge detector on artificial image");
+	ccv_matrix_free(image);
+	ccv_matrix_free(x);
+	ccv_garbage_collect();
+}
+
 #include "case_main.h"
