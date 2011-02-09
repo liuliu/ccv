@@ -144,7 +144,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x)
 		uint32_t start = compute_bits(m);
 		uint32_t total = compute_bits(branch->branch.bitmap);
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
-		set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total + 1));
+		set = (ccv_cache_index_t*)ccrealloc(set, sizeof(ccv_cache_index_t) * (total + 1));
 		assert(((uint64_t)set & 0x3) == 0);
 		for (i = total; i > start; i--)
 			set[i] = set[i - 1];
@@ -255,15 +255,15 @@ ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 			parent->branch.bitmap &= ~k;
 			for (i = start + 1; i < total; i++)
 				set[i - 1] = set[i];
-			set = (ccv_cache_index_t*)realloc(set, sizeof(ccv_cache_index_t) * (total - 1));
+			set = (ccv_cache_index_t*)ccrealloc(set, sizeof(ccv_cache_index_t) * (total - 1));
 			parent->branch.set = (uint64_t)set;
 		} else {
 			ccv_cache_index_t t = set[1 - start];
 			__ccv_cache_cleanup(uncle);
 			*uncle = t;
 		}
-		cache->rnum--;
 	}
+	cache->rnum--;
 	return result;
 }
 
@@ -280,6 +280,9 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 
 void ccv_cache_close(ccv_cache_t* cache)
 {
-	__ccv_cache_nuke(&cache->origin);
-	cache->rnum = 0;
+	if (cache->rnum > 0)
+	{
+		__ccv_cache_nuke(&cache->origin);
+		cache->rnum = 0;
+	}
 }

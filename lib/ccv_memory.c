@@ -7,10 +7,13 @@ ccv_cache_t ccv_cache = {
 	.origin.terminal.sign = 0
 };
 
+/* option to enable/disable cache */
+static int ccv_cache_opt = 1;
+
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig)
 {
 	ccv_dense_matrix_t* mat;
-	if (sig != 0)
+	if (ccv_cache_opt && sig != 0)
 	{
 		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig);
 		if (mat)
@@ -128,7 +131,7 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
 		dmt->refcount = 0;
-		if (!(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
+		if (!ccv_cache_opt || !(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
 			ccfree(dmt);
 		else
 			ccv_cache_put(&ccv_cache, dmt->sig, dmt);
@@ -156,6 +159,17 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 		csm->refcount = 0;
 		ccfree(csm);
 	}
+}
+
+void ccv_disable_cache()
+{
+	ccv_cache_opt = 0;
+	ccv_garbage_collect();
+}
+
+void ccv_enable_cache()
+{
+	ccv_cache_opt = 1;
 }
 
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)

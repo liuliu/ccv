@@ -19,7 +19,8 @@ int main(int argc, char** argv)
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 5, 2, 0, ccv_size(24, 24));
+		ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
+		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)
 		{
@@ -43,7 +44,8 @@ int main(int argc, char** argv)
 				file[len] = '\0';
 				ccv_dense_matrix_t* image = 0;
 				ccv_unserialize(file, &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
-				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, 5, 2, 0, ccv_size(24, 24));
+				ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
+				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
 				for (i = 0; i < seq->rnum; i++)
 				{
 					ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);

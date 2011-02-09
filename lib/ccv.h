@@ -25,6 +25,7 @@
 
 #define CCV_PI (3.141592653589793)
 #define ccmalloc malloc
+#define ccrealloc realloc
 #define ccfree free
 
 enum {
@@ -511,7 +512,9 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
 /* modern computer vision algorithms */
-/* SIFT, DAISY, SURF, MSER, BBF, SGF, SSD, FAST */
+/* SIFT, DAISY, SWT, MSER, BBF, SGF, SSD, FAST */
+
+/* daisy related methods */
 typedef struct {
 	double radius;
 	int rad_q_no;
@@ -529,6 +532,7 @@ enum {
 
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params);
 
+/* sift related methods */
 typedef struct {
 	float x, y;
 	int octave;
@@ -555,6 +559,13 @@ typedef struct {
 } ccv_sift_param_t;
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
+
+/* swt related method: swt is relatively new for stroke width transform, typically used in text detection */
+typedef struct {
+} ccv_swt_param_t;
+
+void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
@@ -593,13 +604,21 @@ enum {
 };
 
 typedef struct {
+	int interval;
+	int min_neighbors;
+	int flags;
+	ccv_size_t size;
+} ccv_bbf_param_t;
+
+typedef struct {
 	double pos_crit;
 	double neg_crit;
 	double balance_k;
 	int layer;
 	int feature_number;
 	int optimizer;
-} ccv_bbf_param_t;
+	ccv_bbf_param_t detector;
+} ccv_bbf_new_param_t;
 
 typedef struct {
 	ccv_rect_t rect;
@@ -612,8 +631,8 @@ enum {
 	CCV_BBF_NO_NESTED = 0x10000000,
 };
 
-void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_param_t params);
-ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, int interval, int min_neighbors, int flags, ccv_size_t min_size);
+void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
+ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params);
 ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory);
 ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s);
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);

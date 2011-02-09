@@ -48,6 +48,13 @@ static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_driver__) (char* __case_name_
 
 #define ABORT_CASE (*__case_result__) = -1; return;
 
+#define REQUIRE(a, err, ...) { \
+if (!(a)) \
+{ \
+	printf("\n\t\033[0;31mREQUIRE\033[0;30m: %s:%d: %s(%lg) is not true, " err, __FILE__, __LINE__, #a, (double)(a), ##__VA_ARGS__); \
+	ABORT_CASE; \
+} }
+
 #define REQUIRE_EQ(a, b, err, ...) { \
 if ((a) != (b)) \
 { \

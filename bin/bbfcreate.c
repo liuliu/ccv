@@ -34,13 +34,14 @@ int main(int argc, char** argv)
 		rt = fscanf(bgf, "%s", bgfiles[i]);
 	}
 	fclose(bgf);
-	ccv_bbf_param_t params;
-	params.pos_crit = 0.9975;
-	params.neg_crit = 0.50;
-	params.balance_k = 1.0;
-	params.layer = 24;
-	params.feature_number = 100;
-	params.optimizer = CCV_BBF_GENETIC_OPT | CCV_BBF_FLOAT_OPT;
+	ccv_bbf_new_param_t params = {
+		.pos_crit = 0.9975,
+		.neg_crit = 0.50,
+		.balance_k = 1.0,
+		.layer = 24,
+		.feature_number = 100,
+		.optimizer = CCV_BBF_GENETIC_OPT | CCV_BBF_FLOAT_OPT,
+	};
 	ccv_bbf_classifier_cascade_new(posimg, posnum, bgfiles, bgnum, negnum, ccv_size(24, 24), "data", params);
 	for (i = 0; i < bgnum; i++)
 		free(bgfiles[i]);

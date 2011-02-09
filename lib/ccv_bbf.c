@@ -153,7 +153,8 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 				ccv_flip(image, 0, 0, CCV_FLIP_X);
 			if (t % 4 >= 2)
 				ccv_flip(image, 0, 0, CCV_FLIP_Y);
-			ccv_array_t* detected = ccv_bbf_detect_objects(image, &cascade, 1, 3, 0, 0, cascade->size);
+			ccv_bbf_param_t params = { .interval = 3, .min_neighbors = 0, .flags = 0, .size = cascade->size };
+			ccv_array_t* detected = ccv_bbf_detect_objects(image, &cascade, 1, params);
 			memset(idcheck, 0, ccv_min(detected->rnum, negperbg) * sizeof(int));
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
 			{
@@ -929,7 +930,7 @@ static int __ccv_save_bbf_cacade_training_state(const char* file, int i, int k, 
 	return 0;
 }
 
-void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_param_t params)
+void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
 {
 	int i, j, k;
 	/* allocate memory for usage */
@@ -1171,21 +1172,21 @@ static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void* dat
 		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
-ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, int interval, int min_neighbors, int flags, ccv_size_t min_size)
+ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params)
 {
-	int hr = a->rows / min_size.height;
-	int wr = a->cols / min_size.width;
-	double scale = pow(2., 1. / (interval + 1.));
-	int next = interval + 1;
+	int hr = a->rows / params.size.height;
+	int wr = a->cols / params.size.width;
+	double scale = pow(2., 1. / (params.interval + 1.));
+	int next = params.interval + 1;
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale));
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * 4 * sizeof(ccv_dense_matrix_t*));
 	memset(pyr, 0, (scale_upto + next * 2) * 4 * sizeof(ccv_dense_matrix_t*));
-	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
-		ccv_resample(a, &pyr[0], 0, a->rows * _cascade[0]->size.height / min_size.height, a->cols * _cascade[0]->size.width / min_size.width, CCV_INTER_AREA);
+	if (params.size.height != _cascade[0]->size.height || params.size.width != _cascade[0]->size.width)
+		ccv_resample(a, &pyr[0], 0, a->rows * _cascade[0]->size.height / params.size.height, a->cols * _cascade[0]->size.width / params.size.width, CCV_INTER_AREA);
 	else
 		pyr[0] = a;
 	int i, j, k, t, x, y, q;
-	for (i = 1; i <= interval; i++)
+	for (i = 1; i <= params.interval; i++)
 		ccv_resample(pyr[0], &pyr[i * 4], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4], 0, 0, 0);
@@ -1203,8 +1204,8 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	for (t = 0; t < count; t++)
 	{
 		ccv_bbf_classifier_cascade_t* cascade = _cascade[t];
-		float scale_x = (float) min_size.width / (float) cascade->size.width;
-		float scale_y = (float) min_size.height / (float) cascade->size.height;
+		float scale_x = (float) params.size.width / (float) cascade->size.width;
+		float scale_y = (float) params.size.height / (float) cascade->size.height;
 		ccv_array_clear(seq);
 		for (i = 0; i < scale_upto; i++)
 		{
@@ -1262,7 +1263,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		}
 
 		/* the following code from OpenCV's haar feature implementation */
-		if(min_neighbors == 0)
+		if(params.min_neighbors == 0)
 		{
 			for (i = 0; i < seq->rnum; i++)
 			{
@@ -1300,7 +1301,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			for(i = 0; i < ncomp; i++)
 			{
 				int n = comps[i].neighbors;
-				if(n >= min_neighbors)
+				if(n >= params.min_neighbors)
 				{
 					ccv_bbf_comp_t comp;
 					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
@@ -1351,7 +1352,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 
 	ccv_array_t* result_seq2;
 	/* the following code from OpenCV's haar feature implementation */
-	if (flags & CCV_SGF_NO_NESTED)
+	if (params.flags & CCV_SGF_NO_NESTED)
 	{
 		result_seq2 = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
 		idx_seq = 0;
@@ -1394,7 +1395,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		ccv_matrix_free(pyr[i * 4 + 2]);
 		ccv_matrix_free(pyr[i * 4 + 3]);
 	}
-	if (min_size.height != _cascade[0]->size.height || min_size.width != _cascade[0]->size.width)
+	if (params.size.height != _cascade[0]->size.height || params.size.width != _cascade[0]->size.width)
 		ccv_matrix_free(pyr[0]);
 
 	return result_seq2;
