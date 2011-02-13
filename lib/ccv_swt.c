@@ -140,11 +140,10 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 					if (flag) \
 					{ \
 						x1 = x0; y1 = y0; \
-						x0 = j; y0 = i; \
 						int n = 0; \
+						ray_reset(); \
 						int w = (int)(sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) + 0.5); \
 						/* extend the line to be width of 1 */ \
-						ray_reset(); \
 						for (;;) \
 						{ \
 							if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) == 0 || __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > w) \
@@ -153,9 +152,9 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 								buf[n++] = w; \
 							} else if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) != 0) \
 								buf[n++] = __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0); \
-							ray_increment(); \
 							if (x0 == x1 && y0 == y1) \
 								break; \
+							ray_increment(); \
 						} \
 						int nw = __ccv_median(buf, 0, n - 1); \
 						if (nw != w) \
@@ -165,9 +164,9 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 							{ \
 								if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > nw) \
 									__for_set_b(b_ptr + (y0 - i) * db->step, x0, nw, 0); \
-								ray_increment(); \
 								if (x0 == x1 && y0 == y1) \
 									break; \
+								ray_increment(); \
 							} \
 						} \
 					} \
@@ -242,6 +241,14 @@ static ccv_array_t* __ccv_connected_letters(ccv_dense_matrix_t* a, ccv_dense_mat
 			ccv_contour_free(contour);
 			continue;
 		}
+		ccv_letter_t letter;
+		letter.thickness = __ccv_median(buffer, 0, n - 1);
+		if (ccv_min(contour->rect.width, contour->rect.height) > 10 * letter.thickness)
+		{
+			ccv_contour_free(contour);
+			continue;
+		}
+		letter.rect = contour->rect;
 		int another[] = {0, 0};
 		int more = 0;
 		for (x = contour->rect.x; x < contour->rect.x + contour->rect.width; x++)
@@ -272,9 +279,6 @@ static ccv_array_t* __ccv_connected_letters(ccv_dense_matrix_t* a, ccv_dense_mat
 			ccv_contour_free(contour);
 			continue;
 		}
-		ccv_letter_t letter;
-		letter.rect = contour->rect;
-		letter.thickness = __ccv_median(buffer, 0, n - 1);
 		letter.brightness = 0;
 		for (j = 0; j < contour->set->rnum; j++)
 		{
