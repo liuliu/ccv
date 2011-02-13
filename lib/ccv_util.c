@@ -583,3 +583,104 @@ int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f g
 	}
 	return class_idx;
 }
+
+ccv_contour_t* ccv_contour_new(int set)
+{
+	ccv_contour_t* contour = (ccv_contour_t*)ccmalloc(sizeof(ccv_contour_t));
+	contour->rect.x = contour->rect.y =
+	contour->rect.width = contour->rect.height = 0;
+	contour->size = 0;
+	if (set)
+		contour->set = ccv_array_new(5, sizeof(ccv_point_t));
+	else
+		contour->set = 0;
+	return contour;
+}
+
+void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
+{
+	if (contour->size == 0)
+	{
+		contour->rect.x = point.x;
+		contour->rect.y = point.y;
+		contour->rect.width = contour->rect.height = 1;
+		contour->size = 1;
+	} else {
+		if (point.x < contour->rect.x)
+		{
+			contour->rect.width += contour->rect.x - point.x;
+			contour->rect.x = point.x;
+		} else if (point.x > contour->rect.x + contour->rect.width - 1) {
+			contour->rect.width = point.x - contour->rect.x + 1;
+		}
+		if (point.y < contour->rect.y)
+		{
+			contour->rect.height += contour->rect.y - point.y;
+			contour->rect.y = point.y;
+		} else if (point.y > contour->rect.y + contour->rect.height - 1) {
+			contour->rect.height = point.y - contour->rect.y + 1;
+		}
+		contour->size++;
+	}
+	if (contour->set)
+		ccv_array_push(contour->set, &point);
+}
+
+ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, int set)
+{
+	int i, j, k;
+	int* a_ptr = a->data.i;
+	int dx8[] = {-1, 1, -1, 0, 1, -1, 0, 1};
+	int dy8[] = {0, 0, -1, -1, -1, 1, 1, 1};
+	int* marker = (int*)ccmalloc(sizeof(int) * a->rows * a->cols);
+	memset(marker, 0, sizeof(int) * a->rows * a->cols);
+	int* m_ptr = marker;
+	ccv_point_t* buffer = (ccv_point_t*)ccmalloc(sizeof(ccv_point_t) * a->rows * a->cols);
+	ccv_array_t* contours = ccv_array_new(5, sizeof(ccv_contour_t*));
+	for (i = 0; i < a->rows; i++)
+	{
+		for (j = 0; j < a->cols; j++)
+			if (a_ptr[j] != transparent && !m_ptr[j])
+			{
+				m_ptr[j] = 1;
+				ccv_contour_t* contour = ccv_contour_new(set);
+				ccv_point_t* closed = buffer;
+				closed->x = j;
+				closed->y = i;
+				ccv_point_t* open = buffer + 1;
+				for (; closed < open; closed++)
+				{
+					ccv_contour_push(contour, *closed);
+					int color = a_ptr[closed->x + (closed->y - i) * a->cols];
+					for (k = 0; k < 8; k++)
+					{
+						int nx = closed->x + dx8[k];
+						int ny = closed->y + dy8[k];
+						if (nx >= 0 && nx < a->cols && ny >= 0 && ny < a->rows &&
+							a_ptr[nx + (ny - i) * a->cols] != transparent &&
+							!m_ptr[nx + (ny - i) * a->cols] &&
+							abs(color - a_ptr[nx + (ny - i) * a->cols]) < tolerance)
+						{
+							m_ptr[nx + (ny - i) * a->cols] = 1;
+							open->x = nx;
+							open->y = ny;
+							open++;
+						}
+					}
+				}
+				ccv_array_push(contours, &contour);
+			}
+		a_ptr += a->cols;
+		m_ptr += a->cols;
+	}
+	ccfree(marker);
+	ccfree(buffer);
+	return contours;
+}
+
+void ccv_contour_free(ccv_contour_t* contour)
+{
+	if (contour->set)
+		ccv_array_free(contour->set);
+	ccfree(contour);
+}

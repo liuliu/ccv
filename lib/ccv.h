@@ -455,6 +455,29 @@ void ccv_array_free(ccv_array_t* array);
 
 #define ccv_array_get(a, i) (((char*)((a)->data)) + (a)->rsize * (i))
 
+typedef struct {
+	int x, y;
+} ccv_point_t;
+
+inline static ccv_point_t ccv_point(int x, int y)
+{
+	ccv_point_t point;
+	point.x = x;
+	point.y = y;
+	return point;
+}
+
+typedef struct {
+	ccv_rect_t rect;
+	int size;
+	ccv_array_t* set;
+} ccv_contour_t;
+
+ccv_contour_t* ccv_contour_new(int set);
+void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point);
+ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, int set);
+void ccv_contour_free(ccv_contour_t* contour);
+
 /* numerical algorithms */
 /* clarification about algebra and numerical algorithms:
  * when using the word "algebra", I assume the operation is well established in Mathematic sense
@@ -512,7 +535,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
 /* modern computer vision algorithms */
-/* SIFT, DAISY, SWT, MSER, BBF, SGF, SSD, FAST */
+/* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */
 
 /* daisy related methods */
 typedef struct {
@@ -560,12 +583,27 @@ typedef struct {
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
 
-/* swt related method: swt is relatively new for stroke width transform, typically used in text detection */
+/* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
+	int size;
+	int direct;
+	double low_thresh;
+	double high_thresh;
 } ccv_swt_param_t;
 
-void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
 ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+
+/* I'd like to include Deformable Part Models as a general object detection method in here
+ * The difference between BBF and DPM:
+ * ~ BBF is for rigid object detection: banners, box, faces etc.
+ * ~ DPM is more generalized, can detect people, car, bike (larger inner-class difference) etc.
+ * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
+
+typedef struct {
+} ccv_dpm_param_t;
+
+ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_param_t params);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
