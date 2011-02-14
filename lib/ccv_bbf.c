@@ -117,6 +117,7 @@ static int __ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsi
 
 static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
 {
+#ifdef HAVE_GSL
 	int t, i, j, k, q;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
@@ -244,6 +245,9 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 	ccv_garbage_collect();
 	printf("\n");
 	return negtotal;
+#else
+	return 0;
+#endif
 }
 
 static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned char** posdata, ccv_size_t size, int posnum)
@@ -302,6 +306,7 @@ static inline int __ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int 
 	return 0;
 }
 
+#ifdef HAVE_GSL
 static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
 {
 	int i;
@@ -340,6 +345,7 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 		gene->feature.ny[i] = y;
 	}
 }
+#endif
 
 static inline double __ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
@@ -371,6 +377,8 @@ static CCV_IMPLEMENT_QSORT(__ccv_bbf_genetic_qsort, ccv_bbf_gene_t, less_than)
 
 static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
+	ccv_bbf_feature_t best;
+#ifdef HAVE_GSL
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -394,7 +402,6 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 	for (i = 0; i < pnum; i++)
 		__ccv_bbf_genetic_fitness(&gene[i]);
 	double best_err = 1;
-	ccv_bbf_feature_t best;
 	int rnum = ftnum * 39; /* number of randomize */
 	int mnum = ftnum * 40; /* number of mutation */
 	int hnum = ftnum * 20; /* number of hybrid */
@@ -536,6 +543,7 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 	}
 	ccfree(gene);
 	gsl_rng_free(rng);
+#endif
 	return best;
 }
 
@@ -575,6 +583,8 @@ static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int po
 
 static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_bbf_feature_t* best_feature, ccv_size_t size, double* pw, double* nw)
 {
+	ccv_bbf_gene_t best_gene;
+#ifdef HAVE_GSL
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -586,7 +596,6 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
 	int pnum = rows[0] * cols[0] + rows[1] * cols[1] + rows[2] * cols[2];
 	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)ccmalloc((pnum * (CCV_BBF_POINT_MAX * 2 + 1) * 2 + CCV_BBF_POINT_MAX * 2 + 1) * sizeof(ccv_bbf_gene_t));
-	ccv_bbf_gene_t best_gene;
 	if (best_feature == 0)
 	{
 		/* bootstrapping the best feature, start from two pixels, one for positive, one for negative
@@ -793,6 +802,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	}
 	ccfree(gene);
 	gsl_rng_free(rng);
+#endif
 	return best_gene.feature;
 }
 

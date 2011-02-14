@@ -421,9 +421,9 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 							high_block;
 					}
 #undef high_block
-					map_ptr[j] = 0;
-					suppress = 0;
 				}
+				map_ptr[j] = 0;
+				suppress = 0;
 			}
 			map_ptr[a->cols] = 0;
 			map_ptr += map_cols;

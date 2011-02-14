@@ -626,7 +626,7 @@ void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
 		ccv_array_push(contour->set, &point);
 }
 
-ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, int set)
+ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, double ratio, int set)
 {
 	int i, j, k;
 	int* a_ptr = a->data.i;
@@ -659,6 +659,7 @@ ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int
 						if (nx >= 0 && nx < a->cols && ny >= 0 && ny < a->rows &&
 							a_ptr[nx + (ny - i) * a->cols] != transparent &&
 							!m_ptr[nx + (ny - i) * a->cols] &&
+							((color != 0 && (double)a_ptr[nx + (ny - i) * a->cols] / color < ratio) || (a_ptr[nx + (ny - i) * a->cols] != 0 && (double)color / a_ptr[nx + (ny - i) * a->cols] < ratio)) &&
 							abs(color - a_ptr[nx + (ny - i) * a->cols]) < tolerance)
 						{
 							m_ptr[nx + (ny - i) * a->cols] = 1;

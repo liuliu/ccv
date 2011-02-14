@@ -191,7 +191,7 @@ typedef struct {
 
 static ccv_array_t* __ccv_connected_letters(ccv_dense_matrix_t* a, ccv_dense_matrix_t* swt)
 {
-	ccv_array_t* contours = ccv_connected_component(swt, 0, 4, 1);
+	ccv_array_t* contours = ccv_connected_component(swt, 0, 1 << 8, 3.0, 1);
 	ccv_array_t* letters = ccv_array_new(5, sizeof(ccv_letter_t));
 	int i, j, x, y, n;
 	int* labels = (int*)ccmalloc(sizeof(int) * swt->rows * swt->cols);
@@ -379,31 +379,31 @@ static ccv_array_t* __ccv_merge_textline(ccv_array_t* letters)
 			{
 				chain[j].rect.width += chain[j].rect.x - li->rect.x;
 				chain[j].rect.x = li->rect.x;
-			} else if (li->rect.x + li->rect.width > chain[j].rect.x + chain[j].rect.width) {
-				chain[j].rect.width = li->rect.x + li->rect.width - chain[j].rect.x;
 			}
+			if (li->rect.x + li->rect.width > chain[j].rect.x + chain[j].rect.width)
+				chain[j].rect.width = li->rect.x + li->rect.width - chain[j].rect.x;
 			if (li->rect.y < chain[j].rect.y)
 			{
 				chain[j].rect.height += chain[j].rect.y - li->rect.y;
 				chain[j].rect.y = li->rect.y;
-			} else if (li->rect.y + li->rect.height > chain[j].rect.y + chain[j].rect.height) {
-				chain[j].rect.height = li->rect.y + li->rect.height - chain[j].rect.y;
 			}
+			if (li->rect.y + li->rect.height > chain[j].rect.y + chain[j].rect.height)
+				chain[j].rect.height = li->rect.y + li->rect.height - chain[j].rect.y;
 			ccv_letter_t* lj = (ccv_letter_t*)ccv_array_get(letters, ((ccv_letter_pair_t*)ccv_array_get(pairs, i))->right);
 			if (lj->rect.x < chain[j].rect.x)
 			{
 				chain[j].rect.width += chain[j].rect.x - lj->rect.x;
 				chain[j].rect.x = lj->rect.x;
-			} else if (lj->rect.x + lj->rect.width > chain[j].rect.x + chain[j].rect.width) {
-				chain[j].rect.width = lj->rect.x + lj->rect.width - chain[j].rect.x;
 			}
+			if (lj->rect.x + lj->rect.width > chain[j].rect.x + chain[j].rect.width)
+				chain[j].rect.width = lj->rect.x + lj->rect.width - chain[j].rect.x;
 			if (lj->rect.y < chain[j].rect.y)
 			{
 				chain[j].rect.height += chain[j].rect.y - lj->rect.y;
 				chain[j].rect.y = lj->rect.y;
-			} else if (lj->rect.y + lj->rect.height > chain[j].rect.y + chain[j].rect.height) {
-				chain[j].rect.height = lj->rect.y + lj->rect.height - chain[j].rect.y;
 			}
+			if (lj->rect.y + lj->rect.height > chain[j].rect.y + chain[j].rect.height)
+				chain[j].rect.height = lj->rect.y + lj->rect.height - chain[j].rect.y;
 			chain[j].neighbors++;
 		}
 	}
@@ -430,6 +430,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	params.direct = 1;
 	ccv_swt(a, &swt, 0, params);
 	letters = __ccv_connected_letters(a, swt);
+	ccv_matrix_free(swt);
 	ccv_array_t* textline2 = __ccv_merge_textline(letters);
 	ccv_array_free(letters);
 	int i;
