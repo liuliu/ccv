@@ -604,6 +604,11 @@ void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
 		contour->rect.x = point.x;
 		contour->rect.y = point.y;
 		contour->rect.width = contour->rect.height = 1;
+		contour->m10 = point.x;
+		contour->m01 = point.y;
+		contour->m11 = point.x * point.y;
+		contour->m20 = point.x * point.x;
+		contour->m02 = point.y * point.y;
 		contour->size = 1;
 	} else {
 		if (point.x < contour->rect.x)
@@ -624,59 +629,6 @@ void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
 	}
 	if (contour->set)
 		ccv_array_push(contour->set, &point);
-}
-
-ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, double ratio, int set)
-{
-	int i, j, k;
-	int* a_ptr = a->data.i;
-	int dx8[] = {-1, 1, -1, 0, 1, -1, 0, 1};
-	int dy8[] = {0, 0, -1, -1, -1, 1, 1, 1};
-	int* marker = (int*)ccmalloc(sizeof(int) * a->rows * a->cols);
-	memset(marker, 0, sizeof(int) * a->rows * a->cols);
-	int* m_ptr = marker;
-	ccv_point_t* buffer = (ccv_point_t*)ccmalloc(sizeof(ccv_point_t) * a->rows * a->cols);
-	ccv_array_t* contours = ccv_array_new(5, sizeof(ccv_contour_t*));
-	for (i = 0; i < a->rows; i++)
-	{
-		for (j = 0; j < a->cols; j++)
-			if (a_ptr[j] != transparent && !m_ptr[j])
-			{
-				m_ptr[j] = 1;
-				ccv_contour_t* contour = ccv_contour_new(set);
-				ccv_point_t* closed = buffer;
-				closed->x = j;
-				closed->y = i;
-				ccv_point_t* open = buffer + 1;
-				for (; closed < open; closed++)
-				{
-					ccv_contour_push(contour, *closed);
-					int color = a_ptr[closed->x + (closed->y - i) * a->cols];
-					for (k = 0; k < 8; k++)
-					{
-						int nx = closed->x + dx8[k];
-						int ny = closed->y + dy8[k];
-						if (nx >= 0 && nx < a->cols && ny >= 0 && ny < a->rows &&
-							a_ptr[nx + (ny - i) * a->cols] != transparent &&
-							!m_ptr[nx + (ny - i) * a->cols] &&
-							((color != 0 && (double)a_ptr[nx + (ny - i) * a->cols] / color < ratio) || (a_ptr[nx + (ny - i) * a->cols] != 0 && (double)color / a_ptr[nx + (ny - i) * a->cols] < ratio)) &&
-							abs(color - a_ptr[nx + (ny - i) * a->cols]) < tolerance)
-						{
-							m_ptr[nx + (ny - i) * a->cols] = 1;
-							open->x = nx;
-							open->y = ny;
-							open++;
-						}
-					}
-				}
-				ccv_array_push(contours, &contour);
-			}
-		a_ptr += a->cols;
-		m_ptr += a->cols;
-	}
-	ccfree(marker);
-	ccfree(buffer);
-	return contours;
 }
 
 void ccv_contour_free(ccv_contour_t* contour)

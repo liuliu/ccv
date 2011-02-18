@@ -471,11 +471,11 @@ typedef struct {
 	ccv_rect_t rect;
 	int size;
 	ccv_array_t* set;
+	long m10, m01, m11, m20, m02;
 } ccv_contour_t;
 
 ccv_contour_t* ccv_contour_new(int set);
 void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point);
-ccv_array_t* ccv_connected_component(ccv_dense_matrix_t* a, int transparent, int tolerance, double ratio, int set);
 void ccv_contour_free(ccv_contour_t* contour);
 
 /* numerical algorithms */

@@ -57,18 +57,18 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_sobel(a, &dx, 0, params.size, 0);
 	ccv_dense_matrix_t* dy = 0;
 	ccv_sobel(a, &dy, 0, 0, params.size);
-	int i, j, k;
+	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
 	unsigned char* b_ptr = db->data.ptr;
 	unsigned char* c_ptr = c->data.ptr;
 	unsigned char* dx_ptr = dx->data.ptr;
 	unsigned char* dy_ptr = dy->data.ptr;
 	ccv_zero(db);
-	int adx, ady, sx, sy, err, e2, x0, x1, y0, y1;
-	int dx9[] = {-2, -1, 0, 1, 2, 0, 0, 0, 0};
-	int dy9[] = {0, 0, 0, 0, 0, -2, -1, 1, 2};
-	int dx25[] = {-2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 0, 1, 2, -2, -1, 0, 1, 2};
-	int dy25[] = {0, 0, 0, 0, 0, -2, -2, -2, -2, -2, -1, -1, -1, -1, -1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2};
+	int dx5[] = {-1, 0, 1, 0, 0};
+	int dy5[] = {0, 0, 0, -1, 1};
+	int dx9[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
+	int dy9[] = {0, 0, 0, -1, -1, -1, 1, 1, 1};
+	int adx, ady, sx, sy, err, e2, x0, x1, y0, y1, sk;
 #define ray_reset() \
 	err = adx - ady; e2 = 0; \
 	x0 = j; y0 = i;
@@ -84,93 +84,106 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		err += adx; \
 		y0 += sy; \
 	}
+	int rdx, rdy, flag;
+#define ray_emit(xx, xy, yx, yy, __for_get_d, __for_set_b, __for_get_b) \
+	rdx = __for_get_d(dx_ptr, j, 0) * (xx) + __for_get_d(dy_ptr, j, 0) * (xy); \
+	rdy = __for_get_d(dx_ptr, j, 0) * (yx) + __for_get_d(dy_ptr, j, 0) * (yy); \
+	adx = abs(rdx); \
+	ady = abs(rdy); \
+	sx = rdx > 0 ? params.direct : -params.direct; \
+	sy = rdy > 0 ? params.direct : -params.direct; \
+	/* Bresenham's line algorithm */ \
+	ray_reset(); \
+	flag = 0; \
+	sk = 1; \
+	for (w = 0; w < 70; w++) \
+	{ \
+		ray_increment(); \
+		if (x0 >= a->cols - 1 || x0 < 1 || y0 >= a->rows - 1 || y0 < 1) \
+			break; \
+		if (abs(i - y0) < 2 && abs(j - x0) < 2) \
+		{ \
+			if (c_ptr[x0 + (y0 - i) * c->step]) \
+			{ \
+				flag = 1; \
+				break; \
+			} \
+		} else { /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
+			flag = 0; \
+			for (k = 0; k < 5; k++) \
+				if (c_ptr[x0 + dx5[k] + (y0 - i + dy5[k]) * c->step]) \
+				{ \
+					sk = k; \
+					flag = 1; \
+					break; \
+				} \
+			if (flag) \
+				break; \
+		} \
+	} \
+	if (flag && x0 + dx5[sk] < a->cols - 1 && x0 + dx5[sk] > 0 && y0 + dy5[sk] < a->rows - 1 && y0 + dy5[sk] > 0) \
+	{ \
+		/* the opposite angle should be in d_p -/+ PI / 6 (otherwise discard),
+		 * a faster computation should be:
+		 * Tan(d_q - d_p) = (Tan(d_q) - Tan(d_p)) / (1 + Tan(d_q) * Tan(d_p))
+		 * and -1 / sqrt(3) < Tan(d_q - d_p) < 1 / sqrt(3)
+		 * also, we needs to check the whole 5x5 neighborhood in a hope that we don't miss one or two of them */ \
+		flag = 0; \
+		for (k = 0; k < 9; k++) \
+		{ \
+			int tn = __for_get_d(dy_ptr, j, 0) * __for_get_d(dx_ptr + (y0 + dy5[sk] - i + dy9[k]) * dx->step, x0 + dx5[sk] + dx9[k], 0) - \
+					 __for_get_d(dx_ptr, j, 0) * __for_get_d(dy_ptr + (y0 + dy5[sk] - i + dy9[k]) * dy->step, x0 + dx5[sk] + dx9[k], 0); \
+			int td = __for_get_d(dx_ptr, j, 0) * __for_get_d(dx_ptr + (y0 + dy5[sk] - i + dy9[k]) * dx->step, x0 + dx5[sk] + dx9[k], 0) + \
+					 __for_get_d(dy_ptr, j, 0) * __for_get_d(dy_ptr + (y0 + dy5[sk] - i + dy9[k]) * dy->step, x0 + dx5[sk] + dx9[k], 0); \
+			if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
+			{ \
+				flag = 1; \
+				break; \
+			} \
+		} \
+		if (flag) \
+		{ \
+			x1 = x0; y1 = y0; \
+			int n = 0; \
+			ray_reset(); \
+			w = (int)(sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) + 0.5); \
+			/* extend the line to be width of 1 */ \
+			for (;;) \
+			{ \
+				if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) == 0 || __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > w) \
+				{ \
+					__for_set_b(b_ptr + (y0 - i) * db->step, x0, w, 0); \
+					buf[n++] = w; \
+				} else if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) != 0) \
+					buf[n++] = __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0); \
+				if (x0 == x1 && y0 == y1) \
+					break; \
+				ray_increment(); \
+			} \
+			int nw = __ccv_median(buf, 0, n - 1); \
+			if (nw != w) \
+			{ \
+				ray_reset(); \
+				for (;;) \
+				{ \
+					if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > nw) \
+						__for_set_b(b_ptr + (y0 - i) * db->step, x0, nw, 0); \
+					if (x0 == x1 && y0 == y1) \
+						break; \
+					ray_increment(); \
+				} \
+			} \
+		} \
+	}
 #define for_block(__for_get_d, __for_set_b, __for_get_b) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
 		for (j = 0; j < a->cols; j++) \
 			if (c_ptr[j]) \
 			{ \
-				adx = abs(__for_get_d(dx_ptr, j, 0)); \
-				ady = abs(__for_get_d(dy_ptr, j, 0)); \
-				sx = __for_get_d(dx_ptr, j, 0) > 0 ? params.direct : -params.direct; \
-				sy = __for_get_d(dy_ptr, j, 0) > 0 ? params.direct : -params.direct; \
-				/* Bresenham's line algorithm */ \
-				ray_reset(); \
-				for (;;) \
-				{ \
-					ray_increment(); \
-					if (x0 >= a->cols - 2 || x0 <= 1 || y0 >= a->rows - 2 || y0 <= 1) \
-						break; \
-					if (abs(i - y0) < 5 && abs(j - x0) < 5) \
-					{ \
-						if (c_ptr[x0 + (y0 - i) * c->step]) \
-							break; \
-					} else { /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
-						int flag = 0; \
-						for (k = 0; k < 9; k++) \
-							if (c_ptr[x0 + dx9[k] + (y0 - i + dy9[k]) * c->step]) \
-							{ \
-								flag = 1; \
-								break; \
-							} \
-						if (flag) \
-							break; \
-					} \
-				} \
-				if (x0 < a->cols - 2 && x0 > 1 && y0 < a->rows - 2 && y0 > 1) \
-				{ \
-					/* the opposite angle should be in d_p -/+ PI / 6 (otherwise discard),
-					 * a faster computation should be:
-					 * Tan(d_q - d_p) = (Tan(d_q) - Tan(d_p)) / (1 + Tan(d_q) * Tan(d_p))
-					 * and -1 / sqrt(3) < Tan(d_q - d_p) < 1 / sqrt(3)
-					 * also, we needs to check the whole 5x5 neighborhood in a hope that we don't miss one or two of them */ \
-					int flag = 0; \
-					for (k = 0; k < 25; k++) \
-					{ \
-						int tn = __for_get_d(dy_ptr, j, 0) * __for_get_d(dx_ptr + (y0 - i + dy25[k]) * dx->step, x0 + dx25[k], 0) - \
-								 __for_get_d(dx_ptr, j, 0) * __for_get_d(dy_ptr + (y0 - i + dy25[k]) * dy->step, x0 + dx25[k], 0); \
-						int td = __for_get_d(dx_ptr, j, 0) * __for_get_d(dx_ptr + (y0 - i + dy25[k]) * dx->step, x0 + dx25[k], 0) + \
-								 __for_get_d(dy_ptr, j, 0) * __for_get_d(dy_ptr + (y0 - i + dy25[k]) * dy->step, x0 + dx25[k], 0); \
-						if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
-						{ \
-							flag = 1; \
-							break; \
-						} \
-					} \
-					if (flag) \
-					{ \
-						x1 = x0; y1 = y0; \
-						int n = 0; \
-						ray_reset(); \
-						int w = (int)(sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) + 0.5); \
-						/* extend the line to be width of 1 */ \
-						for (;;) \
-						{ \
-							if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) == 0 || __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > w) \
-							{ \
-								__for_set_b(b_ptr + (y0 - i) * db->step, x0, w, 0); \
-								buf[n++] = w; \
-							} else if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) != 0) \
-								buf[n++] = __for_get_b(b_ptr + (y0 - i) * db->step, x0, 0); \
-							if (x0 == x1 && y0 == y1) \
-								break; \
-							ray_increment(); \
-						} \
-						int nw = __ccv_median(buf, 0, n - 1); \
-						if (nw != w) \
-						{ \
-							ray_reset(); \
-							for (;;) \
-							{ \
-								if (__for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > nw) \
-									__for_set_b(b_ptr + (y0 - i) * db->step, x0, nw, 0); \
-								if (x0 == x1 && y0 == y1) \
-									break; \
-								ray_increment(); \
-							} \
-						} \
-					} \
-				} \
+				ray_emit(1, 0, 0, 1, __for_get_d, __for_set_b, __for_get_b); \
+				ray_emit(1, -1, 1, 1, __for_get_d, __for_set_b, __for_get_b); \
+				ray_emit(1, 1, -1, 1, __for_get_d, __for_set_b, __for_get_b); \
 			} \
 		b_ptr += db->step; \
 		c_ptr += c->step; \
@@ -179,33 +192,78 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	}
 	ccv_matrix_getter(dx->type, ccv_matrix_setter_getter, db->type, for_block);
 #undef for_block
+#undef ray_emit
 #undef ray_reset
 #undef ray_increment
+}
+
+ccv_array_t* __ccv_swt_connected_component(ccv_dense_matrix_t* a, double ratio)
+{
+	int i, j, k;
+	int* a_ptr = a->data.i;
+	int dx8[] = {-1, 1, -1, 0, 1, -1, 0, 1};
+	int dy8[] = {0, 0, -1, -1, -1, 1, 1, 1};
+	int* marker = (int*)ccmalloc(sizeof(int) * a->rows * a->cols);
+	memset(marker, 0, sizeof(int) * a->rows * a->cols);
+	int* m_ptr = marker;
+	ccv_point_t* buffer = (ccv_point_t*)ccmalloc(sizeof(ccv_point_t) * a->rows * a->cols);
+	ccv_array_t* contours = ccv_array_new(5, sizeof(ccv_contour_t*));
+	for (i = 0; i < a->rows; i++)
+	{
+		for (j = 0; j < a->cols; j++)
+			if (a_ptr[j] != 0 && !m_ptr[j])
+			{
+				m_ptr[j] = 1;
+				ccv_contour_t* contour = ccv_contour_new(1);
+				ccv_point_t* closed = buffer;
+				closed->x = j;
+				closed->y = i;
+				ccv_point_t* open = buffer + 1;
+				for (; closed < open; closed++)
+				{
+					ccv_contour_push(contour, *closed);
+					int color = a_ptr[closed->x + (closed->y - i) * a->cols];
+					for (k = 0; k < 8; k++)
+					{
+						int nx = closed->x + dx8[k];
+						int ny = closed->y + dy8[k];
+						if (nx >= 0 && nx < a->cols && ny >= 0 && ny < a->rows &&
+							a_ptr[nx + (ny - i) * a->cols] != 0 &&
+							!m_ptr[nx + (ny - i) * a->cols] &&
+							(a_ptr[nx + (ny - i) * a->cols] <= ratio * color && a_ptr[nx + (ny - i) * a->cols] * ratio >= color))
+						{
+							m_ptr[nx + (ny - i) * a->cols] = 1;
+							open->x = nx;
+							open->y = ny;
+							open++;
+						}
+					}
+				}
+				ccv_array_push(contours, &contour);
+			}
+		a_ptr += a->cols;
+		m_ptr += a->cols;
+	}
+	ccfree(marker);
+	ccfree(buffer);
+	return contours;
 }
 
 typedef struct {
 	ccv_rect_t rect;
 	int thickness;
 	int brightness;
+	double variance;
+	double mean;
+	ccv_contour_t* contour;
 } ccv_letter_t;
 
 static ccv_array_t* __ccv_connected_letters(ccv_dense_matrix_t* a, ccv_dense_matrix_t* swt)
 {
-	ccv_array_t* contours = ccv_connected_component(swt, 0, 1 << 8, 3.0, 1);
+	ccv_array_t* contours = __ccv_swt_connected_component(swt, 3.0);
 	ccv_array_t* letters = ccv_array_new(5, sizeof(ccv_letter_t));
-	int i, j, x, y, n;
-	int* labels = (int*)ccmalloc(sizeof(int) * swt->rows * swt->cols);
+	int i, j, x, y;
 	int* buffer = (int*)ccmalloc(sizeof(int) * swt->rows * swt->cols);
-	memset(labels, 0, sizeof(int) * swt->rows * swt->cols);
-	for (i = 0; i < contours->rnum; i++)
-	{
-		ccv_contour_t* contour = *(ccv_contour_t**)ccv_array_get(contours, i);
-		for (j = 0; j < contour->set->rnum; j++)
-		{
-			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
-			labels[point->x + point->y * swt->cols] = i + 1;
-		}
-	}
 	for (i = 0; i < contours->rnum; i++)
 	{
 		ccv_contour_t* contour = *(ccv_contour_t**)ccv_array_get(contours, i);
@@ -220,79 +278,102 @@ static ccv_array_t* __ccv_connected_letters(ccv_dense_matrix_t* a, ccv_dense_mat
 			ccv_contour_free(contour);
 			continue;
 		}
+		double xc = (double)contour->m10 / contour->size;
+		double yc = (double)contour->m01 / contour->size;
+		double af = (double)contour->m20 / contour->size - xc * xc;
+		double bf = 0.5 * ((double)contour->m11 / contour->size - xc * yc);
+		double cf = (double)contour->m02 / contour->size - yc * yc;
+		double delta = sqrt(bf * bf - (af - cf) * (af - cf));
+		ratio = sqrt((af + cf + delta) / (af + cf - delta));
+		if (ratio < 0.1 || ratio > 10)
+		{
+			ccv_contour_free(contour);
+			continue;
+		}
 		double mean = 0;
-		n = 0;
-		for (j = 0; j < contour->set->rnum; j++)
+		for (j = 0; j < contour->size; j++)
 		{
 			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
 			mean += swt->data.i[point->x + point->y * swt->cols];
-			buffer[n++] = swt->data.i[point->x + point->y * swt->cols];
+			buffer[j] = swt->data.i[point->x + point->y * swt->cols];
 		}
 		mean = mean / contour->size;
 		double variance = 0;
-		for (j = 0; j < contour->set->rnum; j++)
-		{
-			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
-			variance += (mean - swt->data.i[point->x + point->y * swt->cols]) * (mean - swt->data.i[point->x + point->y * swt->cols]);
-		}
+		for (j = 0; j < contour->size; j++)
+			variance += (mean - buffer[j]) * (mean - buffer[j]);
 		variance = variance / contour->size;
-		if (sqrt(variance) > mean * 0.5)
-		{
-			ccv_contour_free(contour);
-			continue;
-		}
 		ccv_letter_t letter;
-		letter.thickness = __ccv_median(buffer, 0, n - 1);
-		if (ccv_min(contour->rect.width, contour->rect.height) > 10 * letter.thickness)
+		letter.variance = variance;
+		letter.mean = mean;
+		letter.thickness = __ccv_median(buffer, 0, contour->size - 1);
+		letter.rect = contour->rect;
+		letter.brightness = 0;
+		letter.contour = contour;
+		ccv_array_push(letters, &letter);
+	}
+	ccv_array_free(contours);
+	memset(buffer, 0, sizeof(int) * swt->rows * swt->cols);
+	ccv_array_t* new_letters = ccv_array_new(5, sizeof(ccv_letter_t));
+	for (i = 0; i < letters->rnum; i++)
+	{
+		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(letters, i);
+		for (j = 0; j < letter->contour->size; j++)
 		{
-			ccv_contour_free(contour);
+			ccv_point_t* point = (ccv_point_t*)ccv_array_get(letter->contour->set, j);
+			buffer[point->x + point->y * swt->cols] = i + 1;
+		}
+	}
+	for (i = 0; i < letters->rnum; i++)
+	{
+		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(letters, i);
+		if (sqrt(letter->variance) > letter->mean)
+		{
+			ccv_contour_free(letter->contour);
 			continue;
 		}
-		letter.rect = contour->rect;
 		int another[] = {0, 0};
 		int more = 0;
-		for (x = contour->rect.x; x < contour->rect.x + contour->rect.width; x++)
-			for (y = contour->rect.y; y < contour->rect.y + contour->rect.height; y++)
-				if (labels[x + swt->cols * y] && labels[x + swt->cols * y] != i + 1)
+		for (x = letter->rect.x; x < letter->rect.x + letter->rect.width; x++)
+			for (y = letter->rect.y; y < letter->rect.y + letter->rect.height; y++)
+				if (buffer[x + swt->cols * y] && buffer[x + swt->cols * y] != i + 1)
 				{
 					if (another[0])
 					{
-						if (labels[x + swt->cols * y] != another[0])
+						if (buffer[x + swt->cols * y] != another[0])
 						{
 							if (another[1])
 							{
-								if (labels[x + swt->cols * y] != another[1])
+								if (buffer[x + swt->cols * y] != another[1])
 								{
 									more = 1;
 									break;
 								}
 							} else {
-								another[1] = labels[x + swt->cols * y];
+								another[1] = buffer[x + swt->cols * y];
 							}
 						}
 					} else {
-						another[0] = labels[x + swt->cols * y];
+						another[0] = buffer[x + swt->cols * y];
 					}
 				}
 		if (more)
 		{
-			ccv_contour_free(contour);
+			ccv_contour_free(letter->contour);
 			continue;
 		}
-		letter.brightness = 0;
-		for (j = 0; j < contour->set->rnum; j++)
+		for (j = 0; j < letter->contour->set->rnum; j++)
 		{
-			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
-			letter.brightness += a->data.ptr[point->x + point->y * a->step];
+			ccv_point_t* point = (ccv_point_t*)ccv_array_get(letter->contour->set, j);
+			letter->brightness += a->data.ptr[point->x + point->y * a->step];
 		}
-		letter.brightness /= contour->size;
-		ccv_array_push(letters, &letter);
-		ccv_contour_free(contour);
+		letter->brightness /= letter->contour->size;
+		ccv_contour_free(letter->contour);
+		letter->contour = 0;
+		ccv_array_push(new_letters, letter);
 	}
-	ccv_array_free(contours);
-	ccfree(labels);
+	ccv_array_free(letters);
 	ccfree(buffer);
-	return letters;
+	return new_letters;
 }
 
 typedef struct {
@@ -349,8 +430,10 @@ static ccv_array_t* __ccv_merge_textline(ccv_array_t* letters)
 				continue;
 			int dx = li->rect.x - lj->rect.x + (li->rect.width - lj->rect.width) / 2;
 			int dy = li->rect.y - lj->rect.y + (li->rect.height - lj->rect.height) / 2;
-			int max_width = 3 * ccv_max(li->rect.width, lj->rect.width);
-			if (dx * dx + dy * dy > max_width * max_width)
+			if (abs(dx) > 3 * ccv_max(li->rect.width, lj->rect.width))
+				continue;
+			int oy = ccv_min(li->rect.y + li->rect.height, lj->rect.y + lj->rect.height) - ccv_max(li->rect.y, lj->rect.y);
+			if (oy * 2 < ccv_min(li->rect.height, lj->rect.height))
 				continue;
 			ccv_letter_pair_t pair = { .parent = -1, .left = i, .right = j, .dx = dx, .dy = dy };
 			ccv_array_push(pairs, &pair);
