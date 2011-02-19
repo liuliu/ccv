@@ -13,11 +13,12 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = 0;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 	unsigned int elapsed_time = get_current_time();
-	ccv_swt_param_t params = { .size = 5, .low_thresh = 50, .high_thresh = 50 * 3 };
+	ccv_swt_param_t params = { .size = 5, .low_thresh = 100, .high_thresh = 100 * 3, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 1, .thickness_ratio = 2, .height_ratio = 2, .intensity_thresh = 15, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .breakdown = 0, .breakdown_ratio = 1 };
 	ccv_array_t* words = ccv_swt_detect_words(image, params);
-	printf("elpased time : %d\n", get_current_time() - elapsed_time);
-	int i, j;
+	elapsed_time = get_current_time() - elapsed_time;
+	int i;
 	/*
+	int i, j;
 	ccv_dense_matrix_t* x = 0;
 	params.direct = 1;
 	ccv_swt(image, &x, 0, params);
@@ -32,12 +33,9 @@ int main(int argc, char** argv)
 	for (i = 0; i < words->rnum; i++)
 	{
 		ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
-		for (j = rect->x; j < rect->x + rect->width; j++)
-			image->data.ptr[j + rect->y * image->step] = image->data.ptr[j + (rect->y + rect->height - 1) * image->step] = 255;
-		for (j = rect->y; j < rect->y + rect->height; j++)
-			image->data.ptr[rect->x + j * image->step] = image->data.ptr[rect->x + rect->width - 1 + j * image->step] = 255;
+		printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
 	}
-	ccv_serialize(image, argv[2], 0, CCV_SERIAL_PNG_FILE, 0);
+	printf("total : %d in time %dms\n", words->rnum, elapsed_time);
 	ccv_matrix_free(image);
 	ccv_garbage_collect();
 	return 0;

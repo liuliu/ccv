@@ -462,6 +462,51 @@ void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
 	}
 }
 
+int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
+{
+	assert((a->type & CCV_32S) || (a->type & CCV_8U));
+	int* histogram = (int*)alloca(range * sizeof(int));
+	memset(histogram, 0, sizeof(int) * range);
+	int i, j;
+	unsigned char* a_ptr = a->data.ptr;
+#define for_block(_, __for_get) \
+	for (i = 0; i < a->rows; i++) \
+	{ \
+		for (j = 0; j < a->cols; j++) \
+			histogram[ccv_clamp((int)__for_get(a_ptr, j, 0), 0, range - 1)]++; \
+		a_ptr += a->step; \
+	}
+	ccv_matrix_getter(a->type, for_block);
+#undef for_block
+	double sum = 0, sumB = 0;
+	for (i = 0; i < range; i++)
+		sum += i * histogram[i];
+	int wB = 0, wF = 0, total = a->rows * a->cols;
+	double maxVar = 0;
+	int threshold = 0;
+	for (i = 0; i < range; i++)
+	{
+		wB += histogram[i];
+		if (wB == 0)
+			continue;
+		wF = total - wB;
+		if (wF == 0)
+			break;
+		sumB += i * histogram[i];
+		double mB = sumB / wB;
+		double mF = (sum - sumB) / wF;
+		double var = wB * wF * (mB - mF) * (mB - mF);
+		if (var > maxVar)
+		{
+			maxVar = var;
+			threshold = i;
+		}
+	}
+	if (outvar != 0)
+		*outvar = maxVar;
+	return threshold;
+}
+
 ccv_array_t* ccv_array_new(int rnum, int rsize)
 {
 	ccv_array_t* array = (ccv_array_t*)ccmalloc(sizeof(ccv_array_t));
@@ -481,6 +526,11 @@ void ccv_array_push(ccv_array_t* array, void* r)
 		array->data = ccrealloc(array->data, array->size * array->rsize);
 	}
 	memcpy(ccv_array_get(array, array->rnum - 1), r, array->rsize);
+}
+
+void ccv_array_zero(ccv_array_t* array)
+{
+	memset(array->data, 0, array->size * array->rsize);
 }
 
 void ccv_array_clear(ccv_array_t* array)
@@ -625,6 +675,11 @@ void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
 		} else if (point.y > contour->rect.y + contour->rect.height - 1) {
 			contour->rect.height = point.y - contour->rect.y + 1;
 		}
+		contour->m10 += point.x;
+		contour->m01 += point.y;
+		contour->m11 += point.x * point.y;
+		contour->m20 += point.x * point.x;
+		contour->m02 += point.y * point.y;
 		contour->size++;
 	}
 	if (contour->set)

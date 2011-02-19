@@ -440,9 +440,9 @@ inline static ccv_rect_t ccv_rect(int x, int y, int width, int height)
 }
 
 typedef struct {
+	int rnum;
 	int size;
 	int rsize;
-	int rnum;
 	void* data;
 } ccv_array_t;
 
@@ -450,6 +450,7 @@ ccv_array_t* ccv_array_new(int rnum, int rsize);
 void ccv_array_push(ccv_array_t* array, void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
+void ccv_array_zero(ccv_array_t* array);
 void ccv_array_clear(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
@@ -477,6 +478,8 @@ typedef struct {
 ccv_contour_t* ccv_contour_new(int set);
 void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point);
 void ccv_contour_free(ccv_contour_t* contour);
+/* range: exlusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
+int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
 /* numerical algorithms */
 /* clarification about algebra and numerical algorithms:
@@ -585,10 +588,26 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
+	int direction;
+	/* canny parameters */
 	int size;
-	int direct;
 	double low_thresh;
 	double high_thresh;
+	/* geometry filtering parameters */
+	int max_height;
+	int min_height;
+	double aspect_ratio;
+	double variance_ratio;
+	/* grouping parameters */
+	double thickness_ratio;
+	double height_ratio;
+	int intensity_thresh;
+	double distance_ratio;
+	double intersect_ratio;
+	int letter_thresh;
+	/* break textline into words */
+	int breakdown;
+	double breakdown_ratio;
 } ccv_swt_param_t;
 
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
