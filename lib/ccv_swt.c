@@ -201,6 +201,9 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 #undef ray_emit
 #undef ray_reset
 #undef ray_increment
+	ccv_matrix_free(c);
+	ccv_matrix_free(dx);
+	ccv_matrix_free(dy);
 }
 
 ccv_array_t* __ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
