@@ -604,6 +604,7 @@ typedef struct {
 	int intensity_thresh;
 	double distance_ratio;
 	double intersect_ratio;
+	double elongate_ratio;
 	int letter_thresh;
 	/* break textline into words */
 	int breakdown;

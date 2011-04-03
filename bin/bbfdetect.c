@@ -33,6 +33,8 @@ int main(int argc, char** argv)
 		ccv_garbage_collect();
 	} else {
 		FILE* r = fopen(argv[1], "rt");
+		if (argc == 3)
+			chdir(argv[2]);
 		if(r)
 		{
 			char file[1000 + 1];

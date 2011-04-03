@@ -114,4 +114,22 @@ TEST_CASE("canny edge detector")
 	ccv_garbage_collect();
 }
 
+TEST_CASE("otsu threshold")
+{
+	ccv_dense_matrix_t* image = ccv_dense_matrix_new(6, 6, CCV_32S | CCV_C1, 0, 0);
+	/* the test case is grabbed from: http://www.labbookpages.co.uk/software/imgProc/otsuThreshold.html */
+	image->data.i[0] = image->data.i[1] = image->data.i[6] = image->data.i[22] = image->data.i[23] = image->data.i[28] = image->data.i[29] = image->data.i[35] = 0;
+	image->data.i[2] = image->data.i[7] = image->data.i[12] = image->data.i[16] = image->data.i[21] = image->data.i[27] = image->data.i[34] = 1;
+	image->data.i[15] = image->data.i[26] = 2;
+	image->data.i[8] = image->data.i[10] = image->data.i[13] = image->data.i[17] = image->data.i[20] = image->data.i[33] = 3;
+	image->data.i[3] = image->data.i[4] = image->data.i[9] = image->data.i[11] = image->data.i[14] = image->data.i[18] = image->data.i[19] = image->data.i[25] = image->data.i[32] = 4;
+	image->data.i[5] = image->data.i[24] = image->data.i[30] = image->data.i[31] = 5;
+	double var;
+	int threshold = ccv_otsu(image, &var, 6);
+	REQUIRE_EQ(threshold, 2, "threshold should be 2 (inclusive)");
+	REQUIRE_EQ_WITH_TOLERANCE(var, 2.6287, 0.0001, "between class variance should be 2.6287");
+	ccv_matrix_free(image);
+	ccv_garbage_collect();
+}
+
 #include "case_main.h"
