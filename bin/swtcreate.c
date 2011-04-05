@@ -78,7 +78,7 @@ int main(int argc, char** argv)
 			ccv_array_push(aow[i], &rect);
 		}
 	}
-	ccv_swt_param_t params = { .size = 5, .low_thresh = 93, .high_thresh = 279, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 0.5, .thickness_ratio = 2, .height_ratio = 2, .intensity_thresh = 29, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .elongate_ratio = 1.3, .breakdown = 0, .breakdown_ratio = 3 };
+	ccv_swt_param_t params = { .size = 5, .low_thresh = 93, .high_thresh = 279, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 0.5, .thickness_ratio = 2, .height_ratio = 2, .intensity_thresh = 29, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .elongate_ratio = 1.3, .breakdown = 1, .breakdown_ratio = 3 };
 	double best_f = 0;
 	ccv_swt_param_t best_params = params;
 	/*

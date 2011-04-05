@@ -544,6 +544,7 @@ static ccv_array_t* __ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t
 		ccv_dense_matrix_t otsu = ccv_dense_matrix(1, t->neighbors - 1, CCV_32S | CCV_C1, buffer, 0);
 		double var;
 		int threshold = ccv_otsu(&otsu, &var, range);
+		mean = mean / (t->neighbors - 1);
 		if (var > mean * params.breakdown_ratio)
 		{
 			ccv_textline_t nt = { .neighbors = 0 };
