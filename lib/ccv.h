@@ -621,9 +621,18 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
  * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
 
 typedef struct {
+} ccv_dpm_part_classifier_t;
+
+typedef struct {
+} ccv_dpm_root_classifier_t;
+
+typedef struct {
 } ccv_dpm_param_t;
 
-ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_param_t params);
+typedef struct {
+} ccv_dpm_new_param_t;
+
+ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifier_t** classifier, int count, ccv_dpm_param_t params);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
@@ -690,7 +699,7 @@ enum {
 };
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
-ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params);
+ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
 ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory);
 ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s);
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
