@@ -246,7 +246,7 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type
 					c = k - ((255 - c) * k >> 8);
 					m = k - ((255 - m) * k >> 8);
 					y = k - ((255 - y) * k >> 8);
-					*g = (unsigned char)(unsigned char)((c * 6969 + m * 23434 + y * 2365) >> 15);
+					*g = (unsigned char)((c * 6969 + m * 23434 + y * 2365) >> 15);
 				}
 				ptr += im->step;
 			}

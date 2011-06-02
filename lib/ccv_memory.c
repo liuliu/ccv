@@ -174,20 +174,20 @@ void ccv_enable_cache()
 
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
 {
-	ccv_SHA_CTX ctx;
-	ccv_SHA1_Init(&ctx);
+	blk_SHA_CTX ctx;
+	blk_SHA1_Init(&ctx);
 	uint64_t sigi;
 	va_list arguments;
 	va_start(arguments, sig_start);
 	for (sigi = sig_start; sigi != 0; sigi = va_arg(arguments, uint64_t))
-		ccv_SHA1_Update(&ctx, &sigi, 8);
+		blk_SHA1_Update(&ctx, &sigi, 8);
 	va_end(arguments);
-	ccv_SHA1_Update(&ctx, msg, len);
+	blk_SHA1_Update(&ctx, msg, len);
 	union {
 		uint64_t u;
 		uint8_t chr[20];
 	} sig;
-	ccv_SHA1_Final(sig.chr, &ctx);
+	blk_SHA1_Final(sig.chr, &ctx);
 	return sig.u;
 }
 
