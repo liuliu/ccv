@@ -586,6 +586,7 @@ int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f g
 		}
 		ccv_array_push(idx, &j);
 	}
+	ccfree(node);
 	return class_idx;
 }
 
