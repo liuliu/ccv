@@ -57,7 +57,7 @@ int main(int argc, char** argv)
 	int images;
 	fscanf(r, "%d", &images);
 	int i;
-	ccv_enable_cache(1024 * 1024 * 64);
+	ccv_enable_default_cache();
 	ccv_dense_matrix_t** aof = (ccv_dense_matrix_t**)ccmalloc(sizeof(ccv_dense_matrix_t*) * images);
 	ccv_array_t** aow = (ccv_array_t**)ccmalloc(sizeof(ccv_array_t**) * images);
 	for (i = 0; i < images; i++)

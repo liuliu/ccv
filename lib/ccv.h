@@ -134,6 +134,7 @@ typedef struct {
 	uint32_t inum; // bit num
 	uint32_t cnum; // cell num
 	uint32_t wnum; // way num
+	uint64_t mbit; // mask bit
 	uint64_t g; // current generation
 	size_t up; // upper size
 	size_t size; // size
@@ -182,9 +183,14 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
+
+#define CCV_DEFAULT_CACHE_SIZE (1024 * 1024 * 64)
+#define CCV_DEFAULT_CACHE_SLOT (4096)
+
 void ccv_drain_cache(void);
 void ccv_disable_cache(void);
-void ccv_enable_cache(size_t size);
+void ccv_enable_default_cache(void);
+void ccv_enable_cache(uint32_t cnum, size_t size);
 
 #define ccv_get_dense_matrix_cell(x, row, col) \
 	((((x)->type) & CCV_32S) ? (void*)((x)->data.i + (row) * (x)->cols + (col)) : \

@@ -69,7 +69,7 @@ TEST_CASE("cache test")
 TEST_CASE("garbage collector test")
 {
 	int i;
-	ccv_enable_cache(128 * 128 * N);
+	ccv_enable_cache(N / 4, 128 * 128 * N);
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
@@ -85,9 +85,9 @@ TEST_CASE("garbage collector test")
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
 		if (i == dmt->data.i[0])
 			++percent;
-		ccv_matrix_free(dmt);
+		ccv_matrix_free_immediately(dmt);
 	}
-	REQUIRE((double)percent / (double)N > 0.45, "the cache hit (%lf) should be greater than 45%%", (double)percent / (double)N);
+	REQUIRE((double)percent / (double)N > 0.85, "the cache hit (%lf) should be greater than 85%%", (double)percent / (double)N);
 	ccv_disable_cache();
 }
 

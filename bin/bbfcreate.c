@@ -12,7 +12,7 @@ int main(int argc, char** argv)
 		print_help();
 		return -1;
 	}
-	ccv_enable_cache(1024 * 1024 * 64);
+	ccv_enable_default_cache();
 	int i, rt;
 	int posnum = atoi(argv[2]);
 	FILE* pf = fopen(argv[1], "r");

@@ -11,7 +11,7 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	assert(argc == 3);
-	ccv_enable_cache(1024 * 1024 * 64);
+	ccv_enable_default_cache();
 	ccv_dense_matrix_t* object = 0;
 	ccv_dense_matrix_t* image = 0;
 	ccv_unserialize(argv[1], &object, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);

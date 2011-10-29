@@ -4,7 +4,7 @@ int main(int argc, char** argv)
 {
 	ccv_dense_matrix_t* image = 0;
 	assert(argc == 3);
-	ccv_enable_cache(1024 * 1024 * 64);
+	ccv_enable_default_cache();
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_ANY_FILE);
 	char* suffix = strrchr(argv[2], '.');
 	ccv_dense_matrix_t* representable = 0;

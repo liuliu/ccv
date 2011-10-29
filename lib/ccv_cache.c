@@ -3,15 +3,19 @@
 void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up, uint32_t cnum, uint32_t wnum)
 {
 	cache->rnum = 0;
-	cache->cnum = ccv_min(1 << 16, ccv_max(cnum, 4));
+	cache->cnum = ccv_max(cnum, 4);
 	cache->wnum = wnum;
 	cache->inum = 0;
 	cache->g = 0;
 	cache->up = up;
 	cache->size = 0;
 	cache->ffree = ffree;
-	while ((1 << cache->inum) < cache->cnum + 1)
+	uint32_t j = 0;
+	while (((uint64_t)1 << j) < cache->cnum + 1)
+		++j;
+	while ((1 << cache->inum) < cache->cnum + 1 && (cache->inum + 1) * (cache->wnum - 1) + j <= 64)
 		++(cache->inum);
+	cache->mbit = ((uint64_t)1 << j) - 1;
 	cache->way = (ccv_cache_index_t*)ccmalloc(cache->cnum * cache->wnum * sizeof(ccv_cache_index_t));
 	memset(cache->way, 0, cache->cnum * cache->wnum * sizeof(ccv_cache_index_t));
 }
@@ -60,10 +64,9 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, size_t size)
 	cache->size += size;
 	ccv_cache_index_t* way = cache->way;
 	uint64_t day = 0;
-	uint64_t m = (1 << cache->inum) - 1;
 	for (i = 0; i < cache->wnum; i++)
 	{
-		uint32_t k = (uint32_t)(((sign >> (cache->inum * i)) & m) % cache->cnum);
+		uint32_t k = (uint32_t)(((sign >> (cache->inum * i)) & cache->mbit) % cache->cnum);
 		if (way[k].sign == sign)
 		{
 			cache->size -= way[k].size;
