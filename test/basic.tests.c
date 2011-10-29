@@ -31,7 +31,6 @@ TEST_CASE("sobel operation")
 	ccv_matrix_free(y3);
 	ccv_matrix_free(x5);
 	ccv_matrix_free(y5);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("resample operation of CCV_INTER_AREA")
@@ -43,7 +42,6 @@ TEST_CASE("resample operation of CCV_INTER_AREA")
 	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.resample.bin", "should be a image of color dot");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("sample down operation with source offset (10, 10)")
@@ -55,7 +53,6 @@ TEST_CASE("sample down operation with source offset (10, 10)")
 	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.sample_down.bin", "should be down sampled (/2) image with offset from source (10, 10)");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("sample up operation with source offset (10, 10)")
@@ -67,7 +64,6 @@ TEST_CASE("sample up operation with source offset (10, 10)")
 	REQUIRE_MATRIX_FILE_EQ(x, "data/chessbox.sample_up.bin", "should be down sampled (/2) image with offset from source (10, 10)");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("blur operation with sigma 10")
@@ -79,7 +75,6 @@ TEST_CASE("blur operation with sigma 10")
 	REQUIRE_MATRIX_FILE_EQ(x, "data/nature.blur.bin", "should be image applied with Gaussian filter with sigma sqrt(10)");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("flip operation")
@@ -99,7 +94,6 @@ TEST_CASE("flip operation")
 	ccv_matrix_free(x);
 	ccv_matrix_free(y);
 	ccv_matrix_free(xy);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("canny edge detector")
@@ -111,7 +105,6 @@ TEST_CASE("canny edge detector")
 	REQUIRE_MATRIX_FILE_EQ(x, "data/blackbox.canny.bin", "Canny edge detector on artificial image");
 	ccv_matrix_free(image);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("otsu threshold")
@@ -129,7 +122,6 @@ TEST_CASE("otsu threshold")
 	REQUIRE_EQ(threshold, 2, "threshold should be 2 (inclusive)");
 	REQUIRE_EQ_WITH_TOLERANCE(var, 2.6287, 0.0001, "between class variance should be 2.6287");
 	ccv_matrix_free(image);
-	ccv_garbage_collect();
 }
 
 #include "case_main.h"

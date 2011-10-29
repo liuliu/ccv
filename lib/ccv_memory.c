@@ -1,14 +1,10 @@
 #include "ccv.h"
 #include "3rdparty/sha1.h"
 
-ccv_cache_t ccv_cache = {
-	.rnum = 0,
-	.origin.terminal.off = 0,
-	.origin.terminal.sign = 0
-};
+static ccv_cache_t ccv_cache;
 
 /* option to enable/disable cache */
-static int ccv_cache_opt = 1;
+static int ccv_cache_opt = 0;
 
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig)
 {
@@ -133,8 +129,10 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 		dmt->refcount = 0;
 		if (!ccv_cache_opt || !(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
 			ccfree(dmt);
-		else
-			ccv_cache_put(&ccv_cache, dmt->sig, dmt);
+		else {
+			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL_NUM(dmt->type) + 3) & -4) * dmt->rows;
+			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size);
+		}
 	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
 		int i;
@@ -161,15 +159,22 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	}
 }
 
-void ccv_disable_cache()
+void ccv_drain_cache(void)
 {
-	ccv_cache_opt = 0;
-	ccv_garbage_collect();
+	if (ccv_cache.rnum > 0)
+		ccv_cache_cleanup(&ccv_cache);
 }
 
-void ccv_enable_cache()
+void ccv_disable_cache(void)
+{
+	ccv_cache_opt = 0;
+	ccv_cache_close(&ccv_cache);
+}
+
+void ccv_enable_cache(size_t size)
 {
 	ccv_cache_opt = 1;
+	ccv_cache_init(&ccv_cache, ccfree, size, ccv_max(size / (128 * 128 * 4), 4), 4);
 }
 
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
@@ -189,13 +194,4 @@ uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_st
 	} sig;
 	blk_SHA1_Final(sig.chr, &ctx);
 	return sig.u;
-}
-
-void ccv_garbage_collect()
-{
-	if (ccv_cache.rnum > 0)
-	{
-		ccv_cache_close(&ccv_cache);
-		ccv_cache_init(&ccv_cache);
-	}
 }

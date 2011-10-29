@@ -4,6 +4,7 @@ int main(int argc, char** argv)
 {
 	ccv_dense_matrix_t* image = 0;
 	assert(argc == 3);
+	ccv_enable_cache(1024 * 1024 * 64);
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_ANY_FILE);
 	char* suffix = strrchr(argv[2], '.');
 	ccv_dense_matrix_t* representable = 0;
@@ -23,6 +24,6 @@ int main(int argc, char** argv)
 	ccv_matrix_free(image);
 	if (representable != 0)
 		ccv_matrix_free(representable);
-	ccv_garbage_collect();
+	ccv_disable_cache();
 	return 0;
 }

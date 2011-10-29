@@ -12,6 +12,7 @@ int main(int argc, char** argv)
 		print_help();
 		return -1;
 	}
+	ccv_enable_cache(1024 * 1024 * 64);
 	int i, rt;
 	int posnum = atoi(argv[2]);
 	FILE* pf = fopen(argv[1], "r");
@@ -49,6 +50,6 @@ int main(int argc, char** argv)
 		ccv_matrix_free(&posimg[i]);
 	free(posimg);
 	free(bgfiles);
-	ccv_garbage_collect();
+	ccv_disable_cache();
 	return 0;
 }

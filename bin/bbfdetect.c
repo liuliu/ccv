@@ -13,6 +13,7 @@ int main(int argc, char** argv)
 {
 	assert(argc >= 3);
 	int i;
+	ccv_enable_cache(1024 * 1024 * 64);
 	ccv_dense_matrix_t* image = 0;
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
@@ -30,7 +31,6 @@ int main(int argc, char** argv)
 		printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 		ccv_array_free(seq);
 		ccv_matrix_free(image);
-		ccv_garbage_collect();
 	} else {
 		FILE* r = fopen(argv[1], "rt");
 		if (argc == 3)
@@ -55,11 +55,11 @@ int main(int argc, char** argv)
 				}
 				ccv_array_free(seq);
 				ccv_matrix_free(image);
-				ccv_garbage_collect();
 			}
 			fclose(r);
 		}
 	}
 	ccv_bbf_classifier_cascade_free(cascade);
+	ccv_disable_cache();
 	return 0;
 }

@@ -42,7 +42,6 @@ double ccv_swt_evaluate(int n, ccv_dense_matrix_t** images, ccv_array_t** truth,
 		total_f += f;
 		total_precision += precision;
 		total_recall += recall;
-		ccv_garbage_collect();
 	}
 	total_f /= n;
 	total_precision /= n;
@@ -58,6 +57,7 @@ int main(int argc, char** argv)
 	int images;
 	fscanf(r, "%d", &images);
 	int i;
+	ccv_enable_cache(1024 * 1024 * 64);
 	ccv_dense_matrix_t** aof = (ccv_dense_matrix_t**)ccmalloc(sizeof(ccv_dense_matrix_t*) * images);
 	ccv_array_t** aow = (ccv_array_t**)ccmalloc(sizeof(ccv_array_t**) * images);
 	for (i = 0; i < images; i++)
@@ -157,5 +157,6 @@ int main(int argc, char** argv)
 	printf("best parameters for swt is:\n\tlow_thresh = %lf\n\thigh_thresh = %lf\n\tintensity_thresh = %d\n\tvariance_ratio = %lf\n\telongate_ratio = %lf\n\tbreakdown_ratio = %lf\n", best_params.low_thresh, best_params.high_thresh, best_params.intensity_thresh, best_params.variance_ratio, best_params.elongate_ratio, best_params.breakdown_ratio);
 	ccfree(aof);
 	ccfree(aow);
+	ccv_disable_cache();
 	return 0;
 }

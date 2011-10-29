@@ -9,7 +9,7 @@ test:
 	for test in $(TARGETS) ; do ./"$$test" ; done
 
 clean:
-	rm *.o ../lib/*.o ../lib/libccv.a $(TARGETS)
+	rm *.o ../lib/*.o ../lib/3rdparty/*.o ../lib/libccv.a $(TARGETS)
 
 %.tests: %.tests.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)

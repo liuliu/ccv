@@ -117,7 +117,6 @@ TEST_CASE("compress sparse matrix")
 	ccv_matrix_free(smt);
 	ccv_matrix_free(mat);
 	ccv_matrix_free(csm);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("matrix slice")
@@ -129,7 +128,6 @@ TEST_CASE("matrix slice")
 	REQUIRE_MATRIX_FILE_EQ(b, "data/chessbox.slice.bin", "should have data/chessbox.png sliced at (33, 41) with 111 x 91");
 	ccv_matrix_free(image);
 	ccv_matrix_free(b);
-	ccv_garbage_collect();
 }
 
 #include "case_main.h"

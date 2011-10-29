@@ -38,7 +38,6 @@ TEST_CASE("minimize rosenbrock")
 	double dx[2] = { 1, 1 };
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, x->data.db, dx, 2, 1e-6, "the global minimal should be at (1.0, 1.0)");
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 double gaussian(double x, double y, void* data)
@@ -62,7 +61,6 @@ TEST_CASE("FFTW-based filter on Gaussian kernel")
 	ccv_matrix_free(gray);
 	ccv_matrix_free(kernel);
 	ccv_matrix_free(x);
-	ccv_garbage_collect();
 }
 
 #include "case_main.h"

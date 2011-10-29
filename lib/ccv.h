@@ -118,34 +118,41 @@ extern int __ccv_get_sparse_prime[];
 typedef void ccv_matrix_t;
 
 /* the explicit cache mechanism */
-typedef union {
-	struct {
-		uint64_t bitmap;
-		uint64_t set;
-	} branch;
-	struct {
-		uint64_t sign;
-		uint64_t off;
-	} terminal;
+/* the new cache is Cuckoo based, has a strict memory usage bound
+ * so that you don't have to explicitly call ccv_drain_cache() every time */
+typedef struct {
+	void* off;
+	size_t size;
+	uint64_t sign;
+	uint64_t day;
 } ccv_cache_index_t;
 
-typedef struct {
-	ccv_cache_index_t origin;
-	uint32_t rnum;
-} ccv_cache_t;
+typedef void(*ccv_cache_index_free_f)(void*);
 
-extern ccv_cache_t ccv_cache;
+typedef struct {
+	uint32_t rnum; // record num
+	uint32_t inum; // bit num
+	uint32_t cnum; // cell num
+	uint32_t wnum; // way num
+	uint64_t g; // current generation
+	size_t up; // upper size
+	size_t size; // size
+	ccv_cache_index_t* way;
+	ccv_cache_index_free_f ffree;
+} ccv_cache_t;
 
 #define ccv_cache_return(x, retval) { \
 	if ((x)->type & CCV_GARBAGE) { \
 		(x)->type &= ~CCV_GARBAGE; \
 		return retval; } }
 
-void ccv_cache_init(ccv_cache_t* cache);
-ccv_matrix_t* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
-int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, ccv_matrix_t* x);
-ccv_matrix_t* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
+/* I made it as generic as possible */
+void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up, uint32_t cnum, uint32_t wnum);
+void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, size_t size);
+void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
+void ccv_cache_cleanup(ccv_cache_t* cache);
 void ccv_cache_close(ccv_cache_t* cache);
 
 /* deprecated methods, often these implemented in another way and no longer suitable for newer computer architecture */
@@ -175,9 +182,9 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
-void ccv_garbage_collect();
-void ccv_disable_cache();
-void ccv_enable_cache();
+void ccv_drain_cache(void);
+void ccv_disable_cache(void);
+void ccv_enable_cache(size_t size);
 
 #define ccv_get_dense_matrix_cell(x, row, col) \
 	((((x)->type) & CCV_32S) ? (void*)((x)->data.i + (row) * (x)->cols + (col)) : \

@@ -229,7 +229,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 			}
 			ccv_array_free(detected);
 			ccv_matrix_free(image);
-			ccv_garbage_collect();
+			ccv_drain_cache();
 			printf("\rpreparing negative data ... %2d%%", 100 * negtotal / negnum);
 			fflush(0);
 			if (negtotal >= negnum)
@@ -242,7 +242,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 	}
 	gsl_rng_free(rng);
 	ccfree(idcheck);
-	ccv_garbage_collect();
+	ccv_drain_cache();
 	printf("\n");
 	return negtotal;
 #else
@@ -277,7 +277,7 @@ static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned ch
 		ccv_matrix_free(imgs1);
 		ccv_matrix_free(imgs2);
 	}
-	ccv_garbage_collect();
+	ccv_drain_cache();
 	printf("\n");
 }
 

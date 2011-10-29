@@ -24,7 +24,6 @@ TEST_CASE("matrix multiplication")
 	ccv_matrix_free(a);
 	ccv_matrix_free(b);
 	ccv_matrix_free(y);
-	ccv_garbage_collect();
 }
 
 TEST_CASE("vector sum")
@@ -38,7 +37,6 @@ TEST_CASE("vector sum")
 	a->data.db[5] = 0.23;
 	double sum = ccv_sum(a);
 	ccv_matrix_free(a);
-	ccv_garbage_collect();
 	REQUIRE_EQ_WITH_TOLERANCE(sum, 1.02, 1e-6, "3x2 vector sum failure");
 }
 
@@ -52,7 +50,6 @@ TEST_CASE("vector L2 normalize")
 	float hm[10] = {0.000000, 0.059235, 0.118470, 0.177705, 0.236940, 0.296174, 0.355409, 0.414644, 0.473879, 0.533114};
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, hm, dmt->data.fl, 10, 1e-6, "10d vector L2 normalize failure");
 	ccv_matrix_free(dmt);
-	ccv_garbage_collect();
 }
 
 #include "case_main.h"

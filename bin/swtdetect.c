@@ -12,6 +12,7 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	ccv_swt_param_t params = { .size = 5, .low_thresh = 93, .high_thresh = 279, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 0.5, .thickness_ratio = 2, .height_ratio = 2, .intensity_thresh = 29, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .elongate_ratio = 1.3, .breakdown = 1, .breakdown_ratio = 12.8 };
+	ccv_enable_cache(1024 * 1024 * 64);
 	ccv_dense_matrix_t* image = 0;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
 	if (image != 0)
@@ -28,7 +29,6 @@ int main(int argc, char** argv)
 		printf("total : %d in time %dms\n", words->rnum, elapsed_time);
 		ccv_array_free(words);
 		ccv_matrix_free(image);
-		ccv_garbage_collect();
 	} else {
 		FILE* r = fopen(argv[1], "rt");
 		if (argc == 3)
@@ -54,11 +54,11 @@ int main(int argc, char** argv)
 				}
 				ccv_array_free(words);
 				ccv_matrix_free(image);
-				ccv_garbage_collect();
 			}
 			fclose(r);
 		}
 	}
+	ccv_disable_cache();
 	return 0;
 }
 
