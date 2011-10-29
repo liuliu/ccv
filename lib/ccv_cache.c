@@ -26,7 +26,7 @@ void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 	ccv_cache_index_t* way = cache->way;
 	for (i = 0; i < cache->wnum; i++)
 	{
-		uint32_t k = ((sign >> (cache->inum * i)) & ((1 << cache->inum) - 1)) % cache->cnum;
+		uint32_t k = (uint32_t)(((sign >> (cache->inum * i)) & cache->mbit) % cache->cnum);
 		if (way[k].sign == sign)
 			return way[k].off;
 		way += cache->cnum;
@@ -108,7 +108,7 @@ void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 	ccv_cache_index_t* way = cache->way;
 	for (i = 0; i < cache->wnum; i++)
 	{
-		uint32_t k = ((sign >> (cache->inum * i)) & ((1 << cache->inum) - 1)) % cache->cnum;
+		uint32_t k = (uint32_t)(((sign >> (cache->inum * i)) & cache->mbit) % cache->cnum);
 		if (way[k].sign == sign)
 		{
 			void* off = way[k].off;
@@ -131,7 +131,7 @@ int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 	ccv_cache_index_t* way = cache->way;
 	for (i = 0; i < cache->wnum; i++)
 	{
-		uint32_t k = ((sign >> (cache->inum * i)) & ((1 << cache->inum) - 1)) % cache->cnum;
+		uint32_t k = (uint32_t)(((sign >> (cache->inum * i)) & cache->mbit) % cache->cnum);
 		if (way[k].sign == sign)
 		{
 			if (way[k].off)
