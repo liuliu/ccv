@@ -634,12 +634,23 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
  * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
 
 typedef struct {
+	float* w;
+	float d[4];
+	int count;
+	int width, height;
+	int x, y, z;
 } ccv_dpm_part_classifier_t;
 
 typedef struct {
+	int count;
+	ccv_dpm_part_classifier_t root;
+	ccv_dpm_part_classifier_t* part;
+	float beta;
 } ccv_dpm_root_classifier_t;
 
 typedef struct {
+	int k;
+	ccv_size_t size;
 } ccv_dpm_param_t;
 
 typedef struct {
