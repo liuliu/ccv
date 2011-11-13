@@ -171,15 +171,15 @@ void ccv_disable_cache(void)
 	ccv_cache_close(&ccv_cache);
 }
 
-void ccv_enable_cache(uint32_t cnum, size_t size)
+void ccv_enable_cache(size_t size)
 {
 	ccv_cache_opt = 1;
-	ccv_cache_init(&ccv_cache, ccfree, size, ccv_max(cnum, 4), 4);
+	ccv_cache_init(&ccv_cache, ccfree, size);
 }
 
 void ccv_enable_default_cache(void)
 {
-	ccv_enable_cache(CCV_DEFAULT_CACHE_SLOT, CCV_DEFAULT_CACHE_SIZE);
+	ccv_enable_cache(CCV_DEFAULT_CACHE_SIZE);
 }
 
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)

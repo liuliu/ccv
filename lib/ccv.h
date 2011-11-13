@@ -120,25 +120,27 @@ typedef void ccv_matrix_t;
 /* the explicit cache mechanism */
 /* the new cache is Cuckoo based, has a strict memory usage bound
  * so that you don't have to explicitly call ccv_drain_cache() every time */
-typedef struct {
-	void* off;
-	size_t size;
-	uint64_t sign;
-	uint64_t day;
-} ccv_cache_index_t;
-
 typedef void(*ccv_cache_index_free_f)(void*);
 
+typedef union {
+	struct {
+		uint64_t bitmap;
+		uint64_t set;
+		uint32_t age;
+	} branch;
+	struct {
+		uint64_t sign;
+		uint64_t off;
+		uint64_t age_and_size;
+	} terminal;
+} ccv_cache_index_t;
+
 typedef struct {
-	uint32_t rnum; // record num
-	uint32_t inum; // bit num
-	uint32_t cnum; // cell num
-	uint32_t wnum; // way num
-	uint64_t mbit; // mask bit
-	uint64_t g; // current generation
-	size_t up; // upper size
-	size_t size; // size
-	ccv_cache_index_t* way;
+	ccv_cache_index_t origin;
+	uint32_t rnum;
+	uint32_t age;
+	size_t up;
+	size_t size;
 	ccv_cache_index_free_f ffree;
 } ccv_cache_t;
 
@@ -148,9 +150,9 @@ typedef struct {
 		return retval; } }
 
 /* I made it as generic as possible */
-void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up, uint32_t cnum, uint32_t wnum);
+void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up);
 void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
-int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, size_t size);
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size);
 void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
 void ccv_cache_cleanup(ccv_cache_t* cache);
@@ -185,12 +187,11 @@ void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
 #define CCV_DEFAULT_CACHE_SIZE (1024 * 1024 * 64)
-#define CCV_DEFAULT_CACHE_SLOT (4096)
 
 void ccv_drain_cache(void);
 void ccv_disable_cache(void);
 void ccv_enable_default_cache(void);
-void ccv_enable_cache(uint32_t cnum, size_t size);
+void ccv_enable_cache(size_t size);
 
 #define ccv_get_dense_matrix_cell(x, row, col) \
 	((((x)->type) & CCV_32S) ? (void*)((x)->data.i + (row) * (x)->cols + (col)) : \

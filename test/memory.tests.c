@@ -18,7 +18,7 @@ uint64_t uniqid()
 TEST_CASE("cache test")
 {
 	ccv_cache_t cache;
-	ccv_cache_init(&cache, ccfree, N, N / 4, 4);
+	ccv_cache_init(&cache, ccfree, N);
 	uint64_t sigs[N];
 	void* mems[N];
 	int i;
@@ -69,7 +69,8 @@ TEST_CASE("cache test")
 TEST_CASE("garbage collector test")
 {
 	int i;
-	ccv_enable_cache(N / 4, 128 * 128 * N);
+	// deliberately let only cache size fits 90% of data
+	ccv_enable_cache(44 * N * 90 / 100);
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
@@ -87,7 +88,7 @@ TEST_CASE("garbage collector test")
 			++percent;
 		ccv_matrix_free_immediately(dmt);
 	}
-	REQUIRE((double)percent / (double)N > 0.85, "the cache hit (%lf) should be greater than 85%%", (double)percent / (double)N);
+	REQUIRE((double)percent / (double)N > 0.90, "the cache hit (%lf) should be greater than 90%%", (double)percent / (double)N);
 	ccv_disable_cache();
 }
 

@@ -1,6 +1,7 @@
 CC = clang
 LDFLAGS = -L"../lib" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
-CXXFLAGS = -O3 -msse2 -Wall -I"../lib"
+# CFLAGS = -Wall -I"../lib"
+CFLAGS = -O3 -msse2 -Wall -I"../lib"
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests
 
 all: $(TARGETS)
@@ -18,4 +19,4 @@ libccv.a:
 	${MAKE} -C ../lib
 
 %.o: %.c ../lib/ccv.h
-	$(CC) $(INCFLAGS) $< -o $@ -c $(CXXFLAGS)
+	$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)
