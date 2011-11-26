@@ -3,8 +3,8 @@
  * Liu Liu, 2010-02-01
  **********************************************************/
 
-#ifndef _GUARD_ccv_h_
-#define _GUARD_ccv_h_
+#ifndef GUARD_ccv_h
+#define GUARD_ccv_h
 
 #ifndef _MSC_VER
 #include <unistd.h>
@@ -42,13 +42,13 @@ enum {
 	CCV_C4 = 0x08,
 };
 
-static const int __ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
-static const int __ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
+static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
+static const int _ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 
 #define CCV_GET_DATA_TYPE(x) ((x) & 0xFF00)
-#define CCV_GET_DATA_TYPE_SIZE(x) __ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
+#define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
 #define CCV_GET_CHANNEL(x) ((x) & 0xFF)
-#define CCV_GET_CHANNEL_NUM(x) __ccv_get_channel_num[CCV_GET_CHANNEL(x)]
+#define CCV_GET_CHANNEL_NUM(x) _ccv_get_channel_num[CCV_GET_CHANNEL(x)]
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64F)
 #define CCV_ALL_CHANNEL (CCV_C1 | CCV_C2 | CCV_C3 | CCV_C4)
 
@@ -112,8 +112,8 @@ typedef struct {
 	ccv_dense_vector_t* vector;
 } ccv_sparse_matrix_t;
 
-extern int __ccv_get_sparse_prime[];
-#define CCV_GET_SPARSE_PRIME(x) __ccv_get_sparse_prime[(x)]
+extern int _ccv_get_sparse_prime[];
+#define CCV_GET_SPARSE_PRIME(x) _ccv_get_sparse_prime[(x)]
 
 typedef void ccv_matrix_t;
 
@@ -226,27 +226,27 @@ void ccv_enable_cache(size_t size);
 #define ccv_unswitch_block_b(param, block, ...) { block(__VA_ARGS__, param); }
 /* the factor used to provide higher accuracy in integer type (all integer
  * computation in some cases) */
-#define __ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
-#define __ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
-#define __ccv_get_64f_value(ptr, i, factor) ((double*)(ptr))[(i)]
-#define __ccv_get_8u_value(ptr, i, factor) (((unsigned char*)(ptr))[(i)] << factor)
+#define _ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
+#define _ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
+#define _ccv_get_64f_value(ptr, i, factor) ((double*)(ptr))[(i)]
+#define _ccv_get_8u_value(ptr, i, factor) (((unsigned char*)(ptr))[(i)] << factor)
 #define ccv_matrix_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
 	case CCV_32S: { block(__VA_ARGS__, int); break; } \
@@ -266,99 +266,99 @@ void ccv_enable_cache(size_t size);
 	case CCV_64F: { block(__VA_ARGS__, double); break; } \
 	default: { block(__VA_ARGS__, unsigned char); } } }
 
-#define __ccv_set_32s_value(ptr, i, value, factor) (((int*)(ptr))[(i)] = (int)(value) >> factor)
-#define __ccv_set_32f_value(ptr, i, value, factor) (((float*)(ptr))[(i)] = (float)(value))
-#define __ccv_set_64f_value(ptr, i, value, factor) (((double*)(ptr))[(i)] = (double)(value))
-#define __ccv_set_8u_value(ptr, i, value, factor) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255))
+#define _ccv_set_32s_value(ptr, i, value, factor) (((int*)(ptr))[(i)] = (int)(value) >> factor)
+#define _ccv_set_32f_value(ptr, i, value, factor) (((float*)(ptr))[(i)] = (float)(value))
+#define _ccv_set_64f_value(ptr, i, value, factor) (((double*)(ptr))[(i)] = (double)(value))
+#define _ccv_set_8u_value(ptr, i, value, factor) (((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255))
 #define ccv_matrix_setter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_setter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_setter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_setter_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_setter_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_setter_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_setter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_typeof_setter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_typeof_setter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value); } } }
 
 #define ccv_matrix_typeof_setter_getter(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_setter_getter_a(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 #define ccv_matrix_typeof_setter_getter_b(type, block, ...) { switch (CCV_GET_DATA_TYPE(type)) { \
-	case CCV_32S: { block(__VA_ARGS__, int, __ccv_set_32s_value, __ccv_get_32s_value); break; } \
-	case CCV_32F: { block(__VA_ARGS__, float, __ccv_set_32f_value, __ccv_get_32f_value); break; } \
-	case CCV_64F: { block(__VA_ARGS__, double, __ccv_set_64f_value, __ccv_get_64f_value); break; } \
-	default: { block(__VA_ARGS__, unsigned char, __ccv_set_8u_value, __ccv_get_8u_value); } } }
+	case CCV_32S: { block(__VA_ARGS__, int, _ccv_set_32s_value, _ccv_get_32s_value); break; } \
+	case CCV_32F: { block(__VA_ARGS__, float, _ccv_set_32f_value, _ccv_get_32f_value); break; } \
+	case CCV_64F: { block(__VA_ARGS__, double, _ccv_set_64f_value, _ccv_get_64f_value); break; } \
+	default: { block(__VA_ARGS__, unsigned char, _ccv_set_8u_value, _ccv_get_8u_value); } } }
 
 /* basic io */
 enum {
@@ -635,11 +635,18 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
  * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
 
 typedef struct {
+	ccv_rect_t rect;
+	int neighbors;
+	int id;
+	float confidence;
+} ccv_comp_t;
+
+typedef struct {
 	float* w;
 	float d[4];
 	int count;
-	int width, height;
 	int x, y, z;
+	ccv_size_t size;
 } ccv_dpm_part_classifier_t;
 
 typedef struct {
@@ -650,7 +657,9 @@ typedef struct {
 } ccv_dpm_root_classifier_t;
 
 typedef struct {
-	int k;
+	int interval;
+	int min_neighbors;
+	int flags;
 	ccv_size_t size;
 } ccv_dpm_param_t;
 
@@ -711,13 +720,6 @@ typedef struct {
 	int optimizer;
 	ccv_bbf_param_t detector;
 } ccv_bbf_new_param_t;
-
-typedef struct {
-	ccv_rect_t rect;
-	int neighbors;
-	int id;
-	float confidence;
-} ccv_bbf_comp_t;
 
 enum {
 	CCV_BBF_NO_NESTED = 0x10000000,
@@ -1014,9 +1016,9 @@ void func_name(T *array, size_t total, user_data_type aux)                      
     }                                                                                           \
 }
 
-#define __ccv_qsort_default_swap(a, b, array, aux, t) CCV_SWAP((a), (b), (t))
+#define _ccv_qsort_default_swap(a, b, array, aux, t) CCV_SWAP((a), (b), (t))
 
 #define CCV_IMPLEMENT_QSORT(func_name, T, cmp)  \
-    CCV_IMPLEMENT_QSORT_EX(func_name, T, cmp, __ccv_qsort_default_swap, int)
+    CCV_IMPLEMENT_QSORT_EX(func_name, T, cmp, _ccv_qsort_default_swap, int)
 
 #endif

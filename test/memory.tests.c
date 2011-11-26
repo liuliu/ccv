@@ -27,6 +27,7 @@ TEST_CASE("cache test")
 		sigs[i] = uniqid();
 		mems[i] = ccmalloc(1);
 		ccv_cache_put(&cache, sigs[i], mems[i], 1);
+	 	REQUIRE_EQ(i, cache.size, "at %d should has cache size %d", i, i);
 	}
 	uint8_t deleted[N];
 	for (i = 0; i < N; i++)
@@ -34,6 +35,7 @@ TEST_CASE("cache test")
 		deleted[i] = 1;
 		if (deleted[i])
 			ccv_cache_delete(&cache, sigs[i]);
+	 	REQUIRE_EQ(N - 1 - i, cache.size, "at %d should has cache size %d", i, N - 1 - i);
 	}
 	for (i = 0; i < N; i++)
 	{

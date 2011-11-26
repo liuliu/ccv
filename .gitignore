@@ -11,6 +11,7 @@ test/*.swp
 test/*.jpg
 test/*.png
 test/*.tex
+test/*.tests
 test/tags
 test/*_test
 test/opencv/*.[oa]
@@ -27,3 +28,4 @@ bin/*.swp
 bin/tags
 bin/data/*
 data/*
+tool/*

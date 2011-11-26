@@ -1,4 +1,4 @@
-static void __ccv_serialize_binary_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static void _ccv_serialize_binary_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	fwrite("CCVBINDM", 1, 8, fd);
 	int ctype = mat->type & 0xFFFFF;
@@ -9,7 +9,7 @@ static void __ccv_serialize_binary_fd(ccv_dense_matrix_t* mat, FILE* fd, void* c
 	fflush(fd);
 }
 
-static void __ccv_unserialize_binary_fd(FILE* in, ccv_dense_matrix_t** x, int type)
+static void _ccv_unserialize_binary_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	fseek(in, 8, SEEK_SET);
 	fread(&type, 1, 4, in);

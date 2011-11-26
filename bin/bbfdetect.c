@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)
 		{
-			ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
 			printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
 		}
 		printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
@@ -50,7 +50,7 @@ int main(int argc, char** argv)
 				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
 				for (i = 0; i < seq->rnum; i++)
 				{
-					ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
 					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
 				}
 				ccv_array_free(seq);

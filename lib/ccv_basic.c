@@ -20,33 +20,33 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		/* special case 1: 1x3 or 3x1 window */
 		if (dx > dy)
 		{
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 			for (i = 0; i < a->rows; i++) \
 			{ \
-				__for_set(b_ptr, 0, __for_get(a_ptr, 1, 0) - __for_get(a_ptr, 0, 0), 0); \
+				_for_set(b_ptr, 0, _for_get(a_ptr, 1, 0) - _for_get(a_ptr, 0, 0), 0); \
 				for (j = 1; j < a->cols - 1; j++) \
-					__for_set(b_ptr, j, 2 * (__for_get(a_ptr, j + 1, 0) - __for_get(a_ptr, j - 1, 0)), 0); \
-				__for_set(b_ptr, a->cols - 1, __for_get(a_ptr, a->cols - 1, 0) - __for_get(a_ptr, a->cols - 2, 0), 0); \
+					_for_set(b_ptr, j, 2 * (_for_get(a_ptr, j + 1, 0) - _for_get(a_ptr, j - 1, 0)), 0); \
+				_for_set(b_ptr, a->cols - 1, _for_get(a_ptr, a->cols - 1, 0) - _for_get(a_ptr, a->cols - 2, 0), 0); \
 				b_ptr += db->step; \
 				a_ptr += a->step; \
 			}
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
 		} else {
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, __for_get(a_ptr + a->step, j, 0) - __for_get(a_ptr, j, 0), 0); \
+				_for_set(b_ptr, j, _for_get(a_ptr + a->step, j, 0) - _for_get(a_ptr, j, 0), 0); \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
 			for (i = 1; i < a->rows - 1; i++) \
 			{ \
 				for (j = 0; j < a->cols; j++) \
-					__for_set(b_ptr, j, 2 * (__for_get(a_ptr + a->step, j, 0) - __for_get(a_ptr - a->step, j, 0)), 0); \
+					_for_set(b_ptr, j, 2 * (_for_get(a_ptr + a->step, j, 0) - _for_get(a_ptr - a->step, j, 0)), 0); \
 				a_ptr += a->step; \
 				b_ptr += db->step; \
 			} \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, __for_get(a_ptr, j, 0) - __for_get(a_ptr - a->step, j, 0), 0);
+				_for_set(b_ptr, j, _for_get(a_ptr, j, 0) - _for_get(a_ptr - a->step, j, 0), 0);
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
 		}
@@ -89,21 +89,21 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 			gf = tf;
 		}
 		unsigned char* buf = (unsigned char*)alloca(sizeof(double) * (fsz + ccv_max(a->rows, a->cols)));
-#define for_block(__for_get, __for_type_b, __for_set_b, __for_get_b) \
+#define for_block(_for_get, _for_type_b, _for_set_b, _for_get_b) \
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < hfz; j++) \
-				__for_set_b(buf, j, __for_get(a_ptr, 0, 0), 0); \
+				_for_set_b(buf, j, _for_get(a_ptr, 0, 0), 0); \
 			for (j = 0; j < a->cols; j++) \
-				__for_set_b(buf, j + hfz, __for_get(a_ptr, j, 0), 0); \
+				_for_set_b(buf, j + hfz, _for_get(a_ptr, j, 0), 0); \
 			for (j = a->cols; j < a->cols + hfz; j++) \
-				__for_set_b(buf, j + hfz, __for_get(a_ptr, a->cols - 1, 0), 0); \
+				_for_set_b(buf, j + hfz, _for_get(a_ptr, a->cols - 1, 0), 0); \
 			for (j = 0; j < a->cols; j++) \
 			{ \
-				__for_type_b sum = 0; \
+				_for_type_b sum = 0; \
 				for (k = 0; k < fsz; k++) \
-					sum += __for_get_b(buf, j + k, 0) * __for_get_b(df, k, 0); \
-				__for_set_b(b_ptr, j, sum, 8); \
+					sum += _for_get_b(buf, j + k, 0) * _for_get_b(df, k, 0); \
+				_for_set_b(b_ptr, j, sum, 8); \
 			} \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
@@ -111,21 +111,21 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		ccv_matrix_getter(a->type, ccv_matrix_typeof_setter_getter, db->type, for_block);
 #undef for_block
 		b_ptr = db->data.ptr;
-#define for_block(_, __for_type, __for_set, __for_get) \
+#define for_block(_, _for_type, _for_set, _for_get) \
 		for (i = 0; i < a->cols; i++) \
 		{ \
 			for (j = 0; j < hfz; j++) \
-				__for_set(buf, j, __for_get(b_ptr, i, 0), 0); \
+				_for_set(buf, j, _for_get(b_ptr, i, 0), 0); \
 			for (j = 0; j < a->rows; j++) \
-				__for_set(buf, j + hfz, __for_get(b_ptr + j * db->step, i, 0), 0); \
+				_for_set(buf, j + hfz, _for_get(b_ptr + j * db->step, i, 0), 0); \
 			for (j = a->rows; j < a->rows + hfz; j++) \
-				__for_set(buf, j + hfz, __for_get(b_ptr + (a->rows - 1) * db->step, i, 0), 0); \
+				_for_set(buf, j + hfz, _for_get(b_ptr + (a->rows - 1) * db->step, i, 0), 0); \
 			for (j = 0; j < a->rows; j++) \
 			{ \
-				__for_type sum = 0; \
+				_for_type sum = 0; \
 				for (k = 0; k < fsz; k++) \
-					sum += __for_get(buf, j + k, 0) * __for_get(gf, k, 0); \
-				__for_set(b_ptr + j * db->step, i, sum, 8); \
+					sum += _for_get(buf, j + k, 0) * _for_get(gf, k, 0); \
+				_for_set(b_ptr + j * db->step, i, sum, 8); \
 			} \
 		}
 		ccv_matrix_typeof_setter_getter(db->type, for_block);
@@ -135,60 +135,60 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		unsigned char* buf = (unsigned char*)alloca(db->step);
 		if (dx > dy)
 		{
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, __for_get(a_ptr + a->step, j, 0) + 3 * __for_get(a_ptr, j, 0), 0); \
+				_for_set(b_ptr, j, _for_get(a_ptr + a->step, j, 0) + 3 * _for_get(a_ptr, j, 0), 0); \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
 			for (i = 1; i < a->rows - 1; i++) \
 			{ \
 				for (j = 0; j < a->cols; j++) \
-					__for_set(b_ptr, j, __for_get(a_ptr + a->step, j, 0) + 2 * __for_get(a_ptr, j, 0) + __for_get(a_ptr - a->step, j, 0), 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr + a->step, j, 0) + 2 * _for_get(a_ptr, j, 0) + _for_get(a_ptr - a->step, j, 0), 0); \
 				a_ptr += a->step; \
 				b_ptr += db->step; \
 			} \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, 3 * __for_get(a_ptr, j, 0) + __for_get(a_ptr - a->step, j, 0), 0);
+				_for_set(b_ptr, j, 3 * _for_get(a_ptr, j, 0) + _for_get(a_ptr - a->step, j, 0), 0);
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
 			b_ptr = db->data.ptr;
-#define for_block(_, __for_set, __for_get) \
+#define for_block(_, _for_set, _for_get) \
 			for (i = 0; i < a->rows; i++) \
 			{ \
-				__for_set(buf, 0, __for_get(b_ptr, 1, 0) - __for_get(b_ptr, 0, 0), 0); \
+				_for_set(buf, 0, _for_get(b_ptr, 1, 0) - _for_get(b_ptr, 0, 0), 0); \
 				for (j = 1; j < a->cols - 1; j++) \
-					__for_set(buf, j, __for_get(b_ptr, j + 1, 0) - __for_get(b_ptr, j - 1, 0), 0); \
-				__for_set(buf, a->cols - 1, __for_get(b_ptr, a->cols - 1, 0) - __for_get(b_ptr, a->cols - 2, 0), 0); \
+					_for_set(buf, j, _for_get(b_ptr, j + 1, 0) - _for_get(b_ptr, j - 1, 0), 0); \
+				_for_set(buf, a->cols - 1, _for_get(b_ptr, a->cols - 1, 0) - _for_get(b_ptr, a->cols - 2, 0), 0); \
 				memcpy(b_ptr, buf, db->step); \
 				b_ptr += db->step; \
 			}
 			ccv_matrix_setter_getter(db->type, for_block);
 #undef for_block
 		} else {
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, __for_get(a_ptr + a->step, j, 0) - __for_get(a_ptr, j, 0), 0); \
+				_for_set(b_ptr, j, _for_get(a_ptr + a->step, j, 0) - _for_get(a_ptr, j, 0), 0); \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
 			for (i = 1; i < a->rows - 1; i++) \
 			{ \
 				for (j = 0; j < a->cols; j++) \
-					__for_set(b_ptr, j, __for_get(a_ptr + a->step, j, 0) - __for_get(a_ptr - a->step, j, 0), 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr + a->step, j, 0) - _for_get(a_ptr - a->step, j, 0), 0); \
 				a_ptr += a->step; \
 				b_ptr += db->step; \
 			} \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, __for_get(a_ptr, j, 0) - __for_get(a_ptr - a->step, j, 0), 0);
+				_for_set(b_ptr, j, _for_get(a_ptr, j, 0) - _for_get(a_ptr - a->step, j, 0), 0);
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
 			b_ptr = db->data.ptr;
-#define for_block(_, __for_set, __for_get) \
+#define for_block(_, _for_set, _for_get) \
 			for (i = 0; i < a->rows; i++) \
 			{ \
-				__for_set(buf, 0, __for_get(b_ptr, 1, 0) + 3 * __for_get(b_ptr, 0, 0), 0); \
+				_for_set(buf, 0, _for_get(b_ptr, 1, 0) + 3 * _for_get(b_ptr, 0, 0), 0); \
 				for (j = 1; j < a->cols - 1; j++) \
-					__for_set(buf, j, __for_get(b_ptr, j + 1, 0) + 2 * __for_get(b_ptr, j, 0) + __for_get(b_ptr, j - 1, 0), 0); \
-				__for_set(buf, a->cols - 1, __for_get(b_ptr, a->cols - 2, 0) + 3 * __for_get(b_ptr, a->cols - 1, 0), 0); \
+					_for_set(buf, j, _for_get(b_ptr, j + 1, 0) + 2 * _for_get(b_ptr, j, 0) + _for_get(b_ptr, j - 1, 0), 0); \
+				_for_set(buf, a->cols - 1, _for_get(b_ptr, a->cols - 2, 0) + 3 * _for_get(b_ptr, a->cols - 1, 0), 0); \
 				memcpy(b_ptr, buf, db->step); \
 				b_ptr += db->step; \
 			}
@@ -199,7 +199,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 }
 
 /* the fast arctan function adopted from OpenCV */
-static void __ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
+static void _ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 {
 	int i = 0;
 	float scale = (float)(180.0 / CCV_PI);
@@ -264,7 +264,7 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	ccv_dense_matrix_t* ty = 0;
 	ccv_sobel(a, &tx, CCV_32F | CCV_C1, dx, 0);
 	ccv_sobel(a, &ty, CCV_32F | CCV_C1, 0, dy);
-	__ccv_atan2(tx->data.fl, ty->data.fl, dtheta->data.fl, dm->data.fl, a->rows * a->cols);
+	_ccv_atan2(tx->data.fl, ty->data.fl, dtheta->data.fl, dm->data.fl, a->rows * a->cols);
 	ccv_matrix_free(tx);
 	ccv_matrix_free(ty);
 }
@@ -448,11 +448,11 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 		}
 		map_ptr = map + map_cols + 1;
 		unsigned char* b_ptr = db->data.ptr;
-#define for_block(_, __for_set) \
+#define for_block(_, _for_set) \
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			for (j = 0; j < a->cols; j++) \
-				__for_set(b_ptr, j, (map_ptr[j] == 2), 0); \
+				_for_set(b_ptr, j, (map_ptr[j] == 2), 0); \
 			map_ptr += map_cols; \
 			b_ptr += db->step; \
 		}
@@ -480,7 +480,7 @@ typedef struct {
 	unsigned int alpha;
 } ccv_int_alpha;
 
-static void __ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_int_alpha* xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
@@ -571,7 +571,7 @@ typedef struct {
 	float alpha;
 } ccv_decimal_alpha;
 
-static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
@@ -613,7 +613,7 @@ static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 	for (dx = 0; dx < b->cols * ch; dx++)
 		buf[dx] = sum[dx] = 0;
 	dy = 0;
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 	for (sy = 0; sy < a->rows; sy++) \
 	{ \
 		unsigned char* a_ptr = a->data.ptr + a->step * sy; \
@@ -622,7 +622,7 @@ static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 			int dxn = xofs[k].di; \
 			float alpha = xofs[k].alpha; \
 			for (i = 0; i < ch; i++) \
-				buf[dxn + i] += __for_get(a_ptr, xofs[k].si + i, 0) * alpha; \
+				buf[dxn + i] += _for_get(a_ptr, xofs[k].si + i, 0) * alpha; \
 		} \
 		if ((dy + 1) * scale_y <= sy + 1 || sy == a->rows - 1) \
 		{ \
@@ -633,13 +633,13 @@ static void __ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 			{ \
 				for (dx = 0; dx < b->cols * ch; dx++) \
 				{ \
-					__for_set(b_ptr, dx, sum[dx] + buf[dx], 0); \
+					_for_set(b_ptr, dx, sum[dx] + buf[dx], 0); \
 					sum[dx] = buf[dx] = 0; \
 				} \
 			} else { \
 				for (dx = 0; dx < b->cols * ch; dx++) \
 				{ \
-					__for_set(b_ptr, dx, sum[dx] + buf[dx] * beta1, 0); \
+					_for_set(b_ptr, dx, sum[dx] + buf[dx] * beta1, 0); \
 					sum[dx] = buf[dx] * beta; \
 					buf[dx] = 0; \
 				} \
@@ -684,9 +684,9 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 			{
 				/* using the fast alternative (fix point scale, 0x100 to avoid overflow) */
 				if (CCV_GET_DATA_TYPE(a->type) == CCV_8U && CCV_GET_DATA_TYPE(db->type) == CCV_8U && a->rows * a->cols / (db->rows * db->cols) < 0x100)
-					__ccv_resample_area_8u(a, db);
+					_ccv_resample_area_8u(a, db);
 				else
-					__ccv_resample_area(a, db);
+					_ccv_resample_area(a, db);
 				break;
 			}
 		case CCV_INTER_LINEAR:
@@ -725,7 +725,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	 * it is not desirable to have that offset when we try to wrap it into our 5-row buffer (
 	 * because in later rearrangement, we have no src_y to backup the arrangement). In
 	 * such micro scope, we managed to stripe 5 addition into one shift and addition. */
-#define for_block(x_block, __for_get_a, __for_get, __for_set, __for_set_b) \
+#define for_block(x_block, _for_get_a, _for_get, _for_set, _for_set_b) \
 	for (dy = 0; dy < db->rows; dy++) \
 	{ \
 		for(; sy <= dy * 2 + 2 + src_y; sy++) \
@@ -734,33 +734,33 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 			int _sy = (sy < 0) ? -1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
 			unsigned char* a_ptr = a->data.ptr + a->step * _sy; \
 			for (k = 0; k < ch; k++) \
-				__for_set(row, k, __for_get_a(a_ptr, sx + k, 0) * 10 + __for_get_a(a_ptr, ch + sx + k, 0) * 5 + __for_get_a(a_ptr, 2 * ch + sx + k, 0), 0); \
+				_for_set(row, k, _for_get_a(a_ptr, sx + k, 0) * 10 + _for_get_a(a_ptr, ch + sx + k, 0) * 5 + _for_get_a(a_ptr, 2 * ch + sx + k, 0), 0); \
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
 				for (k = 0; k < ch; k++) \
-					__for_set(row, dx + k, __for_get_a(a_ptr, dx * 2 + sx + k, 0) * 6 + (__for_get_a(a_ptr, dx * 2 + sx + k - ch, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch, 0)) * 4 + __for_get_a(a_ptr, dx * 2 + sx + k - ch * 2, 0) + __for_get_a(a_ptr, dx * 2 + sx + k + ch * 2, 0), 0); \
-			x_block(__for_get_a, __for_get, __for_set, __for_set_b); \
+					_for_set(row, dx + k, _for_get_a(a_ptr, dx * 2 + sx + k, 0) * 6 + (_for_get_a(a_ptr, dx * 2 + sx + k - ch, 0) + _for_get_a(a_ptr, dx * 2 + sx + k + ch, 0)) * 4 + _for_get_a(a_ptr, dx * 2 + sx + k - ch * 2, 0) + _for_get_a(a_ptr, dx * 2 + sx + k + ch * 2, 0), 0); \
+			x_block(_for_get_a, _for_get, _for_set, _for_set_b); \
 		} \
 		unsigned char* rows[5]; \
 		for(k = 0; k < 5; k++) \
 			rows[k] = buf + ((dy * 2 + k) % 5) * bufstep; \
 		for(dx = 0; dx < db->cols * ch; dx++) \
-			__for_set_b(b_ptr, dx, (__for_get(rows[2], dx, 0) * 6 + (__for_get(rows[1], dx, 0) + __for_get(rows[3], dx, 0)) * 4 + __for_get(rows[0], dx, 0) + __for_get(rows[4], dx, 0)) / 256, 0); \
+			_for_set_b(b_ptr, dx, (_for_get(rows[2], dx, 0) * 6 + (_for_get(rows[1], dx, 0) + _for_get(rows[3], dx, 0)) * 4 + _for_get(rows[0], dx, 0) + _for_get(rows[4], dx, 0)) / 256, 0); \
 		b_ptr += db->step; \
 	}
 	int no_8u_type = (a->type & CCV_8U) ? CCV_32S : a->type;
 	/* here is the new technique to expand for loop with condition in manual way */
 	if (src_x > 0)
 	{
-#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (dx = cols0 * ch; dx < db->cols * ch; dx += ch) \
 			for (k = 0; k < ch; k++) \
-				__for_set(row, dx + k, __for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (__for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + __for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + __for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0);
+				_for_set(row, dx + k, _for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (_for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + _for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0);
 		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	} else {
-#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (k = 0; k < ch; k++) \
-			__for_set(row, (db->cols - 1) * ch + k, __for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + __for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + __for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0);
+			_for_set(row, (db->cols - 1) * ch + k, _for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + _for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + _for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0);
 		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	}
@@ -788,7 +788,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 	unsigned char* b_ptr = db->data.ptr;
 	/* why src_y * 2: the same argument as in ccv_sample_down */
-#define for_block(x_block, __for_get_a, __for_get, __for_set, __for_set_b) \
+#define for_block(x_block, _for_get_a, _for_get, _for_set, _for_set_b) \
 	for (y = 0; y < a->rows; y++) \
 	{ \
 		for (; sy <= y + 1 + src_y; sy++) \
@@ -800,33 +800,33 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			{ \
 				for (k = 0; k < ch; k++) \
 				{ \
-					__for_set(row, k, __for_get_a(a_ptr, k, 0) * 8, 0); \
-					__for_set(row, k + ch, __for_get_a(a_ptr, k, 0) * 8, 0); \
+					_for_set(row, k, _for_get_a(a_ptr, k, 0) * 8, 0); \
+					_for_set(row, k + ch, _for_get_a(a_ptr, k, 0) * 8, 0); \
 				} \
 				continue; \
 			} \
 			for (k = 0; k < ch; k++) \
 			{ \
-				__for_set(row, k, __for_get_a(a_ptr, k + sx, 0) * 6 + __for_get_a(a_ptr, k + sx + ch, 0) * 2, 0); \
-				__for_set(row, k + ch, (__for_get_a(a_ptr, k + sx, 0) + __for_get_a(a_ptr, k + sx + ch, 0)) * 4, 0); \
+				_for_set(row, k, _for_get_a(a_ptr, k + sx, 0) * 6 + _for_get_a(a_ptr, k + sx + ch, 0) * 2, 0); \
+				_for_set(row, k + ch, (_for_get_a(a_ptr, k + sx, 0) + _for_get_a(a_ptr, k + sx + ch, 0)) * 4, 0); \
 			} \
 			for (x = ch; x < cols0 * ch; x += ch) \
 			{ \
 				for (k = 0; k < ch; k++) \
 				{ \
-					__for_set(row, x * 2 + k, __for_get_a(a_ptr, x + sx - ch + k, 0) + __for_get_a(a_ptr, x + sx + k, 0) * 6 + __for_get_a(a_ptr, x + sx + ch + k, 0), 0); \
-					__for_set(row, x * 2 + ch + k, (__for_get_a(a_ptr, x + sx + k, 0) + __for_get_a(a_ptr, x + sx + ch + k, 0)) * 4, 0); \
+					_for_set(row, x * 2 + k, _for_get_a(a_ptr, x + sx - ch + k, 0) + _for_get_a(a_ptr, x + sx + k, 0) * 6 + _for_get_a(a_ptr, x + sx + ch + k, 0), 0); \
+					_for_set(row, x * 2 + ch + k, (_for_get_a(a_ptr, x + sx + k, 0) + _for_get_a(a_ptr, x + sx + ch + k, 0)) * 4, 0); \
 				} \
 			} \
-			x_block(__for_get_a, __for_get, __for_set, __for_set_b); \
+			x_block(_for_get_a, _for_get, _for_set, _for_set_b); \
 		} \
 		unsigned char* rows[3]; \
 		for (k = 0; k < 3; k++) \
 			rows[k] = buf + ((y + k) % 3) * bufstep; \
 		for (x = 0; x < db->cols * ch; x++) \
 		{ \
-			__for_set_b(b_ptr, x, (__for_get(rows[0], x, 0) + __for_get(rows[1], x, 0) * 2 + __for_get(rows[2], x, 0)) / 32, 0); \
-			__for_set_b(b_ptr + db->step, x, (__for_get(rows[1], x, 0) + __for_get(rows[2], x, 0)) / 16, 0); \
+			_for_set_b(b_ptr, x, (_for_get(rows[0], x, 0) + _for_get(rows[1], x, 0) * 2 + _for_get(rows[2], x, 0)) / 32, 0); \
+			_for_set_b(b_ptr + db->step, x, (_for_get(rows[1], x, 0) + _for_get(rows[2], x, 0)) / 16, 0); \
 		} \
 		b_ptr += 2 * db->step; \
 	}
@@ -834,21 +834,21 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	/* unswitch if condition in manual way */
 	if (src_x > 0)
 	{
-#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (x = cols0 * ch; x < a->cols * ch; x += ch) \
 			for (k = 0; k < ch; k++) \
 			{ \
-				__for_set(row, x * 2 + k, __for_get_a(a_ptr, tab[x + sx - ch + k], 0) + __for_get_a(a_ptr, tab[x + sx + k], 0) * 6 + __for_get_a(a_ptr, tab[x + sx + ch + k], 0), 0); \
-				__for_set(row, x * 2 + ch + k, (__for_get_a(a_ptr, tab[x + sx + k], 0) + __for_get_a(a_ptr, tab[x + sx + ch + k], 0)) * 4, 0); \
+				_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) + _for_get_a(a_ptr, tab[x + sx + k], 0) * 6 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0), 0); \
+				_for_set(row, x * 2 + ch + k, (_for_get_a(a_ptr, tab[x + sx + k], 0) + _for_get_a(a_ptr, tab[x + sx + ch + k], 0)) * 4, 0); \
 			}
 		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	} else {
-#define x_block(__for_get_a, __for_get, __for_set, __for_set_b) \
+#define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (k = 0; k < ch; k++) \
 		{ \
-			__for_set(row, (a->cols - 1) * 2 * ch + k, __for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) + __for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 7, 0); \
-			__for_set(row, (a->cols - 1) * 2 * ch + ch + k, __for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 4, 0); \
+			_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 7, 0); \
+			_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 4, 0); \
 		}
 		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
@@ -856,7 +856,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 #undef for_block
 }
 
-void __ccv_flip_y_self(ccv_dense_matrix_t* a)
+void _ccv_flip_y_self(ccv_dense_matrix_t* a)
 {
 	int i;
 	unsigned char* buffer = (unsigned char*)alloca(a->step);
@@ -872,7 +872,7 @@ void __ccv_flip_y_self(ccv_dense_matrix_t* a)
 	}
 }
 
-void __ccv_flip_x_self(ccv_dense_matrix_t* a)
+void _ccv_flip_x_self(ccv_dense_matrix_t* a)
 {
 	int i, j;
 	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL_NUM(a->type);
@@ -914,9 +914,9 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 		memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
 	}
 	if (type & CCV_FLIP_Y)
-		__ccv_flip_y_self(db);
+		_ccv_flip_y_self(db);
 	if (type & CCV_FLIP_X)
-		__ccv_flip_x_self(db);
+		_ccv_flip_x_self(db);
 }
 
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma)
@@ -950,26 +950,26 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	/* horizontal */
 	unsigned char* a_ptr = a->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
-#define for_block(__for_type, __for_set_b, __for_get_b, __for_set_a, __for_get_a) \
+#define for_block(_for_type, _for_set_b, _for_get_b, _for_set_a, _for_get_a) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
 		for (j = 0; j < hfz; j++) \
 			for (k = 0; k < ch; k++) \
-				__for_set_b(buf, j * ch + k, __for_get_a(a_ptr, k, 0), 0); \
+				_for_set_b(buf, j * ch + k, _for_get_a(a_ptr, k, 0), 0); \
 		for (j = 0; j < a->cols * ch; j++) \
-			__for_set_b(buf, j + hfz * ch, __for_get_a(a_ptr, j, 0), 0); \
+			_for_set_b(buf, j + hfz * ch, _for_get_a(a_ptr, j, 0), 0); \
 		for (j = a->cols; j < hfz + a->cols; j++) \
 			for (k = 0; k < ch; k++) \
-				__for_set_b(buf, j * ch + hfz * ch + k, __for_get_a(a_ptr, (a->cols - 1) * ch + k, 0), 0); \
+				_for_set_b(buf, j * ch + hfz * ch + k, _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0), 0); \
 		for (j = 0; j < a->cols * ch; j++) \
 		{ \
-			__for_type sum = 0; \
+			_for_type sum = 0; \
 			for (k = 0; k < fsz; k++) \
-				sum += __for_get_b(buf, k * ch + j, 0) * __for_get_b(filter, k, 0); \
-			__for_set_b(buf, j, sum, 8); \
+				sum += _for_get_b(buf, k * ch + j, 0) * _for_get_b(filter, k, 0); \
+			_for_set_b(buf, j, sum, 8); \
 		} \
 		for (j = 0; j < a->cols * ch; j++) \
-			__for_set_a(b_ptr, j, __for_get_b(buf, j, 0), 0); \
+			_for_set_a(b_ptr, j, _for_get_b(buf, j, 0), 0); \
 		a_ptr += a->step; \
 		b_ptr += db->step; \
 	}
@@ -977,24 +977,24 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 #undef for_block
 	/* vertical */
 	b_ptr = db->data.ptr;
-#define for_block(__for_type, __for_set_b, __for_get_b, __for_set_a, __for_get_a) \
+#define for_block(_for_type, _for_set_b, _for_get_b, _for_set_a, _for_get_a) \
 	for (i = 0; i < a->cols * ch; i++) \
 	{ \
 		for (j = 0; j < hfz; j++) \
-			__for_set_b(buf, j, __for_get_a(b_ptr, i, 0), 0); \
+			_for_set_b(buf, j, _for_get_a(b_ptr, i, 0), 0); \
 		for (j = 0; j < a->rows; j++) \
-			__for_set_b(buf, j + hfz, __for_get_a(b_ptr + j * db->step, i, 0), 0); \
+			_for_set_b(buf, j + hfz, _for_get_a(b_ptr + j * db->step, i, 0), 0); \
 		for (j = a->rows; j < hfz + a->rows; j++) \
-			__for_set_b(buf, j + hfz, __for_get_a(b_ptr + (a->rows - 1) * db->step, i, 0), 0); \
+			_for_set_b(buf, j + hfz, _for_get_a(b_ptr + (a->rows - 1) * db->step, i, 0), 0); \
 		for (j = 0; j < a->rows; j++) \
 		{ \
-			__for_type sum = 0; \
+			_for_type sum = 0; \
 			for (k = 0; k < fsz; k++) \
-				sum += __for_get_b(buf, k + j, 0) * __for_get_b(filter, k, 0); \
-			__for_set_b(buf, j, sum, 8); \
+				sum += _for_get_b(buf, k + j, 0) * _for_get_b(filter, k, 0); \
+			_for_set_b(buf, j, sum, 8); \
 		} \
 		for (j = 0; j < a->rows; j++) \
-			__for_set_a(b_ptr + j * db->step, i, __for_get_b(buf, j, 0), 0); \
+			_for_set_a(b_ptr + j * db->step, i, _for_get_b(buf, j, 0), 0); \
 	}
 	ccv_matrix_typeof_setter_getter(no_8u_type, ccv_matrix_setter_getter, db->type, for_block);
 #undef for_block
@@ -1007,11 +1007,11 @@ int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
 	memset(histogram, 0, sizeof(int) * range);
 	int i, j;
 	unsigned char* a_ptr = a->data.ptr;
-#define for_block(_, __for_get) \
+#define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
 		for (j = 0; j < a->cols; j++) \
-			histogram[ccv_clamp((int)__for_get(a_ptr, j, 0), 0, range - 1)]++; \
+			histogram[ccv_clamp((int)_for_get(a_ptr, j, 0), 0, range - 1)]++; \
 		a_ptr += a->step; \
 	}
 	ccv_matrix_getter(a->type, for_block);

@@ -271,7 +271,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 }
 
 /* optimal FFT size table is adopted from OpenCV */
-static const int __ccv_optimal_fft_size[] = {
+static const int _ccv_optimal_fft_size[] = {
 	1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30, 32, 36, 40, 45, 48, 
 	50, 54, 60, 64, 72, 75, 80, 81, 90, 96, 100, 108, 120, 125, 128, 135, 144, 150, 160, 
 	162, 180, 192, 200, 216, 225, 240, 243, 250, 256, 270, 288, 300, 320, 324, 360, 375, 
@@ -452,27 +452,27 @@ static const int __ccv_optimal_fft_size[] = {
 	2097152000, 2099520000, 2109375000, 2123366400, 2125764000
 };
 
-static int __ccv_get_optimal_fft_size(int size)
+static int _ccv_get_optimal_fft_size(int size)
 {
-	int a = 0, b = sizeof(__ccv_optimal_fft_size)/sizeof(__ccv_optimal_fft_size[0]) - 1;
-    if((unsigned)size >= (unsigned)__ccv_optimal_fft_size[b])
+	int a = 0, b = sizeof(_ccv_optimal_fft_size)/sizeof(_ccv_optimal_fft_size[0]) - 1;
+    if((unsigned)size >= (unsigned)_ccv_optimal_fft_size[b])
 		return -1;
 	while(a < b)
 	{
 		int c = (a + b) >> 1;
-		if(size <= __ccv_optimal_fft_size[c])
+		if(size <= _ccv_optimal_fft_size[c])
 			b = c;
 		else
 			a = c + 1;
     }
-    return __ccv_optimal_fft_size[b];
+    return _ccv_optimal_fft_size[b];
 }
 
 #ifdef HAVE_FFTW3
-static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
+static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
-	int rows = ccv_min(a->rows, __ccv_get_optimal_fft_size(b->rows * 3));
-	int cols = ccv_min(a->cols, __ccv_get_optimal_fft_size(b->cols * 3));
+	int rows = ccv_min(a->rows, _ccv_get_optimal_fft_size(b->rows * 3));
+	int cols = ccv_min(a->cols, _ccv_get_optimal_fft_size(b->cols * 3));
 	int cols_2c = 2 * (cols / 2 + 1);
 	double* fftw_a = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
 	double* fftw_b = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
@@ -527,7 +527,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 	int tile_x = ccv_max(1, (a->cols + cols - b->cols - 1) / (cols - b->cols));
 	int tile_y = ccv_max(1, (a->rows + rows - b->rows - 1) / (rows - b->rows));
 	/* do FFT for each tile */
-#define for_block(__for_set, __for_get) \
+#define for_block(_for_set, _for_get) \
 	for (i = 0; i < tile_y; i++) \
 		for (j = 0; j < tile_x; j++) \
 		{ \
@@ -540,7 +540,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 			for (y = 0; y < rows; y++) \
 			{ \
 				for (x = 0; x < cols; x++) \
-					fftw_ptr[x] = __for_get(m_ptr, x, 0); \
+					fftw_ptr[x] = _for_get(m_ptr, x, 0); \
 				fftw_ptr += cols_2c; \
 				m_ptr += a->step; \
 			} \
@@ -555,7 +555,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 			for (y = 0; y < end_y; y++) \
 			{ \
 				for (x = 0; x < end_x; x++) \
-					__for_set(m_ptr, x, fftw_ptr[x], 0); \
+					_for_set(m_ptr, x, fftw_ptr[x], 0); \
 				m_ptr += d->step; \
 				fftw_ptr += cols; \
 			} \
@@ -571,7 +571,7 @@ static void __ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_
 }
 #endif
 
-void __ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
+void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
 	int i, j, y, x, k;
 	int nz = b->rows * b->cols;
@@ -663,10 +663,10 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 	 * of O(nlog(m)) */
 	if ((db->rows * db->cols < (log((double)(db->rows * db->cols)) + 1) * 15) && (da->type & CCV_8U))
 	{
-		__ccv_filter_direct_8u(da, db, dd);
+		_ccv_filter_direct_8u(da, db, dd);
 	} else {
 #ifdef HAVE_FFTW3
-		__ccv_filter_fftw(da, db, dd);
+		_ccv_filter_fftw(da, db, dd);
 #endif
 	}
 }
@@ -677,11 +677,11 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 	unsigned char* m_ptr = x->data.ptr;
 	double rows_2 = (x->rows - 1) * 0.5;
 	double cols_2 = (x->cols - 1) * 0.5;
-#define for_block(_, __for_set) \
+#define for_block(_, _for_set) \
 	for (i = 0; i < x->rows; i++) \
 	{ \
 		for (j = 0; j < x->cols; j++) \
-			__for_set(m_ptr, j, func(j - cols_2, i - rows_2, data), 0); \
+			_for_set(m_ptr, j, func(j - cols_2, i - rows_2, data), 0); \
 		m_ptr += x->step; \
 	}
 	ccv_matrix_setter(x->type, for_block);

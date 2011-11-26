@@ -35,7 +35,7 @@ static uint32_t compute_bits(uint64_t m) {
 }
 
 /* udate age along a path in the radix tree */
-static void __ccv_cache_aging(ccv_cache_index_t* branch, uint64_t sign)
+static void _ccv_cache_aging(ccv_cache_index_t* branch, uint64_t sign)
 {
 	if (!bits_in_16bits_init)
 		precomputed_16bits();
@@ -90,7 +90,7 @@ static void __ccv_cache_aging(ccv_cache_index_t* branch, uint64_t sign)
 	}
 }
 
-static ccv_cache_index_t* __ccv_cache_seek(ccv_cache_index_t* branch, uint64_t sign, int* depth)
+static ccv_cache_index_t* _ccv_cache_seek(ccv_cache_index_t* branch, uint64_t sign, int* depth)
 {
 	if (!bits_in_16bits_init)
 		precomputed_16bits();
@@ -131,7 +131,7 @@ static ccv_cache_index_t* __ccv_cache_seek(ccv_cache_index_t* branch, uint64_t s
 
 void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 {
-	ccv_cache_index_t* branch = __ccv_cache_seek(&cache->origin, sign, 0);
+	ccv_cache_index_t* branch = _ccv_cache_seek(&cache->origin, sign, 0);
 	if (!branch)
 		return 0;
 	int leaf = branch->terminal.off & 0x1;
@@ -143,7 +143,7 @@ void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 }
 
 // only call this function when the cache space is delpeted
-static void __ccv_cache_lru(ccv_cache_t* cache)
+static void _ccv_cache_lru(ccv_cache_t* cache)
 {
 	ccv_cache_index_t* branch = &cache->origin;
 	int leaf = branch->terminal.off & 0x1;
@@ -182,10 +182,10 @@ static void __ccv_cache_lru(ccv_cache_t* cache)
 	assert(i < 10);
 }
 
-static void __ccv_cache_depleted(ccv_cache_t* cache, size_t size)
+static void _ccv_cache_depleted(ccv_cache_t* cache, size_t size)
 {
 	while (cache->size > size)
-		__ccv_cache_lru(cache);
+		_ccv_cache_lru(cache);
 }
 
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
@@ -194,7 +194,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 	if (size > cache->up)
 		return -1;
 	if (size + cache->size > cache->up)
-		__ccv_cache_depleted(cache, cache->up - size);
+		_ccv_cache_depleted(cache, cache->up - size);
 	if (cache->rnum == 0)
 	{
 		cache->age = 1;
@@ -205,7 +205,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 	}
 	++cache->age;
 	int i, depth = -1;
-	ccv_cache_index_t* branch = __ccv_cache_seek(&cache->origin, sign, &depth);
+	ccv_cache_index_t* branch = _ccv_cache_seek(&cache->origin, sign, &depth);
 	if (!branch)
 		return -1;
 	int leaf = branch->terminal.off & 0x1;
@@ -220,7 +220,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 			uint32_t old_size = branch->terminal.age_and_size & 0xffffffff;
 			cache->size = cache->size + size - old_size;
 			branch->terminal.age_and_size = ((uint64_t)cache->age << 32) | size;
-			__ccv_cache_aging(&cache->origin, sign);
+			_ccv_cache_aging(&cache->origin, sign);
 			return 1;
 		} else {
 			ccv_cache_index_t t = *branch;
@@ -281,7 +281,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 	return 0;
 }
 
-static void __ccv_cache_cleanup(ccv_cache_index_t* branch)
+static void _ccv_cache_cleanup(ccv_cache_index_t* branch)
 {
 	int leaf = branch->terminal.off & 0x1;
 	if (!leaf)
@@ -292,13 +292,13 @@ static void __ccv_cache_cleanup(ccv_cache_index_t* branch)
 		for (i = 0; i < total; i++)
 		{
 			if (!(set[i].terminal.off & 0x1))
-				__ccv_cache_cleanup(set + i);
+				_ccv_cache_cleanup(set + i);
 		}
 		ccfree(set);
 	}
 }
 
-static void __ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_index_free_f ffree)
+static void _ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_index_free_f ffree)
 {
 	int leaf = branch->terminal.off & 0x1;
 	if (!leaf)
@@ -307,7 +307,7 @@ static void __ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_in
 		uint64_t total = compute_bits(branch->branch.bitmap);
 		ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
 		for (i = 0; i < total; i++)
-			__ccv_cache_cleanup_and_free(set + i, ffree);
+			_ccv_cache_cleanup_and_free(set + i, ffree);
 		ccfree(set);
 	} else {
 		ffree((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
@@ -382,10 +382,10 @@ void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 			parent->branch.set = (uint64_t)set;
 		} else {
 			ccv_cache_index_t t = set[1 - start];
-			__ccv_cache_cleanup(uncle);
+			_ccv_cache_cleanup(uncle);
 			*uncle = t;
 		}
-		__ccv_cache_aging(&cache->origin, sign);
+		_ccv_cache_aging(&cache->origin, sign);
 	} else {
 		// if I only have one item, reset age to 1
 		cache->age = 1;
@@ -410,7 +410,7 @@ void ccv_cache_cleanup(ccv_cache_t* cache)
 {
 	if (cache->rnum > 0)
 	{
-		__ccv_cache_cleanup_and_free(&cache->origin, cache->ffree);
+		_ccv_cache_cleanup_and_free(&cache->origin, cache->ffree);
 		cache->size = 0;
 		cache->age = 0;
 		cache->rnum = 0;

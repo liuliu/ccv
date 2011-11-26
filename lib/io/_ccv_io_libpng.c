@@ -1,4 +1,4 @@
-static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
+static void _ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	png_structp png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
 	png_infop info_ptr = png_create_info_struct(png_ptr);
@@ -38,7 +38,7 @@ static void __ccv_unserialize_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	png_destroy_read_struct(&png_ptr, &info_ptr, &end_info);
 }
 
-static void __ccv_serialize_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static void _ccv_serialize_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	png_structp png_ptr = png_create_write_struct(PNG_LIBPNG_VER_STRING, 0, 0, 0);
 	png_infop info_ptr = png_create_info_struct(png_ptr);

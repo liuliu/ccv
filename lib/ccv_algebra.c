@@ -31,11 +31,11 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 	switch (l_type)
 	{
 		case CCV_L1_NORM:
-#define for_block(__for_set, __for_get) \
+#define for_block(_for_set, _for_get) \
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					sum += __for_get(a_ptr, j, 0); \
+					sum += _for_get(a_ptr, j, 0); \
 				a_ptr += da->step; \
 			} \
 			inv = 1.0 / sum; \
@@ -43,7 +43,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					__for_set(b_ptr, j, __for_get(a_ptr, j, 0) * inv, 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr, j, 0) * inv, 0); \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
 			}
@@ -51,11 +51,11 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 #undef for_block
 			break;
 		case CCV_L2_NORM:
-#define for_block(__for_set, __for_get) \
+#define for_block(_for_set, _for_get) \
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					sum += __for_get(a_ptr, j, 0) * __for_get(a_ptr, j, 0); \
+					sum += _for_get(a_ptr, j, 0) * _for_get(a_ptr, j, 0); \
 				a_ptr += da->step; \
 			} \
 			sum = sqrt(sum); \
@@ -64,7 +64,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					__for_set(b_ptr, j, __for_get(a_ptr, j, 0) * inv, 0); \
+					_for_set(b_ptr, j, _for_get(a_ptr, j, 0) * inv, 0); \
 				a_ptr += da->step; \
 				b_ptr += db->step; \
 			}
@@ -81,11 +81,11 @@ double ccv_sum(ccv_matrix_t* mat)
 	double sum = 0;
 	unsigned char* m_ptr = dmt->data.ptr;
 	int i, j;
-#define for_block(_, __for_get) \
+#define for_block(_, _for_get) \
 	for (i = 0; i < dmt->rows; i++) \
 	{ \
 		for (j = 0; j < dmt->cols; j++) \
-			sum += __for_get(m_ptr, j, 0); \
+			sum += _for_get(m_ptr, j, 0); \
 		m_ptr += dmt->step; \
 	}
 	ccv_matrix_getter(dmt->type, for_block);
@@ -113,12 +113,12 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	unsigned char* aptr = da->data.ptr;
 	unsigned char* bptr = db->data.ptr;
 	unsigned char* cptr = dc->data.ptr;
-#define for_block(__for_get, __for_set) \
+#define for_block(_for_get, _for_set) \
 	for (i = 0; i < da->rows; i++) \
 	{ \
 		for (j = 0; j < da->cols; j++) \
 		{ \
-			__for_set(cptr, j, __for_get(aptr, j, 0) - __for_get(bptr, j, 0), 0); \
+			_for_set(cptr, j, _for_get(aptr, j, 0) - _for_get(bptr, j, 0), 0); \
 		} \
 		aptr += da->step; \
 		bptr += db->step; \

@@ -7,7 +7,7 @@ all: libccv.a
 clean:
 	rm *.o 3rdparty/*.o libccv.a
 
-libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1.o ccv_io.o ccv_numeric.o ccv_algebra.o ccv_util.o ccv_basic.o ccv_daisy.o ccv_sift.o ccv_bbf.o ccv_swt.o
+libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1.o ccv_io.o ccv_numeric.o ccv_algebra.o ccv_util.o ccv_basic.o ccv_daisy.o ccv_sift.o ccv_bbf.o ccv_swt.o ccv_dpm.o
 	ar rcs $@ $^
 
 %.o: %.c ccv.h

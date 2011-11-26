@@ -19,7 +19,7 @@ METHODDEF(void) error_exit(j_common_ptr cinfo)
 
 /* JPEG DHT Segment for YCrCb omitted from MJPEG data */
 static
-unsigned char __ccv_jpeg_odml_dht[0x1a4] = {
+unsigned char _ccv_jpeg_odml_dht[0x1a4] = {
 	0xff, 0xc4, 0x01, 0xa2,
 
 	0x00, 0x00, 0x01, 0x05, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x00, 0x00,
@@ -83,7 +83,7 @@ unsigned char __ccv_jpeg_odml_dht[0x1a4] = {
  * Parse the DHT table.
  * This code comes from jpeg6b (jdmarker.c).
  */
-static int __ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned char *dht, JHUFF_TBL *ac_tables[], JHUFF_TBL *dc_tables[])
+static int _ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned char *dht, JHUFF_TBL *ac_tables[], JHUFF_TBL *dc_tables[])
 {
 	unsigned int length = (dht[2] << 8) + dht[3] - 2;
 	unsigned int pos = 4;
@@ -144,7 +144,7 @@ static int __ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned cha
  * based on a message of Laurent Pinchart on the video4linux mailing list
  ***************************************************************************/
 
-static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
+static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	struct jpeg_decompress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;
@@ -169,7 +169,7 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type
 
 	/* yes, this is a mjpeg image format, so load the correct huffman table */
 	if (cinfo.ac_huff_tbl_ptrs[0] == 0 && cinfo.ac_huff_tbl_ptrs[1] == 0 && cinfo.dc_huff_tbl_ptrs[0] == 0 && cinfo.dc_huff_tbl_ptrs[1] == 0)
-		__ccv_jpeg_load_dht(&cinfo, __ccv_jpeg_odml_dht, cinfo.ac_huff_tbl_ptrs, cinfo.dc_huff_tbl_ptrs);
+		_ccv_jpeg_load_dht(&cinfo, _ccv_jpeg_odml_dht, cinfo.ac_huff_tbl_ptrs, cinfo.dc_huff_tbl_ptrs);
 
 	if(cinfo.num_components != 4)
 	{
@@ -277,7 +277,7 @@ static void __ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type
 	jpeg_destroy_decompress(&cinfo);
 }
 
-static void __ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static void _ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	struct jpeg_compress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;

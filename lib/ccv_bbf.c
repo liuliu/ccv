@@ -13,16 +13,16 @@
 #include <CL/cl.h>
 #endif
 
-#define __ccv_width_padding(x) (((x) + 3) & -4)
+#define _ccv_width_padding(x) (((x) + 3) & -4)
 
-static unsigned int __ccv_bbf_time_measure()
+static unsigned int _ccv_bbf_time_measure()
 {
 	struct timeval tv;
 	gettimeofday(&tv, 0);
 	return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-static inline int __ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, unsigned char** u8)
+static inline int _ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, unsigned char** u8)
 {
 #define pf_at(i) (*(u8[feature->pz[i]] + feature->px[i] + feature->py[i] * step[feature->pz[i]]))
 #define nf_at(i) (*(u8[feature->nz[i]] + feature->nx[i] + feature->ny[i] * step[feature->nz[i]]))
@@ -60,15 +60,15 @@ static inline int __ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, u
 }
 
 #define less_than(a, b, aux) ((a) < (b))
-CCV_IMPLEMENT_QSORT(__ccv_sort_32f, float, less_than)
+CCV_IMPLEMENT_QSORT(_ccv_sort_32f, float, less_than)
 #undef less_than
 
-static void __ccv_bbf_eval_data(ccv_bbf_stage_classifier_t* classifier, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, float* peval, float* neval)
+static void _ccv_bbf_eval_data(ccv_bbf_stage_classifier_t* classifier, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, float* peval, float* neval)
 {
 	int i, j;
-	int steps[] = { __ccv_width_padding(size.width),
-					__ccv_width_padding(size.width >> 1),
-					__ccv_width_padding(size.width >> 2) };
+	int steps[] = { _ccv_width_padding(size.width),
+					_ccv_width_padding(size.width >> 1),
+					_ccv_width_padding(size.width >> 2) };
 	int isizs0 = steps[0] * size.height;
 	int isizs01 = isizs0 + steps[1] * (size.height >> 1);
 	for (i = 0; i < posnum; i++)
@@ -78,7 +78,7 @@ static void __ccv_bbf_eval_data(ccv_bbf_stage_classifier_t* classifier, unsigned
 		float* alpha = classifier->alpha;
 		ccv_bbf_feature_t* feature = classifier->feature;
 		for (j = 0; j < classifier->count; ++j, alpha += 2, ++feature)
-			sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
+			sum += alpha[_ccv_run_bbf_feature(feature, steps, u8)];
 		peval[i] = sum;
 	}
 	for (i = 0; i < negnum; i++)
@@ -88,18 +88,18 @@ static void __ccv_bbf_eval_data(ccv_bbf_stage_classifier_t* classifier, unsigned
 		float* alpha = classifier->alpha;
 		ccv_bbf_feature_t* feature = classifier->feature;
 		for (j = 0; j < classifier->count; ++j, alpha += 2, ++feature)
-			sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
+			sum += alpha[_ccv_run_bbf_feature(feature, steps, u8)];
 		neval[i] = sum;
 	}
 }
 
-static int __ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsigned char** posdata, int posnum, ccv_size_t size)
+static int _ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsigned char** posdata, int posnum, ccv_size_t size)
 {
 	float* peval = (float*)ccmalloc(posnum * sizeof(float));
 	int i, j, k, rpos = posnum;
 	for (i = 0; i < cascade->count; i++)
 	{
-		__ccv_bbf_eval_data(cascade->stage_classifier + i, posdata, rpos, 0, 0, size, peval, 0);
+		_ccv_bbf_eval_data(cascade->stage_classifier + i, posdata, rpos, 0, 0, size, peval, 0);
 		k = 0;
 		for (j = 0; j < rpos; j++)
 			if (peval[j] >= cascade->stage_classifier[i].threshold)
@@ -115,15 +115,15 @@ static int __ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsi
 	return rpos;
 }
 
-static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
+static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
 {
 #ifdef HAVE_GSL
 	int t, i, j, k, q;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
-	int steps[] = { __ccv_width_padding(cascade->size.width),
-					__ccv_width_padding(cascade->size.width >> 1),
-					__ccv_width_padding(cascade->size.width >> 2) };
+	int steps[] = { _ccv_width_padding(cascade->size.width),
+					_ccv_width_padding(cascade->size.width >> 1),
+					_ccv_width_padding(cascade->size.width >> 2) };
 	int isizs0 = steps[0] * cascade->size.height;
 	int isizs1 = steps[1] * (cascade->size.height >> 1);
 	int isizs2 = steps[2] * (cascade->size.height >> 2);
@@ -212,7 +212,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 					float* alpha = classifier->alpha;
 					ccv_bbf_feature_t* feature = classifier->feature;
 					for (q = 0; q < classifier->count; ++q, alpha += 2, ++feature)
-						sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
+						sum += alpha[_ccv_run_bbf_feature(feature, steps, u8)];
 					if (sum < classifier->threshold)
 					{
 						flag = 0;
@@ -250,7 +250,7 @@ static int __ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, 
 #endif
 }
 
-static void __ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned char** posdata, ccv_size_t size, int posnum)
+static void _ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned char** posdata, ccv_size_t size, int posnum)
 {
 	printf("preparing positive data ...  0%%");
 	int i;
@@ -289,12 +289,12 @@ typedef struct {
 	ccv_bbf_feature_t feature;
 } ccv_bbf_gene_t;
 
-static inline void __ccv_bbf_genetic_fitness(ccv_bbf_gene_t* gene)
+static inline void _ccv_bbf_genetic_fitness(ccv_bbf_gene_t* gene)
 {
 	gene->fitness = (1 - gene->error) * exp(-0.01 * gene->age) * exp((gene->pk + gene->nk) * log(1.015));
 }
 
-static inline int __ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int y, int z)
+static inline int _ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int y, int z)
 {
 	int i;
 	for (i = 0; i < gene->pk; i++)
@@ -307,7 +307,7 @@ static inline int __ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int 
 }
 
 #ifdef HAVE_GSL
-static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
+static inline void _ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
 {
 	int i;
 	do {
@@ -328,7 +328,7 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 			z = gsl_rng_uniform_int(rng, 3);
 			x = gsl_rng_uniform_int(rng, cols[z]);
 			y = gsl_rng_uniform_int(rng, rows[z]);
-		} while (__ccv_bbf_exist_gene_feature(gene, x, y, z));
+		} while (_ccv_bbf_exist_gene_feature(gene, x, y, z));
 		gene->feature.pz[i] = z;
 		gene->feature.px[i] = x;
 		gene->feature.py[i] = y;
@@ -339,7 +339,7 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 			z = gsl_rng_uniform_int(rng, 3);
 			x = gsl_rng_uniform_int(rng, cols[z]);
 			y = gsl_rng_uniform_int(rng, rows[z]);
-		} while ( __ccv_bbf_exist_gene_feature(gene, x, y, z));
+		} while ( _ccv_bbf_exist_gene_feature(gene, x, y, z));
 		gene->feature.nz[i] = z;
 		gene->feature.nx[i] = x;
 		gene->feature.ny[i] = y;
@@ -347,35 +347,35 @@ static inline void __ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, 
 }
 #endif
 
-static inline double __ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
+static inline double _ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
 	int i;
-	int steps[] = { __ccv_width_padding(size.width),
-					__ccv_width_padding(size.width >> 1),
-					__ccv_width_padding(size.width >> 2) };
+	int steps[] = { _ccv_width_padding(size.width),
+					_ccv_width_padding(size.width >> 1),
+					_ccv_width_padding(size.width >> 2) };
 	int isizs0 = steps[0] * size.height;
 	int isizs01 = isizs0 + steps[1] * (size.height >> 1);
 	double error = 0;
 	for (i = 0; i < posnum; i++)
 	{
 		unsigned char* u8[] = { posdata[i], posdata[i] + isizs0, posdata[i] + isizs01 };
-		if (!__ccv_run_bbf_feature(feature, steps, u8))
+		if (!_ccv_run_bbf_feature(feature, steps, u8))
 			error += pw[i];
 	}
 	for (i = 0; i < negnum; i++)
 	{
 		unsigned char* u8[] = { negdata[i], negdata[i] + isizs0, negdata[i] + isizs01 };
-		if ( __ccv_run_bbf_feature(feature, steps, u8))
+		if ( _ccv_run_bbf_feature(feature, steps, u8))
 			error += nw[i];
 	}
 	return error;
 }
 
 #define less_than(fit1, fit2, aux) ((fit1).fitness >= (fit2).fitness)
-static CCV_IMPLEMENT_QSORT(__ccv_bbf_genetic_qsort, ccv_bbf_gene_t, less_than)
+static CCV_IMPLEMENT_QSORT(_ccv_bbf_genetic_qsort, ccv_bbf_gene_t, less_than)
 #undef less_than
 
-static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
+static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	ccv_bbf_feature_t best;
 #ifdef HAVE_GSL
@@ -391,16 +391,16 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 	int rows[] = { size.height, size.height >> 1, size.height >> 2 };
 	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
 	for (i = 0; i < pnum; i++)
-		__ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
-	unsigned int timer = __ccv_bbf_time_measure();
+		_ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
+	unsigned int timer = _ccv_bbf_time_measure();
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
-		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-	timer = __ccv_bbf_time_measure() - timer;
+		gene[i].error = _ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+	timer = _ccv_bbf_time_measure() - timer;
 	for (i = 0; i < pnum; i++)
-		__ccv_bbf_genetic_fitness(&gene[i]);
+		_ccv_bbf_genetic_fitness(&gene[i]);
 	double best_err = 1;
 	int rnum = ftnum * 39; /* number of randomize */
 	int mnum = ftnum * 40; /* number of mutation */
@@ -417,7 +417,7 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 				min_id = i;
 				min_err = gene[i].error;
 			}
-		min_err = gene[min_id].error = __ccv_bbf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		min_err = gene[min_id].error = _ccv_bbf_error_rate(&gene[min_id].feature, posdata, posnum, negdata, negnum, size, pw, nw);
 		if (min_err < best_err)
 		{
 			best_err = min_err;
@@ -432,7 +432,7 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 			it = 0;
 		}
 		printf("minimum error achieved in round %d(%d) : %f with %d ms\n", t, it, min_err, timer / 1000);
-		__ccv_bbf_genetic_qsort(gene, pnum, 0);
+		_ccv_bbf_genetic_qsort(gene, pnum, 0);
 		for (i = 0; i < ftnum; i++)
 			++gene[i].age;
 		for (i = ftnum; i < ftnum + mnum; i++)
@@ -459,7 +459,7 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 							z = gsl_rng_uniform_int(rng, 3);
 							x = gsl_rng_uniform_int(rng, cols[z]);
 							y = gsl_rng_uniform_int(rng, rows[z]);
-						} while (__ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
+						} while (_ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
 						pnz[pn][*pnk[pn]] = z;
 						pnx[pn][*pnk[pn]] = x;
 						pny[pn][*pnk[pn]] = y;
@@ -490,7 +490,7 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 							z = gsl_rng_uniform_int(rng, 3);
 							x = gsl_rng_uniform_int(rng, cols[z]);
 							y = gsl_rng_uniform_int(rng, rows[z]);
-						} while (__ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
+						} while (_ccv_bbf_exist_gene_feature(&gene[i], x, y, z));
 						pnz[pn][pnm] = z;
 						pnx[pn][pnm] = x;
 						pny[pn][pnm] = y;
@@ -530,16 +530,16 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 			gene[i].age = 0;
 		}
 		for (i = ftnum + mnum + hnum; i < ftnum + mnum + hnum + rnum; i++)
-			__ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
-		timer = __ccv_bbf_time_measure();
+			_ccv_bbf_randomize_gene(rng, &gene[i], rows, cols);
+		timer = _ccv_bbf_time_measure();
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
 #endif
 		for (i = 0; i < pnum; i++)
-			gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-		timer = __ccv_bbf_time_measure() - timer;
+			gene[i].error = _ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+		timer = _ccv_bbf_time_measure() - timer;
 		for (i = 0; i < pnum; i++)
-			__ccv_bbf_genetic_fitness(&gene[i]);
+			_ccv_bbf_genetic_fitness(&gene[i]);
 	}
 	ccfree(gene);
 	gsl_rng_free(rng);
@@ -548,20 +548,20 @@ static ccv_bbf_feature_t __ccv_bbf_genetic_optimize(unsigned char** posdata, int
 }
 
 #define less_than(fit1, fit2, aux) ((fit1).error < (fit2).error)
-static CCV_IMPLEMENT_QSORT(__ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
+static CCV_IMPLEMENT_QSORT(_ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
 #undef less_than
 
-static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
+static ccv_bbf_gene_t _ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
 	int i;
-	unsigned int timer = __ccv_bbf_time_measure();
+	unsigned int timer = _ccv_bbf_time_measure();
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
 #endif
 	for (i = 0; i < pnum; i++)
-		gene[i].error = __ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
-	timer = __ccv_bbf_time_measure() - timer;
-	__ccv_bbf_best_qsort(gene, pnum, 0);
+		gene[i].error = _ccv_bbf_error_rate(&gene[i].feature, posdata, posnum, negdata, negnum, size, pw, nw);
+	timer = _ccv_bbf_time_measure() - timer;
+	_ccv_bbf_best_qsort(gene, pnum, 0);
 	int min_id = 0;
 	double min_err = gene[0].error;
 	for (i = 0; i < pnum; i++)
@@ -581,7 +581,7 @@ static ccv_bbf_gene_t __ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int po
 	return gene[min_id];
 }
 
-static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_bbf_feature_t* best_feature, ccv_size_t size, double* pw, double* nw)
+static ccv_bbf_feature_t _ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_bbf_feature_t* best_feature, ccv_size_t size, double* pw, double* nw)
 {
 	ccv_bbf_gene_t best_gene;
 #ifdef HAVE_GSL
@@ -643,7 +643,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 							}
 			}
 			printf("bootstrapping round : %d\n", t);
-			ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, 2, posdata, posnum, negdata, negnum, size, pw, nw);
+			ccv_bbf_gene_t local_gene = _ccv_bbf_best_gene(gene, g, 2, posdata, posnum, negdata, negnum, size, pw, nw);
 			if (local_gene.error >= best_gene.error - 1e-10)
 				break;
 			best_gene = local_gene;
@@ -675,7 +675,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 		for (i = 0; i < 3; i++)
 			for (j = 0; j < cols[i]; j++)
 				for (k = 0; k < rows[i]; k++)
-					if (!__ccv_bbf_exist_gene_feature(&best_gene, j, k, i))
+					if (!_ccv_bbf_exist_gene_feature(&best_gene, j, k, i))
 					{
 						/* add positive point */
 						if (best_gene.pk < CCV_BBF_POINT_MAX - 1)
@@ -795,7 +795,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 		gene[g] = best_gene;
 		g++;
 		printf("float search round : %d\n", t);
-		ccv_bbf_gene_t local_gene = __ccv_bbf_best_gene(gene, g, CCV_BBF_POINT_MIN, posdata, posnum, negdata, negnum, size, pw, nw);
+		ccv_bbf_gene_t local_gene = _ccv_bbf_best_gene(gene, g, CCV_BBF_POINT_MIN, posdata, posnum, negdata, negnum, size, pw, nw);
 		if (local_gene.error >= best_gene.error - 1e-10)
 			break;
 		best_gene = local_gene;
@@ -806,7 +806,7 @@ static ccv_bbf_feature_t __ccv_bbf_convex_optimize(unsigned char** posdata, int 
 	return best_gene.feature;
 }
 
-static int __ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
+static int _ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
 {
 	FILE* r = fopen(file, "r");
 	if (r == 0) return -1;
@@ -835,7 +835,7 @@ static int __ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_class
 	return 0;
 }
 
-static int __ccv_write_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
+static int _ccv_write_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
 {
 	FILE* w = fopen(file, "wb");
 	if (w == 0) return -1;
@@ -861,16 +861,16 @@ static int __ccv_write_bbf_stage_classifier(const char* file, ccv_bbf_stage_clas
 	return 0;
 }
 
-static int __ccv_read_background_data(const char* file, unsigned char** negdata, int* negnum, ccv_size_t size)
+static int _ccv_read_background_data(const char* file, unsigned char** negdata, int* negnum, ccv_size_t size)
 {
 	int stat = 0;
 	FILE* r = fopen(file, "rb");
 	if (r == 0) return -1;
 	stat |= fread(negnum, sizeof(int), 1, r);
 	int i;
-	int isizs012 = __ccv_width_padding(size.width) * size.height +
-				   __ccv_width_padding(size.width >> 1) * (size.height >> 1) +
-				   __ccv_width_padding(size.width >> 2) * (size.height >> 2);
+	int isizs012 = _ccv_width_padding(size.width) * size.height +
+				   _ccv_width_padding(size.width >> 1) * (size.height >> 1) +
+				   _ccv_width_padding(size.width >> 2) * (size.height >> 2);
 	for (i = 0; i < *negnum; i++)
 	{
 		negdata[i] = (unsigned char*)ccmalloc(isizs012);
@@ -880,22 +880,22 @@ static int __ccv_read_background_data(const char* file, unsigned char** negdata,
 	return 0;
 }
 
-static int __ccv_write_background_data(const char* file, unsigned char** negdata, int negnum, ccv_size_t size)
+static int _ccv_write_background_data(const char* file, unsigned char** negdata, int negnum, ccv_size_t size)
 {
 	FILE* w = fopen(file, "w");
 	if (w == 0) return -1;
 	fwrite(&negnum, sizeof(int), 1, w);
 	int i;
-	int isizs012 = __ccv_width_padding(size.width) * size.height +
-				   __ccv_width_padding(size.width >> 1) * (size.height >> 1) +
-				   __ccv_width_padding(size.width >> 2) * (size.height >> 2);
+	int isizs012 = _ccv_width_padding(size.width) * size.height +
+				   _ccv_width_padding(size.width >> 1) * (size.height >> 1) +
+				   _ccv_width_padding(size.width >> 2) * (size.height >> 2);
 	for (i = 0; i < negnum; i++)
 		fwrite(negdata[i], 1, isizs012, w);
 	fclose(w);
 	return 0;
 }
 
-static int __ccv_resume_bbf_cascade_training_state(const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum)
+static int _ccv_resume_bbf_cascade_training_state(const char* file, int* i, int* k, int* bg, double* pw, double* nw, int posnum, int negnum)
 {
 	int stat = 0;
 	FILE* r = fopen(file, "r");
@@ -917,7 +917,7 @@ static int __ccv_resume_bbf_cascade_training_state(const char* file, int* i, int
 	return 0;
 }
 
-static int __ccv_save_bbf_cacade_training_state(const char* file, int i, int k, int bg, double* pw, double* nw, int posnum, int negnum)
+static int _ccv_save_bbf_cacade_training_state(const char* file, int i, int k, int bg, double* pw, double* nw, int posnum, int negnum)
 {
 	FILE* w = fopen(file, "w");
 	if (w == 0) return -1;
@@ -959,9 +959,9 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	params.balance_k *= 0.01;
 	inv_balance_k *= 0.01;
 
-	int steps[] = { __ccv_width_padding(cascade->size.width),
-					__ccv_width_padding(cascade->size.width >> 1),
-					__ccv_width_padding(cascade->size.width >> 2) };
+	int steps[] = { _ccv_width_padding(cascade->size.width),
+					_ccv_width_padding(cascade->size.width >> 1),
+					_ccv_width_padding(cascade->size.width >> 2) };
 	int isizs0 = steps[0] * cascade->size.height;
 	int isizs01 = isizs0 + steps[1] * (cascade->size.height >> 1);
 	
@@ -972,7 +972,7 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	/* state resume code */
 	char buf[1024];
 	sprintf(buf, "%s/stat.txt", dir);
-	__ccv_resume_bbf_cascade_training_state(buf, &i, &k, &bg, pw, nw, posnum, negnum);
+	_ccv_resume_bbf_cascade_training_state(buf, &i, &k, &bg, pw, nw, posnum, negnum);
 	if (i > 0)
 	{
 		cascade->count = i;
@@ -981,7 +981,7 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 		for (j = 0; j < i; j++)
 		{
 			sprintf(buf, "%s/stage-%d.txt", dir, j);
-			__ccv_read_bbf_stage_classifier(buf, &cascade->stage_classifier[j]);
+			_ccv_read_bbf_stage_classifier(buf, &cascade->stage_classifier[j]);
 		}
 	}
 	if (k > 0)
@@ -990,29 +990,29 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	if (bg)
 	{
 		sprintf(buf, "%s/negs.txt", dir);
-		__ccv_read_background_data(buf, negdata, &rneg, cascade->size);
+		_ccv_read_background_data(buf, negdata, &rneg, cascade->size);
 	}
 
 	for (; i < params.layer; i++)
 	{
 		if (!bg)
 		{
-			rneg = __ccv_prepare_background_data(cascade, bgfiles, bgnum, negdata, negnum);
+			rneg = _ccv_prepare_background_data(cascade, bgfiles, bgnum, negdata, negnum);
 			/* save state of background data */
 			sprintf(buf, "%s/negs.txt", dir);
-			__ccv_write_background_data(buf, negdata, rneg, cascade->size);
+			_ccv_write_background_data(buf, negdata, rneg, cascade->size);
 			bg = 1;
 		}
 		double totalw;
 		/* save state of cascade : level, weight etc. */
 		sprintf(buf, "%s/stat.txt", dir);
-		__ccv_save_bbf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
+		_ccv_save_bbf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
 		ccv_bbf_stage_classifier_t classifier;
 		if (k > 0)
 		{
 			/* resume state of classifier */
 			sprintf( buf, "%s/stage-%d.txt", dir, i );
-			__ccv_read_bbf_stage_classifier(buf, &classifier);
+			_ccv_read_bbf_stage_classifier(buf, &classifier);
 		} else {
 			/* initialize classifier */
 			for (j = 0; j < posnum; j++)
@@ -1024,8 +1024,8 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			classifier.feature = (ccv_bbf_feature_t*)ccmalloc(cacheK * sizeof(ccv_bbf_feature_t));
 			classifier.alpha = (float*)ccmalloc(cacheK * 2 * sizeof(float));
 		}
-		__ccv_prepare_positive_data(posimg, posdata, cascade->size, posnum);
-		rpos = __ccv_prune_positive_data(cascade, posdata, posnum, cascade->size);
+		_ccv_prepare_positive_data(posimg, posdata, cascade->size, posnum);
+		rpos = _ccv_prune_positive_data(cascade, posdata, posnum, cascade->size);
 		printf("%d postivie data and %d negative data in training\n", rpos, rneg);
 		/* reweight to 1.00 */
 		totalw = 0;
@@ -1041,8 +1041,8 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 		{
 			/* get overall true-positive, false-positive rate and threshold */
 			double tp = 0, fp = 0, etp = 0, efp = 0;
-			__ccv_bbf_eval_data(&classifier, posdata, rpos, negdata, rneg, cascade->size, peval, neval);
-			__ccv_sort_32f(peval, rpos, 0);
+			_ccv_bbf_eval_data(&classifier, posdata, rpos, negdata, rneg, cascade->size, peval, neval);
+			_ccv_sort_32f(peval, rpos, 0);
 			classifier.threshold = peval[(int)((1. - params.pos_crit) * rpos)] - 1e-6;
 			for (j = 0; j < rpos; j++)
 			{
@@ -1066,9 +1066,9 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			{
 				/* save classifier state */
 				sprintf(buf, "%s/stage-%d.txt", dir, i);
-				__ccv_write_bbf_stage_classifier(buf, &classifier);
+				_ccv_write_bbf_stage_classifier(buf, &classifier);
 				sprintf(buf, "%s/stat.txt", dir);
-				__ccv_save_bbf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
+				_ccv_save_bbf_cacade_training_state(buf, i, k, bg, pw, nw, posnum, negnum);
 			}
 			if (etp > params.pos_crit && efp < params.neg_crit)
 				break;
@@ -1078,21 +1078,21 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			ccv_bbf_feature_t best;
 			if (params.optimizer == CCV_BBF_GENETIC_OPT)
 			{
-				best = __ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+				best = _ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
 			} else if (params.optimizer == CCV_BBF_FLOAT_OPT) {
-				best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, 0, cascade->size, pw, nw);
+				best = _ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, 0, cascade->size, pw, nw);
 			} else {
-				best = __ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
-				best = __ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, &best, cascade->size, pw, nw);
+				best = _ccv_bbf_genetic_optimize(posdata, rpos, negdata, rneg, params.feature_number, cascade->size, pw, nw);
+				best = _ccv_bbf_convex_optimize(posdata, rpos, negdata, rneg, &best, cascade->size, pw, nw);
 			}
-			double err = __ccv_bbf_error_rate(&best, posdata, rpos, negdata, rneg, cascade->size, pw, nw);
+			double err = _ccv_bbf_error_rate(&best, posdata, rpos, negdata, rneg, cascade->size, pw, nw);
 			double rw = (1 - err) / err;
 			totalw = 0;
 			/* reweight */
 			for (j = 0; j < rpos; j++)
 			{
 				unsigned char* u8[] = { posdata[j], posdata[j] + isizs0, posdata[j] + isizs01 };
-				if (!__ccv_run_bbf_feature(&best, steps, u8))
+				if (!_ccv_run_bbf_feature(&best, steps, u8))
 					pw[j] *= rw;
 				pw[j] *= params.balance_k;
 				totalw += pw[j];
@@ -1100,7 +1100,7 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 			for (j = 0; j < rneg; j++)
 			{
 				unsigned char* u8[] = { negdata[j], negdata[j] + isizs0, negdata[j] + isizs01 };
-				if (__ccv_run_bbf_feature(&best, steps, u8))
+				if (_ccv_run_bbf_feature(&best, steps, u8))
 					nw[j] *= rw;
 				nw[j] *= inv_balance_k;
 				totalw += nw[j];
@@ -1153,10 +1153,10 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	ccfree(cascade);
 }
 
-static int __ccv_is_equal(const void* _r1, const void* _r2, void* data)
+static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
-	const ccv_bbf_comp_t* r1 = (const ccv_bbf_comp_t*)_r1;
-	const ccv_bbf_comp_t* r2 = (const ccv_bbf_comp_t*)_r2;
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
 	int distance = (int)(r1->rect.width * 0.25 + 0.5);
 
 	return r2->rect.x <= r1->rect.x + distance &&
@@ -1167,10 +1167,10 @@ static int __ccv_is_equal(const void* _r1, const void* _r2, void* data)
 		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
 }
 
-static int __ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
+static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
 {
-	const ccv_bbf_comp_t* r1 = (const ccv_bbf_comp_t*)_r1;
-	const ccv_bbf_comp_t* r2 = (const ccv_bbf_comp_t*)_r2;
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
 	int distance = (int)(r1->rect.width * 0.25 + 0.5);
 
 	return r2->id == r1->id &&
@@ -1207,9 +1207,9 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 3], 0, 1, 1);
 	}
 	ccv_array_t* idx_seq;
-	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
-	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
-	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_comp_t));
 	/* detect in multi scale */
 	for (t = 0; t < count; t++)
 	{
@@ -1243,7 +1243,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 							float* alpha = classifier->alpha;
 							ccv_bbf_feature_t* feature = classifier->feature;
 							for (k = 0; k < classifier->count; ++k, alpha += 2, ++feature)
-								sum += alpha[__ccv_run_bbf_feature(feature, steps, u8)];
+								sum += alpha[_ccv_run_bbf_feature(feature, steps, u8)];
 							if (sum < classifier->threshold)
 							{
 								flag = 0;
@@ -1252,7 +1252,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 						}
 						if (flag)
 						{
-							ccv_bbf_comp_t comp;
+							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x * 4 + dx[q] * 2) * scale_x + 0.5), (int)((y * 4 + dy[q] * 2) * scale_y + 0.5), (int)(cascade->size.width * scale_x + 0.5), (int)(cascade->size.height * scale_y + 0.5));
 							comp.id = t;
 							comp.neighbors = 1;
@@ -1277,21 +1277,21 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		{
 			for (i = 0; i < seq->rnum; i++)
 			{
-				ccv_bbf_comp_t* comp = (ccv_bbf_comp_t*)ccv_array_get(seq, i);
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
 				ccv_array_push(result_seq, comp);
 			}
 		} else {
 			idx_seq = 0;
 			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
-			int ncomp = ccv_array_group(seq, &idx_seq, __ccv_is_equal_same_class, 0);
-			ccv_bbf_comp_t* comps = (ccv_bbf_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_bbf_comp_t));
-			memset(comps, 0, (ncomp + 1) * sizeof(ccv_bbf_comp_t));
+			int ncomp = ccv_array_group(seq, &idx_seq, _ccv_is_equal_same_class, 0);
+			ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
+			memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
 
 			// count number of neighbors
 			for(i = 0; i < seq->rnum; i++)
 			{
-				ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(seq, i);
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
 				if (comps[idx].neighbors == 0)
@@ -1313,7 +1313,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 				int n = comps[i].neighbors;
 				if(n >= params.min_neighbors)
 				{
-					ccv_bbf_comp_t comp;
+					ccv_comp_t comp;
 					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
 					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
 					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
@@ -1328,12 +1328,12 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			// filter out small face rectangles inside large face rectangles
 			for(i = 0; i < seq2->rnum; i++)
 			{
-				ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(seq2, i);
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
 				int flag = 1;
 
 				for(j = 0; j < seq2->rnum; j++)
 				{
-					ccv_bbf_comp_t r2 = *(ccv_bbf_comp_t*)ccv_array_get(seq2, j);
+					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
 					int distance = (int)(r2.rect.width * 0.25 + 0.5);
 
 					if(i != j &&
@@ -1364,17 +1364,17 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	/* the following code from OpenCV's haar feature implementation */
 	if (params.flags & CCV_SGF_NO_NESTED)
 	{
-		result_seq2 = ccv_array_new(64, sizeof(ccv_bbf_comp_t));
+		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
 		idx_seq = 0;
 		// group retrieved rectangles in order to filter out noise
-		int ncomp = ccv_array_group(result_seq, &idx_seq, __ccv_is_equal, 0);
-		ccv_bbf_comp_t* comps = (ccv_bbf_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_bbf_comp_t));
-		memset(comps, 0, (ncomp + 1) * sizeof(ccv_bbf_comp_t));
+		int ncomp = ccv_array_group(result_seq, &idx_seq, _ccv_is_equal, 0);
+		ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
+		memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
 
 		// count number of neighbors
 		for(i = 0; i < result_seq->rnum; i++)
 		{
-			ccv_bbf_comp_t r1 = *(ccv_bbf_comp_t*)ccv_array_get(result_seq, i);
+			ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(result_seq, i);
 			int idx = *(int*)ccv_array_get(idx_seq, i);
 
 			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
@@ -1424,7 +1424,7 @@ ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* direct
 	for (i = 0; i < cascade->count; i++)
 	{
 		sprintf(buf, "%s/stage-%d.txt", directory, i);
-		if (__ccv_read_bbf_stage_classifier(buf, &cascade->stage_classifier[i]) < 0)
+		if (_ccv_read_bbf_stage_classifier(buf, &cascade->stage_classifier[i]) < 0)
 		{
 			cascade->count = i;
 			break;

@@ -6,13 +6,13 @@
 #include <libpng/png.h>
 #endif
 #ifdef HAVE_LIBJPEG
-#include "io/__ccv_io_libjpeg.c"
+#include "io/_ccv_io_libjpeg.c"
 #endif
 #ifdef HAVE_LIBPNG
-#include "io/__ccv_io_libpng.c"
+#include "io/_ccv_io_libpng.c"
 #endif
-#include "io/__ccv_io_bmp.c"
-#include "io/__ccv_io_binary.c"
+#include "io/_ccv_io_bmp.c"
+#include "io/_ccv_io_binary.c"
 
 void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 {
@@ -41,19 +41,19 @@ void ccv_unserialize(const char* in, ccv_dense_matrix_t** x, int type)
 	{
 #ifdef HAVE_LIBJPEG
 		case CCV_SERIAL_JPEG_FILE:
-			__ccv_unserialize_jpeg_fd(fd, x, ctype);
+			_ccv_unserialize_jpeg_fd(fd, x, ctype);
 			break;
 #endif
 #ifdef HAVE_LIBPNG
 		case CCV_SERIAL_PNG_FILE:
-			__ccv_unserialize_png_fd(fd, x, ctype);
+			_ccv_unserialize_png_fd(fd, x, ctype);
 			break;
 #endif
 		case CCV_SERIAL_BMP_FILE:
-			__ccv_unserialize_bmp_fd(fd, x, ctype);
+			_ccv_unserialize_bmp_fd(fd, x, ctype);
 			break;
 		case CCV_SERIAL_BINARY_FILE:
-			__ccv_unserialize_binary_fd(fd, x, ctype);
+			_ccv_unserialize_binary_fd(fd, x, ctype);
 	}
 	if (*x != 0)
 	{
@@ -76,20 +76,20 @@ int ccv_serialize(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* 
 	{
 #ifdef HAVE_LIBJPEG
 		case CCV_SERIAL_JPEG_FILE:
-			__ccv_serialize_jpeg_fd(mat, fd, conf);
+			_ccv_serialize_jpeg_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
 			break;
 #endif
 #ifdef HAVE_LIBPNG
 		case CCV_SERIAL_PNG_FILE:
-			__ccv_serialize_png_fd(mat, fd, conf);
+			_ccv_serialize_png_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
 			break;
 #endif
 		case CCV_SERIAL_BINARY_FILE:
-			__ccv_serialize_binary_fd(mat, fd, conf);
+			_ccv_serialize_binary_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
 			break;

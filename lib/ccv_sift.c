@@ -11,7 +11,7 @@
 
 #include "ccv.h"
 
-inline static double __ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
+inline static double _ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
 {
 	double Dxx = N9[1][3] - 2 * N9[1][4] + N9[1][5]; 
 	double Dyy = N9[1][1] - 2 * N9[1][4] + N9[1][7];
@@ -94,7 +94,7 @@ inline static double __ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, 
 	return score;
 }
 
-static float __ccv_mod_2pi(float x)
+static float _ccv_mod_2pi(float x)
 {
 	while (x > 2 * CCV_PI)
 		x -= 2 * CCV_PI;
@@ -103,7 +103,7 @@ static float __ccv_mod_2pi(float x)
 	return x;
 }
 
-static int __ccv_floor(float x)
+static int _ccv_floor(float x)
 {
 	int xi = (int)x;
 	if (x >= 0 || (float)xi == x)
@@ -113,10 +113,10 @@ static int __ccv_floor(float x)
 
 #define EXPN_SZ  256 /* fast_expn table size */
 #define EXPN_MAX 25.0 /* fast_expn table max */
-static double __ccv_expn_tab[EXPN_SZ + 1]; /* fast_expn table */
-static int __ccv_expn_init = 0;
+static double _ccv_expn_tab[EXPN_SZ + 1]; /* fast_expn table */
+static int _ccv_expn_init = 0;
 
-static inline double __ccv_expn(double x)
+static inline double _ccv_expn(double x)
 {
 	double a, b, r;
 	int i;
@@ -126,17 +126,17 @@ static inline double __ccv_expn(double x)
 	x *= EXPN_SZ / EXPN_MAX;
 	i = (int)x;
 	r = x - i;
-	a = __ccv_expn_tab[i];
-	b = __ccv_expn_tab[i + 1];
+	a = _ccv_expn_tab[i];
+	b = _ccv_expn_tab[i + 1];
 	return a + r * (b - a);
 }
 
-static void __ccv_precomputed_expn()
+static void _ccv_precomputed_expn()
 {
 	int i;
 	for(i = 0; i < EXPN_SZ + 1; i++)
-		__ccv_expn_tab[i] = exp(-(double)i * (EXPN_MAX / EXPN_SZ));
-	__ccv_expn_init = 1;
+		_ccv_expn_tab[i] = exp(-(double)i * (EXPN_MAX / EXPN_SZ));
+	_ccv_expn_init = 1;
 }
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_t** _desc, int type, ccv_sift_param_t params)
@@ -267,7 +267,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 												   { uf[offset - cols - 1], uf[offset - cols], uf[offset - cols + 1],
 													 uf[offset - 1], uf[offset], uf[offset + 1],
 													 uf[offset + cols - 1], uf[offset + cols], uf[offset + cols + 1] } };
-								score = __ccv_keypoint_interpolate(N9, ix, iy, j, &kp);
+								score = _ccv_keypoint_interpolate(N9, ix, iy, j, &kp);
 								if (kp.x >= 0 && kp.x <= cols - 1 && kp.y >= 0 && kp.y <= rows - 1)
 								{
 									int nx = (int)(kp.x + 0.5);
@@ -304,8 +304,8 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	float const winf = 1.5;
 	double bins[36];
 	int kpnum = keypoints->rnum;
-	if (!__ccv_expn_init)
-		__ccv_precomputed_expn();
+	if (!_ccv_expn_init)
+		_ccv_precomputed_expn();
 	for (i = 0; i < kpnum; i++)
 	{
 		ccv_keypoint_t* kp = (ccv_keypoint_t*)ccv_array_get(keypoints, i);
@@ -332,9 +332,9 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 					float r2 = (x - dx) * (x - dx) + (y - dy) * (y - dy);
 					if (r2 > wz * wz + 0.6)
 						continue;
-					float weight = __ccv_expn(r2 / (2.0 * sigmaw * sigmaw));
+					float weight = _ccv_expn(r2 / (2.0 * sigmaw * sigmaw));
 					float fbin = theta[x] * 0.1;
-					int ibin = __ccv_floor(fbin - 0.5);
+					int ibin = _ccv_floor(fbin - 0.5);
 					float rbin = fbin - ibin - 0.5;
 					/* bilinear interpolation */
 					bins[(ibin + 36) % 36] += (1 - rbin) * magnitude[x] * weight;
@@ -413,11 +413,11 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 				{
 					float nx = (ca * (x - dx) + sa * (y - dy)) / SBP;
 					float ny = (-sa * (x - dx) + ca * (y - dy)) / SBP;
-					float nt = 8.0 * __ccv_mod_2pi(theta[x] * CCV_PI / 180.0 - kp->regular.angle) / (2.0 * CCV_PI);
-					float weight = __ccv_expn((nx * nx + ny * ny) / (2.0 * sigmaw * sigmaw));
-					int binx = __ccv_floor(nx - 0.5);
-					int biny = __ccv_floor(ny - 0.5);
-					int bint = __ccv_floor(nt);
+					float nt = 8.0 * _ccv_mod_2pi(theta[x] * CCV_PI / 180.0 - kp->regular.angle) / (2.0 * CCV_PI);
+					float weight = _ccv_expn((nx * nx + ny * ny) / (2.0 * sigmaw * sigmaw));
+					int binx = _ccv_floor(nx - 0.5);
+					int biny = _ccv_floor(ny - 0.5);
+					int bint = _ccv_floor(nt);
 					float rbinx = nx - (binx + 0.5);
 					float rbiny = ny - (biny + 0.5);
 					float rbint = nt - bint;
