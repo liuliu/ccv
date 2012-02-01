@@ -483,7 +483,7 @@ typedef struct {
 static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_int_alpha* xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
-	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
+	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	double scale_x = (double)a->cols / b->cols;
 	double scale_y = (double)a->rows / b->rows;
 	// double scale = 1.f / (scale_x * scale_y);
@@ -574,7 +574,7 @@ typedef struct {
 static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
-	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
+	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	double scale_x = (double)a->cols / b->cols;
 	double scale_y = (double)a->rows / b->rows;
 	double scale = 1.f / (scale_x * scale_y);
@@ -709,7 +709,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows / 2, a->cols / 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_cache_return(db, );
-	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
+	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	int cols0 = db->cols - 1 - src_x;
 	int dy, sy = -2 + src_y, sx = src_x * ch, dx, k;
 	int* tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
@@ -777,7 +777,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows * 2, a->cols * 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_cache_return(db, );
-	int ch = ccv_clamp(CCV_GET_CHANNEL_NUM(a->type), 1, 4);
+	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	int cols0 = a->cols - 1 - src_x;
 	int y, x, sy = -1 + src_y, sx = src_x * ch, k;
 	int* tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
@@ -875,7 +875,7 @@ void _ccv_flip_y_self(ccv_dense_matrix_t* a)
 void _ccv_flip_x_self(ccv_dense_matrix_t* a)
 {
 	int i, j;
-	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL_NUM(a->type);
+	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
 	unsigned char* buffer = (unsigned char*)alloca(len);
 	unsigned char* a_ptr = a->data.ptr;
 	for (i = 0; i < a->rows; i++)
@@ -930,10 +930,10 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	ccv_cache_return(db, );
 	int fsz = ccv_max(1, (int)(4.0 * sigma + 1.0 - 1e-8)) * 2 + 1;
 	int hfz = fsz / 2;
-	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * (fsz + ccv_max(a->rows, a->cols * CCV_GET_CHANNEL_NUM(a->type))));
+	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * (fsz + ccv_max(a->rows, a->cols * CCV_GET_CHANNEL(a->type))));
 	unsigned char* filter = (unsigned char*)alloca(sizeof(double) * fsz);
 	double tw = 0;
-	int i, j, k, ch = CCV_GET_CHANNEL_NUM(a->type);
+	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
 	for (i = 0; i < fsz; i++)
 		tw += ((double*)filter)[i] = exp(-((i - hfz) * (i - hfz)) / (2.0 * sigma * sigma));
 	int no_8u_type = (db->type & CCV_8U) ? CCV_32S : db->type;

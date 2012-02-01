@@ -19,14 +19,14 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 			return mat;
 		}
 	}
-	mat = (ccv_dense_matrix_t*)ccmalloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4) * rows));
+	mat = (ccv_dense_matrix_t*)ccmalloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * rows));
 	mat->sig = sig;
 	mat->type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
 	if (data == 0)
 		mat->type |= CCV_REUSABLE;
 	mat->rows = rows;
 	mat->cols = cols;
-	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
+	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
 	mat->refcount = 1;
 	mat->data.ptr = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
 	return mat;
@@ -34,7 +34,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 
 ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig)
 {
-	if (x != 0 && (x->rows != rows || x->cols != cols || !(CCV_GET_DATA_TYPE(x->type) & types) || !(CCV_GET_CHANNEL(x->type) & types)))
+	if (x != 0 && (x->rows != rows || x->cols != cols || !(CCV_GET_DATA_TYPE(x->type) & types) || (CCV_GET_CHANNEL(x->type) != CCV_GET_CHANNEL(types))))
 	{
 		ccv_matrix_free(x);
 		x = 0;
@@ -58,7 +58,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
 	mat.rows = rows;
 	mat.cols = cols;
-	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL_NUM(type) + 3) & -4;
+	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
 	mat.refcount = 1;
 	mat.data.ptr = (unsigned char*)data;
 	return mat;
@@ -130,7 +130,7 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 		if (!ccv_cache_opt || !(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
 			ccfree(dmt);
 		else {
-			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL_NUM(dmt->type) + 3) & -4) * dmt->rows;
+			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL(dmt->type) + 3) & -4) * dmt->rows;
 			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size);
 		}
 	} else if (type & CCV_MATRIX_SPARSE) {

@@ -16,14 +16,12 @@ int main(int argc, char** argv)
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_dpm_root_classifier_t* root_classifier = ccv_load_dpm_root_classifier(argv[2]);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
-		ccv_dpm_root_classifier_t _cascade;
-		_cascade.root.size.width = _cascade.root.size.height = 24;
-		ccv_dpm_root_classifier_t* cascade = &_cascade;
-		ccv_array_t* seq = ccv_dpm_detect_objects(image, &cascade, 1, params);
+		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(root_classifier->root.size.width * 8, root_classifier->root.size.height * 8) };
+		ccv_array_t* seq = ccv_dpm_detect_objects(image, &root_classifier, 1, params);
 		/*
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)

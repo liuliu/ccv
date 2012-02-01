@@ -4,6 +4,10 @@ void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char*
 {
 }
 
+static inline float _ccv_lsvm_match(ccv_dense_matrix_t* a, ccv_dense_matrix_t* tpl, ccv_dense_matrix_t** b)
+{
+}
+
 // this is specific HOG computation for dpm, I may later change it to ccv_hog
 static void _ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size)
 {
@@ -15,9 +19,9 @@ static void _ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, 
 	int i, j, k;
 	int rows = a->rows / size;
 	int cols = a->cols / size;
-	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols * sbin * 2, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols, CCV_32F | (sbin * 2), 0, 0);
 	ccv_dense_matrix_t* ca = ccv_dense_matrix_new(rows, cols, CCV_64F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(rows, cols * (4 + sbin * 3), CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(rows, cols, CCV_32F | (4 + sbin * 3), 0, 0);
 	ccv_zero(cn);
 	float* cnp = cn->data.fl;
 	int sizec = 0;
@@ -75,14 +79,14 @@ static void _ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, 
 		for (k = 0; k < sbin * 2; k++) \
 		{ \
 			float v = 0.5f * ccv_min(cnp[k] * norm, 0.2f); \
-			dbp[sbin + k] += v; \
-			dbp[sbin * 3 + idx] += v; \
+			dbp[5 + sbin + k] += v; \
+			dbp[1 + idx] += v; \
 		} \
 		dbp[sbin * 3 + idx] *= 0.2357f; \
 		for (k = 0; k < sbin; k++) \
 		{ \
 			float v = 0.5f * ccv_min((cnp[k] + cnp[k + sbin]) * norm, 0.2f); \
-			dbp[k] += v; \
+			dbp[5 + k] += v; \
 		} \
 	}
 	TNA(0, 0, 0, 0, 0);
@@ -171,8 +175,8 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifi
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale));
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	memset(pyr, 0, (scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
-	if (params.size.height != _classifier[0]->root.size.height || params.size.width != _classifier[0]->root.size.width)
-		ccv_resample(a, &pyr[0], 0, a->rows * _classifier[0]->root.size.height / params.size.height, a->cols * _classifier[0]->root.size.width / params.size.width, CCV_INTER_AREA);
+	if (params.size.height != _classifier[0]->root.size.height * 8 || params.size.width != _classifier[0]->root.size.width * 8)
+		ccv_resample(a, &pyr[0], 0, a->rows * _classifier[0]->root.size.height * 8 / params.size.height, a->cols * _classifier[0]->root.size.width * 8 / params.size.width, CCV_INTER_AREA);
 	else
 		pyr[0] = a;
 	int i, j;
@@ -180,14 +184,14 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifi
 		ccv_resample(pyr[0], &pyr[i], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i - next], &pyr[i], 0, 0, 0);
-	/*
-	for (i = 0; i < scale_upto + next * 2; i++)
+	for (i = 0; i < 1; i++) // scale_upto + next * 2; i++)
 	{
 		ccv_dense_matrix_t* hog = 0;
 		_ccv_hog(pyr[i], &hog, 0, 9, 8);
+		_ccv_run_lsvm(hog, );
 		ccv_matrix_free(hog);
 	}
-	*/
+	/*
 	ccv_dense_matrix_t* hog = 0;
 	_ccv_hog(pyr[0], &hog, 0, 9, 8);
 	ccv_dense_matrix_t* b = ccv_dense_matrix_new(pyr[0]->rows, pyr[0]->cols, CCV_8U | CCV_C1, 0, 0);
@@ -206,13 +210,40 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifi
 	ccv_serialize(b, "hog.png", 0, CCV_SERIAL_PNG_FILE, 0);
 	ccv_matrix_free(hog);
 	ccv_matrix_free(b);
-	if (params.size.height != _classifier[0]->root.size.height || params.size.width != _classifier[0]->root.size.width)
+	*/
+	if (params.size.height != _classifier[0]->root.size.height * 8 || params.size.width != _classifier[0]->root.size.width * 8)
 		ccv_matrix_free(pyr[0]);
 	 for (i = 1; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i]);
 	return 0;
 }
 
-ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory)
+ccv_dpm_root_classifier_t* ccv_load_dpm_root_classifier(const char* directory)
 {
+	FILE* r = fopen(directory, "r");
+	if (r == 0)
+		return 0;
+	ccv_dpm_root_classifier_t* root_classifier = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t));
+	memset(root_classifier, 0, sizeof(ccv_dpm_root_classifier_t));
+	fscanf(r, "%d %d", &root_classifier->root.size.width, &root_classifier->root.size.height);
+	root_classifier->root.w = (float*)ccmalloc(sizeof(float) * root_classifier->root.size.width * root_classifier->root.size.height * 32);
+	int i, j, k;
+	for (i = 0; i < root_classifier->root.size.width * root_classifier->root.size.height * 32; i++)
+		fscanf(r, "%f", &root_classifier->root.w[i]);
+	/*
+	for (j = 0; j < root_classifier->root.size.width * root_classifier->root.size.height; j++)
+	{
+		i = 31;
+		printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
+		for (i = 27; i < 31; i++)
+			printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
+		for (i = 18; i < 27; i++)
+			printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
+		for (i = 0; i < 18; i++)
+			printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
+	}
+	printf("\n");
+	*/
+	fclose(r);
+	return root_classifier;
 }

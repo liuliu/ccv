@@ -38,19 +38,16 @@ enum {
 enum {
 	CCV_C1 = 0x01,
 	CCV_C2 = 0x02,
-	CCV_C3 = 0x04,
-	CCV_C4 = 0x08,
+	CCV_C3 = 0x03,
+	CCV_C4 = 0x04,
 };
 
 static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8 };
-static const int _ccv_get_channel_num[] = { -1, 1, 2, -1, 3, -1, -1, -1, 4 };
 
 #define CCV_GET_DATA_TYPE(x) ((x) & 0xFF00)
 #define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
 #define CCV_GET_CHANNEL(x) ((x) & 0xFF)
-#define CCV_GET_CHANNEL_NUM(x) _ccv_get_channel_num[CCV_GET_CHANNEL(x)]
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64F)
-#define CCV_ALL_CHANNEL (CCV_C1 | CCV_C2 | CCV_C3 | CCV_C4)
 
 enum {
 	CCV_MATRIX_DENSE  = 0x010000,
@@ -118,7 +115,7 @@ extern int _ccv_get_sparse_prime[];
 typedef void ccv_matrix_t;
 
 /* the explicit cache mechanism */
-/* the new cache is Cuckoo based, has a strict memory usage bound
+/* the new cache is radix tree based, but has a strict memory usage upper bound
  * so that you don't have to explicitly call ccv_drain_cache() every time */
 typedef void(*ccv_cache_index_free_f)(void*);
 
@@ -666,6 +663,7 @@ typedef struct {
 typedef struct {
 } ccv_dpm_new_param_t;
 
+ccv_dpm_root_classifier_t* ccv_load_dpm_root_classifier(const char* directory);
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifier_t** classifier, int count, ccv_dpm_param_t params);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
@@ -733,7 +731,7 @@ int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascad
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 
 /* following is proprietary implementation of sparse gradient feature, another object detection algorithm
- * which should have better accuracy to shape focused object (pedestrian, vehicle etc.) */
+ * which should have better accuracy to shape focused object (pedestrian, vehicle etc.) but still as fast as bbf */
 
 #define CCV_SGF_POINT_MAX (5)
 #define CCV_SGF_POINT_MIN (3)

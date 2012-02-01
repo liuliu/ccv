@@ -32,9 +32,9 @@ static void _ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	fseek(in, offset, SEEK_SET);
 	int i, j;
 	unsigned char* ptr = im->data.ptr + (im->rows - 1) * im->step;
-	if ((bpp == 8 && (im->type & CCV_C1)) || (bpp == 24 && (im->type & CCV_C3)))
+	if ((bpp == 8 && CCV_GET_CHANNEL(im->type) == CCV_C1) || (bpp == 24 && CCV_GET_CHANNEL(im->type) == CCV_C3))
 	{
-		if (im->type & CCV_C1)
+		if (CCV_GET_CHANNEL(im->type) == CCV_C1)
 		{
 			for (i = 0; i < im->rows; i++)
 			{
@@ -55,7 +55,7 @@ static void _ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 			}
 		}
 	} else {
-		if (bpp == 24 && (im->type & CCV_C1))
+		if (bpp == 24 && CCV_GET_CHANNEL(im->type) == CCV_C1)
 		{
 			int bufstep = (im->cols * 3 + 3) & -4;
 			unsigned char* buffer = (unsigned char*)alloca(bufstep);
@@ -68,7 +68,7 @@ static void _ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 					*g = (unsigned char)((rgb[2] * 6969 + rgb[1] * 23434 + rgb[0] * 2365) >> 15);
 				ptr -= im->step;
 			}
-		} else if (bpp == 8 && (im->type & CCV_C3)) {
+		} else if (bpp == 8 && CCV_GET_CHANNEL(im->type) == CCV_C3) {
 			int bufstep = (im->cols + 3) & -4;
 			unsigned char* buffer = (unsigned char*)alloca(bufstep);
 			for (i = 0; i < im->rows; i++)

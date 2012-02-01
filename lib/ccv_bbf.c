@@ -1413,12 +1413,13 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 
 ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory)
 {
-	ccv_bbf_classifier_cascade_t* cascade = (ccv_bbf_classifier_cascade_t*)ccmalloc(sizeof(ccv_bbf_classifier_cascade_t));
 	char buf[1024];
 	sprintf(buf, "%s/cascade.txt", directory);
 	int s, i;
 	FILE* r = fopen(buf, "r");
-	if (r == 0) return 0;
+	if (r == 0)
+		return 0;
+	ccv_bbf_classifier_cascade_t* cascade = (ccv_bbf_classifier_cascade_t*)ccmalloc(sizeof(ccv_bbf_classifier_cascade_t));
 	s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
 	cascade->stage_classifier = (ccv_bbf_stage_classifier_t*)ccmalloc(cascade->count * sizeof(ccv_bbf_stage_classifier_t));
 	for (i = 0; i < cascade->count; i++)

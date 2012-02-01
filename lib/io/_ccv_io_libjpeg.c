@@ -193,7 +193,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	unsigned char* ptr = im->data.ptr;
 	if(cinfo.num_components != 4)
 	{
-		if ((cinfo.num_components > 1 && (im->type & CCV_C3)) || (cinfo.num_components == 1 && (im->type & CCV_C1)))
+		if ((cinfo.num_components > 1 && CCV_GET_CHANNEL(im->type) == CCV_C3) || (cinfo.num_components == 1 && CCV_GET_CHANNEL(im->type) == CCV_C1))
 		{
 			/* no format coversion, direct copy */
 			while (cinfo.output_scanline < cinfo.output_height)
@@ -203,7 +203,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 				ptr += im->step;
 			}
 		} else {
-			if (cinfo.num_components > 1 && (im->type & CCV_C1))
+			if (cinfo.num_components > 1 && CCV_GET_CHANNEL(im->type) == CCV_C1)
 			{
 				/* RGB to gray */
 				while (cinfo.output_scanline < cinfo.output_height)
@@ -216,7 +216,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 						*g = (unsigned char)((rgb[0] * 6969 + rgb[1] * 23434 + rgb[2] * 2365) >> 15);
 					ptr += im->step;
 				}
-			} else if (cinfo.num_components == 1 && (im->type & CCV_C3)) {
+			} else if (cinfo.num_components == 1 && CCV_GET_CHANNEL(im->type) == CCV_C3) {
 				/* gray to RGB */
 				while (cinfo.output_scanline < cinfo.output_height)
 				{
@@ -231,7 +231,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 			}
 		}
 	} else {
-		if (im->type & CCV_C1)
+		if (CCV_GET_CHANNEL(im->type) == CCV_C1)
 		{
 			/* CMYK to gray */
 			while (cinfo.output_scanline < cinfo.output_height)
@@ -250,7 +250,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 				}
 				ptr += im->step;
 			}
-		} else if (im->type & CCV_C3) {
+		} else if (CCV_GET_CHANNEL(im->type) == CCV_C3) {
 			/* CMYK to RGB */
 			while (cinfo.output_scanline < cinfo.output_height)
 			{
@@ -292,8 +292,8 @@ static void _ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf
 	}
 	cinfo.image_width = mat->cols;
 	cinfo.image_height = mat->rows;
-	cinfo.input_components = (mat->type & CCV_C1) ? 1 : 3;
-	cinfo.in_color_space = (mat->type & CCV_C1) ? JCS_GRAYSCALE : JCS_RGB;
+	cinfo.input_components = (CCV_GET_CHANNEL(mat->type) == CCV_C1) ? 1 : 3;
+	cinfo.in_color_space = (CCV_GET_CHANNEL(mat->type) == CCV_C1) ? JCS_GRAYSCALE : JCS_RGB;
 	jpeg_set_defaults(&cinfo);
 	if (conf == 0)
 		jpeg_set_quality(&cinfo, 95, TRUE);
