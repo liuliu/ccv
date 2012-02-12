@@ -30,3 +30,4 @@ data/*
 tool/*
 config.mk
 build
+Thumbs.db
