@@ -12,6 +12,7 @@
 #include <png.h>
 #else
 // Unsupported platform
+#include <png.h>
 #endif
 #else
 #include <zlib.h>
