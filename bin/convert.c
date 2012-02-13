@@ -10,7 +10,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* representable = 0;
 	if (!(image->type & CCV_8U))
 	{
-		ccv_shift(image, (ccv_matrix_t**)&representable, CCV_8U | CCV_ALL_CHANNEL, 0, 0);
+		ccv_shift(image, (ccv_matrix_t**)&representable, CCV_8U, 0, 0);
 		ccv_dense_matrix_t* t = image;
 		image = representable;
 		representable = t;

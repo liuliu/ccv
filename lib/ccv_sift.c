@@ -268,7 +268,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 													 uf[offset - 1], uf[offset], uf[offset + 1],
 													 uf[offset + cols - 1], uf[offset + cols], uf[offset + cols + 1] } };
 								score = _ccv_keypoint_interpolate(N9, ix, iy, j, &kp);
-								if (kp.x >= 0 && kp.x <= cols - 1 && kp.y >= 0 && kp.y <= rows - 1)
+								if (kp.x >= 1 && kp.x <= cols - 2 && kp.y >= 1 && kp.y <= rows - 2)
 								{
 									int nx = (int)(kp.x + 0.5);
 									int ny = (int)(kp.y + 0.5);
