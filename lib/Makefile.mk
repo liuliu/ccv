@@ -3,7 +3,7 @@ CC = gcc
 DEFINES		= -DWIN32 -D HAVE_LIBJPEG -D HAVE_LIBPNG
 LIBFILES        = -lws2_32 -ljpeg -lpng
 INCLUDES        = 
-OPTIMIZE        = -O3 -msse2 -Wall -fms-extensions
+OPTIMIZE        = -O3 -msse2 -Wall -fms-extensions -mms-bitfields
 
 CFLAGS		= $(INCLUDES) $(DEFINES) $(OPTIMIZE)
 LINK32		= g++
