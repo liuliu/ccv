@@ -48,7 +48,7 @@ double gaussian(double x, double y, void* data)
 TEST_CASE("FFTW-based filter on Gaussian kernel")
 {
 	ccv_dense_matrix_t* image = 0;
-	ccv_unserialize("../samples/nature.png", &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_read("../samples/nature.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* gray = 0;ccv_dense_matrix_new(image->rows, image->cols, CCV_32F | CCV_C1, 0, 0);
 	ccv_shift(image, (ccv_matrix_t**)&gray, CCV_32F | CCV_C1, 0, 0);
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(10, 10, CCV_32F | CCV_C1, 0, 0);

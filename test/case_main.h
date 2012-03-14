@@ -258,24 +258,24 @@ int main(int argc, char** argv)
 		case_t* test_suite = (case_t*)(start_pointer + i);
 		if (test_suite->sig == 0x883253372849284B)
 		{
-			printf("\033[0;34m[%d/%d]\033[0;30m \033[1;33m[RUN]\033[0;30m %s ...", j, total, test_suite->name);
+			printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", j, total, test_suite->name);
 			int result = 0;
 			test_suite->driver(test_suite->name, &result);
 			if (result == 0)
 			{
 				pass++;
-				printf("\r\033[0;34m[%d/%d]\033[0;30m \033[1;32m[PASS]\033[0;30m %s    \n", j, total, test_suite->name);
+				printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", j, total, test_suite->name);
 			} else {
 				fail++;
-				printf("\n\033[0;34m[%d/%d]\033[0;30m \033[1;31m[FAIL]\033[0;30m %s\n", j, total, test_suite->name);
+				printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", j, total, test_suite->name);
 			}
 			j++;
 		}
 	}
 	if (fail == 0)
-		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;30m\n");
+		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
 	else
-		printf("\033[0;31m%d of %d test case(s) passed\033[0;30m\n", pass, fail + pass);
+		printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
 	return fail;
 }
 

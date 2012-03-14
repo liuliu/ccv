@@ -143,7 +143,7 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 		{
 			negperbg = (t < 2) ? (negnum - negtotal) / (bgnum - i) + 1 : negnum - negtotal;
 			ccv_dense_matrix_t* image = 0;
-			ccv_unserialize(bgfiles[i], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+			ccv_read(bgfiles[i], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 			assert((image->type & CCV_C1) && (image->type & CCV_8U));
 			if (image == 0)
 			{

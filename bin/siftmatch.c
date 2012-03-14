@@ -14,8 +14,8 @@ int main(int argc, char** argv)
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* object = 0;
 	ccv_dense_matrix_t* image = 0;
-	ccv_unserialize(argv[1], &object, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
-	ccv_unserialize(argv[2], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_read(argv[1], &object, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_read(argv[2], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	unsigned int elapsed_time = get_current_time();
 	ccv_sift_param_t param;
 	param.noctaves = 3;

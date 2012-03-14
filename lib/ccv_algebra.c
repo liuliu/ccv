@@ -17,10 +17,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	assert(CCV_GET_CHANNEL(da->type) == CCV_C1);
-	char identifier[20];
-	memset(identifier, 0, 20);
-	snprintf(identifier, 20, "ccv_normalize(%d)", l_type);
-	uint64_t sig = (da->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, 0);
+	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(20, "ccv_normalize(%d)", l_type), da->sig, 0);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
 	ccv_cache_return(db, 0);
@@ -75,6 +72,10 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 	return sum;
 }
 
+void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+{
+}
+
 double ccv_sum(ccv_matrix_t* mat)
 {
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
@@ -104,7 +105,7 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
 	assert(da->rows == db->rows && da->cols == db->cols && CCV_GET_DATA_TYPE(da->type) == CCV_GET_DATA_TYPE(db->type) && CCV_GET_CHANNEL(da->type) == CCV_GET_CHANNEL(db->type));
-	uint64_t sig = ccv_matrix_generate_signature("ccv_substract", 13, da->sig, db->sig, 0);
+	ccv_declare_matrix_signature(sig, da->sig != 0 && db->sig != 0, ccv_sign_with_literal("ccv_substract"), da->sig, db->sig, 0);
 	int no_8u_type = (da->type & CCV_8U) ? CCV_32S : da->type;
 	type = (type == 0) ? CCV_GET_DATA_TYPE(no_8u_type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
@@ -139,10 +140,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 	if (dc != 0)
 		assert(CCV_GET_DATA_TYPE(dc->type) == CCV_GET_DATA_TYPE(da->type) && CCV_GET_CHANNEL(dc->type) == 1 && ((transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows) == dc->rows && ((transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols) == dc->cols);
 
-	char identifier[20];
-	memset(identifier, 0, 20);
-	snprintf(identifier, 20, "ccv_gemm(%d)", transpose);
-	uint64_t sig = (dc == 0) ? ((da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, db->sig, 0)) : ((da->sig == 0 || db->sig == 0 || dc->sig == 0) ? 0 : ccv_matrix_generate_signature(identifier, 20, da->sig, db->sig, dc->sig, 0));
+	ccv_declare_matrix_signature_case(sig, ccv_sign_with_format(20, "ccv_gemm(%d)", transpose), ccv_sign_if(dc == 0 && da->sig != 0 && db->sig != 0, da->sig, db->sig, 0), ccv_sign_if(dc != 0 && da->sig != 0 && db->sig != 0 && dc->sig != 0, da->sig, db->sig, dc->sig, 0));
 	type = CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, (transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows, (transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols, type, type, sig);
 	ccv_cache_return(dd, );

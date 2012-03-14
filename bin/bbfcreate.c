@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 	{
 		char buf[1024];
 		rt = fscanf(pf, "%s", buf);
-		ccv_unserialize(buf, &posimg[i], CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+		ccv_read(buf, &posimg[i], CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	}
 	fclose(pf);
 	int negnum = atoi(argv[4]);

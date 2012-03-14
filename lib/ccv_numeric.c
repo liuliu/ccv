@@ -1,6 +1,6 @@
 #include "ccv.h"
-#ifdef HAVE_FFTW3
 #include <complex.h>
+#ifdef HAVE_FFTW3
 #include <fftw3.h>
 #endif
 
@@ -471,20 +471,27 @@ static int _ccv_get_optimal_fft_size(int size)
 #ifdef HAVE_FFTW3
 static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
 {
+	int ch = CCV_GET_CHANNEL(a->type);
 	int rows = ccv_min(a->rows, _ccv_get_optimal_fft_size(b->rows * 3));
 	int cols = ccv_min(a->cols, _ccv_get_optimal_fft_size(b->cols * 3));
 	int cols_2c = 2 * (cols / 2 + 1);
-	double* fftw_a = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
-	double* fftw_b = (double*)fftw_malloc(rows * cols_2c * sizeof(double));
-	memset(fftw_b, 0, rows * cols_2c * sizeof(double));
-	double* fftw_d = (double*)fftw_malloc(rows * cols * sizeof(double));
+	double* fftw_a = (double*)fftw_malloc(rows * cols_2c * ch * sizeof(double));
+	double* fftw_b = (double*)fftw_malloc(rows * cols_2c * ch * sizeof(double));
+	memset(fftw_b, 0, rows * cols_2c * ch * sizeof(double));
+	double* fftw_d = (double*)fftw_malloc(rows * cols * ch * sizeof(double));
 	fftw_complex* fftw_ac = (fftw_complex*)fftw_a;
 	fftw_complex* fftw_bc = (fftw_complex*)fftw_b;
 	fftw_complex* fftw_dc = (fftw_complex*)fftw_malloc(rows * (cols / 2 + 1) * sizeof(fftw_complex));
 	fftw_plan p, pinv;
 	double scale = 1.0 / (rows * cols);
-	p = fftw_plan_dft_r2c_2d(rows, cols, 0, 0, FFTW_ESTIMATE);
-	pinv = fftw_plan_dft_c2r_2d(rows, cols, fftw_dc, fftw_d, FFTW_ESTIMATE);
+	if (ch == 1) {
+		p = fftw_plan_dft_r2c_2d(rows, cols, 0, 0, FFTW_ESTIMATE);
+		pinv = fftw_plan_dft_c2r_2d(rows, cols, fftw_dc, fftw_d, FFTW_ESTIMATE);
+	} else {
+		const int n[] = {rows, cols};
+		p = fftw_plan_many_dft_r2c(2, n, ch, 0, 0, ch, 1, 0, 0, ch, 1, FFTW_ESTIMATE);
+		pinv = fftw_plan_many_dft_c2r(2, n, ch, fftw_dc, 0, ch, 1, fftw_d, 0, ch, 1, FFTW_ESTIMATE);
+	}
 	double* fftw_ptr;
 	unsigned char* m_ptr;
 
@@ -498,7 +505,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 	 * a more classic way to do this is to pad both a and b to be a->rows + b->rows - 1,
 	 * a->cols + b->cols - 1, but it is too expensive. In the way we introduced here, we also assume
 	 * a border padding pattern in periodical way: |cd{BORDER}|abcd|{BORDER}ab|. */
-	int i, j;
+	int i, j, k;
 	if (b->rows > rows || b->cols > cols)
 	{ /* reverse lookup */
 		fftw_ptr = fftw_b;
@@ -508,9 +515,10 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 			for (j = 0; j < cols; j++)
 			{
 				int x = (j + cols / 2) % cols - cols / 2 + b->cols / 2;
-				fftw_ptr[j] = (y >= 0 && y < b->rows && x >= 0 && x < b->cols) ? ccv_get_dense_matrix_cell_value(b, y, x) : 0;
+				for (k = 0; k < ch; k++)
+					fftw_ptr[j * ch + k] = (y >= 0 && y < b->rows && x >= 0 && x < b->cols) ? ccv_get_dense_matrix_cell_value(b, y, x, k) : 0;
 			}
-			fftw_ptr += cols_2c;
+			fftw_ptr += cols_2c * ch;
 		}
 	} else { /* forward lookup */
 		int rows_bc = rows - b->rows / 2;
@@ -519,7 +527,8 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		{
 			int y = (i + rows_bc) % rows;
 			for (j = 0; j < b->cols; j++)
-				fftw_b[y * cols_2c + (j + cols_bc) % cols] = ccv_get_dense_matrix_cell_value(b, i, j);
+				for (k = 0; i < ch; k++)
+					fftw_b[y * cols_2c * ch + ((j + cols_bc) % cols) * ch + k] = ccv_get_dense_matrix_cell_value(b, i, j, k);
 		}
 	}
 	fftw_execute_dft_r2c(p, fftw_b, fftw_bc);
@@ -532,16 +541,16 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		for (j = 0; j < tile_x; j++) \
 		{ \
 			int x, y; \
-			memset(fftw_a, 0, rows * cols * sizeof(double)); \
+			memset(fftw_a, 0, rows * cols * ch * sizeof(double)); \
 			int iy = ccv_min(i * (rows - b->rows), a->rows - rows); \
 			int ix = ccv_min(j * (cols - b->cols), a->cols - cols); \
 			fftw_ptr = fftw_a; \
-			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix); \
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix, 0); \
 			for (y = 0; y < rows; y++) \
 			{ \
-				for (x = 0; x < cols; x++) \
+				for (x = 0; x < cols * ch; x++) \
 					fftw_ptr[x] = _for_get(m_ptr, x, 0); \
-				fftw_ptr += cols_2c; \
+				fftw_ptr += cols_2c * ch; \
 				m_ptr += a->step; \
 			} \
 			fftw_execute_dft_r2c(p, fftw_a, fftw_ac); \
@@ -551,13 +560,13 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 			fftw_ptr = fftw_d + (i > 0) * b->rows / 2 * cols + (j > 0) * b->cols / 2; \
 			int end_y = ccv_min(d->rows - iy, (rows - b->rows) + (i == 0) * b->rows / 2 + (i + 1 == tile_y) * (b->rows + 1) / 2); \
 			int end_x = ccv_min(d->cols - ix, (cols - b->cols) + (j == 0) * b->cols / 2 + (j + 1 == tile_x) * (b->cols + 1) / 2); \
-			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * b->rows / 2, ix + (j > 0) * b->cols / 2); \
+			m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * b->rows / 2, ix + (j > 0) * b->cols / 2, 0); \
 			for (y = 0; y < end_y; y++) \
 			{ \
-				for (x = 0; x < end_x; x++) \
+				for (x = 0; x < end_x * ch; x++) \
 					_for_set(m_ptr, x, fftw_ptr[x], 0); \
 				m_ptr += d->step; \
-				fftw_ptr += cols; \
+				fftw_ptr += cols * ch; \
 			} \
 		}
 	ccv_matrix_setter(d->type, ccv_matrix_getter, a->type, for_block);
@@ -568,6 +577,10 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 	fftw_free(fftw_b);
 	fftw_free(fftw_d);
 	fftw_free(fftw_dc);
+}
+#else
+static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d)
+{
 }
 #endif
 
@@ -583,7 +596,7 @@ void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_den
 	for (i = 0; i < b->rows; i++)
 		for (j = 0; j < b->cols; j++)
 		{
-			coeff[nz] = (int)(ccv_get_dense_matrix_cell_value(b, i, j) * scale + 0.5);
+			coeff[nz] = (int)(ccv_get_dense_matrix_cell_value(b, i, j, 0) * scale + 0.5);
 			if (coeff[nz] == 0)
 				continue;
 			cy[nz] = i;
@@ -617,7 +630,7 @@ void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_den
 		for (i = 0; i < b->rows; i++)
 			for (j = 0; j < b->cols; j++)
 			{
-				coeff[k] = (int)(ccv_get_dense_matrix_cell_value(b, i, j) * scale + 0.5);
+				coeff[k] = (int)(ccv_get_dense_matrix_cell_value(b, i, j, 0) * scale + 0.5);
 				k++;
 			}
 		for (i = 0; i < d->rows; i++)
@@ -667,6 +680,8 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 	} else {
 #ifdef HAVE_FFTW3
 		_ccv_filter_fftw(da, db, dd);
+#else
+		_ccv_filter_kissfft(da, db, dd);
 #endif
 	}
 }

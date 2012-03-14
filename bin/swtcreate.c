@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 		char file[1000];
 		fscanf(r, "%s", file);
 		aof[i] = 0;
-		ccv_unserialize(file, aof + i, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+		ccv_read(file, aof + i, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 		int locations;
 		fscanf(r, "%d", &locations);
 		int j;

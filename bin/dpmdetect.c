@@ -15,7 +15,7 @@ int main(int argc, char** argv)
 	int i;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
-	ccv_unserialize(argv[1], &image, CCV_SERIAL_GRAY | CCV_SERIAL_ANY_FILE);
+	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dpm_root_classifier_t* root_classifier = ccv_load_dpm_root_classifier(argv[2]);
 	if (image != 0)
 	{

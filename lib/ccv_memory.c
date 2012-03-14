@@ -1,5 +1,5 @@
 #include "ccv.h"
-#include "3rdparty/sha1.h"
+#include "3rdparty/sha1/sha1.h"
 
 static ccv_cache_t ccv_cache;
 

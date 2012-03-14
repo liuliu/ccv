@@ -144,7 +144,7 @@ static int _ccv_jpeg_load_dht(struct jpeg_decompress_struct *info, unsigned char
  * based on a message of Laurent Pinchart on the video4linux mailing list
  ***************************************************************************/
 
-static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
+static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	struct jpeg_decompress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;
@@ -277,7 +277,7 @@ static void _ccv_unserialize_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	jpeg_destroy_decompress(&cinfo);
 }
 
-static void _ccv_serialize_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
+static void _ccv_write_jpeg_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 {
 	struct jpeg_compress_struct cinfo;
 	struct ccv_jpeg_error_mgr_t jerr;

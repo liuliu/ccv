@@ -1,4 +1,4 @@
-static void _ccv_unserialize_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
+static void _ccv_read_bmp_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 {
 	fseek(in, 10, SEEK_SET);
 	int offset;
