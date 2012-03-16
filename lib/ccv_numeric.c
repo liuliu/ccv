@@ -481,7 +481,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 	double* fftw_d = (double*)fftw_malloc(rows * cols * ch * sizeof(double));
 	fftw_complex* fftw_ac = (fftw_complex*)fftw_a;
 	fftw_complex* fftw_bc = (fftw_complex*)fftw_b;
-	fftw_complex* fftw_dc = (fftw_complex*)fftw_malloc(rows * (cols / 2 + 1) * sizeof(fftw_complex));
+	fftw_complex* fftw_dc = (fftw_complex*)fftw_malloc(rows * cols_2c * ch * sizeof(fftw_complex));
 	fftw_plan p, pinv;
 	double scale = 1.0 / (rows * cols);
 	if (ch == 1) {
@@ -664,7 +664,7 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 	uint64_t sig = (da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_filter", 10, da->sig, db->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
-	ccv_cache_return(dd, );
+	ccv_matrix_return_if_cached(, dd);
 
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
 	 * integer image.

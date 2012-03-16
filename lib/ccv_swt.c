@@ -47,7 +47,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%lf,%lf)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	ccv_dense_matrix_t* c = 0;
 	ccv_canny(a, &c, 0, params.size, params.low_thresh, params.high_thresh);
 	ccv_dense_matrix_t* dx = 0;

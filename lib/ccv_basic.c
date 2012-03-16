@@ -8,7 +8,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_sobel(%d,%d)", dx, dy), a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	int i, j, k;
 	unsigned char* a_ptr = a->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
@@ -249,14 +249,8 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	ccv_declare_matrix_signature(msig, a->sig != 0, ccv_sign_with_literal("ccv_gradient_m"), a->sig, 0);
 	ccv_dense_matrix_t* dtheta = *theta = ccv_dense_matrix_renew(*theta, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, tsig);
 	ccv_dense_matrix_t* dm = *m = ccv_dense_matrix_renew(*m, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, msig);
-	if ((dtheta->type & CCV_GARBAGE) && (dm->type & CCV_GARBAGE))
-	{
-		dtheta->type &= ~CCV_GARBAGE;
-		dm->type &= ~CCV_GARBAGE;
-		return;
-	}
-	dtheta->type &= ~CCV_GARBAGE;
-	dm->type &= ~CCV_GARBAGE;
+	ccv_matrix_return_if_cached(, dtheta, dm);
+	ccv_revive_matrix_if_cached(dtheta, dm);
 	ccv_dense_matrix_t* tx = 0;
 	ccv_dense_matrix_t* ty = 0;
 	ccv_sobel(a, &tx, CCV_32F | CCV_C1, dx, 0);
@@ -273,7 +267,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_hog"), a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	ccv_dense_matrix_t* ag = 0;
 	ccv_dense_matrix_t* mg = 0;
 	ccv_gradient(a, &ag, 0, &mg, 0, 3, 3);
@@ -324,7 +318,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%lf,%lf)", size, low_thresh, high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_8U | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	if ((a->type & CCV_8U) || (a->type & CCV_32S))
 	{
 		ccv_dense_matrix_t* dx = 0;
@@ -658,7 +652,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_resample(%d,%d,%d)", rows, cols, type), a->sig, 0);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(btype) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), btype, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	if (a->rows == db->rows && a->cols == db->cols)
 	{
 		if (CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(db->type) && CCV_GET_DATA_TYPE(db->type) == CCV_GET_DATA_TYPE(a->type))
@@ -696,7 +690,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_sample_down(%d,%d)", src_x, src_y), a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows / 2, a->cols / 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	int cols0 = db->cols - 1 - src_x;
 	int dy, sy = -2 + src_y, sx = src_x * ch, dx, k;
@@ -761,7 +755,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_sample_up(%d,%d)", src_x, src_y), a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows * 2, a->cols * 2, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	int cols0 = a->cols - 1 - src_x;
 	int y, x, sy = -1 + src_y, sx = src_x * ch, k;
@@ -896,7 +890,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 	} else {
 		btype = CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type);
 		*b = db = ccv_dense_matrix_renew(*b, a->rows, a->cols, btype, btype, sig);
-		ccv_cache_return(db, );
+		ccv_matrix_return_if_cached(, db);
 		memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
 	}
 	if (type & CCV_FLIP_Y)
@@ -910,7 +904,7 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_blur(%lf)", sigma), a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
-	ccv_cache_return(db, );
+	ccv_matrix_return_if_cached(, db);
 	int fsz = ccv_max(1, (int)(4.0 * sigma + 1.0 - 1e-8)) * 2 + 1;
 	int hfz = fsz / 2;
 	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * (fsz + ccv_max(a->rows, a->cols * CCV_GET_CHANNEL(a->type))));

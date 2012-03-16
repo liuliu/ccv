@@ -13,19 +13,19 @@ double ccv_norm(ccv_matrix_t* mat, int type)
 	return 0;
 }
 
-double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
+double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	assert(CCV_GET_CHANNEL(da->type) == CCV_C1);
-	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(20, "ccv_normalize(%d)", l_type), da->sig, 0);
+	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(20, "ccv_normalize(%d)", flag), da->sig, 0);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
-	ccv_cache_return(db, 0);
+	ccv_matrix_return_if_cached(db->tag.db, db);
 	double sum = 0, inv;
 	int i, j;
 	unsigned char* a_ptr = da->data.ptr;
 	unsigned char* b_ptr = db->data.ptr;
-	switch (l_type)
+	switch (flag)
 	{
 		case CCV_L1_NORM:
 #define for_block(_for_set, _for_get) \
@@ -69,11 +69,34 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int l_type)
 #undef for_block
 			break;
 	}
-	return sum;
+	return db->tag.db = sum;
 }
 
-void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag)
 {
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(20, "ccv_sat(%d)", flag), a->sig, 0);
+	int safe_type = (a->type & CCV_8U) ? ((a->rows * a->cols >= 0x808080) ? CCV_64S : CCV_32S) : ((a->type & CCV_32S) ? CCV_64S : a->type);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(safe_type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
+	ccv_matrix_return_if_cached(, db);
+	int i, j;
+	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* b_ptr = db->data.ptr;
+#define for_block(_for_set_b, _for_get_b, _for_get) \
+	for (j = 0; j < a->cols; j++) \
+		_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+	a_ptr += a->step; \
+	b_ptr += db->step; \
+	for (i = 1; i < a->rows; i++) \
+	{ \
+		_for_set_b(b_ptr, 0, _for_get(a_ptr, 0, 0), 0); \
+		for (j = 1; j < a->cols; j++) \
+			_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0) + _for_get_b(b_ptr, j - 1, 0) - _for_get_b(b_ptr, j - 1 - a->cols, 0) + _for_get_b(b_ptr, j - a->cols, 0), 0); \
+		a_ptr += a->step; \
+		b_ptr += db->step; \
+	}
+	ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
 }
 
 double ccv_sum(ccv_matrix_t* mat)
@@ -109,7 +132,7 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	int no_8u_type = (da->type & CCV_8U) ? CCV_32S : da->type;
 	type = (type == 0) ? CCV_GET_DATA_TYPE(no_8u_type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
-	ccv_cache_return(dc, );
+	ccv_matrix_return_if_cached(, dc);
 	int i, j;
 	unsigned char* aptr = da->data.ptr;
 	unsigned char* bptr = db->data.ptr;
@@ -143,7 +166,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 	ccv_declare_matrix_signature_case(sig, ccv_sign_with_format(20, "ccv_gemm(%d)", transpose), ccv_sign_if(dc == 0 && da->sig != 0 && db->sig != 0, da->sig, db->sig, 0), ccv_sign_if(dc != 0 && da->sig != 0 && db->sig != 0 && dc->sig != 0, da->sig, db->sig, dc->sig, 0));
 	type = CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, (transpose & CCV_A_TRANSPOSE) ? da->cols : da->rows, (transpose & CCV_B_TRANSPOSE) ? db->rows : db->cols, type, type, sig);
-	ccv_cache_return(dd, );
+	ccv_matrix_return_if_cached(, dd);
 
 	if (dd != dc && dc != 0)
 		memcpy(dd->data.ptr, dc->data.ptr, dc->step * dc->rows);
