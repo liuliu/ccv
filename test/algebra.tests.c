@@ -52,4 +52,59 @@ TEST_CASE("vector L2 normalize")
 	ccv_matrix_free(dmt);
 }
 
+TEST_CASE("summed area table without padding")
+{
+	int i, j;
+	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(5, 4, CCV_8U | CCV_C3, 0, 0);
+	unsigned char* ptr = dmt->data.ptr;
+	for (i = 0; i < dmt->rows; i++)
+	{
+		for (j = 0; j < dmt->cols; j++)
+		{
+			ptr[j * 3] = 1;
+			ptr[j * 3 + 1] = 2;
+			ptr[j * 3 + 2] = 3;
+		}
+		ptr += dmt->step;
+	}
+	ccv_dense_matrix_t* b = 0;
+	ccv_sat(dmt, &b, 0, CCV_SAT_NO_PADDING);
+	int sat[60] = {  1,  2,  3,  2,  4,  6,  3,  6,  9,  4,  8, 12,
+				     2,  4,  6,  4,  8, 12,  6, 12, 18,  8, 16, 24,
+				     3,  6,  9,  6, 12, 18,  9, 18, 27, 12, 24, 36,
+				     4,  8, 12,  8, 16, 24, 12, 24, 36, 16, 32, 48,
+				     5, 10, 15, 10, 20, 30, 15, 30, 45, 20, 40, 60 };
+	REQUIRE_ARRAY_EQ(int, sat, b->data.i, 60, "4x5 matrix summed area table computation error");
+	ccv_matrix_free(dmt);
+	ccv_matrix_free(b);
+}
+
+TEST_CASE("summed area table with padding")
+{
+	int i, j;
+	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(5, 3, CCV_8U | CCV_C3, 0, 0);
+	unsigned char* ptr = dmt->data.ptr;
+	for (i = 0; i < dmt->rows; i++)
+	{
+		for (j = 0; j < dmt->cols; j++)
+		{
+			ptr[j * 3] = 1;
+			ptr[j * 3 + 1] = 2;
+			ptr[j * 3 + 2] = 3;
+		}
+		ptr += dmt->step;
+	}
+	ccv_dense_matrix_t* b = 0;
+	ccv_sat(dmt, &b, 0, CCV_SAT_PADDING);
+	int sat[72] = {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+					 0,  0,  0,  1,  2,  3,  2,  4,  6,  3,  6,  9,
+				     0,  0,  0,  2,  4,  6,  4,  8, 12,  6, 12, 18,
+				     0,  0,  0,  3,  6,  9,  6, 12, 18,  9, 18, 27,
+				     0,  0,  0,  4,  8, 12,  8, 16, 24, 12, 24, 36,
+				     0,  0,  0,  5, 10, 15, 10, 20, 30, 15, 30, 45, };
+	REQUIRE_ARRAY_EQ(int, sat, b->data.i, 72, "3x5 matrix summed area table (with padding) computation error");
+	ccv_matrix_free(dmt);
+	ccv_matrix_free(b);
+}
+
 #include "case_main.h"

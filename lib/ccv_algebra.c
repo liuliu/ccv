@@ -77,26 +77,57 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag)
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(20, "ccv_sat(%d)", flag), a->sig, 0);
 	int safe_type = (a->type & CCV_8U) ? ((a->rows * a->cols >= 0x808080) ? CCV_64S : CCV_32S) : ((a->type & CCV_32S) ? CCV_64S : a->type);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(safe_type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
-	ccv_matrix_return_if_cached(, db);
+	int ch = CCV_GET_CHANNEL(a->type);
 	int i, j;
 	unsigned char* a_ptr = a->data.ptr;
-	unsigned char* b_ptr = db->data.ptr;
+	ccv_dense_matrix_t* db;
+	unsigned char* b_ptr;
+	switch (flag)
+	{
+		case CCV_SAT_NO_PADDING:
+			db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
+			ccv_matrix_return_if_cached(, db);
+			b_ptr = db->data.ptr;
 #define for_block(_for_set_b, _for_get_b, _for_get) \
-	for (j = 0; j < a->cols; j++) \
-		_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
-	a_ptr += a->step; \
-	b_ptr += db->step; \
-	for (i = 1; i < a->rows; i++) \
-	{ \
-		_for_set_b(b_ptr, 0, _for_get(a_ptr, 0, 0), 0); \
-		for (j = 1; j < a->cols; j++) \
-			_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0) + _for_get_b(b_ptr, j - 1, 0) - _for_get_b(b_ptr, j - 1 - a->cols, 0) + _for_get_b(b_ptr, j - a->cols, 0), 0); \
-		a_ptr += a->step; \
-		b_ptr += db->step; \
-	}
-	ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+			for (j = 0; j < ch; j++) \
+				_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+			for (j = ch; j < a->cols * ch; j++) \
+				_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) + _for_get(a_ptr, j, 0), 0); \
+			a_ptr += a->step; \
+			b_ptr += db->step; \
+			for (i = 1; i < a->rows; i++) \
+			{ \
+				for (j = 0; j < ch; j++) \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j, 0), 0); \
+				for (j = ch; j < a->cols * ch; j++) \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) - _for_get_b(b_ptr - db->step, j - ch, 0) + _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j, 0), 0); \
+				a_ptr += a->step; \
+				b_ptr += db->step; \
+			}
+			ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
 #undef for_block
+			break;
+		case CCV_SAT_PADDING:
+			db = *b = ccv_dense_matrix_renew(*b, a->rows + 1, a->cols + 1, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
+			ccv_matrix_return_if_cached(, db);
+			b_ptr = db->data.ptr;
+#define for_block(_for_set_b, _for_get_b, _for_get) \
+			for (j = 0; j < db->cols * ch; j++) \
+				_for_set_b(b_ptr, j, 0, 0); \
+			b_ptr += db->step; \
+			for (i = 0; i < a->rows; i++) \
+			{ \
+				for (j = 0; j < ch; j++) \
+					_for_set_b(b_ptr, j, 0, 0); \
+				for (j = ch; j < db->cols * ch; j++) \
+					_for_set_b(b_ptr, j, _for_get_b(b_ptr, j - ch, 0) - _for_get_b(b_ptr - db->step, j - ch, 0) + _for_get_b(b_ptr - db->step, j, 0) + _for_get(a_ptr, j - ch, 0), 0); \
+				a_ptr += a->step; \
+				b_ptr += db->step; \
+			}
+			ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
+			break;
+	}
 }
 
 double ccv_sum(ccv_matrix_t* mat)

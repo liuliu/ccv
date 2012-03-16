@@ -537,6 +537,11 @@ enum {
 	CCV_L1_NORM = 0x02,
 };
 
+enum {
+	CCV_SAT_NO_PADDING = 0x00,
+	CCV_SAT_PADDING = 0x01,
+};
+
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag);
