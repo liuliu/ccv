@@ -527,7 +527,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		{
 			int y = (i + rows_bc) % rows;
 			for (j = 0; j < b->cols; j++)
-				for (k = 0; i < ch; k++)
+				for (k = 0; k < ch; k++)
 					fftw_b[y * cols_2c * ch + ((j + cols_bc) % cols) * ch + k] = ccv_get_dense_matrix_cell_value(b, i, j, k);
 		}
 	}
@@ -657,13 +657,11 @@ void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_den
 	ccv_matrix_free(pa);
 }
 
-void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
+void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type)
 {
-	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
-	ccv_dense_matrix_t* db = ccv_get_dense_matrix(b);
-	uint64_t sig = (da->sig == 0 || db->sig == 0) ? 0 : ccv_matrix_generate_signature("ccv_filter", 10, da->sig, db->sig, 0);
-	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
-	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
+	ccv_declare_matrix_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_literal("ccv_filter"), a->sig, b->sig, 0);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
+	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_matrix_return_if_cached(, dd);
 
 	/* 15 is the constant to indicate the high cost of FFT (even with O(nlog(m)) for
@@ -674,14 +672,14 @@ void ccv_filter(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 	 * to do FFT for the whole image. The image can be divided to n/m part, and
 	 * the FFT itself is O(mlog(m)), so, the convolution process has time complexity
 	 * of O(nlog(m)) */
-	if ((db->rows * db->cols < (log((double)(db->rows * db->cols)) + 1) * 15) && (da->type & CCV_8U))
+	if ((b->rows * b->cols < (log((double)(b->rows * b->cols)) + 1) * 15) && (a->type & CCV_8U))
 	{
-		_ccv_filter_direct_8u(da, db, dd);
+		_ccv_filter_direct_8u(a, b, dd);
 	} else {
 #ifdef HAVE_FFTW3
-		_ccv_filter_fftw(da, db, dd);
+		_ccv_filter_fftw(a, b, dd);
 #else
-		_ccv_filter_kissfft(da, db, dd);
+		_ccv_filter_kissfft(a, b, dd);
 #endif
 	}
 }
