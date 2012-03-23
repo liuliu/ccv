@@ -164,17 +164,15 @@ void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	type = (type == 0) ? CCV_GET_DATA_TYPE(no_8u_type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
 	ccv_matrix_return_if_cached(, dc);
-	int i, j;
+	int i, j, ch = CCV_GET_CHANNEL(da->type);
 	unsigned char* aptr = da->data.ptr;
 	unsigned char* bptr = db->data.ptr;
 	unsigned char* cptr = dc->data.ptr;
 #define for_block(_for_get, _for_set) \
 	for (i = 0; i < da->rows; i++) \
 	{ \
-		for (j = 0; j < da->cols; j++) \
-		{ \
+		for (j = 0; j < da->cols * ch; j++) \
 			_for_set(cptr, j, _for_get(aptr, j, 0) * _for_get(bptr, j, 0), 0); \
-		} \
 		aptr += da->step; \
 		bptr += db->step; \
 		cptr += dc->step; \
@@ -193,17 +191,15 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	type = (type == 0) ? CCV_GET_DATA_TYPE(no_8u_type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
 	ccv_matrix_return_if_cached(, dc);
-	int i, j;
+	int i, j, ch = CCV_GET_CHANNEL(da->type);
 	unsigned char* aptr = da->data.ptr;
 	unsigned char* bptr = db->data.ptr;
 	unsigned char* cptr = dc->data.ptr;
 #define for_block(_for_get, _for_set) \
 	for (i = 0; i < da->rows; i++) \
 	{ \
-		for (j = 0; j < da->cols; j++) \
-		{ \
+		for (j = 0; j < da->cols * ch; j++) \
 			_for_set(cptr, j, _for_get(aptr, j, 0) - _for_get(bptr, j, 0), 0); \
-		} \
 		aptr += da->step; \
 		bptr += db->step; \
 		cptr += dc->step; \
