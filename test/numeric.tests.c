@@ -45,7 +45,7 @@ double gaussian(double x, double y, void* data)
 	return exp(-(x * x + y * y) / 20) / sqrt(CCV_PI * 20);
 }
 
-TEST_CASE("FFTW-based filter on Gaussian kernel")
+TEST_CASE("convolution on Gaussian kernel")
 {
 	ccv_dense_matrix_t* image = 0;
 	ccv_read("../samples/nature.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);

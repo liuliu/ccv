@@ -538,13 +538,15 @@ enum {
 };
 
 enum {
-	CCV_SAT_NO_PADDING = 0x00,
-	CCV_SAT_PADDING = 0x01,
+	CCV_NO_PADDING = 0x00,
+	CCV_PADDING_ZERO = 0x01,
+	CCV_PADDING_EXTEND = 0x02,
+	CCV_PADDING_MIRROR = 0x04,
 };
 
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
-void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag);
+void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
 void ccv_zero(ccv_matrix_t* mat);
@@ -643,7 +645,7 @@ typedef struct {
 ccv_contour_t* ccv_contour_new(int set);
 void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point);
 void ccv_contour_free(ccv_contour_t* contour);
-/* range: exlusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
+/* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
 /* numerical algorithms */
@@ -651,7 +653,7 @@ int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
  * when using the word "algebra", I assume the operation is well established in Mathematic sense
  * and can be calculated with a straight-forward, finite sequence of operation. The "numerical"
  * in other word, refer to a class of algorithm that can only approximate/or iteratively found the
- * solution. Thus, "invert" would be classified as numercial because of the sense that in some case,
+ * solution. Thus, "invert" would be classified as numerical because of the sense that in some case,
  * it can only be "approximate" (in least-square sense), so to "solve". */
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
@@ -669,9 +671,9 @@ typedef struct {
 typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
-void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type);
-typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
-void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
+void ccv_convolve(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern);
+typedef double(*ccv_convolve_kernel_f)(double x, double y, void*);
+void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void* data);
 
 /* modern numerical algorithms */
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);

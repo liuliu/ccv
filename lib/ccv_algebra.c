@@ -72,9 +72,9 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 	return db->tag.db = sum;
 }
 
-void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag)
+void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern)
 {
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(20, "ccv_sat(%d)", flag), a->sig, 0);
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(20, "ccv_sat(%d)", padding_pattern), a->sig, 0);
 	int safe_type = (a->type & CCV_8U) ? ((a->rows * a->cols >= 0x808080) ? CCV_64S : CCV_32S) : ((a->type & CCV_32S) ? CCV_64S : a->type);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(safe_type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	int ch = CCV_GET_CHANNEL(a->type);
@@ -82,9 +82,9 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag)
 	unsigned char* a_ptr = a->data.ptr;
 	ccv_dense_matrix_t* db;
 	unsigned char* b_ptr;
-	switch (flag)
+	switch (padding_pattern)
 	{
-		case CCV_SAT_NO_PADDING:
+		case CCV_NO_PADDING:
 			db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 			ccv_matrix_return_if_cached(, db);
 			b_ptr = db->data.ptr;
@@ -107,7 +107,7 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag)
 			ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
 #undef for_block
 			break;
-		case CCV_SAT_PADDING:
+		case CCV_PADDING_ZERO:
 			db = *b = ccv_dense_matrix_renew(*b, a->rows + 1, a->cols + 1, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 			ccv_matrix_return_if_cached(, db);
 			b_ptr = db->data.ptr;
