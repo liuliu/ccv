@@ -10,6 +10,7 @@
  */
 
 #include "ccv.h"
+#include "ccv_internal.h"
 
 inline static double _ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
 {
@@ -229,9 +230,9 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			int cols = dog[i * (params.nlevels - 1)]->cols;
 			for (j = 1; j < params.nlevels - 2; j++)
 			{
-				float* bf = dog[i * (params.nlevels - 1) + j - 1]->data.fl + cols;
-				float* cf = dog[i * (params.nlevels - 1) + j]->data.fl + cols;
-				float* uf = dog[i * (params.nlevels - 1) + j + 1]->data.fl + cols;
+				float* bf = dog[i * (params.nlevels - 1) + j - 1]->data.f32 + cols;
+				float* cf = dog[i * (params.nlevels - 1) + j]->data.f32 + cols;
+				float* uf = dog[i * (params.nlevels - 1) + j + 1]->data.f32 + cols;
 				for (y = 1; y < rows - 1; y++)
 				{
 					for (x = 1; x < cols - 1; x++)
@@ -321,8 +322,8 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		assert(tho->rows == mdo->rows && tho->cols == mdo->cols);
 		if (ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows)
 		{
-			float* theta = tho->data.fl + ccv_max(iy - wz, 0) * tho->cols;
-			float* magnitude = mdo->data.fl + ccv_max(iy - wz, 0) * mdo->cols;
+			float* theta = tho->data.f32 + ccv_max(iy - wz, 0) * tho->cols;
+			float* magnitude = mdo->data.f32 + ccv_max(iy - wz, 0) * mdo->cols;
 			memset(bins, 0, 36 * sizeof(double));
 			/* oriented histogram with bilinear interpolation */
 			for (y = ccv_max(iy - wz, 0); y <= ccv_min(iy + wz, tho->rows - 1); y++)
@@ -385,7 +386,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	if (_desc != 0)
 	{
 		ccv_dense_matrix_t* desc = *_desc = ccv_dense_matrix_new(keypoints->rnum, 128, CCV_32F | CCV_C1, 0, 0);
-		float* fdesc = desc->data.fl;
+		float* fdesc = desc->data.f32;
 		memset(fdesc, 0, sizeof(float) * keypoints->rnum * 128);
 		for (i = 0; i < keypoints->rnum; i++)
 		{
@@ -401,8 +402,8 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 			ccv_dense_matrix_t* mdo = md[kp->octave * (params.nlevels - 3) + kp->level - 1];
 			assert(tho->rows == mdo->rows && tho->cols == mdo->cols);
 			assert(ix >= 0 && ix < tho->cols && iy >=0 && iy < tho->rows);
-			float* theta = tho->data.fl + ccv_max(iy - wz, 0) * tho->cols;
-			float* magnitude = mdo->data.fl + ccv_max(iy - wz, 0) * mdo->cols;
+			float* theta = tho->data.f32 + ccv_max(iy - wz, 0) * tho->cols;
+			float* magnitude = mdo->data.f32 + ccv_max(iy - wz, 0) * mdo->cols;
 			float ca = cos(kp->regular.angle);
 			float sa = sin(kp->regular.angle);
 			float sigmaw = 2.0;

@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #ifdef HAVE_CBLAS
 #include <cblas.h>
 #endif
@@ -20,11 +21,11 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(20, "ccv_normalize(%d)", flag), da->sig, 0);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
-	ccv_matrix_return_if_cached(db->tag.db, db);
+	ccv_matrix_return_if_cached(db->tag.f64, db);
 	double sum = 0, inv;
 	int i, j;
-	unsigned char* a_ptr = da->data.ptr;
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* a_ptr = da->data.u8;
+	unsigned char* b_ptr = db->data.u8;
 	switch (flag)
 	{
 		case CCV_L1_NORM:
@@ -36,7 +37,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 				a_ptr += da->step; \
 			} \
 			inv = 1.0 / sum; \
-			a_ptr = da->data.ptr; \
+			a_ptr = da->data.u8; \
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
@@ -57,7 +58,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			} \
 			sum = sqrt(sum); \
 			inv = 1.0 / sum; \
-			a_ptr = da->data.ptr; \
+			a_ptr = da->data.u8; \
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
@@ -69,7 +70,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 #undef for_block
 			break;
 	}
-	return db->tag.db = sum;
+	return db->tag.f64 = sum;
 }
 
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern)
@@ -79,7 +80,7 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 	type = (type == 0) ? CCV_GET_DATA_TYPE(safe_type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	int ch = CCV_GET_CHANNEL(a->type);
 	int i, j;
-	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
 	ccv_dense_matrix_t* db;
 	unsigned char* b_ptr;
 	switch (padding_pattern)
@@ -87,7 +88,7 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 		case CCV_NO_PADDING:
 			db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 			ccv_matrix_return_if_cached(, db);
-			b_ptr = db->data.ptr;
+			b_ptr = db->data.u8;
 #define for_block(_for_set_b, _for_get_b, _for_get) \
 			for (j = 0; j < ch; j++) \
 				_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
@@ -110,7 +111,7 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 		case CCV_PADDING_ZERO:
 			db = *b = ccv_dense_matrix_renew(*b, a->rows + 1, a->cols + 1, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 			ccv_matrix_return_if_cached(, db);
-			b_ptr = db->data.ptr;
+			b_ptr = db->data.u8;
 #define for_block(_for_set_b, _for_get_b, _for_get) \
 			for (j = 0; j < db->cols * ch; j++) \
 				_for_set_b(b_ptr, j, 0, 0); \
@@ -134,7 +135,7 @@ double ccv_sum(ccv_matrix_t* mat)
 {
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 	double sum = 0;
-	unsigned char* m_ptr = dmt->data.ptr;
+	unsigned char* m_ptr = dmt->data.u8;
 	int i, j;
 #define for_block(_, _for_get) \
 	for (i = 0; i < dmt->rows; i++) \
@@ -151,7 +152,7 @@ double ccv_sum(ccv_matrix_t* mat)
 void ccv_zero(ccv_matrix_t* mat)
 {
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
-	memset(dmt->data.ptr, 0, dmt->step * dmt->rows);
+	memset(dmt->data.u8, 0, dmt->step * dmt->rows);
 }
 
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
@@ -165,9 +166,9 @@ void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
 	ccv_matrix_return_if_cached(, dc);
 	int i, j, ch = CCV_GET_CHANNEL(da->type);
-	unsigned char* aptr = da->data.ptr;
-	unsigned char* bptr = db->data.ptr;
-	unsigned char* cptr = dc->data.ptr;
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8;
+	unsigned char* cptr = dc->data.u8;
 #define for_block(_for_get, _for_set) \
 	for (i = 0; i < da->rows; i++) \
 	{ \
@@ -192,9 +193,9 @@ void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 	ccv_dense_matrix_t* dc = *c = ccv_dense_matrix_renew(*c, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
 	ccv_matrix_return_if_cached(, dc);
 	int i, j, ch = CCV_GET_CHANNEL(da->type);
-	unsigned char* aptr = da->data.ptr;
-	unsigned char* bptr = db->data.ptr;
-	unsigned char* cptr = dc->data.ptr;
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8;
+	unsigned char* cptr = dc->data.u8;
 #define for_block(_for_get, _for_set) \
 	for (i = 0; i < da->rows; i++) \
 	{ \
@@ -225,16 +226,16 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 	ccv_matrix_return_if_cached(, dd);
 
 	if (dd != dc && dc != 0)
-		memcpy(dd->data.ptr, dc->data.ptr, dc->step * dc->rows);
+		memcpy(dd->data.u8, dc->data.u8, dc->step * dc->rows);
 
 #ifdef HAVE_CBLAS
 	switch (CCV_GET_DATA_TYPE(dd->type))
 	{
 		case CCV_32F:
-			cblas_sgemm(CblasRowMajor, (transpose & CCV_A_TRANSPOSE) ? CblasTrans : CblasNoTrans, (transpose & CCV_B_TRANSPOSE) ? CblasTrans : CblasNoTrans, dd->rows, dd->cols, da->cols, alpha, da->data.fl, da->cols, db->data.fl, db->cols, beta, dd->data.fl, dd->cols);
+			cblas_sgemm(CblasRowMajor, (transpose & CCV_A_TRANSPOSE) ? CblasTrans : CblasNoTrans, (transpose & CCV_B_TRANSPOSE) ? CblasTrans : CblasNoTrans, dd->rows, dd->cols, da->cols, alpha, da->data.f32, da->cols, db->data.f32, db->cols, beta, dd->data.f32, dd->cols);
 			break;
 		case CCV_64F:
-			cblas_dgemm(CblasRowMajor, (transpose & CCV_A_TRANSPOSE) ? CblasTrans : CblasNoTrans, (transpose & CCV_B_TRANSPOSE) ? CblasTrans : CblasNoTrans, dd->rows, dd->cols, (transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols, alpha, da->data.db, da->cols, db->data.db, db->cols, beta, dd->data.db, dd->cols);
+			cblas_dgemm(CblasRowMajor, (transpose & CCV_A_TRANSPOSE) ? CblasTrans : CblasNoTrans, (transpose & CCV_B_TRANSPOSE) ? CblasTrans : CblasNoTrans, dd->rows, dd->cols, (transpose & CCV_A_TRANSPOSE) ? da->rows : da->cols, alpha, da->data.f64, da->cols, db->data.f64, db->cols, beta, dd->data.f64, dd->cols);
 			break;
 	}
 #endif

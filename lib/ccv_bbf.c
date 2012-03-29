@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
@@ -197,11 +198,11 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 				unsigned char* u8s1 = negdata[negtotal] + isizs0;
 				unsigned char* u8s2 = negdata[negtotal] + isizs0 + isizs1;
 				unsigned char* u8[] = { u8s0, u8s1, u8s2 };
-				memcpy(u8s0, imgs0->data.ptr, imgs0->rows * imgs0->step);
+				memcpy(u8s0, imgs0->data.u8, imgs0->rows * imgs0->step);
 				ccv_matrix_free(imgs0);
-				memcpy(u8s1, imgs1->data.ptr, imgs1->rows * imgs1->step);
+				memcpy(u8s1, imgs1->data.u8, imgs1->rows * imgs1->step);
 				ccv_matrix_free(imgs1);
-				memcpy(u8s2, imgs2->data.ptr, imgs2->rows * imgs2->step);
+				memcpy(u8s2, imgs2->data.u8, imgs2->rows * imgs2->step);
 				ccv_matrix_free(imgs2);
 
 				flag = 1;
@@ -267,9 +268,9 @@ static void _ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned cha
 		int isizs2 = imgs2->rows * imgs2->step;
 
 		posdata[i] = (unsigned char*)ccmalloc(isizs0 + isizs1 + isizs2);
-		memcpy(posdata[i], imgs0->data.ptr, isizs0);
-		memcpy(posdata[i] + isizs0, imgs1->data.ptr, isizs1);
-		memcpy(posdata[i] + isizs0 + isizs1, imgs2->data.ptr, isizs2);
+		memcpy(posdata[i], imgs0->data.u8, isizs0);
+		memcpy(posdata[i] + isizs0, imgs1->data.u8, isizs1);
+		memcpy(posdata[i] + isizs0 + isizs1, imgs2->data.u8, isizs2);
 
 		printf("\rpreparing positive data ... %2d%%", 100 * (i + 1) / posnum);
 		fflush(0);
@@ -1229,7 +1230,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 							   pyr[i * 4 + next * 8]->step - i_cols };
 			for (q = 0; q < 4; q++)
 			{
-				unsigned char* u8[] = { pyr[i * 4]->data.ptr + dx[q] * 2 + dy[q] * pyr[i * 4]->step * 2, pyr[i * 4 + next * 4]->data.ptr + dx[q] + dy[q] * pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8 + q]->data.ptr };
+				unsigned char* u8[] = { pyr[i * 4]->data.u8 + dx[q] * 2 + dy[q] * pyr[i * 4]->step * 2, pyr[i * 4 + next * 4]->data.u8 + dx[q] + dy[q] * pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8 + q]->data.u8 };
 				for (y = 0; y < i_rows; y++)
 				{
 					for (x = 0; x < i_cols; x++)

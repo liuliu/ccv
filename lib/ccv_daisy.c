@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 
 /* the method is adopted from original author's published C++ code under BSD Licence.
  * Here is the copyright:
@@ -92,7 +93,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 		float ksin = sin(radius);
 		float* w_ptr = workspace_memory + cube_size + (k - 1) * layer_size;
 		for (i = 0; i < layer_size; i++)
-			w_ptr[i] = ccv_max(0, kcos * dx->data.fl[i] + ksin * dy->data.fl[i]);
+			w_ptr[i] = ccv_max(0, kcos * dx->data.f32[i] + ksin * dy->data.f32[i]);
 		ccv_dense_matrix_t src = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr, 0);
 		ccv_dense_matrix_t des = ccv_dense_matrix(a->rows, a->cols, CCV_32F | CCV_C1, w_ptr + layer_size, 0);
 		ccv_dense_matrix_t* desp = &des;
@@ -119,12 +120,12 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 				his_ptr[i * params.hist_th_q_no + j] = src_ptr[i + j * layer_size];
 	}
 	/* petals of the flower */
-	memset(db->data.ptr, 0, db->rows * db->step);
+	memset(db->data.u8, 0, db->rows * db->step);
 	for (i = 0; i < a->rows; i++)
 		for (j = 0; j < a->cols; j++)
 		{
 			float* a_ptr = workspace_memory + i * params.hist_th_q_no * a->cols + j * params.hist_th_q_no;
-			float* b_ptr = db->data.fl + i * db->cols + j * desc_size;
+			float* b_ptr = db->data.f32 + i * db->cols + j * desc_size;
 			memcpy(b_ptr, a_ptr, params.hist_th_q_no * sizeof(float));
 			for (r = 0; r < params.rad_q_no; r++)
 			{
@@ -174,7 +175,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 	for (i = 0; i < a->rows; i++)
 		for (j = 0; j < a->cols; j++)
 		{
-			float* b_ptr = db->data.fl + i * db->cols + j * desc_size;
+			float* b_ptr = db->data.f32 + i * db->cols + j * desc_size;
 			float norm;
 			int iter, changed;
 			switch (params.normalize_method)

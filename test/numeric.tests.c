@@ -14,11 +14,11 @@ int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, v
 	(*steps)++;
 	int i;
 	double rf = 0;
-	double* x_vec = x->data.db;
+	double* x_vec = x->data.f64;
 	for (i = 0; i < 1; i++)
 		rf += 100 * (x_vec[i + 1] - x_vec[i] * x_vec[i]) * (x_vec[i + 1] - x_vec[i] * x_vec[i]) + (1 - x_vec[i]) * (1 - x_vec[i]);
 	*f = rf;
-	double* df_vec = df->data.db;
+	double* df_vec = df->data.f64;
 	ccv_zero(df);
 	df_vec[0] = df_vec[1] = 0;
 	for (i = 0; i < 1; i++)
@@ -42,23 +42,25 @@ TEST_CASE("minimize rosenbrock")
 	params.rho = 0.05;
 	ccv_minimize(x, 25, 1.0, rosenbrock, params, &steps);
 	double dx[2] = { 1, 1 };
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, x->data.db, dx, 2, 1e-6, "the global minimal should be at (1.0, 1.0)");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, x->data.f64, dx, 2, 1e-6, "the global minimal should be at (1.0, 1.0)");
 	ccv_matrix_free(x);
 }
+
+#include "ccv_internal.h"
 
 static void naive_ssd(ccv_dense_matrix_t* image, ccv_dense_matrix_t* template, ccv_dense_matrix_t* out)
 {
 	int thw = template->cols / 2;
 	int thh = template->rows / 2;
 	int i, j, k, x, y, ch = CCV_GET_CHANNEL(image->type);
-	unsigned char* i_ptr = image->data.ptr + thh * image->step;
-	double* o = out->data.db + out->cols * thh;
+	unsigned char* i_ptr = image->data.u8 + thh * image->step;
+	double* o = out->data.f64 + out->cols * thh;
 	ccv_zero(out);
 	for (i = thh; i < image->rows - thh - 1; i++)
 	{
 		for (j = thw; j < image->cols - thw - 1; j++)
 		{
-			unsigned char* t_ptr = template->data.ptr;
+			unsigned char* t_ptr = template->data.u8;
 			unsigned char* j_ptr = i_ptr - thh * image->step;
 			o[j] = 0;
 			for (y = -thh; y <= thh; y++)
@@ -91,7 +93,7 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 	double sum[] = {0, 0, 0};
 	int i, j, k;
 	int ch = CCV_GET_CHANNEL(street->type);
-	unsigned char* p_ptr = pedestrian->data.ptr;
+	unsigned char* p_ptr = pedestrian->data.u8;
 #define for_block(_, _for_get) \
 	for (i = 0; i < pedestrian->rows; i++) \
 	{ \
@@ -106,9 +108,9 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 	int phh = pedestrian->rows / 2;
 	ccv_dense_matrix_t* output = ccv_dense_matrix_new(street->rows, street->cols, CCV_64F | CCV_C1, 0, 0);
 	ccv_zero(output);
-	unsigned char* s_ptr = sat->data.ptr + sat->step * phh;
-	unsigned char* r_ptr = result->data.ptr + result->step * phh;
-	double* o_ptr = output->data.db + output->cols * phh;
+	unsigned char* s_ptr = sat->data.u8 + sat->step * phh;
+	unsigned char* r_ptr = result->data.u8 + result->step * phh;
+	double* o_ptr = output->data.f64 + output->cols * phh;
 #define for_block(_for_get_s, _for_get_r) \
 	for (i = phh; i < output->rows - phh - 1; i++) \
 	{ \
@@ -177,8 +179,8 @@ void daq_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, doubl
 {
 	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
-	unsigned char* a_ptr = a->data.ptr;
-	double* b_ptr = db->data.db;
+	unsigned char* a_ptr = a->data.u8;
+	double* b_ptr = db->data.f64;
 	int i, j;
 #define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
@@ -192,8 +194,8 @@ void daq_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, doubl
 #undef for_block
 	int* ix = (int*)calloc(a->cols * a->rows, sizeof(int));
 	int* iy = (int*)calloc(a->cols * a->rows, sizeof(int));
-	b_ptr = db->data.db;
-	double* c_ptr = dc->data.db;
+	b_ptr = db->data.f64;
+	double* c_ptr = dc->data.f64;
 	for (i = 0; i < a->rows; i++)
 		dt1d(b_ptr + i * a->cols, c_ptr + i * a->cols, ix + i * a->cols, 1, a->cols, dxx, dx);
 	for (j = 0; j < a->cols; j++)

@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #ifdef HAVE_LIBJPEG
 #include <jpeglib.h>
 #endif
@@ -57,7 +58,7 @@ int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 	}
 	if (*x != 0)
 	{
-		(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.ptr, (*x)->rows * (*x)->step, 0);
+		(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.u8, (*x)->rows * (*x)->step, 0);
 		(*x)->type &= ~CCV_REUSABLE;
 	}
 	if (type & CCV_IO_ANY_FILE)

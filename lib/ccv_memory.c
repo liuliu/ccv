@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #include "3rdparty/sha1/sha1.h"
 
 static ccv_cache_t ccv_cache;
@@ -28,7 +29,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
 	mat->refcount = 1;
-	mat->data.ptr = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
+	mat->data.u8 = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
 	return mat;
 }
 
@@ -60,7 +61,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.cols = cols;
 	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
 	mat.refcount = 1;
-	mat.data.ptr = (unsigned char*)data;
+	mat.data.u8 = (unsigned char*)data;
 	return mat;
 }
 
@@ -101,12 +102,12 @@ void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 			if (smt->vector[i].index != -1)
 			{
 				ccv_dense_vector_t* iter = &smt->vector[i];
-				ccfree(iter->data.ptr);
+				ccfree(iter->data.u8);
 				iter = iter->next;
 				while (iter != 0)
 				{
 					ccv_dense_vector_t* iter_next = iter->next;
-					ccfree(iter->data.ptr);
+					ccfree(iter->data.u8);
 					ccfree(iter);
 					iter = iter_next;
 				}
@@ -140,12 +141,12 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 			if (smt->vector[i].index != -1)
 			{
 				ccv_dense_vector_t* iter = &smt->vector[i];
-				ccfree(iter->data.ptr);
+				ccfree(iter->data.u8);
 				iter = iter->next;
 				while (iter != 0)
 				{
 					ccv_dense_vector_t* iter_next = iter->next;
-					ccfree(iter->data.ptr);
+					ccfree(iter->data.u8);
 					ccfree(iter);
 					iter = iter_next;
 				}

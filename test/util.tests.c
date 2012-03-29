@@ -78,6 +78,33 @@ TEST_CASE("group array with is_equal function")
 	ccv_array_free(idx);
 }
 
+TEST_CASE("sparse matrix basic insertion")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	int i, j, k, n;
+	k = 0;
+	for (i = 0; i < 1000; i++)
+		for (j = 0; j < 1000; j++)
+		{
+			ccv_set_sparse_matrix_cell(mat, i, j, &k);
+			k++;
+		}
+	REQUIRE_EQ(1543, CCV_GET_SPARSE_PRIME(mat->prime), "sparse matrix column size should be the prime number 1543");
+	for (n = 0; n < 100; n++)
+	{
+		k = 0;
+		for (i = 0; i < 1000; i++)
+			for (j = 0; j < 1000; j++)
+			{
+				ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(mat, i, j);
+				REQUIRE(cell.u8 != 0, "cell at (%d, %d) doesn't contain any valid value", i, j);
+				REQUIRE_EQ(k, cell.i32[0], "cell at (%d, %d) doesn't match inserted value", i, j);
+				k++;
+			}
+	}
+	ccv_matrix_free(mat);
+}
+
 TEST_CASE("compress sparse matrix")
 {
 	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(3, 3, CCV_32F | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
@@ -99,7 +126,7 @@ TEST_CASE("compress sparse matrix")
 	float dm[6] = {1, 2, 3, 4, 5, 6};
 	int di[6] = {0, 2, 2, 0, 1, 2};
 	REQUIRE_EQ(6, csm->nnz, "compress to non-zero factor of 6");
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dm, csm->data.fl, 6, 1e-6, "actual element value should be the same");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dm, csm->data.f32, 6, 1e-6, "actual element value should be the same");
 	REQUIRE_ARRAY_EQ(int, di, csm->index, 6, "element index of CSR");
 	REQUIRE_EQ(3, csm->rows, "compress should have the same number of rows (CSR)");
 	int df[4] = {0, 2, 3, 6};
@@ -112,7 +139,7 @@ TEST_CASE("compress sparse matrix")
 		for (j = 0; j < 3; j++)
 		{
 			ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(smt, i, j);
-			REQUIRE_EQ_WITH_TOLERANCE(m[i][j], (cell.ptr != 0) ? cell.fl[0] : 0, 1e-6, "should have the same matrix after decompressed at row %d, col %d", i, j);
+			REQUIRE_EQ_WITH_TOLERANCE(m[i][j], (cell.u8 != 0) ? cell.f32[0] : 0, 1e-6, "should have the same matrix after decompressed at row %d, col %d", i, j);
 		}
 	ccv_matrix_free(smt);
 	ccv_matrix_free(mat);

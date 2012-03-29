@@ -32,7 +32,7 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	unsigned char** row_vectors = (unsigned char**)alloca(im->rows * sizeof(unsigned char*));
 	int i;
 	for (i = 0; i < im->rows; i++)
-		row_vectors[i] = im->data.ptr + i * im->step;
+		row_vectors[i] = im->data.u8 + i * im->step;
 	png_read_image(png_ptr, row_vectors);
 	png_read_end(png_ptr, 0);
 
@@ -67,7 +67,7 @@ static void _ccv_write_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 	unsigned char** row_vectors = (unsigned char**)alloca(mat->rows * sizeof(unsigned char*));
 	int i;
 	for (i = 0; i < mat->rows; i++)
-		row_vectors[i] = mat->data.ptr + i * mat->step;
+		row_vectors[i] = mat->data.u8 + i * mat->step;
 	png_write_info(png_ptr, info_ptr);
 	png_write_image(png_ptr, row_vectors);
 	png_write_end(png_ptr, info_ptr);

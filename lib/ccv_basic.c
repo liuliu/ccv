@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 
 /* sobel filter is fundamental to many other high-level algorithms,
  * here includes 2 special case impl (for 1x3/3x1, 3x3) and one general impl */
@@ -10,8 +11,8 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_matrix_return_if_cached(, db);
 	int i, j, k;
-	unsigned char* a_ptr = a->data.ptr;
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = db->data.u8;
 	if (dx == 1 || dy == 1)
 	{
 		/* special case 1: 1x3 or 3x1 window */
@@ -107,7 +108,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		}
 		ccv_matrix_getter(a->type, ccv_matrix_typeof_setter_getter, db->type, for_block);
 #undef for_block
-		b_ptr = db->data.ptr;
+		b_ptr = db->data.u8;
 #define for_block(_, _for_type, _for_set, _for_get) \
 		for (i = 0; i < a->cols; i++) \
 		{ \
@@ -148,7 +149,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 				_for_set(b_ptr, j, 3 * _for_get(a_ptr, j, 0) + _for_get(a_ptr - a->step, j, 0), 0);
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
-			b_ptr = db->data.ptr;
+			b_ptr = db->data.u8;
 #define for_block(_, _for_set, _for_get) \
 			for (i = 0; i < a->rows; i++) \
 			{ \
@@ -178,7 +179,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 				_for_set(b_ptr, j, _for_get(a_ptr, j, 0) - _for_get(a_ptr - a->step, j, 0), 0);
 			ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
-			b_ptr = db->data.ptr;
+			b_ptr = db->data.u8;
 #define for_block(_, _for_set, _for_get) \
 			for (i = 0; i < a->rows; i++) \
 			{ \
@@ -255,7 +256,7 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	ccv_dense_matrix_t* ty = 0;
 	ccv_sobel(a, &tx, CCV_32F | CCV_C1, dx, 0);
 	ccv_sobel(a, &ty, CCV_32F | CCV_C1, 0, dy);
-	_ccv_atan2(tx->data.fl, ty->data.fl, dtheta->data.fl, dm->data.fl, a->rows * a->cols);
+	_ccv_atan2(tx->data.f32, ty->data.f32, dtheta->data.f32, dm->data.f32, a->rows * a->cols);
 	ccv_matrix_free(tx);
 	ccv_matrix_free(ty);
 }
@@ -271,13 +272,13 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 	ccv_dense_matrix_t* ag = 0;
 	ccv_dense_matrix_t* mg = 0;
 	ccv_gradient(a, &ag, 0, &mg, 0, 1, 1);
-	float* agp = ag->data.fl;
-	float* mgp = mg->data.fl;
+	float* agp = ag->data.f32;
+	float* mgp = mg->data.f32;
 	int i, j, k;
 	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols, CCV_64F | (sbin * 2), 0, 0);
 	ccv_dense_matrix_t* ca = ccv_dense_matrix_new(rows, cols, CCV_64F | CCV_C1, 0, 0);
 	ccv_zero(cn);
-	double* cnp = cn->data.db;
+	double* cnp = cn->data.f64;
 	int sizec = 0;
 	for (i = 0; i < rows * size; i++)
 	{
@@ -305,8 +306,8 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 	}
 	ccv_matrix_free(ag);
 	ccv_matrix_free(mg);
-	cnp = cn->data.db;
-	double* cap = ca->data.db;
+	cnp = cn->data.f64;
+	double* cap = ca->data.f64;
 	for (i = 0; i < rows; i++)
 	{
 		for (j = 0; j < cols; j++)
@@ -320,10 +321,10 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 			cap++;
 		}
 	}
-	cnp = cn->data.db;
-	cap = ca->data.db;
+	cnp = cn->data.f64;
+	cap = ca->data.f64;
 	ccv_zero(db);
-	double* dbp = db->data.db;
+	double* dbp = db->data.f64;
 	// normalize sbin direction-sensitive and sbin * 2 insensitive over 4 normalization factor
 	// accumulating them over sbin * 2 + sbin + 4 channels
 	// TNA - truncation - normalization - accumulation
@@ -439,8 +440,8 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 		/* special case, all integer */
 		int low = (int)(low_thresh + 0.5);
 		int high = (int)(high_thresh + 0.5);
-		int* dxi = dx->data.i;
-		int* dyi = dy->data.i;
+		int* dxi = dx->data.i32;
+		int* dyi = dy->data.i32;
 		int i, j;
 		int* mbuf = (int*)alloca(3 * (a->cols + 2) * sizeof(int));
 		memset(mbuf, 0, 3 * (a->cols + 2) * sizeof(int));
@@ -546,7 +547,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 				}
 		}
 		map_ptr = map + map_cols + 1;
-		unsigned char* b_ptr = db->data.ptr;
+		unsigned char* b_ptr = db->data.u8;
 #define for_block(_, _for_set) \
 		for (i = 0; i < a->rows; i++) \
 		{ \
@@ -624,7 +625,7 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 	dy = 0;
 	for (sy = 0; sy < a->rows; sy++)
 	{
-		unsigned char* a_ptr = a->data.ptr + a->step * sy;
+		unsigned char* a_ptr = a->data.u8 + a->step * sy;
 		for (k = 0; k < xofs_count; k++)
 		{
 			int dxn = xofs[k].di;
@@ -636,7 +637,7 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 		{
 			unsigned int beta = (int)(ccv_max(sy + 1 - (dy + 1) * scale_y, 0.f) * 256);
 			unsigned int beta1 = 256 - beta;
-			unsigned char* b_ptr = b->data.ptr + b->step * dy;
+			unsigned char* b_ptr = b->data.u8 + b->step * dy;
 			if (beta <= 0)
 			{
 				for (dx = 0; dx < b->cols * ch; dx++)
@@ -715,7 +716,7 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 #define for_block(_for_get, _for_set) \
 	for (sy = 0; sy < a->rows; sy++) \
 	{ \
-		unsigned char* a_ptr = a->data.ptr + a->step * sy; \
+		unsigned char* a_ptr = a->data.u8 + a->step * sy; \
 		for (k = 0; k < xofs_count; k++) \
 		{ \
 			int dxn = xofs[k].di; \
@@ -727,7 +728,7 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 		{ \
 			float beta = ccv_max(sy + 1 - (dy + 1) * scale_y, 0.f); \
 			float beta1 = 1 - beta; \
-			unsigned char* b_ptr = b->data.ptr + b->step * dy; \
+			unsigned char* b_ptr = b->data.u8 + b->step * dy; \
 			if (fabs(beta) < 1e-3) \
 			{ \
 				for (dx = 0; dx < b->cols * ch; dx++) \
@@ -767,7 +768,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 	if (a->rows == db->rows && a->cols == db->cols)
 	{
 		if (CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(db->type) && CCV_GET_DATA_TYPE(db->type) == CCV_GET_DATA_TYPE(a->type))
-			memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
+			memcpy(db->data.u8, a->data.u8, a->rows * a->step);
 		else {
 			ccv_shift(a, (ccv_matrix_t**)&db, 0, 0, 0);
 		}
@@ -811,7 +812,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 			tab[dx * ch + k] = ((dx >= a->cols) ? a->cols * 2 - 1 - dx : dx) * ch + k;
 	unsigned char* buf = (unsigned char*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* b_ptr = db->data.u8;
 	/* why is src_y * 4 in computing the offset of row?
 	 * Essentially, it means sy - src_y but in a manner that doesn't result negative number.
 	 * notice that we added src_y before when computing sy in the first place, however,
@@ -825,7 +826,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 		{ \
 			unsigned char* row = buf + ((sy + src_y * 4 + 2) % 5) * bufstep; \
 			int _sy = (sy < 0) ? -1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
-			unsigned char* a_ptr = a->data.ptr + a->step * _sy; \
+			unsigned char* a_ptr = a->data.u8 + a->step * _sy; \
 			for (k = 0; k < ch; k++) \
 				_for_set(row, k, _for_get_a(a_ptr, sx + k, 0) * 10 + _for_get_a(a_ptr, ch + sx + k, 0) * 5 + _for_get_a(a_ptr, 2 * ch + sx + k, 0), 0); \
 			for(dx = ch; dx < cols0 * ch; dx += ch) \
@@ -875,7 +876,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			tab[x * ch + k] = ((x >= a->cols) ? a->cols * 2 - 1 - x : x) * ch + k;
 	unsigned char* buf = (unsigned char*)alloca(3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* b_ptr = db->data.u8;
 	/* why src_y * 2: the same argument as in ccv_sample_down */
 #define for_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 	for (y = 0; y < a->rows; y++) \
@@ -884,7 +885,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 		{ \
 			unsigned char* row = buf + ((sy + src_y * 2 + 1) % 3) * bufstep; \
 			int _sy = (sy < 0) ? -1 - sy : (sy >= a->rows) ? a->rows * 2 - 1 - sy : sy; \
-			unsigned char* a_ptr = a->data.ptr + a->step * _sy; \
+			unsigned char* a_ptr = a->data.u8 + a->step * _sy; \
 			if (a->cols == 1) \
 			{ \
 				for (k = 0; k < ch; k++) \
@@ -949,8 +950,8 @@ void _ccv_flip_y_self(ccv_dense_matrix_t* a)
 {
 	int i;
 	unsigned char* buffer = (unsigned char*)alloca(a->step);
-	unsigned char* a_ptr = a->data.ptr;
-	unsigned char* b_ptr = a->data.ptr + (a->rows - 1) * a->step;
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = a->data.u8 + (a->rows - 1) * a->step;
 	for (i = 0; i < a->rows / 2; i++)
 	{
 		memcpy(buffer, a_ptr, a->step);
@@ -966,7 +967,7 @@ void _ccv_flip_x_self(ccv_dense_matrix_t* a)
 	int i, j;
 	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
 	unsigned char* buffer = (unsigned char*)alloca(len);
-	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
 	for (i = 0; i < a->rows; i++)
 	{
 		for (j = 0; j < a->cols / 2; j++)
@@ -1001,7 +1002,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 		btype = CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type);
 		*b = db = ccv_dense_matrix_renew(*b, a->rows, a->cols, btype, btype, sig);
 		ccv_matrix_return_if_cached(, db);
-		memcpy(db->data.ptr, a->data.ptr, a->rows * a->step);
+		memcpy(db->data.u8, a->data.u8, a->rows * a->step);
 	}
 	if (type & CCV_FLIP_Y)
 		_ccv_flip_y_self(db);
@@ -1035,8 +1036,8 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 			ccv_set_value(db->type, filter, i, ((double*)filter)[i] * tw, 0);
 	}
 	/* horizontal */
-	unsigned char* a_ptr = a->data.ptr;
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = db->data.u8;
 #define for_block(_for_type, _for_set_b, _for_get_b, _for_set_a, _for_get_a) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
@@ -1063,7 +1064,7 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	ccv_matrix_typeof_setter_getter(no_8u_type, ccv_matrix_setter, db->type, ccv_matrix_getter, a->type, for_block);
 #undef for_block
 	/* vertical */
-	b_ptr = db->data.ptr;
+	b_ptr = db->data.u8;
 #define for_block(_for_type, _for_set_b, _for_get_b, _for_set_a, _for_get_a) \
 	for (i = 0; i < a->cols * ch; i++) \
 	{ \
@@ -1093,7 +1094,7 @@ int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
 	int* histogram = (int*)alloca(range * sizeof(int));
 	memset(histogram, 0, sizeof(int) * range);
 	int i, j;
-	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
 #define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
 	{ \

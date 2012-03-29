@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 
 void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up)
 {

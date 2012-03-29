@@ -111,12 +111,12 @@ TEST_CASE("otsu threshold")
 {
 	ccv_dense_matrix_t* image = ccv_dense_matrix_new(6, 6, CCV_32S | CCV_C1, 0, 0);
 	/* the test case is grabbed from: http://www.labbookpages.co.uk/software/imgProc/otsuThreshold.html */
-	image->data.i[0] = image->data.i[1] = image->data.i[6] = image->data.i[22] = image->data.i[23] = image->data.i[28] = image->data.i[29] = image->data.i[35] = 0;
-	image->data.i[2] = image->data.i[7] = image->data.i[12] = image->data.i[16] = image->data.i[21] = image->data.i[27] = image->data.i[34] = 1;
-	image->data.i[15] = image->data.i[26] = 2;
-	image->data.i[8] = image->data.i[10] = image->data.i[13] = image->data.i[17] = image->data.i[20] = image->data.i[33] = 3;
-	image->data.i[3] = image->data.i[4] = image->data.i[9] = image->data.i[11] = image->data.i[14] = image->data.i[18] = image->data.i[19] = image->data.i[25] = image->data.i[32] = 4;
-	image->data.i[5] = image->data.i[24] = image->data.i[30] = image->data.i[31] = 5;
+	image->data.i32[0] = image->data.i32[1] = image->data.i32[6] = image->data.i32[22] = image->data.i32[23] = image->data.i32[28] = image->data.i32[29] = image->data.i32[35] = 0;
+	image->data.i32[2] = image->data.i32[7] = image->data.i32[12] = image->data.i32[16] = image->data.i32[21] = image->data.i32[27] = image->data.i32[34] = 1;
+	image->data.i32[15] = image->data.i32[26] = 2;
+	image->data.i32[8] = image->data.i32[10] = image->data.i32[13] = image->data.i32[17] = image->data.i32[20] = image->data.i32[33] = 3;
+	image->data.i32[3] = image->data.i32[4] = image->data.i32[9] = image->data.i32[11] = image->data.i32[14] = image->data.i32[18] = image->data.i32[19] = image->data.i32[25] = image->data.i32[32] = 4;
+	image->data.i32[5] = image->data.i32[24] = image->data.i32[30] = image->data.i32[31] = 5;
 	double var;
 	int threshold = ccv_otsu(image, &var, 6);
 	REQUIRE_EQ(threshold, 2, "threshold should be 2 (inclusive)");

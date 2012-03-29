@@ -35,12 +35,12 @@ int main(int argc, char** argv)
 	int match = 0;
 	for (i = 0; i < obj_keypoints->rnum; i++)
 	{
-		float* odesc = obj_desc->data.fl + i * 128;
+		float* odesc = obj_desc->data.f32 + i * 128;
 		int minj = -1;
 		double mind = 1e6, mind2 = 1e6;
 		for (j = 0; j < image_keypoints->rnum; j++)
 		{
-			float* idesc = image_desc->data.fl + j * 128;
+			float* idesc = image_desc->data.f32 + j * 128;
 			double d = 0;
 			for (k = 0; k < 128; k++)
 			{

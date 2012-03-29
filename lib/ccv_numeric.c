@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #include <complex.h>
 #ifdef HAVE_FFTW3
 #include <fftw3.h>
@@ -43,8 +44,8 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 	int i, j, k;
 	func(x, &f0, df0, data);
 	d0 = 0;
-	unsigned char* df0p = df0->data.ptr;
-	unsigned char* sp = s->data.ptr;
+	unsigned char* df0p = df0->data.u8;
+	unsigned char* sp = s->data.u8;
 	for (i = 0; i < x->rows; i++)
 	{
 		for (j = 0; j < x->cols; j++)
@@ -63,8 +64,8 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 	for (k = 0; k < l;)
 	{
 		k += ls;
-		memcpy(x0->data.ptr, x->data.ptr, x->rows * x->step);
-		memcpy(dF0->data.ptr, df0->data.ptr, x->rows * x->step);
+		memcpy(x0->data.u8, x->data.u8, x->rows * x->step);
+		memcpy(dF0->data.u8, df0->data.u8, x->rows * x->step);
 		F0 = f0;
 		int m = ccv_min(params.max_iter, (length > 0) ? params.max_iter : l - k);
 		for (;;)
@@ -72,14 +73,14 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			x2 = 0;
 			f3 = f2 = f0;
 			d2 = d0;
-			memcpy(df3->data.ptr, df0->data.ptr, x->rows * x->step);
+			memcpy(df3->data.u8, df0->data.u8, x->rows * x->step);
 			while (m > 0)
 			{
 				m--;
 				k += eh;
-				unsigned char* sp = s->data.ptr;
-				unsigned char* xp = x->data.ptr;
-				unsigned char* xnp = xn->data.ptr;
+				unsigned char* sp = s->data.u8;
+				unsigned char* xp = x->data.u8;
+				unsigned char* xnp = xn->data.u8;
 				for (i = 0; i < x->rows; i++)
 				{
 					for (j = 0; j < x->cols; j++)
@@ -95,13 +96,13 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			}
 			if (f3 < F0)
 			{
-				memcpy(x0->data.ptr, xn->data.ptr, x->rows * x->step);
-				memcpy(dF0->data.ptr, df3->data.ptr, x->rows * x->step);
+				memcpy(x0->data.u8, xn->data.u8, x->rows * x->step);
+				memcpy(dF0->data.u8, df3->data.u8, x->rows * x->step);
 				F0 = f3;
 			}
 			d3 = 0;
-			unsigned char* df3p = df3->data.ptr;
-			unsigned char* sp = s->data.ptr;
+			unsigned char* df3p = df3->data.u8;
+			unsigned char* sp = s->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -147,9 +148,9 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 				x3 = (x3 < 0) ? (x2 + x4) * 0.5 : x2 + (sqrt(x3) - B) / A;
 			}
 			x3 = ccv_max(ccv_min(x3, x4 - params.interp * (x4 - x2)), x2 + params.interp * (x4 - x2));
-			sp = s->data.ptr;
-			unsigned char* xp = x->data.ptr;
-			unsigned char* xnp = xn->data.ptr;
+			sp = s->data.u8;
+			unsigned char* xp = x->data.u8;
+			unsigned char* xnp = xn->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -161,15 +162,15 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			func(xn, &f3, df3, data);
 			if (f3 < F0)
 			{
-				memcpy(x0->data.ptr, xn->data.ptr, x->rows * x->step);
-				memcpy(dF0->data.ptr, df3->data.ptr, x->rows * x->step);
+				memcpy(x0->data.u8, xn->data.u8, x->rows * x->step);
+				memcpy(dF0->data.u8, df3->data.u8, x->rows * x->step);
 				F0 = f3;
 			}
 			m--;
 			k += eh;
 			d3 = 0;
-			sp = s->data.ptr;
-			unsigned char* df3p = df3->data.ptr;
+			sp = s->data.u8;
+			unsigned char* df3p = df3->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -180,13 +181,13 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 		}
 		if ((fabs(d3) < -params.sig * d0) && (f3 < f0 + x3 * params.rho * d0))
 		{
-			memcpy(x->data.ptr, xn->data.ptr, x->rows * x->step);
+			memcpy(x->data.u8, xn->data.u8, x->rows * x->step);
 			f0 = f3;
 			double df0_df3 = 0;
 			double df3_df3 = 0;
 			double df0_df0 = 0;
-			unsigned char* df0p = df0->data.ptr;
-			unsigned char* df3p = df3->data.ptr;
+			unsigned char* df0p = df0->data.u8;
+			unsigned char* df3p = df3->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -199,8 +200,8 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 				df3p += x->step;
 			}
 			double slr = (df3_df3 - df0_df3) / df0_df0;
-			df3p = df3->data.ptr;
-			unsigned char* sp = s->data.ptr;
+			df3p = df3->data.u8;
+			unsigned char* sp = s->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -208,11 +209,11 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 				df3p += x->step;
 				sp += x->step;
 			}
-			memcpy(df0->data.ptr, df3->data.ptr, x->rows * x->step);
+			memcpy(df0->data.u8, df3->data.u8, x->rows * x->step);
 			d3 = d0;
 			d0 = 0;
-			df0p = df0->data.ptr;
-			sp = s->data.ptr;
+			df0p = df0->data.u8;
+			sp = s->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -225,8 +226,8 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			if (d0 > 0)
 			{
 				d0 = 0;
-				df0p = df0->data.ptr;
-				sp = s->data.ptr;
+				df0p = df0->data.u8;
+				sp = s->data.u8;
 				for (i = 0; i < x->rows; i++)
 				{
 					for (j = 0; j < x->cols; j++)
@@ -242,14 +243,14 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 			x3 = x3 * ccv_min(params.ratio, d3 / (d0 - 1e-8));
 			ls_failed = 0;
 		} else {
-			memcpy(x->data.ptr, x0->data.ptr, x->rows * x->step);
-			memcpy(df0->data.ptr, dF0->data.ptr, x->rows * x->step);
+			memcpy(x->data.u8, x0->data.u8, x->rows * x->step);
+			memcpy(df0->data.u8, dF0->data.u8, x->rows * x->step);
 			f0 = F0;
 			if (ls_failed)
 				break;
 			d0 = 0;
-			unsigned char* df0p = df0->data.ptr;
-			unsigned char* sp = s->data.ptr;
+			unsigned char* df0p = df0->data.u8;
+			unsigned char* sp = s->data.u8;
 			for (i = 0; i < x->rows; i++)
 			{
 				for (j = 0; j < x->cols; j++)
@@ -499,7 +500,7 @@ static void _ccv_convolve_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv
 
 	int i, j, k;
 	double* fftw_ptr = fftw_b + (b->rows - 1) * cols_2c * ch;
-	unsigned char* m_ptr = b->data.ptr;
+	unsigned char* m_ptr = b->data.u8;
 	// to flip matrix b is crucial, this problem only shows when I changed to a more sophisticated test case
 #define for_block(_, _for_get) \
 	for (i = 0; i < b->rows; i++) \
@@ -627,7 +628,7 @@ static void _ccv_convolve_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 	double scale = 1.0 / (rows * cols);
 	int i, j, k;
 	double* kiss_ptr = kiss_b + (b->rows - 1) * cols;
-	unsigned char* m_ptr = b->data.ptr;
+	unsigned char* m_ptr = b->data.u8;
 	// to flip matrix b is crucial, this problem only shows when I changed to a more sophisticated test case
 #define for_block(_, _for_get) \
 	for (i = 0; i < b->rows; i++) \
@@ -772,9 +773,9 @@ void _ccv_convolve_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 	/* the padding pattern is different from FFT: |aa{BORDER}|abcd|{BORDER}dd| */
 	for (i = 0; i < pa->rows; i++)
 		for (j = 0; j < pa->cols; j++)
-			pa->data.ptr[i * pa->step + j] = a->data.ptr[ccv_clamp(i - b->rows / 2, 0, a->rows - 1) * a->step + ccv_clamp(j - b->cols / 2, 0, a->cols - 1)];
-	unsigned char* m_ptr = d->data.ptr;
-	unsigned char* a_ptr = pa->data.ptr;
+			pa->data.u8[i * pa->step + j] = a->data.u8[ccv_clamp(i - b->rows / 2, 0, a->rows - 1) * a->step + ccv_clamp(j - b->cols / 2, 0, a->cols - 1)];
+	unsigned char* m_ptr = d->data.u8;
+	unsigned char* a_ptr = pa->data.u8;
 	/* 0.5 denote the overhead for indexing x and y */
 	if (nz < b->rows * b->cols * 0.75)
 	{
@@ -855,7 +856,7 @@ void ccv_convolve(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix
 void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void* data)
 {
 	int i, j, k, ch = CCV_GET_CHANNEL(x->type);
-	unsigned char* m_ptr = x->data.ptr;
+	unsigned char* m_ptr = x->data.u8;
 	double rows_2 = (x->rows - 1) * 0.5;
 	double cols_2 = (x->cols - 1) * 0.5;
 #define for_block(_, _for_set) \
@@ -871,7 +872,7 @@ void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void
 	}
 	ccv_matrix_setter(x->type, for_block);
 #undef for_block
-	ccv_matrix_generate_signature((char*) x->data.ptr, x->rows * x->step, x->sig, 0);
+	ccv_matrix_generate_signature((char*) x->data.u8, x->rows * x->step, x->sig, 0);
 }
 
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag)
@@ -882,8 +883,8 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_matrix_return_if_cached(, db);
 	int i, j, k;
-	unsigned char* a_ptr = a->data.ptr;
-	unsigned char* b_ptr = db->data.ptr;
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = db->data.u8;
 	int* v = (int*)alloca(sizeof(int) * ccv_max(db->rows, db->cols));
 	double* z = (double*)alloca(sizeof(double) * (ccv_max(db->rows, db->cols) + 1));
 	unsigned char* c_ptr = (unsigned char*)alloca(CCV_GET_DATA_TYPE_SIZE(db->type) * db->rows);
@@ -933,7 +934,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 			b_ptr += db->step; \
 		} \
 	} \
-	b_ptr = db->data.ptr; \
+	b_ptr = db->data.u8; \
 	if (dyy > 1e-10) \
 	{ \
 		for (j = 0; j < db->cols; j++) \

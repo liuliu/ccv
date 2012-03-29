@@ -76,7 +76,7 @@ TEST_CASE("garbage collector test")
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
-		dmt->data.i[0] = i;
+		dmt->data.i32[0] = i;
 		dmt->sig = ccv_matrix_generate_signature((const char*)&i, 4, 0);
 		dmt->type |= CCV_REUSABLE;
 		ccv_matrix_free(dmt);
@@ -86,7 +86,7 @@ TEST_CASE("garbage collector test")
 	{
 		uint64_t sig = ccv_matrix_generate_signature((const char*)&i, 4, 0);
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
-		if (i == dmt->data.i[0])
+		if (i == dmt->data.i32[0])
 			++percent;
 		++total;
 		ccv_matrix_free_immediately(dmt);

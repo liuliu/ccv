@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 
 static inline int _ccv_median(int* buf, int low, int high)
 {
@@ -56,10 +57,10 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_sobel(a, &dy, 0, 0, params.size);
 	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
-	unsigned char* b_ptr = db->data.ptr;
-	unsigned char* c_ptr = c->data.ptr;
-	unsigned char* dx_ptr = dx->data.ptr;
-	unsigned char* dy_ptr = dy->data.ptr;
+	unsigned char* b_ptr = db->data.u8;
+	unsigned char* c_ptr = c->data.u8;
+	unsigned char* dx_ptr = dx->data.u8;
+	unsigned char* dy_ptr = dy->data.u8;
 	ccv_zero(db);
 	int dx5[] = {-1, 0, 1, 0, 0};
 	int dy5[] = {0, 0, 0, -1, 1};
@@ -206,7 +207,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
 {
 	int i, j, k;
-	int* a_ptr = a->data.i;
+	int* a_ptr = a->data.i32;
 	int dx8[] = {-1, 1, -1, 0, 1, -1, 0, 1};
 	int dy8[] = {0, 0, -1, -1, -1, 1, 1, 1};
 	int* marker = (int*)ccmalloc(sizeof(int) * a->rows * a->cols);
@@ -302,7 +303,7 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		for (j = 0; j < contour->size; j++)
 		{
 			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
-			mean += buffer[j] = swt->data.i[point->x + point->y * swt->cols];
+			mean += buffer[j] = swt->data.i32[point->x + point->y * swt->cols];
 		}
 		mean = mean / contour->size;
 		double variance = 0;
@@ -373,7 +374,7 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		for (j = 0; j < letter->contour->set->rnum; j++)
 		{
 			ccv_point_t* point = (ccv_point_t*)ccv_array_get(letter->contour->set, j);
-			letter->intensity += a->data.ptr[point->x + point->y * a->step];
+			letter->intensity += a->data.u8[point->x + point->y * a->step];
 		}
 		letter->intensity /= letter->contour->size;
 		ccv_contour_free(letter->contour);

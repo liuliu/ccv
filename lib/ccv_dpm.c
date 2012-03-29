@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 
 void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params)
 {
