@@ -244,7 +244,7 @@ static void _ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy)
 {
-	assert(a->type & CCV_C1);
+	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
 	ccv_declare_matrix_signature(tsig, a->sig != 0, ccv_sign_with_literal("ccv_gradient_theta"), a->sig, 0);
 	ccv_declare_matrix_signature(msig, a->sig != 0, ccv_sign_with_literal("ccv_gradient_m"), a->sig, 0);
 	ccv_dense_matrix_t* dtheta = *theta = ccv_dense_matrix_renew(*theta, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, tsig);
@@ -260,53 +260,164 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	ccv_matrix_free(ty);
 }
 
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size)
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size)
 {
-	assert(a->type & CCV_C1);
-	int border_size = size / 2;
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_hog"), a->sig, 0);
-	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - border_size * 2, (a->cols - border_size * 2) * 8, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
+	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
+	int rows = a->rows / size;
+	int cols = a->cols / size;
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_hog(%d,%d)", sbin, size), a->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_64F | (4 + sbin * 3), CCV_64F | (4 + sbin * 3), sig);
 	ccv_matrix_return_if_cached(, db);
 	ccv_dense_matrix_t* ag = 0;
 	ccv_dense_matrix_t* mg = 0;
-	ccv_gradient(a, &ag, 0, &mg, 0, 3, 3);
-	int i, j, x, y;
-	ag->type = (ag->type & ~CCV_32F) | CCV_32S;
-	for (i = 0; i < a->rows * a->cols; i++)
-		ag->data.i[i] = ((int)(ag->data.fl[i] / 45 + 0.5)) & 0x7;
-	int* agi = ag->data.i;
-	float* mgfl = mg->data.fl;
-	int* bi = db->data.i;
-	for (y = 0; y <= a->rows - size; y++)
+	ccv_gradient(a, &ag, 0, &mg, 0, 1, 1);
+	float* agp = ag->data.fl;
+	float* mgp = mg->data.fl;
+	int i, j, k;
+	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols, CCV_64F | (sbin * 2), 0, 0);
+	ccv_dense_matrix_t* ca = ccv_dense_matrix_new(rows, cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_zero(cn);
+	double* cnp = cn->data.db;
+	int sizec = 0;
+	for (i = 0; i < rows * size; i++)
 	{
-		float hog[] = { 0, 0, 0, 0, 0, 0, 0, 0 };
-		for (i = 0; i < size; i++)
-			for (j = 0; j < size; j++)
-				hog[agi[i * a->cols + j]] += mgfl[i * a->cols + j];
-		for (i = 0; i < 8; i++)
-			bi[i] = (int)hog[i];
-		bi += 8;
-		mgfl++;
-		agi++;
-		for (x = 1; x <= a->cols - size; x++)
+		for (j = 0; j < cols; j++)
 		{
-			for (i = 0; i < size; i++)
+			for (k = j * size; k < j * size + size; k++)
 			{
-				hog[agi[i * a->cols - 1]] -= mgfl[i * a->cols - 1];
-				hog[agi[i * a->cols - 1 + size]] += mgfl[i * a->cols - 1 + size];
+				int ag0, ag1;
+				double agr;
+				agr = (agp[k] / 360.0) * (sbin * 2);
+				ag0 = (int)agr;
+				ag1 = (ag0 + 1 < sbin * 2) ? ag0 + 1 : 0;
+				agr = agr - ag0;
+				cnp[ag0] += (1.0 - agr) * mgp[k] / 255.0;
+				cnp[ag1] += agr * mgp[k] / 255.0;
 			}
-			for (i = 0; i < 8; i++)
-				bi[i] = (int)hog[i];
-			bi += 8;
-			mgfl++;
-			agi++;
+			cnp += 2 * sbin;
 		}
-		agi += border_size * 2;
-		mgfl += border_size * 2;
+		agp += a->cols;
+		mgp += a->cols;
+		if (++sizec < size)
+			cnp -= cn->cols;
+		else
+			sizec = 0;
 	}
 	ccv_matrix_free(ag);
 	ccv_matrix_free(mg);
+	cnp = cn->data.db;
+	double* cap = ca->data.db;
+	for (i = 0; i < rows; i++)
+	{
+		for (j = 0; j < cols; j++)
+		{
+			*cap = 0;
+			for (k = 0; k < sbin * 2; k++)
+			{
+				*cap += (*cnp) * (*cnp);
+				cnp++;
+			}
+			cap++;
+		}
+	}
+	cnp = cn->data.db;
+	cap = ca->data.db;
+	ccv_zero(db);
+	double* dbp = db->data.db;
+	// normalize sbin direction-sensitive and sbin * 2 insensitive over 4 normalization factor
+	// accumulating them over sbin * 2 + sbin + 4 channels
+	// TNA - truncation - normalization - accumulation
+#define TNA(idx, a, b, c, d) \
+	{ \
+		double norm = 1.0 / sqrt(cap[a] + cap[b] + cap[c] + cap[d] + 1e-4); \
+		for (k = 0; k < sbin * 2; k++) \
+		{ \
+			double v = 0.5 * ccv_min(cnp[k] * norm, 0.2); \
+			dbp[5 + sbin + k] += v; \
+			dbp[1 + idx] += v; \
+		} \
+		dbp[sbin * 3 + idx] *= 0.2357; \
+		for (k = 0; k < sbin; k++) \
+		{ \
+			double v = 0.5 * ccv_min((cnp[k] + cnp[k + sbin]) * norm, 0.2); \
+			dbp[5 + k] += v; \
+		} \
+	}
+	TNA(0, 0, 0, 0, 0);
+	TNA(1, 1, 1, 0, 0);
+	TNA(2, 0, ca->cols, ca->cols, 0);
+	TNA(3, 1, ca->cols + 1, ca->cols, 0);
+	cnp += 2 * sbin;
+	dbp += 3 * sbin + 4;
+	cap++;
+	for (j = 1; j < cols - 1; j++)
+	{
+		TNA(0, -1, -1, 0, 0);
+		TNA(1, 1, 1, 0, 0);
+		TNA(2, -1, ca->cols - 1, ca->cols, 0);
+		TNA(3, 1, ca->cols + 1, ca->cols, 0);
+		cnp += 2 * sbin;
+		dbp += 3 * sbin + 4;
+		cap++;
+	}
+	TNA(0, -1, -1, 0, 0);
+	TNA(1, 0, 0, 0, 0);
+	TNA(2, -1, ca->cols - 1, ca->cols, 0);
+	TNA(3, 0, ca->cols, ca->cols, 0);
+	cnp += 2 * sbin;
+	dbp += 3 * sbin + 4;
+	cap++;
+	for (i = 1; i < rows - 1; i++)
+	{
+		TNA(0, 0, -ca->cols, -ca->cols, 0);
+		TNA(1, 1, -ca->cols + 1, -ca->cols, 0);
+		TNA(2, 0, ca->cols, ca->cols, 0);
+		TNA(3, 1, ca->cols + 1, ca->cols, 0);
+		cnp += 2 * sbin;
+		dbp += 3 * sbin + 4;
+		cap++;
+		for (j = 1; j < cols - 1; j++)
+		{
+			TNA(0, -1, -ca->cols - 1, -ca->cols, 0);
+			TNA(1, 1, -ca->cols + 1, -ca->cols, 0);
+			TNA(2, -1, ca->cols - 1, ca->cols, 0);
+			TNA(3, 1, ca->cols + 1, ca->cols, 0);
+			cnp += 2 * sbin;
+			dbp += 3 * sbin + 4;
+			cap++;
+		}
+		TNA(0, -1, -ca->cols - 1, -ca->cols, 0);
+		TNA(1, 0, -ca->cols, -ca->cols, 0);
+		TNA(2, -1, ca->cols - 1, ca->cols, 0);
+		TNA(3, 0, ca->cols, ca->cols, 0);
+		cnp += 2 * sbin;
+		dbp += 3 * sbin + 4;
+		cap++;
+	}
+	TNA(0, 0, -ca->cols, -ca->cols, 0);
+	TNA(1, 1, -ca->cols + 1, -ca->cols, 0);
+	TNA(2, 0, 0, 0, 0);
+	TNA(3, 1, 1, 0, 0);
+	cnp += 2 * sbin;
+	dbp += 3 * sbin + 4;
+	cap++;
+	for (j = 1; j < cols - 1; j++)
+	{
+		TNA(0, -1, -ca->cols - 1, -ca->cols, 0);
+		TNA(1, 1, -ca->cols + 1, -ca->cols, 0);
+		TNA(2, -1, -1, 0, 0);
+		TNA(3, 1, 1, 0, 0);
+		cnp += 2 * sbin;
+		dbp += 3 * sbin + 4;
+		cap++;
+	}
+	TNA(0, -1, -ca->cols - 1, -ca->cols, 0);
+	TNA(1, 0, -ca->cols, -ca->cols, 0);
+	TNA(2, -1, -1, 0, 0);
+	TNA(3, 0, 0, 0, 0);
+#undef TNA
+	ccv_matrix_free(cn);
+	ccv_matrix_free(ca);
 }
 
 /* it is a supposely cleaner and faster implementation than original OpenCV (ccv_canny_deprecated,
@@ -678,7 +789,7 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 			break;
 		case CCV_INTER_CUBIC:
 			break;
-		case CCV_INTER_LACZOS:
+		case CCV_INTER_LANCZOS:
 			break;
 	}
 }
@@ -707,7 +818,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 	 * it is not desirable to have that offset when we try to wrap it into our 5-row buffer (
 	 * because in later rearrangement, we have no src_y to backup the arrangement). In
 	 * such micro scope, we managed to stripe 5 addition into one shift and addition. */
-#define for_block(x_block, _for_get_a, _for_get, _for_set, _for_set_b) \
+#define for_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 	for (dy = 0; dy < db->rows; dy++) \
 	{ \
 		for(; sy <= dy * 2 + 2 + src_y; sy++) \
@@ -730,20 +841,19 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 		b_ptr += db->step; \
 	}
 	int no_8u_type = (a->type & CCV_8U) ? CCV_32S : a->type;
-	/* here is the new technique to expand for loop with condition in manual way */
 	if (src_x > 0)
 	{
 #define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (dx = cols0 * ch; dx < db->cols * ch; dx += ch) \
 			for (k = 0; k < ch; k++) \
 				_for_set(row, dx + k, _for_get_a(a_ptr, tab[dx * 2 + sx + k], 0) * 6 + (_for_get_a(a_ptr, tab[dx * 2 + sx + k - ch], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch], 0)) * 4 + _for_get_a(a_ptr, tab[dx * 2 + sx + k - ch * 2], 0) + _for_get_a(a_ptr, tab[dx * 2 + sx + k + ch * 2], 0), 0);
-		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+		ccv_matrix_getter_a(a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	} else {
 #define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 		for (k = 0; k < ch; k++) \
 			_for_set(row, (db->cols - 1) * ch + k, _for_get_a(a_ptr, a->cols * ch + sx - ch + k, 0) * 10 + _for_get_a(a_ptr, (a->cols - 2) * ch + sx + k, 0) * 5 + _for_get_a(a_ptr, (a->cols - 3) * ch + sx + k, 0), 0);
-		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+		ccv_matrix_getter_a(a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	}
 #undef for_block
@@ -767,7 +877,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
 	unsigned char* b_ptr = db->data.ptr;
 	/* why src_y * 2: the same argument as in ccv_sample_down */
-#define for_block(x_block, _for_get_a, _for_get, _for_set, _for_set_b) \
+#define for_block(_for_get_a, _for_get, _for_set, _for_set_b) \
 	for (y = 0; y < a->rows; y++) \
 	{ \
 		for (; sy <= y + 1 + src_y; sy++) \
@@ -820,7 +930,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 				_for_set(row, x * 2 + k, _for_get_a(a_ptr, tab[x + sx - ch + k], 0) + _for_get_a(a_ptr, tab[x + sx + k], 0) * 6 + _for_get_a(a_ptr, tab[x + sx + ch + k], 0), 0); \
 				_for_set(row, x * 2 + ch + k, (_for_get_a(a_ptr, tab[x + sx + k], 0) + _for_get_a(a_ptr, tab[x + sx + ch + k], 0)) * 4, 0); \
 			}
-		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+		ccv_matrix_getter_a(a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	} else {
 #define x_block(_for_get_a, _for_get, _for_set, _for_set_b) \
@@ -829,7 +939,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			_for_set(row, (a->cols - 1) * 2 * ch + k, _for_get_a(a_ptr, (a->cols - 2) * ch + k, 0) + _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 7, 0); \
 			_for_set(row, (a->cols - 1) * 2 * ch + ch + k, _for_get_a(a_ptr, (a->cols - 1) * ch + k, 0) * 4, 0); \
 		}
-		ccv_unswitch_block(x_block, ccv_matrix_getter_a, a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
+		ccv_matrix_getter_a(a->type, ccv_matrix_getter, no_8u_type, ccv_matrix_setter, no_8u_type, ccv_matrix_setter_b, db->type, for_block);
 #undef x_block
 	}
 #undef for_block

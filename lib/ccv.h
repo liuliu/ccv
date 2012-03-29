@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <stdarg.h>
 #include <string.h>
+#include <float.h>
 #include <math.h>
 #include <xmmintrin.h>
 #include <assert.h>
@@ -81,6 +82,7 @@ typedef struct {
 		float fl;
 		int64_t l;
 		double db;
+		void* ptr;
 	} tag;
 	ccv_matrix_cell_t data;
 } ccv_dense_matrix_t;
@@ -337,15 +339,7 @@ void ccv_enable_cache(size_t size);
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
-
-/* unswitch for loop macros */
-/* the new added macro in order to do for loop expansion in a way that, you can
- * expand a for loop by inserting different code snippet */
-#define ccv_unswitch_block(param, block, ...) { block(__VA_ARGS__, param); }
-#define ccv_unswitch_block_a(param, block, ...) { block(__VA_ARGS__, param); }
-#define ccv_unswitch_block_b(param, block, ...) { block(__VA_ARGS__, param); }
-/* the factor used to provide higher accuracy in integer type (all integer
- * computation in some cases) */
+/* the factor used to provide higher accuracy in integer type (all integer computation in some cases) */
 #define _ccv_get_32s_value(ptr, i, factor) (((int*)(ptr))[(i)] << factor)
 #define _ccv_get_32f_value(ptr, i, factor) ((float*)(ptr))[(i)]
 #define _ccv_get_64s_value(ptr, i, factor) (((int64_t*)(ptr))[(i)] << factor)
@@ -533,8 +527,11 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 double ccv_trace(ccv_matrix_t* mat);
 
 enum {
-	CCV_L2_NORM = 0x01,
-	CCV_L1_NORM = 0x02,
+	CCV_L2_NORM = 0x01, // |dx| + |dy|
+	CCV_L1_NORM = 0x02, // sqrt(dx^2 + dy^2)
+	CCV_GSEDT   = 0x04, // Generalized Squared Euclidean Distance Transform:
+						// a * dx + b * dy + c * dx^2 + d * dy^2, when combined with CCV_L1_NORM:
+						// a * |dx| + b * |dy| + c * dx^2 + d * dy^2
 };
 
 enum {
@@ -676,20 +673,21 @@ typedef double(*ccv_convolve_kernel_f)(double x, double y, void*);
 void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void* data);
 
 /* modern numerical algorithms */
+void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag);
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
 void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
 /* basic computer vision algorithms / or build blocks */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size);
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
 
 enum {
-	CCV_INTER_AREA   = 0x01,
-	CCV_INTER_LINEAR = 0X02,
-	CCV_INTER_CUBIC  = 0X03,
-	CCV_INTER_LACZOS = 0X04,
+	CCV_INTER_AREA    = 0x01,
+	CCV_INTER_LINEAR  = 0X02,
+	CCV_INTER_CUBIC   = 0X03,
+	CCV_INTER_LANCZOS = 0X04,
 };
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);

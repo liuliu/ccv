@@ -2,6 +2,12 @@
 #include "case.h"
 #include "ccv_case.h"
 
+/* numeric tests are more like functional tests rather than unit tests:
+ * the following tests contain:
+ * 1. minimization of the famous rosenbrock function;
+ * 2. compute ssd with ccv_convolve, and compare the result with naive method
+ * 3. compare the result from ccv_distance_transform (linear time) with reference implementation from voc-release4 (O(nlog(n))) */
+
 int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
 	int* steps = (int*)data;
@@ -40,27 +46,175 @@ TEST_CASE("minimize rosenbrock")
 	ccv_matrix_free(x);
 }
 
-double gaussian(double x, double y, void* data)
+static void naive_ssd(ccv_dense_matrix_t* image, ccv_dense_matrix_t* template, ccv_dense_matrix_t* out)
 {
-	return exp(-(x * x + y * y) / 20) / sqrt(CCV_PI * 20);
+	int thw = template->cols / 2;
+	int thh = template->rows / 2;
+	int i, j, k, x, y, ch = CCV_GET_CHANNEL(image->type);
+	unsigned char* i_ptr = image->data.ptr + thh * image->step;
+	double* o = out->data.db + out->cols * thh;
+	ccv_zero(out);
+	for (i = thh; i < image->rows - thh - 1; i++)
+	{
+		for (j = thw; j < image->cols - thw - 1; j++)
+		{
+			unsigned char* t_ptr = template->data.ptr;
+			unsigned char* j_ptr = i_ptr - thh * image->step;
+			o[j] = 0;
+			for (y = -thh; y <= thh; y++)
+			{
+				for (x = -thw; x <= thw; x++)
+					for (k = 0; k < ch; k++)
+						o[j] += (j_ptr[(x + j) * ch + k] - t_ptr[(x + thw) * ch + k]) * (j_ptr[(x + j) * ch + k] - t_ptr[(x + thw) * ch + k]);
+				t_ptr += template->step;
+				j_ptr += image->step;
+			}
+		}
+		i_ptr += image->step;
+		o += out->cols;
+	}
 }
 
-TEST_CASE("convolution on Gaussian kernel")
+TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 {
-	ccv_dense_matrix_t* image = 0;
-	ccv_read("../samples/nature.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-	ccv_dense_matrix_t* gray = 0;ccv_dense_matrix_new(image->rows, image->cols, CCV_32F | CCV_C1, 0, 0);
-	ccv_shift(image, (ccv_matrix_t**)&gray, CCV_32F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(10, 10, CCV_32F | CCV_C1, 0, 0);
-	ccv_filter_kernel(kernel, gaussian, 0);
-	ccv_normalize(kernel, (ccv_matrix_t**)&kernel, 0, CCV_L1_NORM);
-	ccv_dense_matrix_t* x = 0;
-	ccv_filter(gray, kernel, (ccv_matrix_t**)&x, 0);
-	REQUIRE_MATRIX_FILE_EQ(x, "data/nature.filter.bin", "should apply Gaussian filter with FFTW on nature.png with sigma = sqrt(10)");
-	ccv_matrix_free(image);
-	ccv_matrix_free(gray);
-	ccv_matrix_free(kernel);
-	ccv_matrix_free(x);
+	ccv_dense_matrix_t* street = 0;
+	ccv_dense_matrix_t* pedestrian = 0;
+	ccv_read("../samples/pedestrian.png", &pedestrian, CCV_IO_ANY_FILE);
+	ccv_read("../samples/street.png", &street, CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* result = 0;
+	ccv_convolve(street, pedestrian, &result, CCV_64F, 0);
+	ccv_dense_matrix_t* square = 0;
+	ccv_multiply(street, street, (ccv_matrix_t**)&square, 0);
+	ccv_dense_matrix_t* sat = 0;
+	ccv_sat(square, &sat, 0, CCV_PADDING_ZERO);
+	ccv_matrix_free(square);
+	double sum[] = {0, 0, 0};
+	int i, j, k;
+	int ch = CCV_GET_CHANNEL(street->type);
+	unsigned char* p_ptr = pedestrian->data.ptr;
+#define for_block(_, _for_get) \
+	for (i = 0; i < pedestrian->rows; i++) \
+	{ \
+		for (j = 0; j < pedestrian->cols; j++) \
+			for (k = 0; k < ch; k++) \
+				sum[k] += _for_get(p_ptr, j * ch + k, 0) * _for_get(p_ptr, j * ch + k, 0); \
+		p_ptr += pedestrian->step; \
+	}
+	ccv_matrix_getter(pedestrian->type, for_block);
+#undef for_block
+	int phw = pedestrian->cols / 2;
+	int phh = pedestrian->rows / 2;
+	ccv_dense_matrix_t* output = ccv_dense_matrix_new(street->rows, street->cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_zero(output);
+	unsigned char* s_ptr = sat->data.ptr + sat->step * phh;
+	unsigned char* r_ptr = result->data.ptr + result->step * phh;
+	double* o_ptr = output->data.db + output->cols * phh;
+#define for_block(_for_get_s, _for_get_r) \
+	for (i = phh; i < output->rows - phh - 1; i++) \
+	{ \
+		for (j = phw; j < output->cols - phw - 1; j++) \
+		{ \
+			o_ptr[j] = 0; \
+			for (k = 0; k < ch; k++) \
+			{ \
+				o_ptr[j] += (_for_get_s(s_ptr + sat->step * ccv_min(phh + 1, sat->rows - i - 1), ccv_min(j + phw + 1, sat->cols - 1) * ch + k, 0) \
+						  - _for_get_s(s_ptr + sat->step * ccv_min(phh + 1, sat->rows - i - 1), ccv_max(j - phw, 0) * ch + k, 0) \
+						  + _for_get_s(s_ptr + sat->step * ccv_max(-phh, -i), ccv_max(j - phw, 0) * ch + k, 0) \
+						  - _for_get_s(s_ptr + sat->step * ccv_max(-phh, -i), ccv_min(j + phw + 1, sat->cols - 1) * ch + k, 0)) \
+						  + sum[k] - 2.0 * _for_get_r(r_ptr, j * ch + k, 0); \
+			} \
+		} \
+		s_ptr += sat->step; \
+		r_ptr += result->step; \
+		o_ptr += output->cols; \
+	}
+	ccv_matrix_getter(sat->type, ccv_matrix_getter_a, result->type, for_block);
+#undef for_block
+	ccv_matrix_free(result);
+	ccv_matrix_free(sat);
+	ccv_dense_matrix_t* final = 0;
+	ccv_slice(output, (ccv_matrix_t**)&final, 0, phh, phw, output->rows - phh * 2, output->cols - phw * 2);
+	ccv_zero(output);
+	naive_ssd(street, pedestrian, output);
+	ccv_dense_matrix_t* ref = 0;
+	ccv_slice(output, (ccv_matrix_t**)&ref, 0, phh, phw, output->rows - phh * 2, output->cols - phw * 2);
+	ccv_matrix_free(output);
+	ccv_matrix_free(pedestrian);
+	ccv_matrix_free(street);
+	REQUIRE_MATRIX_EQ(ref, final, "ssd computed by convolution doesn't match the one computed by naive method");
+	ccv_matrix_free(final);
+	ccv_matrix_free(ref);
+}
+
+// divide & conquer method for distance transform (copied directly from dpm-matlab (voc-release4)
+
+static inline int square(int x) { return x*x; }
+
+// dt helper function
+void dt_helper(double *src, double *dst, int *ptr, int step, 
+	       int s1, int s2, int d1, int d2, double a, double b) {
+ if (d2 >= d1) {
+   int d = (d1+d2) >> 1;
+   int s = s1;
+   for (int p = s1+1; p <= s2; p++)
+     if (src[s*step] + a*square(d-s) + b*(d-s) > 
+	 src[p*step] + a*square(d-p) + b*(d-p))
+	s = p;
+   dst[d*step] = src[s*step] + a*square(d-s) + b*(d-s);
+   ptr[d*step] = s;
+   dt_helper(src, dst, ptr, step, s1, s, d1, d-1, a, b);
+   dt_helper(src, dst, ptr, step, s, s2, d+1, d2, a, b);
+ }
+}
+
+// dt of 1d array
+void dt1d(double *src, double *dst, int *ptr, int step, int n, 
+	  double a, double b) {
+  dt_helper(src, dst, ptr, step, 0, n-1, 0, n-1, a, b);
+}
+
+void daq_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double dx, double dy, double dxx, double dyy)
+{
+	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
+	unsigned char* a_ptr = a->data.ptr;
+	double* b_ptr = db->data.db;
+	int i, j;
+#define for_block(_, _for_get) \
+	for (i = 0; i < a->rows; i++) \
+	{ \
+		for (j = 0; j < a->cols; j++) \
+			b_ptr[j] = _for_get(a_ptr, j, 0); \
+		b_ptr += db->cols; \
+		a_ptr += a->step; \
+	}
+	ccv_matrix_getter(a->type, for_block);
+#undef for_block
+	int* ix = (int*)calloc(a->cols * a->rows, sizeof(int));
+	int* iy = (int*)calloc(a->cols * a->rows, sizeof(int));
+	b_ptr = db->data.db;
+	double* c_ptr = dc->data.db;
+	for (i = 0; i < a->rows; i++)
+		dt1d(b_ptr + i * a->cols, c_ptr + i * a->cols, ix + i * a->cols, 1, a->cols, dxx, dx);
+	for (j = 0; j < a->cols; j++)
+		dt1d(c_ptr + j, b_ptr + j, iy + j, a->cols, a->rows, dyy, dy);
+	free(ix);
+	free(iy);
+	ccv_matrix_free(dc);
+}
+
+TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using divide & conquer (O(nlog(n)))")
+{
+	ccv_dense_matrix_t* geometry = 0;
+	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* distance = 0;
+	ccv_distance_transform(geometry, &distance, 0, 1, 1, 0.1, 0.1, CCV_GSEDT);
+	ccv_dense_matrix_t* ref = 0;
+	daq_distance_transform(geometry, &ref, 1, 1, 0.1, 0.1);
+	ccv_matrix_free(geometry);
+	REQUIRE_MATRIX_EQ(distance, ref, "distance transform computed by ccv_distance_transform doesn't match the one computed by divide & conquer (voc-release4)");
+	ccv_matrix_free(ref);
+	ccv_matrix_free(distance);
 }
 
 #include "case_main.h"

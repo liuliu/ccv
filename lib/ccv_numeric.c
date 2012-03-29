@@ -873,3 +873,108 @@ void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void
 #undef for_block
 	ccv_matrix_generate_signature((char*) x->data.ptr, x->rows * x->step, x->sig, 0);
 }
+
+void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag)
+{
+	assert(!(flag & CCV_L2_NORM) && (flag & CCV_GSEDT));
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform(%lf,%lf,%lf,%lf,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+	type = (CCV_GET_DATA_TYPE(type) == CCV_32F) ? CCV_GET_CHANNEL(a->type) | CCV_32F : CCV_GET_CHANNEL(a->type) | CCV_64F;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
+	ccv_matrix_return_if_cached(, db);
+	int i, j, k;
+	unsigned char* a_ptr = a->data.ptr;
+	unsigned char* b_ptr = db->data.ptr;
+	int* v = (int*)alloca(sizeof(int) * ccv_max(db->rows, db->cols));
+	double* z = (double*)alloca(sizeof(double) * (ccv_max(db->rows, db->cols) + 1));
+	unsigned char* c_ptr = (unsigned char*)alloca(CCV_GET_DATA_TYPE_SIZE(db->type) * db->rows);
+#define for_block(_for_set_b, _for_get_b, _for_get_a) \
+	if (dxx > 1e-10) \
+	{ \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			k = 0; \
+			v[0] = 0; \
+			z[0] = -DBL_MAX; \
+			z[1] = DBL_MAX; \
+			for (j = 1; j < a->cols; j++) \
+			{ \
+				double s; \
+				for (;;) \
+				{ \
+					s = ((_for_get_a(a_ptr, j, 0) + dxx * j * j - dx * j) - (_for_get_a(a_ptr, v[k], 0) + dxx * v[k] * v[k] - dx * v[k])) / (2.0 * dxx * (j - v[k])); \
+					if (s > z[k]) break; \
+					--k; \
+				} \
+				++k; \
+				v[k] = j; \
+				z[k] = s; \
+				z[k + 1] = db->cols * 1e5; \
+			} \
+			k = 0; \
+			for (j = 0; j < a->cols; j++) \
+			{ \
+				while (z[k + 1] < j) \
+					++k; \
+				_for_set_b(b_ptr, j, dx * (j - v[k]) + dxx * (j - v[k]) * (j - v[k]) + _for_get_a(a_ptr, v[k], 0), 0); \
+			} \
+			a_ptr += a->step; \
+			b_ptr += db->step; \
+		} \
+	} else { /* above algorithm cannot handle dxx == 0 properly, below is special casing for that */ \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			for (j = 0; j < a->cols; j++) \
+				_for_set_b(b_ptr, j, _for_get_a(a_ptr, j, 0), 0); \
+			for (j = 1; j < a->cols; j++) \
+				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j - 1, 0) + dx), 0); \
+			for (j = a->cols - 2; j >= 0; j--) \
+				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j + 1, 0) - dx), 0); \
+			a_ptr += a->step; \
+			b_ptr += db->step; \
+		} \
+	} \
+	b_ptr = db->data.ptr; \
+	if (dyy > 1e-10) \
+	{ \
+		for (j = 0; j < db->cols; j++) \
+		{ \
+			for (i = 0; i < db->rows; i++) \
+				_for_set_b(c_ptr, i, _for_get_b(b_ptr + i * db->step, j, 0), 0); \
+			k = 0; \
+			v[0] = 0; \
+			z[0] = -DBL_MAX; \
+			z[1] = DBL_MAX; \
+			for (i = 1; i < db->rows; i++) \
+			{ \
+				double s; \
+				for (;;) \
+				{ \
+					s = ((_for_get_b(c_ptr, i, 0) + dyy * i * i - dy * i) - (_for_get_b(c_ptr, v[k], 0) + dyy * v[k] * v[k] - dy * v[k])) / (2.0 * dyy * (i - v[k])); \
+					if (s > z[k]) break; \
+					--k; \
+				} \
+				++k; \
+				v[k] = i; \
+				z[k] = s; \
+				z[k + 1] = db->rows * 1e5; \
+			} \
+			k = 0; \
+			for (i = 0; i < db->rows; i++) \
+			{ \
+				while (z[k + 1] < i) \
+					++k; \
+				_for_set_b(b_ptr + i * db->step, j, dy * (i - v[k]) + dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
+			} \
+		} \
+	} else { \
+		for (j = 0; j < db->cols; j++) \
+		{ \
+			for (i = 1; i < db->rows; i++) \
+				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i - 1) * db->step, j, 0) + dy), 0); \
+			for (i = db->rows - 2; i >= 0; i--) \
+				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i + 1) * db->step, j, 0) - dy), 0); \
+		} \
+	}
+	ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
+}

@@ -259,6 +259,7 @@ int main(int argc, char** argv)
 		if (test_suite->sig == 0x883253372849284B)
 		{
 			printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", j, total, test_suite->name);
+			fflush(stdout);
 			int result = 0;
 			test_suite->driver(test_suite->name, &result);
 			if (result == 0)

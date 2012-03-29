@@ -22,7 +22,6 @@ int main(int argc, char** argv)
 		unsigned int elapsed_time = get_current_time();
 		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(root_classifier->root.size.width * 8, root_classifier->root.size.height * 8) };
 		ccv_array_t* seq = ccv_dpm_detect_objects(image, &root_classifier, 1, params);
-		/*
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)
 		{
@@ -31,7 +30,6 @@ int main(int argc, char** argv)
 		}
 		printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 		ccv_array_free(seq);
-		*/
 		ccv_matrix_free(image);
 	}
 	ccv_drain_cache();

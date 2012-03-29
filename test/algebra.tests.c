@@ -68,7 +68,7 @@ TEST_CASE("summed area table without padding")
 		ptr += dmt->step;
 	}
 	ccv_dense_matrix_t* b = 0;
-	ccv_sat(dmt, &b, 0, CCV_SAT_NO_PADDING);
+	ccv_sat(dmt, &b, 0, CCV_NO_PADDING);
 	int sat[60] = {  1,  2,  3,  2,  4,  6,  3,  6,  9,  4,  8, 12,
 				     2,  4,  6,  4,  8, 12,  6, 12, 18,  8, 16, 24,
 				     3,  6,  9,  6, 12, 18,  9, 18, 27, 12, 24, 36,
@@ -95,7 +95,7 @@ TEST_CASE("summed area table with padding")
 		ptr += dmt->step;
 	}
 	ccv_dense_matrix_t* b = 0;
-	ccv_sat(dmt, &b, 0, CCV_SAT_PADDING);
+	ccv_sat(dmt, &b, 0, CCV_PADDING_ZERO);
 	int sat[72] = {  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
 					 0,  0,  0,  1,  2,  3,  2,  4,  6,  3,  6,  9,
 				     0,  0,  0,  2,  4,  6,  4,  8, 12,  6, 12, 18,
