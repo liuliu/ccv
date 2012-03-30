@@ -6,8 +6,9 @@ void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char*
 }
 
 
-ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifier_t** _classifier, int count, ccv_dpm_param_t params)
+ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
 {
+	/*
 	int hr = a->rows / params.size.height;
 	int wr = a->cols / params.size.width;
 	double scale = pow(2., 1. / (params.interval + 1.));
@@ -27,28 +28,64 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifi
 	for (i = 0; i < scale_upto + next * 2; i++)
 	{
 		ccv_dense_matrix_t* hog = 0;
-		_ccv_hog(pyr[i], &hog, 0, 9, 8);
+		ccv_hog(pyr[i], &hog, 0, 9, 8);
 		ccv_matrix_free(hog);
 	}
 	if (params.size.height != _classifier[0]->root.size.height * 8 || params.size.width != _classifier[0]->root.size.width * 8)
 		ccv_matrix_free(pyr[0]);
 	 for (i = 1; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i]);
+	*/
 	return 0;
 }
 
-ccv_dpm_root_classifier_t* ccv_load_dpm_root_classifier(const char* directory)
+ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 {
 	FILE* r = fopen(directory, "r");
 	if (r == 0)
 		return 0;
-	ccv_dpm_root_classifier_t* root_classifier = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t));
-	memset(root_classifier, 0, sizeof(ccv_dpm_root_classifier_t));
-	fscanf(r, "%d %d", &root_classifier->root.size.width, &root_classifier->root.size.height);
-	root_classifier->root.w = (float*)ccmalloc(sizeof(float) * root_classifier->root.size.width * root_classifier->root.size.height * 32);
+	int count;
+	fscanf(r, "%d", &count);
+	ccv_dpm_root_classifier_t* root_classifier = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t) * count);
+	memset(root_classifier, 0, sizeof(ccv_dpm_root_classifier_t) * count);
 	int i, j, k;
-	for (i = 0; i < root_classifier->root.size.width * root_classifier->root.size.height * 32; i++)
-		fscanf(r, "%f", &root_classifier->root.w[i]);
+	size_t size = sizeof(ccv_dpm_mixture_model_t) + sizeof(ccv_dpm_root_classifier_t) * count;
+	/* the format is easy, but I tried to copy all data into one memory region */
+	for (i = 0; i < count; i++)
+	{
+		int rows, cols;
+		fscanf(r, "%d %d", &rows, &cols);
+		root_classifier->root.w = ccv_dense_matrix_new(rows, cols, CCV_64F | 32, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 32)), 0);
+		size += ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 32);
+		for (j = 0; j < rows * cols * 32; j++)
+			fscanf(r, "%lf", &root_classifier[i].root.w->data.f64[j]);
+		fscanf(r, "%d", &root_classifier[i].count);
+		ccv_dpm_part_classifier_t* part_classifier = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * root_classifier[i].count);
+		size += sizeof(ccv_dpm_part_classifier_t) * root_classifier[i].count;
+		for (j = 0; j < root_classifier[i].count; j++)
+		{
+			fscanf(r, "%d %d %d", &part_classifier[j].x, &part_classifier[j].y, &part_classifier[j].z);
+			fscanf(r, "%lf %lf %lf %lf", &part_classifier[j].dx, &part_classifier[j].dy, &part_classifier[j].dxx, &part_classifier[j].dyy);
+			fscanf(r, "%d %d", &rows, &cols);
+			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_64F | 32, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 32)), 0);
+			size += ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 32);
+			for (k = 0; k < rows * cols * 32; j++)
+				fscanf(r, "%lf", &part_classifier[j].w->data.f64[j]);
+		}
+	}
+	unsigned char* m = (unsigned char*)ccmalloc(size);
+	ccv_dpm_mixture_model_t* model = (ccv_dpm_mixture_model_t*)m;
+	m += sizeof(ccv_dpm_mixture_model_t);
+	model->count = count;
+	model->root = (ccv_dpm_root_classifier_t*)m;
+	m += sizeof(ccv_dpm_root_classifier_t) * model->count;
+	for (i = 0; i < model->count; i++)
+	{
+		model->root[i].part = (ccv_dpm_part_classifier_t*)m;
+		m += sizeof(ccv_dpm_part_classifier_t) * model->root[i].count;
+	}
+	/* a little trick so that I can have ccv_dense_matrix_t at one region */
+	ccfree(root_classifier);
 	/*
 	for (j = 0; j < root_classifier->root.size.width * root_classifier->root.size.height; j++)
 	{

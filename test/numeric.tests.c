@@ -5,7 +5,7 @@
 /* numeric tests are more like functional tests rather than unit tests:
  * the following tests contain:
  * 1. minimization of the famous rosenbrock function;
- * 2. compute ssd with ccv_convolve, and compare the result with naive method
+ * 2. compute ssd with ccv_filter, and compare the result with naive method
  * 3. compare the result from ccv_distance_transform (linear time) with reference implementation from voc-release4 (O(nlog(n))) */
 
 int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
@@ -84,7 +84,7 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 	ccv_read("../samples/pedestrian.png", &pedestrian, CCV_IO_ANY_FILE);
 	ccv_read("../samples/street.png", &street, CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* result = 0;
-	ccv_convolve(street, pedestrian, &result, CCV_64F, 0);
+	ccv_filter(street, pedestrian, &result, CCV_64F, 0);
 	ccv_dense_matrix_t* square = 0;
 	ccv_multiply(street, street, (ccv_matrix_t**)&square, 0);
 	ccv_dense_matrix_t* sat = 0;

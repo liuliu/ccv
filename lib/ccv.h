@@ -58,8 +58,9 @@ enum {
 	CCV_MATRIX_CSC    = 0x080000,
 };
 
-#define CCV_GARBAGE (0x80000000)
-#define CCV_REUSABLE (0x40000000)
+#define CCV_GARBAGE (0x80000000)   // matrix is in cache (not used by any functions)
+#define CCV_REUSABLE (0x40000000)  // matrix can be recycled
+#define CCV_UNMANAGED (0x20000000) // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
 
 typedef union {
 	unsigned char* u8;
@@ -195,6 +196,7 @@ typedef struct {
 #define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
 /* matrix operations */
+#define ccv_compute_dense_matrix_size(rows, cols, type) (sizeof(ccv_dense_matrix_t) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
 ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
@@ -416,9 +418,9 @@ typedef struct {
 typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
-void ccv_convolve(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern);
-typedef double(*ccv_convolve_kernel_f)(double x, double y, void*);
-void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void* data);
+void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern);
+typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
 
 /* modern numerical algorithms */
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag);
@@ -542,11 +544,9 @@ typedef struct {
 } ccv_comp_t;
 
 typedef struct {
-	float* w;
-	float d[4];
-	int count;
+	ccv_dense_matrix_t* w;
+	double dx, dy, dxx, dyy;
 	int x, y, z;
-	ccv_size_t size;
 } ccv_dpm_part_classifier_t;
 
 typedef struct {
@@ -555,6 +555,11 @@ typedef struct {
 	ccv_dpm_part_classifier_t* part;
 	float beta;
 } ccv_dpm_root_classifier_t;
+
+typedef struct {
+	int count;
+	ccv_dpm_root_classifier_t* root;
+} ccv_dpm_mixture_model_t;
 
 typedef struct {
 	int interval;
@@ -566,8 +571,9 @@ typedef struct {
 typedef struct {
 } ccv_dpm_new_param_t;
 
-ccv_dpm_root_classifier_t* ccv_load_dpm_root_classifier(const char* directory);
-ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_root_classifier_t** classifier, int count, ccv_dpm_param_t params);
+void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
+ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
+ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster

@@ -20,16 +20,15 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 			return mat;
 		}
 	}
-	mat = (ccv_dense_matrix_t*)ccmalloc((data) ? sizeof(ccv_dense_matrix_t) : (sizeof(ccv_dense_matrix_t) + ((cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * rows));
+	mat = (ccv_dense_matrix_t*)(data ? data : ccmalloc(ccv_compute_dense_matrix_size(rows, cols, type)));
 	mat->sig = sig;
 	mat->type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
-	if (data == 0)
-		mat->type |= CCV_REUSABLE;
+	mat->type |= data ? CCV_UNMANAGED : CCV_REUSABLE;
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
 	mat->refcount = 1;
-	mat->data.u8 = (data) ? (unsigned char*)data : (unsigned char*)(mat + 1);
+	mat->data.u8 = (unsigned char*)(mat + 1);
 	return mat;
 }
 
@@ -90,6 +89,7 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 {
 	int type = *(int*)mat;
+	assert(!(type & CCV_UNMANAGED));
 	if (type & CCV_MATRIX_DENSE)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
@@ -124,6 +124,7 @@ void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 void ccv_matrix_free(ccv_matrix_t* mat)
 {
 	int type = *(int*)mat;
+	assert(!(type & CCV_UNMANAGED));
 	if (type & CCV_MATRIX_DENSE)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;

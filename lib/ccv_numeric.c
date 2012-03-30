@@ -473,7 +473,7 @@ static int _ccv_get_optimal_fft_size(int size)
 }
 
 #ifdef HAVE_FFTW3
-static void _ccv_convolve_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
+static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
 	int rows = ccv_min(a->rows + b->rows - 1, _ccv_get_optimal_fft_size(b->rows * 3));
@@ -609,7 +609,7 @@ static void _ccv_convolve_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv
 	fftw_free(fftw_d);
 }
 #else
-static void _ccv_convolve_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
+static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
 	int rows = ccv_min(a->rows + b->rows - 1, _ccv_get_optimal_fft_size(b->rows * 3));
@@ -750,7 +750,7 @@ static void _ccv_convolve_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, 
 }
 #endif
 
-void _ccv_convolve_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
+void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int i, j, y, x, k;
 	int nz = b->rows * b->cols;
@@ -826,9 +826,9 @@ void _ccv_convolve_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 	ccfree(cy);
 }
 
-void ccv_convolve(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
+void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
 {
-	ccv_declare_matrix_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_literal("ccv_convolve"), a->sig, b->sig, 0);
+	ccv_declare_matrix_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_literal("ccv_filter"), a->sig, b->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_matrix_return_if_cached(, dd);
@@ -843,17 +843,17 @@ void ccv_convolve(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix
 	 * of O(nlog(m)) */
 	if ((b->rows * b->cols < (log((double)(b->rows * b->cols)) + 1) * 15) && (a->type & CCV_8U))
 	{
-		_ccv_convolve_direct_8u(a, b, dd, padding_pattern);
+		_ccv_filter_direct_8u(a, b, dd, padding_pattern);
 	} else {
 #ifdef HAVE_FFTW3
-		_ccv_convolve_fftw(a, b, dd, padding_pattern);
+		_ccv_filter_fftw(a, b, dd, padding_pattern);
 #else
-		_ccv_convolve_kissfft(a, b, dd, padding_pattern);
+		_ccv_filter_kissfft(a, b, dd, padding_pattern);
 #endif
 	}
 }
 
-void ccv_convolve_kernel(ccv_dense_matrix_t* x, ccv_convolve_kernel_f func, void* data)
+void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data)
 {
 	int i, j, k, ch = CCV_GET_CHANNEL(x->type);
 	unsigned char* m_ptr = x->data.u8;
