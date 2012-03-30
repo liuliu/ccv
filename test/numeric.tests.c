@@ -210,9 +210,13 @@ TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using di
 	ccv_dense_matrix_t* geometry = 0;
 	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* distance = 0;
-	ccv_distance_transform(geometry, &distance, 0, 1, 1, 0.1, 0.1, CCV_GSEDT);
+	double dx = 1;
+	double dy = 1;
+	double dxx = 0.4;
+	double dyy = 0.4;
+	ccv_distance_transform(geometry, &distance, 0, dx, dy, dxx, dyy, CCV_GSEDT);
 	ccv_dense_matrix_t* ref = 0;
-	daq_distance_transform(geometry, &ref, 1, 1, 0.1, 0.1);
+	daq_distance_transform(geometry, &ref, dx, dy, dxx, dyy);
 	ccv_matrix_free(geometry);
 	REQUIRE_MATRIX_EQ(distance, ref, "distance transform computed by ccv_distance_transform doesn't match the one computed by divide & conquer (voc-release4)");
 	ccv_matrix_free(ref);

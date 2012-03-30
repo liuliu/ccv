@@ -565,7 +565,6 @@ typedef struct {
 	int interval;
 	int min_neighbors;
 	int flags;
-	ccv_size_t size;
 } ccv_dpm_param_t;
 
 typedef struct {

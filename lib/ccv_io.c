@@ -22,7 +22,8 @@ int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 	if (type & CCV_IO_ANY_FILE)
 	{
 		fd = fopen(in, "rb");
-		assert(fd != 0);
+		if (!fd)
+			return CCV_IO_ERROR;
 	}
 	if ((type & 0XFF) == CCV_IO_ANY_FILE)
 	{
@@ -58,7 +59,7 @@ int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 	}
 	if (*x != 0)
 	{
-		(*x)->sig = ccv_matrix_generate_signature((char*) (*x)->data.u8, (*x)->rows * (*x)->step, 0);
+		(*x)->sig = ccv_matrix_generate_signature((char*)(*x)->data.u8, (*x)->rows * (*x)->step, 0);
 		(*x)->type &= ~CCV_REUSABLE;
 	}
 	if (type & CCV_IO_ANY_FILE)
@@ -72,7 +73,8 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 	if (type & CCV_IO_ANY_FILE)
 	{
 		fd = fopen(out, "wb");
-		assert(fd != 0);
+		if (!fd)
+			return CCV_IO_ERROR;
 	}
 	switch (type)
 	{
