@@ -2,7 +2,7 @@ CC = clang
 LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgomp # -lOpenCL -L"/opt/ati-stream-sdk/lib/x86_64"
 CXXFLAGS = -O3 -msse2 -Wall -I"../lib" # -fopenmp -D USE_OPENMP # -D USE_OPENCL
 
-TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtdetect swtcreate convert
+TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtdetect swtcreate dpmdetect convert
 
 all: libccv.a $(TARGETS)
 

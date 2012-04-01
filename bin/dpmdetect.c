@@ -15,21 +15,26 @@ int main(int argc, char** argv)
 	int i;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
-	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-	ccv_dpm_root_classifier_t* root_classifier = ccv_load_dpm_root_classifier(argv[2]);
+	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
+	ccv_dpm_mixture_model_t* model = ccv_load_dpm_mixture_model(argv[2]);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(root_classifier->root.size.width * 8, root_classifier->root.size.height * 8) };
-		ccv_array_t* seq = ccv_dpm_detect_objects(image, &root_classifier, 1, params);
+		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0 };
+		ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, params);
 		elapsed_time = get_current_time() - elapsed_time;
-		for (i = 0; i < seq->rnum; i++)
+		if (seq)
 		{
-			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-			printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			for (i = 0; i < seq->rnum; i++)
+			{
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
+				printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			}
+			printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
+			ccv_array_free(seq);
+		} else {
+			printf("elapsed time %dms\n", elapsed_time);
 		}
-		printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
-		ccv_array_free(seq);
 		ccv_matrix_free(image);
 	}
 	ccv_drain_cache();

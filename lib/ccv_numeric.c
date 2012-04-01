@@ -274,6 +274,7 @@ void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f 
 	ccv_matrix_free(df3);
 }
 
+#ifdef HAVE_FFTW3
 /* optimal FFT size table is adopted from OpenCV */
 static const int _ccv_optimal_fft_size[] = {
 	1, 2, 3, 4, 5, 6, 8, 9, 10, 12, 15, 16, 18, 20, 24, 25, 27, 30, 32, 36, 40, 45, 48, 
@@ -472,7 +473,6 @@ static int _ccv_get_optimal_fft_size(int size)
     return _ccv_optimal_fft_size[b];
 }
 
-#ifdef HAVE_FFTW3
 static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
@@ -612,8 +612,8 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
-	int rows = ccv_min(a->rows + b->rows - 1, _ccv_get_optimal_fft_size(b->rows * 3));
-	int cols = ccv_min(a->cols + b->cols - 1, _ccv_get_optimal_fft_size(b->cols * 3));
+	int rows = ((ccv_min(a->rows + b->rows - 1, kiss_fftr_next_fast_size_real(b->rows * 3)) + 1) >> 1) << 1;
+	int cols = ((ccv_min(a->cols + b->cols - 1, kiss_fftr_next_fast_size_real(b->cols * 3)) + 1) >> 1) << 1;
 	int ndim[] = {rows, cols};
 	kiss_fftndr_cfg p = kiss_fftndr_alloc(ndim, 2, 0, 0, 0);
 	kiss_fftndr_cfg pinv = kiss_fftndr_alloc(ndim, 2, 1, 0, 0);

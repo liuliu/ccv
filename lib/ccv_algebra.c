@@ -149,12 +149,6 @@ double ccv_sum(ccv_matrix_t* mat)
 	return sum;
 }
 
-void ccv_zero(ccv_matrix_t* mat)
-{
-	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
-	memset(dmt->data.u8, 0, dmt->step * dmt->rows);
-}
-
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);

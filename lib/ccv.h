@@ -58,9 +58,11 @@ enum {
 	CCV_MATRIX_CSC    = 0x080000,
 };
 
-#define CCV_GARBAGE (0x80000000)   // matrix is in cache (not used by any functions)
-#define CCV_REUSABLE (0x40000000)  // matrix can be recycled
-#define CCV_UNMANAGED (0x20000000) // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
+enum {
+	CCV_GARBAGE   = 0x80000000, // matrix is in cache (not used by any functions)
+	CCV_REUSABLE  = 0x40000000, // matrix can be recycled
+	CCV_UNMANAGED = 0x20000000, // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
+};
 
 typedef union {
 	unsigned char* u8;
@@ -133,9 +135,10 @@ extern int _ccv_get_sparse_prime[];
 
 typedef void ccv_matrix_t;
 
-/* the explicit cache mechanism */
+/* the explicit cache mechanism ccv_cache.c */
 /* the new cache is radix tree based, but has a strict memory usage upper bound
  * so that you don't have to explicitly call ccv_drain_cache() every time */
+
 typedef void(*ccv_cache_index_free_f)(void*);
 
 typedef union {
@@ -161,6 +164,7 @@ typedef struct {
 } ccv_cache_t;
 
 /* I made it as generic as possible */
+
 void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up);
 void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size);
@@ -195,7 +199,7 @@ typedef struct {
 #define ccv_min(a, b) (((a) < (b)) ? (a) : (b))
 #define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
 
-/* matrix operations */
+/* matrix memory operations ccv_memory.c */
 #define ccv_compute_dense_matrix_size(rows, cols, type) (sizeof(ccv_dense_matrix_t) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
 ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
@@ -204,12 +208,6 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
-/* with the help of the above macros, there is rare that you need to use ccv_matrix_generate_signature
- * directly. Here is how you can use above macro to generate signature from function input parameters:
- * ccv_declare_matrix_signature(sig,
- * ccv_sign_with_format(64, "function_name(%f,%f,%f)", a_parameter, b_parameter, c_parameter),
- * da->sig, 0);
- * However, there is one gotcha, you cannot separate line as above. */
 uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 
 #define CCV_DEFAULT_CACHE_SIZE (1024 * 1024 * 64)
@@ -248,6 +246,7 @@ void ccv_enable_cache(size_t size);
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
 /* basic io */
+
 enum {
 	CCV_IO_GRAY           = 0x100,
 	CCV_IO_COLOR          = 0x300,
@@ -273,7 +272,8 @@ enum {
 int ccv_read(const char* in, ccv_dense_matrix_t** x, int type);
 int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf);
 
-/* basic algebra algorithm */
+/* basic algebra algorithms ccv_algebra.c */
+
 double ccv_trace(ccv_matrix_t* mat);
 
 enum {
@@ -296,8 +296,6 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat);
-void ccv_zero(ccv_matrix_t* mat);
-void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
@@ -309,7 +307,8 @@ enum {
 
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type);
 
-/* matrix build blocks */
+/* matrix build blocks / utility functions ccv_util.c */
+
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
 ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index);
@@ -317,11 +316,16 @@ ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, 
 void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
+
 void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x);
 int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b);
 void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int type, int y, int x, int rows, int cols);
+void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag);
+void ccv_zero(ccv_matrix_t* mat);
+void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
 
-/* basic data structures */
+/* basic data structures ccv_util.c */
 
 typedef struct {
 	int width;
@@ -395,13 +399,15 @@ void ccv_contour_free(ccv_contour_t* contour);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
-/* numerical algorithms */
+/* numerical algorithms ccv_numeric.c */
+
 /* clarification about algebra and numerical algorithms:
  * when using the word "algebra", I assume the operation is well established in Mathematic sense
  * and can be calculated with a straight-forward, finite sequence of operation. The "numerical"
  * in other word, refer to a class of algorithm that can only approximate/or iteratively found the
  * solution. Thus, "invert" would be classified as numerical because of the sense that in some case,
  * it can only be "approximate" (in least-square sense), so to "solve". */
+
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
@@ -423,11 +429,13 @@ typedef double(*ccv_filter_kernel_f)(double x, double y, void*);
 void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data);
 
 /* modern numerical algorithms */
+
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag);
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
 void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
-/* basic computer vision algorithms / or build blocks */
+/* basic computer vision algorithms / or build blocks ccv_basic.c */
+
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
@@ -545,6 +553,7 @@ typedef struct {
 
 typedef struct {
 	ccv_dense_matrix_t* w;
+	ccv_dense_matrix_t* feature;
 	double dx, dy, dxx, dyy;
 	int x, y, z;
 } ccv_dpm_part_classifier_t;

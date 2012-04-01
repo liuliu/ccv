@@ -19,6 +19,80 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
 	return 0;
 }
 
+void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_literal("ccv_visualize"), da->sig, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_8U | CCV_C1, CCV_8U | CCV_C1, sig);
+	ccv_matrix_return_if_cached(, db);
+	ccv_dense_matrix_t* dc = 0;
+	if (CCV_GET_CHANNEL(da->type) > CCV_C1)
+	{
+		ccv_flatten(da, (ccv_matrix_t**)&dc, 0, 0);
+		da = dc;
+	}
+	int i, j;
+	double minval = DBL_MAX, maxval = -DBL_MAX;
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8;
+#define for_block(_, _for_get) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols; j++) \
+		{ \
+			minval = ccv_min(minval, _for_get(aptr, j, 0)); \
+			maxval = ccv_max(maxval, _for_get(aptr, j, 0)); \
+		} \
+		aptr += da->step; \
+	} \
+	aptr = da->data.u8; \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols; j++) \
+			bptr[j] = ccv_clamp((_for_get(aptr, j, 0) - minval) * 255.0 / (maxval - minval), 0, 255); \
+		aptr += da->step; \
+		bptr += db->step; \
+	}
+	ccv_matrix_getter(da->type, for_block);
+#undef for_block
+	if (dc != 0)
+		ccv_matrix_free(dc);
+}
+
+void ccv_zero(ccv_matrix_t* mat)
+{
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	memset(dmt->data.u8, 0, dmt->step * dmt->rows);
+}
+
+void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(64, "ccv_flatten(%d)", flag), da->sig, 0);
+	int no_8u_type = (da->type & CCV_8U) ? CCV_32S : da->type;
+	type = (type == 0) ? CCV_GET_DATA_TYPE(no_8u_type) | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, type, sig);
+	ccv_matrix_return_if_cached(, db);
+	int i, j, k, ch = CCV_GET_CHANNEL(da->type);
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8;
+#define for_block(_for_get, _for_type, _for_set) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols; j++) \
+		{ \
+			_for_type sum = 0; \
+			for (k = 0; k < ch; k++) \
+				sum += _for_get(aptr, j * ch + k, 0); \
+			_for_set(bptr, j, sum, 0); \
+		} \
+		aptr += da->step; \
+		bptr += db->step; \
+	}
+	ccv_matrix_getter(da->type, ccv_matrix_typeof_setter, db->type, for_block);
+#undef for_block
+}
+
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
