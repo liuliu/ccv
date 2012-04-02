@@ -2,6 +2,7 @@
 *.~
 *.swp
 tags
+gh-pages
 test/*.tests
 test/*_test
 test/*.jpg
