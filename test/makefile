@@ -1,13 +1,12 @@
 CC = clang
-LDFLAGS = -L"../lib" -pthread -static -lccv -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgslcblas
-# CFLAGS = -Wall -I"../lib"
+LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm
 CFLAGS = -O3 -msse2 -Wall -I"../lib"
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests
 
-all: $(TARGETS)
-
-test:
+test: all
 	for test in $(TARGETS) ; do ./"$$test" ; done
+
+all: $(TARGETS)
 
 clean:
 	rm *.o ../lib/*.o ../lib/3rdparty/*.o ../lib/libccv.a $(TARGETS)

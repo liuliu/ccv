@@ -15,7 +15,7 @@ uint64_t uniqid()
 
 #define N (250000)
 
-TEST_CASE("cache test")
+TEST_CASE("random cache put/delete/get")
 {
 	ccv_cache_t cache;
 	ccv_cache_init(&cache, ccfree, N);
@@ -68,7 +68,7 @@ TEST_CASE("cache test")
 	ccv_cache_close(&cache);
 }
 
-TEST_CASE("garbage collector test")
+TEST_CASE("garbage collector 95\% hit rate")
 {
 	int i;
 	// deliberately let only cache size fits 90% of data

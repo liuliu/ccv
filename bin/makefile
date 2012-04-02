@@ -1,6 +1,6 @@
 CC = clang
-LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgomp # -lOpenCL -L"/opt/ati-stream-sdk/lib/x86_64"
-CXXFLAGS = -O3 -msse2 -Wall -I"../lib" # -fopenmp -D USE_OPENMP # -D USE_OPENCL
+LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgomp
+CFLAGS = -O3 -msse2 -Wall -I"../lib"
 
 TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtdetect swtcreate dpmdetect convert
 
@@ -16,4 +16,4 @@ libccv.a:
 	${MAKE} -C ../lib
 
 %.o: %.c ../lib/ccv.h
-	$(CC) $< -o $@ -c $(CXXFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)

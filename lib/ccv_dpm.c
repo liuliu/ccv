@@ -7,7 +7,7 @@ void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char*
 
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
 {
-	int c, i, j, k;
+	int c, i, j, k, x, y;
 	ccv_size_t size = ccv_size(a->cols, a->rows);
 	for (c = 0; c < count; c++)
 	{
@@ -45,8 +45,10 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	for (c = 0; c < count; c++)
 	{
 		ccv_dpm_mixture_model_t* model = _model[c];
-		scale_upto = 1;
+		double scale_x = 1.0;
+		double scale_y = 1.0;
 		for (i = next; i < scale_upto + next; i++)
+		{
 			for (j = 0; j < model->count; j++)
 			{
 				ccv_dpm_root_classifier_t* root = model->root + j;
@@ -55,18 +57,62 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				root->root.feature = 0;
 				ccv_flatten(response, (ccv_matrix_t**)&root->root.feature, 0, 0);
 				ccv_matrix_free(response);
-				response = 0;
-				ccv_slice(root->root.feature, (ccv_matrix_t**)&response, 0, 7, 2, root->root.feature->rows - 14, root->root.feature->cols - 4);
-				ccv_matrix_free(root->root.feature);
-				root->root.feature = 0;
-				ccv_visualize(response, &root->root.feature, 0);
-				ccv_write(root->root.feature, "root.png", 0, CCV_IO_PNG_FILE, 0);
-				ccv_matrix_free(response);
+				int rwh = root->root.w->rows / 2;
+				int rww = root->root.w->cols / 2;
 				for (k = 0; k < root->count; k++)
 				{
+					ccv_dpm_part_classifier_t* part = root->part + k;
+					ccv_dense_matrix_t* response = 0;
+					ccv_filter(pyr[i - next], part->w, &response, 0, CCV_NO_PADDING);
+					ccv_dense_matrix_t* feature = 0;
+					ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
+					ccv_matrix_free(response);
+					part->feature = 0;
+					ccv_distance_transform(feature, &part->feature, 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATE | CCV_GSEDT);
+					ccv_matrix_free(feature);
+					int offy = part->y + part->w->rows / 2 - rwh * 2;
+					int miny = part->w->rows / 2, maxy = part->feature->rows - part->w->rows / 2;
+					int offx = part->x + part->w->cols / 2 - rww * 2;
+					int minx = part->w->cols / 2, maxx = part->feature->cols - part->w->cols / 2;
+					double* f_ptr = root->root.feature->data.f64 + root->root.feature->cols * rwh;
+					for (y = rwh; y < root->root.feature->rows - rwh; y++)
+					{
+						int iy = ccv_clamp(y * 2 + offy, miny, maxy);
+						for (x = rww; x < root->root.feature->cols - rww; x++)
+						{
+							int ix = ccv_clamp(x * 2 + offx, minx, maxx);
+							f_ptr[x] -= part->feature->data.f64[iy * part->feature->cols + ix];
+						}
+						f_ptr += root->root.feature->cols;
+					}
 				}
+				double* f_ptr = root->root.feature->data.f64 + root->root.feature->cols * rwh;
+				for (y = rwh; y < root->root.feature->rows - rwh; y++)
+				{
+					for (x = rww; x < root->root.feature->cols - rww; x++)
+						if (f_ptr[x] + root->beta > params.threshold)
+						{
+							printf("%lf at %d %d\n", f_ptr[x], (int)(x * 8 * 2 * scale_x), (int)(y * 8 * 2 * scale_y));
+						}
+					f_ptr += root->root.feature->cols;
+				}
+				/*
+				response = 0;
+				ccv_slice(root->root.feature, (ccv_matrix_t**)&response, 0, 7, 2, root->root.feature->rows - 14, root->root.feature->cols - 4);
+				ccv_dense_matrix_t* visual = 0;
+				ccv_visualize(response, &visual, 0);
+				ccv_matrix_free(response);
+				ccv_write(visual, "root.png", 0, CCV_IO_PNG_FILE, 0);
+				ccv_matrix_free(visual);
+				*/
+				printf("finish level %d\n", i - next);
+				for (k = 0; k < root->count; k++)
+					ccv_matrix_free(root->part[k].feature);
 				ccv_matrix_free(root->root.feature);
 			}
+			scale_x *= scale;
+			scale_y *= scale;
+		}
 	}
 	for (i = 0; i < scale_upto + next; i++)
 		ccv_matrix_free(pyr[i]);
@@ -103,6 +149,7 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 	{
 		int rows, cols;
 		fscanf(r, "%d %d", &rows, &cols);
+		fscanf(r, "%lf", &root_classifier[i].beta);
 		root_classifier[i].root.w = ccv_dense_matrix_new(rows, cols, CCV_64F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31)), 0);
 		size += ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31);
 		for (j = 0; j < rows * cols * 31; j++)

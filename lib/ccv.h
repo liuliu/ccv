@@ -245,7 +245,7 @@ void ccv_enable_cache(size_t size);
 	case CCV_64F: ((double*)(ptr))[(i)] = (double)value; break; \
 	default: ((unsigned char*)(ptr))[(i)] = ccv_clamp((int)(value) >> factor, 0, 255); }
 
-/* basic io */
+/* basic io ccv_io.c */
 
 enum {
 	CCV_IO_GRAY           = 0x100,
@@ -282,6 +282,7 @@ enum {
 	CCV_GSEDT   = 0x04, // Generalized Squared Euclidean Distance Transform:
 						// a * dx + b * dy + c * dx^2 + d * dy^2, when combined with CCV_L1_NORM:
 						// a * |dx| + b * |dy| + c * dx^2 + d * dy^2
+	CCV_NEGATE  = 0x08, // negate distance computation (from positive (min) to negative (max))
 };
 
 enum {
@@ -562,7 +563,7 @@ typedef struct {
 	int count;
 	ccv_dpm_part_classifier_t root;
 	ccv_dpm_part_classifier_t* part;
-	float beta;
+	double beta;
 } ccv_dpm_root_classifier_t;
 
 typedef struct {
@@ -574,6 +575,7 @@ typedef struct {
 	int interval;
 	int min_neighbors;
 	int flags;
+	double threshold;
 } ccv_dpm_param_t;
 
 typedef struct {
