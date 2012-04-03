@@ -5,6 +5,35 @@ void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char*
 {
 }
 
+static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	int distance = (int)(r1->rect.width * 0.25 + 0.5);
+
+	return r2->rect.x <= r1->rect.x + distance &&
+		   r2->rect.x >= r1->rect.x - distance &&
+		   r2->rect.y <= r1->rect.y + distance &&
+		   r2->rect.y >= r1->rect.y - distance &&
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+}
+
+static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	int distance = (int)(r1->rect.width * 0.25 + 0.5);
+
+	return r2->id == r1->id &&
+		   r2->rect.x <= r1->rect.x + distance &&
+		   r2->rect.x >= r1->rect.x - distance &&
+		   r2->rect.y <= r1->rect.y + distance &&
+		   r2->rect.y >= r1->rect.y - distance &&
+		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+}
+
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
 {
 	int c, i, j, k, x, y;
@@ -25,29 +54,40 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale)) - next;
 	if (scale_upto < 1) // image is too small to be interesting
 		return 0;
-	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next) * sizeof(ccv_dense_matrix_t*));
-	memset(pyr, 0, (scale_upto + next) * sizeof(ccv_dense_matrix_t*));
-	pyr[0] = a;
+	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
+	memset(pyr, 0, (scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
+	pyr[next] = a;
 	for (i = 1; i <= params.interval; i++)
-		ccv_resample(pyr[0], &pyr[i], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
+		ccv_resample(pyr[next], &pyr[next + i], 0, (int)(pyr[next]->rows / pow(scale, i)), (int)(pyr[next]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next; i++)
-		ccv_sample_down(pyr[i - next], &pyr[i], 0, 0, 0);
+		ccv_sample_down(pyr[i], &pyr[i + next], 0, 0, 0);
 	ccv_dense_matrix_t* hog = 0;
-	ccv_hog(pyr[0], &hog, 0, 9, 8);
-	pyr[0] = hog;
-	for (i = 1; i < scale_upto + next; i++)
+	ccv_hog(pyr[next], &hog, 0, 9, 8);
+	pyr[next] = hog;
+	/* a more efficient way to generate up-scaled hog (using smaller size) */
+	for (i = 0; i < next; i++)
+	{
+		hog = 0;
+		ccv_hog(pyr[i + next], &hog, 0, 9, 4 /* this is */);
+		pyr[i] = hog;
+	}
+	for (i = next + 1; i < scale_upto + next * 2; i++)
 	{
 		hog = 0;
 		ccv_hog(pyr[i], &hog, 0, 9, 8);
 		ccv_matrix_free(pyr[i]);
 		pyr[i] = hog;
 	}
+	ccv_array_t* idx_seq;
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_comp_t));
 	for (c = 0; c < count; c++)
 	{
 		ccv_dpm_mixture_model_t* model = _model[c];
 		double scale_x = 1.0;
 		double scale_y = 1.0;
-		for (i = next; i < scale_upto + next; i++)
+		for (i = next; i < scale_upto + next * 2; i++)
 		{
 			for (j = 0; j < model->count; j++)
 			{
@@ -92,20 +132,15 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					for (x = rww; x < root->root.feature->cols - rww; x++)
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
-							printf("%lf at %d %d\n", f_ptr[x], (int)(x * 8 * 2 * scale_x), (int)(y * 8 * 2 * scale_y));
+							ccv_comp_t comp;
+							comp.rect = ccv_rect((int)((x - rww) * 8 * scale_x + 0.5), (int)((y - rwh) * 8 * scale_y + 0.5), (int)(root->root.w->cols * 8 * scale_x + 0.5), (int)(root->root.w->rows * 8 * scale_y + 0.5));
+							comp.id = c;
+							comp.neighbors = 1;
+							comp.confidence = f_ptr[x] + root->beta;
+							ccv_array_push(seq, &comp);
 						}
 					f_ptr += root->root.feature->cols;
 				}
-				/*
-				response = 0;
-				ccv_slice(root->root.feature, (ccv_matrix_t**)&response, 0, 7, 2, root->root.feature->rows - 14, root->root.feature->cols - 4);
-				ccv_dense_matrix_t* visual = 0;
-				ccv_visualize(response, &visual, 0);
-				ccv_matrix_free(response);
-				ccv_write(visual, "root.png", 0, CCV_IO_PNG_FILE, 0);
-				ccv_matrix_free(visual);
-				*/
-				printf("finish level %d\n", i - next);
 				for (k = 0; k < root->count; k++)
 					ccv_matrix_free(root->part[k].feature);
 				ccv_matrix_free(root->root.feature);
@@ -113,10 +148,135 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			scale_x *= scale;
 			scale_y *= scale;
 		}
+		/* the following code from OpenCV's haar feature implementation */
+		if(params.min_neighbors == 0)
+		{
+			for (i = 0; i < seq->rnum; i++)
+			{
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
+				ccv_array_push(result_seq, comp);
+			}
+		} else {
+			idx_seq = 0;
+			ccv_array_clear(seq2);
+			// group retrieved rectangles in order to filter out noise
+			int ncomp = ccv_array_group(seq, &idx_seq, _ccv_is_equal_same_class, 0);
+			ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
+			memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
+
+			// count number of neighbors
+			for(i = 0; i < seq->rnum; i++)
+			{
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq, i);
+				int idx = *(int*)ccv_array_get(idx_seq, i);
+
+				if (comps[idx].neighbors == 0)
+					comps[idx].confidence = r1.confidence;
+
+				++comps[idx].neighbors;
+
+				comps[idx].rect.x += r1.rect.x;
+				comps[idx].rect.y += r1.rect.y;
+				comps[idx].rect.width += r1.rect.width;
+				comps[idx].rect.height += r1.rect.height;
+				comps[idx].id = r1.id;
+				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
+			}
+
+			// calculate average bounding box
+			for(i = 0; i < ncomp; i++)
+			{
+				int n = comps[i].neighbors;
+				if(n >= params.min_neighbors)
+				{
+					ccv_comp_t comp;
+					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
+					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
+					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
+					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
+					comp.neighbors = comps[i].neighbors;
+					comp.id = comps[i].id;
+					comp.confidence = comps[i].confidence;
+					ccv_array_push(seq2, &comp);
+				}
+			}
+
+			// filter out small face rectangles inside large face rectangles
+			for(i = 0; i < seq2->rnum; i++)
+			{
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
+				int flag = 1;
+
+				for(j = 0; j < seq2->rnum; j++)
+				{
+					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
+					int distance = (int)(r2.rect.width * 0.25 + 0.5);
+
+					if(i != j &&
+					   r1.id == r2.id &&
+					   r1.rect.x >= r2.rect.x - distance &&
+					   r1.rect.y >= r2.rect.y - distance &&
+					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+					   (r2.neighbors > ccv_max(3, r1.neighbors) || r1.neighbors < 3))
+					{
+						flag = 0;
+						break;
+					}
+				}
+
+				if(flag)
+					ccv_array_push(result_seq, &r1);
+			}
+			ccv_array_free(idx_seq);
+			ccfree(comps);
+		}
 	}
-	for (i = 0; i < scale_upto + next; i++)
+
+	for (i = 0; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i]);
-	return 0;
+
+	ccv_array_free(seq);
+	ccv_array_free(seq2);
+
+	ccv_array_t* result_seq2;
+	/* the following code from OpenCV's haar feature implementation */
+	if (params.flags & CCV_DPM_NO_NESTED)
+	{
+		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
+		idx_seq = 0;
+		// group retrieved rectangles in order to filter out noise
+		int ncomp = ccv_array_group(result_seq, &idx_seq, _ccv_is_equal, 0);
+		ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
+		memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
+
+		// count number of neighbors
+		for(i = 0; i < result_seq->rnum; i++)
+		{
+			ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(result_seq, i);
+			int idx = *(int*)ccv_array_get(idx_seq, i);
+
+			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
+			{
+				comps[idx].confidence = r1.confidence;
+				comps[idx].neighbors = 1;
+				comps[idx].rect = r1.rect;
+				comps[idx].id = r1.id;
+			}
+		}
+
+		// calculate average bounding box
+		for(i = 0; i < ncomp; i++)
+			if(comps[i].neighbors)
+				ccv_array_push(result_seq2, &comps[i]);
+
+		ccv_array_free(result_seq);
+		ccfree(comps);
+	} else {
+		result_seq2 = result_seq;
+	}
+
+	return result_seq2;
 }
 
 /* rewind format from matlab

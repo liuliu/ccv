@@ -13,14 +13,14 @@ int main(int argc, char** argv)
 {
 	assert(argc >= 3);
 	int i;
-	// ccv_enable_default_cache();
+	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
 	ccv_dpm_mixture_model_t* model = ccv_load_dpm_mixture_model(argv[2]);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_dpm_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .threshold = -0.5 };
+		ccv_dpm_param_t params = { .interval = 8, .min_neighbors = 2, .flags = 0, .threshold = -1.0 };
 		ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (seq)
@@ -37,6 +37,6 @@ int main(int argc, char** argv)
 		}
 		ccv_matrix_free(image);
 	}
-	// ccv_drain_cache();
+	ccv_drain_cache();
 	return 0;
 }

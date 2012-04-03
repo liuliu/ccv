@@ -1363,7 +1363,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 
 	ccv_array_t* result_seq2;
 	/* the following code from OpenCV's haar feature implementation */
-	if (params.flags & CCV_SGF_NO_NESTED)
+	if (params.flags & CCV_BBF_NO_NESTED)
 	{
 		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
 		idx_seq = 0;
