@@ -12,7 +12,7 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	assert(argc >= 3);
-	int i;
+	int i, j;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
@@ -27,8 +27,10 @@ int main(int argc, char** argv)
 		{
 			for (i = 0; i < seq->rnum; i++)
 			{
-				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-				printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+				ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
+				printf("%d %d %d %d %f %d\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence, comp->pnum);
+				for (j = 0; j < comp->pnum; j++)
+				printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
 			}
 			printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 			ccv_array_free(seq);

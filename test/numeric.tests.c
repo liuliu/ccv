@@ -242,7 +242,7 @@ TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using di
 	double dy = 1;
 	double dxx = 0.4;
 	double dyy = 0.4;
-	ccv_distance_transform(geometry, &distance, 0, dx, dy, dxx, dyy, CCV_GSEDT);
+	ccv_distance_transform(geometry, &distance, 0, 0, 0, 0, 0, dx, dy, dxx, dyy, CCV_GSEDT);
 	ccv_dense_matrix_t* ref = 0;
 	daq_min_distance_transform(geometry, &ref, dx, dy, dxx, dyy);
 	ccv_matrix_free(geometry);
@@ -313,7 +313,7 @@ TEST_CASE("ccv_distance_transform to compute max distance")
 	double dy = 0;
 	double dxx = 1;
 	double dyy = 1;
-	ccv_distance_transform(geometry, &distance, 0, dx, dy, dxx, dyy, CCV_NEGATE | CCV_GSEDT);
+	ccv_distance_transform(geometry, &distance, 0, 0, 0, 0, 0, dx, dy, dxx, dyy, CCV_NEGATE | CCV_GSEDT);
 	ccv_dense_matrix_t* ref = 0;
 	daq_max_distance_transform(geometry, &ref, dx, dy, dxx, dyy);
 	ccv_matrix_free(geometry);

@@ -7,8 +7,8 @@ void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char*
 
 static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
-	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
-	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	const ccv_root_comp_t* r1 = (const ccv_root_comp_t*)_r1;
+	const ccv_root_comp_t* r2 = (const ccv_root_comp_t*)_r2;
 	int distance = (int)(r1->rect.width * 0.25 + 0.5);
 
 	return r2->rect.x <= r1->rect.x + distance &&
@@ -21,8 +21,8 @@ static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 
 static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
 {
-	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
-	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	const ccv_root_comp_t* r1 = (const ccv_root_comp_t*)_r1;
+	const ccv_root_comp_t* r2 = (const ccv_root_comp_t*)_r2;
 	int distance = (int)(r1->rect.width * 0.25 + 0.5);
 
 	return r2->id == r1->id &&
@@ -62,8 +62,6 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	for (i = next; i < scale_upto + next; i++)
 		ccv_sample_down(pyr[i], &pyr[i + next], 0, 0, 0);
 	ccv_dense_matrix_t* hog = 0;
-	ccv_hog(pyr[next], &hog, 0, 9, 8);
-	pyr[next] = hog;
 	/* a more efficient way to generate up-scaled hog (using smaller size) */
 	for (i = 0; i < next; i++)
 	{
@@ -71,6 +69,9 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 		ccv_hog(pyr[i + next], &hog, 0, 9, 4 /* this is */);
 		pyr[i] = hog;
 	}
+	hog = 0;
+	ccv_hog(pyr[next], &hog, 0, 9, 8);
+	pyr[next] = hog;
 	for (i = next + 1; i < scale_upto + next * 2; i++)
 	{
 		hog = 0;
@@ -79,9 +80,9 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 		pyr[i] = hog;
 	}
 	ccv_array_t* idx_seq;
-	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t));
-	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
-	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_root_comp_t));
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t));
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_root_comp_t));
 	for (c = 0; c < count; c++)
 	{
 		ccv_dpm_mixture_model_t* model = _model[c];
@@ -94,11 +95,14 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_dpm_root_classifier_t* root = model->root + j;
 				ccv_dense_matrix_t* response = 0;
 				ccv_filter(pyr[i], root->root.w, &response, 0, CCV_NO_PADDING);
-				root->root.feature = 0;
-				ccv_flatten(response, (ccv_matrix_t**)&root->root.feature, 0, 0);
+				ccv_dense_matrix_t* root_feature = 0;
+				ccv_flatten(response, (ccv_matrix_t**)&root_feature, 0, 0);
 				ccv_matrix_free(response);
 				int rwh = root->root.w->rows / 2;
 				int rww = root->root.w->cols / 2;
+				ccv_dense_matrix_t* part_feature[CCV_DPM_PART_MAX];
+				ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
+				ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
 				for (k = 0; k < root->count; k++)
 				{
 					ccv_dpm_part_classifier_t* part = root->part + k;
@@ -107,43 +111,63 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					ccv_dense_matrix_t* feature = 0;
 					ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
 					ccv_matrix_free(response);
-					part->feature = 0;
-					ccv_distance_transform(feature, &part->feature, 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATE | CCV_GSEDT);
+					part_feature[k] = dx[k] = dy[k] = 0;
+					ccv_distance_transform(feature, &part_feature[k], 0, &dx[k], 0, &dy[k], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATE | CCV_GSEDT);
 					ccv_matrix_free(feature);
 					int offy = part->y + part->w->rows / 2 - rwh * 2;
-					int miny = part->w->rows / 2, maxy = part->feature->rows - part->w->rows / 2;
+					int miny = part->w->rows / 2, maxy = part_feature[k]->rows - part->w->rows / 2;
 					int offx = part->x + part->w->cols / 2 - rww * 2;
-					int minx = part->w->cols / 2, maxx = part->feature->cols - part->w->cols / 2;
-					double* f_ptr = root->root.feature->data.f64 + root->root.feature->cols * rwh;
-					for (y = rwh; y < root->root.feature->rows - rwh; y++)
+					int minx = part->w->cols / 2, maxx = part_feature[k]->cols - part->w->cols / 2;
+					double* f_ptr = (double*)ccv_get_dense_matrix_cell_by(CCV_64F | CCV_C1, root_feature, rwh, 0, 0);
+					for (y = rwh; y < root_feature->rows - rwh; y++)
 					{
 						int iy = ccv_clamp(y * 2 + offy, miny, maxy);
-						for (x = rww; x < root->root.feature->cols - rww; x++)
+						for (x = rww; x < root_feature->cols - rww; x++)
 						{
 							int ix = ccv_clamp(x * 2 + offx, minx, maxx);
-							f_ptr[x] -= part->feature->data.f64[iy * part->feature->cols + ix];
+							f_ptr[x] -= ccv_get_dense_matrix_cell_value_by(CCV_64F | CCV_C1, part_feature[k], iy, ix, 0);
 						}
-						f_ptr += root->root.feature->cols;
+						f_ptr += root_feature->cols;
 					}
 				}
-				double* f_ptr = root->root.feature->data.f64 + root->root.feature->cols * rwh;
-				for (y = rwh; y < root->root.feature->rows - rwh; y++)
+				double* f_ptr = (double*)ccv_get_dense_matrix_cell_by(CCV_64F | CCV_C1, root_feature, rwh, 0, 0);
+				for (y = rwh; y < root_feature->rows - rwh; y++)
 				{
-					for (x = rww; x < root->root.feature->cols - rww; x++)
+					for (x = rww; x < root_feature->cols - rww; x++)
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
-							ccv_comp_t comp;
+							ccv_root_comp_t comp;
 							comp.rect = ccv_rect((int)((x - rww) * 8 * scale_x + 0.5), (int)((y - rwh) * 8 * scale_y + 0.5), (int)(root->root.w->cols * 8 * scale_x + 0.5), (int)(root->root.w->rows * 8 * scale_y + 0.5));
 							comp.id = c;
 							comp.neighbors = 1;
 							comp.confidence = f_ptr[x] + root->beta;
+							comp.pnum = root->count;
+							for (k = 0; k < root->count; k++)
+							{
+								ccv_dpm_part_classifier_t* part = root->part + k;
+								comp.part[k].id = c;
+								comp.part[k].neighbors = 1;
+								int pww = part->w->cols / 2, pwh = part->w->rows / 2;
+								int offy = part->y + pwh - rwh * 2;
+								int offx = part->x + pww - rww * 2;
+								int iy = ccv_clamp(y * 2 + offy, pwh, part_feature[k]->rows - pwh);
+								int ix = ccv_clamp(x * 2 + offx, pww, part_feature[k]->cols - pww);
+								int ry = iy - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
+								int rx = ix - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
+								comp.part[k].rect = ccv_rect((int)((rx - pww) * 4 * scale_x + 0.5), (int)((ry - pwh) * 4 * scale_y + 0.5), (int)(part->w->cols * 4 * scale_x + 0.5), (int)(part->w->rows * 4 * scale_y + 0.5));
+								comp.part[k].confidence = ccv_get_dense_matrix_cell_value_by(CCV_64F | CCV_C1, part_feature[k], iy, ix, 0);
+							}
 							ccv_array_push(seq, &comp);
 						}
-					f_ptr += root->root.feature->cols;
+					f_ptr += root_feature->cols;
 				}
 				for (k = 0; k < root->count; k++)
-					ccv_matrix_free(root->part[k].feature);
-				ccv_matrix_free(root->root.feature);
+				{
+					ccv_matrix_free(part_feature[k]);
+					ccv_matrix_free(dx[k]);
+					ccv_matrix_free(dy[k]);
+				}
+				ccv_matrix_free(root_feature);
 			}
 			scale_x *= scale;
 			scale_y *= scale;
@@ -153,7 +177,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 		{
 			for (i = 0; i < seq->rnum; i++)
 			{
-				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
+				ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
 				ccv_array_push(result_seq, comp);
 			}
 		} else {
@@ -161,13 +185,13 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
 			int ncomp = ccv_array_group(seq, &idx_seq, _ccv_is_equal_same_class, 0);
-			ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
-			memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
+			ccv_root_comp_t* comps = (ccv_root_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_root_comp_t));
+			memset(comps, 0, (ncomp + 1) * sizeof(ccv_root_comp_t));
 
 			// count number of neighbors
 			for(i = 0; i < seq->rnum; i++)
 			{
-				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq, i);
+				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
 				if (comps[idx].neighbors == 0)
@@ -180,7 +204,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				comps[idx].rect.width += r1.rect.width;
 				comps[idx].rect.height += r1.rect.height;
 				comps[idx].id = r1.id;
-				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
+				comps[idx].pnum = r1.pnum;
+				if (r1.confidence > comps[idx].confidence)
+				{
+					comps[idx].confidence = r1.confidence;
+					memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
+				}
 			}
 
 			// calculate average bounding box
@@ -189,7 +218,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				int n = comps[i].neighbors;
 				if(n >= params.min_neighbors)
 				{
-					ccv_comp_t comp;
+					ccv_root_comp_t comp;
 					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
 					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
 					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
@@ -197,6 +226,8 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					comp.neighbors = comps[i].neighbors;
 					comp.id = comps[i].id;
 					comp.confidence = comps[i].confidence;
+					comp.pnum = comps[i].pnum;
+					memcpy(comp.part, comps[i].part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 					ccv_array_push(seq2, &comp);
 				}
 			}
@@ -204,12 +235,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			// filter out small face rectangles inside large face rectangles
 			for(i = 0; i < seq2->rnum; i++)
 			{
-				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
+				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, i);
 				int flag = 1;
 
 				for(j = 0; j < seq2->rnum; j++)
 				{
-					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
+					ccv_root_comp_t r2 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
 					int distance = (int)(r2.rect.width * 0.25 + 0.5);
 
 					if(i != j &&
@@ -243,17 +274,17 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	/* the following code from OpenCV's haar feature implementation */
 	if (params.flags & CCV_DPM_NO_NESTED)
 	{
-		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
+		result_seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t));
 		idx_seq = 0;
 		// group retrieved rectangles in order to filter out noise
 		int ncomp = ccv_array_group(result_seq, &idx_seq, _ccv_is_equal, 0);
-		ccv_comp_t* comps = (ccv_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_comp_t));
-		memset(comps, 0, (ncomp + 1) * sizeof(ccv_comp_t));
+		ccv_root_comp_t* comps = (ccv_root_comp_t*)ccmalloc((ncomp + 1) * sizeof(ccv_root_comp_t));
+		memset(comps, 0, (ncomp + 1) * sizeof(ccv_root_comp_t));
 
 		// count number of neighbors
 		for(i = 0; i < result_seq->rnum; i++)
 		{
-			ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(result_seq, i);
+			ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(result_seq, i);
 			int idx = *(int*)ccv_array_get(idx_seq, i);
 
 			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
@@ -262,6 +293,8 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				comps[idx].neighbors = 1;
 				comps[idx].rect = r1.rect;
 				comps[idx].id = r1.id;
+				comps[idx].pnum = r1.pnum;
+				memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 			}
 		}
 

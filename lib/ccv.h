@@ -224,12 +224,28 @@ void ccv_enable_cache(size_t size);
 	((((x)->type) & CCV_64F) ? (void*)((x)->data.f64 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)) : \
 	(void*)((x)->data.u8 + (row) * (x)->step + (col) * CCV_GET_CHANNEL((x)->type) + (ch))))))
 
+#define ccv_get_dense_matrix_cell_by(type, x, row, col, ch) \
+	(((type) & CCV_32S) ? (void*)((x)->data.i32 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
+	(((type) & CCV_32F) ? (void*)((x)->data.f32+ ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
+	(((type) & CCV_64S) ? (void*)((x)->data.i64+ ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
+	(((type) & CCV_64F) ? (void*)((x)->data.f64 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
+	(void*)((x)->data.u8 + (row) * (x)->step + (col) * CCV_GET_CHANNEL(type) + (ch))))))
+
 #define ccv_get_dense_matrix_cell_value(x, row, col, ch) \
 	((((x)->type) & CCV_32S) ? (x)->data.i32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
 	((((x)->type) & CCV_32F) ? (x)->data.f32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
 	((((x)->type) & CCV_64S) ? (x)->data.i64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
 	((((x)->type) & CCV_64F) ? (x)->data.f64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
 	(x)->data.u8[(row) * (x)->step + (col) * CCV_GET_CHANNEL((x)->type) + (ch)]))))
+
+/* this is for simplicity in code, I am sick of x->data.f64[i * x->cols + j] stuff, this is clearer, and compiler
+ * can optimize away the if structures */
+#define ccv_get_dense_matrix_cell_value_by(type, x, row, col, ch) \
+	(((type) & CCV_32S) ? (x)->data.i32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
+	(((type) & CCV_32F) ? (x)->data.f32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
+	(((type) & CCV_64S) ? (x)->data.i64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
+	(((type) & CCV_64F) ? (x)->data.f64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
+	(x)->data.u8[(row) * (x)->step + (col) * CCV_GET_CHANNEL(type) + (ch)]))))
 
 #define ccv_get_value(type, ptr, i) \
 	(((type) & CCV_32S) ? ((int*)(ptr))[(i)] : \
@@ -431,7 +447,7 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 
 /* modern numerical algorithms */
 
-void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double dx, double dy, double dxx, double dyy, int flag);
+void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag);
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
 void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
@@ -545,6 +561,8 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
  * ~ DPM is more generalized, can detect people, car, bike (larger inner-class difference) etc.
  * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
 
+#define CCV_DPM_PART_MAX (10)
+
 typedef struct {
 	ccv_rect_t rect;
 	int neighbors;
@@ -553,8 +571,16 @@ typedef struct {
 } ccv_comp_t;
 
 typedef struct {
+	ccv_rect_t rect;
+	int neighbors;
+	int id;
+	float confidence;
+	int pnum;
+	ccv_comp_t part[CCV_DPM_PART_MAX];
+} ccv_root_comp_t;
+
+typedef struct {
 	ccv_dense_matrix_t* w;
-	ccv_dense_matrix_t* feature;
 	double dx, dy, dxx, dyy;
 	int x, y, z;
 } ccv_dpm_part_classifier_t;
