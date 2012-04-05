@@ -1,5 +1,5 @@
 CC = clang
-LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm # -lgomp
+LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3f -lfftw3 -lz -lgsl -lblas -lm # -lgomp
 CFLAGS = -O3 -msse2 -Wall -I"../lib"
 
 TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtdetect swtcreate dpmdetect convert

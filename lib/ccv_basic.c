@@ -259,7 +259,7 @@ static void _ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 		else
 			a = (float)(yf >= 0 ? CCV_PI * 0.5 : CCV_PI * 1.5) - xf * yf / (y2 + 0.28f * x2 + (float)1e-6);
 		angle[i] = a * scale;
-		mag[i] = sqrt(x2 + y2);
+		mag[i] = sqrtf(x2 + y2);
 	}
 }
 
@@ -283,11 +283,12 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size)
 {
-	assert(a->rows >= size && a->cols >= size);
+	assert(a->rows >= size && a->cols >= size && (4 + sbin * 3) <= CCV_MAX_CHANNEL);
 	int rows = a->rows / size;
 	int cols = a->cols / size;
+	b_type = (CCV_GET_DATA_TYPE(b_type) == CCV_64F) ? CCV_64F | (4 + sbin * 3) : CCV_32F | (4 + sbin * 3);
 	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_hog(%d,%d)", sbin, size), a->sig, 0);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_64F | (4 + sbin * 3), CCV_64F | (4 + sbin * 3), sig);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_64F | CCV_32F | (4 + sbin * 3), b_type, sig);
 	ccv_matrix_return_if_cached(, db);
 	ccv_dense_matrix_t* ag = 0;
 	ccv_dense_matrix_t* mg = 0;
@@ -295,172 +296,175 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 	float* agp = ag->data.f32;
 	float* mgp = mg->data.f32;
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
-	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols, CCV_64F | (sbin * 2), 0, 0);
-	ccv_dense_matrix_t* ca = ccv_dense_matrix_new(rows, cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* cn = ccv_dense_matrix_new(rows, cols, CCV_GET_DATA_TYPE(db->type) | (sbin * 2), 0, 0);
+	ccv_dense_matrix_t* ca = ccv_dense_matrix_new(rows, cols, CCV_GET_DATA_TYPE(db->type) | CCV_C1, 0, 0);
 	ccv_zero(cn);
-	double* cnp = cn->data.f64;
-	for (i = 0; i < rows * size; i++)
-	{
-		for (j = 0; j < cols * size; j++)
-		{
-			double agv = agp[j * ch];
-			double mgv = mgp[j * ch];
-			for (k = 1; k < ch; k++)
-				if (mgp[j * ch + k] > mgv)
-				{
-					mgv = mgp[j * ch + k];
-					agv = agp[j * ch + k];
-				}
-			double agr0 = (ccv_clamp(agv, 0, 359.99) / 360.0) * (sbin * 2);
-			int ag0 = (int)agr0;
-			int ag1 = (ag0 + 1 < sbin * 2) ? ag0 + 1 : 0;
-			agr0 = agr0 - ag0;
-			double agr1 = 1.0 - agr0;
-			mgv = mgv / 255.0;
-			double yp = ((double)i + 0.5) / (double)size - 0.5;
-			double xp = ((double)j + 0.5) / (double)size - 0.5;
-			int iyp = (int)yp;
-			assert(iyp < rows);
-			int ixp = (int)xp;
-			assert(ixp < cols);
-			double vy0 = yp - iyp;
-			double vx0 = xp - ixp;
-			double vy1 = 1.0 - vy0;
-			double vx1 = 1.0 - vx0;
-			if (ixp >= 0 && iyp >= 0)
-			{
-				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy1 * mgv;
-				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy1 * mgv;
-			}
-			if (ixp + 1 < cn->cols && iyp >= 0)
-			{
-				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy1 * mgv;
-				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy1 * mgv;
-			}
-			if (ixp >= 0 && iyp + 1 < cn->rows)
-			{
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy0 * mgv;
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy0 * mgv;
-			}
-			if (ixp + 1 < cn->cols && iyp + 1 < cn->rows)
-			{
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy0 * mgv;
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy0 * mgv;
-			}
-		}
-		agp += a->cols * ch;
-		mgp += a->cols * ch;
-	}
-	ccv_matrix_free(ag);
-	ccv_matrix_free(mg);
-	cnp = cn->data.f64;
-	double* cap = ca->data.f64;
-	for (i = 0; i < rows; i++)
-	{
-		for (j = 0; j < cols; j++)
-		{
-			*cap = 0;
-			for (k = 0; k < sbin; k++)
-				*cap += (cnp[k] + cnp[k + sbin]) * (cnp[k] + cnp[k + sbin]);
-			cnp += 2 * sbin;
-			cap++;
-		}
-	}
-	cnp = cn->data.f64;
-	cap = ca->data.f64;
-	ccv_zero(db);
-	double* dbp = db->data.f64;
 	// normalize sbin direction-sensitive and sbin * 2 insensitive over 4 normalization factor
 	// accumulating them over sbin * 2 + sbin + 4 channels
 	// TNA - truncation - normalization - accumulation
-#define TNA(idx, a, b, c, d) \
+#define TNA(_for_type, idx, a, b, c, d) \
 	{ \
-		double norm = 1.0 / sqrt(cap[a] + cap[b] + cap[c] + cap[d] + 1e-4); \
+		_for_type norm = 1.0 / sqrt(cap[a] + cap[b] + cap[c] + cap[d] + 1e-4); \
 		for (k = 0; k < sbin * 2; k++) \
 		{ \
-			double v = 0.5 * ccv_min(cnp[k] * norm, 0.2); \
+			_for_type v = 0.5 * ccv_min(cnp[k] * norm, 0.2); \
 			dbp[4 + sbin + k] += v; \
 			dbp[idx] += v; \
 		} \
 		dbp[idx] *= 0.2357; \
 		for (k = 0; k < sbin; k++) \
 		{ \
-			double v = 0.5 * ccv_min((cnp[k] + cnp[k + sbin]) * norm, 0.2); \
+			_for_type v = 0.5 * ccv_min((cnp[k] + cnp[k + sbin]) * norm, 0.2); \
 			dbp[4 + k] += v; \
 		} \
 	}
-	TNA(3, 0, 0, 0, 0);
-	TNA(1, 1, 1, 0, 0);
-	TNA(2, 0, cols, cols, 0);
-	TNA(0, 1, cols + 1, cols, 0);
-	cnp += 2 * sbin;
-	dbp += 3 * sbin + 4;
-	cap++;
-	for (j = 1; j < cols - 1; j++)
-	{
-		TNA(3, -1, -1, 0, 0);
-		TNA(1, 1, 1, 0, 0);
-		TNA(2, -1, cols - 1, cols, 0);
-		TNA(0, 1, cols + 1, cols, 0);
-		cnp += 2 * sbin;
-		dbp += 3 * sbin + 4;
-		cap++;
-	}
-	TNA(3, -1, -1, 0, 0);
-	TNA(1, 0, 0, 0, 0);
-	TNA(2, -1, cols - 1, cols, 0);
-	TNA(0, 0, cols, cols, 0);
-	cnp += 2 * sbin;
-	dbp += 3 * sbin + 4;
-	cap++;
-	for (i = 1; i < rows - 1; i++)
-	{
-		TNA(3, 0, -cols, -cols, 0);
-		TNA(1, 1, -cols + 1, -cols, 0);
-		TNA(2, 0, cols, cols, 0);
-		TNA(0, 1, cols + 1, cols, 0);
-		cnp += 2 * sbin;
-		dbp += 3 * sbin + 4;
-		cap++;
-		for (j = 1; j < cols - 1; j++)
-		{
-			TNA(3, -1, -cols - 1, -cols, 0); // 3
-			TNA(1, 1, -cols + 1, -cols, 0); // 1
-			TNA(2, -1, cols - 1, cols, 0); // 2
-			TNA(0, 1, cols + 1, cols, 0); // 0
-			cnp += 2 * sbin;
-			dbp += 3 * sbin + 4;
-			cap++;
-		}
-		TNA(3, -1, -cols - 1, -cols, 0);
-		TNA(1, 0, -cols, -cols, 0);
-		TNA(2, -1, cols - 1, cols, 0);
-		TNA(0, 0, cols, cols, 0);
-		cnp += 2 * sbin;
-		dbp += 3 * sbin + 4;
-		cap++;
-	}
-	TNA(3, 0, -cols, -cols, 0);
-	TNA(1, 1, -cols + 1, -cols, 0);
-	TNA(2, 0, 0, 0, 0);
-	TNA(0, 1, 1, 0, 0);
-	cnp += 2 * sbin;
-	dbp += 3 * sbin + 4;
-	cap++;
-	for (j = 1; j < cols - 1; j++)
-	{
-		TNA(3, -1, -cols - 1, -cols, 0);
-		TNA(1, 1, -cols + 1, -cols, 0);
-		TNA(2, -1, -1, 0, 0);
-		TNA(0, 1, 1, 0, 0);
-		cnp += 2 * sbin;
-		dbp += 3 * sbin + 4;
-		cap++;
-	}
-	TNA(3, -1, -cols - 1, -cols, 0);
-	TNA(1, 0, -cols, -cols, 0);
-	TNA(2, -1, -1, 0, 0);
-	TNA(0, 0, 0, 0, 0);
+#define for_block(_, _for_type) \
+	_for_type* cnp = (_for_type*)ccv_get_dense_matrix_cell(cn, 0, 0, 0); \
+	for (i = 0; i < rows * size; i++) \
+	{ \
+		for (j = 0; j < cols * size; j++) \
+		{ \
+			_for_type agv = agp[j * ch]; \
+			_for_type mgv = mgp[j * ch]; \
+			for (k = 1; k < ch; k++) \
+				if (mgp[j * ch + k] > mgv) \
+				{ \
+					mgv = mgp[j * ch + k]; \
+					agv = agp[j * ch + k]; \
+				} \
+			_for_type agr0 = (ccv_clamp(agv, 0, 359.99) / 360.0) * (sbin * 2); \
+			int ag0 = (int)agr0; \
+			int ag1 = (ag0 + 1 < sbin * 2) ? ag0 + 1 : 0; \
+			agr0 = agr0 - ag0; \
+			_for_type agr1 = 1.0 - agr0; \
+			mgv = mgv / 255.0; \
+			_for_type yp = ((_for_type)i + 0.5) / (_for_type)size - 0.5; \
+			_for_type xp = ((_for_type)j + 0.5) / (_for_type)size - 0.5; \
+			int iyp = (int)yp; \
+			assert(iyp < rows); \
+			int ixp = (int)xp; \
+			assert(ixp < cols); \
+			_for_type vy0 = yp - iyp; \
+			_for_type vx0 = xp - ixp; \
+			_for_type vy1 = 1.0 - vy0; \
+			_for_type vx1 = 1.0 - vx0; \
+			if (ixp >= 0 && iyp >= 0) \
+			{ \
+				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy1 * mgv; \
+				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy1 * mgv; \
+			} \
+			if (ixp + 1 < cn->cols && iyp >= 0) \
+			{ \
+				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy1 * mgv; \
+				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy1 * mgv; \
+			} \
+			if (ixp >= 0 && iyp + 1 < cn->rows) \
+			{ \
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy0 * mgv; \
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy0 * mgv; \
+			} \
+			if (ixp + 1 < cn->cols && iyp + 1 < cn->rows) \
+			{ \
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy0 * mgv; \
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy0 * mgv; \
+			} \
+		} \
+		agp += a->cols * ch; \
+		mgp += a->cols * ch; \
+	} \
+	ccv_matrix_free(ag); \
+	ccv_matrix_free(mg); \
+	cnp = (_for_type*)ccv_get_dense_matrix_cell(cn, 0, 0, 0); \
+	_for_type* cap = (_for_type*)ccv_get_dense_matrix_cell(ca, 0, 0, 0); \
+	for (i = 0; i < rows; i++) \
+	{ \
+		for (j = 0; j < cols; j++) \
+		{ \
+			*cap = 0; \
+			for (k = 0; k < sbin; k++) \
+				*cap += (cnp[k] + cnp[k + sbin]) * (cnp[k] + cnp[k + sbin]); \
+			cnp += 2 * sbin; \
+			cap++; \
+		} \
+	} \
+	cnp = (_for_type*)ccv_get_dense_matrix_cell(cn, 0, 0, 0); \
+	cap = (_for_type*)ccv_get_dense_matrix_cell(ca, 0, 0, 0); \
+	ccv_zero(db); \
+	_for_type* dbp = (_for_type*)ccv_get_dense_matrix_cell(db, 0, 0, 0); \
+	TNA(_for_type, 0, 1, cols + 1, cols, 0); \
+	TNA(_for_type, 1, 1, 1, 0, 0); \
+	TNA(_for_type, 2, 0, cols, cols, 0); \
+	TNA(_for_type, 3, 0, 0, 0, 0); \
+	cnp += 2 * sbin; \
+	dbp += 3 * sbin + 4; \
+	cap++; \
+	for (j = 1; j < cols - 1; j++) \
+	{ \
+		TNA(_for_type, 0, 1, cols + 1, cols, 0); \
+		TNA(_for_type, 1, 1, 1, 0, 0); \
+		TNA(_for_type, 2, -1, cols - 1, cols, 0); \
+		TNA(_for_type, 3, -1, -1, 0, 0); \
+		cnp += 2 * sbin; \
+		dbp += 3 * sbin + 4; \
+		cap++; \
+	} \
+	TNA(_for_type, 0, 0, cols, cols, 0); \
+	TNA(_for_type, 1, 0, 0, 0, 0); \
+	TNA(_for_type, 2, -1, cols - 1, cols, 0); \
+	TNA(_for_type, 3, -1, -1, 0, 0); \
+	cnp += 2 * sbin; \
+	dbp += 3 * sbin + 4; \
+	cap++; \
+	for (i = 1; i < rows - 1; i++) \
+	{ \
+		TNA(_for_type, 0, 1, cols + 1, cols, 0); \
+		TNA(_for_type, 1, 1, -cols + 1, -cols, 0); \
+		TNA(_for_type, 2, 0, cols, cols, 0); \
+		TNA(_for_type, 3, 0, -cols, -cols, 0); \
+		cnp += 2 * sbin; \
+		dbp += 3 * sbin + 4; \
+		cap++; \
+		for (j = 1; j < cols - 1; j++) \
+		{ \
+			TNA(_for_type, 0, 1, cols + 1, cols, 0); \
+			TNA(_for_type, 1, 1, -cols + 1, -cols, 0); \
+			TNA(_for_type, 2, -1, cols - 1, cols, 0); \
+			TNA(_for_type, 3, -1, -cols - 1, -cols, 0); \
+			cnp += 2 * sbin; \
+			dbp += 3 * sbin + 4; \
+			cap++; \
+		} \
+		TNA(_for_type, 0, 0, cols, cols, 0); \
+		TNA(_for_type, 1, 0, -cols, -cols, 0); \
+		TNA(_for_type, 2, -1, cols - 1, cols, 0); \
+		TNA(_for_type, 3, -1, -cols - 1, -cols, 0); \
+		cnp += 2 * sbin; \
+		dbp += 3 * sbin + 4; \
+		cap++; \
+	} \
+	TNA(_for_type, 0, 1, 1, 0, 0); \
+	TNA(_for_type, 1, 1, -cols + 1, -cols, 0); \
+	TNA(_for_type, 2, 0, 0, 0, 0); \
+	TNA(_for_type, 3, 0, -cols, -cols, 0); \
+	cnp += 2 * sbin; \
+	dbp += 3 * sbin + 4; \
+	cap++; \
+	for (j = 1; j < cols - 1; j++) \
+	{ \
+		TNA(_for_type, 0, 1, 1, 0, 0); \
+		TNA(_for_type, 1, 1, -cols + 1, -cols, 0); \
+		TNA(_for_type, 2, -1, -1, 0, 0); \
+		TNA(_for_type, 3, -1, -cols - 1, -cols, 0); \
+		cnp += 2 * sbin; \
+		dbp += 3 * sbin + 4; \
+		cap++; \
+	} \
+	TNA(_for_type, 0, 0, 0, 0, 0); \
+	TNA(_for_type, 1, 0, -cols, -cols, 0); \
+	TNA(_for_type, 2, -1, -1, 0, 0); \
+	TNA(_for_type, 3, -1, -cols - 1, -cols, 0);
+	ccv_matrix_typeof(db->type, for_block);
+#undef for_block
 #undef TNA
 	ccv_matrix_free(cn);
 	ccv_matrix_free(ca);

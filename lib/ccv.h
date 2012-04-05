@@ -48,6 +48,7 @@ static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8, -
 
 #define CCV_GET_DATA_TYPE(x) ((x) & 0xFF00)
 #define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
+#define CCV_MAX_CHANNEL (0xFF)
 #define CCV_GET_CHANNEL(x) ((x) & 0xFF)
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F)
 
@@ -217,13 +218,6 @@ void ccv_disable_cache(void);
 void ccv_enable_default_cache(void);
 void ccv_enable_cache(size_t size);
 
-#define ccv_get_dense_matrix_cell(x, row, col, ch) \
-	((((x)->type) & CCV_32S) ? (void*)((x)->data.i32 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)) : \
-	((((x)->type) & CCV_32F) ? (void*)((x)->data.f32+ ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)) : \
-	((((x)->type) & CCV_64S) ? (void*)((x)->data.i64+ ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)) : \
-	((((x)->type) & CCV_64F) ? (void*)((x)->data.f64 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)) : \
-	(void*)((x)->data.u8 + (row) * (x)->step + (col) * CCV_GET_CHANNEL((x)->type) + (ch))))))
-
 #define ccv_get_dense_matrix_cell_by(type, x, row, col, ch) \
 	(((type) & CCV_32S) ? (void*)((x)->data.i32 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
 	(((type) & CCV_32F) ? (void*)((x)->data.f32+ ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
@@ -231,12 +225,7 @@ void ccv_enable_cache(size_t size);
 	(((type) & CCV_64F) ? (void*)((x)->data.f64 + ((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)) : \
 	(void*)((x)->data.u8 + (row) * (x)->step + (col) * CCV_GET_CHANNEL(type) + (ch))))))
 
-#define ccv_get_dense_matrix_cell_value(x, row, col, ch) \
-	((((x)->type) & CCV_32S) ? (x)->data.i32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
-	((((x)->type) & CCV_32F) ? (x)->data.f32[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
-	((((x)->type) & CCV_64S) ? (x)->data.i64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
-	((((x)->type) & CCV_64F) ? (x)->data.f64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL((x)->type) + (ch)] : \
-	(x)->data.u8[(row) * (x)->step + (col) * CCV_GET_CHANNEL((x)->type) + (ch)]))))
+#define ccv_get_dense_matrix_cell(x, row, col, ch) ccv_get_dense_matrix_cell_by((x)->type, x, row, col, ch)
 
 /* this is for simplicity in code, I am sick of x->data.f64[i * x->cols + j] stuff, this is clearer, and compiler
  * can optimize away the if structures */
@@ -246,6 +235,8 @@ void ccv_enable_cache(size_t size);
 	(((type) & CCV_64S) ? (x)->data.i64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
 	(((type) & CCV_64F) ? (x)->data.f64[((row) * (x)->cols + (col)) * CCV_GET_CHANNEL(type) + (ch)] : \
 	(x)->data.u8[(row) * (x)->step + (col) * CCV_GET_CHANNEL(type) + (ch)]))))
+
+#define ccv_get_dense_matrix_cell_value(x, row, col, ch) ccv_get_dense_matrix_cell_value_by((x)->type, x, row, col, ch)
 
 #define ccv_get_value(type, ptr, i) \
 	(((type) & CCV_32S) ? ((int*)(ptr))[(i)] : \

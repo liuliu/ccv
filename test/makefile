@@ -1,5 +1,5 @@
 CC = clang
-LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lz -lgsl -lblas -lm
+LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lfftw3f -lz -lgsl -lblas -lm
 CFLAGS = -O3 -msse2 -Wall -I"../lib"
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests
 

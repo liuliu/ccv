@@ -118,19 +118,19 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					int miny = part->w->rows / 2, maxy = part_feature[k]->rows - part->w->rows / 2;
 					int offx = part->x + part->w->cols / 2 - rww * 2;
 					int minx = part->w->cols / 2, maxx = part_feature[k]->cols - part->w->cols / 2;
-					double* f_ptr = (double*)ccv_get_dense_matrix_cell_by(CCV_64F | CCV_C1, root_feature, rwh, 0, 0);
+					float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
 					for (y = rwh; y < root_feature->rows - rwh; y++)
 					{
 						int iy = ccv_clamp(y * 2 + offy, miny, maxy);
 						for (x = rww; x < root_feature->cols - rww; x++)
 						{
 							int ix = ccv_clamp(x * 2 + offx, minx, maxx);
-							f_ptr[x] -= ccv_get_dense_matrix_cell_value_by(CCV_64F | CCV_C1, part_feature[k], iy, ix, 0);
+							f_ptr[x] -= ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 						}
 						f_ptr += root_feature->cols;
 					}
 				}
-				double* f_ptr = (double*)ccv_get_dense_matrix_cell_by(CCV_64F | CCV_C1, root_feature, rwh, 0, 0);
+				float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
 				for (y = rwh; y < root_feature->rows - rwh; y++)
 				{
 					for (x = rww; x < root_feature->cols - rww; x++)
@@ -155,7 +155,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								int ry = iy - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
 								int rx = ix - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
 								comp.part[k].rect = ccv_rect((int)((rx - pww) * 4 * scale_x + 0.5), (int)((ry - pwh) * 4 * scale_y + 0.5), (int)(part->w->cols * 4 * scale_x + 0.5), (int)(part->w->rows * 4 * scale_y + 0.5));
-								comp.part[k].confidence = ccv_get_dense_matrix_cell_value_by(CCV_64F | CCV_C1, part_feature[k], iy, ix, 0);
+								comp.part[k].confidence = ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 							}
 							ccv_array_push(seq, &comp);
 						}
@@ -309,20 +309,6 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	return result_seq2;
 }
 
-/* rewind format from matlab
-for (j = 0; j < root_classifier->root.size.width * root_classifier->root.size.height; j++)
-{
-	i = 31;
-	printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
-	for (i = 27; i < 31; i++)
-		printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
-	for (i = 18; i < 27; i++)
-		printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
-	for (i = 0; i < 18; i++)
-		printf("%f ", root_classifier->root.w[i * root_classifier->root.size.width * root_classifier->root.size.height + j]);
-}
-printf("\n");
-*/
 ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 {
 	FILE* r = fopen(directory, "r");
@@ -340,10 +326,10 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 		int rows, cols;
 		fscanf(r, "%d %d", &rows, &cols);
 		fscanf(r, "%lf", &root_classifier[i].beta);
-		root_classifier[i].root.w = ccv_dense_matrix_new(rows, cols, CCV_64F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31)), 0);
-		size += ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31);
+		root_classifier[i].root.w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
+		size += ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31);
 		for (j = 0; j < rows * cols * 31; j++)
-			fscanf(r, "%lf", &root_classifier[i].root.w->data.f64[j]);
+			fscanf(r, "%f", &root_classifier[i].root.w->data.f32[j]);
 		root_classifier[i].root.w->sig = ccv_matrix_generate_signature((char*)root_classifier[i].root.w->data.u8, root_classifier[i].root.w->rows * root_classifier[i].root.w->step, 0);
 		fscanf(r, "%d", &root_classifier[i].count);
 		ccv_dpm_part_classifier_t* part_classifier = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * root_classifier[i].count);
@@ -353,10 +339,10 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 			fscanf(r, "%d %d %d", &part_classifier[j].x, &part_classifier[j].y, &part_classifier[j].z);
 			fscanf(r, "%lf %lf %lf %lf", &part_classifier[j].dx, &part_classifier[j].dy, &part_classifier[j].dxx, &part_classifier[j].dyy);
 			fscanf(r, "%d %d", &rows, &cols);
-			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_64F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31)), 0);
-			size += ccv_compute_dense_matrix_size(rows, cols, CCV_64F | 31);
+			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
+			size += ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31);
 			for (k = 0; k < rows * cols * 31; k++)
-				fscanf(r, "%lf", &part_classifier[j].w->data.f64[k]);
+				fscanf(r, "%f", &part_classifier[j].w->data.f32[k]);
 			part_classifier[j].w->sig = ccv_matrix_generate_signature((char*)part_classifier[j].w->data.u8, part_classifier[j].w->rows * part_classifier[j].w->step, 0);
 		}
 		root_classifier[i].part = part_classifier;
