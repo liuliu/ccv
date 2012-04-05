@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <title>ccv by liuliu</title>
+    
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+  </head>
+  <body>
+    <div class="wrapper">
+      <header>
+        <h1>ccv</h1>
+        <p>A C-based/Cached/Core Computer Vision Library</p>
+        <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+        <ul>
+          <li><a href="https://github.com/liuliu/ccv/zipball/master">Download <strong>ZIP File</strong></a></li>
+          <li><a href="https://github.com/liuliu/ccv/tarball/master">Download <strong>TAR Ball</strong></a></li>
+          <li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+        </ul>
+      </header>
+      <section>
+        <h2>Application Driven Philosophy (from 2010)</h2>
+
+<p>In the set off statement of ccv, I listed one property of it to be "modern", which means rather than provides a truck-load of obsolete algorithms, ccv intended to provide best-of-its-kind algorithm among wide range of applications. Last September, I even went further and claimed that the first 4 applications for ccv would be: 1). object matching; 2). object detection; 3). text detection; 4). 3d reconstruction. These statements set the tone for ccv development known now as application-driven.</p>
+
+<p>There are a lot of evidence in ccv code base to provide the actual usage of this method. ccv_sample_down was implemented when I was implementing BBF object detection, which requires the image pyramid. However, ccv_sample_up was not implemented until SIFT implementation needs to up-sampling the image in order to get better result. Until today, a very common feature for image processing, know as rescale is not fully implemented yet. ccv_resample function still lacks of scale-up option, because in all these applications I've implemented, there is no need for that.</p>
+
+<h2>Mission (The set-out statement from 2010)</h2>
+
+<h3>Call for a new, lightweight, c-based computer vision library</h3>
+
+<p>Since 2005, most of my computer vision work were done with OpenCV. It is an amazingly hand-optimized piece of software. A large number of modern applications are based on OpenCV framework. It is a useful toolset. However, for all this years, I finally feel the need to make a more lightweight, pure-c/function based library. There are some ideas:</p>
+
+<ol>
+<li><p>It should be fast. There is no need to build a toolset that is slow. Former work such as lapack and gsl are a better choices rather than reinvent the wheel. For the same reason, It is necessary to fork basic routines from OpenCV, such as Canny detector, kalman filter, etc.</p></li>
+<li><p>Better memory management, cache everything. OpenCV partially implemented a memory management routine, but failed to have a cache mechanism, partly because there are too many functions and it hard to break in and add another layer.</p></li>
+<li><p>Less but more about modern algorithms. Implementing a fewer but niche algorithms and give intuitive examples. Keep compatibility with OpenCV (through interpreting functions).</p></li>
+<li><p>Give some love to distributed system, and modern compilers (LLVM &amp; Clang).</p></li>
+</ol><p>I am aware of that many vision works are never made the way to mass (VLFeat for example), but that's the plan.</p>
+      </section>
+      <footer>
+        <p>This project is maintained by <a href="https://github.com/liuliu">liuliu</a></p>
+        <p><small>Hosted on GitHub Pages &mdash; Theme by <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+      </footer>
+    </div>
+    <!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+  </body>
+</html>
