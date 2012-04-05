@@ -457,7 +457,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
 			{ \
-				if (fabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1e-6) \
+				if (fabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1e-4) \
 					return -1; \
 			} \
 			a_ptr += da->step; \

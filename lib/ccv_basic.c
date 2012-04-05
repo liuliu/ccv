@@ -1067,7 +1067,7 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	ccv_matrix_return_if_cached(, db);
 	int fsz = ccv_max(1, (int)(4.0 * sigma + 1.0 - 1e-8)) * 2 + 1;
 	int hfz = fsz / 2;
-	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * (fsz + ccv_max(a->rows, a->cols * CCV_GET_CHANNEL(a->type))));
+	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * ccv_max(fsz + a->rows, (fsz + a->cols) * CCV_GET_CHANNEL(a->type)));
 	unsigned char* filter = (unsigned char*)alloca(sizeof(double) * fsz);
 	double tw = 0;
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);

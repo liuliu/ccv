@@ -181,8 +181,8 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 static inline int square(int x) { return x*x; }
 
 // dt helper function
-void dt_min_helper(double *src, double *dst, int *ptr, int step, 
-	       int s1, int s2, int d1, int d2, double a, double b) {
+void dt_min_helper(float *src, float *dst, int *ptr, int step, 
+	       int s1, int s2, int d1, int d2, float a, float b) {
  if (d2 >= d1) {
    int d = (d1+d2) >> 1;
    int s = s1;
@@ -198,17 +198,17 @@ void dt_min_helper(double *src, double *dst, int *ptr, int step,
 }
 
 // dt of 1d array
-void dt_min1d(double *src, double *dst, int *ptr, int step, int n, 
-	  double a, double b) {
+void dt_min1d(float *src, float *dst, int *ptr, int step, int n, 
+	  float a, float b) {
   dt_min_helper(src, dst, ptr, step, 0, n-1, 0, n-1, a, b);
 }
 
 void daq_min_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double dx, double dy, double dxx, double dyy)
 {
-	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	unsigned char* a_ptr = a->data.u8;
-	double* b_ptr = db->data.f64;
+	float* b_ptr = db->data.f32;
 	int i, j;
 #define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
@@ -222,8 +222,8 @@ void daq_min_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 #undef for_block
 	int* ix = (int*)calloc(a->cols * a->rows, sizeof(int));
 	int* iy = (int*)calloc(a->cols * a->rows, sizeof(int));
-	b_ptr = db->data.f64;
-	double* c_ptr = dc->data.f64;
+	b_ptr = db->data.f32;
+	float* c_ptr = dc->data.f32;
 	for (i = 0; i < a->rows; i++)
 		dt_min1d(b_ptr + i * a->cols, c_ptr + i * a->cols, ix + i * a->cols, 1, a->cols, dxx, dx);
 	for (j = 0; j < a->cols; j++)
@@ -238,10 +238,10 @@ TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using di
 	ccv_dense_matrix_t* geometry = 0;
 	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* distance = 0;
-	double dx = 1;
-	double dy = 1;
-	double dxx = 0.4;
-	double dyy = 0.4;
+	double dx = 0;
+	double dy = 0;
+	double dxx = 1;
+	double dyy = 1;
 	ccv_distance_transform(geometry, &distance, 0, 0, 0, 0, 0, dx, dy, dxx, dyy, CCV_GSEDT);
 	ccv_dense_matrix_t* ref = 0;
 	daq_min_distance_transform(geometry, &ref, dx, dy, dxx, dyy);
@@ -252,8 +252,8 @@ TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using di
 }
 
 // dt helper function
-void dt_max_helper(double *src, double *dst, int *ptr, int step, 
-	       int s1, int s2, int d1, int d2, double a, double b) {
+void dt_max_helper(float *src, float *dst, int *ptr, int step, 
+	       int s1, int s2, int d1, int d2, float a, float b) {
  if (d2 >= d1) {
    int d = (d1+d2) >> 1;
    int s = s1;
@@ -269,17 +269,17 @@ void dt_max_helper(double *src, double *dst, int *ptr, int step,
 }
 
 // dt of 1d array
-void dt_max1d(double *src, double *dst, int *ptr, int step, int n, 
-	  double a, double b) {
+void dt_max1d(float *src, float *dst, int *ptr, int step, int n, 
+	  float a, float b) {
   dt_max_helper(src, dst, ptr, step, 0, n-1, 0, n-1, a, b);
 }
 
 void daq_max_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, double dx, double dy, double dxx, double dyy)
 {
-	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_64F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* dc = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_new(a->rows, a->cols, CCV_32F | CCV_C1, 0, 0);
 	unsigned char* a_ptr = a->data.u8;
-	double* b_ptr = db->data.f64;
+	float* b_ptr = db->data.f32;
 	int i, j;
 #define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
@@ -293,8 +293,8 @@ void daq_max_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 #undef for_block
 	int* ix = (int*)calloc(a->cols * a->rows, sizeof(int));
 	int* iy = (int*)calloc(a->cols * a->rows, sizeof(int));
-	b_ptr = db->data.f64;
-	double* c_ptr = dc->data.f64;
+	b_ptr = db->data.f32;
+	float* c_ptr = dc->data.f32;
 	for (i = 0; i < a->rows; i++)
 		dt_max1d(b_ptr + i * a->cols, c_ptr + i * a->cols, ix + i * a->cols, 1, a->cols, dxx, dx);
 	for (j = 0; j < a->cols; j++)
@@ -309,17 +309,17 @@ TEST_CASE("ccv_distance_transform to compute max distance")
 	ccv_dense_matrix_t* geometry = 0;
 	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* distance = 0;
-	double dx = 0;
-	double dy = 0;
-	double dxx = 1;
-	double dyy = 1;
+	double dx = 1;
+	double dy = 1;
+	double dxx = 0.4;
+	double dyy = 0.4;
 	ccv_distance_transform(geometry, &distance, 0, 0, 0, 0, 0, dx, dy, dxx, dyy, CCV_NEGATIVE | CCV_GSEDT);
 	ccv_dense_matrix_t* ref = 0;
 	daq_max_distance_transform(geometry, &ref, dx, dy, dxx, dyy);
 	ccv_matrix_free(geometry);
 	int i;
 	for (i = 0; i < distance->rows * distance->cols; i++)
-		distance->data.f64[i] = -distance->data.f64[i];
+		distance->data.f32[i] = -distance->data.f32[i];
 	REQUIRE_MATRIX_EQ(distance, ref, "maximum distance transform computed by negate ccv_distance_transform doesn't match the one computed by divide & conquer");
 	ccv_matrix_free(ref);
 	ccv_matrix_free(distance);

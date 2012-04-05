@@ -476,7 +476,7 @@ static int _ccv_get_optimal_fft_size(int size)
 static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
-	int fft_type = (CCV_GET_DATA_TYPE(b->type) == CCV_8U || CCV_GET_DATA_TYPE(b->type) == CCV_32F) ? CCV_32F : CCV_64F;
+	int fft_type = (CCV_GET_DATA_TYPE(d->type) == CCV_8U || CCV_GET_DATA_TYPE(d->type) == CCV_32F) ? CCV_32F : CCV_64F;
 	int rows = ccv_min(a->rows + b->rows - 1, _ccv_get_optimal_fft_size(b->rows * 3));
 	int cols = ccv_min(a->cols + b->cols - 1, _ccv_get_optimal_fft_size(b->cols * 3));
 	int cols_2c = 2 * (cols / 2 + 1);
@@ -654,7 +654,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
-	int fft_type = (CCV_GET_DATA_TYPE(b->type) == CCV_8U || CCV_GET_DATA_TYPE(b->type) == CCV_32F) ? CCV_32F : CCV_64F;
+	int fft_type = (CCV_GET_DATA_TYPE(d->type) == CCV_8U || CCV_GET_DATA_TYPE(d->type) == CCV_32F) ? CCV_32F : CCV_64F;
 	int rows = ((ccv_min(a->rows + b->rows - 1, kiss_fftr_next_fast_size_real(b->rows * 3)) + 1) >> 1) << 1;
 	int cols = ((ccv_min(a->cols + b->cols - 1, kiss_fftr_next_fast_size_real(b->cols * 3)) + 1) >> 1) << 1;
 	int ndim[] = {rows, cols};
@@ -988,25 +988,26 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 	unsigned char* a_ptr = a->data.u8;
 	unsigned char* b_ptr = db->data.u8;
 	int* v = (int*)alloca(sizeof(int) * ccv_max(db->rows, db->cols));
-	double* z = (double*)alloca(sizeof(double) * (ccv_max(db->rows, db->cols) + 1));
 	unsigned char* c_ptr = (unsigned char*)alloca(CCV_GET_DATA_TYPE_SIZE(db->type) * db->rows);
 	int* x_ptr = mx ? mx->data.i32 : 0;
 	int* y_ptr = my ? my->data.i32 : 0;
-#define for_block(_for_set_b, _for_get_b, _for_get_a) \
-	if (dxx > 1e-10) \
+#define for_block(_for_max, _for_type_b, _for_set_b, _for_get_b, _for_get_a) \
+	_for_type_b _dx = dx, _dy = dy, _dxx = dxx, _dyy = dyy; \
+	_for_type_b* z = (_for_type_b*)alloca(sizeof(_for_type_b) * (ccv_max(db->rows, db->cols) + 1)); \
+	if (_dxx > 1e-6) \
 	{ \
 		for (i = 0; i < a->rows; i++) \
 		{ \
 			k = 0; \
 			v[0] = 0; \
-			z[0] = -DBL_MAX; \
-			z[1] = DBL_MAX; \
+			z[0] = -_for_max; \
+			z[1] = _for_max; \
 			for (j = 1; j < a->cols; j++) \
 			{ \
-				double s; \
+				_for_type_b s; \
 				for (;;) \
 				{ \
-					s = ((SGN _for_get_a(a_ptr, j, 0) + dxx * j * j - dx * j) - (SGN _for_get_a(a_ptr, v[k], 0) + dxx * v[k] * v[k] - dx * v[k])) / (2.0 * dxx * (j - v[k])); \
+					s = ((SGN _for_get_a(a_ptr, j, 0) + _dxx * j * j - _dx * j) - (SGN _for_get_a(a_ptr, v[k], 0) + _dxx * v[k] * v[k] - _dx * v[k])) / (2.0 * _dxx * (j - v[k])); \
 					if (s > z[k]) break; \
 					--k; \
 				} \
@@ -1022,7 +1023,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				{ \
 					while (z[k + 1] < j) \
 						++k; \
-					_for_set_b(b_ptr, j, dx * (j - v[k]) + dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
+					_for_set_b(b_ptr, j, _dx * (j - v[k]) + _dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
 					x_ptr[j] = j - v[k]; \
 				} \
 				x_ptr += mx->cols; \
@@ -1031,7 +1032,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				{ \
 					while (z[k + 1] < j) \
 						++k; \
-					_for_set_b(b_ptr, j, dx * (j - v[k]) + dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
+					_for_set_b(b_ptr, j, _dx * (j - v[k]) + _dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
 				} \
 			} \
 			a_ptr += a->step; \
@@ -1044,15 +1045,15 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 			for (j = 0; j < a->cols; j++) \
 				_for_set_b(b_ptr, j, SGN _for_get_a(a_ptr, j, 0), 0); \
 			for (j = 1; j < a->cols; j++) \
-				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j - 1, 0) + dx), 0); \
+				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j - 1, 0) + _dx), 0); \
 			for (j = a->cols - 2; j >= 0; j--) \
-				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j + 1, 0) - dx), 0); \
+				_for_set_b(b_ptr, j, ccv_min(_for_get_b(b_ptr, j, 0), _for_get_b(b_ptr, j + 1, 0) - _dx), 0); \
 			a_ptr += a->step; \
 			b_ptr += db->step; \
 		} \
 	} \
 	b_ptr = db->data.u8; \
-	if (dyy > 1e-10) \
+	if (_dyy > 1e-6) \
 	{ \
 		for (j = 0; j < db->cols; j++) \
 		{ \
@@ -1060,14 +1061,14 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				_for_set_b(c_ptr, i, _for_get_b(b_ptr + i * db->step, j, 0), 0); \
 			k = 0; \
 			v[0] = 0; \
-			z[0] = -DBL_MAX; \
-			z[1] = DBL_MAX; \
+			z[0] = -_for_max; \
+			z[1] = _for_max; \
 			for (i = 1; i < db->rows; i++) \
 			{ \
-				double s; \
+				_for_type_b s; \
 				for (;;) \
 				{ \
-					s = ((_for_get_b(c_ptr, i, 0) + dyy * i * i - dy * i) - (_for_get_b(c_ptr, v[k], 0) + dyy * v[k] * v[k] - dy * v[k])) / (2.0 * dyy * (i - v[k])); \
+					s = ((_for_get_b(c_ptr, i, 0) + _dyy * i * i - _dy * i) - (_for_get_b(c_ptr, v[k], 0) + _dyy * v[k] * v[k] - _dy * v[k])) / (2.0 * _dyy * (i - v[k])); \
 					if (s > z[k]) break; \
 					--k; \
 				} \
@@ -1083,7 +1084,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				{ \
 					while (z[k + 1] < i) \
 						++k; \
-					_for_set_b(b_ptr + i * db->step, j, dy * (i - v[k]) + dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
+					_for_set_b(b_ptr + i * db->step, j, _dy * (i - v[k]) + _dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
 					y_ptr[i * my->cols] = i - v[k]; \
 				} \
 				++y_ptr; \
@@ -1092,7 +1093,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				{ \
 					while (z[k + 1] < i) \
 						++k; \
-					_for_set_b(b_ptr + i * db->step, j, dy * (i - v[k]) + dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
+					_for_set_b(b_ptr + i * db->step, j, _dy * (i - v[k]) + _dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
 				} \
 			} \
 		} \
@@ -1101,19 +1102,29 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 		for (j = 0; j < db->cols; j++) \
 		{ \
 			for (i = 1; i < db->rows; i++) \
-				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i - 1) * db->step, j, 0) + dy), 0); \
+				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i - 1) * db->step, j, 0) + _dy), 0); \
 			for (i = db->rows - 2; i >= 0; i--) \
-				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i + 1) * db->step, j, 0) - dy), 0); \
+				_for_set_b(b_ptr + i * db->step, j, ccv_min(_for_get_b(b_ptr + i * db->step, j, 0), _for_get_b(b_ptr + (i + 1) * db->step, j, 0) - _dy), 0); \
 		} \
 	}
 	if (flag & CCV_NEGATIVE)
 	{
 #define SGN -
-		ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+		if (db->type & CCV_64F)
+		{
+			ccv_matrix_typeof_setter_getter(db->type, ccv_matrix_getter, a->type, for_block, DBL_MAX);
+		} else {
+			ccv_matrix_typeof_setter_getter(db->type, ccv_matrix_getter, a->type, for_block, FLT_MAX);
+		}
 #undef SGN
 	} else {
 #define SGN +
-		ccv_matrix_setter_getter(db->type, ccv_matrix_getter, a->type, for_block);
+		if (db->type & CCV_64F)
+		{
+			ccv_matrix_typeof_setter_getter(db->type, ccv_matrix_getter, a->type, for_block, DBL_MAX);
+		} else {
+			ccv_matrix_typeof_setter_getter(db->type, ccv_matrix_getter, a->type, for_block, FLT_MAX);
+		}
 #undef SGN
 	}
 #undef for_block
