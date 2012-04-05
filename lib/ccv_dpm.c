@@ -112,7 +112,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
 					ccv_matrix_free(response);
 					part_feature[k] = dx[k] = dy[k] = 0;
-					ccv_distance_transform(feature, &part_feature[k], 0, &dx[k], 0, &dy[k], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATE | CCV_GSEDT);
+					ccv_distance_transform(feature, &part_feature[k], 0, &dx[k], 0, &dy[k], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATIVE | CCV_GSEDT);
 					ccv_matrix_free(feature);
 					int offy = part->y + part->w->rows / 2 - rwh * 2;
 					int miny = part->w->rows / 2, maxy = part_feature[k]->rows - part->w->rows / 2;
@@ -194,22 +194,19 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
-				if (comps[idx].neighbors == 0)
-					comps[idx].confidence = r1.confidence;
-
-				++comps[idx].neighbors;
-
 				comps[idx].rect.x += r1.rect.x;
 				comps[idx].rect.y += r1.rect.y;
 				comps[idx].rect.width += r1.rect.width;
 				comps[idx].rect.height += r1.rect.height;
 				comps[idx].id = r1.id;
 				comps[idx].pnum = r1.pnum;
-				if (r1.confidence > comps[idx].confidence)
+				if (r1.confidence > comps[idx].confidence || comps[idx].neighbors == 0)
 				{
 					comps[idx].confidence = r1.confidence;
 					memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 				}
+
+				++comps[idx].neighbors;
 			}
 
 			// calculate average bounding box

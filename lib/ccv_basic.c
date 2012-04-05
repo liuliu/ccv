@@ -311,10 +311,11 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 					mgv = mgp[j * ch + k];
 					agv = agp[j * ch + k];
 				}
-			double agr = (ccv_clamp(agv, 0, 359.99) / 360.0) * (sbin * 2);
-			int ag = (int)(agr + 0.5);
-			if (ag == sbin * 2)
-				ag = 0;
+			double agr0 = (ccv_clamp(agv, 0, 359.99) / 360.0) * (sbin * 2);
+			int ag0 = (int)agr0;
+			int ag1 = (ag0 + 1 < sbin * 2) ? ag0 + 1 : 0;
+			agr0 = agr0 - ag0;
+			double agr1 = 1.0 - agr0;
 			mgv = mgv / 255.0;
 			double yp = ((double)i + 0.5) / (double)size - 0.5;
 			double xp = ((double)j + 0.5) / (double)size - 0.5;
@@ -327,13 +328,25 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 			double vy1 = 1.0 - vy0;
 			double vx1 = 1.0 - vx0;
 			if (ixp >= 0 && iyp >= 0)
-				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag] += vx1 * vy1 * mgv;
+			{
+				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy1 * mgv;
+				cnp[iyp * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy1 * mgv;
+			}
 			if (ixp + 1 < cn->cols && iyp >= 0)
-				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag] += vx0 * vy1 * mgv;
+			{
+				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy1 * mgv;
+				cnp[iyp * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy1 * mgv;
+			}
 			if (ixp >= 0 && iyp + 1 < cn->rows)
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag] += vx1 * vy0 * mgv;
+			{
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag0] += agr1 * vx1 * vy0 * mgv;
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + ixp * sbin * 2 + ag1] += agr0 * vx1 * vy0 * mgv;
+			}
 			if (ixp + 1 < cn->cols && iyp + 1 < cn->rows)
-				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag] += vx0 * vy0 * mgv;
+			{
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag0] += agr1 * vx0 * vy0 * mgv;
+				cnp[(iyp + 1) * cn->cols * sbin * 2 + (ixp + 1) * sbin * 2 + ag1] += agr0 * vx0 * vy0 * mgv;
+			}
 		}
 		agp += a->cols * ch;
 		mgp += a->cols * ch;
