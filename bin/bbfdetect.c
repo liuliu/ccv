@@ -17,10 +17,10 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = 0;
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
 		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)
@@ -33,21 +33,21 @@ int main(int argc, char** argv)
 		ccv_matrix_free(image);
 	} else {
 		FILE* r = fopen(argv[1], "rt");
-		if (argc == 3)
-			chdir(argv[2]);
+		if (argc == 4)
+			chdir(argv[3]);
 		if(r)
 		{
-			char file[1000 + 1];
-			while(fgets(file, 1000, r))
+			size_t len = 1024;
+			char* file = (char*)malloc(len);
+			ssize_t read;
+			while((read = getline(&file, &len, r)) != -1)
 			{
-				int len = (int)strlen(file);
-				while(len > 0 && isspace(file[len - 1]))
-					len--;
-				file[len] = '\0';
+				while(read > 1 && isspace(file[read - 1]))
+					read--;
+				file[read] = 0;
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
 				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
 				for (i = 0; i < seq->rnum; i++)
 				{
@@ -57,6 +57,7 @@ int main(int argc, char** argv)
 				ccv_array_free(seq);
 				ccv_matrix_free(image);
 			}
+			free(file);
 			fclose(r);
 		}
 	}

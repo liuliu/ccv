@@ -52,7 +52,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	double scale = pow(2., 1. / (params.interval + 1.));
 	int next = params.interval + 1;
 	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale)) - next;
-	if (scale_upto < 1) // image is too small to be interesting
+	if (scale_upto < 0) // image is too small to be interesting
 		return 0;
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	memset(pyr, 0, (scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
