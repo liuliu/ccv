@@ -205,6 +205,8 @@ typedef struct {
 ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
+void ccv_make_matrix_mutable(ccv_matrix_t* mat);
+void ccv_make_matrix_immutable(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
@@ -300,11 +302,16 @@ enum {
 	CCV_PADDING_MIRROR = 0x04,
 };
 
+enum {
+	CCV_SIGNED = 0x00,
+	CCV_UNSIGNED = 0x01,
+};
+
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
-double ccv_sum(ccv_matrix_t* mat);
+double ccv_sum(ccv_matrix_t* mat, int flag);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
@@ -581,7 +588,7 @@ typedef struct {
 	int count;
 	ccv_dpm_part_classifier_t root;
 	ccv_dpm_part_classifier_t* part;
-	double beta;
+	float beta;
 } ccv_dpm_root_classifier_t;
 
 typedef struct {
@@ -593,19 +600,27 @@ typedef struct {
 	int interval;
 	int min_neighbors;
 	int flags;
-	double threshold;
+	float threshold;
 } ccv_dpm_param_t;
 
 typedef struct {
+	int components;
+	int parts;
+	int grayscale;
+	int symmetric;
+	int min_area; // 3000
+	int max_area; // 5000
+	ccv_dpm_param_t detector;
 } ccv_dpm_new_param_t;
 
 enum {
 	CCV_DPM_NO_NESTED = 0x10000000,
 };
 
-void ccv_dpm_classifier_lsvm_new(ccv_dense_matrix_t** posimgs, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
+void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
 ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory);
+void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster

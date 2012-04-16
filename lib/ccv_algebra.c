@@ -131,18 +131,31 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 	}
 }
 
-double ccv_sum(ccv_matrix_t* mat)
+double ccv_sum(ccv_matrix_t* mat, int flag)
 {
 	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
 	double sum = 0;
 	unsigned char* m_ptr = dmt->data.u8;
-	int i, j;
+	int i, j, ch = CCV_GET_CHANNEL(dmt->type);
 #define for_block(_, _for_get) \
-	for (i = 0; i < dmt->rows; i++) \
+	switch (flag) \
 	{ \
-		for (j = 0; j < dmt->cols; j++) \
-			sum += _for_get(m_ptr, j, 0); \
-		m_ptr += dmt->step; \
+		case CCV_UNSIGNED: \
+			for (i = 0; i < dmt->rows; i++) \
+			{ \
+				for (j = 0; j < dmt->cols * ch; j++) \
+					sum += fabs(_for_get(m_ptr, j, 0)); \
+				m_ptr += dmt->step; \
+			} \
+			break; \
+		case CCV_SIGNED: \
+		default: \
+			for (i = 0; i < dmt->rows; i++) \
+			{ \
+				for (j = 0; j < dmt->cols * ch; j++) \
+					sum += _for_get(m_ptr, j, 0); \
+				m_ptr += dmt->step; \
+			} \
 	}
 	ccv_matrix_getter(dmt->type, for_block);
 #undef for_block

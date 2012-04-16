@@ -58,10 +58,7 @@ int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 			_ccv_read_binary_fd(fd, x, ctype);
 	}
 	if (*x != 0)
-	{
-		(*x)->sig = ccv_matrix_generate_signature((char*)(*x)->data.u8, (*x)->rows * (*x)->step, 0);
-		(*x)->type &= ~CCV_REUSABLE;
-	}
+		ccv_make_matrix_immutable(*x);
 	if (type & CCV_IO_ANY_FILE)
 		fclose(fd);
 	return CCV_IO_FINAL;

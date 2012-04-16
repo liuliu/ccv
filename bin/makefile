@@ -1,8 +1,8 @@
 CC = clang
-LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3f -lfftw3 -lz -lgsl -lblas -lm # -lgomp
+LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3f -lfftw3 -lz -lgsl -lblas -llinear -lm # -lgomp
 CFLAGS = -O3 -msse2 -Wall -I"../lib"
 
-TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtdetect swtcreate dpmdetect convert
+TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert
 
 all: libccv.a $(TARGETS)
 

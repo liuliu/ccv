@@ -62,7 +62,7 @@ static void _ccv_write_png_fd(ccv_dense_matrix_t* mat, FILE* fd, void* conf)
 		png_set_compression_level(png_ptr, Z_BEST_SPEED);
 	}
 	png_set_compression_strategy(png_ptr, Z_HUFFMAN_ONLY);
-	png_set_IHDR(png_ptr, info_ptr, mat->cols, mat->rows, (mat->type & CCV_8U) ? 8 : 16, (mat->type & CCV_C1) ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
+	png_set_IHDR(png_ptr, info_ptr, mat->cols, mat->rows, (mat->type & CCV_8U) ? 8 : 16, (CCV_GET_CHANNEL(mat->type) == CCV_C1) ? PNG_COLOR_TYPE_GRAY : PNG_COLOR_TYPE_RGB, PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 	
 	unsigned char** row_vectors = (unsigned char**)alloca(mat->rows * sizeof(unsigned char*));
 	int i;

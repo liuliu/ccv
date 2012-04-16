@@ -475,14 +475,22 @@ void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int r
 	if (type & CCV_MATRIX_DENSE)
 	{
 		ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
-		assert(y >= 0 && y + rows <= da->rows && x >= 0 && x + cols <= da->cols);
 		ccv_declare_matrix_signature(sig, da->sig != 0, ccv_sign_with_format(128, "ccv_slice(%d,%d,%d,%d)", y, x, rows, cols), da->sig, 0);
 		btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(btype) | CCV_GET_CHANNEL(da->type);
 		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), btype, sig);
 		ccv_matrix_return_if_cached(, db);
 		int i, j, ch = CCV_GET_CHANNEL(da->type);
+		int dx = 0, dy = 0;
+		if (!(y >= 0 && y + rows <= da->rows && x >= 0 && x + cols <= da->cols))
+		{
+			ccv_zero(db);
+			if (y < 0) { rows += y; dy = -y; y = 0; }
+			if (y + rows > da->rows) rows = da->rows - y;
+			if (x < 0) { cols += x; dx = -x; x = 0; }
+			if (x + cols > da->cols) cols = da->cols - x;
+		}
 		unsigned char* a_ptr = da->data.u8 + x * ch * CCV_GET_DATA_TYPE_SIZE(da->type) + y * da->step;
-		unsigned char* b_ptr = db->data.u8;
+		unsigned char* b_ptr = db->data.u8 + dx * ch * CCV_GET_DATA_TYPE_SIZE(db->type) + dy * db->step;
 #define for_block(_, _for_set, _for_get) \
 		for (i = 0; i < rows; i++) \
 		{ \
