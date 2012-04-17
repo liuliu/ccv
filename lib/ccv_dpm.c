@@ -136,13 +136,296 @@ static void _ccv_dpm_mixture_model_cleanup(ccv_dpm_mixture_model_t* model)
 	model->root = 0;
 }
 
+static void _ccv_dpm_initialize_root_classifier(ccv_dpm_root_classifier_t* root_classifier, int label, int cnum, int* labels, char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, int symmetric, int grayscale)
+{
+	int i, j, l, n;
+	gsl_rng_env_setup();
+	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	gsl_rng_set(rng, *(unsigned long int*)&root_classifier);
+	int cols = root_classifier->root.w->cols;
+	int rows = root_classifier->root.w->rows;
+	printf(" - creating initial model %d at %dx%d\n", label + 1, cols, rows);
+	struct problem prob;
+	prob.n = 31 * cols * rows + 1;
+	prob.bias = 1.0;
+	prob.y = (int*)malloc(sizeof(int) * (cnum + negnum) * (!!symmetric + 1));
+	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (cnum + negnum) * (!!symmetric + 1));
+	printf(" - generating positive examples ");
+	fflush(stdout);
+	l = 0;
+	for (i = 0; i < posnum; i++)
+		if (labels[i] == label)
+		{
+			ccv_rect_t bbox = bboxes[i];
+			int mcols = (int)(sqrtf(bbox.width * bbox.height * cols / (float)rows) + 0.5);
+			int mrows = (int)(sqrtf(bbox.width * bbox.height * rows / (float)cols) + 0.5);
+			bbox.x = bbox.x + (bbox.width - mcols) / 2;
+			bbox.y = bbox.y + (bbox.height - mrows) / 2;
+			bbox.width = mcols;
+			bbox.height = mrows;
+			if (mcols * 2 < cols * CCV_DPM_WINDOW_SIZE || mrows * 2 < rows * CCV_DPM_WINDOW_SIZE)
+			// resolution is too low to be useful
+				continue;
+			ccv_dense_matrix_t* image = 0;
+			ccv_read(posfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+			assert(image != 0);
+			ccv_dense_matrix_t* up2x = 0;
+			ccv_sample_up(image, &up2x, 0, 0, 0);
+			ccv_matrix_free(image);
+			ccv_dense_matrix_t* slice = 0;
+			ccv_slice(up2x, (ccv_matrix_t**)&slice, 0, bbox.y * 2, bbox.x * 2, bbox.height * 2, bbox.width * 2);
+			ccv_matrix_free(up2x);
+			ccv_dense_matrix_t* resize = 0;
+			ccv_resample(slice, &resize, 0, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE, CCV_INTER_AREA);
+			ccv_matrix_free(slice);
+			ccv_dense_matrix_t* hog = 0;
+			ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+			struct feature_node* features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
+			for (j = 0; j < rows * cols * 31; j++)
+			{
+				features[j].index = j + 1;
+				features[j].value = hog->data.f32[j];
+			}
+			features[31 * rows * cols].index = 31 * rows * cols + 1;
+			features[31 * rows * cols].value = prob.bias;
+			features[31 * rows * cols + 1].index = -1;
+			ccv_matrix_free(hog);
+			prob.x[l] = features;
+			prob.y[l] = 1;
+			++l;
+			/* I use a brutal way to add symmetric support: add flipped data.
+			 * It works because liblinear is super fast */
+			if (symmetric)
+			{
+				ccv_flip(resize, &resize, 0, CCV_FLIP_X);
+				hog = 0;
+				ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+				features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
+				for (j = 0; j < rows * cols * 31; j++)
+				{
+					features[j].index = j + 1;
+					features[j].value = hog->data.f32[j];
+				}
+				features[31 * rows * cols].index = 31 * rows * cols + 1;
+				features[31 * rows * cols].value = prob.bias;
+				features[31 * rows * cols + 1].index = -1;
+				ccv_matrix_free(hog);
+				prob.x[l] = features;
+				prob.y[l] = 1;
+				++l;
+			}
+			ccv_matrix_free(resize);
+			printf(".");
+			fflush(stdout);
+		}
+	printf("\n - generating negative examples ");
+	fflush(stdout);
+	n = 0;
+	while (n < negnum)
+	{
+		double p = (double)negnum / (double)bgnum;
+		for (i = 0; i < bgnum; i++)
+			if (gsl_rng_uniform(rng) < p)
+			{
+				ccv_dense_matrix_t* image = 0;
+				ccv_read(bgfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+				assert(image != 0);
+				ccv_dense_matrix_t* slice = 0;
+				int y = gsl_rng_uniform_int(rng, image->rows - rows * CCV_DPM_WINDOW_SIZE);
+				int x = gsl_rng_uniform_int(rng, image->cols - cols * CCV_DPM_WINDOW_SIZE);
+				ccv_slice(image, (ccv_matrix_t**)&slice, 0, y, x, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE);
+				ccv_matrix_free(image);
+				ccv_dense_matrix_t* hog = 0;
+				ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+				struct feature_node* features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
+				for (j = 0; j < 31 * rows * cols; j++)
+				{
+					features[j].index = j + 1;
+					features[j].value = hog->data.f32[j];
+				}
+				features[31 * rows * cols].index = 31 * rows * cols + 1;
+				features[31 * rows * cols].value = prob.bias;
+				features[31 * rows * cols + 1].index = -1;
+				prob.x[l] = features;
+				prob.y[l] = -1;
+				ccv_matrix_free(hog);
+				++l;
+				if (symmetric)
+				{
+					ccv_flip(slice, &slice, 0, CCV_FLIP_X);
+					hog = 0;
+					ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+					features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
+					for (j = 0; j < 31 * rows * cols; j++)
+					{
+						features[j].index = j + 1;
+						features[j].value = hog->data.f32[j];
+					}
+					features[31 * rows * cols].index = 31 * rows * cols + 1;
+					features[31 * rows * cols].value = prob.bias;
+					features[31 * rows * cols + 1].index = -1;
+					prob.x[l] = features;
+					prob.y[l] = -1;
+					ccv_matrix_free(hog);
+					++l;
+				}
+				ccv_matrix_free(slice);
+				++n;
+				printf(".");
+				fflush(stdout);
+				if (n >= negnum)
+					break;
+			}
+	}
+	prob.l = l;
+	printf("\n - generated %d examples with %d dimensions each\n"
+		   " - running liblinear for initial linear SVM model (L2-regularized, L1-loss)\n", prob.l, prob.n);
+	struct parameter linear_parameters = { .solver_type = L2R_L1LOSS_SVC_DUAL,
+										   .eps = 1e-1,
+										   .C = 1.0,
+										   .nr_weight = 0,
+										   .weight_label = 0,
+										   .weight = 0 };
+	const char* err = check_parameter(&prob, &linear_parameters);
+	if (err)
+	{
+		printf(" - ERROR: cannot pass check parameter: %s\n", err);
+		exit(-1);
+	}
+	struct model* linear = train(&prob, &linear_parameters);
+	assert(linear != 0);
+	printf(" - model->label[0]: %d, model->nr_class: %d, model->nr_feature: %d\n", linear->label[0], linear->nr_class, linear->nr_feature);
+	for (j = 0; j < 31 * rows * cols; j++)
+		root_classifier->root.w->data.f32[j] = linear->w[j];
+	root_classifier->beta = linear->w[31 * rows * cols];
+	free_and_destroy_model(&linear);
+	free(prob.y);
+	for (j = 0; j < prob.l; j++)
+		free(prob.x[j]);
+	free(prob.x);
+	ccv_make_matrix_immutable(root_classifier->root.w);
+	gsl_rng_free(rng);
+}
+
+static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root_classifier, int parts, int symmetric)
+{
+	int i, j, k, x, y;
+	ccv_dense_matrix_t* w = 0;
+	ccv_sample_up(root_classifier->root.w, &w, 0, 0, 0);
+	/*
+	ccv_dense_matrix_t* out = 0;
+	ccv_visualize(root_classifier->root.w, &out, 0);
+	ccv_write(out, "test/w.png", 0, CCV_IO_PNG_FILE, 0);
+	ccv_matrix_free(out);
+	*/
+	ccv_make_matrix_mutable(w);
+	root_classifier->count = parts;
+	root_classifier->part = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * parts);
+	double area = w->rows * w->cols / (double)parts;
+	for (i = 0; i < parts;)
+	{
+		ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + i;
+		int dx = 0, dy = 0, dw = 0, dh = 0, sym = 0;
+		double dsum = -DBL_MAX;
+#define slice_and_update_if_needed(y, x, l, n, s) \
+		{ \
+			ccv_dense_matrix_t* slice = 0; \
+			ccv_slice(w, (ccv_matrix_t**)&slice, 0, y, x, l, n); \
+			double sum = ccv_sum(slice, CCV_UNSIGNED) / (double)(l * n); \
+			if (sum > dsum) \
+			{ \
+				dsum = sum; \
+				dx = x; \
+				dy = y; \
+				dw = n; \
+				dh = l; \
+				sym = s; \
+			} \
+			ccv_matrix_free(slice); \
+		}
+		for (j = 1; (j < area + 1) && (j * 3 <= w->rows * 2); j++)
+		{
+			k = (int)(area / j + 0.5);
+			if (k < 1 || k * 3 > w->cols * 2)
+				continue;
+			if (j > k * 2 || k > j * 2)
+				continue;
+			if (symmetric)
+			{
+				if (k % 2 == w->cols % 2) // can be symmetric in horizontal center
+				{
+					x = (w->cols - k) / 2;
+					for (y = 0; y < w->rows - j + 1; y++)
+						slice_and_update_if_needed(y, x, j, k, 0);
+				}
+				if (i < parts - 1) // have 2 locations
+				{
+					for (y = 0; y < w->rows - j + 1; y++)
+						for (x = 0; x <= (w->rows - k - k / 2 /* to avoid overlapping by half */ - 1) / 2; x++)
+							slice_and_update_if_needed(y, x, j, k, 1);
+				}
+			} else {
+				for (y = 0; y < w->rows - j + 1; y++)
+					for (x = 0; x < w->cols - k + 1; x++)
+						slice_and_update_if_needed(y, x, j, k, 0);
+			}
+		}
+		ccv_dense_matrix_t* out = 0;
+		ccv_visualize(w, &out, 0);
+		char buf[1024];
+		sprintf(buf, "test/%d.png", i);
+		ccv_write(out, buf, 0, CCV_IO_PNG_FILE, 0);
+		ccv_matrix_free(out);
+		printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", i + 1, parts, dw, dh, dx, dy, dsum);
+		part_classifier->dx = 0;
+		part_classifier->dy = 0;
+		part_classifier->dxx = 0.1f;
+		part_classifier->dyy = 0.1f;
+		part_classifier->x = dx;
+		part_classifier->y = dy;
+		part_classifier->z = 1;
+		part_classifier->w = 0;
+		ccv_slice(w, (ccv_matrix_t**)&part_classifier->w, 0, dy, dx, dh, dw);
+		/* clean up the region we selected */
+		float* w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | 31, w, dy, dx, 0);
+		for (y = 0; y < dh; y++)
+		{
+			for (x = 0; x < dw * 31; x++)
+				w_ptr[x] = 0;
+			w_ptr += w->cols * 31;
+		}
+		i++;
+		if (symmetric && sym) // add counter-part
+		{
+			dx = w->cols - (dx + dw);
+			printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", i + 1, parts, dw, dh, dx, dy, dsum);
+			part_classifier[1].dx = 0;
+			part_classifier[1].dy = 0;
+			part_classifier[1].dxx = 0.1f;
+			part_classifier[1].dyy = 0.1f;
+			part_classifier[1].x = dx;
+			part_classifier[1].y = dy;
+			part_classifier[1].z = 1;
+			part_classifier[1].w = 0;
+			ccv_slice(w, (ccv_matrix_t**)&part_classifier[1].w, 0, dy, dx, dh, dw);
+			/* clean up the region we selected */
+			float* w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | 31, w, dy, dx, 0);
+			for (y = 0; y < dh; y++)
+			{
+				for (x = 0; x < dw * 31; x++)
+					w_ptr[x] = 0;
+				w_ptr += w->cols * 31;
+			}
+			i++;
+		}
+	}
+	ccv_matrix_free(w);
+}
+
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params)
 {
-	int i, j, k, l, n, x, y;
+	int i, j;
 	ccv_dpm_mixture_model_t* model = (ccv_dpm_mixture_model_t*)ccmalloc(sizeof(ccv_dpm_mixture_model_t));
-	model->count = params.components;
-	model->root = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t) * model->count);
-	memset(model->root, 0, sizeof(ccv_dpm_root_classifier_t) * model->count);
 	struct feature_node* fn = (struct feature_node*)ccmalloc(sizeof(struct feature_node) * posnum);
 	for (i = 0; i < posnum; i++)
 	{
@@ -178,6 +461,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		innum += mnum[i];
 	}
 	printf("\n");
+	model->count = params.components;
+	model->root = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t) * model->count);
+	memset(model->root, 0, sizeof(ccv_dpm_root_classifier_t) * model->count);
 	int* areas = (int*)ccmalloc(sizeof(int) * posnum);
 	for (i = 0; i < posnum; i++)
 		areas[i] = bboxes[i].width * bboxes[i].height;
@@ -185,185 +471,36 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	// so even the object is 1/4 in size, we can still detect them (in detection phase, we start at 2x image)
 	int area = ccv_clamp(areas[(int)(posnum * 0.2 + 0.5)], params.min_area, params.max_area);
 	ccfree(areas);
-	gsl_rng_env_setup();
-	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	gsl_rng_set(rng, *(unsigned long int*)&params);
 	innum = 0;
 	/* initialize root mixture model with liblinear */
-	printf("initializing root mixture model\n");
+	printf("computing root mixture model dimensions: ");
+	fflush(stdout);
+	int* labels = (int*)ccmalloc(sizeof(int) * posnum);
 	for (i = 0; i < params.components; i++)
 	{
 		double aspect = 0;
 		for (j = innum; j < innum + mnum[i]; j++)
+		{
 			aspect += fn[j].value;
+			labels[fn[j].index] = i; // setup labels
+		}
 		aspect /= mnum[i];
 		int cols = ccv_max((int)(sqrtf(area / aspect) * aspect / CCV_DPM_WINDOW_SIZE + 0.5), 1);
 		int rows = ccv_max((int)(sqrtf(area / aspect) / CCV_DPM_WINDOW_SIZE + 0.5), 1);
-		printf(" - creating initial model %d(%d) at %dx%d\n", i + 1, params.components, cols, rows);
-		struct problem prob;
-		prob.n = 31 * cols * rows + 1;
-		prob.bias = 1.0;
-		prob.y = (int*)malloc(sizeof(int) * (mnum[i] + negnum) * (!!params.symmetric + 1));
-		prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (mnum[i] + negnum) * (!!params.symmetric + 1));
-		printf(" - generating positive examples ");
-		fflush(stdout);
-		l = 0;
-		for (j = innum; j < innum + mnum[i]; j++)
-		{
-			ccv_rect_t bbox = bboxes[fn[j].index];
-			int mcols = (int)(sqrtf(bbox.width * bbox.height * cols / (float)rows) + 0.5);
-			int mrows = (int)(sqrtf(bbox.width * bbox.height * rows / (float)cols) + 0.5);
-			bbox.x = bbox.x + (bbox.width - mcols) / 2;
-			bbox.y = bbox.y + (bbox.height - mrows) / 2;
-			bbox.width = mcols;
-			bbox.height = mrows;
-			if (mcols * 2 < cols * CCV_DPM_WINDOW_SIZE || mrows * 2 < rows * CCV_DPM_WINDOW_SIZE)
-			// resolution is too low to be useful
-				continue;
-			ccv_dense_matrix_t* image = 0;
-			ccv_read(posfiles[fn[j].index], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-			assert(image != 0);
-			ccv_dense_matrix_t* up2x = 0;
-			ccv_sample_up(image, &up2x, 0, 0, 0);
-			ccv_matrix_free(image);
-			ccv_dense_matrix_t* slice = 0;
-			ccv_slice(up2x, (ccv_matrix_t**)&slice, 0, bbox.y * 2, bbox.x * 2, bbox.height * 2, bbox.width * 2);
-			ccv_matrix_free(up2x);
-			ccv_dense_matrix_t* resize = 0;
-			ccv_resample(slice, &resize, 0, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE, CCV_INTER_AREA);
-			ccv_matrix_free(slice);
-			ccv_dense_matrix_t* hog = 0;
-			ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-			struct feature_node* features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
-			for (k = 0; k < rows * cols * 31; k++)
-			{
-				features[k].index = k + 1;
-				features[k].value = hog->data.f32[k];
-			}
-			features[31 * rows * cols].index = 31 * rows * cols + 1;
-			features[31 * rows * cols].value = prob.bias;
-			features[31 * rows * cols + 1].index = -1;
-			ccv_matrix_free(hog);
-			prob.x[l] = features;
-			prob.y[l] = 1;
-			++l;
-			/* I use a brutal way to add symmetric support: add flipped data.
-			 * It works because liblinear is super fast */
-			if (params.symmetric)
-			{
-				ccv_flip(resize, &resize, 0, CCV_FLIP_X);
-				hog = 0;
-				ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-				features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
-				for (k = 0; k < rows * cols * 31; k++)
-				{
-					features[k].index = k + 1;
-					features[k].value = hog->data.f32[k];
-				}
-				features[31 * rows * cols].index = 31 * rows * cols + 1;
-				features[31 * rows * cols].value = prob.bias;
-				features[31 * rows * cols + 1].index = -1;
-				ccv_matrix_free(hog);
-				prob.x[l] = features;
-				prob.y[l] = 1;
-				++l;
-			}
-			ccv_matrix_free(resize);
-			printf(".");
-			fflush(stdout);
-		}
-		printf("\n - generating negative examples ");
-		fflush(stdout);
-		n = 0;
-		while (n < negnum)
-		{
-			double p = (double)negnum / (double)bgnum;
-			for (j = 0; j < bgnum; j++)
-				if (gsl_rng_uniform(rng) < p)
-				{
-					ccv_dense_matrix_t* image = 0;
-					ccv_read(bgfiles[j], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-					assert(image != 0);
-					ccv_dense_matrix_t* slice = 0;
-					int y = gsl_rng_uniform_int(rng, image->rows - rows * CCV_DPM_WINDOW_SIZE);
-					int x = gsl_rng_uniform_int(rng, image->cols - cols * CCV_DPM_WINDOW_SIZE);
-					ccv_slice(image, (ccv_matrix_t**)&slice, 0, y, x, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE);
-					ccv_matrix_free(image);
-					ccv_dense_matrix_t* hog = 0;
-					ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-					struct feature_node* features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
-					for (k = 0; k < 31 * rows * cols; k++)
-					{
-						features[k].index = k + 1;
-						features[k].value = hog->data.f32[k];
-					}
-					features[31 * rows * cols].index = 31 * rows * cols + 1;
-					features[31 * rows * cols].value = prob.bias;
-					features[31 * rows * cols + 1].index = -1;
-					prob.x[l] = features;
-					prob.y[l] = -1;
-					ccv_matrix_free(hog);
-					++l;
-					if (params.symmetric)
-					{
-						ccv_flip(slice, &slice, 0, CCV_FLIP_X);
-						hog = 0;
-						ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-						features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
-						for (k = 0; k < 31 * rows * cols; k++)
-						{
-							features[k].index = k + 1;
-							features[k].value = hog->data.f32[k];
-						}
-						features[31 * rows * cols].index = 31 * rows * cols + 1;
-						features[31 * rows * cols].value = prob.bias;
-						features[31 * rows * cols + 1].index = -1;
-						prob.x[l] = features;
-						prob.y[l] = -1;
-						ccv_matrix_free(hog);
-						++l;
-					}
-					ccv_matrix_free(slice);
-					++n;
-					printf(".");
-					fflush(stdout);
-					if (n >= negnum)
-						break;
-				}
-		}
-		prob.l = l;
-		printf("\n - generated %d examples with %d dimensions each\n"
-			   " - running liblinear for initial linear SVM model (L2-regularized, L1-loss)\n", prob.l, prob.n);
-		struct parameter linear_parameters = { .solver_type = L2R_L1LOSS_SVC_DUAL,
-											   .eps = 1e-1,
-											   .C = 1.0,
-											   .nr_weight = 0,
-											   .weight_label = 0,
-											   .weight = 0 };
-		const char* err = check_parameter(&prob, &linear_parameters);
-		if (err)
-		{
-			printf(" - ERROR: cannot pass check parameter: %s\n", err);
-			exit(-1);
-		}
-		struct model* linear = train(&prob, &linear_parameters);
-		assert(linear != 0);
-		printf(" - model->label[0]: %d, model->nr_class: %d, model->nr_feature: %d\n", linear->label[0], linear->nr_class, linear->nr_feature);
 		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 		root_classifier->root.w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, 0, 0);
-		for (j = 0; j < 31 * rows * cols; j++)
-			root_classifier->root.w->data.f32[j] = linear->w[j];
-		root_classifier->beta = linear->w[31 * rows * cols];
-		free_and_destroy_model(&linear);
-		free(prob.y);
-		for (j = 0; j < prob.l; j++)
-			free(prob.x[j]);
-		free(prob.x);
-		ccv_make_matrix_immutable(root_classifier->root.w);
-		_ccv_dpm_write_checkpoint(model, dir);
+		if (i < params.components - 1)
+			printf("%dx%d, ", cols, rows);
+		else
+			printf("%dx%d\n", cols, rows);
+		fflush(stdout);
 		innum += mnum[i];
 	}
 	ccfree(fn);
+	printf("initializing root mixture model\n");
+	for (i = 0; i < params.components; i++)
+		_ccv_dpm_initialize_root_classifier(model->root + i, i, mnum[i], labels, posfiles, bboxes, posnum, bgfiles, bgnum, negnum, params.symmetric, params.grayscale);
+	_ccv_dpm_write_checkpoint(model, dir);
 	if (params.components > 1)
 	{
 		/* TODO: coordinate-descent for lsvm */
@@ -376,123 +513,11 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	for (i = 0; i < params.components; i++)
 	{
 		printf(" - initializing part filters for model %d(%d)\n", i + 1, params.components);
-		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
-		ccv_dense_matrix_t* w = 0;
-		ccv_sample_up(root_classifier->root.w, &w, 0, 0, 0);
-		/*
-		ccv_dense_matrix_t* out = 0;
-		ccv_visualize(root_classifier->root.w, &out, 0);
-		ccv_write(out, "test/w.png", 0, CCV_IO_PNG_FILE, 0);
-		ccv_matrix_free(out);
-		*/
-		ccv_make_matrix_mutable(w);
-		root_classifier->count = params.parts;
-		root_classifier->part = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * params.parts);
-		double area = w->rows * w->cols / (double)params.parts;
-		for (j = 0; j < params.parts;)
-		{
-			ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + j;
-			int dx = 0, dy = 0, dw = 0, dh = 0, sym = 0;
-			double dsum = -DBL_MAX;
-#define slice_and_update_if_needed(y, x, l, n, s) \
-			{ \
-				ccv_dense_matrix_t* slice = 0; \
-				ccv_slice(w, (ccv_matrix_t**)&slice, 0, y, x, l, n); \
-				double sum = ccv_sum(slice, CCV_UNSIGNED) / (double)(l * n); \
-				if (sum > dsum) \
-				{ \
-					dsum = sum; \
-					dx = x; \
-					dy = y; \
-					dw = n; \
-					dh = l; \
-					sym = s; \
-				} \
-				ccv_matrix_free(slice); \
-			}
-			for (l = 1; (l < area + 1) && (l * 3 <= w->rows * 2); l++)
-			{
-				n = (int)(area / l + 0.5);
-				if (n < 1 || n * 3 > w->cols * 2)
-					continue;
-				if (l > n * 2 || n > l * 2)
-					continue;
-				if (params.symmetric)
-				{
-					if (n % 2 == w->cols % 2) // can be symmetric in horizontal center
-					{
-						x = (w->cols - n) / 2;
-						for (y = 0; y < w->rows - l + 1; y++)
-							slice_and_update_if_needed(y, x, l, n, 0);
-					}
-					if (j < params.parts - 1) // have 2 locations
-					{
-						for (y = 0; y < w->rows - l + 1; y++)
-							for (x = 0; x <= (w->rows - n - 1) / 2; x++)
-								slice_and_update_if_needed(y, x, l, n, 1);
-					}
-				} else {
-					for (y = 0; y < w->rows - l + 1; y++)
-						for (x = 0; x < w->cols - n + 1; x++)
-							slice_and_update_if_needed(y, x, l, n, 0);
-				}
-			}
-			/*
-			ccv_dense_matrix_t* out = 0;
-			ccv_visualize(w, &out, 0);
-			char buf[1024];
-			sprintf(buf, "test/%d.png", j);
-			ccv_write(out, buf, 0, CCV_IO_PNG_FILE, 0);
-			ccv_matrix_free(out);
-			*/
-			printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", j + 1, params.parts, dw, dh, dx, dy, dsum);
-			part_classifier->dx = 0;
-			part_classifier->dy = 0;
-			part_classifier->dxx = 0.1f;
-			part_classifier->dyy = 0.1f;
-			part_classifier->x = dx;
-			part_classifier->y = dy;
-			part_classifier->z = 1;
-			part_classifier->w = 0;
-			ccv_slice(w, (ccv_matrix_t**)&part_classifier->w, 0, dy, dx, dh, dw);
-			/* clean up the region we selected */
-			float* w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | 31, w, dy, dx, 0);
-			for (y = 0; y < dh; y++)
-			{
-				for (x = 0; x < dw * 31; x++)
-					w_ptr[x] = 0;
-				w_ptr += w->cols * 31;
-			}
-			j++;
-			if (params.symmetric && sym) // add counter-part
-			{
-				dx = w->cols - (dx + dw);
-				printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", j + 1, params.parts, dw, dh, dx, dy, dsum);
-				part_classifier[1].dx = 0;
-				part_classifier[1].dy = 0;
-				part_classifier[1].dxx = 0.1f;
-				part_classifier[1].dyy = 0.1f;
-				part_classifier[1].x = dx;
-				part_classifier[1].y = dy;
-				part_classifier[1].z = 1;
-				part_classifier[1].w = 0;
-				ccv_slice(w, (ccv_matrix_t**)&part_classifier[1].w, 0, dy, dx, dh, dw);
-				/* clean up the region we selected */
-				float* w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | 31, w, dy, dx, 0);
-				for (y = 0; y < dh; y++)
-				{
-					for (x = 0; x < dw * 31; x++)
-						w_ptr[x] = 0;
-					w_ptr += w->cols * 31;
-				}
-				j++;
-			}
-		}
-		ccv_matrix_free(w);
+		_ccv_dpm_initialize_part_classifiers(model->root + i, params.parts, params.symmetric);
 	}
 	/* optimize both root filter and part filters with stochastic gradient descent */
-	printf("optimizing root filter & part filters with stochastic gradient descent (last step)\n");
-	gsl_rng_free(rng);
+	printf("optimizing root filter & part filters with stochastic gradient descent\n");
+	ccfree(labels);
 	_ccv_dpm_mixture_model_cleanup(model);
 	ccfree(model);
 }
