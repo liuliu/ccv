@@ -399,9 +399,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					continue;
 				if (l > n * 2 || n > l * 2)
 					continue;
-				//if (params.symmetric)
+				if (params.symmetric)
 				{
-				//} else {
+				} else {
 					for (y = 0; y < w->rows - l + 1; y++)
 						for (x = 0; x < w->cols - n + 1; x++)
 						{

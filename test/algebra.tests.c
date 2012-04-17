@@ -35,7 +35,7 @@ TEST_CASE("vector sum")
 	a->data.f64[3] = 0.21;
 	a->data.f64[4] = 0.22;
 	a->data.f64[5] = 0.23;
-	double sum = ccv_sum(a);
+	double sum = ccv_sum(a, CCV_SIGNED);
 	ccv_matrix_free(a);
 	REQUIRE_EQ_WITH_TOLERANCE(sum, 1.02, 1e-6, "3x2 vector sum failure");
 }
