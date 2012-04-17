@@ -379,53 +379,72 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 		ccv_dense_matrix_t* w = 0;
 		ccv_sample_up(root_classifier->root.w, &w, 0, 0, 0);
+		/*
 		ccv_dense_matrix_t* out = 0;
 		ccv_visualize(root_classifier->root.w, &out, 0);
 		ccv_write(out, "test/w.png", 0, CCV_IO_PNG_FILE, 0);
 		ccv_matrix_free(out);
+		*/
 		ccv_make_matrix_mutable(w);
 		root_classifier->count = params.parts;
 		root_classifier->part = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * params.parts);
 		double area = w->rows * w->cols / (double)params.parts;
-		for (j = 0; j < params.parts; j++)
+		for (j = 0; j < params.parts;)
 		{
 			ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + j;
-			int dx = 0, dy = 0, dw = 0, dh = 0;
+			int dx = 0, dy = 0, dw = 0, dh = 0, sym = 0;
 			double dsum = -DBL_MAX;
-			for (l = 1; l < ccv_min(w->rows + 1, area + 1); l++)
+#define slice_and_update_if_needed(y, x, l, n, s) \
+			{ \
+				ccv_dense_matrix_t* slice = 0; \
+				ccv_slice(w, (ccv_matrix_t**)&slice, 0, y, x, l, n); \
+				double sum = ccv_sum(slice, CCV_UNSIGNED) / (double)(l * n); \
+				if (sum > dsum) \
+				{ \
+					dsum = sum; \
+					dx = x; \
+					dy = y; \
+					dw = n; \
+					dh = l; \
+					sym = s; \
+				} \
+				ccv_matrix_free(slice); \
+			}
+			for (l = 1; (l < area + 1) && (l * 3 <= w->rows * 2); l++)
 			{
 				n = (int)(area / l + 0.5);
-				if (n < 1 || n > w->cols)
+				if (n < 1 || n * 3 > w->cols * 2)
 					continue;
 				if (l > n * 2 || n > l * 2)
 					continue;
 				if (params.symmetric)
 				{
+					if (n % 2 == w->cols % 2) // can be symmetric in horizontal center
+					{
+						x = (w->cols - n) / 2;
+						for (y = 0; y < w->rows - l + 1; y++)
+							slice_and_update_if_needed(y, x, l, n, 0);
+					}
+					if (j < params.parts - 1) // have 2 locations
+					{
+						for (y = 0; y < w->rows - l + 1; y++)
+							for (x = 0; x <= (w->rows - n - 1) / 2; x++)
+								slice_and_update_if_needed(y, x, l, n, 1);
+					}
 				} else {
 					for (y = 0; y < w->rows - l + 1; y++)
 						for (x = 0; x < w->cols - n + 1; x++)
-						{
-							ccv_dense_matrix_t* slice = 0;
-							ccv_slice(w, (ccv_matrix_t**)&slice, 0, y, x, l, n);
-							double sum = ccv_sum(slice, CCV_UNSIGNED) / (double)(l * n);
-							if (sum > dsum)
-							{
-								dsum = sum;
-								dx = x;
-								dy = y;
-								dw = n;
-								dh = l;
-							}
-							ccv_matrix_free(slice);
-						}
+							slice_and_update_if_needed(y, x, l, n, 0);
 				}
 			}
+			/*
 			ccv_dense_matrix_t* out = 0;
 			ccv_visualize(w, &out, 0);
 			char buf[1024];
 			sprintf(buf, "test/%d.png", j);
 			ccv_write(out, buf, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(out);
+			*/
 			printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", j + 1, params.parts, dw, dh, dx, dy, dsum);
 			part_classifier->dx = 0;
 			part_classifier->dy = 0;
@@ -444,9 +463,35 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					w_ptr[x] = 0;
 				w_ptr += w->cols * 31;
 			}
+			j++;
+			if (params.symmetric && sym) // add counter-part
+			{
+				dx = w->cols - (dx + dw);
+				printf(" ---- part %d(%d) %dx%d at (%d,%d), entropy: %lf\n", j + 1, params.parts, dw, dh, dx, dy, dsum);
+				part_classifier[1].dx = 0;
+				part_classifier[1].dy = 0;
+				part_classifier[1].dxx = 0.1f;
+				part_classifier[1].dyy = 0.1f;
+				part_classifier[1].x = dx;
+				part_classifier[1].y = dy;
+				part_classifier[1].z = 1;
+				part_classifier[1].w = 0;
+				ccv_slice(w, (ccv_matrix_t**)&part_classifier[1].w, 0, dy, dx, dh, dw);
+				/* clean up the region we selected */
+				float* w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | 31, w, dy, dx, 0);
+				for (y = 0; y < dh; y++)
+				{
+					for (x = 0; x < dw * 31; x++)
+						w_ptr[x] = 0;
+					w_ptr += w->cols * 31;
+				}
+				j++;
+			}
 		}
 		ccv_matrix_free(w);
 	}
+	/* optimize both root filter and part filters with stochastic gradient descent */
+	printf("optimizing root filter & part filters with stochastic gradient descent (last step)\n");
 	gsl_rng_free(rng);
 	_ccv_dpm_mixture_model_cleanup(model);
 	ccfree(model);
