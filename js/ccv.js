@@ -97,7 +97,7 @@ var ccv = {
 		var ctx = canvas.getContext("2d");
 		var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
 		var data = imageData.data;
-		var pix1, pix2, pix = canvas.width * canvas.height * 4;
+		var pix1, pix2, pix = ((canvas.width * canvas.height) << 2);
 		while (pix > 0)
 			data[pix -= 4] = data[pix1 = pix + 1] = data[pix2 = pix + 2] = (data[pix] * 0.3 + data[pix1] * 0.59 + data[pix2] * 0.11);
 		ctx.putImageData(imageData, 0, 0);
@@ -190,53 +190,53 @@ var ccv = {
 			var scale = this.shared.scale;
 			var next = this.shared.next;
 			var scale_upto = this.shared.scale_upto;
-			var pyr = new Array((scale_upto + next * 2) * 4);
-			var ret = new Array((scale_upto + next * 2) * 4);
+			var pyr = new Array((scale_upto + (next << 1)) << 2);
+			var ret = new Array((scale_upto + (next << 1)) << 2);
 			pyr[0] = canvas;
 			ret[0] = { "width" : pyr[0].width,
 					   "height" : pyr[0].height,
 					   "data" : pyr[0].getContext("2d").getImageData(0, 0, pyr[0].width, pyr[0].height).data };
 			var i;
 			for (i = 1; i <= interval; i++) {
-				pyr[i * 4] = document.createElement("canvas");
-				pyr[i * 4].width = ((pyr[0].width / Math.pow(scale, i)) | 0);
-				pyr[i * 4].height = ((pyr[0].height / Math.pow(scale, i) | 0));
-				pyr[i * 4].getContext("2d").drawImage(pyr[0], 0, 0, pyr[0].width, pyr[0].height, 0, 0, pyr[i * 4].width, pyr[i * 4].height);
-				ret[i * 4] = { "width" : pyr[i * 4].width,
-							   "height" : pyr[i * 4].height,
-							   "data" : pyr[i * 4].getContext("2d").getImageData(0, 0, pyr[i * 4].width, pyr[i * 4].height).data };
+				pyr[i << 2] = document.createElement("canvas");
+				pyr[i << 2].width = ((pyr[0].width / Math.pow(scale, i)) | 0);
+				pyr[i << 2].height = ((pyr[0].height / Math.pow(scale, i) | 0));
+				pyr[i << 2].getContext("2d").drawImage(pyr[0], 0, 0, pyr[0].width, pyr[0].height, 0, 0, pyr[i << 2].width, pyr[i << 2].height);
+				ret[i << 2] = { "width" : pyr[i << 2].width,
+							   "height" : pyr[i << 2].height,
+							   "data" : pyr[i << 2].getContext("2d").getImageData(0, 0, pyr[i << 2].width, pyr[i << 2].height).data };
 			}
-			for (i = next; i < scale_upto + next * 2; i++) {
-				pyr[i * 4] = document.createElement("canvas");
-				pyr[i * 4].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
-				pyr[i * 4].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
-				pyr[i * 4].getContext("2d").drawImage(pyr[i * 4 - next * 4], 0, 0, pyr[i * 4 - next * 4].width, pyr[i * 4 - next * 4].height, 0, 0, pyr[i * 4].width, pyr[i * 4].height);
-				ret[i * 4] = { "width" : pyr[i * 4].width,
-							   "height" : pyr[i * 4].height,
-							   "data" : pyr[i * 4].getContext("2d").getImageData(0, 0, pyr[i * 4].width, pyr[i * 4].height).data };
+			for (i = next; i < scale_upto + (next << 1); i++) {
+				pyr[i << 2] = document.createElement("canvas");
+				pyr[i << 2].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
+				pyr[i << 2].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
+				pyr[i << 2].getContext("2d").drawImage(pyr[(i << 2) - (next << 2)], 0, 0, pyr[(i << 2) - (next << 2)].width, pyr[(i << 2) - (next << 2)].height, 0, 0, pyr[i << 2].width, pyr[i << 2].height);
+				ret[i << 2] = { "width" : pyr[i << 2].width,
+							   "height" : pyr[i << 2].height,
+							   "data" : pyr[i << 2].getContext("2d").getImageData(0, 0, pyr[i << 2].width, pyr[i << 2].height).data };
 			}
-			for (i = next * 2; i < scale_upto + next * 2; i++) {
-				pyr[i * 4 + 1] = document.createElement("canvas");
-				pyr[i * 4 + 1].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
-				pyr[i * 4 + 1].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
-				pyr[i * 4 + 1].getContext("2d").drawImage(pyr[i * 4 - next * 4], 1, 0, pyr[i * 4 - next * 4].width - 1, pyr[i * 4 - next * 4].height, 0, 0, pyr[i * 4 + 1].width - 2, pyr[i * 4 + 1].height);
-				ret[i * 4 + 1] = { "width" : pyr[i * 4 + 1].width,
-								   "height" : pyr[i * 4 + 1].height,
-								   "data" : pyr[i * 4 + 1].getContext("2d").getImageData(0, 0, pyr[i * 4 + 1].width, pyr[i * 4 + 1].height).data };
-				pyr[i * 4 + 2] = document.createElement("canvas");
-				pyr[i * 4 + 2].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
-				pyr[i * 4 + 2].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
-				pyr[i * 4 + 2].getContext("2d").drawImage(pyr[i * 4 - next * 4], 0, 1, pyr[i * 4 - next * 4].width, pyr[i * 4 - next * 4].height - 1, 0, 0, pyr[i * 4 + 2].width, pyr[i * 4 + 2].height - 2);
-				ret[i * 4 + 2] = { "width" : pyr[i * 4 + 2].width,
-								   "height" : pyr[i * 4 + 2].height,
-								   "data" : pyr[i * 4 + 2].getContext("2d").getImageData(0, 0, pyr[i * 4 + 2].width, pyr[i * 4 + 2].height).data };
-				pyr[i * 4 + 3] = document.createElement("canvas");
-				pyr[i * 4 + 3].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
-				pyr[i * 4 + 3].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
-				pyr[i * 4 + 3].getContext("2d").drawImage(pyr[i * 4 - next * 4], 1, 1, pyr[i * 4 - next * 4].width - 1, pyr[i * 4 - next * 4].height - 1, 0, 0, pyr[i * 4 + 3].width - 2, pyr[i * 4 + 3].height - 2);
-				ret[i * 4 + 3] = { "width" : pyr[i * 4 + 3].width,
-								   "height" : pyr[i * 4 + 3].height,
-								   "data" : pyr[i * 4 + 3].getContext("2d").getImageData(0, 0, pyr[i * 4 + 3].width, pyr[i * 4 + 3].height).data };
+			for (i = (next << 1); i < scale_upto + (next << 1); i++) {
+				pyr[(i << 2) + 1] = document.createElement("canvas");
+				pyr[(i << 2) + 1].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
+				pyr[(i << 2) + 1].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
+				pyr[(i << 2) + 1].getContext("2d").drawImage(pyr[(i << 2) - (next << 2)], 1, 0, pyr[(i << 2) - (next << 2)].width - 1, pyr[(i << 2) - (next << 2)].height, 0, 0, pyr[(i << 2) + 1].width - 2, pyr[(i << 2) + 1].height);
+				ret[(i << 2) + 1] = { "width" : pyr[(i << 2) + 1].width,
+								   "height" : pyr[(i << 2) + 1].height,
+								   "data" : pyr[(i << 2) + 1].getContext("2d").getImageData(0, 0, pyr[(i << 2) + 1].width, pyr[(i << 2) + 1].height).data };
+				pyr[(i << 2) + 2] = document.createElement("canvas");
+				pyr[(i << 2) + 2].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
+				pyr[(i << 2) + 2].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
+				pyr[(i << 2) + 2].getContext("2d").drawImage(pyr[(i << 2) - (next << 2)], 0, 1, pyr[(i << 2) - (next << 2)].width, pyr[(i << 2) - (next << 2)].height - 1, 0, 0, pyr[(i << 2) + 2].width, pyr[(i << 2) + 2].height - 2);
+				ret[(i << 2) + 2] = { "width" : pyr[(i << 2) + 2].width,
+								   "height" : pyr[(i << 2) + 2].height,
+								   "data" : pyr[(i << 2) + 2].getContext("2d").getImageData(0, 0, pyr[(i << 2) + 2].width, pyr[(i << 2) + 2].height).data };
+				pyr[(i << 2) + 3] = document.createElement("canvas");
+				pyr[(i << 2) + 3].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
+				pyr[(i << 2) + 3].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
+				pyr[(i << 2) + 3].getContext("2d").drawImage(pyr[(i << 2) - (next << 2)], 1, 1, pyr[(i << 2) - (next << 2)].width - 1, pyr[(i << 2) - (next << 2)].height - 1, 0, 0, pyr[(i << 2) + 3].width - 2, pyr[(i << 2) + 3].height - 2);
+				ret[(i << 2) + 3] = { "width" : pyr[(i << 2) + 3].width,
+								   "height" : pyr[(i << 2) + 3].height,
+								   "data" : pyr[(i << 2) + 3].getContext("2d").getImageData(0, 0, pyr[(i << 2) + 3].width, pyr[(i << 2) + 3].height).data };
 			}
 			return [ret];
 		};
@@ -253,12 +253,12 @@ var ccv = {
 			var dy = [0, 0, 1, 1];
 			var seq = [];
 			for (i = 0; i < scale_upto; i++) {
-				var qw = pyr[i * 4 + next * 8].width - ((cascade.width / 4) | 0);
-				var qh = pyr[i * 4 + next * 8].height - ((cascade.height / 4) | 0);
-				var step = [pyr[i * 4].width * 4, pyr[i * 4 + next * 4].width * 4, pyr[i * 4 + next * 8].width * 4];
-				var paddings = [pyr[i * 4].width * 16 - qw * 16,
-								pyr[i * 4 + next * 4].width * 8 - qw * 8,
-								pyr[i * 4 + next * 8].width * 4 - qw * 4];
+				var qw = pyr[(i << 2) + (next << 3)].width - ((cascade.width / 4) | 0);
+				var qh = pyr[(i << 2) + (next << 3)].height - ((cascade.height / 4) | 0);
+				var step = [(pyr[i << 2].width << 2), (pyr[(i << 2) + (next << 2)].width << 2), (pyr[(i << 2) + (next << 3)].width << 2)];
+				var paddings = [(pyr[i << 2].width << 4) - (qw << 4),
+								(pyr[(i << 2) + (next << 2)].width << 3) - (qw << 3),
+								(pyr[(i << 2) + (next << 3)].width << 2) - (qw << 2)];
 				for (j = 0; j < cascade.stage_classifier.length; j++) {
 					var orig_feature = cascade.stage_classifier[j].orig_feature;
 					var feature = cascade.stage_classifier[j].feature = new Array(cascade.stage_classifier[j].count);
@@ -269,16 +269,16 @@ var ccv = {
 									  "nx" : new Array(orig_feature[k].size),
 									  "nz" : new Array(orig_feature[k].size)};
 						for (q = 0; q < orig_feature[k].size; q++) {
-							feature[k].px[q] = orig_feature[k].px[q] * 4 + orig_feature[k].py[q] * step[orig_feature[k].pz[q]];
+							feature[k].px[q] = (orig_feature[k].px[q] << 2) + orig_feature[k].py[q] * step[orig_feature[k].pz[q]];
 							feature[k].pz[q] = orig_feature[k].pz[q];
-							feature[k].nx[q] = orig_feature[k].nx[q] * 4 + orig_feature[k].ny[q] * step[orig_feature[k].nz[q]];
+							feature[k].nx[q] = (orig_feature[k].nx[q] << 2) + orig_feature[k].ny[q] * step[orig_feature[k].nz[q]];
 							feature[k].nz[q] = orig_feature[k].nz[q];
 						}
 					}
 				}
 				for (q = 0; q < 4; q++) {
-					var u8 = [pyr[i * 4].data, pyr[i * 4 + next * 4].data, pyr[i * 4 + next * 8 + q].data];
-					var u8o = [dx[q] * 8 + dy[q] * pyr[i * 4].width * 8, dx[q] * 4 + dy[q] * pyr[i * 4 + next * 4].width * 4, 0];
+					var u8 = [pyr[i << 2].data, pyr[(i << 2) + (next << 2)].data, pyr[(i << 2) + (next << 3) + q].data];
+					var u8o = [(dx[q] << 3) + dy[q] * (pyr[i << 2].width << 3), (dx[q] << 2) + dy[q] * (pyr[(i << 2) + (next << 2)].width << 2), 0];
 					for (y = 0; y < qh; y++) {
 						for (x = 0; x < qw; x++) {
 							var sum = 0;
@@ -292,7 +292,7 @@ var ccv = {
 									var p, pmin = u8[feature_k.pz[0]][u8o[feature_k.pz[0]] + feature_k.px[0]];
 									var n, nmax = u8[feature_k.nz[0]][u8o[feature_k.nz[0]] + feature_k.nx[0]];
 									if (pmin <= nmax) {
-										sum += alpha[k * 2];
+										sum += alpha[k << 1];
 									} else {
 										var f, shortcut = true;
 										for (f = 0; f < feature_k.size; f++) {
@@ -317,7 +317,7 @@ var ccv = {
 												}
 											}
 										}
-										sum += (shortcut) ? alpha[k * 2 + 1] : alpha[k * 2];
+										sum += (shortcut) ? alpha[(k << 1) + 1] : alpha[k << 1];
 									}
 								}
 								if (sum < cascade.stage_classifier[j].threshold) {
@@ -326,8 +326,8 @@ var ccv = {
 								}
 							}
 							if (flag) {
-								seq.push({"x" : (x * 4 + dx[q] * 2) * scale_x,
-										  "y" : (y * 4 + dy[q] * 2) * scale_y,
+								seq.push({"x" : ((x << 2) + (dx[q] << 1)) * scale_x,
+										  "y" : ((y << 2) + (dy[q] << 1)) * scale_y,
 										  "width" : cascade.width * scale_x,
 										  "height" : cascade.height * scale_y,
 										  "neighbor" : 1,
