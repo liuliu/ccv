@@ -179,7 +179,7 @@ var ccv = {
 			this.shared.cascade = params.cascade;
 			this.shared.scale = Math.pow(2, 1 / (params.interval + 1));
 			this.shared.next = params.interval + 1;
-			this.shared.scale_upto = Math.floor(Math.log(Math.min(params.canvas.width / params.cascade.width, params.canvas.height / params.cascade.height)) / Math.log(this.shared.scale));
+			this.shared.scale_upto = ((Math.log(Math.min(params.canvas.width / params.cascade.width, params.canvas.height / params.cascade.height)) / Math.log(this.shared.scale)) | 0);
 			var i;
 			for (i = 0; i < this.shared.cascade.stage_classifier.length; i++)
 				this.shared.cascade.stage_classifier[i].orig_feature = this.shared.cascade.stage_classifier[i].feature;
@@ -199,8 +199,8 @@ var ccv = {
 			var i;
 			for (i = 1; i <= interval; i++) {
 				pyr[i * 4] = document.createElement("canvas");
-				pyr[i * 4].width = Math.floor(pyr[0].width / Math.pow(scale, i));
-				pyr[i * 4].height = Math.floor(pyr[0].height / Math.pow(scale, i));
+				pyr[i * 4].width = ((pyr[0].width / Math.pow(scale, i)) | 0);
+				pyr[i * 4].height = ((pyr[0].height / Math.pow(scale, i) | 0));
 				pyr[i * 4].getContext("2d").drawImage(pyr[0], 0, 0, pyr[0].width, pyr[0].height, 0, 0, pyr[i * 4].width, pyr[i * 4].height);
 				ret[i * 4] = { "width" : pyr[i * 4].width,
 							   "height" : pyr[i * 4].height,
@@ -208,8 +208,8 @@ var ccv = {
 			}
 			for (i = next; i < scale_upto + next * 2; i++) {
 				pyr[i * 4] = document.createElement("canvas");
-				pyr[i * 4].width = Math.floor(pyr[i * 4 - next * 4].width / 2);
-				pyr[i * 4].height = Math.floor(pyr[i * 4 - next * 4].height / 2);
+				pyr[i * 4].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
+				pyr[i * 4].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
 				pyr[i * 4].getContext("2d").drawImage(pyr[i * 4 - next * 4], 0, 0, pyr[i * 4 - next * 4].width, pyr[i * 4 - next * 4].height, 0, 0, pyr[i * 4].width, pyr[i * 4].height);
 				ret[i * 4] = { "width" : pyr[i * 4].width,
 							   "height" : pyr[i * 4].height,
@@ -217,22 +217,22 @@ var ccv = {
 			}
 			for (i = next * 2; i < scale_upto + next * 2; i++) {
 				pyr[i * 4 + 1] = document.createElement("canvas");
-				pyr[i * 4 + 1].width = Math.floor(pyr[i * 4 - next * 4].width / 2);
-				pyr[i * 4 + 1].height = Math.floor(pyr[i * 4 - next * 4].height / 2);
+				pyr[i * 4 + 1].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
+				pyr[i * 4 + 1].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
 				pyr[i * 4 + 1].getContext("2d").drawImage(pyr[i * 4 - next * 4], 1, 0, pyr[i * 4 - next * 4].width - 1, pyr[i * 4 - next * 4].height, 0, 0, pyr[i * 4 + 1].width - 2, pyr[i * 4 + 1].height);
 				ret[i * 4 + 1] = { "width" : pyr[i * 4 + 1].width,
 								   "height" : pyr[i * 4 + 1].height,
 								   "data" : pyr[i * 4 + 1].getContext("2d").getImageData(0, 0, pyr[i * 4 + 1].width, pyr[i * 4 + 1].height).data };
 				pyr[i * 4 + 2] = document.createElement("canvas");
-				pyr[i * 4 + 2].width = Math.floor(pyr[i * 4 - next * 4].width / 2);
-				pyr[i * 4 + 2].height = Math.floor(pyr[i * 4 - next * 4].height / 2);
+				pyr[i * 4 + 2].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
+				pyr[i * 4 + 2].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
 				pyr[i * 4 + 2].getContext("2d").drawImage(pyr[i * 4 - next * 4], 0, 1, pyr[i * 4 - next * 4].width, pyr[i * 4 - next * 4].height - 1, 0, 0, pyr[i * 4 + 2].width, pyr[i * 4 + 2].height - 2);
 				ret[i * 4 + 2] = { "width" : pyr[i * 4 + 2].width,
 								   "height" : pyr[i * 4 + 2].height,
 								   "data" : pyr[i * 4 + 2].getContext("2d").getImageData(0, 0, pyr[i * 4 + 2].width, pyr[i * 4 + 2].height).data };
 				pyr[i * 4 + 3] = document.createElement("canvas");
-				pyr[i * 4 + 3].width = Math.floor(pyr[i * 4 - next * 4].width / 2);
-				pyr[i * 4 + 3].height = Math.floor(pyr[i * 4 - next * 4].height / 2);
+				pyr[i * 4 + 3].width = ((pyr[i * 4 - next * 4].width / 2) | 0);
+				pyr[i * 4 + 3].height = ((pyr[i * 4 - next * 4].height / 2) | 0);
 				pyr[i * 4 + 3].getContext("2d").drawImage(pyr[i * 4 - next * 4], 1, 1, pyr[i * 4 - next * 4].width - 1, pyr[i * 4 - next * 4].height - 1, 0, 0, pyr[i * 4 + 3].width - 2, pyr[i * 4 + 3].height - 2);
 				ret[i * 4 + 3] = { "width" : pyr[i * 4 + 3].width,
 								   "height" : pyr[i * 4 + 3].height,
@@ -253,8 +253,8 @@ var ccv = {
 			var dy = [0, 0, 1, 1];
 			var seq = [];
 			for (i = 0; i < scale_upto; i++) {
-				var qw = pyr[i * 4 + next * 8].width - Math.floor(cascade.width / 4);
-				var qh = pyr[i * 4 + next * 8].height - Math.floor(cascade.height / 4);
+				var qw = pyr[i * 4 + next * 8].width - ((cascade.width / 4) | 0);
+				var qh = pyr[i * 4 + next * 8].height - ((cascade.height / 4) | 0);
 				var step = [pyr[i * 4].width * 4, pyr[i * 4 + next * 4].width * 4, pyr[i * 4 + next * 8].width * 4];
 				var paddings = [pyr[i * 4].width * 16 - qw * 16,
 								pyr[i * 4 + next * 4].width * 8 - qw * 8,
@@ -363,14 +363,14 @@ var ccv = {
 				return seq;
 			else {
 				var result = ccv.array_group(seq, function (r1, r2) {
-					var distance = Math.floor(r1.width * 0.25 + 0.5);
+					var distance = ((r1.width * 0.25 + 0.5) | 0);
 
 					return r2.x <= r1.x + distance &&
 						   r2.x >= r1.x - distance &&
 						   r2.y <= r1.y + distance &&
 						   r2.y >= r1.y - distance &&
-						   r2.width <= Math.floor(r1.width * 1.5 + 0.5) &&
-						   Math.floor(r2.width * 1.5 + 0.5) >= r1.width;
+						   r2.width <= ((r1.width * 1.5 + 0.5) | 0) &&
+						   ((r2.width * 1.5 + 0.5) | 0) >= r1.width;
 				});
 				var ncomp = result.cat;
 				var idx_seq = result.index;
@@ -424,7 +424,7 @@ var ccv = {
 					for(j = 0; j < seq2.length; j++)
 					{
 						var r2 = seq2[j];
-						var distance = Math.floor(r2.width * 0.25 + 0.5);
+						var distance = ((r2.width * 0.25 + 0.5) | 0);
 
 						if(i != j &&
 						   r1.x >= r2.x - distance &&
