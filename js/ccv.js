@@ -106,18 +106,19 @@ var ccv = {
 
 	array_group : function (seq, gfunc) {
 		var i, j;
-		var node = new Array(seq.length);
-		for (i = 0; i < seq.length; i++)
+		var seq_length = seq.length;
+		var node = new Array(seq_length);
+		for (i = 0; i < seq_length; i++)
 			node[i] = {"parent" : -1,
 					   "element" : seq[i],
 					   "rank" : 0};
-		for (i = 0; i < seq.length; i++) {
+		for (i = 0; i < seq_length; i++) {
 			if (!node[i].element)
 				continue;
 			var root = i;
 			while (node[root].parent != -1)
 				root = node[root].parent;
-			for (j = 0; j < seq.length; j++) {
+			for (j = 0; j < seq_length; j++) {
 				if( i != j && node[j].element && gfunc(node[i].element, node[j].element)) {
 					var root2 = j;
 
@@ -153,9 +154,9 @@ var ccv = {
 				}
 			}
 		}
-		var idx = new Array(seq.length);
+		var idx = new Array(seq_length);
 		var class_idx = 0;
-		for(i = 0; i < seq.length; i++) {
+		for(i = 0; i < seq_length; i++) {
 			j = -1;
 			var node1 = i;
 			if(node[node1].element) {
@@ -181,8 +182,10 @@ var ccv = {
 			this.shared.next = params.interval + 1;
 			this.shared.scale_upto = ((Math.log(Math.min(params.canvas.width / params.cascade.width, params.canvas.height / params.cascade.height)) / Math.log(this.shared.scale)) | 0);
 			var i;
-			for (i = 0; i < this.shared.cascade.stage_classifier.length; i++)
-				this.shared.cascade.stage_classifier[i].orig_feature = this.shared.cascade.stage_classifier[i].feature;
+			var this_shared_cascade_stage_classifier = this.shared.cascade.stage_classifier;
+			var this_shared_cascade_stage_classifier_length = this_shared_cascade_stage_classifier.length;
+			for (i = 0; i < this_shared_cascade_stage_classifier_length; i++)
+				this_shared_cascade_stage_classifier[i].orig_feature = this_shared_cascade_stage_classifier[i].feature;
 		}
 		function pre(worker_num) {
 			var canvas = this.shared.canvas;
@@ -190,6 +193,7 @@ var ccv = {
 			var scale = this.shared.scale;
 			var next = this.shared.next;
 			var scale_upto = this.shared.scale_upto;
+			var scale_upto_next_1 = scale_upto + (next << 1);
 			var pyr = new Array((scale_upto + (next << 1)) << 2);
 			var ret = new Array((scale_upto + (next << 1)) << 2);
 			pyr[0] = canvas;
@@ -206,7 +210,7 @@ var ccv = {
 							   "height" : pyr[i << 2].height,
 							   "data" : pyr[i << 2].getContext("2d").getImageData(0, 0, pyr[i << 2].width, pyr[i << 2].height).data };
 			}
-			for (i = next; i < scale_upto + (next << 1); i++) {
+			for (i = next; i < scale_upto_next_1; i++) {
 				pyr[i << 2] = document.createElement("canvas");
 				pyr[i << 2].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
 				pyr[i << 2].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
@@ -215,7 +219,7 @@ var ccv = {
 							   "height" : pyr[i << 2].height,
 							   "data" : pyr[i << 2].getContext("2d").getImageData(0, 0, pyr[i << 2].width, pyr[i << 2].height).data };
 			}
-			for (i = (next << 1); i < scale_upto + (next << 1); i++) {
+			for (i = (next << 1); i < scale_upto_next_1; i++) {
 				pyr[(i << 2) + 1] = document.createElement("canvas");
 				pyr[(i << 2) + 1].width = ((pyr[(i << 2) - (next << 2)].width / 2) | 0);
 				pyr[(i << 2) + 1].height = ((pyr[(i << 2) - (next << 2)].height / 2) | 0);
@@ -243,6 +247,8 @@ var ccv = {
 
 		function core(pyr, id, worker_num) {
 			var cascade = this.shared.cascade;
+			var cascade_stage_classifier = cascade.stage_classifier;
+			var cascade_stage_classifier_length = cascade_stage_classifier.length;
 			var interval = this.shared.interval;
 			var scale = this.shared.scale;
 			var next = this.shared.next;
@@ -259,20 +265,31 @@ var ccv = {
 				var paddings = [(pyr[i << 2].width << 4) - (qw << 4),
 								(pyr[(i << 2) + (next << 2)].width << 3) - (qw << 3),
 								(pyr[(i << 2) + (next << 3)].width << 2) - (qw << 2)];
-				for (j = 0; j < cascade.stage_classifier.length; j++) {
-					var orig_feature = cascade.stage_classifier[j].orig_feature;
-					var feature = cascade.stage_classifier[j].feature = new Array(cascade.stage_classifier[j].count);
-					for (k = 0; k < cascade.stage_classifier[j].count; k++) {
-						feature[k] = {"size" : orig_feature[k].size,
-									  "px" : new Array(orig_feature[k].size),
-									  "pz" : new Array(orig_feature[k].size),
-									  "nx" : new Array(orig_feature[k].size),
-									  "nz" : new Array(orig_feature[k].size)};
-						for (q = 0; q < orig_feature[k].size; q++) {
-							feature[k].px[q] = (orig_feature[k].px[q] << 2) + orig_feature[k].py[q] * step[orig_feature[k].pz[q]];
-							feature[k].pz[q] = orig_feature[k].pz[q];
-							feature[k].nx[q] = (orig_feature[k].nx[q] << 2) + orig_feature[k].ny[q] * step[orig_feature[k].nz[q]];
-							feature[k].nz[q] = orig_feature[k].nz[q];
+				for (j = 0; j < cascade_stage_classifier_length; j++) {
+					var cascade_stage_classifier_j = cascade_stage_classifier[j];
+					var cascade_stage_classifier_j_count = cascade_stage_classifier_j.count;
+					var orig_feature = cascade_stage_classifier_j.orig_feature;
+					var feature = cascade_stage_classifier_j.feature = new Array(cascade_stage_classifier_j_count);
+					for (k = 0; k < cascade_stage_classifier_j_count; k++) {
+						var orig_feature_k = orig_feature[k];
+						var orig_feature_k_size = orig_feature_k.size;
+						var orig_feature_k_px = orig_feature_k.px;
+						var orig_feature_k_py = orig_feature_k.py;
+						var orig_feature_k_pz = orig_feature_k.pz;
+						var orig_feature_k_nx = orig_feature_k.nx;
+						var orig_feature_k_ny = orig_feature_k.ny;
+						var orig_feature_k_nz = orig_feature_k.nz;
+						feature[k] = {"size" : orig_feature_k_size,
+									  "px" : new Array(orig_feature_k_size),
+									  "pz" : new Array(orig_feature_k_size),
+									  "nx" : new Array(orig_feature_k_size),
+									  "nz" : new Array(orig_feature_k_size)};
+						var feature_k = feature[k];
+						for (q = 0; q < orig_feature_k_size; q++) {
+							feature_k.px[q] = (orig_feature_k_px[q] << 2) + orig_feature_k_py[q] * step[orig_feature_k_pz[q]];
+							feature_k.pz[q] = orig_feature_k_pz[q];
+							feature_k.nx[q] = (orig_feature_k_nx[q] << 2) + orig_feature_k_ny[q] * step[orig_feature_k_nz[q]];
+							feature_k.nz[q] = orig_feature_k_nz[q];
 						}
 					}
 				}
@@ -283,21 +300,28 @@ var ccv = {
 						for (x = 0; x < qw; x++) {
 							var sum = 0;
 							var flag = true;
-							for (j = 0; j < cascade.stage_classifier.length; j++) {
+							for (j = 0; j < cascade_stage_classifier_length; j++) {
+								var cascade_stage_classifier_j = cascade_stage_classifier[j];
+								var cascade_stage_classifier_j_count = cascade_stage_classifier_j.count;
 								sum = 0;
-								var alpha = cascade.stage_classifier[j].alpha;
-								var feature = cascade.stage_classifier[j].feature;
-								for (k = 0; k < cascade.stage_classifier[j].count; k++) {
+								var alpha = cascade_stage_classifier_j.alpha;
+								var feature = cascade_stage_classifier_j.feature;
+								for (k = 0; k < cascade_stage_classifier_j_count; k++) {
 									var feature_k = feature[k];
-									var p, pmin = u8[feature_k.pz[0]][u8o[feature_k.pz[0]] + feature_k.px[0]];
-									var n, nmax = u8[feature_k.nz[0]][u8o[feature_k.nz[0]] + feature_k.nx[0]];
+									var feature_k_px = feature_k.px;
+									var feature_k_pz = feature_k.pz;
+									var feature_k_nx = feature_k.nx;
+									var feature_k_nz = feature_k.nz;
+									var p, pmin = u8[feature_k_pz[0]][u8o[feature_k_pz[0]] + feature_k_px[0]];
+									var n, nmax = u8[feature_k_nz[0]][u8o[feature_k_nz[0]] + feature_k_nx[0]];
 									if (pmin <= nmax) {
 										sum += alpha[k << 1];
 									} else {
 										var f, shortcut = true;
-										for (f = 0; f < feature_k.size; f++) {
-											if (feature_k.pz[f] >= 0) {
-												p = u8[feature_k.pz[f]][u8o[feature_k.pz[f]] + feature_k.px[f]];
+										var feature_k_size = feature_k.size;
+										for (f = 0; f < feature_k_size; f++) {
+											if (feature_k_pz[f] >= 0) {
+												p = u8[feature_k_pz[f]][u8o[feature_k_pz[f]] + feature_k_px[f]];
 												if (p < pmin) {
 													if (p <= nmax) {
 														shortcut = false;
@@ -306,8 +330,8 @@ var ccv = {
 													pmin = p;
 												}
 											}
-											if (feature_k.nz[f] >= 0) {
-												n = u8[feature_k.nz[f]][u8o[feature_k.nz[f]] + feature_k.nx[f]];
+											if (feature_k_nz[f] >= 0) {
+												n = u8[feature_k_nz[f]][u8o[feature_k_nz[f]] + feature_k_nx[f]];
 												if (n > nmax) {
 													if (pmin <= n) {
 														shortcut = false;
@@ -320,7 +344,7 @@ var ccv = {
 										sum += (shortcut) ? alpha[(k << 1) + 1] : alpha[k << 1];
 									}
 								}
-								if (sum < cascade.stage_classifier[j].threshold) {
+								if (sum < cascade_stage_classifier_j.threshold) {
 									flag = false;
 									break;
 								}
@@ -351,13 +375,15 @@ var ccv = {
 		function post(seq) {
 			var min_neighbors = this.shared.min_neighbors;
 			var cascade = this.shared.cascade;
+			var cascade_stage_classifier = cascade.stage_classifier;
+			var cascade_stage_classifier_length = cascade_stage_classifier.length;
 			var interval = this.shared.interval;
 			var scale = this.shared.scale;
 			var next = this.shared.next;
 			var scale_upto = this.shared.scale_upto;
 			var i, j;
-			for (i = 0; i < cascade.stage_classifier.length; i++)
-				cascade.stage_classifier[i].feature = cascade.stage_classifier[i].orig_feature;
+			for (i = 0; i < cascade_stage_classifier_length; i++)
+				cascade_stage_classifier[i].feature = cascade_stage_classifier[i].orig_feature;
 			seq = seq[0];
 			if (!(min_neighbors > 0))
 				return seq;
@@ -384,7 +410,8 @@ var ccv = {
 								"confidence" : 0};
 
 				// count number of neighbors
-				for(i = 0; i < seq.length; i++)
+				var seq_length = seq.length;
+				for(i = 0; i < seq_length; i++)
 				{
 					var r1 = seq[i];
 					var idx = idx_seq[i];
