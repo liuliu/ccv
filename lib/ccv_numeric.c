@@ -1000,8 +1000,8 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 		{ \
 			k = 0; \
 			v[0] = 0; \
-			z[0] = -_for_max; \
-			z[1] = _for_max; \
+			z[0] = (_for_type_b)-_for_max; \
+			z[1] = (_for_type_b)_for_max; \
 			for (j = 1; j < a->cols; j++) \
 			{ \
 				_for_type_b s; \
@@ -1061,8 +1061,8 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				_for_set_b(c_ptr, i, _for_get_b(b_ptr + i * db->step, j, 0), 0); \
 			k = 0; \
 			v[0] = 0; \
-			z[0] = -_for_max; \
-			z[1] = _for_max; \
+			z[0] = (_for_type_b)-_for_max; \
+			z[1] = (_for_type_b)_for_max; \
 			for (i = 1; i < db->rows; i++) \
 			{ \
 				_for_type_b s; \

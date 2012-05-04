@@ -582,6 +582,7 @@ typedef struct {
 	ccv_dense_matrix_t* w;
 	double dx, dy, dxx, dyy;
 	int x, y, z;
+	int counterpart;
 } ccv_dpm_part_classifier_t;
 
 typedef struct {
@@ -610,6 +611,10 @@ typedef struct {
 	int symmetric;
 	int min_area; // 3000
 	int max_area; // 5000
+	int iterations;
+	double overlap; // 0.7
+	double alpha;
+	double C;
 	ccv_dpm_param_t detector;
 } ccv_dpm_new_param_t;
 
