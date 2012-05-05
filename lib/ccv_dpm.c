@@ -580,7 +580,7 @@ static void _ccv_dpm_collect_feature_vector(ccv_dpm_feature_vector_t* v, int x, 
 		w_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, v->part[i].w, start_y - (iy - ry - pwh), 0, 0);
 		for (iy = start_y; iy < end_y; iy++)
 		{
-			memcpy(w_ptr + start_x * ch, h_ptr + start_x * ch, (end_x - start_x) * ch);
+			memcpy(w_ptr + (start_x - (ix - rx - pww)) * ch, h_ptr + start_x * ch, (end_x - start_x) * ch);
 			h_ptr += detail->cols * ch;
 			w_ptr += v->part[i].w->cols * ch;
 		}
@@ -835,45 +835,51 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	ccfree(areas);
 	innum = 0;
 	_ccv_dpm_read_checkpoint(model, dir);
-	if (model->count > 0)
+	if (model->count <= 0)
 	{
-		printf("skipping root mixture model initialization\n");
-		ccfree(fn);
-	} else {
 		/* initialize root mixture model with liblinear */
 		model->count = params.components;
 		model->root = (ccv_dpm_root_classifier_t*)ccmalloc(sizeof(ccv_dpm_root_classifier_t) * model->count);
 		memset(model->root, 0, sizeof(ccv_dpm_root_classifier_t) * model->count);
-		printf("computing root mixture model dimensions: ");
-		fflush(stdout);
-		int* labels = (int*)ccmalloc(sizeof(int) * posnum);
-		for (i = 0; i < params.components; i++)
+	}
+	printf("computing root mixture model dimensions: ");
+	fflush(stdout);
+	int* labels = (int*)ccmalloc(sizeof(int) * posnum);
+	int* rows = (int*)alloca(sizeof(int) * params.components);
+	int* cols = (int*)alloca(sizeof(int) * params.components);
+	for (i = 0; i < params.components; i++)
+	{
+		double aspect = 0;
+		for (j = innum; j < innum + mnum[i]; j++)
 		{
-			double aspect = 0;
-			for (j = innum; j < innum + mnum[i]; j++)
-			{
-				aspect += fn[j].value;
-				labels[fn[j].index] = i; // setup labels
-			}
-			aspect /= mnum[i];
-			int cols = ccv_max((int)(sqrtf(area / aspect) * aspect / CCV_DPM_WINDOW_SIZE + 0.5), 1);
-			int rows = ccv_max((int)(sqrtf(area / aspect) / CCV_DPM_WINDOW_SIZE + 0.5), 1);
-			ccv_dpm_root_classifier_t* root_classifier = model->root + i;
-			root_classifier->root.w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, 0, 0);
-			if (i < params.components - 1)
-				printf("%dx%d, ", cols, rows);
-			else
-				printf("%dx%d\n", cols, rows);
-			fflush(stdout);
-			innum += mnum[i];
+			aspect += fn[j].value;
+			labels[fn[j].index] = i; // setup labels
 		}
-		ccfree(fn);
-		printf("initializing root mixture model\n");
-		for (i = 0; i < params.components; i++)
-			_ccv_dpm_initialize_root_classifier(rng, model->root + i, i, mnum[i], labels, posfiles, bboxes, posnum, bgfiles, bgnum, negnum, params.symmetric, params.grayscale);
-		ccfree(labels);
+		aspect /= mnum[i];
+		cols[i] = ccv_max((int)(sqrtf(area / aspect) * aspect / CCV_DPM_WINDOW_SIZE + 0.5), 1);
+		rows[i] = ccv_max((int)(sqrtf(area / aspect) / CCV_DPM_WINDOW_SIZE + 0.5), 1);
+		if (i < params.components - 1)
+			printf("%dx%d, ", cols[i], rows[i]);
+		else
+			printf("%dx%d\n", cols[i], rows[i]);
+		fflush(stdout);
+		innum += mnum[i];
+	}
+	for (i = 0; i < params.components; i++)
+	{
+		if (model->root[i].root.w != 0)
+		{
+			printf("skipping root mixture model initialization for model %d(%d)\n", i + 1, params.components);
+			continue;
+		}
+		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
+		root_classifier->root.w = ccv_dense_matrix_new(rows[i], cols[i], CCV_32F | 31, 0, 0);
+		printf("initializing root mixture model for model %d(%d)\n", i + 1, params.components);
+		_ccv_dpm_initialize_root_classifier(rng, root_classifier, i, mnum[i], labels, posfiles, bboxes, posnum, bgfiles, bgnum, negnum, params.symmetric, params.grayscale);
 		_ccv_dpm_write_checkpoint(model, dir);
 	}
+	ccfree(fn);
+	ccfree(labels);
 	if (params.components > 1)
 	{
 		/* TODO: coordinate-descent for lsvm */
@@ -903,12 +909,15 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	{
 		unsigned int elapsed_time = _ccv_dpm_time_measure();
 		j = 0;
+		printf(" - collecting best responses from positive examples :  0%%");
+		fflush(stdout);
 		for (i = 0; i < posnum; i++)
 		{
+			printf("\b\b\b%2d%%", i * 100 / posnum);
+			fflush(stdout);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(posfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-			ccv_rect_t* bbox = bboxes + i;
-			ccv_dpm_feature_vector_t* v = _ccv_dpm_collect_best(rng, image, model, bbox[0], params.overlap, params.detector);
+			ccv_dpm_feature_vector_t* v = _ccv_dpm_collect_best(rng, image, model, bboxes[i], params.overlap, params.detector);
 			if (v != 0)
 			{
 				posv[j] = v;
@@ -916,10 +925,15 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			}
 			ccv_matrix_free(image);
 		}
+		printf("\b\b\b100%%\n");
 		int posvn = j;
 		j = 0;
+		printf(" - collecting responses above threshold 0 from background examples :  0%%");
+		fflush(stdout);
 		for (i = 0; i < bgnum; i++)
 		{
+			printf("\b\b\b%2d%%", i * 100 / bgnum);
+			fflush(stdout);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(bgfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
 			ccv_array_t* av = _ccv_dpm_collect_all(rng, image, model, params.detector, 0);
@@ -939,7 +953,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			if (j >= negnum)
 				break;
 		}
+		printf("\b\b\b100%%\n");
 		int negvn = j;
+		printf(" - updating using stochastic gradient descent with %d positive examples and %d negative examples\n", posvn, negvn);
 		for (i = 0; i < posvn; i++)
 			_ccv_dpm_stochastic_gradient_descent(model, posv[i], 1, params.alpha, params.C * (posvn + negvn), params.symmetric);
 		for (i = 0; i < negvn; i++)
@@ -948,7 +964,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			_ccv_dpm_feature_vector_free(posv[i]);
 		for (i = 0; i < negvn; i++)
 			_ccv_dpm_feature_vector_free(negv[i]);
-		printf("%d iteration takes %ums, %d more to go\n", t + 1, _ccv_dpm_time_measure() - elapsed_time, params.iterations - t - 1);
+		printf(" - %d iteration takes %ums, %d more to go\n", t + 1, _ccv_dpm_time_measure() - elapsed_time, params.iterations - t - 1);
 	}
 	ccfree(negv);
 	ccfree(posv);
