@@ -78,18 +78,9 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 {
 	ccv_dense_matrix_t* response = 0;
 	ccv_filter(hog, root_classifier->root.w, &response, 0, CCV_NO_PADDING);
-	int k;
-	if ((k = ccv_any_nan(response)))
-	{
-		int ch = CCV_GET_CHANNEL(hog->type);
-		ccv_write(hog, "hog.bin", 0, CCV_IO_BINARY_FILE, 0);
-		ccv_write(root_classifier->root.w, "w.bin", 0, CCV_IO_BINARY_FILE, 0);
-		printf("%d %d %d %d %d\n", hog->rows, hog->cols, (k / ch) / hog->cols, (k / ch) % hog->cols, k % ch);
-	}
 	ccv_dense_matrix_t* root_feature = 0;
 	ccv_flatten(response, (ccv_matrix_t**)&root_feature, 0, 0);
 	ccv_matrix_free(response);
-	assert(!ccv_any_nan(root_feature));
 	*_response = root_feature;
 	if (hog2x == 0)
 		return;
@@ -102,15 +93,12 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 		ccv_dpm_part_classifier_t* part = root_classifier->part + i;
 		ccv_dense_matrix_t* response = 0;
 		ccv_filter(hog2x, part->w, &response, 0, CCV_NO_PADDING);
-		assert(!ccv_any_nan(response));
 		ccv_dense_matrix_t* feature = 0;
 		ccv_flatten(response, (ccv_matrix_t**)&feature, 0, 0);
 		ccv_matrix_free(response);
-		assert(!ccv_any_nan(feature));
 		part_feature[i] = dx[i] = dy[i] = 0;
 		ccv_distance_transform(feature, &part_feature[i], 0, &dx[i], 0, &dy[i], 0, part->dx, part->dy, part->dxx, part->dyy, CCV_NEGATIVE | CCV_GSEDT);
 		ccv_matrix_free(feature);
-		/*
 		int offy = part->y + part->w->rows / 2 - rwh * 2;
 		int miny = part->w->rows / 2, maxy = part_feature[i]->rows - part->w->rows / 2;
 		int offx = part->x + part->w->cols / 2 - rww * 2;
@@ -126,7 +114,6 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 			}
 			f_ptr += root_feature->cols;
 		}
-		*/
 	}
 }
 
@@ -705,7 +692,6 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(gsl_rng* rng, ccv_dense_m
 		for (j = next; j < scale_upto + next * 2; j++)
 		{
 			ccv_size_t size = ccv_size((int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
-			/*
 			if ((double)(size.width * size.height) / (double)(bbox.width * bbox.height) < overlap || 
 				(double)(bbox.width * bbox.height) / (double)(size.width * size.height) < overlap)
 			{
@@ -713,7 +699,6 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(gsl_rng* rng, ccv_dense_m
 				scale_y *= scale;
 				continue;
 			}
-				*/
 			ccv_dense_matrix_t* root_feature = 0;
 			ccv_dense_matrix_t* part_feature[CCV_DPM_PART_MAX];
 			ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
@@ -722,7 +707,6 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(gsl_rng* rng, ccv_dense_m
 			int rwh = root_classifier->root.w->rows / 2;
 			int rww = root_classifier->root.w->cols / 2;
 			float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-			/*
 			for (y = rwh; y < root_feature->rows - rwh; y++)
 			{
 				for (x = rww; x < root_feature->cols - rww; x++)
@@ -750,7 +734,6 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(gsl_rng* rng, ccv_dense_m
 				}
 				f_ptr += root_feature->cols;
 			}
-			*/
 			for (k = 0; k < root_classifier->count; k++)
 			{
 				ccv_matrix_free(part_feature[k]);
@@ -808,7 +791,6 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 			}
 			for (k = 0; k < root_classifier->count; k++)
 			{
-				assert(part_feature[k]->rows == pyr[j - next]->rows && part_feature[k]->cols == pyr[j - next]->cols);
 				ccv_matrix_free(part_feature[k]);
 				ccv_matrix_free(dx[k]);
 				ccv_matrix_free(dy[k]);
@@ -1103,7 +1085,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 				_ccv_dpm_check_root_classifier_symmetry(root_classifier->root.w);
 			}
-		printf(" - %d iteration takes %ums, %d more to go\n", t + 1, _ccv_dpm_time_measure() - elapsed_time, params.iterations - t - 1);
+		printf(" - %d iteration takes %.3lf seconds, %d more to go\n", t + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000.0, params.iterations - t - 1);
 	}
 	ccfree(negv);
 	ccfree(posv);

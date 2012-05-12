@@ -769,7 +769,7 @@ static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, cc
 			} \
 			int end_tile_y, end_tile_x; \
 			/* handle edge cases: */ \
-			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 + 1 < d->rows) \
+			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 < d->rows) \
 			{ \
 				end_tile_y = ccv_min(brows2, d->rows - (iy + (i > 0) * brows2 + end_y)); \
 				kiss_ptr = (_for_type*)kiss_d + (1 + (j > 0)) * bcols2; \
@@ -783,7 +783,7 @@ static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, cc
 					kiss_ptr += cols; \
 				} \
 			} \
-			if (j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 + 1 < d->cols) \
+			if (j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 < d->cols) \
 			{ \
 				end_tile_x = ccv_min(bcols2, d->cols - (ix + (j > 0) * bcols2 + end_x)); \
 				kiss_ptr = (_for_type*)kiss_d + (1 + (i > 0)) * brows2 * cols; \
@@ -797,8 +797,8 @@ static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, cc
 					kiss_ptr += cols; \
 				} \
 			} \
-			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 + 1 < d->rows && \
-				j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 + 1 < d->cols) \
+			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 < d->rows && \
+				j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 < d->cols) \
 			{ \
 				kiss_ptr = (_for_type*)kiss_d; \
 				m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * brows2 + end_y, ix + (j > 0) * bcols2 + end_x, 0); \
