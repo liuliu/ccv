@@ -1,5 +1,5 @@
-CC = clang
-CFLAGS = -O3 -msse2 -ffast-math -mtune=native -Wall -D HAVE_LIBJPEG -D HAVE_LIBPNG -D HAVE_CBLAS -D HAVE_FFTW3 -D HAVE_GSL -D HAVE_LIBLINEAR # -fopenmp -D USE_OPENMP
+CC = clang # -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS = -O1 -msse2 -ffast-math -mtune=native -Wall -D HAVE_LIBJPEG -D HAVE_LIBPNG -D HAVE_FFTW3 -D HAVE_CBLAS -D HAVE_GSL -D HAVE_LIBLINEAR # -fopenmp -D USE_OPENMP
 
 all: libccv.a
 

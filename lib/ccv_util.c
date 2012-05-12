@@ -65,6 +65,25 @@ void ccv_zero(ccv_matrix_t* mat)
 	memset(dmt->data.u8, 0, dmt->step * dmt->rows);
 }
 
+int ccv_any_nan(ccv_matrix_t *a)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	assert((da->type & CCV_32F) || (da->type & CCV_64F));
+	int ch = CCV_GET_CHANNEL(da->type);
+	int i;
+	if (da->type & CCV_32F)
+	{
+		for (i = 0; i < da->rows * da->cols * ch; i++)
+			if (isnanf(da->data.f32[i]))
+				return i + 1;
+	} else {
+		for (i = 0; i < da->rows * da->cols * ch; i++)
+			if (isnan(da->data.f64[i]))
+				return i + 1;
+	}
+	return 0;
+}
+
 void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);

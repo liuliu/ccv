@@ -3,7 +3,7 @@
 *.swp
 tags
 gh-pages
-test/*.tests
+*.tests
 test/*_test
 test/*.jpg
 test/*.png

@@ -54,7 +54,7 @@ double gaussian(double x, double y, void* data)
 TEST_CASE("Gaussian blur with kernel size even & odd")
 {
 	ccv_dense_matrix_t* image = 0;
-	ccv_read("../samples/street.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_read("../../samples/street.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(100, 100, CCV_32F | CCV_GET_CHANNEL(image->type), 0, 0);
 	ccv_filter_kernel(kernel, gaussian, 0);
 	ccv_normalize(kernel, (ccv_matrix_t**)&kernel, 0, CCV_L1_NORM);
@@ -109,8 +109,8 @@ TEST_CASE("convolution ssd (sum of squared differences) v.s. naive ssd")
 {
 	ccv_dense_matrix_t* street = 0;
 	ccv_dense_matrix_t* pedestrian = 0;
-	ccv_read("../samples/pedestrian.png", &pedestrian, CCV_IO_ANY_FILE);
-	ccv_read("../samples/street.png", &street, CCV_IO_ANY_FILE);
+	ccv_read("../../samples/pedestrian.png", &pedestrian, CCV_IO_ANY_FILE);
+	ccv_read("../../samples/street.png", &street, CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* result = 0;
 	ccv_filter(street, pedestrian, &result, CCV_64F, 0);
 	ccv_dense_matrix_t* square = 0;
@@ -236,7 +236,7 @@ void daq_min_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 TEST_CASE("ccv_distance_transform (linear time) v.s. distance transform using divide & conquer (O(nlog(n)))")
 {
 	ccv_dense_matrix_t* geometry = 0;
-	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_read("../../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* distance = 0;
 	double dx = 0;
 	double dy = 0;
@@ -307,7 +307,7 @@ void daq_max_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, d
 TEST_CASE("ccv_distance_transform to compute max distance")
 {
 	ccv_dense_matrix_t* geometry = 0;
-	ccv_read("../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_read("../../samples/geometry.png", &geometry, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* distance = 0;
 	double dx = 1;
 	double dy = 1;

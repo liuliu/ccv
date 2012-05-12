@@ -340,6 +340,7 @@ void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type);
 void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag);
 void ccv_zero(ccv_matrix_t* mat);
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
+int ccv_any_nan(ccv_matrix_t *a);
 
 /* basic data structures ccv_util.c */
 

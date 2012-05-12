@@ -584,7 +584,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 			} \
 			int end_tile_y, end_tile_x; \
 			/* handle edge cases: */ \
-			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 + 1 < d->rows) \
+			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 < d->rows) \
 			{ \
 				end_tile_y = ccv_min(brows2, d->rows - (iy + (i > 0) * brows2 + end_y)); \
 				fftw_ptr = (_for_type*)fftw_d + (1 + (j > 0)) * bcols2 * ch; \
@@ -597,7 +597,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 					fftw_ptr += cols_2c * ch; \
 				} \
 			} \
-			if (j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 + 1 < d->cols) \
+			if (j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 < d->cols) \
 			{ \
 				end_tile_x = ccv_min(bcols2, d->cols - (ix + (j > 0) * bcols2 + end_x)); \
 				fftw_ptr = (_for_type*)fftw_d + (1 + (i > 0)) * brows2 * cols_2c * ch; \
@@ -610,8 +610,8 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 					fftw_ptr += cols_2c * ch; \
 				} \
 			} \
-			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 + 1 < d->rows && \
-				j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 + 1 < d->cols) \
+			if (i + 1 == tile_y && end_y + iy + (i > 0) * brows2 < d->rows && \
+				j + 1 == tile_x && end_x + ix + (j > 0) * bcols2 < d->cols) \
 			{ \
 				fftw_ptr = (_for_type*)fftw_d; \
 				m_ptr = (unsigned char*)ccv_get_dense_matrix_cell(d, iy + (i > 0) * brows2 + end_y, ix + (j > 0) * bcols2 + end_x, 0); \
@@ -984,6 +984,7 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 		my = *y = ccv_dense_matrix_renew(*y, a->rows, a->cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, ysig);
 	}
 	ccv_matrix_return_if_cached(, db, mx, my);
+	ccv_revive_matrix_if_cached(db, mx, my);
 	int i, j, k;
 	unsigned char* a_ptr = a->data.u8;
 	unsigned char* b_ptr = db->data.u8;
@@ -1007,14 +1008,16 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				_for_type_b s; \
 				for (;;) \
 				{ \
+					assert(k >= 0 && k < ccv_max(db->rows, db->cols) + 1); \
 					s = ((SGN _for_get_a(a_ptr, j, 0) + _dxx * j * j - _dx * j) - (SGN _for_get_a(a_ptr, v[k], 0) + _dxx * v[k] * v[k] - _dx * v[k])) / (2.0 * _dxx * (j - v[k])); \
 					if (s > z[k]) break; \
 					--k; \
 				} \
 				++k; \
+				assert(k >= 0 && k < ccv_max(db->rows, db->cols) + 1); \
 				v[k] = j; \
 				z[k] = s; \
-				z[k + 1] = db->cols * 1e5; \
+				z[k + 1] = (_for_type_b)_for_max; \
 			} \
 			k = 0; \
 			if (mx) \
@@ -1022,7 +1025,10 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				for (j = 0; j < a->cols; j++) \
 				{ \
 					while (z[k + 1] < j) \
+					{ \
+						assert(k >= 0 && k < ccv_max(db->rows, db->cols)); \
 						++k; \
+					} \
 					_for_set_b(b_ptr, j, _dx * (j - v[k]) + _dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
 					x_ptr[j] = j - v[k]; \
 				} \
@@ -1068,14 +1074,16 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				_for_type_b s; \
 				for (;;) \
 				{ \
+					assert(k >= 0 && k < ccv_max(db->rows, db->cols) + 1); \
 					s = ((_for_get_b(c_ptr, i, 0) + _dyy * i * i - _dy * i) - (_for_get_b(c_ptr, v[k], 0) + _dyy * v[k] * v[k] - _dy * v[k])) / (2.0 * _dyy * (i - v[k])); \
 					if (s > z[k]) break; \
 					--k; \
 				} \
 				++k; \
+				assert(k >= 0 && k < ccv_max(db->rows, db->cols) + 1); \
 				v[k] = i; \
 				z[k] = s; \
-				z[k + 1] = db->rows * 1e5; \
+				z[k + 1] = (_for_type_b)_for_max; \
 			} \
 			k = 0; \
 			if (my) \
@@ -1083,7 +1091,10 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				for (i = 0; i < db->rows; i++) \
 				{ \
 					while (z[k + 1] < i) \
+					{ \
+						assert(k >= 0 && k < ccv_max(db->rows, db->cols)); \
 						++k; \
+					} \
 					_for_set_b(b_ptr + i * db->step, j, _dy * (i - v[k]) + _dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
 					y_ptr[i * my->cols] = i - v[k]; \
 				} \
