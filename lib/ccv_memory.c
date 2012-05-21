@@ -22,7 +22,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	}
 	mat = (ccv_dense_matrix_t*)(data ? data : ccmalloc(ccv_compute_dense_matrix_size(rows, cols, type)));
 	mat->sig = sig;
-	mat->type = (type | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
+	mat->type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
 	mat->type |= data ? CCV_UNMANAGED : CCV_REUSABLE;
 	mat->rows = rows;
 	mat->cols = cols;
@@ -79,7 +79,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 {
 	ccv_dense_matrix_t mat;
 	mat.sig = sig;
-	mat.type = (type | CCV_MATRIX_DENSE | CCV_UNMANAGED) & ~CCV_GARBAGE;
+	mat.type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE | CCV_UNMANAGED) & ~CCV_GARBAGE;
 	mat.rows = rows;
 	mat.cols = cols;
 	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
