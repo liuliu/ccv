@@ -8,6 +8,56 @@
 URL:&nbsp;<input type="text" id="image" size=50 /><input style="margin-left:16px" type="button" value="Detect" onclick="detect()" /><input style="margin-left:16px" type="button" value="Detect with Web Worker (BETA)" onclick="detectAsync()" />
 <div style="margin-top:6px">Source Code: <a href="http://github.com/liuliu/ccv/tree/current/js">Here</a></div>
 <div style="margin-top:6px">Using web worker, but serialization in Google Chrome makes it unusable.</div>
+
+
+<h4>Images to try:</h4>
+<ul id="sampleImagesList">
+</ul>
+
+<script>
+(function(){
+
+	var sampleImages = [
+		{
+			'title': 'Older',
+			'url': 'http://www.metrolic.com/wp-content/uploads/2010/09/older-people-the-web1.jpg'
+		},
+		{
+			'title': 'Looking down, brick wall backdrop',
+			'url': 'http://5.mshcdn.com/wp-content/uploads/2011/04/people-texting.jpg'
+		},
+		{
+			'title': 'Black and withe with pets',
+			'url': 'http://img.webmd.com/dtmcms/live/webmd/consumer_assets/site_images/articles/health_tools/cat_people_vs_dog_people_slideshow/webmd_rf_photo_of_cat_and_dog_people.jpg'
+		},
+		{
+			'title': 'Blurry',
+			'url': 'http://www.eatlearnlive.com/img/our-people.jpg'
+		}
+	];
+
+	function runSampleImageTest(){
+		document.getElementById('image').value = sampleImages[ this.i ].url;
+		detect();
+	}
+
+	var listRoot = document.getElementById('sampleImagesList');
+	for(var i=0,l=sampleImages.length; i<l; i++){
+		var li = document.createElement('li');
+		var a = document.createElement('a');
+		var text = document.createTextNode( sampleImages[i].title );
+		a.i = i;
+		a.href = 'javascript:;';
+		a.onclick = runSampleImageTest;
+		a.appendChild(text);
+		li.appendChild(a);
+		listRoot.appendChild(li);
+	}
+
+})();
+</script>
+
+
 <div id="elapsed_time" style="margin-top:20px"></div>
 <div style="margin-top:20px"><canvas id="output"></canvas></div>
 <script type="text/javascript" src="ccv.js"></script>
