@@ -413,8 +413,6 @@ typedef struct {
 ccv_contour_t* ccv_contour_new(int set);
 void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point);
 void ccv_contour_free(ccv_contour_t* contour);
-/* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
-int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
 /* numerical algorithms ccv_numeric.c */
 
@@ -455,8 +453,6 @@ void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_m
 
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
-void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
-void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
 
 enum {
 	CCV_INTER_AREA    = 0x01,
@@ -476,6 +472,13 @@ enum {
 
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
+
+/* classic computer vision algorithms ccv_classic.c */
+
+void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
+void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
+/* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
+int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */
@@ -613,9 +616,12 @@ typedef struct {
 	int min_area; // 3000
 	int max_area; // 5000
 	int iterations;
+	int relabels;
 	double overlap; // 0.7
 	double alpha;
+	double alpha_ratio; // 0.85
 	double C;
+	double percentile_breakdown; // 0.95
 	ccv_dpm_param_t detector;
 } ccv_dpm_new_param_t;
 

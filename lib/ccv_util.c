@@ -570,7 +570,7 @@ void ccv_array_push(ccv_array_t* array, void* r)
 	array->rnum++;
 	if (array->rnum > array->size)
 	{
-		array->size = array->size * 2;
+		array->size = ccv_max(array->size * 3 / 4, array->size + 1);
 		array->data = ccrealloc(array->data, array->size * array->rsize);
 	}
 	memcpy(ccv_array_get(array, array->rnum - 1), r, array->rsize);

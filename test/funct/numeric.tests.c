@@ -74,6 +74,44 @@ TEST_CASE("Gaussian blur with kernel size even & odd")
 	ccv_matrix_free(y);
 }
 
+TEST_CASE("ccv_filter centre point for even number window size, hint: (size - 1) / 2")
+{
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(10, 10, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* y = ccv_dense_matrix_new(10, 10, CCV_32F | CCV_C1, 0, 0);
+	float sum = 0;
+	int i;
+	for (i = 0; i < 100; i++)
+	{
+		x->data.f32[i] = y->data.f32[99 - i] = i;
+		sum += (99 - i) * i;
+	}
+	ccv_dense_matrix_t* d = 0;
+	ccv_filter(x, y, &d, 0, CCV_NO_PADDING);
+	REQUIRE_EQ_WITH_TOLERANCE(d->data.f32[4 * 10 + 4], sum, 0.1, "filter centre value should match the sum value computed by a for loop");
+	ccv_matrix_free(d);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("ccv_filter centre point for odd number window size, hint: (size - 1) / 2")
+{
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(11, 11, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* y = ccv_dense_matrix_new(11, 11, CCV_32F | CCV_C1, 0, 0);
+	float sum = 0;
+	int i;
+	for (i = 0; i < 121; i++)
+	{
+		x->data.f32[i] = y->data.f32[120 - i] = i;
+		sum += (120 - i) * i;
+	}
+	ccv_dense_matrix_t* d = 0;
+	ccv_filter(x, y, &d, 0, CCV_NO_PADDING);
+	REQUIRE_EQ_WITH_TOLERANCE(d->data.f32[5 * 11 + 5], sum, 0.1, "filter centre value should match the sum value computed by a for loop");
+	ccv_matrix_free(d);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
 #include "ccv_internal.h"
 
 static void naive_ssd(ccv_dense_matrix_t* image, ccv_dense_matrix_t* template, ccv_dense_matrix_t* out)

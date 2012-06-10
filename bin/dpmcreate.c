@@ -80,7 +80,7 @@ int main(int argc, char** argv)
 	int components = atoi(argv[4]);
 	int parts = atoi(argv[5]);
 	free(file);
-	ccv_dpm_param_t detector = { .interval = 8, .min_neighbors = 2, .flags = 0, .threshold = 0.0 };
+	ccv_dpm_param_t detector = { .interval = 8, .min_neighbors = 1, .flags = 0, .threshold = 0.0 };
 	ccv_dpm_new_param_t params = { .components = components,
 								   .detector = detector,
 								   .parts = parts,
@@ -88,8 +88,12 @@ int main(int argc, char** argv)
 								   .max_area = 5000,
 								   .symmetric = 1,
 								   .alpha = 0.1,
-								   .iterations = 1000,
-								   .C = 0.02,
+								   .alpha_ratio = 0.85,
+								   .iterations = 10,
+								   .relabels = 10,
+								   .C = 0.002,
+								   .percentile_breakdown = 0.05,
+								   .overlap = 0.8,
 								   .grayscale = 0 };
 	ccv_dpm_mixture_model_new(posfiles, bboxes, posnum, bgfiles, bgnum, negnum, argv[6], params);
 	free(posfiles);
