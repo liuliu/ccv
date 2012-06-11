@@ -132,6 +132,8 @@ static ccv_cache_index_t* _ccv_cache_seek(ccv_cache_index_t* branch, uint64_t si
 
 void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 {
+	if (cache->rnum == 0)
+		return 0;
 	ccv_cache_index_t* branch = _ccv_cache_seek(&cache->origin, sign, 0);
 	if (!branch)
 		return 0;
@@ -319,6 +321,8 @@ void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 {
 	if (!bits_in_16bits_init)
 		precomputed_16bits();
+	if (cache->rnum == 0)
+		return 0;
 	int i, found = 0, depth = -1;
 	ccv_cache_index_t* parent = 0;
 	ccv_cache_index_t* uncle = &cache->origin;
@@ -415,6 +419,7 @@ void ccv_cache_cleanup(ccv_cache_t* cache)
 		cache->size = 0;
 		cache->age = 0;
 		cache->rnum = 0;
+		memset(&cache->origin, 0, sizeof(ccv_cache_index_t));
 	}
 }
 

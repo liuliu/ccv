@@ -887,6 +887,35 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 	return av;
 }
 
+#define NEGATIVE_CACHE_SIZE (500)
+
+static ccv_array_t* _ccv_dpm_collect_from_background(gsl_rng* rng, char** bgfiles, int bgnum, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
+{
+	int i, j;
+	ccv_array_t* av = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*));
+	int* order = (int*)ccmalloc(sizeof(int) * bgnum);
+	for (i = 0; i < bgnum; i++)
+		order[i] = i;
+	gsl_ran_shuffle(rng, order, bgnum, sizeof(int));
+	for (i = 0; i < bgnum; i++)
+	{
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(bgfiles[order[i]], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+		ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, params.detector, threshold);
+		if (at)
+		{
+			for (j = 0; j < at->rnum; j++)
+				ccv_array_push(av, ccv_array_get(at, j));
+			ccv_array_free(at);
+		}
+		ccv_matrix_free(image);
+		if (av->rnum > NEGATIVE_CACHE_SIZE)
+			break;
+	}
+	ccfree(order);
+	return av;
+}
+
 static void _ccv_dpm_regularize_mixture_model(ccv_dpm_mixture_model_t* model, double regz)
 {
 	int i, k;
@@ -1298,6 +1327,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	int* bgmarked = (int*)ccmalloc(sizeof(int) * bgnum);
 	c = t = r = 0;
 	_ccv_dpm_read_gradient_descent_progress(&c, &t, &r, &previous_loss, &positive_loss, &negative_loss, &loss, &pos_prog, &neg_prog, order, posnum + negnum, gradient_progress_checkpoint);
+	ccv_array_t* negv = 0;
 	for (; c < params.relabels; c++)
 	{
 		double regz_rate = params.C / model->count;
@@ -1358,39 +1388,32 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						++pos_prog;
 						for (j = 0; j < last_update; j++)
 							printf("\b");
-						last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf -+- %2d%%   ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
+						last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf -+- %2d%%                            ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
 						fflush(stdout);
 					}
 				} else {
-					ccv_array_t* av = 0;
-					for (j = 0; j < bgnum; j++) // try harder to find negative examples
+					// the cache is used up now, collect again
+					if ((neg_prog % NEGATIVE_CACHE_SIZE) == 0)
 					{
-						if (bgmarked[(k - posnum + j) % bgnum])
-							continue;
-						ccv_dense_matrix_t* image = 0;
-						ccv_read(bgfiles[(k - posnum + j) % bgnum], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-						if (j > 0)
-						av = _ccv_dpm_collect_all(rng, image, model, params.detector, 0);
-						ccv_matrix_free(image);
-						if (av && av->rnum > 0)
-							break;
-						if (av)
-							ccv_array_free(av);
-						av = 0;
-						// I won't try this until model get updated, mark as don't read
-						bgmarked[(k - posnum + j) % bgnum] = 1;
-					}
-					if (av && av->rnum > 0)
-					{
-						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(av, ((k - posnum) / bgnum) % av->rnum);
-						double score = _ccv_dpm_vector_score(model, v);
-						/*
-						if (fabs(score - v->score) > 0.001)
+						if (negv)
 						{
-							printf("incorrect score %f %lf\n", v->score, score);
-							exit(-1);
+							for (j = 0; j < negv->rnum; j++)
+							{
+								ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, j);
+								_ccv_dpm_feature_vector_free(v);
+							}
+							ccv_array_free(negv);
 						}
-						*/
+						for (j = 0; j < last_update; j++)
+							printf("\b");
+						last_update = printf(" - pause, collecting negative examples, current loss %.5lf (positive %.5lf, negative %.5f) --- %2d%%   ", loss / ccv_max(1, pos_prog + neg_prog), positive_loss / ccv_max(1, pos_prog), negative_loss / ccv_max(1, neg_prog), (i + 1) * 100 / (posnum + negnum));
+						fflush(stdout);
+						negv = _ccv_dpm_collect_from_background(rng, bgfiles, bgnum, model, params, 0);
+					}
+					if (negv && negv->rnum > 0)
+					{
+						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, (k - posnum) % negv->rnum);
+						double score = _ccv_dpm_vector_score(model, v);
 						if (score >= -1)
 							_ccv_dpm_stochastic_gradient_descent(_model, v, -1, alpha, regz_rate, params.symmetric);
 						double hinge_loss = ccv_max(0, 1.0 + score);
@@ -1399,21 +1422,16 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						++neg_prog;
 						for (j = 0; j < last_update; j++)
 							printf("\b");
-						last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf --- %2d%%   ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
-						for (j = 0; j < av->rnum; j++)
-						{
-							v = *(ccv_dpm_feature_vector_t**)ccv_array_get(av, j);
-							_ccv_dpm_feature_vector_free(v);
-						}
+						last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf --- %2d%%                            ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
+						fflush(stdout);
 					}
-					if (av)
-						ccv_array_free(av);
 				}
 				if (i % REGQ == REGQ - 1)
 				{
 					for (j = 0; j < last_update; j++)
 						printf("\b");
-					last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf -o- %2d%%   ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
+					last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf -o- %2d%%                            ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
+					fflush(stdout);
 					_ccv_dpm_regularize_mixture_model(_model, 1.0 - pow(1.0 - alpha / (double)((posnum + negnum) * (!!params.symmetric + 1)), REGQ));
 					_ccv_dpm_write_gradient_descent_progress(c, t, i, previous_loss, positive_loss, negative_loss, loss, pos_prog, neg_prog, order, posnum + negnum, gradient_progress_checkpoint);
 					_ccv_dpm_write_checkpoint(_model, subcheckpoint);
@@ -1426,15 +1444,19 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					ccfree(model);
 					model = _model;
 					_model = _ccv_dpm_model_copy(model);
-					int marked = 0;
-					for (j = 0; j < bgnum; j++)
-						if (bgmarked[j])
-							++marked;
-					if (marked >= bgnum) // if all of the background images are marked, unmark them
-						memset(bgmarked, 0, sizeof(int) * bgnum);
 				}
 			}
 			printf("\n");
+			if (negv)
+			{
+				for (j = 0; j < negv->rnum; j++)
+				{
+					ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, i);
+					_ccv_dpm_feature_vector_free(v);
+				}
+				ccv_array_free(negv);
+				negv = 0;
+			}
 			_ccv_dpm_regularize_mixture_model(_model, 1.0 - pow(1.0 - alpha * (((posnum + negnum) % REGQ) + 1) / (double)((posnum + negnum) * (!!params.symmetric + 1)), ((posnum + negnum) % REGQ) + 1));
 			// check symmetric property of generated root feature
 			if (params.symmetric)
