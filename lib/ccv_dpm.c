@@ -1295,6 +1295,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	int* order = (int*)ccmalloc(sizeof(int) * (posnum + negnum));
 	int pos_prog = 0, neg_prog = 0;
 	double previous_loss = 0, positive_loss = 0, negative_loss = 0, loss = 0;
+	int* bgmarked = (int*)ccmalloc(sizeof(int) * bgnum);
 	c = t = r = 0;
 	_ccv_dpm_read_gradient_descent_progress(&c, &t, &r, &previous_loss, &positive_loss, &negative_loss, &loss, &pos_prog, &neg_prog, order, posnum + negnum, gradient_progress_checkpoint);
 	for (; c < params.relabels; c++)
@@ -1315,17 +1316,6 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				ccv_dense_matrix_t* image = 0;
 				ccv_read(posfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
 				posv[i] = _ccv_dpm_collect_best(image, model, bboxes[i], params.overlap, params.detector);
-				/*
-				if (posv[i])
-				{
-					double score = _ccv_dpm_vector_score(model, posv[i]);
-					if (fabs(score - posv[i]->score) > 2)
-					{
-						printf("incorrect score: %f %lf\n", posv[i]->score, score);
-						exit(-1);
-					}
-				}
-				*/
 				ccv_matrix_free(image);
 			}
 			printf("\b\b\b100%%\n");
@@ -1334,6 +1324,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		params.detector.threshold = 0;
 		for (; t < params.iterations; t++)
 		{
+			memset(bgmarked, 0, sizeof(int) * bgnum); // it needn't to be persistent
 			unsigned int elapsed_time = _ccv_dpm_time_measure();
 			if (r == 0)
 			{
@@ -1371,10 +1362,24 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						fflush(stdout);
 					}
 				} else {
-					ccv_dense_matrix_t* image = 0;
-					ccv_read(bgfiles[(k - posnum) % bgnum], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-					ccv_array_t* av = _ccv_dpm_collect_all(rng, image, model, params.detector, 0);
-					ccv_matrix_free(image);
+					ccv_array_t* av = 0;
+					for (j = 0; j < bgnum; j++) // try harder to find negative examples
+					{
+						if (bgmarked[(k - posnum + j) % bgnum])
+							continue;
+						ccv_dense_matrix_t* image = 0;
+						ccv_read(bgfiles[(k - posnum + j) % bgnum], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+						if (j > 0)
+						av = _ccv_dpm_collect_all(rng, image, model, params.detector, 0);
+						ccv_matrix_free(image);
+						if (av && av->rnum > 0)
+							break;
+						if (av)
+							ccv_array_free(av);
+						av = 0;
+						// I won't try this until model get updated, mark as don't read
+						bgmarked[(k - posnum + j) % bgnum] = 1;
+					}
 					if (av && av->rnum > 0)
 					{
 						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(av, ((k - posnum) / bgnum) % av->rnum);
@@ -1421,6 +1426,12 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					ccfree(model);
 					model = _model;
 					_model = _ccv_dpm_model_copy(model);
+					int marked = 0;
+					for (j = 0; j < bgnum; j++)
+						if (bgmarked[j])
+							++marked;
+					if (marked >= bgnum) // if all of the background images are marked, unmark them
+						memset(bgmarked, 0, sizeof(int) * bgnum);
 				}
 			}
 			printf("\n");
@@ -1432,7 +1443,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 					_ccv_dpm_check_root_classifier_symmetry(root_classifier->root.w);
 				}
-			printf(" - %d iteration takes %.2lf seconds, with loss %.5lf, %d more to go (%d of %d)\n", t + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000.0, loss / (pos_prog + neg_prog), params.iterations - t - 1, c + 1, params.relabels);
+			printf(" - %d iteration takes %.2lf seconds, with %d positive reactions and %d negative reactions at loss %.5lf, %d more to go (%d of %d)\n", t + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000.0, pos_prog, neg_prog, loss / (pos_prog + neg_prog), params.iterations - t - 1, c + 1, params.relabels);
 			_ccv_dpm_mixture_model_cleanup(model);
 			ccfree(model);
 			model = _model;
@@ -1472,6 +1483,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	remove(gradient_progress_checkpoint);
 	ccfree(order);
 	ccfree(posv);
+	ccfree(bgmarked);
 	_ccv_dpm_mixture_model_cleanup(model);
 	ccfree(model);
 	gsl_rng_free(rng);
