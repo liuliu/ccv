@@ -1379,11 +1379,13 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					{
 						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(av, ((k - posnum) / bgnum) % av->rnum);
 						double score = _ccv_dpm_vector_score(model, v);
+						/*
 						if (fabs(score - v->score) > 0.001)
 						{
 							printf("incorrect score %f %lf\n", v->score, score);
 							exit(-1);
 						}
+						*/
 						if (score >= -1)
 							_ccv_dpm_stochastic_gradient_descent(_model, v, -1, alpha, regz_rate, params.symmetric);
 						double hinge_loss = ccv_max(0, 1.0 + score);
