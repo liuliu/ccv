@@ -620,6 +620,7 @@ typedef struct {
 	double overlap; // 0.7
 	double alpha;
 	double alpha_ratio; // 0.85
+	double balance; // 1.0
 	double C;
 	double percentile_breakdown; // 0.95
 	ccv_dpm_param_t detector;
