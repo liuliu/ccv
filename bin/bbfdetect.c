@@ -17,7 +17,7 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = 0;
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-	ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .flags = 0, .size = ccv_size(24, 24) };
+	ccv_bbf_param_t params = { .interval = 5, .min_neighbors = 2, .accurate = 1, .flags = 0, .size = ccv_size(24, 24) };
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();

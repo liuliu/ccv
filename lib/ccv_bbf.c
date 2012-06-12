@@ -1,17 +1,12 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#include <sys/time.h>
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
-#ifndef _WIN32
-#include <sys/time.h>
-#endif
 #ifdef USE_OPENMP
 #include <omp.h>
-#endif
-#ifdef USE_OPENCL
-#include <CL/cl.h>
 #endif
 
 #define _ccv_width_padding(x) (((x) + 3) & -4)
@@ -155,7 +150,7 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 				ccv_flip(image, 0, 0, CCV_FLIP_X);
 			if (t % 4 >= 2)
 				ccv_flip(image, 0, 0, CCV_FLIP_Y);
-			ccv_bbf_param_t params = { .interval = 3, .min_neighbors = 0, .flags = 0, .size = cascade->size };
+			ccv_bbf_param_t params = { .interval = 3, .min_neighbors = 0, .accurate = 1, .flags = 0, .size = cascade->size };
 			ccv_array_t* detected = ccv_bbf_detect_objects(image, &cascade, 1, params);
 			memset(idcheck, 0, ccv_min(detected->rnum, negperbg) * sizeof(int));
 			for (j = 0; j < ccv_min(detected->rnum, negperbg); j++)
@@ -452,9 +447,9 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 				switch (gsl_rng_uniform_int(rng, 3))
 				{
 					case 0: /* add */
-						if (gene[i].pk == CCV_SGF_POINT_MAX && gene[i].nk == CCV_SGF_POINT_MAX)
+						if (gene[i].pk == CCV_BBF_POINT_MAX && gene[i].nk == CCV_BBF_POINT_MAX)
 							break;
-						while (*pnk[pn] + 1 > CCV_SGF_POINT_MAX)
+						while (*pnk[pn] + 1 > CCV_BBF_POINT_MAX)
 							pn = gsl_rng_uniform_int(rng, 2);
 						do {
 							z = gsl_rng_uniform_int(rng, 3);
@@ -469,9 +464,9 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 						decay = gene[i].age = 0;
 						break;
 					case 1: /* remove */
-						if (gene[i].pk + gene[i].nk <= CCV_SGF_POINT_MIN) /* at least 3 points have to be examed */
+						if (gene[i].pk + gene[i].nk <= CCV_BBF_POINT_MIN) /* at least 3 points have to be examed */
 							break;
-						while (*pnk[pn] - 1 <= 0) // || *pnk[pn] + *pnk[!pn] - 1 < CCV_SGF_POINT_MIN)
+						while (*pnk[pn] - 1 <= 0) // || *pnk[pn] + *pnk[!pn] - 1 < CCV_BBF_POINT_MIN)
 							pn = gsl_rng_uniform_int(rng, 2);
 						victim = gsl_rng_uniform_int(rng, *pnk[pn]);
 						for (j = victim; j < *pnk[pn] - 1; j++)
@@ -507,8 +502,8 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 			do {
 				dad = gsl_rng_uniform_int(rng, ftnum);
 				mum = gsl_rng_uniform_int(rng, ftnum);
-			} while (dad == mum || gene[dad].pk + gene[mum].nk < CCV_SGF_POINT_MIN); /* at least 3 points have to be examed */
-			for (j = 0; j < CCV_SGF_POINT_MAX; j++)
+			} while (dad == mum || gene[dad].pk + gene[mum].nk < CCV_BBF_POINT_MIN); /* at least 3 points have to be examed */
+			for (j = 0; j < CCV_BBF_POINT_MAX; j++)
 			{
 				gene[i].feature.pz[j] = -1;
 				gene[i].feature.nz[j] = -1;
@@ -1201,12 +1196,13 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 		ccv_resample(pyr[0], &pyr[i * 4], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4], 0, 0, 0);
-	for (i = next * 2; i < scale_upto + next * 2; i++)
-	{
-		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 1], 0, 1, 0);
-		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 2], 0, 0, 1);
-		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 3], 0, 1, 1);
-	}
+	if (params.accurate)
+		for (i = next * 2; i < scale_upto + next * 2; i++)
+		{
+			ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 1], 0, 1, 0);
+			ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 2], 0, 0, 1);
+			ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 3], 0, 1, 1);
+		}
 	ccv_array_t* idx_seq;
 	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t));
 	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
@@ -1228,7 +1224,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			int paddings[] = { pyr[i * 4]->step * 4 - i_cols * 4,
 							   pyr[i * 4 + next * 4]->step * 2 - i_cols * 2,
 							   pyr[i * 4 + next * 8]->step - i_cols };
-			for (q = 0; q < 4; q++)
+			for (q = 0; q < (params.accurate ? 4 : 1); q++)
 			{
 				unsigned char* u8[] = { pyr[i * 4]->data.u8 + dx[q] * 2 + dy[q] * pyr[i * 4]->step * 2, pyr[i * 4 + next * 4]->data.u8 + dx[q] + dy[q] * pyr[i * 4 + next * 4]->step, pyr[i * 4 + next * 8 + q]->data.u8 };
 				for (y = 0; y < i_rows; y++)
@@ -1400,12 +1396,13 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 
 	for (i = 1; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i * 4]);
-	for (i = next * 2; i < scale_upto + next * 2; i++)
-	{
-		ccv_matrix_free(pyr[i * 4 + 1]);
-		ccv_matrix_free(pyr[i * 4 + 2]);
-		ccv_matrix_free(pyr[i * 4 + 3]);
-	}
+	if (params.accurate)
+		for (i = next * 2; i < scale_upto + next * 2; i++)
+		{
+			ccv_matrix_free(pyr[i * 4 + 1]);
+			ccv_matrix_free(pyr[i * 4 + 2]);
+			ccv_matrix_free(pyr[i * 4 + 3]);
+		}
 	if (params.size.height != _cascade[0]->size.height || params.size.width != _cascade[0]->size.width)
 		ccv_matrix_free(pyr[0]);
 
