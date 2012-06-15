@@ -885,7 +885,7 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 	return av;
 }
 
-#define NEGATIVE_CACHE_SIZE (100)
+#define NEGATIVE_CACHE_SIZE (500)
 
 static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char** bgfiles, int bgnum, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
 {
@@ -914,7 +914,7 @@ static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char
 	ccfree(order);
 }
 
-static void _ccv_dpm_estimate_root_rectangle(ccv_dpm_mixture_model_t* model, char** posfiles, ccv_rect_t* bboxes, int posnum, ccv_dpm_new_param_t params)
+static void _ccv_dpm_initialize_root_rectangle_estimator(ccv_dpm_mixture_model_t* model, char** posfiles, ccv_rect_t* bboxes, int posnum, ccv_dpm_new_param_t params)
 {
 	int i;
 	for (i = 0; i < posnum; i++)
@@ -923,6 +923,7 @@ static void _ccv_dpm_estimate_root_rectangle(ccv_dpm_mixture_model_t* model, cha
 		ccv_read(posfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
 		ccv_dpm_feature_vector_t* v = _ccv_dpm_collect_best(image, model, bboxes[i], params.overlap, params.detector);
 		ccv_matrix_free(image);
+		_ccv_dpm_feature_vector_free(v);
 	}
 }
 
@@ -1341,6 +1342,10 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	c = t = r = 0;
 	_ccv_dpm_read_gradient_descent_progress(&c, &t, &r, &previous_loss, &positive_loss, &negative_loss, &loss, &pos_prog, &neg_prog, order, posnum + negnum, gradient_progress_checkpoint);
 	ccv_array_t* negv = 0;
+	int negi = 0;
+	int negk[NEGATIVE_CACHE_SIZE];
+	for (i = 0; i < NEGATIVE_CACHE_SIZE; i++)
+		negk[i] = i;
 	for (; c < params.relabels; c++)
 	{
 		double regz_rate = params.C / model->count;
@@ -1430,10 +1435,14 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						fflush(stdout);
 						if (negv->rnum < NEGATIVE_CACHE_SIZE)
 							_ccv_dpm_collect_from_background(negv, rng, bgfiles, bgnum, model, params, 0);
+						negi = 0;
+						gsl_ran_shuffle(rng, negk, NEGATIVE_CACHE_SIZE, sizeof(int));
 					}
 					if (negv && negv->rnum > 0)
 					{
-						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, (k - posnum) % negv->rnum);
+						k = negk[negi];
+						++negi;
+						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, k % negv->rnum);
 						double score = _ccv_dpm_vector_score(model, v);
 						if (score >= -1)
 							_ccv_dpm_stochastic_gradient_descent(_model, v, -1, alpha * neg_weight, regz_rate, params.symmetric);
@@ -1533,6 +1542,8 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			}
 			ccv_array_free(negv);
 			negv = 0;
+			negi = 0;
+			gsl_ran_shuffle(rng, negk, NEGATIVE_CACHE_SIZE, sizeof(int));
 		}
 		t = 0;
 		previous_loss = positive_loss = negative_loss = loss = 0;
@@ -1553,29 +1564,33 @@ static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
 	const ccv_root_comp_t* r1 = (const ccv_root_comp_t*)_r1;
 	const ccv_root_comp_t* r2 = (const ccv_root_comp_t*)_r2;
-	int distance = (int)(r1->rect.width * 0.25 + 0.5);
+	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
 
 	return r2->rect.x <= r1->rect.x + distance &&
-		   r2->rect.x >= r1->rect.x - distance &&
-		   r2->rect.y <= r1->rect.y + distance &&
-		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
-		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+		r2->rect.x >= r1->rect.x - distance &&
+		r2->rect.y <= r1->rect.y + distance &&
+		r2->rect.y >= r1->rect.y - distance &&
+		r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		(int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width &&
+		r2->rect.height <= (int)(r1->rect.height * 1.5 + 0.5) &&
+		(int)(r2->rect.height * 1.5 + 0.5) >= r1->rect.height;
 }
 
 static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
 {
 	const ccv_root_comp_t* r1 = (const ccv_root_comp_t*)_r1;
 	const ccv_root_comp_t* r2 = (const ccv_root_comp_t*)_r2;
-	int distance = (int)(r1->rect.width * 0.25 + 0.5);
+	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
 
 	return r2->id == r1->id &&
-		   r2->rect.x <= r1->rect.x + distance &&
-		   r2->rect.x >= r1->rect.x - distance &&
-		   r2->rect.y <= r1->rect.y + distance &&
-		   r2->rect.y >= r1->rect.y - distance &&
-		   r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
-		   (int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width;
+		r2->rect.x <= r1->rect.x + distance &&
+		r2->rect.x >= r1->rect.x - distance &&
+		r2->rect.y <= r1->rect.y + distance &&
+		r2->rect.y >= r1->rect.y - distance &&
+		r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		(int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width &&
+		r2->rect.height <= (int)(r1->rect.height * 1.5 + 0.5) &&
+		(int)(r2->rect.height * 1.5 + 0.5) >= r1->rect.height;
 }
 
 ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
@@ -1634,7 +1649,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								int ry = iy - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
 								int rx = ix - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
 								comp.part[k].rect = ccv_rect((int)((rx - pww) * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)((ry - pwh) * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5), (int)(part->w->cols * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)(part->w->rows * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5));
-								comp.part[k].confidence = ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
+								comp.part[k].confidence = -ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 							}
 							ccv_array_push(seq, &comp);
 						}
@@ -1673,14 +1688,11 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
-				comps[idx].rect.x += r1.rect.x;
-				comps[idx].rect.y += r1.rect.y;
-				comps[idx].rect.width += r1.rect.width;
-				comps[idx].rect.height += r1.rect.height;
 				comps[idx].id = r1.id;
 				comps[idx].pnum = r1.pnum;
 				if (r1.confidence > comps[idx].confidence || comps[idx].neighbors == 0)
 				{
+					comps[idx].rect = r1.rect;
 					comps[idx].confidence = r1.confidence;
 					memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 				}
@@ -1693,19 +1705,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			{
 				int n = comps[i].neighbors;
 				if(n >= params.min_neighbors)
-				{
-					ccv_root_comp_t comp;
-					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
-					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
-					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
-					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
-					comp.neighbors = comps[i].neighbors;
-					comp.id = comps[i].id;
-					comp.confidence = comps[i].confidence;
-					comp.pnum = comps[i].pnum;
-					memcpy(comp.part, comps[i].part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
-					ccv_array_push(seq2, &comp);
-				}
+					ccv_array_push(seq2, comps + i);
 			}
 
 			// filter out small face rectangles inside large face rectangles

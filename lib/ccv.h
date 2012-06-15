@@ -587,13 +587,14 @@ typedef struct {
 	double dx, dy, dxx, dyy;
 	int x, y, z;
 	int counterpart;
+	float alpha[2];
 } ccv_dpm_part_classifier_t;
 
 typedef struct {
 	int count;
 	ccv_dpm_part_classifier_t root;
 	ccv_dpm_part_classifier_t* part;
-	float beta;
+	float alpha, beta;
 } ccv_dpm_root_classifier_t;
 
 typedef struct {
