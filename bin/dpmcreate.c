@@ -89,12 +89,13 @@ int main(int argc, char** argv)
 								   .symmetric = 1,
 								   .alpha = 0.1,
 								   .balance = 1.75,
-								   .alpha_ratio = 0.9,
-								   .iterations = 15,
+								   .alpha_ratio = 0.75,
+								   .iterations = 5,
 								   .relabels = 5,
+								   .negative_cache_size = 2000,
 								   .C = 0.002,
 								   .percentile_breakdown = 0.05,
-								   .overlap = 0.75,
+								   .overlap = 0.7,
 								   .grayscale = 0 };
 	ccv_dpm_mixture_model_new(posfiles, bboxes, posnum, bgfiles, bgnum, negnum, argv[6], params);
 	free(posfiles);

@@ -618,6 +618,7 @@ typedef struct {
 	int max_area; // 5000
 	int iterations;
 	int relabels;
+	int negative_cache_size; // 500
 	double overlap; // 0.7
 	double alpha;
 	double alpha_ratio; // 0.85
