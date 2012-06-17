@@ -1,42 +1,172 @@
 #include "ccv.h"
 #include <ctype.h>
+#include <getopt.h>
 
 void exit_with_help()
 {
 	printf(
-	"USAGE: dpmcreate positive_set_file background_set_file negative_number model_components model_parts output [change_to_directory]\n"
-	"DESCRIPTION:\n"
-	"- positive_set_file: text file contains a list of positive files in format:\n"
-	"-                    <file name> x y width height \\newline\n"
-	"- background_set_file: text file contains a list of image files that don't contain any target objects\n"
-	"- negative_number: the number of negative examples we should collect from background files to initialize SVM\n"
-	"- model_components: the number of root filters in our mixture model\n"
-	"- model_parts: the number of part filters for each root filter\n"
-	"- output: the output model file\n"
-	"- change_to_directory: change the base directory so that the program can read images from there\n"
+	"USAGE: dpmcreate [OPTION...]\n\n"
+	"DESCRIPTION:\n\n"
+	" --positive-list : text file contains a list of positive files in format:\n"
+	"                   <file name> x y width height \\newline\n"
+	" --background-list : text file contains a list of image files that don't contain any target objects\n"
+	" --negative-count : the number of negative examples we should collect from background files to initialize SVM\n"
+	" --model-component : the number of root filters in our mixture model\n"
+	" --model-part : the number of part filters for each root filter\n"
+	" --working-dir : the directory to save progress and produce result model\n"
+	" --symmetric : 0 or 1, whether to exploit symmetric property of the object\n\n"
+	"OPTIONAL:\n\n"
+	" --base-dir : change the base directory so that the program can read images from there\n"
+	" --iterations : how many iterations needed for stochastic gradient descent [DEFAULT TO 10]\n"
+	" --relabels : how many relabel procedure needed [DEFAULT TO 5]\n"
+	" --alpha : the step size for stochastic gradient descent [DEFAULT TO 0.1]\n"
+	" --alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.85]\n"
+	" --margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
+	" --balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.75]\n"
+	" --negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 500]\n"
+	" --overlap : the percentage of overlap between expected bounding box and the bounding box from detection to ensure they are the same object [DEFAULT TO 0.75]\n"
+	" --grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 1]\n"
+	" --percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n"
 	);
 	exit(-1);
 }
 
 int main(int argc, char** argv)
 {
-	if (argc != 7 && argc != 8)
-		exit_with_help();
+	static struct option dpm_options[] = {
+		/* help */
+		{"help", 0, 0, 0},
+		/* required parameters */
+		{"positive-list", 1, 0, 0},
+		{"background-list", 1, 0, 0},
+		{"working-dir", 1, 0, 0},
+		{"negative-count", 1, 0, 0},
+		{"model-component", 1, 0, 0},
+		{"model-part", 1, 0, 0},
+		{"symmetric", 1, 0, 0},
+		/* optional parameters */
+		{"base-dir", 1, 0, 0},
+		{"iterations", 1, 0, 0},
+		{"relabels", 1, 0, 0},
+		{"alpha", 1, 0, 0},
+		{"alpha-ratio", 1, 0, 0},
+		{"balance", 1, 0, 0},
+		{"negative-cache-size", 1, 0, 0},
+		{"margin-c", 1, 0, 0},
+		{"percentile-breakdown", 1, 0, 0},
+		{"overlap", 1, 0, 0},
+		{"grayscale", 1, 0, 0},
+		{0, 0, 0, 0}
+	};
+	char* positive_list = 0;
+	char* background_list = 0;
+	char* working_dir = 0;
+	char* base_dir = 0;
+	int negative_count = 0;
+	ccv_dpm_param_t detector = { .interval = 8, .min_neighbors = 0, .flags = 0, .threshold = 0.0 };
+	ccv_dpm_new_param_t params = { .components = 0,
+								   .detector = detector,
+								   .parts = 0,
+								   .min_area = 3000,
+								   .max_area = 5000,
+								   .symmetric = 1,
+								   .alpha = 0.1,
+								   .balance = 1.75,
+								   .alpha_ratio = 0.85,
+								   .iterations = 10,
+								   .relabels = 5,
+								   .negative_cache_size = 500,
+								   .C = 0.002,
+								   .percentile_breakdown = 0.05,
+								   .overlap = 0.75,
+								   .grayscale = 0 };
+	int k;
+	while (getopt_long_only(argc, argv, "", dpm_options, &k) != -1)
+	{
+		switch (k)
+		{
+			case 0:
+				exit_with_help();
+			case 1:
+				positive_list = optarg;
+				break;
+			case 2:
+				background_list = optarg;
+				break;
+			case 3:
+				working_dir = optarg;
+				break;
+			case 4:
+				negative_count = atoi(optarg);
+				break;
+			case 5:
+				params.components = atoi(optarg);
+				break;
+			case 6:
+				params.parts = atoi(optarg);
+				break;
+			case 7:
+				params.symmetric = !!atoi(optarg);
+				break;
+			case 8:
+				base_dir = optarg;
+				break;
+			case 9:
+				params.iterations = atoi(optarg);
+				break;
+			case 10:
+				params.relabels = atoi(optarg);
+				break;
+			case 11:
+				params.alpha = atof(optarg);
+				break;
+			case 12:
+				params.alpha_ratio = atof(optarg);
+				break;
+			case 13:
+				params.balance = atof(optarg);
+				break;
+			case 14:
+				params.negative_cache_size = atoi(optarg);
+				break;
+			case 15:
+				params.C = atof(optarg);
+				break;
+			case 16:
+				params.percentile_breakdown = atof(optarg);
+				break;
+			case 17:
+				params.overlap = atof(optarg);
+				break;
+			case 18:
+				params.grayscale = !!atoi(optarg);
+				break;
+		}
+	}
+	assert(positive_list != 0);
+	assert(background_list != 0);
+	assert(working_dir != 0);
+	assert(base_dir != 0);
+	assert(negative_count > 0);
+	assert(params.components > 0);
+	assert(params.parts > 0);
 	ccv_enable_cache(512 * 1024 * 1024);
-	FILE* r0 = fopen(argv[1], "r");
-	FILE* r1 = fopen(argv[2], "r");
+	FILE* r0 = fopen(positive_list, "r");
+	assert(r0 && "positive-list doesn't exists");
+	FILE* r1 = fopen(background_list, "r");
+	assert(r1 && "background-list doesn't exists");
 	char* file = (char*)malloc(1024);
 	int x, y, width, height;
 	int capacity = 32, size = 0;
 	char** posfiles = (char**)ccmalloc(sizeof(char*) * capacity);
 	ccv_rect_t* bboxes = (ccv_rect_t*)ccmalloc(sizeof(ccv_rect_t) * capacity);
-	int dirlen = (argc == 8) ? strlen(argv[7]) + 1 : 0;
+	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
 	while (fscanf(r0, "%s %d %d %d %d", file, &x, &y, &width, &height) != EOF)
 	{
 		posfiles[size] = (char*)ccmalloc(1024);
-		if (argc == 8)
+		if (base_dir != 0)
 		{
-			strncpy(posfiles[size], argv[7], 1024);
+			strncpy(posfiles[size], base_dir, 1024);
 			posfiles[size][dirlen - 1] = '/';
 		}
 		strncpy(posfiles[size] + dirlen, file, 1024 - dirlen);
@@ -61,9 +191,9 @@ int main(int argc, char** argv)
 			read--;
 		file[read] = 0;
 		bgfiles[size] = (char*)ccmalloc(1024);
-		if (argc == 8)
+		if (base_dir != 0)
 		{
-			strncpy(bgfiles[size], argv[7], 1024);
+			strncpy(bgfiles[size], base_dir, 1024);
 			bgfiles[size][dirlen - 1] = '/';
 		}
 		strncpy(bgfiles[size] + dirlen, file, 1024 - dirlen);
@@ -76,28 +206,8 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	int bgnum = size;
-	int negnum = atoi(argv[3]);
-	int components = atoi(argv[4]);
-	int parts = atoi(argv[5]);
 	free(file);
-	ccv_dpm_param_t detector = { .interval = 8, .min_neighbors = 0, .flags = 0, .threshold = 0.0 };
-	ccv_dpm_new_param_t params = { .components = components,
-								   .detector = detector,
-								   .parts = parts,
-								   .min_area = 3000,
-								   .max_area = 5000,
-								   .symmetric = 1,
-								   .alpha = 0.1,
-								   .balance = 1.75,
-								   .alpha_ratio = 0.75,
-								   .iterations = 5,
-								   .relabels = 5,
-								   .negative_cache_size = 2000,
-								   .C = 0.002,
-								   .percentile_breakdown = 0.05,
-								   .overlap = 0.7,
-								   .grayscale = 0 };
-	ccv_dpm_mixture_model_new(posfiles, bboxes, posnum, bgfiles, bgnum, negnum, argv[6], params);
+	ccv_dpm_mixture_model_new(posfiles, bboxes, posnum, bgfiles, bgnum, negative_count, working_dir, params);
 	free(posfiles);
 	free(bboxes);
 	free(bgfiles);

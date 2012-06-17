@@ -3,6 +3,7 @@
 #include <sys/time.h>
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
+#include <gsl/gsl_multifit.h>
 #include <gsl/gsl_randist.h>
 #endif
 #ifdef USE_OPENMP
@@ -175,7 +176,7 @@ static void _ccv_dpm_write_checkpoint(ccv_dpm_mixture_model_t* model, const char
 	{
 		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 		fprintf(w, "%d %d\n", root_classifier->root.w->rows, root_classifier->root.w->cols);
-		fprintf(w, "%a\n", root_classifier->beta);
+		fprintf(w, "%a %a %a %a\n", root_classifier->beta, root_classifier->alpha[0], root_classifier->alpha[1], root_classifier->alpha[2]);
 		ch = CCV_GET_CHANNEL(root_classifier->root.w->type);
 		for (y = 0; y < root_classifier->root.w->rows; y++)
 		{
@@ -189,6 +190,7 @@ static void _ccv_dpm_write_checkpoint(ccv_dpm_mixture_model_t* model, const char
 			ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + j;
 			fprintf(w, "%d %d %d\n", part_classifier->x, part_classifier->y, part_classifier->z);
 			fprintf(w, "%la %la %la %la\n", part_classifier->dx, part_classifier->dy, part_classifier->dxx, part_classifier->dyy);
+			fprintf(w, "%a %a %a %a %a %a\n", part_classifier->alpha[0], part_classifier->alpha[1], part_classifier->alpha[2], part_classifier->alpha[3], part_classifier->alpha[4], part_classifier->alpha[5]);
 			fprintf(w, "%d %d %d\n", part_classifier->w->rows, part_classifier->w->cols, part_classifier->counterpart);
 			ch = CCV_GET_CHANNEL(part_classifier->w->type);
 			for (y = 0; y < part_classifier->w->rows; y++)
@@ -220,7 +222,7 @@ static void _ccv_dpm_read_checkpoint(ccv_dpm_mixture_model_t* model, const char*
 	{
 		int rows, cols;
 		fscanf(r, "%d %d", &rows, &cols);
-		fscanf(r, "%f", &root_classifier[i].beta);
+		fscanf(r, "%f %f %f %f", &root_classifier[i].beta, &root_classifier[i].alpha[0], &root_classifier[i].alpha[1], &root_classifier[i].alpha[2]);
 		root_classifier[i].root.w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, 0, 0);
 		for (j = 0; j < rows * cols * 31; j++)
 			fscanf(r, "%f", &root_classifier[i].root.w->data.f32[j]);
@@ -231,6 +233,7 @@ static void _ccv_dpm_read_checkpoint(ccv_dpm_mixture_model_t* model, const char*
 		{
 			fscanf(r, "%d %d %d", &part_classifier[j].x, &part_classifier[j].y, &part_classifier[j].z);
 			fscanf(r, "%lf %lf %lf %lf", &part_classifier[j].dx, &part_classifier[j].dy, &part_classifier[j].dxx, &part_classifier[j].dyy);
+			fscanf(r, "%f %f %f %f %f %f", &part_classifier[j].alpha[0], &part_classifier[j].alpha[1], &part_classifier[j].alpha[2], &part_classifier[j].alpha[3], &part_classifier[j].alpha[4], &part_classifier[j].alpha[5]);
 			fscanf(r, "%d %d %d", &rows, &cols, &part_classifier[j].counterpart);
 			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, 0, 0);
 			for (k = 0; k < rows * cols * 31; k++)
@@ -634,6 +637,8 @@ typedef struct {
 	int id;
 	int count;
 	float score;
+	int x, y;
+	float scale_x, scale_y;
 	ccv_dpm_part_classifier_t root;
 	ccv_dpm_part_classifier_t* part;
 } ccv_dpm_feature_vector_t;
@@ -699,6 +704,8 @@ static double _ccv_dpm_vector_score(ccv_dpm_mixture_model_t* model, ccv_dpm_feat
 static void _ccv_dpm_collect_feature_vector(ccv_dpm_feature_vector_t* v, float score, int x, int y, ccv_dense_matrix_t* pyr, ccv_dense_matrix_t* detail, ccv_dense_matrix_t** dx, ccv_dense_matrix_t** dy)
 {
 	v->score = score;
+	v->x = x;
+	v->y = y;
 	ccv_zero(v->root.w);
 	int rwh = (v->root.w->rows - 1) / 2, rww = (v->root.w->cols - 1) / 2;
 	int i, ix, iy, ch = CCV_GET_CHANNEL(v->root.w->type);
@@ -802,6 +809,8 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 							_ccv_dpm_initialize_feature_vector_on_pattern(v, root_classifier, i);
 						}
 						_ccv_dpm_collect_feature_vector(v, f_ptr[x] + root_classifier->beta, x, y, pyr[j], pyr[j - next], dx, dy);
+						v->scale_x = scale_x;
+						v->scale_y = scale_y;
 						best = f_ptr[x];
 					}
 				}
@@ -914,15 +923,79 @@ static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char
 
 static void _ccv_dpm_initialize_root_rectangle_estimator(ccv_dpm_mixture_model_t* model, char** posfiles, ccv_rect_t* bboxes, int posnum, ccv_dpm_new_param_t params)
 {
-	int i;
+	int i, j, k, c;
+	ccv_dpm_feature_vector_t** posv = (ccv_dpm_feature_vector_t**)ccmalloc(sizeof(ccv_dpm_feature_vector_t*) * posnum);
+	int* num_per_model = (int*)alloca(sizeof(int) * model->count);
+	memset(num_per_model, 0, sizeof(int) * model->count);
+	printf(" - collecting responses from positive examples :  0%%");
+	fflush(stdout);
 	for (i = 0; i < posnum; i++)
 	{
+		printf("\b\b\b%2d%%", i * 100 / posnum);
+		fflush(stdout);
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(posfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-		ccv_dpm_feature_vector_t* v = _ccv_dpm_collect_best(image, model, bboxes[i], params.overlap, params.detector);
+		posv[i] = _ccv_dpm_collect_best(image, model, bboxes[i], params.overlap, params.detector);
+		if (posv[i])
+			++num_per_model[posv[i]->id];
 		ccv_matrix_free(image);
-		_ccv_dpm_feature_vector_free(v);
 	}
+	// this will estimate new x, y, and scale
+	printf("\n - linear regression for x, y, and scale drifting\n");
+	for (i = 0; i < model->count; i++)
+	{
+		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
+		gsl_matrix* X = gsl_matrix_alloc(num_per_model[i], root_classifier->count * 2 + 1);
+		gsl_vector* y[3];
+		y[0] = gsl_vector_alloc(num_per_model[i]);
+		y[1] = gsl_vector_alloc(num_per_model[i]);
+		y[2] = gsl_vector_alloc(num_per_model[i]);
+		gsl_vector* z = gsl_vector_alloc(root_classifier->count * 2 + 1);
+		gsl_matrix* cov = gsl_matrix_alloc(root_classifier->count * 2 + 1, root_classifier->count * 2 + 1);;
+		c = 0;
+		for (j = 0; j < posnum; j++)
+		{
+			ccv_dpm_feature_vector_t* v = posv[j];
+			if (v && v->id == i)
+			{
+				gsl_matrix_set(X, c, 0, 1.0);
+				for (k = 0; k < v->count; k++)
+				{
+					gsl_matrix_set(X, c, k * 2 + 1, v->part[k].dx);
+					gsl_matrix_set(X, c, k * 2 + 2, v->part[k].dy);
+				}
+				ccv_rect_t bbox = bboxes[j];
+				gsl_vector_set(y[0], c, (bbox.x + bbox.width * 0.5) / (v->scale_x * CCV_DPM_WINDOW_SIZE) - v->x);
+				gsl_vector_set(y[1], c, (bbox.y + bbox.height * 0.5) / (v->scale_y * CCV_DPM_WINDOW_SIZE) - v->y);
+				gsl_vector_set(y[2], c, (bbox.width + bbox.height) / (root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * v->scale_y + root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * v->scale_x) - 1.0);
+				++c;
+			}
+		}
+		gsl_multifit_linear_workspace* workspace = gsl_multifit_linear_alloc(num_per_model[i], root_classifier->count * 2 + 1);
+		double chisq;
+		for (j = 0; j < 3; j++)
+		{
+			gsl_multifit_linear(X, y[j], z, cov, &chisq, workspace);
+			root_classifier->alpha[j] = gsl_vector_get(z, 0);
+			for (k = 0; k < root_classifier->count; k++)
+			{
+				ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + k;
+				part_classifier->alpha[j * 2] = gsl_vector_get(z, k * 2 + 1);
+				part_classifier->alpha[j * 2 + 1] = gsl_vector_get(z, k * 2 + 2);
+			}
+		}
+		gsl_multifit_linear_free(workspace);
+		gsl_matrix_free(cov);
+		gsl_vector_free(z);
+		gsl_vector_free(y[0]);
+		gsl_vector_free(y[1]);
+		gsl_vector_free(y[2]);
+		gsl_matrix_free(X);
+	}
+	for (i = 0; i < posnum; i++)
+		if (posv[i])
+			_ccv_dpm_feature_vector_free(posv[i]);
+	ccfree(posv);
 }
 
 static void _ccv_dpm_regularize_mixture_model(ccv_dpm_mixture_model_t* model, double regz)
@@ -1132,7 +1205,6 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_read_feature_vector(FILE* r)
 	for (j = 0; j < rows * cols * 31; j++)
 		fscanf(r, "%f", &v->root.w->data.f32[j]);
 	fscanf(r, "%d %f", &v->count, &v->score);
-	assert(v->count == 8);
 	v->part = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * v->count);
 	for (j = 0; j < v->count; j++)
 	{
@@ -1241,7 +1313,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 {
 	int t, c, r, i, j, k;
 	_ccv_dpm_check_params(params);
-	assert(params.negative_cache_size <= negnum);
+	assert(params.negative_cache_size <= negnum && params.negative_cache_size > REGQ && params.negative_cache_size > MINI_BATCH);
 	printf("with %d positive examples and %d negative examples\n"
 		   "negative examples are collected from %d background images\n",
 		   posnum, negnum, bgnum);
@@ -1404,6 +1476,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	c = t = r = 0;
 	ccv_array_t* negv = 0;
 	int negi = 0;
+	int abort = 0;
 	int* negk = (int*)ccmalloc(params.negative_cache_size * sizeof(int));
 	for (i = 0; i < params.negative_cache_size; i++)
 		negk[i] = i;
@@ -1522,6 +1595,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 							printf("\b");
 						last_update = printf(" - with loss %.5lf (positive %.5lf, negative %.5f) at rate %.5lf --- %2d%%                                      ", loss / (pos_prog + neg_prog), positive_loss / pos_prog, negative_loss / neg_prog, alpha, (i + 1) * 100 / (posnum + negnum));
 						fflush(stdout);
+					} else {
+						abort = 1;
+						break; // it is weird, we cannot get any negatives, so abort
 					}
 				}
 				if (i % REGQ == REGQ - 1)
@@ -1572,7 +1648,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 					_ccv_dpm_check_root_classifier_symmetry(root_classifier->root.w);
 				}
-			printf(" - %d iteration takes %.2lf seconds, with %d positive reactions and %d negative reactions at loss %.5lf, %d more to go (%d of %d)\n", t + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000.0, pos_prog, neg_prog, loss / (pos_prog + neg_prog), params.iterations - t - 1, c + 1, params.relabels);
+			printf(" - iteration %d takes %.2lf seconds, with %d positive reactions and %d negative reactions at loss %.5lf, %d more to go (%d of %d)\n", t + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000.0, pos_prog, neg_prog, loss / (pos_prog + neg_prog), params.iterations - t - 1, c + 1, params.relabels);
 			j = 0;
 			double* scores = (double*)ccmalloc(posnum * sizeof(double));
 			for (i = 0; i < posnum; i++)
@@ -1593,7 +1669,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			char persist[512];
 			sprintf(persist, "%s/model.%d.%d", dir, c, t);
 			_ccv_dpm_write_checkpoint(model, persist);
-			if (fabs(previous_loss - loss) < 1e-4)
+			if (abort || fabs(previous_loss - loss) < 1e-4)
 			{
 				printf(" - aborting iteration at %d because we didn't gain much\n", t + 1);
 				break;
@@ -1612,19 +1688,25 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			negv = 0;
 			negi = 0;
 			gsl_ran_shuffle(rng, negk, params.negative_cache_size, sizeof(int));
-			_ccv_dpm_write_negative_feature_vectors(negv, negk, params.negative_cache_size, neg_vector_checkpoint);
+			remove(neg_vector_checkpoint);
 		}
 		t = 0;
 		previous_loss = positive_loss = negative_loss = loss = 0;
 		for (i = 0; i < posnum; i++)
-			if (posv[i] != 0)
+			if (posv[i])
 				_ccv_dpm_feature_vector_free(posv[i]);
 		remove(feature_vector_checkpoint);
+		if (abort)
+			break;
 	}
-	remove(gradient_progress_checkpoint);
 	ccfree(order);
 	ccfree(negk);
 	ccfree(posv);
+	printf("root rectangle prediction with linear regression\n");
+	_ccv_dpm_initialize_root_rectangle_estimator(model, posfiles, bboxes, posnum, params);
+	_ccv_dpm_write_checkpoint(model, checkpoint);
+	printf("done\n");
+	remove(gradient_progress_checkpoint);
 	_ccv_dpm_mixture_model_cleanup(model);
 	ccfree(model);
 	gsl_rng_free(rng);
@@ -1701,11 +1783,13 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
 							ccv_root_comp_t comp;
-							comp.rect = ccv_rect((int)((x - rww) * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)((y - rwh) * CCV_DPM_WINDOW_SIZE * scale_y + 0.5), (int)(root->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
 							comp.id = c;
 							comp.neighbors = 1;
 							comp.confidence = f_ptr[x] + root->beta;
 							comp.pnum = root->count;
+							float drift_x = root->alpha[0],
+								  drift_y = root->alpha[1],
+								  drift_scale = root->alpha[2];
 							for (k = 0; k < root->count; k++)
 							{
 								ccv_dpm_part_classifier_t* part = root->part + k;
@@ -1716,11 +1800,17 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								int offx = part->x + pww - rww * 2;
 								int iy = ccv_clamp(y * 2 + offy, pwh, part_feature[k]->rows - pwh);
 								int ix = ccv_clamp(x * 2 + offx, pww, part_feature[k]->cols - pww);
-								int ry = iy - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
-								int rx = ix - ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
+								int ry = ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
+								int rx = ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
+								drift_x += part->alpha[0] * rx + part->alpha[1] * ry;
+								drift_y += part->alpha[2] * rx + part->alpha[3] * ry;
+								drift_scale += part->alpha[4] * rx + part->alpha[5] * ry;
+								ry = iy - ry;
+								rx = ix - rx;
 								comp.part[k].rect = ccv_rect((int)((rx - pww) * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)((ry - pwh) * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5), (int)(part->w->cols * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)(part->w->rows * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5));
 								comp.part[k].confidence = -ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 							}
+							comp.rect = ccv_rect((int)((x + drift_x) * CCV_DPM_WINDOW_SIZE * scale_x - rww * CCV_DPM_WINDOW_SIZE * (scale_x + drift_scale) + 0.5), (int)((y + drift_y) * CCV_DPM_WINDOW_SIZE * scale_y - rwh * CCV_DPM_WINDOW_SIZE * (scale_y + drift_scale) + 0.5), (int)(root->root.w->cols * CCV_DPM_WINDOW_SIZE * (scale_x + drift_scale) + 0.5), (int)(root->root.w->rows * CCV_DPM_WINDOW_SIZE * (scale_y + drift_scale) + 0.5));
 							ccv_array_push(seq, &comp);
 						}
 					f_ptr += root_feature->cols;
@@ -1877,7 +1967,7 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 	{
 		int rows, cols;
 		fscanf(r, "%d %d", &rows, &cols);
-		fscanf(r, "%f", &root_classifier[i].beta);
+		fscanf(r, "%f %f %f %f", &root_classifier[i].beta, &root_classifier[i].alpha[0], &root_classifier[i].alpha[1], &root_classifier[i].alpha[2]);
 		root_classifier[i].root.w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
 		size += ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31);
 		for (j = 0; j < rows * cols * 31; j++)
@@ -1890,7 +1980,7 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 		{
 			fscanf(r, "%d %d %d", &part_classifier[j].x, &part_classifier[j].y, &part_classifier[j].z);
 			fscanf(r, "%lf %lf %lf %lf", &part_classifier[j].dx, &part_classifier[j].dy, &part_classifier[j].dxx, &part_classifier[j].dyy);
-			// printf("%lf %lf %lf %lf\n", part_classifier[j].dx, part_classifier[j].dy, part_classifier[j].dxx, part_classifier[j].dyy);
+			fscanf(r, "%f %f %f %f %f %f", &part_classifier[j].alpha[0], &part_classifier[j].alpha[1], &part_classifier[j].alpha[2], &part_classifier[j].alpha[3], &part_classifier[j].alpha[3], &part_classifier[j].alpha[5]);
 			fscanf(r, "%d %d %d", &rows, &cols, &part_classifier[j].counterpart);
 			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
 			size += ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31);
