@@ -10,7 +10,9 @@ test/*.png
 test/opencv/*.jpg
 test/opencv/*.png
 test/*_test
+bin/misc/
 bin/*.jpg
+bin/*.samples
 bin/*.png
 bin/*.tex
 bin/*.txt
