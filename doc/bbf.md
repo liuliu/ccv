@@ -116,23 +116,15 @@ images, for me, it is:
 	find ../data/faces/*.bmp > faces.dat
 	find ../data/negs/*.jpg > negs.dat
 
-One quirk thing of bbfcreate is, the negs.dat needs to include how many files in
-it in the first line. Thus, you need to modify negs.dat file to be like something:
-
-	8059
-	../data/facedata/negs/2115168574_235742f2bb_b.jpg
-	../data/facedata/negs/2290943030_06e4e366ca_b.jpg
-	../data/facedata/negs/2643165035_1aab9dd0d8_b.jpg
-
 That's all! Just find a computer powerful enough and run the following line for several
 days:
 
-	./bbfcreate faces.dat 13125 negs.dat 26250
+	./bbfcreate --positive-list faces.dat --background-list negs.dat --negative-count 26250 --working-dir data
 
-The fourth parameter denotes how many negative samples extracted for each round,
+The --negative-count parameter denotes how many negative samples extracted for each round,
 experimentally, it is something about twice of the number of your positive ones.
 
-If you configure the makefile well, bbfcreate will use OpenMP to speed up which will
+If you configure the makefile well, bbfcreate will use OpenMP to speed up, which will
 eat up all the CPUs. My own training process ran about one week, it is a extremely
 powerful desktop PC, you should expect weeks for the result on modest PC with so many
 samples.

@@ -22,7 +22,7 @@ void exit_with_help()
 	"\t--alpha : the step size for stochastic gradient descent [DEFAULT TO 0.1]\n"
 	"\t--alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.85]\n"
 	"\t--margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
-	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.5]\n"
+	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.75]\n"
 	"\t--negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 1000]\n"
 	"\t--include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
 	"\t--exclude-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Below this threshold, it is ensured to not be the same object [DEFAULT TO 0.5]\n"
@@ -73,7 +73,7 @@ int main(int argc, char** argv)
 								   .max_area = 5000,
 								   .symmetric = 1,
 								   .alpha = 0.1,
-								   .balance = 1.5,
+								   .balance = 1.75,
 								   .alpha_ratio = 0.85,
 								   .iterations = 10,
 								   .relabels = 5,

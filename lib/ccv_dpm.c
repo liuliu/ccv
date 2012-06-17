@@ -532,6 +532,7 @@ static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root
 	ccv_make_matrix_mutable(w);
 	root_classifier->count = parts;
 	root_classifier->part = (ccv_dpm_part_classifier_t*)ccmalloc(sizeof(ccv_dpm_part_classifier_t) * parts);
+	memset(root_classifier->part, 0, sizeof(ccv_dpm_part_classifier_t) * parts);
 	double area = w->rows * w->cols / (double)parts;
 	for (i = 0; i < parts;)
 	{
@@ -832,7 +833,7 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 	return v;
 }
 
-static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_dpm_mixture_model_t* model, ccv_rect_t bbox, float overlap, ccv_dpm_param_t params, float threshold)
+static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_dpm_mixture_model_t* model, ccv_rect_t *bboxes, int bnum, float overlap, ccv_dpm_param_t params, float threshold)
 {
 	int i, j, k, x, y;
 	double scale = pow(2.0, 1.0 / (params.interval + 1.0));
@@ -864,10 +865,17 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 				for (x = rww; x < root_feature->cols - rww; x++)
 				{
 					ccv_rect_t rect = ccv_rect((int)((x - rww) * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)((y - rwh) * CCV_DPM_WINDOW_SIZE * scale_y + 0.5), (int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
-					if (bbox.width > 0 && bbox.height > 0 &&
-						(double)(ccv_max(0, ccv_min(rect.x + rect.width, bbox.x + bbox.width) - ccv_max(rect.x, bbox.x)) *
-								 ccv_max(0, ccv_min(rect.y + rect.height, bbox.y + bbox.height) - ccv_max(rect.y, bbox.y))) /
-						(double)ccv_min(rect.width * rect.height, bbox.width * bbox.height) >= overlap)
+					int flag = 0;
+					if (bboxes)
+						for (k = 0; k < bnum; k++)
+							if ((double)(ccv_max(0, ccv_min(rect.x + rect.width, bboxes[k].x + bboxes[k].width) - ccv_max(rect.x, bboxes[k].x)) *
+								ccv_max(0, ccv_min(rect.y + rect.height, bboxes[k].y + bboxes[k].height) - ccv_max(rect.y, bboxes[k].y))) /
+								(double)ccv_min(rect.width * rect.height, bboxes[k].width * bboxes[k].height) >= overlap)
+							{
+								flag = 1;
+								break;
+							}
+					if (flag)
 						continue;
 					if (f_ptr[x] + root_classifier->beta > threshold)
 					{
@@ -904,7 +912,7 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 
 static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_rng* rng, char** bgfiles, int bgnum, char** posfiles, int posnum, ccv_rect_t* bboxes, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
 {
-	int i, j;
+	int i, j, k;
 	int* order = (int*)ccmalloc(sizeof(int) * ccv_max(bgnum, posnum));
 	for (i = 0; i < bgnum; i++)
 		order[i] = i;
@@ -915,7 +923,7 @@ static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_r
 		fflush(stdout);
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(bgfiles[order[i]], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-		ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, ccv_rect(0, 0, 0, 0), params.exclude_overlap, params.detector, threshold);
+		ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, 0, 0, params.exclude_overlap, params.detector, threshold);
 		if (at)
 		{
 			for (j = 0; j < at->rnum; j++)
@@ -932,13 +940,31 @@ static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_r
 		for (i = 0; i < posnum; i++)
 			order[i] = i;
 		gsl_ran_shuffle(rng, order, posnum, sizeof(int));
+		int* pos_processed = (int*)ccmalloc(sizeof(int) * posnum);
+		memset(pos_processed, 0, sizeof(int) * posnum);
+		ccv_rect_t* bboxes_in_file = (ccv_rect_t*)ccmalloc(sizeof(ccv_rect_t) * posnum);
 		for (i = 0; i < posnum; i++)
 		{
+			if (pos_processed[order[i]])
+				continue;
 			printf("\b\b\b\b\b\b%3d%%) ", av->rnum * 100 / params.negative_cache_size);
 			fflush(stdout);
 			ccv_dense_matrix_t* image = 0;
+			// find the same images with all their bounding boxes
+			bboxes_in_file[0] = bboxes[order[i]];
+			k = 1;
+			for (j = 0; j < posnum; j++)
+				if (j != order[i] &&
+					!pos_processed[j] &&
+					strncmp(posfiles[order[i]], posfiles[j], 1024) == 0)
+				{
+					pos_processed[j] = 1;
+					bboxes_in_file[k] = bboxes[j];
+					k++;
+				}
+			pos_processed[order[i]] = 1;
 			ccv_read(posfiles[order[i]], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-			ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, bboxes[order[i]], params.exclude_overlap, params.detector, threshold);
+			ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, bboxes_in_file, k, params.exclude_overlap, params.detector, threshold);
 			if (at)
 			{
 				for (j = 0; j < at->rnum; j++)
@@ -949,6 +975,8 @@ static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_r
 			if (av->rnum >= params.negative_cache_size)
 				break;
 		}
+		ccfree(bboxes_in_file);
+		ccfree(pos_processed);
 	}
 	ccfree(order);
 }
