@@ -5,28 +5,29 @@
 void exit_with_help()
 {
 	printf(
-	"USAGE: dpmcreate [OPTION...]\n\n"
-	"DESCRIPTION:\n\n"
-	" --positive-list : text file contains a list of positive files in format:\n"
-	"                   <file name> x y width height \\newline\n"
-	" --background-list : text file contains a list of image files that don't contain any target objects\n"
-	" --negative-count : the number of negative examples we should collect from background files to initialize SVM\n"
-	" --model-component : the number of root filters in our mixture model\n"
-	" --model-part : the number of part filters for each root filter\n"
-	" --working-dir : the directory to save progress and produce result model\n"
-	" --symmetric : 0 or 1, whether to exploit symmetric property of the object\n\n"
-	"OPTIONAL:\n\n"
-	" --base-dir : change the base directory so that the program can read images from there\n"
-	" --iterations : how many iterations needed for stochastic gradient descent [DEFAULT TO 10]\n"
-	" --relabels : how many relabel procedure needed [DEFAULT TO 5]\n"
-	" --alpha : the step size for stochastic gradient descent [DEFAULT TO 0.1]\n"
-	" --alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.85]\n"
-	" --margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
-	" --balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.75]\n"
-	" --negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 500]\n"
-	" --overlap : the percentage of overlap between expected bounding box and the bounding box from detection to ensure they are the same object [DEFAULT TO 0.75]\n"
-	" --grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 1]\n"
-	" --percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n"
+	"\033[1mUSAGE\033[0m\n\tdpmcreate [OPTION...]\n\n"
+	"\033[1mREQUIRED OPTIONS\033[0m\n"
+	"\t--positive-list : text file contains a list of positive files in format:\n"
+	"\t                  <file name> x y width height \\newline\n"
+	"\t--background-list : text file contains a list of image files that don't contain any target objects\n"
+	"\t--negative-count : the number of negative examples we should collect from background files to initialize SVM\n"
+	"\t--model-component : the number of root filters in our mixture model\n"
+	"\t--model-part : the number of part filters for each root filter\n"
+	"\t--working-dir : the directory to save progress and produce result model\n"
+	"\t--symmetric : 0 or 1, whether to exploit symmetric property of the object\n\n"
+	"\033[1mOTHER OPTIONS\033[0m\n"
+	"\t--base-dir : change the base directory so that the program can read images from there\n"
+	"\t--iterations : how many iterations needed for stochastic gradient descent [DEFAULT TO 10]\n"
+	"\t--relabels : how many relabel procedure needed [DEFAULT TO 5]\n"
+	"\t--alpha : the step size for stochastic gradient descent [DEFAULT TO 0.1]\n"
+	"\t--alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.85]\n"
+	"\t--margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
+	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.5]\n"
+	"\t--negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 1000]\n"
+	"\t--include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
+	"\t--exclude-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Below this threshold, it is ensured to not be the same object [DEFAULT TO 0.5]\n"
+	"\t--grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 1]\n"
+	"\t--percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n"
 	);
 	exit(-1);
 }
@@ -54,7 +55,8 @@ int main(int argc, char** argv)
 		{"negative-cache-size", 1, 0, 0},
 		{"margin-c", 1, 0, 0},
 		{"percentile-breakdown", 1, 0, 0},
-		{"overlap", 1, 0, 0},
+		{"include-overlap", 1, 0, 0},
+		{"exclude-overlap", 1, 0, 0},
 		{"grayscale", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
@@ -71,16 +73,17 @@ int main(int argc, char** argv)
 								   .max_area = 5000,
 								   .symmetric = 1,
 								   .alpha = 0.1,
-								   .balance = 1.75,
+								   .balance = 1.5,
 								   .alpha_ratio = 0.85,
 								   .iterations = 10,
 								   .relabels = 5,
-								   .negative_cache_size = 500,
+								   .negative_cache_size = 1000,
 								   .C = 0.002,
 								   .percentile_breakdown = 0.05,
-								   .overlap = 0.75,
+								   .include_overlap = 0.7,
+								   .exclude_overlap = 0.5,
 								   .grayscale = 0 };
-	int k;
+	int i, k;
 	while (getopt_long_only(argc, argv, "", dpm_options, &k) != -1)
 	{
 		switch (k)
@@ -136,9 +139,12 @@ int main(int argc, char** argv)
 				params.percentile_breakdown = atof(optarg);
 				break;
 			case 17:
-				params.overlap = atof(optarg);
+				params.include_overlap = atof(optarg);
 				break;
 			case 18:
+				params.exclude_overlap = atof(optarg);
+				break;
+			case 19:
 				params.grayscale = !!atoi(optarg);
 				break;
 		}
@@ -146,7 +152,6 @@ int main(int argc, char** argv)
 	assert(positive_list != 0);
 	assert(background_list != 0);
 	assert(working_dir != 0);
-	assert(base_dir != 0);
 	assert(negative_count > 0);
 	assert(params.components > 0);
 	assert(params.parts > 0);
@@ -208,9 +213,13 @@ int main(int argc, char** argv)
 	int bgnum = size;
 	free(file);
 	ccv_dpm_mixture_model_new(posfiles, bboxes, posnum, bgfiles, bgnum, negative_count, working_dir, params);
-	free(posfiles);
-	free(bboxes);
-	free(bgfiles);
+	for (i = 0; i < posnum; i++)
+		free(posfiles[i]);
+	ccfree(posfiles);
+	ccfree(bboxes);
+	for (i = 0; i < posnum; i++)
+		free(bgfiles[i]);
+	ccfree(bgfiles);
 	ccv_disable_cache();
 	return 0;
 }

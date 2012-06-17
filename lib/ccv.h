@@ -6,10 +6,8 @@
 #ifndef GUARD_ccv_h
 #define GUARD_ccv_h
 
-#ifndef _MSC_VER
 #include <unistd.h>
 #include <stdint.h>
-#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -18,11 +16,7 @@
 #include <math.h>
 #include <xmmintrin.h>
 #include <assert.h>
-#ifdef _WIN32
-#include <malloc.h>
-#else
 #include <alloca.h>
-#endif
 
 #define CCV_PI (3.141592653589793)
 #define ccmalloc malloc
@@ -618,13 +612,14 @@ typedef struct {
 	int max_area; // 5000
 	int iterations;
 	int relabels;
-	int negative_cache_size; // 500
-	double overlap; // 0.7
+	int negative_cache_size; // 1000
+	double include_overlap; // 0.7
+	double exclude_overlap; // 0.5
 	double alpha;
 	double alpha_ratio; // 0.85
-	double balance; // 1.0
+	double balance; // 1.5
 	double C;
-	double percentile_breakdown; // 0.95
+	double percentile_breakdown; // 0.05
 	ccv_dpm_param_t detector;
 } ccv_dpm_new_param_t;
 
