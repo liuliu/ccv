@@ -27,7 +27,7 @@ h1 {
 }
 
 h2 {
-  font-size:1.4em;
+  font-size:1.7em;
   color:#303030;
 }
 
@@ -47,6 +47,24 @@ a small {
   color:#586e75;
   margin-top:-0.05em;
   display:block;
+}
+
+ul.main-list {
+  font-size: 1.15em;
+  list-style-type: none;
+  line-height: 1.8;
+  padding-left: 6px;
+}
+
+ul.sub-list {
+  font-size: 1em;
+  list-style-type: none;
+  line-height: 1.5;
+  padding-left: 6px;
+}
+
+ul.sub-list li {
+  margin-bottom: 5px;
 }
 
 .wrapper {

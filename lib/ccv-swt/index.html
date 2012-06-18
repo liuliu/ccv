@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="chrome=1">
-<title>Application driven philosophy</title>
+<title>lib/ccv_swt.c</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
 <link rel="stylesheet" href="/stylesheets/pygment_trac.css">
 <script src="/javascripts/scale.fix.js"></script>
@@ -18,11 +18,8 @@
 <li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
 </ul>
 </header>
-<section><h2>Application driven philosophy</h2>
-<p>May 3rd, 2010</p>
-<p>In the set off statement of ccv, I listed one property of it to be "modern", which means rather than provides a truck-load of obsolete algorithms, ccv intended to provide best-of-its-kind algorithm among wide range of applications. Last September, I even went further and claimed that the first 4 applications for ccv would be: 1). object matching; 2). object detection; 3). text detection; 4). 3d reconstruction. These statements set the tone for ccv development known now as application-driven.</p>
+<section><h2>lib/ccv_swt.c</h2>
 
-<p>There are a lot of evidence in ccv code base to provide the actual usage of this method. ccv_sample_down was implemented when I was implementing BBF object detection, which requires the image pyramid. However, ccv_sample_up was not implemented until SIFT implementation needs to up-sampling the image in order to get better result. Until today, a very common feature for image processing, know as rescale is not fully implemented yet. ccv_resample function still lacks of scale-up option, because in all these applications I've implemented, there is no need for that.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>
