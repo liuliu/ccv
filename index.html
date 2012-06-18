@@ -1,9 +1,0 @@
----
-layout: default
-is_index: true
----
-
-<h3>Posts</h3>
-{% for post in paginator.posts %}
-<p><a href="{{ post.url }}">{{ post.title }}, - {{ post.date | date_to_human_string }}</a></p>
-{% endfor %}
