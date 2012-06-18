@@ -773,8 +773,8 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 		for (j = next; j < scale_upto + next * 2; j++)
 		{
 			ccv_size_t size = ccv_size((int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
-			if ((double)(size.width * size.height) / (double)(bbox.width * bbox.height) < overlap || 
-				(double)(bbox.width * bbox.height) / (double)(size.width * size.height) < overlap)
+			if (ccv_min((double)(size.width * size.height), (double)(bbox.width * bbox.height)) / 
+				ccv_max((double)(bbox.width * bbox.height), (double)(size.width * size.height)) < overlap)
 			{
 				scale_x *= scale;
 				scale_y *= scale;
@@ -795,7 +795,7 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 					ccv_rect_t rect = ccv_rect((int)((x - rww) * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)((y - rwh) * CCV_DPM_WINDOW_SIZE * scale_y + 0.5), (int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
 					if ((double)(ccv_max(0, ccv_min(rect.x + rect.width, bbox.x + bbox.width) - ccv_max(rect.x, bbox.x)) *
 								 ccv_max(0, ccv_min(rect.y + rect.height, bbox.y + bbox.height) - ccv_max(rect.y, bbox.y))) /
-						(double)ccv_min(rect.width * rect.height, bbox.width * bbox.height) >= overlap && f_ptr[x] > best)
+						(double)ccv_max(rect.width * rect.height, bbox.width * bbox.height) >= overlap && f_ptr[x] > best)
 					{
 						// initialize v
 						if (v == 0)
@@ -870,7 +870,7 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 						for (k = 0; k < bnum; k++)
 							if ((double)(ccv_max(0, ccv_min(rect.x + rect.width, bboxes[k].x + bboxes[k].width) - ccv_max(rect.x, bboxes[k].x)) *
 								ccv_max(0, ccv_min(rect.y + rect.height, bboxes[k].y + bboxes[k].height) - ccv_max(rect.y, bboxes[k].y))) /
-								(double)ccv_min(rect.width * rect.height, bboxes[k].width * bboxes[k].height) >= overlap)
+								(double)ccv_max(rect.width * rect.height, bboxes[k].width * bboxes[k].height) >= overlap)
 							{
 								flag = 1;
 								break;

@@ -78,7 +78,7 @@ information, for me, it is:
 
 Suppose you have copied the ground truth to truth.txt file, run the validator:
 
-	./validator.rb truth.txt result.txt
+	./bbfvldr.rb truth.txt result.txt
 
 My result for bbfdetect is:
 

@@ -22,10 +22,33 @@ Checkout output.png, see what happens?
 What about performance?
 -----------------------
 
-DPM is not known for its speed. Its ability to identify difficult objects, that's
-the winning point. However, this implementation tries to optimize for speed as
-well. For a 640x480 photo, this mplementation will be done in about one seconds,
-no multi-threading cheat.
+DPM is not known for its speed. Its ability to identify difficult objects, is
+the selling point. However, this implementation tries to optimize for speed as
+well. For a 640x480 photo, this implementation will be done in about one second,
+without multi-thread support.
+
+Accuracy-wise:
+
+There are two off-the-shelf implementations. One is the DPM in matlab from author,
+the other is HOG detector from OpenCV. Fo the task to detect pedestrians in a
+given image, we use INTRA 2008 dataset, and it provides both training and testing
+data. With OpenCV stock peopledetect sample program, we get:
+
+	65.7% (156)
+
+The former one is the detection rate (how many objects have been detected), the
+later is the number of false alarms (the detected region doesn't contain the
+expected object)
+
+Our implementation?
+
+	80.14% (74)
+
+Looks pretty good!
+
+Speed-wise:
+
+
 
 How to train my own detector?
 -----------------------------
