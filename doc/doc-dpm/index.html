@@ -1,0 +1,83 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>DPM: Deformable Parts Model</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+</head><body><div class="wrapper">
+<header><h1>ccv</h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/unstable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/unstable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>DPM: Deformable Parts Model</h1>
+<h2>what's DPM?</h2>
+
+<p>The original paper refers to:
+Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</p>
+
+<h2>How it works?</h2>
+
+<p>That's a long story. In very high level, DPM assumes an object is constructed by
+its parts. Thus, the detector will first found a match of its whole, and then
+using its part models to fine-tune the result. For details, please read the
+paper. What I can show you, is how to use it:</p>
+
+<pre><code>./dpmdetect &lt;Your Image contains Pedestrians&gt; ../samples/pedestrian.m | ./dpmdraw.rb &lt;Your Image contains Pedestrians&gt; output.png
+</code></pre>
+
+<p>Checkout output.png, see what happens?</p>
+
+<h2>What about performance?</h2>
+
+<p>DPM is not known for its speed. Its ability to identify difficult objects, is
+the selling point. However, this implementation tries to optimize for speed as
+well. For a 640x480 photo, this implementation will be done in about one second,
+without multi-thread support.</p>
+
+<p>Accuracy-wise:</p>
+
+<p>There are two off-the-shelf implementations. One is the DPM in matlab from author,
+the other is HOG detector from OpenCV. Fo the task to detect pedestrians in a
+given image, we use INTRA 2008 dataset, and it provides both training and testing
+data. With OpenCV stock peopledetect sample program, we get:</p>
+
+<pre><code>65.7% (156)
+</code></pre>
+
+<p>The former one is the detection rate (how many objects have been detected), the
+later is the number of false alarms (the detected region doesn't contain the
+expected object)</p>
+
+<p>Our implementation?</p>
+
+<pre><code>80.14% (74)
+</code></pre>
+
+<p>Looks pretty good!</p>
+
+<p>Speed-wise:</p>
+
+<h2>How to train my own detector?</h2>
+
+<p>Yes, this implementation comes with a tool to train your own detector too.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

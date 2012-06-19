@@ -72,6 +72,14 @@ ul.sub-list li {
   margin:0 auto;
 }
 
+section h1 {
+  font-size: 1.7em;
+}
+
+section h2 {
+  font-size: 1.2em;
+}
+
 blockquote {
   border-left:1px solid #e5e5e5;
   margin:0;

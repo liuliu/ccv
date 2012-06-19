@@ -1,10 +1,11 @@
 <!doctype html>
-<html><head><meta charset="utf-8"><meta http-equiv="X-UA-Compatible" content="chrome=1">
+<html><head><meta charset="utf-8">
 <title>ccv - a modern computer vision library</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
 <link rel="stylesheet" href="/stylesheets/pygment_trac.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
 <!--[if lt IE 9]>
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
@@ -18,37 +19,51 @@
 <li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
 </ul>
 </header>
-<section><h2>Intro</h2>
+<section><h1>Intro</h1>
 <p>Around 2010, when Lian and I was working on our gesture recognition demo, out
 of the frustration to abstract redundant image preprocessing operations into a
 set of clean and concise functions, I started to consider moving away from the
 stack. Why? Well, after two years, ccv is the very answer.</p>
-<h3>Cached Image Preprocessing</h3>
+<h2>Cached Image Preprocessing</h2>
 <p>Many computer vision tasks nowadays consist of quite a few preprocessing
 layers: image pyramid generation, color space conversion etc. These potentially
 redundant operations cannot be easily eliminated within a mature API. ccv
 provides a built-in cache mechanism that, while maintains a clean function
-interface, effectively does transparent cache for you. <a href="/lib/ccv-memory/">
+interface, effectively does transparent cache for you. <a href="/lib/ccv-memory">
 - How?</a></p>
-<h3>Easy to Embed</h3>
+<h2>Easy to Embed</h2>
 <p>While it depends on quite a few libraries for the best performance and complete
 feature, ccv's majority functionalities will still work without these libraries.
 You can even drop the ccv source code into your project, and it will work!</p>
-<h3>Modern Computer Vision Algorithms</h3>
+<h2>Modern Computer Vision Algorithms</h2>
 <p>One core concept of ccv development is "application driven". As a result, ccv
-end up implementing a handful state-of-art algorithms. It includes a fast
-detection algorithm for rigid object (face etc.), an accurate object detection
-algorithm for somewhat difficult object (pedestrian, cat etc.), a state-of-art
-text detection algorithm, and the long-standing feature point detection algorithm.</p>
-<h3><a href="/funct/">Library Reference</a></h3>
-<h3>Posts</h3><ul class="sub-list">
+end up implementing a handful state-of-art algorithms. It includes
+<a href="/lib/ccv-bbf">a very fast detection algorithm for rigid object</a>
+(face etc.), <a href="/lib/ccv-dpm">an accurate object detection algorithm for
+somewhat difficult object</a> (pedestrian, cat etc.), <a href="/lib/ccv-swt">a
+state-of-art text detection algorithm</a>, and <a href="/lib/ccv-sift">the
+long-standing feature point detection algorithm</a>.</p>
+<p>For computer vision community, there is no shortage of good algorithms, good
+implementation is what it lacks of. After years, we stuck in between either the
+high-performance, battle-tested but old algorithm implementations, or the new,
+shining but Matlab algorithms. ccv is my take on the problem, hope you enjoy it.</p>
+<h2><a href="/galaxy-guide">Getting Started</a></h2>
+<h2><a href="/doc">Documentation</a></h2>
+<h2><a href="/lib">Library Reference</a></h2>
+<h2>Posts</h2><ul class="sub-list">
 
 	
-<li><a href="/post/application-driven-philosophy">Application driven philosophy, - May 3rd, 2011</a></li>
+<li><a href="/post/application-driven-philosophy">Application driven philosophy. - May 3rd, 2011</a></li>
 	
 
 	
-<li><a href="/post/call-for-a-new-lightweight-c-based-computer-vision-library">Call for a new, lightweight, c-based computer vision library, - February 6th, 2010</a></li>
+<li><a href="/post/call-for-a-new-lightweight-c-based-computer-vision-library">Call for a new, lightweight, c-based computer vision library. - February 6th, 2010</a></li>
+	
+
+	
+
+	
+
 	
 
 	
