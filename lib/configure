@@ -39,7 +39,7 @@ else
 	read -p "with libpng [Y/n] ? " yn
 	case $yn in
 	[nN]* ) break;;
-	*	  ) CFLAG="$CFLAGS-D HAVE_LIBPNG "
+	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBPNG "
 			LDFLAGS="$LDFLAGS-lpng -lz "
 			break;;
 	esac
