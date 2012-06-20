@@ -833,7 +833,7 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 	return v;
 }
 
-static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_dpm_mixture_model_t* model, ccv_rect_t *bboxes, int bnum, float overlap, ccv_dpm_param_t params, float threshold)
+static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_dpm_mixture_model_t* model, float overlap, ccv_dpm_param_t params, float threshold)
 {
 	int i, j, k, x, y;
 	double scale = pow(2.0, 1.0 / (params.interval + 1.0));
@@ -863,20 +863,6 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 			for (y = rwh; y < root_feature->rows - rwh; y++)
 			{
 				for (x = rww; x < root_feature->cols - rww; x++)
-				{
-					ccv_rect_t rect = ccv_rect((int)((x - rww) * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)((y - rwh) * CCV_DPM_WINDOW_SIZE * scale_y + 0.5), (int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
-					int flag = 0;
-					if (bboxes)
-						for (k = 0; k < bnum; k++)
-							if ((double)(ccv_max(0, ccv_min(rect.x + rect.width, bboxes[k].x + bboxes[k].width) - ccv_max(rect.x, bboxes[k].x)) *
-								ccv_max(0, ccv_min(rect.y + rect.height, bboxes[k].y + bboxes[k].height) - ccv_max(rect.y, bboxes[k].y))) /
-								(double)ccv_max(rect.width * rect.height, bboxes[k].width * bboxes[k].height) >= overlap)
-							{
-								flag = 1;
-								break;
-							}
-					if (flag)
-						continue;
 					if (f_ptr[x] + root_classifier->beta > threshold)
 					{
 						// initialize v
@@ -887,7 +873,6 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 						if (av->rnum >= enough * (i + 1))
 							break;
 					}
-				}
 				f_ptr += root_feature->cols;
 				if (av->rnum >= enough * (i + 1))
 					break;
@@ -910,10 +895,10 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 	return av;
 }
 
-static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_rng* rng, char** bgfiles, int bgnum, char** posfiles, int posnum, ccv_rect_t* bboxes, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
+static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char** bgfiles, int bgnum, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
 {
-	int i, j, k;
-	int* order = (int*)ccmalloc(sizeof(int) * ccv_max(bgnum, posnum));
+	int i, j;
+	int* order = (int*)ccmalloc(sizeof(int) * bgnum);
 	for (i = 0; i < bgnum; i++)
 		order[i] = i;
 	gsl_ran_shuffle(rng, order, bgnum, sizeof(int));
@@ -923,7 +908,7 @@ static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_r
 		fflush(stdout);
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(bgfiles[order[i]], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-		ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, 0, 0, params.exclude_overlap, params.detector, threshold);
+		ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, params.exclude_overlap, params.detector, threshold);
 		if (at)
 		{
 			for (j = 0; j < at->rnum; j++)
@@ -933,50 +918,6 @@ static void _ccv_dpm_collect_from_background_and_positive(ccv_array_t* av, gsl_r
 		ccv_matrix_free(image);
 		if (av->rnum >= params.negative_cache_size)
 			break;
-	}
-	if (av->rnum < params.negative_cache_size)
-	{
-		// collect negatives from positive images (I am smart!)
-		for (i = 0; i < posnum; i++)
-			order[i] = i;
-		gsl_ran_shuffle(rng, order, posnum, sizeof(int));
-		int* pos_processed = (int*)ccmalloc(sizeof(int) * posnum);
-		memset(pos_processed, 0, sizeof(int) * posnum);
-		ccv_rect_t* bboxes_in_file = (ccv_rect_t*)ccmalloc(sizeof(ccv_rect_t) * posnum);
-		for (i = 0; i < posnum; i++)
-		{
-			if (pos_processed[order[i]])
-				continue;
-			printf("\b\b\b\b\b\b%3d%%) ", av->rnum * 100 / params.negative_cache_size);
-			fflush(stdout);
-			ccv_dense_matrix_t* image = 0;
-			// find the same images with all their bounding boxes
-			bboxes_in_file[0] = bboxes[order[i]];
-			k = 1;
-			for (j = 0; j < posnum; j++)
-				if (j != order[i] &&
-					!pos_processed[j] &&
-					strncmp(posfiles[order[i]], posfiles[j], 1024) == 0)
-				{
-					pos_processed[j] = 1;
-					bboxes_in_file[k] = bboxes[j];
-					k++;
-				}
-			pos_processed[order[i]] = 1;
-			ccv_read(posfiles[order[i]], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-			ccv_array_t* at = _ccv_dpm_collect_all(rng, image, model, bboxes_in_file, k, params.exclude_overlap, params.detector, threshold);
-			if (at)
-			{
-				for (j = 0; j < at->rnum; j++)
-					ccv_array_push(av, ccv_array_get(at, j));
-				ccv_array_free(at);
-			}
-			ccv_matrix_free(image);
-			if (av->rnum >= params.negative_cache_size)
-				break;
-		}
-		ccfree(bboxes_in_file);
-		ccfree(pos_processed);
 	}
 	ccfree(order);
 }
@@ -1358,7 +1299,7 @@ static void _ccv_dpm_check_params(ccv_dpm_new_param_t params)
 	assert(params.relabels > 0);
 	assert(params.negative_cache_size > 0);
 	assert(params.include_overlap > 0.1);
-	assert(params.exclude_overlap > 0.1);
+	assert(params.exclude_overlap >= 0.0);
 	assert(params.alpha > 0 && params.alpha < 1);
 	assert(params.alpha_ratio > 0 && params.alpha_ratio < 1);
 	assert(params.C > 0);
@@ -1540,8 +1481,6 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	int negi = 0;
 	int abort = 0;
 	int* negk = (int*)ccmalloc(params.negative_cache_size * sizeof(int));
-	for (i = 0; i < params.negative_cache_size; i++)
-		negk[i] = i;
 	if (0 == _ccv_dpm_read_negative_feature_vectors(&negv, negk, params.negative_cache_size, neg_vector_checkpoint))
 		printf(" - read collected negative responses from last interrupted process\n");
 	_ccv_dpm_read_gradient_descent_progress(&c, &t, &r, &previous_loss, &positive_loss, &negative_loss, &loss, &pos_prog, &neg_prog, &negi, order, posnum + negnum, gradient_progress_checkpoint);
@@ -1609,7 +1548,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					}
 				} else {
 					// the cache is used up now, collect again
-					if ((neg_prog % params.negative_cache_size) == 0)
+					if (!negv || negi >= ccv_min(negv->rnum, params.negative_cache_size)) 
 					{
 						if (negv)
 						{
@@ -1633,13 +1572,20 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						last_update = printf(" - pause, collecting negative examples, current loss %.5lf (positive %.5lf, negative %.5f) --- %2d%% (  0%%) ", loss / ccv_max(1, pos_prog + neg_prog), positive_loss / ccv_max(1, pos_prog), negative_loss / ccv_max(1, neg_prog), (i + 1) * 100 / (posnum + negnum));
 						fflush(stdout);
 						if (negv->rnum < params.negative_cache_size)
-							_ccv_dpm_collect_from_background_and_positive(negv, rng, bgfiles, bgnum, posfiles, posnum, bboxes, model, params, 0);
+							_ccv_dpm_collect_from_background(negv, rng, bgfiles, bgnum, model, params, 0);
 						negi = 0;
-						gsl_ran_shuffle(rng, negk, params.negative_cache_size, sizeof(int));
+						for (j = 0; j < ccv_min(negv->rnum, params.negative_cache_size); j++)
+							negk[j] = j;
+						gsl_ran_shuffle(rng, negk, ccv_min(negv->rnum, params.negative_cache_size), sizeof(int));
 						_ccv_dpm_write_negative_feature_vectors(negv, negk, params.negative_cache_size, neg_vector_checkpoint);
 						_ccv_dpm_write_gradient_descent_progress(c, t, i, previous_loss, positive_loss, negative_loss, loss, pos_prog, neg_prog, negi, order, posnum + negnum, gradient_progress_checkpoint);
 						_ccv_dpm_write_checkpoint(_model, subcheckpoint);
 						_ccv_dpm_write_checkpoint(model, checkpoint);
+						if (negv->rnum <= ccv_min(params.negative_cache_size / 2, ccv_min(REGQ, MINI_BATCH))) // we cannot get sufficient negatives, abort
+						{
+							abort = 1;
+							break;
+						}
 					}
 					if (negv && negv->rnum > 0)
 					{
@@ -1749,7 +1695,6 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			ccv_array_free(negv);
 			negv = 0;
 			negi = 0;
-			gsl_ran_shuffle(rng, negk, params.negative_cache_size, sizeof(int));
 			remove(neg_vector_checkpoint);
 		}
 		t = 0;
