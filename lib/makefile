@@ -1,5 +1,13 @@
-CC = clang # -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS = -O1 -msse2 -ffast-math -mtune=native -Wall -D HAVE_LIBJPEG -D HAVE_LIBPNG -D HAVE_FFTW3 -D HAVE_CBLAS -D HAVE_GSL -D HAVE_LIBLINEAR # -fopenmp -D USE_OPENMP
+CC = `cat .cc.conf`# -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS = -O3 -ffast-math -mtune=native -Wall `cat .def.conf`
+
+config:
+	@./configure
+	@make all
+
+force: clean
+	@./configure force
+	@make all
 
 all: libccv.a
 
@@ -10,7 +18,7 @@ libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1/sha1.o 3rdparty/kissfft/kiss_ff
 	ar rcs $@ $^
 
 ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
-	$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)
 
 %.o: %.c ccv.h ccv_internal.h
-	$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)

@@ -1,6 +1,6 @@
-CC = clang
-LDFLAGS = -L"../lib" -lccv -pthread -ljpeg -lpng -lfftw3f -lfftw3 -lz -lgsl -lblas -llinear -lm # -lgomp
-CFLAGS = -O1 -msse2 -Wall -I"../lib"
+CC = `cat ../lib/.cc.conf`
+LDFLAGS = -L"../lib" -lccv `cat ../lib/.l.conf` -lm
+CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.def.conf`
 
 TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert
 

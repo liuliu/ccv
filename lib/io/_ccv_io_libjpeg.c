@@ -1,3 +1,5 @@
+#include <setjmp.h>
+
 typedef struct ccv_jpeg_error_mgr_t
 {
 	struct jpeg_error_mgr pub;

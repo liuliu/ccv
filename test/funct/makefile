@@ -1,6 +1,6 @@
-CC = clang
-LDFLAGS = -L"../../lib" -lccv -pthread -ljpeg -lpng -lfftw3 -lfftw3f -lz -lgsl -lblas -lm
-CFLAGS = -O1 -msse2 -Wall -I"../../lib" -I"../"
+CC = `cat ../../lib/.cc.conf`
+LDFLAGS = -L"../../lib" -lccv -pthread `cat ../../lib/.l.conf`
+CFLAGS = -O3 -msse2 -Wall -I"../../lib" -I"../" `cat ../../lib/.def.conf`
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests
 
 test: all

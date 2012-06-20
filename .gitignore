@@ -5,6 +5,7 @@ tags
 gh-pages
 site
 *.tests
+lib/*.conf
 test/*_test
 test/*.jpg
 test/*.png
