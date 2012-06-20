@@ -1,4 +1,10 @@
+<<<<<<< HEAD
 include ../lib/config.mk
+=======
+CC = `cat ../lib/.cc.conf`
+LDFLAGS = -L"../lib" -lccv `cat ../lib/.l.conf` -lm
+CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.def.conf`
+>>>>>>> added a simple config script
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 LDFLAGS := -L"../lib" -lccv $(LDFLAGS)

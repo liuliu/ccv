@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #!/usr/bin/env bash
 
 if [ "$1" = "force" ] ; then
@@ -221,3 +222,91 @@ LDFLAGS="${LDFLAGS#"${LDFLAGS%%[![:space:]]*}"}"
 LDFLAGS="${LDFLAGS%"${LDFLAGS##*[![:space:]]}"}"
 
 echo -e "\n \033[1mUSE\033[m: \033[4m$CC\033[m\n \033[1mCOMPILE FLAGS\033[m: \033[4m$CFLAGS\033[m\n \033[1mLINK FLAGS\033[m: \033[4m$LDFLAGS\033[m\n"
+=======
+#!/usr/bin/env sh
+
+if [ "$1" = "force" ] ; then
+	rm -f .cc.conf .def.conf .l.conf
+fi
+
+if [ -e .cc.conf ] ; then
+	CC=`cat .cc.conf`
+else
+	read -p "default compiler: clang [Y/n] ? " yn
+	case $yn in
+	[nN]* ) read -p "your favorite compiler: " CC
+			break;;
+	*	  ) CC='clang'
+			break;;
+	esac
+	echo $CC > .cc.conf
+fi
+
+if [ -e .def.conf -a -e .l.conf ] ; then
+	CFLAGS=`cat .def.conf`
+	LDFLAGS=`cat .l.conf`
+else
+	CFLAGS=""
+	LDFLAGS=""
+	read -p "with SSE2 [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-msse2 "
+			break;;
+	esac
+	read -p "with libjpeg [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBJPEG "
+			LDFLAGS="$LDFLAGS-ljpeg "
+			break;;
+	esac
+	read -p "with libpng [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAG="$CFLAGS-D HAVE_LIBPNG "
+			LDFLAGS="$LDFLAGS-lpng -lz "
+			break;;
+	esac
+	read -p "with gsl [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-D HAVE_GSL "
+			LDFLAGS="$LDFLAGS-lgsl "
+			break;;
+	esac
+	read -p "with fftw3 [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-D HAVE_FFTW3 "
+			LDFLAGS="$LDFLAGS-lfftw3f -lfftw3 "
+			break;;
+	esac
+
+	read -p "with liblinear [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBLINEAR "
+			LDFLAGS="$LDFLAGS-llinear "
+			break;;
+	esac
+	read -p "with cblas [Y/n] ? " yn
+	case $yn in
+	[nN]* ) break;;
+	*	  ) CFLAGS="$CFLAGS-D HAVE_CBLAS "
+			LDFLAGS="$LDFLAGS-lblas "
+			break;;
+	esac
+	read -p "use openmp [y/N] ? " yn
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D USE_OPENMP -fopenmp "
+			LDFLAGS="$LDFLAGS-lgomp "
+			break;;
+	*	  ) break;;
+	esac
+	echo $CFLAGS > .def.conf
+	echo $LDFLAGS > .l.conf
+fi
+
+echo "\nsummary:\nuse: $CC\nwith following compile flags:\n$CFLAGS\nand link flags:\n$LDFLAGS\n"
+>>>>>>> added a simple config script

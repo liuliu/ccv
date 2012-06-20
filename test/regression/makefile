@@ -1,7 +1,13 @@
+<<<<<<< HEAD
 include ../../lib/config.mk
 
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
+=======
+CC = `cat ../../lib/.cc.conf`
+LDFLAGS = -L"../../lib" -lccv -pthread `cat ../../lib/.l.conf`
+CFLAGS = -O3 -msse2 -Wall -I"../../lib" -I"../" `cat ../../lib/.def.conf`
+>>>>>>> added a simple config script
 TARGETS = defects.l0.1.tests
 
 test: all

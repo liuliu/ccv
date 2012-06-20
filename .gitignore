@@ -5,9 +5,13 @@ tags
 gh-pages
 site
 *.tests
+<<<<<<< HEAD
 lib/.CC
 lib/.DEF
 lib/.LN
+=======
+lib/*.conf
+>>>>>>> added a simple config script
 test/*_test
 test/*.jpg
 test/*.png
