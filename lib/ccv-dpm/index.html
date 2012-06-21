@@ -20,6 +20,54 @@
 </ul>
 </header>
 <section><h1>lib/ccv_dpm.c</h1>
+<h2>ccv_dpm_mixture_model_new</h2>
+
+<pre><code>void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params)
+</code></pre>
+
+<ul>
+<li><strong>posfiles</strong>:</li>
+<li><strong>bboxes</strong>:</li>
+<li><strong>posnum</strong>:</li>
+<li><strong>bgfiles</strong>:</li>
+<li><strong>bgnum</strong>:</li>
+<li><strong>negnum</strong>:</li>
+<li><strong>dir</strong>:</li>
+<li><strong>params</strong>:</li>
+</ul>
+
+
+<h2>ccv_dpm_detect_objects</h2>
+
+<pre><code>ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>model</strong>:</li>
+<li><strong>count</strong>:</li>
+<li><strong>params</strong>:</li>
+</ul>
+
+
+<h2>ccv_load_dpm_mixture_model</h2>
+
+<pre><code>ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
+</code></pre>
+
+<ul>
+<li><strong>directory</strong>:</li>
+</ul>
+
+
+<h2>ccv_dpm_mixture_model_free</h2>
+
+<pre><code>void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model)
+</code></pre>
+
+<ul>
+<li><strong>model</strong>:</li>
+</ul>
 
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

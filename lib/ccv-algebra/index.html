@@ -20,6 +20,84 @@
 </ul>
 </header>
 <section><h1>lib/ccv_algebra.c</h1>
+<h2>ccv_normalize</h2>
+
+<pre><code>double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>btype</strong>:</li>
+<li><strong>flag</strong>:</li>
+</ul>
+
+
+<h2>ccv_sat</h2>
+
+<pre><code>void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>type</strong>:</li>
+<li><strong>padding_pattern</strong>:</li>
+</ul>
+
+
+<h2>ccv_sum</h2>
+
+<pre><code>double ccv_sum(ccv_matrix_t* mat, int flag)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+<li><strong>flag</strong>:</li>
+</ul>
+
+
+<h2>ccv_multiply</h2>
+
+<pre><code>void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>c</strong>:</li>
+<li><strong>type</strong>:</li>
+</ul>
+
+
+<h2>ccv_substract</h2>
+
+<pre><code>void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>c</strong>:</li>
+<li><strong>type</strong>:</li>
+</ul>
+
+
+<h2>ccv_gemm</h2>
+
+<pre><code>void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>alpha</strong>:</li>
+<li><strong>c</strong>:</li>
+<li><strong>beta</strong>:</li>
+<li><strong>transpose</strong>:</li>
+<li><strong>d</strong>:</li>
+<li><strong>type</strong>:</li>
+</ul>
 
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

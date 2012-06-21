@@ -20,6 +20,278 @@
 </ul>
 </header>
 <section><h1>lib/ccv_util.c</h1>
+<h2>ccv_get_dense_matrix</h2>
+
+<pre><code>ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+</ul>
+
+
+<h2>ccv_get_sparse_matrix</h2>
+
+<pre><code>ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+</ul>
+
+
+<h2>ccv_visualize</h2>
+
+<pre><code>void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>type</strong>:</li>
+</ul>
+
+
+<h2>ccv_zero</h2>
+
+<pre><code>void ccv_zero(ccv_matrix_t* mat)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+</ul>
+
+
+<h2>ccv_any_nan</h2>
+
+<pre><code>int ccv_any_nan(ccv_matrix_t *a)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+</ul>
+
+
+<h2>ccv_flatten</h2>
+
+<pre><code>void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>type</strong>:</li>
+<li><strong>flag</strong>:</li>
+</ul>
+
+
+<h2>ccv_shift</h2>
+
+<pre><code>void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>type</strong>:</li>
+<li><strong>lr</strong>:</li>
+<li><strong>rr</strong>:</li>
+</ul>
+
+
+<h2>ccv_get_sparse_matrix_vector</h2>
+
+<pre><code>ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+<li><strong>index</strong>:</li>
+</ul>
+
+
+<h2>ccv_get_sparse_matrix_cell</h2>
+
+<pre><code>ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+<li><strong>row</strong>:</li>
+<li><strong>col</strong>:</li>
+</ul>
+
+
+<h2>ccv_set_sparse_matrix_cell</h2>
+
+<pre><code>void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+<li><strong>row</strong>:</li>
+<li><strong>col</strong>:</li>
+<li><strong>data</strong>:</li>
+</ul>
+
+
+<h2>ccv_compress_sparse_matrix</h2>
+
+<pre><code>void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
+</code></pre>
+
+<ul>
+<li><strong>mat</strong>:</li>
+<li><strong>csm</strong>:</li>
+</ul>
+
+
+<h2>ccv_decompress_sparse_matrix</h2>
+
+<pre><code>void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
+</code></pre>
+
+<ul>
+<li><strong>csm</strong>:</li>
+<li><strong>smt</strong>:</li>
+</ul>
+
+
+<h2>ccv_matrix_eq</h2>
+
+<pre><code>int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+</ul>
+
+
+<h2>ccv_slice</h2>
+
+<pre><code>void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int rows, int cols)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>btype</strong>:</li>
+<li><strong>y</strong>:</li>
+<li><strong>x</strong>:</li>
+<li><strong>rows</strong>:</li>
+<li><strong>cols</strong>:</li>
+</ul>
+
+
+<h2>ccv_move</h2>
+
+<pre><code>void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
+</code></pre>
+
+<ul>
+<li><strong>a</strong>:</li>
+<li><strong>b</strong>:</li>
+<li><strong>btype</strong>:</li>
+<li><strong>y</strong>:</li>
+<li><strong>x</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_new</h2>
+
+<pre><code>ccv_array_t* ccv_array_new(int rnum, int rsize)
+</code></pre>
+
+<ul>
+<li><strong>rnum</strong>:</li>
+<li><strong>rsize</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_push</h2>
+
+<pre><code>void ccv_array_push(ccv_array_t* array, void* r)
+</code></pre>
+
+<ul>
+<li><strong>array</strong>:</li>
+<li><strong>r</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_zero</h2>
+
+<pre><code>void ccv_array_zero(ccv_array_t* array)
+</code></pre>
+
+<ul>
+<li><strong>array</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_clear</h2>
+
+<pre><code>void ccv_array_clear(ccv_array_t* array)
+</code></pre>
+
+<ul>
+<li><strong>array</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_free</h2>
+
+<pre><code>void ccv_array_free(ccv_array_t* array)
+</code></pre>
+
+<ul>
+<li><strong>array</strong>:</li>
+</ul>
+
+
+<h2>ccv_array_group</h2>
+
+<pre><code>int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data)
+</code></pre>
+
+<ul>
+<li><strong>array</strong>:</li>
+<li><strong>index</strong>:</li>
+<li><strong>gfunc</strong>:</li>
+<li><strong>data</strong>:</li>
+</ul>
+
+
+<h2>ccv_contour_new</h2>
+
+<pre><code>ccv_contour_t* ccv_contour_new(int set)
+</code></pre>
+
+<ul>
+<li><strong>set</strong>:</li>
+</ul>
+
+
+<h2>ccv_contour_push</h2>
+
+<pre><code>void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
+</code></pre>
+
+<ul>
+<li><strong>contour</strong>:</li>
+<li><strong>point</strong>:</li>
+</ul>
+
+
+<h2>ccv_contour_free</h2>
+
+<pre><code>void ccv_contour_free(ccv_contour_t* contour)
+</code></pre>
+
+<ul>
+<li><strong>contour</strong>:</li>
+</ul>
 
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

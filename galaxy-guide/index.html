@@ -26,7 +26,7 @@
 
 <p>For old-schooler, run 'make' in /lib directory will generate the libccv.a archive. From there, you can statically link to it by -lccv. For example, you have ccv source compiled in ~/ccv/, and you want to compile ~/studies/sift.c with ccv.</p>
 
-<pre><code>clang -L"~/ccv/lib" -I"~/ccv/lib" sift.c `cat ~/ccv/lib/.l.conf` -lm
+<pre><code>clang -L"~/ccv/lib" -I"~/ccv/lib" sift.c -lccv `cat ~/ccv/lib/.l.conf` -lm
 </code></pre>
 
 <p>That it. The only magic sauce is ~/ccv/lib/.l.conf, which gives you all the dependencies you have to link to when you compile ccv the first time. If your ccv compiled with no dependency, it is empty (and ccv works with zero dependency).</p>
@@ -34,6 +34,15 @@
 <h2>Read a Photo</h2>
 
 <p>Let's start with something small.</p>
+
+<pre><code>#include &lt;ccv.h&gt;
+int main()
+{
+    ccv_dense_matrix_t* image = 0;
+    ccv_read("");
+    return 0;
+}
+</code></pre>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>
