@@ -15,13 +15,6 @@
 
 #define CCV_DPM_WINDOW_SIZE (8)
 
-static unsigned int _ccv_dpm_time_measure()
-{
-	struct timeval tv;
-	gettimeofday(&tv, 0);
-	return tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
 static int _ccv_dpm_scale_upto(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, int interval)
 {
 	int c, i;
@@ -115,6 +108,16 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 			f_ptr += root_feature->cols;
 		}
 	}
+}
+
+#ifdef HAVE_LIBLINEAR
+#ifdef HAVE_GSL
+
+static unsigned int _ccv_dpm_time_measure()
+{
+	struct timeval tv;
+	gettimeofday(&tv, 0);
+	return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 #define less_than(fn1, fn2, aux) ((fn1).value >= (fn2).value)
@@ -1741,6 +1744,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	ccfree(model);
 	gsl_rng_free(rng);
 }
+
+#endif
+#endif
 
 static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {
