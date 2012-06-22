@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>lib/ccv_numeric.c</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -20,67 +20,63 @@
 </ul>
 </header>
 <section><h1>lib/ccv_numeric.c</h1>
-<h2>ccv_minimize</h2>
+<h2 id="ccvminimize">ccv_minimize</h2>
 
 <pre><code>void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data)
 </code></pre>
 
 <ul>
-<li><strong>x</strong>:</li>
-<li><strong>length</strong>:</li>
-<li><strong>red</strong>:</li>
-<li><strong>func</strong>:</li>
-<li><strong>params</strong>:</li>
-<li><strong>data</strong>:</li>
+  <li><strong>x</strong>:</li>
+  <li><strong>length</strong>:</li>
+  <li><strong>red</strong>:</li>
+  <li><strong>func</strong>:</li>
+  <li><strong>params</strong>:</li>
+  <li><strong>data</strong>:</li>
 </ul>
 
-
-<h2>ccv_filter</h2>
+<h2 id="ccvfilter">ccv_filter</h2>
 
 <pre><code>void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>d</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>padding_pattern</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>d</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>padding_pattern</strong>:</li>
 </ul>
 
-
-<h2>ccv_filter_kernel</h2>
+<h2 id="ccvfilterkernel">ccv_filter_kernel</h2>
 
 <pre><code>void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data)
 </code></pre>
 
 <ul>
-<li><strong>x</strong>:</li>
-<li><strong>func</strong>:</li>
-<li><strong>data</strong>:</li>
+  <li><strong>x</strong>:</li>
+  <li><strong>func</strong>:</li>
+  <li><strong>data</strong>:</li>
 </ul>
 
-
-<h2>ccv_distance_transform</h2>
+<h2 id="ccvdistancetransform">ccv_distance_transform</h2>
 
 <pre><code>void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>x</strong>:</li>
-<li><strong>x_type</strong>:</li>
-<li><strong>y</strong>:</li>
-<li><strong>y_type</strong>:</li>
-<li><strong>dx</strong>:</li>
-<li><strong>dy</strong>:</li>
-<li><strong>dxx</strong>:</li>
-<li><strong>dyy</strong>:</li>
-<li><strong>flag</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>x</strong>:</li>
+  <li><strong>x_type</strong>:</li>
+  <li><strong>y</strong>:</li>
+  <li><strong>y_type</strong>:</li>
+  <li><strong>dx</strong>:</li>
+  <li><strong>dy</strong>:</li>
+  <li><strong>dxx</strong>:</li>
+  <li><strong>dyy</strong>:</li>
+  <li><strong>flag</strong>:</li>
 </ul>
-
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

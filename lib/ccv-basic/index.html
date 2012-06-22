@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>lib/ccv_basic.c</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -20,104 +20,97 @@
 </ul>
 </header>
 <section><h1>lib/ccv_basic.c</h1>
-<h2>ccv_sobel</h2>
+<h2 id="ccvsobel">ccv_sobel</h2>
 
 <pre><code>void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>dx</strong>:</li>
-<li><strong>dy</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>dx</strong>:</li>
+  <li><strong>dy</strong>:</li>
 </ul>
 
-
-<h2>ccv_gradient</h2>
+<h2 id="ccvgradient">ccv_gradient</h2>
 
 <pre><code>void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>theta</strong>:</li>
-<li><strong>ttype</strong>:</li>
-<li><strong>m</strong>:</li>
-<li><strong>mtype</strong>:</li>
-<li><strong>dx</strong>:</li>
-<li><strong>dy</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>theta</strong>:</li>
+  <li><strong>ttype</strong>:</li>
+  <li><strong>m</strong>:</li>
+  <li><strong>mtype</strong>:</li>
+  <li><strong>dx</strong>:</li>
+  <li><strong>dy</strong>:</li>
 </ul>
 
-
-<h2>ccv_resample</h2>
+<h2 id="ccvresample">ccv_resample</h2>
 
 <pre><code>void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>btype</strong>:</li>
-<li><strong>rows</strong>:</li>
-<li><strong>cols</strong>:</li>
-<li><strong>type</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>btype</strong>:</li>
+  <li><strong>rows</strong>:</li>
+  <li><strong>cols</strong>:</li>
+  <li><strong>type</strong>:</li>
 </ul>
 
-
-<h2>ccv_sample_down</h2>
+<h2 id="ccvsampledown">ccv_sample_down</h2>
 
 <pre><code>void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>src_x</strong>:</li>
-<li><strong>src_y</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>src_x</strong>:</li>
+  <li><strong>src_y</strong>:</li>
 </ul>
 
-
-<h2>ccv_sample_up</h2>
+<h2 id="ccvsampleup">ccv_sample_up</h2>
 
 <pre><code>void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>src_x</strong>:</li>
-<li><strong>src_y</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>src_x</strong>:</li>
+  <li><strong>src_y</strong>:</li>
 </ul>
 
-
-<h2>ccv_flip</h2>
+<h2 id="ccvflip">ccv_flip</h2>
 
 <pre><code>void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>btype</strong>:</li>
-<li><strong>type</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>btype</strong>:</li>
+  <li><strong>type</strong>:</li>
 </ul>
 
-
-<h2>ccv_blur</h2>
+<h2 id="ccvblur">ccv_blur</h2>
 
 <pre><code>void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>b</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>sigma</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>b</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>sigma</strong>:</li>
 </ul>
-
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>lib/ccv_bbf.c</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -20,77 +20,71 @@
 </ul>
 </header>
 <section><h1>lib/ccv_bbf.c</h1>
-<h2>ccv_bbf_classifier_cascade_new</h2>
+<h2 id="ccvbbfclassifiercascadenew">ccv_bbf_classifier_cascade_new</h2>
 
 <pre><code>void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
 </code></pre>
 
 <ul>
-<li><strong>posimg</strong>:</li>
-<li><strong>posnum</strong>:</li>
-<li><strong>bgfiles</strong>:</li>
-<li><strong>bgnum</strong>:</li>
-<li><strong>negnum</strong>:</li>
-<li><strong>size</strong>:</li>
-<li><strong>dir</strong>:</li>
-<li><strong>params</strong>:</li>
+  <li><strong>posimg</strong>:</li>
+  <li><strong>posnum</strong>:</li>
+  <li><strong>bgfiles</strong>:</li>
+  <li><strong>bgnum</strong>:</li>
+  <li><strong>negnum</strong>:</li>
+  <li><strong>size</strong>:</li>
+  <li><strong>dir</strong>:</li>
+  <li><strong>params</strong>:</li>
 </ul>
 
-
-<h2>ccv_bbf_detect_objects</h2>
+<h2 id="ccvbbfdetectobjects">ccv_bbf_detect_objects</h2>
 
 <pre><code>ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params)
 </code></pre>
 
 <ul>
-<li><strong>a</strong>:</li>
-<li><strong>cascade</strong>:</li>
-<li><strong>count</strong>:</li>
-<li><strong>params</strong>:</li>
+  <li><strong>a</strong>:</li>
+  <li><strong>cascade</strong>:</li>
+  <li><strong>count</strong>:</li>
+  <li><strong>params</strong>:</li>
 </ul>
 
-
-<h2>ccv_load_bbf_classifier_cascade</h2>
+<h2 id="ccvloadbbfclassifiercascade">ccv_load_bbf_classifier_cascade</h2>
 
 <pre><code>ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory)
 </code></pre>
 
 <ul>
-<li><strong>directory</strong>:</li>
+  <li><strong>directory</strong>:</li>
 </ul>
 
-
-<h2>ccv_bbf_classifier_cascade_read_binary</h2>
+<h2 id="ccvbbfclassifiercascadereadbinary">ccv_bbf_classifier_cascade_read_binary</h2>
 
 <pre><code>ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s)
 </code></pre>
 
 <ul>
-<li><strong>s</strong>:</li>
+  <li><strong>s</strong>:</li>
 </ul>
 
-
-<h2>ccv_bbf_classifier_cascade_write_binary</h2>
+<h2 id="ccvbbfclassifiercascadewritebinary">ccv_bbf_classifier_cascade_write_binary</h2>
 
 <pre><code>int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen)
 </code></pre>
 
 <ul>
-<li><strong>cascade</strong>:</li>
-<li><strong>s</strong>:</li>
-<li><strong>slen</strong>:</li>
+  <li><strong>cascade</strong>:</li>
+  <li><strong>s</strong>:</li>
+  <li><strong>slen</strong>:</li>
 </ul>
 
-
-<h2>ccv_bbf_classifier_cascade_free</h2>
+<h2 id="ccvbbfclassifiercascadefree">ccv_bbf_classifier_cascade_free</h2>
 
 <pre><code>void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade)
 </code></pre>
 
 <ul>
-<li><strong>cascade</strong>:</li>
+  <li><strong>cascade</strong>:</li>
 </ul>
-
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

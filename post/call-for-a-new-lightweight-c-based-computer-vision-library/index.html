@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>Call for a new, lightweight, c-based computer vision library</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -24,14 +24,21 @@
 <p>Since 2005, most of my computer vision work were done with OpenCV. It is an amazingly hand-optimized piece of software. A large number of modern applications are based on OpenCV framework. It is a useful toolset. However, for all this years, I finally feel the need to make a more lightweight, pure-c/function based library. There are some ideas:</p>
 
 <ol>
-<li><p>It should be fast. There is no need to build a toolset that is slow. Former work such as lapack and gsl are a better choices rather than reinvent the wheel. For the same reason, It is necessary to fork basic routines from OpenCV, such as Canny detector, kalman filter, etc.</p></li>
-<li><p>Better memory management, cache everything. OpenCV partially implemented a memory management routine, but failed to have a cache mechanism, partly because there are too many functions and it hard to break in and add another layer.</p></li>
-<li><p>Less but more about modern algorithms. Implementing a fewer but niche algorithms and give intuitive examples. Keep compatibility with OpenCV (through interpreting functions).</p></li>
-<li><p>Give some love to distributed system, and modern compilers (LLVM &amp; Clang).</p></li>
+  <li>
+    <p>It should be fast. There is no need to build a toolset that is slow. Former work such as lapack and gsl are a better choices rather than reinvent the wheel. For the same reason, It is necessary to fork basic routines from OpenCV, such as Canny detector, kalman filter, etc.</p>
+  </li>
+  <li>
+    <p>Better memory management, cache everything. OpenCV partially implemented a memory management routine, but failed to have a cache mechanism, partly because there are too many functions and it hard to break in and add another layer.</p>
+  </li>
+  <li>
+    <p>Less but more about modern algorithms. Implementing a fewer but niche algorithms and give intuitive examples. Keep compatibility with OpenCV (through interpreting functions).</p>
+  </li>
+  <li>
+    <p>Give some love to distributed system, and modern compilers (LLVM &amp; Clang).</p>
+  </li>
 </ol>
 
-
-<p>I am aware of that many vision works are never made the way to mass (VLFeat for example), but that's the plan.</p>
+<p>I am aware of that many vision works are never made the way to mass (VLFeat for example), but that’s the plan.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

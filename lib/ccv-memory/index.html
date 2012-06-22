@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>lib/ccv_memory.c</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -20,7 +20,7 @@
 </ul>
 </header>
 <section><h1>lib/ccv_memory.c</h1>
-<h2>ccv_dense_matrix_new</h2>
+<h2 id="ccvdensematrixnew">ccv_dense_matrix_new</h2>
 
 <pre><code>ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig)
 </code></pre>
@@ -28,15 +28,23 @@
 <p>Create a dense matrix with rows, cols, and type.</p>
 
 <ul>
-<li><strong>rows</strong>: rows of the matrix</li>
-<li><strong>cols</strong>: columns of the matrix</li>
-<li><strong>type</strong>: matrix supports 4 data types - CCV_8U, CCV_32S, CCV_64S, CCV_32F, CCV_64F and up to 255 channels. e.g. CCV_32F | 31 will create a matrix with float (32-bit float point) data type with 31 channels (the default type for ccv_hog).</li>
-<li><strong>data</strong>: if 0, ccv will create the matrix by allocating memory itself. Otherwise, it will use the memory region referenced by 'data'.</li>
-<li><strong>sig</strong>: the signature, using 0 if you don't know what it is.</li>
+  <li><strong>rows</strong>: rows of the matrix</li>
+  <li><strong>cols</strong>: columns of the matrix</li>
+  <li>
+    <table>
+      <tbody>
+        <tr>
+          <td><strong>type</strong>: matrix supports 4 data types - CCV<em>8U, CCV</em>32S, CCV<em>64S, CCV</em>32F, CCV<em>64F and up to 255 channels. e.g. CCV</em>32F</td>
+          <td>31 will create a matrix with float (32-bit float point) data type with 31 channels (the default type for ccv_hog).</td>
+        </tr>
+      </tbody>
+    </table>
+  </li>
+  <li><strong>data</strong>: if 0, ccv will create the matrix by allocating memory itself. Otherwise, it will use the memory region referenced by ‘data’.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
 </ul>
 
-
-<h2>ccv_dense_matrix_renew</h2>
+<h2 id="ccvdensematrixrenew">ccv_dense_matrix_renew</h2>
 
 <pre><code>ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig)
 </code></pre>
@@ -44,119 +52,110 @@
 <p>Check the input matrix, if it is the allowed type, return it, otherwise create one with prefer_type.</p>
 
 <ul>
-<li><strong>x</strong>:</li>
-<li><strong>rows</strong>:</li>
-<li><strong>cols</strong>:</li>
-<li><strong>types</strong>:</li>
-<li><strong>prefer_type</strong>:</li>
-<li><strong>sig</strong>:</li>
+  <li><strong>x</strong>:</li>
+  <li><strong>rows</strong>:</li>
+  <li><strong>cols</strong>:</li>
+  <li><strong>types</strong>:</li>
+  <li><strong>prefer_type</strong>:</li>
+  <li><strong>sig</strong>:</li>
 </ul>
 
-
-<h2>ccv_dense_matrix</h2>
+<h2 id="ccvdensematrix">ccv_dense_matrix</h2>
 
 <pre><code>ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig)
 </code></pre>
 
 <ul>
-<li><strong>rows</strong>:</li>
-<li><strong>cols</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>data</strong>:</li>
-<li><strong>sig</strong>:</li>
+  <li><strong>rows</strong>:</li>
+  <li><strong>cols</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>data</strong>:</li>
+  <li><strong>sig</strong>:</li>
 </ul>
 
-
-<h2>ccv_make_matrix_mutable</h2>
+<h2 id="ccvmakematrixmutable">ccv_make_matrix_mutable</h2>
 
 <pre><code>void ccv_make_matrix_mutable(ccv_matrix_t* mat)
 </code></pre>
 
 <ul>
-<li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>:</li>
 </ul>
 
-
-<h2>ccv_make_matrix_immutable</h2>
+<h2 id="ccvmakematriximmutable">ccv_make_matrix_immutable</h2>
 
 <pre><code>void ccv_make_matrix_immutable(ccv_matrix_t* mat)
 </code></pre>
 
 <ul>
-<li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>:</li>
 </ul>
 
-
-<h2>ccv_sparse_matrix_new</h2>
+<h2 id="ccvsparsematrixnew">ccv_sparse_matrix_new</h2>
 
 <pre><code>ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig)
 </code></pre>
 
 <ul>
-<li><strong>rows</strong>:</li>
-<li><strong>cols</strong>:</li>
-<li><strong>type</strong>:</li>
-<li><strong>major</strong>:</li>
-<li><strong>sig</strong>:</li>
+  <li><strong>rows</strong>:</li>
+  <li><strong>cols</strong>:</li>
+  <li><strong>type</strong>:</li>
+  <li><strong>major</strong>:</li>
+  <li><strong>sig</strong>:</li>
 </ul>
 
-
-<h2>ccv_matrix_free_immediately</h2>
+<h2 id="ccvmatrixfreeimmediately">ccv_matrix_free_immediately</h2>
 
 <pre><code>void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 </code></pre>
 
 <ul>
-<li>*mat**:</li>
+  <li>*mat**:</li>
 </ul>
 
-
-<h2>ccv_matrix_free</h2>
+<h2 id="ccvmatrixfree">ccv_matrix_free</h2>
 
 <pre><code>void ccv_matrix_free(ccv_matrix_t* mat)
 </code></pre>
 
 <ul>
-<li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>:</li>
 </ul>
 
-
-<h2>ccv_enable_cache</h2>
+<h2 id="ccvenablecache">ccv_enable_cache</h2>
 
 <pre><code>void ccv_enable_cache(size_t size)
 </code></pre>
 
 <ul>
-<li><strong>size</strong>:</li>
+  <li><strong>size</strong>:</li>
 </ul>
 
-
-<h2>ccv_enable_default_cache</h2>
+<h2 id="ccvenabledefaultcache">ccv_enable_default_cache</h2>
 
 <pre><code>void ccv_enable_default_cache(void)
 </code></pre>
 
-<h2>ccv_drain_cache</h2>
+<h2 id="ccvdraincache">ccv_drain_cache</h2>
 
 <pre><code>void ccv_drain_cache(void)
 </code></pre>
 
-<h2>ccv_disable_cache</h2>
+<h2 id="ccvdisablecache">ccv_disable_cache</h2>
 
 <pre><code>void ccv_disable_cache(void)
 </code></pre>
 
-<h2>ccv_matrix_generate_signature</h2>
+<h2 id="ccvmatrixgeneratesignature">ccv_matrix_generate_signature</h2>
 
 <pre><code>uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
 </code></pre>
 
 <ul>
-<li><strong>msg</strong>:</li>
-<li><strong>len</strong>:</li>
-<li><strong>sig_start</strong>:</li>
+  <li><strong>msg</strong>:</li>
+  <li><strong>len</strong>:</li>
+  <li><strong>sig_start</strong>:</li>
 </ul>
-
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

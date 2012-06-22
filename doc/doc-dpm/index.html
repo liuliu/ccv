@@ -2,7 +2,7 @@
 <html><head><meta charset="utf-8">
 <title>DPM: Deformable Parts Model</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
-<link rel="stylesheet" href="/stylesheets/pygment_trac.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
 <meta http-equiv="X-UA-Compatible" content="chrome=1">
@@ -20,14 +20,14 @@
 </ul>
 </header>
 <section><h1>DPM: Deformable Parts Model</h1>
-<h2>what's DPM?</h2>
+<h2 id="whats-dpm">what’s DPM?</h2>
 
 <p>The original paper refers to:
 Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</p>
 
-<h2>How it works?</h2>
+<h2 id="how-it-works">How it works?</h2>
 
-<p>That's a long story. In very high level, DPM assumes an object is constructed by
+<p>That’s a long story. In very high level, DPM assumes an object is constructed by
 its parts. Thus, the detector will first found a match of its whole, and then
 using its part models to fine-tune the result. For details, please read the
 paper. What I can show you, is how to use it:</p>
@@ -37,7 +37,7 @@ paper. What I can show you, is how to use it:</p>
 
 <p>Checkout output.png, see what happens?</p>
 
-<h2>What about performance?</h2>
+<h2 id="what-about-performance">What about performance?</h2>
 
 <p>DPM is not known for its speed. Its ability to identify difficult objects, is
 the selling point. However, this implementation tries to optimize for speed as
@@ -55,7 +55,7 @@ data. With OpenCV stock peopledetect sample program, we get:</p>
 </code></pre>
 
 <p>The former one is the detection rate (how many objects have been detected), the
-later is the number of false alarms (the detected region doesn't contain the
+later is the number of false alarms (the detected region doesn’t contain the
 expected object)</p>
 
 <p>Our implementation?</p>
@@ -67,7 +67,7 @@ expected object)</p>
 
 <p>Speed-wise:</p>
 
-<h2>How to train my own detector?</h2>
+<h2 id="how-to-train-my-own-detector">How to train my own detector?</h2>
 
 <p>Yes, this implementation comes with a tool to train your own detector too.</p>
 
