@@ -1287,6 +1287,28 @@ static int _ccv_dpm_read_negative_feature_vectors(ccv_array_t** _negv, int* negk
 	return 0;
 }
 
+static void _ccv_dpm_adjust_model_constant(ccv_dpm_mixture_model_t* model, ccv_dpm_feature_vector_t** posv, int posnum, double percentile)
+{
+	int i, j, k;
+	double* scores = (double*)ccmalloc(posnum * sizeof(double));
+	for (k = 0; k < model->count; k++)
+	{
+		j = 0;
+		for (i = 0; i < posnum; i++)
+			if (posv[i] && posv[i]->id == k)
+			{
+				scores[j] = _ccv_dpm_vector_score(model, posv[i]);
+				j++;
+			}
+		_ccv_dpm_score_qsort(scores, j, 0);
+		float adjust = scores[ccv_clamp((int)(percentile * j), 0, j - 1)];
+		// adjust to percentile
+		model->root[k].beta -= adjust;
+		printf(" - tune model %d constant for %f\n", k, -adjust);
+	}
+	ccfree(scores);
+}
+
 static void _ccv_dpm_check_params(ccv_dpm_new_param_t params)
 {
 	assert(params.components > 0);
@@ -1479,13 +1501,13 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	c = t = r = 0;
 	ccv_array_t* negv = 0;
 	int negi = 0;
-	int abort = 0;
 	int* negk = (int*)ccmalloc(params.negative_cache_size * sizeof(int));
 	if (0 == _ccv_dpm_read_negative_feature_vectors(&negv, negk, params.negative_cache_size, neg_vector_checkpoint))
 		printf(" - read collected negative responses from last interrupted process\n");
 	_ccv_dpm_read_gradient_descent_progress(&c, &t, &r, &previous_loss, &positive_loss, &negative_loss, &loss, &pos_prog, &neg_prog, &negi, order, posnum + negnum, gradient_progress_checkpoint);
 	for (; c < params.relabels; c++)
 	{
+		int abort = 0;
 		double regz_rate = params.C / model->count;
 		double alpha = params.alpha * pow(params.alpha_ratio, t);
 		ccv_dpm_mixture_model_t* _model;
@@ -1660,7 +1682,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			j = 0;
 			double* scores = (double*)ccmalloc(posnum * sizeof(double));
 			for (i = 0; i < posnum; i++)
-				if (posv[i] != 0)
+				if (posv[i])
 				{
 					scores[j] = _ccv_dpm_vector_score(model, posv[i]);
 					j++;
@@ -1699,12 +1721,13 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		}
 		t = 0;
 		previous_loss = positive_loss = negative_loss = loss = 0;
+		// if abort, means that we cannot find enough negative examples, try to adjust constant
+		if (abort)
+			_ccv_dpm_adjust_model_constant(model, posv, posnum, params.percentile_breakdown);
 		for (i = 0; i < posnum; i++)
 			if (posv[i])
 				_ccv_dpm_feature_vector_free(posv[i]);
 		remove(feature_vector_checkpoint);
-		if (abort)
-			break;
 	}
 	ccfree(order);
 	ccfree(negk);

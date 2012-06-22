@@ -23,7 +23,7 @@ void exit_with_help()
 	"\t--alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.9]\n"
 	"\t--margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
 	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.75]\n"
-	"\t--negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 500]\n"
+	"\t--negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 1000]\n"
 	"\t--include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
 	"\t--exclude-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Below this threshold, it is ensured to not be the same object [DEFAULT TO 0.5]\n"
 	"\t--grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 1]\n"
@@ -76,8 +76,8 @@ int main(int argc, char** argv)
 								   .balance = 1.75,
 								   .alpha_ratio = 0.9,
 								   .iterations = 20,
-								   .relabels = 5,
-								   .negative_cache_size = 500,
+								   .relabels = 10,
+								   .negative_cache_size = 1000,
 								   .C = 0.002,
 								   .percentile_breakdown = 0.05,
 								   .include_overlap = 0.7,

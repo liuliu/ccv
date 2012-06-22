@@ -1,5 +1,5 @@
-CC = `cat .cc.conf`# -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS = -O3 -ffast-math -mtune=native -Wall `cat .def.conf`
+CC = `cat .CC`# -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS = -O3 -ffast-math -mtune=native -Wall `cat .DEF`
 
 config:
 	@./configure
@@ -18,7 +18,9 @@ libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1/sha1.o 3rdparty/kissfft/kiss_ff
 	ar rcs $@ $^
 
 ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
-	$(CC) $< -o $@ -c $(CFLAGS)
+	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
+	@$(CC) $< -o $@ -c $(CFLAGS)
 
 %.o: %.c ccv.h ccv_internal.h
-	$(CC) $< -o $@ -c $(CFLAGS)
+	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
+	@$(CC) $< -o $@ -c $(CFLAGS)

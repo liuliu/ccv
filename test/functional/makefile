@@ -1,7 +1,7 @@
 CC = `cat ../../lib/.CC`
 LDFLAGS = -L"../../lib" -lccv -pthread `cat ../../lib/.LN`
 CFLAGS = -O3 -msse2 -Wall -I"../../lib" -I"../" `cat ../../lib/.DEF`
-TARGETS = defects.l0.1.tests
+TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests
 
 test: all
 	@for test in $(TARGETS) ; do ./"$$test" ; done
@@ -18,6 +18,6 @@ clean:
 libccv.a:
 	${MAKE} -C ../../lib
 
-%.o: %.c ../lib/ccv.h
+%.o: %.c ../../lib/ccv.h
 	@echo "$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)"
 	@$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)

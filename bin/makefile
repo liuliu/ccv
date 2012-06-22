@@ -1,6 +1,6 @@
-CC = `cat ../lib/.cc.conf`
-LDFLAGS = -L"../lib" -lccv `cat ../lib/.l.conf` -lm
-CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.def.conf`
+CC = `cat ../lib/.CC`
+LDFLAGS = -L"../lib" -lccv `cat ../lib/.LN` -lm
+CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.DEF`
 
 TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert
 
@@ -10,10 +10,12 @@ clean:
 	rm *.o ../lib/*.o ../lib/3rdparty/*.o ../lib/libccv.a $(TARGETS)
 
 $(TARGETS): %: %.o libccv.a
-	$(CC) -o $@ $< $(LDFLAGS)
+	@echo "$(CC) -o $@ $< $(LDFLAGS)"
+	@$(CC) -o $@ $< $(LDFLAGS)
 
 libccv.a:
 	${MAKE} -C ../lib
 
 %.o: %.c ../lib/ccv.h
-	$(CC) $< -o $@ -c $(CFLAGS)
+	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
+	@$(CC) $< -o $@ -c $(CFLAGS)
