@@ -34,7 +34,7 @@ table.CodeRay td {
 ol.CodeRay { font-size: 0.9em }
 ol.CodeRay li { white-space: pre }
 
-.CodeRay .code pre { overflow: auto; padding-left: 10px; padding-right: 10px; }
+.CodeRay .code pre { overflow: auto; padding-left: 8px; padding-right: 8px; }
 .CodeRay .debug { color:white ! important; background:blue ! important; }
 
 .CodeRay .annotation { color:#007 }
