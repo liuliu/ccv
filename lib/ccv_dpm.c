@@ -1603,7 +1603,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						_ccv_dpm_write_gradient_descent_progress(c, t, i, previous_loss, positive_loss, negative_loss, loss, pos_prog, neg_prog, negi, order, posnum + negnum, gradient_progress_checkpoint);
 						_ccv_dpm_write_checkpoint(_model, subcheckpoint);
 						_ccv_dpm_write_checkpoint(model, checkpoint);
-						if (negv->rnum <= ccv_min(params.negative_cache_size / 2, ccv_min(REGQ, MINI_BATCH))) // we cannot get sufficient negatives, abort
+						if (negv->rnum <= ccv_max(REGQ, MINI_BATCH)) // we cannot get sufficient negatives, abort
 						{
 							abort = 1;
 							break;

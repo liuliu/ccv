@@ -1,23 +1,23 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 
 if [ "$1" = "force" ] ; then
 	rm -f .CC .DEF .LN
 fi
 
 if [ ! -e .CC -o ! -e .DEF -o ! -e .LN ] ; then
-	echo "\n There are a few questions for you:\n"
+	echo -e "\n There are a few questions for you:\n"
 fi
 
 if [ -e .CC ] ; then
 	CC=`cat .CC`
 else
-	echo -n "  Default compiler: \033[4mclang\033[m [Y/n] ? "
-	read yn
+	echo -ne "  Default compiler: \033[4mclang\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) read -p "  Your favorite compiler: " CC
-			break;;
+			;;
 	*	  ) CC='clang'
-			break;;
+			;;
 	esac
 	echo $CC > .CC
 fi
@@ -28,72 +28,72 @@ if [ -e .DEF -a -e .LN ] ; then
 else
 	CFLAGS=" "
 	LDFLAGS=" "
-	echo -n "  Enable \033[4mSSE2\033[m [Y/n] ? "
-	read yn
+	echo -ne "  Enable \033[4mSSE2\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-msse2 "
-			break;;
+			;;
 	esac
-	echo -n "  With \033[4mlibjpeg\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mlibjpeg\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBJPEG "
 			LDFLAGS="$LDFLAGS-ljpeg "
-			break;;
+			;;
 	esac
-	echo -n "  With \033[4mlibpng\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mlibpng\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBPNG "
 			LDFLAGS="$LDFLAGS-lpng -lz "
-			break;;
+			;;
 	esac
-	echo -n "  With \033[4mgsl\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mgsl\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_GSL "
 			LDFLAGS="$LDFLAGS-lgsl "
-			break;;
+			;;
 	esac
-	echo -n "  With \033[4mfftw3\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mfftw3\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_FFTW3 "
 			LDFLAGS="$LDFLAGS-lfftw3f -lfftw3 "
-			break;;
+			;;
 	esac
 
-	echo -n "  With \033[4mliblinear\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mliblinear\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBLINEAR "
 			LDFLAGS="$LDFLAGS-llinear "
-			break;;
+			;;
 	esac
-	echo -n "  With \033[4mcblas\033[m [Y/n] ? "
-	read yn
+	echo -ne "  With \033[4mcblas\033[m [Y/n] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[nN]* ) break;;
+	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_CBLAS "
 			LDFLAGS="$LDFLAGS-lblas "
-			break;;
+			;;
 	esac
-	echo -n "  Use \033[4mopenmp\033[m [y/N] ? "
-	read yn
+	echo -ne "  Use \033[4mopenmp\033[m [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[yY]* ) CFLAGS="$CFLAGS-D USE_OPENMP -fopenmp "
 			LDFLAGS="$LDFLAGS-lgomp "
-			break;;
-	*	  ) break;;
+			;;
+	*	  ) ;;
 	esac
 	echo $CFLAGS > .DEF
 	echo $LDFLAGS > .LN
 fi
 
-echo "\n \033[1mUSE\033[m: \033[4m$CC\033[m\n \033[1mCOMPILE FLAGS\033[m: \033[4m$CFLAGS\033[m\n \033[1mLINK FLAGS\033[m: \033[4m$LDFLAGS\033[m\n"
+echo -e "\n \033[1mUSE\033[m: \033[4m$CC\033[m\n \033[1mCOMPILE FLAGS\033[m: \033[4m$CFLAGS\033[m\n \033[1mLINK FLAGS\033[m: \033[4m$LDFLAGS\033[m\n"
