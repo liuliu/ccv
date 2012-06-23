@@ -17,15 +17,15 @@ void exit_with_help()
 	"\t--symmetric : 0 or 1, whether to exploit symmetric property of the object\n\n"
 	"\033[1mOTHER OPTIONS\033[0m\n"
 	"\t--base-dir : change the base directory so that the program can read images from there\n"
-	"\t--iterations : how many iterations needed for stochastic gradient descent [DEFAULT TO 20]\n"
-	"\t--relabels : how many relabel procedure needed [DEFAULT TO 5]\n"
+	"\t--iterations : how many iterations needed for stochastic gradient descent [DEFAULT TO 1000]\n"
+	"\t--data-minings : how many data mining procedures are needed for discovering hard examples [DEFAULT TO 50]\n"
+	"\t--relabels : how many relabel procedures are needed [DEFAULT TO 5]\n"
 	"\t--alpha : the step size for stochastic gradient descent [DEFAULT TO 0.1]\n"
-	"\t--alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.9]\n"
+	"\t--alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.99]\n"
 	"\t--margin-c : the famous C in SVM [DEFAULT TO 0.002]\n"
-	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.75]\n"
+	"\t--balance : to balance the weight of positive examples and negative examples [DEFAULT TO 1.5]\n"
 	"\t--negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 1000]\n"
 	"\t--include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
-	"\t--exclude-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Below this threshold, it is ensured to not be the same object [DEFAULT TO 0.5]\n"
 	"\t--grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 1]\n"
 	"\t--percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n"
 	);
@@ -48,6 +48,7 @@ int main(int argc, char** argv)
 		/* optional parameters */
 		{"base-dir", 1, 0, 0},
 		{"iterations", 1, 0, 0},
+		{"data-minings", 1, 0, 0},
 		{"relabels", 1, 0, 0},
 		{"alpha", 1, 0, 0},
 		{"alpha-ratio", 1, 0, 0},
@@ -56,7 +57,6 @@ int main(int argc, char** argv)
 		{"margin-c", 1, 0, 0},
 		{"percentile-breakdown", 1, 0, 0},
 		{"include-overlap", 1, 0, 0},
-		{"exclude-overlap", 1, 0, 0},
 		{"grayscale", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
@@ -73,15 +73,15 @@ int main(int argc, char** argv)
 								   .max_area = 5000,
 								   .symmetric = 1,
 								   .alpha = 0.1,
-								   .balance = 1.75,
-								   .alpha_ratio = 0.9,
-								   .iterations = 20,
+								   .balance = 1.5,
+								   .alpha_ratio = 0.99,
+								   .iterations = 1000,
+								   .data_minings = 50,
 								   .relabels = 10,
 								   .negative_cache_size = 1000,
 								   .C = 0.002,
 								   .percentile_breakdown = 0.05,
 								   .include_overlap = 0.7,
-								   .exclude_overlap = 0.1,
 								   .grayscale = 0 };
 	int i, k;
 	while (getopt_long_only(argc, argv, "", dpm_options, &k) != -1)
@@ -118,31 +118,30 @@ int main(int argc, char** argv)
 				params.iterations = atoi(optarg);
 				break;
 			case 10:
+				params.data_minings = atoi(optarg);
+			case 11:
 				params.relabels = atoi(optarg);
 				break;
-			case 11:
+			case 12:
 				params.alpha = atof(optarg);
 				break;
-			case 12:
+			case 13:
 				params.alpha_ratio = atof(optarg);
 				break;
-			case 13:
+			case 14:
 				params.balance = atof(optarg);
 				break;
-			case 14:
+			case 15:
 				params.negative_cache_size = atoi(optarg);
 				break;
-			case 15:
+			case 16:
 				params.C = atof(optarg);
 				break;
-			case 16:
+			case 17:
 				params.percentile_breakdown = atof(optarg);
 				break;
-			case 17:
-				params.include_overlap = atof(optarg);
-				break;
 			case 18:
-				params.exclude_overlap = atof(optarg);
+				params.include_overlap = atof(optarg);
 				break;
 			case 19:
 				params.grayscale = !!atoi(optarg);

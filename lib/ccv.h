@@ -611,10 +611,10 @@ typedef struct {
 	int min_area; // 3000
 	int max_area; // 5000
 	int iterations;
+	int data_minings;
 	int relabels;
 	int negative_cache_size; // 1000
 	double include_overlap; // 0.7
-	double exclude_overlap; // 0.5
 	double alpha;
 	double alpha_ratio; // 0.85
 	double balance; // 1.5
