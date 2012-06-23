@@ -9,7 +9,7 @@ test: all
 all: $(TARGETS)
 
 clean:
-	rm *.o ../../lib/*.o ../../lib/3rdparty/*.o ../../lib/libccv.a $(TARGETS)
+	${MAKE} clean -C ../../lib ; rm *.o $(TARGETS)
 
 %.tests: %.tests.o libccv.a
 	@echo "$(CC) -o $@ $< $(LDFLAGS)"
