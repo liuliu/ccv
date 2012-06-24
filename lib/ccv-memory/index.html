@@ -28,18 +28,9 @@
 <p>Create a dense matrix with rows, cols, and type.</p>
 
 <ul>
-  <li><strong>rows</strong>: rows of the matrix</li>
-  <li><strong>cols</strong>: columns of the matrix</li>
-  <li>
-    <table>
-      <tbody>
-        <tr>
-          <td><strong>type</strong>: matrix supports 4 data types - CCV<em>8U, CCV</em>32S, CCV<em>64S, CCV</em>32F, CCV<em>64F and up to 255 channels. e.g. CCV</em>32F</td>
-          <td>31 will create a matrix with float (32-bit float point) data type with 31 channels (the default type for ccv_hog).</td>
-        </tr>
-      </tbody>
-    </table>
-  </li>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: matrix supports 4 data types - CCV_8U, CCV_32S, CCV_64S, CCV_32F, CCV_64F and up to 255 channels. e.g. CCV_32F | 31 will create a matrix with float (32-bit float point) data type with 31 channels (the default type for ccv_hog).</li>
   <li><strong>data</strong>: if 0, ccv will create the matrix by allocating memory itself. Otherwise, it will use the memory region referenced by ‘data’.</li>
   <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
 </ul>
@@ -52,12 +43,12 @@
 <p>Check the input matrix, if it is the allowed type, return it, otherwise create one with prefer_type.</p>
 
 <ul>
-  <li><strong>x</strong>:</li>
-  <li><strong>rows</strong>:</li>
-  <li><strong>cols</strong>:</li>
-  <li><strong>types</strong>:</li>
-  <li><strong>prefer_type</strong>:</li>
-  <li><strong>sig</strong>:</li>
+  <li><strong>x</strong>: the matrix to check.</li>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>types</strong>: allowed types, it can be a mask of multiple types, e.g. CCV_8U | CCV_32S allows both 8-bit unsigned integer type and 32-bit signed integer type.</li>
+  <li><strong>prefer_type</strong>: the default type, it can be only one type.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
 </ul>
 
 <h2 id="ccvdensematrix">ccv_dense_matrix</h2>
@@ -65,12 +56,14 @@
 <pre><code>ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig)
 </code></pre>
 
+<p>This method will return a dense matrix allocated on stack, with a data pointer to a custom memory region.</p>
+
 <ul>
-  <li><strong>rows</strong>:</li>
-  <li><strong>cols</strong>:</li>
-  <li><strong>type</strong>:</li>
-  <li><strong>data</strong>:</li>
-  <li><strong>sig</strong>:</li>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: the type of matrix.</li>
+  <li><strong>data</strong>: the data pointer that stores the actual matrix, it cannot be 0.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
 </ul>
 
 <h2 id="ccvmakematrixmutable">ccv_make_matrix_mutable</h2>
@@ -78,8 +71,10 @@
 <pre><code>void ccv_make_matrix_mutable(ccv_matrix_t* mat)
 </code></pre>
 
+<p>Mark the current matrix as mutable. Under the hood, it will set matrix signature to 0, and mark the matrix as non-collectable.</p>
+
 <ul>
-  <li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>: the supplied matrix that will be marked as mutable.</li>
 </ul>
 
 <h2 id="ccvmakematriximmutable">ccv_make_matrix_immutable</h2>
@@ -87,8 +82,10 @@
 <pre><code>void ccv_make_matrix_immutable(ccv_matrix_t* mat)
 </code></pre>
 
+<p>Mark the current matrix as immutable. Under the hood, it will generate a signature for the matrix, and mark it as non-collectable. For the convention, if the matrix is marked as immutable, you shouldn’t change the content of the matrix, otherwise it will cause surprising behavior. If you want to change the content of the matrix, mark it as mutable first.</p>
+
 <ul>
-  <li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>: the supplied matrix that will be marked as immutable.</li>
 </ul>
 
 <h2 id="ccvsparsematrixnew">ccv_sparse_matrix_new</h2>
@@ -96,12 +93,14 @@
 <pre><code>ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig)
 </code></pre>
 
+<p>Create a sparse matrix. ccv uses a double hash table for memory-efficient and quick-access sparse matrix.</p>
+
 <ul>
-  <li><strong>rows</strong>:</li>
-  <li><strong>cols</strong>:</li>
-  <li><strong>type</strong>:</li>
-  <li><strong>major</strong>:</li>
-  <li><strong>sig</strong>:</li>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: the type of the matrix, the same as dense matrix.</li>
+  <li><strong>major</strong>: either CCV_SPARSE_ROW_MAJOR or CCV_SPARSE_COL_MAJOR, it determines the underlying data structure of the sparse matrix (either using row or column as the first-level hash table).</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
 </ul>
 
 <h2 id="ccvmatrixfreeimmediately">ccv_matrix_free_immediately</h2>
@@ -109,8 +108,10 @@
 <pre><code>void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 </code></pre>
 
+<p>Skip garbage-collecting process and free the matrix immediately.</p>
+
 <ul>
-  <li>*mat**:</li>
+  <li>*mat**: the matrix.</li>
 </ul>
 
 <h2 id="ccvmatrixfree">ccv_matrix_free</h2>
@@ -118,8 +119,10 @@
 <pre><code>void ccv_matrix_free(ccv_matrix_t* mat)
 </code></pre>
 
+<p>In principal, you should always use this method to free a matrix. If you enabled cache in ccv, this method won’t immediately free up memory space of the matrix. Instead, it will push the matrix to a cache if applicable so that if you want to create the same matrix again, ccv can shortcut the required matrix/image processing and return it from the cache.</p>
+
 <ul>
-  <li><strong>mat</strong>:</li>
+  <li><strong>mat</strong>: the matrix.</li>
 </ul>
 
 <h2 id="ccvenablecache">ccv_enable_cache</h2>
@@ -127,8 +130,10 @@
 <pre><code>void ccv_enable_cache(size_t size)
 </code></pre>
 
+<p>Enable a application-wide cache for ccv. The cache is bounded by given memory size.</p>
+
 <ul>
-  <li><strong>size</strong>:</li>
+  <li><strong>size</strong>: the upper limit of the cache, in bytes.</li>
 </ul>
 
 <h2 id="ccvenabledefaultcache">ccv_enable_default_cache</h2>
@@ -136,25 +141,33 @@
 <pre><code>void ccv_enable_default_cache(void)
 </code></pre>
 
+<p>Enable a application-wide cache for ccv at default memory bound (64MiB).</p>
+
 <h2 id="ccvdraincache">ccv_drain_cache</h2>
 
 <pre><code>void ccv_drain_cache(void)
 </code></pre>
+
+<p>Drain up the cache.</p>
 
 <h2 id="ccvdisablecache">ccv_disable_cache</h2>
 
 <pre><code>void ccv_disable_cache(void)
 </code></pre>
 
+<p>Drain up and disable the application-wide cache.</p>
+
 <h2 id="ccvmatrixgeneratesignature">ccv_matrix_generate_signature</h2>
 
 <pre><code>uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
 </code></pre>
 
+<p>Generate a matrix signature based on input message and other signatures. This is the core method for ccv cache. In short, ccv does a given image processing by first generating an appropriate signature for that operation. It requires 1). an operation-specific message, which can be generated by concatenate the operation name and parameters. 2). the signature of input matrix(es). After that, ccv will look-up matrix in cache with the newly generated signature. If it exists, ccv will return that matrix and skip the whole operation.</p>
+
 <ul>
-  <li><strong>msg</strong>:</li>
-  <li><strong>len</strong>:</li>
-  <li><strong>sig_start</strong>:</li>
+  <li><strong>msg</strong>: the concatenated message.</li>
+  <li><strong>len</strong>: message length.</li>
+  <li><strong>sig_start</strong>: the input matrix(es) signature, end the list with 0.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

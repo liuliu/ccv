@@ -25,15 +25,29 @@
 <pre><code>void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
 </code></pre>
 
+<p>Create a new bbf classifier cascade from given positive examples and background images.</p>
+
 <ul>
-  <li><strong>posimg</strong>:</li>
-  <li><strong>posnum</strong>:</li>
-  <li><strong>bgfiles</strong>:</li>
-  <li><strong>bgnum</strong>:</li>
-  <li><strong>negnum</strong>:</li>
-  <li><strong>size</strong>:</li>
-  <li><strong>dir</strong>:</li>
-  <li><strong>params</strong>:</li>
+  <li><strong>posimg</strong>: an array of positive examples.</li>
+  <li><strong>posnum</strong>: number of positive examples.</li>
+  <li><strong>bgfiles</strong>: an array of background images.</li>
+  <li><strong>bgnum</strong>: number of background images.</li>
+  <li><strong>negnum</strong>: number of negative examples that is harvested from background images.</li>
+  <li><strong>size</strong>: the image size of positive examples.</li>
+  <li><strong>dir</strong>: the working directory to store/retrieve intermediate data.</li>
+  <li><strong>params</strong>: a <strong>ccv_bbf_new_param_t</strong> structure that defines various aspect of the training function.</li>
+</ul>
+
+<h2 id="ccvbbfnewparamt">ccv_bbf_new_param_t</h2>
+
+<ul>
+  <li><strong>pos_crit</strong>: positive criteria or the targeted recall ratio, bbf classifier tries to adjust the constant to meet this criteria.</li>
+  <li><strong>neg_crit</strong>: negative criteria or the targeted reject ratio, bbf classifier tries to include more weak features until meet this criteria.</li>
+  <li><strong>balance_k</strong>: weight positive examples differently from negative examples.</li>
+  <li><strong>layer</strong>: the maximum layer trained for the classifier cascade.</li>
+  <li><strong>feature_number</strong>: the maximum feature number for each classifier.</li>
+  <li><strong>optimizer</strong>: CCV_BBF_GENETIC_OPT, using genetic algorithm to search the best weak feature; CCV_BBF_FLOAT_OPT, using float search to improve the found best weak feature.</li>
+  <li><strong>detector</strong>: a <strong>ccv_bbf_params_t</strong> structure that will be used to search negative examples from background images.</li>
 </ul>
 
 <h2 id="ccvbbfdetectobjects">ccv_bbf_detect_objects</h2>
@@ -41,11 +55,23 @@
 <pre><code>ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params)
 </code></pre>
 
+<p>Using a bbf classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
+
 <ul>
-  <li><strong>a</strong>:</li>
-  <li><strong>cascade</strong>:</li>
-  <li><strong>count</strong>:</li>
-  <li><strong>params</strong>:</li>
+  <li><strong>a</strong>: the input image.</li>
+  <li><strong>cascade</strong>: an array of classifier cascades.</li>
+  <li><strong>count</strong>: how many classifier cascades you’ve passed in.</li>
+  <li><strong>params</strong>: a <strong>ccv_bbf_params_t</strong> structure that defines various aspect of the detector.</li>
+</ul>
+
+<h2 id="ccvbbfparamst">ccv_bbf_params_t</h2>
+
+<ul>
+  <li><strong>interval</strong>:</li>
+  <li><strong>min_neighbors</strong>:</li>
+  <li><strong>flags</strong>:</li>
+  <li><strong>accurate</strong>:</li>
+  <li><strong>size</strong>:</li>
 </ul>
 
 <h2 id="ccvloadbbfclassifiercascade">ccv_load_bbf_classifier_cascade</h2>
