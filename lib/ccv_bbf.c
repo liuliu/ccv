@@ -11,13 +11,6 @@
 
 #define _ccv_width_padding(x) (((x) + 3) & -4)
 
-static unsigned int _ccv_bbf_time_measure()
-{
-	struct timeval tv;
-	gettimeofday(&tv, 0);
-	return tv.tv_sec * 1000000 + tv.tv_usec;
-}
-
 static inline int _ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, unsigned char** u8)
 {
 #define pf_at(i) (*(u8[feature->pz[i]] + feature->px[i] + feature->py[i] * step[feature->pz[i]]))
@@ -53,6 +46,44 @@ static inline int _ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, un
 #undef pf_at
 #undef nf_at
 	return 1;
+}
+
+static int _ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
+{
+	FILE* r = fopen(file, "r");
+	if (r == 0) return -1;
+	int stat = 0;
+	stat |= fscanf(r, "%d", &classifier->count);
+	union { float fl; int i; } fli;
+	stat |= fscanf(r, "%d", &fli.i);
+	classifier->threshold = fli.fl;
+	classifier->feature = (ccv_bbf_feature_t*)ccmalloc(classifier->count * sizeof(ccv_bbf_feature_t));
+	classifier->alpha = (float*)ccmalloc(classifier->count * 2 * sizeof(float));
+	int i, j;
+	for (i = 0; i < classifier->count; i++)
+	{
+		stat |= fscanf(r, "%d", &classifier->feature[i].size);
+		for (j = 0; j < classifier->feature[i].size; j++)
+		{
+			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
+			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
+		}
+		union { float fl; int i; } flia, flib;
+		stat |= fscanf(r, "%d %d", &flia.i, &flib.i);
+		classifier->alpha[i * 2] = flia.fl;
+		classifier->alpha[i * 2 + 1] = flib.fl;
+	}
+	fclose(r);
+	return 0;
+}
+
+#ifdef HAVE_GSL
+
+static unsigned int _ccv_bbf_time_measure()
+{
+	struct timeval tv;
+	gettimeofday(&tv, 0);
+	return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
 #define less_than(a, b, aux) ((a) < (b))
@@ -113,7 +144,6 @@ static int _ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsig
 
 static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
 {
-#ifdef HAVE_GSL
 	int t, i, j, k, q;
 	int negperbg = negnum / bgnum + 1;
 	int negtotal = 0;
@@ -241,9 +271,6 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 	ccv_drain_cache();
 	printf("\n");
 	return negtotal;
-#else
-	return 0;
-#endif
 }
 
 static void _ccv_prepare_positive_data(ccv_dense_matrix_t** posimg, unsigned char** posdata, ccv_size_t size, int posnum)
@@ -302,7 +329,6 @@ static inline int _ccv_bbf_exist_gene_feature(ccv_bbf_gene_t* gene, int x, int y
 	return 0;
 }
 
-#ifdef HAVE_GSL
 static inline void _ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, int* rows, int* cols)
 {
 	int i;
@@ -341,7 +367,6 @@ static inline void _ccv_bbf_randomize_gene(gsl_rng* rng, ccv_bbf_gene_t* gene, i
 		gene->feature.ny[i] = y;
 	}
 }
-#endif
 
 static inline double _ccv_bbf_error_rate(ccv_bbf_feature_t* feature, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
@@ -374,7 +399,6 @@ static CCV_IMPLEMENT_QSORT(_ccv_bbf_genetic_qsort, ccv_bbf_gene_t, less_than)
 static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, int ftnum, ccv_size_t size, double* pw, double* nw)
 {
 	ccv_bbf_feature_t best;
-#ifdef HAVE_GSL
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -539,7 +563,6 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 	}
 	ccfree(gene);
 	gsl_rng_free(rng);
-#endif
 	return best;
 }
 
@@ -580,7 +603,6 @@ static ccv_bbf_gene_t _ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int poi
 static ccv_bbf_feature_t _ccv_bbf_convex_optimize(unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_bbf_feature_t* best_feature, ccv_size_t size, double* pw, double* nw)
 {
 	ccv_bbf_gene_t best_gene;
-#ifdef HAVE_GSL
 	/* seed (random method) */
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -798,37 +820,7 @@ static ccv_bbf_feature_t _ccv_bbf_convex_optimize(unsigned char** posdata, int p
 	}
 	ccfree(gene);
 	gsl_rng_free(rng);
-#endif
 	return best_gene.feature;
-}
-
-static int _ccv_read_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
-{
-	FILE* r = fopen(file, "r");
-	if (r == 0) return -1;
-	int stat = 0;
-	stat |= fscanf(r, "%d", &classifier->count);
-	union { float fl; int i; } fli;
-	stat |= fscanf(r, "%d", &fli.i);
-	classifier->threshold = fli.fl;
-	classifier->feature = (ccv_bbf_feature_t*)ccmalloc(classifier->count * sizeof(ccv_bbf_feature_t));
-	classifier->alpha = (float*)ccmalloc(classifier->count * 2 * sizeof(float));
-	int i, j;
-	for (i = 0; i < classifier->count; i++)
-	{
-		stat |= fscanf(r, "%d", &classifier->feature[i].size);
-		for (j = 0; j < classifier->feature[i].size; j++)
-		{
-			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].px[j], &classifier->feature[i].py[j], &classifier->feature[i].pz[j]);
-			stat |= fscanf(r, "%d %d %d", &classifier->feature[i].nx[j], &classifier->feature[i].ny[j], &classifier->feature[i].nz[j]);
-		}
-		union { float fl; int i; } flia, flib;
-		stat |= fscanf(r, "%d %d", &flia.i, &flib.i);
-		classifier->alpha[i * 2] = flia.fl;
-		classifier->alpha[i * 2 + 1] = flib.fl;
-	}
-	fclose(r);
-	return 0;
 }
 
 static int _ccv_write_bbf_stage_classifier(const char* file, ccv_bbf_stage_classifier_t* classifier)
@@ -1148,6 +1140,12 @@ void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, cha
 	ccfree(posdata);
 	ccfree(cascade);
 }
+#else
+void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
+{
+	fprintf(stderr, " ccv_bbf_classifier_cascade_new requires libgsl support, please compile ccv with libgsl.\n");
+}
+#endif
 
 static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
 {

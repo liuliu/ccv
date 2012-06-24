@@ -1,5 +1,5 @@
 CC = `cat .CC`# -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS = -O3 -ffast-math -mtune=native -Wall `cat .DEF`
+CFLAGS = -O3 -ffast-math -Wall `cat .DEF`
 
 config:
 	@./configure

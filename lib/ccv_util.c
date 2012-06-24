@@ -74,7 +74,11 @@ int ccv_any_nan(ccv_matrix_t *a)
 	if (da->type & CCV_32F)
 	{
 		for (i = 0; i < da->rows * da->cols * ch; i++)
+#ifdef isnanf
 			if (isnanf(da->data.f32[i]))
+#else
+			if (isnan(da->data.f32[i]))
+#endif
 				return i + 1;
 	} else {
 		for (i = 0; i < da->rows * da->cols * ch; i++)

@@ -307,7 +307,7 @@ void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int paddin
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat, int flag);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
-void ccv_substract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,

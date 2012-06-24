@@ -180,7 +180,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		{
 			sd = dsigma0 * pow(sigmak, j - 1);
 			ccv_blur(g[-(params.nlevels + 1) + j], &g[-(params.nlevels + 1) + j + 1], 0, sd);
-			ccv_substract(g[-(params.nlevels + 1) + j + 1], g[-(params.nlevels + 1) + j], (ccv_matrix_t**)&dog[-(params.nlevels - 1) + j - 1], 0);
+			ccv_subtract(g[-(params.nlevels + 1) + j + 1], g[-(params.nlevels + 1) + j], (ccv_matrix_t**)&dog[-(params.nlevels - 1) + j - 1], 0);
 			if (j > 1 && j < params.nlevels - 1)
 				ccv_gradient(g[-(params.nlevels + 1) + j], &th[-(params.nlevels - 3) + j - 2], 0, &md[-(params.nlevels - 3) + j - 2], 0, 1, 1);
 			ccv_matrix_free(g[-(params.nlevels + 1) + j]);
@@ -195,7 +195,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	{
 		sd = dsigma0 * pow(sigmak, j - 1);
 		ccv_blur(g[j], &g[j + 1], 0, sd);
-		ccv_substract(g[j + 1], g[j], (ccv_matrix_t**)&dog[j - 1], 0);
+		ccv_subtract(g[j + 1], g[j], (ccv_matrix_t**)&dog[j - 1], 0);
 		if (j > 1 && j < params.nlevels - 1)
 			ccv_gradient(g[j], &th[j - 2], 0, &md[j - 2], 0, 1, 1);
 		ccv_matrix_free(g[j]);
@@ -212,7 +212,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 		{
 			sd = dsigma0 * pow(sigmak, j - 1);
 			ccv_blur(g[i * (params.nlevels + 1) + j], &g[i * (params.nlevels + 1) + j + 1], 0, sd);
-			ccv_substract(g[i * (params.nlevels + 1) + j + 1], g[i * (params.nlevels + 1) + j], (ccv_matrix_t**)&dog[i * (params.nlevels - 1) + j - 1], 0);
+			ccv_subtract(g[i * (params.nlevels + 1) + j + 1], g[i * (params.nlevels + 1) + j], (ccv_matrix_t**)&dog[i * (params.nlevels - 1) + j - 1], 0);
 			if (j > 1 && j < params.nlevels - 1)
 				ccv_gradient(g[i * (params.nlevels + 1) + j], &th[i * (params.nlevels - 3) + j - 2], 0, &md[i * (params.nlevels - 3) + j - 2], 0, 1, 1);
 			ccv_matrix_free(g[i * (params.nlevels + 1) + j]);
