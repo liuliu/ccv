@@ -1548,13 +1548,13 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			FLUSH(" - collecting negative examples -- (0%%)");
 			if (negv->rnum < params.negative_cache_size)
 				_ccv_dpm_collect_from_background(negv, rng, bgfiles, bgnum, model, params, 0);
+			_ccv_dpm_write_negative_feature_vectors(negv, params.negative_cache_size, neg_vector_checkpoint);
 			if (negv->rnum <= ccv_max(params.negative_cache_size / 2, ccv_max(REGQ, MINI_BATCH)))
 			{
 			 	// we cannot get sufficient negatives, adjust constant and abort for next round
 				_ccv_dpm_adjust_model_constant(model, posv, posnum, params.percentile_breakdown);
-				break;
+				continue;
 			}
-			_ccv_dpm_write_negative_feature_vectors(negv, params.negative_cache_size, neg_vector_checkpoint);
 			double pos_weight = sqrt((double)negv->rnum / pos_prog * params.balance); // positive weight
 			double neg_weight = sqrt((double)pos_prog / negv->rnum / params.balance); // negative weight
 			previous_positive_loss = previous_negative_loss = 0;
