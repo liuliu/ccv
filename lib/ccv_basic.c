@@ -770,7 +770,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma)
 {
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_blur(%lf)", sigma), a->sig, 0);
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_blur(%la)", sigma), a->sig, 0);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_matrix_return_if_cached(, db);

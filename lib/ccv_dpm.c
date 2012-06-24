@@ -1551,6 +1551,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			_ccv_dpm_write_negative_feature_vectors(negv, params.negative_cache_size, neg_vector_checkpoint);
 			if (negv->rnum <= ccv_max(params.negative_cache_size / 2, ccv_max(REGQ, MINI_BATCH)))
 			{
+				printf("\n");
 			 	// we cannot get sufficient negatives, adjust constant and abort for next round
 				_ccv_dpm_adjust_model_constant(model, posv, posnum, params.percentile_breakdown);
 				continue;

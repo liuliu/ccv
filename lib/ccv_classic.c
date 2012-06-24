@@ -196,7 +196,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
 {
 	assert(a->type & CCV_C1);
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%lf,%lf)", size, low_thresh, high_thresh), a->sig, 0);
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%la,%la)", size, low_thresh, high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_8U | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_matrix_return_if_cached(, db);

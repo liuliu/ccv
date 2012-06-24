@@ -968,19 +968,19 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag)
 {
 	assert(!(flag & CCV_L2_NORM) && (flag & CCV_GSEDT));
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform(%lf,%lf,%lf,%lf,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
 	type = (CCV_GET_DATA_TYPE(type) == CCV_64F || CCV_GET_DATA_TYPE(a->type) == CCV_64F || CCV_GET_DATA_TYPE(a->type) == CCV_64S) ? CCV_GET_CHANNEL(a->type) | CCV_64F : CCV_GET_CHANNEL(a->type) | CCV_32F;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_dense_matrix_t* mx = 0;
 	ccv_dense_matrix_t* my = 0;
 	if (x != 0)
 	{
-		ccv_declare_matrix_signature(xsig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_x(%lf,%lf,%lf,%lf,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+		ccv_declare_matrix_signature(xsig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_x(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
 		mx = *x = ccv_dense_matrix_renew(*x, a->rows, a->cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, xsig);
 	}
 	if (y != 0)
 	{
-		ccv_declare_matrix_signature(ysig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_y(%lf,%lf,%lf,%lf,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+		ccv_declare_matrix_signature(ysig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_y(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
 		my = *y = ccv_dense_matrix_renew(*y, a->rows, a->cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, ysig);
 	}
 	ccv_matrix_return_if_cached(, db, mx, my);
