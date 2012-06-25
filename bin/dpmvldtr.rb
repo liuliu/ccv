@@ -44,7 +44,7 @@ File.new(ARGV[1]).each_line do |line|
 			opx_max = [obj[:x] + obj[:width], x + width].min
 			opy_max = [obj[:y] + obj[:height], y + height].min
 			r0 = [opx_max - opx_min, 0].max * [opy_max - opy_min, 0].max
-			r1 = obj[:width] * obj[:height] * 0.6
+			r1 = [obj[:width] * obj[:height], width * height].max * 0.5
 			if r0 > r1
 				outlier = false
 				break

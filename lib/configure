@@ -96,4 +96,9 @@ else
 	echo $LDFLAGS > .LN
 fi
 
+CFLAGS="${CFLAGS#"${CFLAGS%%[![:space:]]*}"}" # remove leading whitespaces
+CFLAGS="${CFLAGS%"${CFLAGS##*[![:space:]]}"}" # remove trailing whitespaces
+LDFLAGS="${LDFLAGS#"${LDFLAGS%%[![:space:]]*}"}"
+LDFLAGS="${LDFLAGS%"${LDFLAGS##*[![:space:]]}"}"
+
 echo -e "\n \033[1mUSE\033[m: \033[4m$CC\033[m\n \033[1mCOMPILE FLAGS\033[m: \033[4m$CFLAGS\033[m\n \033[1mLINK FLAGS\033[m: \033[4m$LDFLAGS\033[m\n"
