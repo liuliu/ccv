@@ -1304,7 +1304,7 @@ static void _ccv_dpm_adjust_model_constant(ccv_dpm_mixture_model_t* model, ccv_d
 		float adjust = scores[ccv_clamp((int)(percentile * j), 0, j - 1)];
 		// adjust to percentile
 		model->root[k].beta -= adjust;
-		printf(" - tune model %d constant for %f\n", k, -adjust);
+		printf(" - tune model %d constant for %f\n", k + 1, -adjust);
 	}
 	ccfree(scores);
 }
