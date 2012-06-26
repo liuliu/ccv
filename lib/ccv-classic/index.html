@@ -25,12 +25,14 @@
 <pre><code>void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size)
 </code></pre>
 
+<p><a href="https://en.wikipedia.org/wiki/Histogram_of_oriented_gradients">Histogram-of-Oriented-Gradients</a> implementation, specifically, it implements the HOG described in <em>Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</em>.</p>
+
 <ul>
-  <li><strong>a</strong>:</li>
-  <li><strong>b</strong>:</li>
-  <li><strong>b_type</strong>:</li>
-  <li><strong>sbin</strong>:</li>
-  <li><strong>size</strong>:</li>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>b_type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>sbin</strong>: the number of bins for orientation (default to 9, thus, for <strong>b</strong>, it will have 9 * 2 + 9 + 4 = 31 channels).</li>
+  <li><strong>size</strong>: the window size for HOG (default to 8)</li>
 </ul>
 
 <h2 id="ccvcanny">ccv_canny</h2>
@@ -38,13 +40,15 @@
 <pre><code>void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
 </code></pre>
 
+<p><a href="https://en.wikipedia.org/wiki/Canny_edge_detector">Canny edge detector</a> implementation. For performance size, this is a clean-up reimplementation of OpenCV’s Canny edge detector, it has very similar performance characteristic as the OpenCV one. As of today, ccv’s Canny edge detector only works with CCV_8U or CCV_32S dense matrix type.</p>
+
 <ul>
-  <li><strong>a</strong>:</li>
-  <li><strong>b</strong>:</li>
-  <li><strong>type</strong>:</li>
-  <li><strong>size</strong>:</li>
-  <li><strong>low_thresh</strong>:</li>
-  <li><strong>high_thresh</strong>:</li>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>:the type of output matrix, if 0, ccv will create a CCV_8U | CCV_C1 matrix.</li>
+  <li><strong>size</strong>: the underlying Sobel filter size.</li>
+  <li><strong>low_thresh</strong>: the low threshold that makes the point interesting.</li>
+  <li><strong>high_thresh</strong>: the high threshold that makes the point acceptable.</li>
 </ul>
 
 <h2 id="ccvotsu">ccv_otsu</h2>
@@ -52,11 +56,15 @@
 <pre><code>int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
 </code></pre>
 
+<p><a href="https://en.wikipedia.org/wiki/Otsu%27s_method">OTSU</a> implementation.</p>
+
 <ul>
-  <li><strong>a</strong>:</li>
-  <li><strong>outvar</strong>:</li>
-  <li><strong>range</strong>:</li>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>outvar</strong>: the inter-class variance.</li>
+  <li><strong>range</strong>: the maximum range of data in the input matrix.</li>
 </ul>
+
+<p>It turns the threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 </section>

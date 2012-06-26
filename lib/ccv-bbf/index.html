@@ -25,7 +25,7 @@
 <pre><code>void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
 </code></pre>
 
-<p>Create a new bbf classifier cascade from given positive examples and background images.</p>
+<p>Create a new BBF classifier cascade from given positive examples and background images.</p>
 
 <ul>
   <li><strong>posimg</strong>: an array of positive examples.</li>
@@ -61,10 +61,10 @@
   <li><strong>a</strong>: the input image.</li>
   <li><strong>cascade</strong>: an array of classifier cascades.</li>
   <li><strong>count</strong>: how many classifier cascades you’ve passed in.</li>
-  <li><strong>params</strong>: a <strong>ccv_bbf_params_t</strong> structure that defines various aspect of the detector.</li>
+  <li><strong>params</strong>: a <strong>ccv_bbf_param_t</strong> structure that defines various aspect of the detector.</li>
 </ul>
 
-<h2 id="ccvbbfparamst">ccv_bbf_params_t</h2>
+<h2 id="ccvbbfparamt">ccv_bbf_param_t</h2>
 
 <ul>
   <li><strong>interval</strong>: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>

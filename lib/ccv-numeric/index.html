@@ -39,12 +39,14 @@
 <pre><code>void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
 </code></pre>
 
+<p>Convolve on dense matrix a with dense matrix b.</p>
+
 <ul>
-  <li><strong>a</strong>:</li>
-  <li><strong>b</strong>:</li>
-  <li><strong>d</strong>:</li>
-  <li><strong>type</strong>:</li>
-  <li><strong>padding_pattern</strong>:</li>
+  <li><strong>a</strong>: dense matrix a.</li>
+  <li><strong>b</strong>: dense matrix b.</li>
+  <li><strong>d</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>padding_pattern</strong>: ccv doesn’t support padding pattern for now.</li>
 </ul>
 
 <h2 id="ccvfilterkernel">ccv_filter_kernel</h2>
@@ -55,7 +57,7 @@
 <ul>
   <li><strong>x</strong>:</li>
   <li><strong>func</strong>:</li>
-  <li><strong>data</strong>:</li>
+  <li><strong>data</strong>: any extra user data.</li>
 </ul>
 
 <h2 id="ccvdistancetransform">ccv_distance_transform</h2>

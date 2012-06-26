@@ -25,10 +25,12 @@
 <pre><code>int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 </code></pre>
 
+<p>Read image from a file.</p>
+
 <ul>
-  <li><strong>in</strong>:</li>
-  <li><strong>x</strong>:</li>
-  <li><strong>type</strong>:</li>
+  <li><strong>in</strong>: the file name.</li>
+  <li><strong>x</strong>: the output image.</li>
+  <li><strong>type</strong>: CCV_IO_ANY_FILE, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_COLOR, convert to color image.</li>
 </ul>
 
 <h2 id="ccvwrite">ccv_write</h2>
@@ -36,12 +38,14 @@
 <pre><code>int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
 </code></pre>
 
+<p>Write image to a file.</p>
+
 <ul>
-  <li><strong>mat</strong>:</li>
-  <li><strong>out</strong>:</li>
-  <li><strong>len</strong>:</li>
-  <li><strong>type</strong>:</li>
-  <li><strong>conf</strong>:</li>
+  <li><strong>mat</strong>: the input image.</li>
+  <li><strong>out</strong>: the file name.</li>
+  <li><strong>len</strong>: the output bytes.</li>
+  <li><strong>type</strong>: CCV_IO_PNG_FILE, save to PNG format. CCV_IO_JPEG_FILE, save to JPEG format.</li>
+  <li><strong>conf</strong>: configuration.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
