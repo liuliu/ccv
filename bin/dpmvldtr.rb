@@ -16,7 +16,7 @@ files.each do |file|
 		if line[0, 16].downcase == "bounding box for"
 			i = line.scan(/object\s*(\d+)/)[0][0].to_i
 			coord = line.scan(/\((\d+),\s*(\d+)\)\s*-\s*\((\d+),\s*(\d+)\)/)[0]
-			boxes[i - 1] = { :x => coord[0].to_i, :y => coord[1].to_i, :width => coord[2].to_i - coord[0].to_i, :height => coord[3].to_i - coord[1].to_i }
+			boxes[i - 1] = { :found => false, :x => coord[0].to_i, :y => coord[1].to_i, :width => coord[2].to_i - coord[0].to_i, :height => coord[3].to_i - coord[1].to_i }
 		end
 	end
 	truth[name] = boxes;
@@ -37,7 +37,7 @@ File.new(ARGV[1]).each_line do |line|
 		y = args[2].to_i
 		width = args[3].to_i
 		height = args[4].to_i
-		outlier = true
+		outlier = -1
 		truth[name].each do |obj|
 			opx_min = [obj[:x], x].max
 			opy_min = [obj[:y], y].max
@@ -46,14 +46,14 @@ File.new(ARGV[1]).each_line do |line|
 			r0 = [opx_max - opx_min, 0].max * [opy_max - opy_min, 0].max
 			r1 = [obj[:width] * obj[:height], width * height].max * 0.5
 			if r0 > r1
-				outlier = false
+				outlier = obj[:found] ? 0 : 1
+				obj[:found] = true
 				break
 			end
 		end
-		if outlier
-			fa += 1
-		else
-			tp += 1
+		case outlier
+		when -1 then fa += 1
+		when 1 then tp += 1
 		end
 	end
 end
