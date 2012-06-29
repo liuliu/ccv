@@ -1992,12 +1992,14 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 	model->root = (ccv_dpm_root_classifier_t*)m;
 	m += sizeof(ccv_dpm_root_classifier_t) * model->count;
 	memcpy(model->root, root_classifier, sizeof(ccv_dpm_root_classifier_t) * model->count);
+	ccfree(root_classifier);
 	for (i = 0; i < model->count; i++)
 	{
 		ccv_dpm_part_classifier_t* part_classifier = model->root[i].part;
 		model->root[i].part = (ccv_dpm_part_classifier_t*)m;
 		m += sizeof(ccv_dpm_part_classifier_t) * model->root[i].count;
 		memcpy(model->root[i].part, part_classifier, sizeof(ccv_dpm_part_classifier_t) * model->root[i].count);
+		ccfree(part_classifier);
 	}
 	for (i = 0; i < model->count; i++)
 	{

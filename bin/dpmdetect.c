@@ -30,7 +30,7 @@ int main(int argc, char** argv)
 				ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
 				printf("%d %d %d %d %f %d\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence, comp->pnum);
 				for (j = 0; j < comp->pnum; j++)
-				printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
+					printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
 			}
 			printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 			ccv_array_free(seq);
@@ -63,7 +63,7 @@ int main(int argc, char** argv)
 						ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
 						printf("%s %d %d %d %d %f %d\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence, comp->pnum);
 						for (j = 0; j < comp->pnum; j++)
-						printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
+							printf("| %d %d %d %d %f\n", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
 					}
 					ccv_array_free(seq);
 				}
@@ -74,5 +74,6 @@ int main(int argc, char** argv)
 		}
 	}
 	ccv_drain_cache();
+	ccv_dpm_mixture_model_free(model);
 	return 0;
 }
