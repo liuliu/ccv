@@ -29,22 +29,32 @@ without multi-thread support.
 
 Accuracy-wise:
 
-There are two off-the-shelf implementations. One is the DPM in matlab from author,
-the other is HOG detector from OpenCV. Fo the task to detect pedestrians in a
-given image, we use INTRA 2008 dataset, and it provides both training and testing
-data. With OpenCV stock peopledetect sample program, we get:
+There are two off-the-shelf implementations. One is the DPM in Matlab from author,
+the other is the HOG detector from OpenCV. For the task to detect pedestrians in a
+given image, we use INRIA 2008 dataset, and it provides both training and testing
+data. With OpenCV stock peopledetect sample program (scale factor to be 1.09 to
+match our DPM setting (interval = 8)), we get:
 
-	65.7% (156)
+	47.37% (133)
 
-The former one is the detection rate (how many objects have been detected), the
-later is the number of false alarms (the detected region doesn't contain the
-expected object)
+The former one is the detection rate (how many objects have been successfully
+detected), the later is the number of false alarms (the detected region doesn't
+contain the expected object).
 
-Our implementation?
+The dpmvldtr.rb compares the ground truth bounding box with the detected bounding
+box by OpenCV, if the overlap area is larger than 60% of the biggest bounding box
+area among the two), it will be counted as a true positive. Otherwise, it will be
+counted as a false positive (false alarm).
 
-	80.14% (74)
+Another implementation is from the DPM inventor, it is a Matlab implementation,
+and the author has a specially trained detector for INRIA 2008 dataset.
 
-Looks pretty good!
+	75.21% (74)
+
+The DPM implementation in ccv was trained for three days using the default parameters
+with INRIA training data. The result is not bad:
+
+	76.4% (68)
 
 Speed-wise:
 
@@ -53,4 +63,6 @@ Speed-wise:
 How to train my own detector?
 -----------------------------
 
-Yes, this implementation comes with a tool to train your own detector too.
+Yes, this implementation comes with a tool to train your own detector too. In this
+chapter, I will go through how I trained the pedestrian.m detector that shipped
+with ccv source code.

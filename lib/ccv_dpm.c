@@ -159,14 +159,17 @@ static ccv_dpm_mixture_model_t* _ccv_dpm_model_copy(ccv_dpm_mixture_model_t* _mo
 	return model;
 }
 
-static void _ccv_dpm_write_checkpoint(ccv_dpm_mixture_model_t* model, const char* dir)
+static void _ccv_dpm_write_checkpoint(ccv_dpm_mixture_model_t* model, int done, const char* dir)
 {
 	char swpfile[1024];
 	sprintf(swpfile, "%s.swp", dir);
 	FILE* w = fopen(swpfile, "w+");
 	if (!w)
 		return;
-	fprintf(w, ",\n");
+	if (done)
+		fprintf(w, ".\n");
+	else
+		fprintf(w, ",\n");
 	int i, j, x, y, ch, count = 0;
 	for (i = 0; i < model->count; i++)
 	{
@@ -174,7 +177,10 @@ static void _ccv_dpm_write_checkpoint(ccv_dpm_mixture_model_t* model, const char
 			break;
 		count++;
 	}
-	fprintf(w, "%d %d\n", model->count, count);
+	if (done)
+		fprintf(w, "%d\n", model->count);
+	else
+		fprintf(w, "%d %d\n", model->count, count);
 	for (i = 0; i < count; i++)
 	{
 		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
@@ -1317,9 +1323,9 @@ static void _ccv_dpm_check_params(ccv_dpm_new_param_t params)
 	assert(params.symmetric == 0 || params.symmetric == 1);
 	assert(params.min_area > 100);
 	assert(params.max_area > params.min_area);
-	assert(params.iterations > 0);
-	assert(params.data_minings > 0);
-	assert(params.relabels > 0);
+	assert(params.iterations >= 0);
+	assert(params.data_minings >= 0);
+	assert(params.relabels >= 0);
 	assert(params.negative_cache_size > 0);
 	assert(params.include_overlap > 0.1);
 	assert(params.alpha > 0 && params.alpha < 1);
@@ -1447,7 +1453,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		root_classifier->root.w = ccv_dense_matrix_new(rows[i], cols[i], CCV_32F | 31, 0, 0);
 		printf("initializing root mixture model for model %d(%d)\n", i + 1, params.components);
 		_ccv_dpm_initialize_root_classifier(rng, root_classifier, i, mnum[i], labels, posfiles, bboxes, posnum, bgfiles, bgnum, negnum, params.C, params.symmetric, params.grayscale);
-		_ccv_dpm_write_checkpoint(model, checkpoint);
+		_ccv_dpm_write_checkpoint(model, 0, checkpoint);
 	}
 	ccfree(fn);
 	ccfree(labels);
@@ -1475,11 +1481,11 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		} else {
 			printf(" - initializing part filters for model %d(%d)\n", i + 1, params.components);
 			_ccv_dpm_initialize_part_classifiers(model->root + i, params.parts, params.symmetric);
-			_ccv_dpm_write_checkpoint(model, checkpoint);
-			_ccv_dpm_write_checkpoint(model, initcheckpoint);
+			_ccv_dpm_write_checkpoint(model, 0, checkpoint);
+			_ccv_dpm_write_checkpoint(model, 0, initcheckpoint);
 		}
 	}
-	_ccv_dpm_write_checkpoint(model, checkpoint);
+	_ccv_dpm_write_checkpoint(model, 0, checkpoint);
 	/* optimize both root filter and part filters with stochastic gradient descent */
 	printf("optimizing root filter & part filters with stochastic gradient descent\n");
 	char gradient_progress_checkpoint[512];
@@ -1638,7 +1644,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				previous_negative_loss = negative_loss;
 				alpha *= params.alpha_ratio; // it will decrease with each iteration
 			}
-			_ccv_dpm_write_checkpoint(model, checkpoint);
+			_ccv_dpm_write_checkpoint(model, 0, checkpoint);
 			printf("\n - data mining %d takes %.2lf seconds at loss %.5lf, %d more to go (%d of %d)\n", d + 1, (double)(_ccv_dpm_time_measure() - elapsed_time) / 1000000.0, loss, params.data_minings - d - 1, c + 1, params.relabels);
 			j = 0;
 			double* scores = (double*)ccmalloc(posnum * sizeof(double));
@@ -1657,7 +1663,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			printf("\n");
 			char persist[512];
 			sprintf(persist, "%s/model.%d.%d", dir, c, d);
-			_ccv_dpm_write_checkpoint(model, persist);
+			_ccv_dpm_write_checkpoint(model, 0, persist);
 		}
 		d = 0;
 		// if abort, means that we cannot find enough negative examples, try to adjust constant
@@ -1680,7 +1686,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	ccfree(posv);
 	printf("root rectangle prediction with linear regression\n");
 	_ccv_dpm_initialize_root_rectangle_estimator(model, posfiles, bboxes, posnum, params);
-	_ccv_dpm_write_checkpoint(model, checkpoint);
+	_ccv_dpm_write_checkpoint(model, 1, checkpoint);
 	printf("done\n");
 	remove(gradient_progress_checkpoint);
 	_ccv_dpm_mixture_model_cleanup(model);
