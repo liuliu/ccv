@@ -29,11 +29,11 @@ without multi-thread support.
 
 Accuracy-wise:
 
-There are two off-the-shelf implementations. One is the DPM in Matlab from author,
+There are two off-the-shelf implementations. One is the DPM in Matlab from the inventor,
 the other is the HOG detector from OpenCV. For the task to detect pedestrians in a
 given image, we use INRIA 2008 dataset, and it provides both training and testing
-data. With OpenCV stock peopledetect sample program (scale factor to be 1.09 to
-match our DPM setting (interval = 8)), we get:
+data. With OpenCV stock peopledetect sample program (scale factor changed to 1.09
+in order to match our DPM setting (interval = 8)), we get:
 
 	47.37% (133)
 
@@ -52,17 +52,67 @@ and the author has a specially trained detector for INRIA 2008 dataset.
 	75.21% (74)
 
 The DPM implementation in ccv was trained for three days using the default parameters
-with INRIA training data. The result is not bad:
+with INRIA training data. Let's see how it performs.
+
+	./dpmdetect filelist.txt ../samples/pedestrian.m > result.txt
+	./dpmvldtr.rb <INRIA dataset>/Test/annotations result.txt
+
+The result is:
 
 	76.4% (68)
 
 Speed-wise:
 
+Let's time it on INRIA dataset (288 images).
 
+	time ./dpmdetect filelist.txt ../samples/pedestrian.m
+
+On my laptop, it reports:
+
+	real	8m19.444s
+	user	8m15.187s
+	sys		0m3.332s
+
+OpenCV's HOG detector should be much faster because its algorithm is much simpler
+than DPM, but how fast it is?
+
+	real	1m55.861s
+	user	1m54.171s
+	sys		0m0.136s
+
+Their detector is about 4.34 times faster.
 
 How to train my own detector?
 -----------------------------
 
 Yes, this implementation comes with a tool to train your own detector too. In this
 chapter, I will go through how I trained the pedestrian.m detector that shipped
-with ccv source code.
+with ccv source code. The CLI for training program is in /bin:
+
+	./dpmcreate --help
+
+Will show you the options it has.
+
+The nice part of training pedestrian detector is that there is a good training
+dataset available today on INRIA website <http://pascal.inrialpes.fr/data/human/>.
+I use a small script ./dpmext.rb to extract INRIA format bounding box data into
+ccv format, which takes the following form:
+
+	<File Path> x y width height \n
+
+I extracted that into pedestrian.samples file:
+
+	./dpmext.rb <INRIA dataset>/Train/annotations/ > pedestrian.samples
+
+It comes with negative dataset too:
+
+	find <INRIA dataset>/Train/neg/ -name "*.png" > no-pedestrian.samples
+
+Make a working directory and you can start now:
+
+	./dpmcreate --positive-list pedestrian.samples --background-list no-pedestrian.samples --negative-count 12000 --model-component 1 --model-part 8 --working-dir <Working directory> --base-dir <INRIA dataset>/Train/pos/
+
+It takes about 3 days on my laptop to get meaningful data, and unfortunately,
+current implementation doesn't support OpenMP, and you have to be patient.
+
+Good luck!
