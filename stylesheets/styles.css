@@ -87,12 +87,6 @@ blockquote {
   font-style:italic;
 }
 
-code, pre {
-  font-family:Monaco, Bitstream Vera Sans Mono, Lucida Console, Terminal;
-  color:#333;
-  font-size:1.0em;
-}
-
 pre {
   padding:8px 15px;
   background: #f8f8f8;  

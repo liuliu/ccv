@@ -1,5 +1,5 @@
 .CodeRay {
-  font-family: "DejaVu Sans Mono", "Bitstream Vera Sans Mono", Monaco, "Courier New", monospace;
+  font-family: Consolas,Menlo,"Liberation Mono",Courier,monospace;
   color: #000;
 }
 
@@ -31,7 +31,7 @@ table.CodeRay td {
 .CodeRay span.line-numbers { padding: 0px 3px 0px 3px; width: 26px; display: inline-block; margin-right: 7px; }
 .CodeRay .code { width: 100%; padding-right: 10px }
 
-ol.CodeRay { font-size: 0.9em }
+ol.CodeRay { font-size: 1.0em }
 ol.CodeRay li { white-space: pre }
 
 .CodeRay .code pre { overflow: auto; padding-left: 8px; padding-right: 8px; }
