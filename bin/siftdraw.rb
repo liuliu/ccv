@@ -27,11 +27,11 @@ STDIN.each_line do |line|
 end
 
 if matches.nil?
-	%x[#{sprintf("convert %s -extent %dx%d %s", ARGV[0], [object_size[:width], image_size[:width]].max, object_size[:height] + image_size[:height], ARGV[2])}]
-	%x[#{sprintf("composite -gravity southWest %s %s %s", ARGV[1], ARGV[2], ARGV[2])}]
+	%x[#{sprintf("convert %s -extent %dx%d %s", ARGV[0], object_size[:width] + image_size[:width], [object_size[:height], image_size[:height]].max, ARGV[2])}]
+	%x[#{sprintf("composite -gravity southEast %s %s %s", ARGV[1], ARGV[2], ARGV[2])}]
 	lines = ""
 	pairs.each do |pair|
-		lines += sprintf("-draw \"line %d,%d,%d,%d\" ", pair[:object][:x], pair[:object][:y], pair[:image][:x], pair[:image][:y] + object_size[:height])
+		lines += sprintf("-draw \"line %d,%d,%d,%d\" ", pair[:object][:x], pair[:object][:y], pair[:image][:x] + object_size[:width], pair[:image][:y])
 	end
 	%x[convert #{ARGV[2]} -stroke red #{lines}#{ARGV[2]}]
 else
