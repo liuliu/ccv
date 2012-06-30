@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -25,7 +25,7 @@
 <pre><code>void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
 </code></pre>
 
-<p>Create a new BBF classifier cascade from given positive examples and background images.</p>
+<p>Create a new BBF classifier cascade from given positive examples and background images. This function has a hard dependency on <a href="http://www.gnu.org/software/gsl/">GSL</a>.</p>
 
 <ul>
   <li><strong>posimg</strong>: an array of positive examples.</li>

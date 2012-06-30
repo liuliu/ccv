@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -20,6 +20,8 @@
 </ul>
 </header>
 <section><h1>DPM: Deformable Parts Model</h1>
+<p><a href="/lib/ccv-dpm/">Library Reference: ccv_dpm.c</a></p>
+
 <h2 id="whats-dpm">what’s DPM?</h2>
 
 <p>The original paper refers to:
@@ -44,7 +46,7 @@ the selling point. However, this implementation tries to optimize for speed as
 well. For a 640x480 photo, this implementation will be done in about one second,
 without multi-thread support.</p>
 
-<p>Accuracy-wise:</p>
+<p><strong>Accuracy-wise</strong>:</p>
 
 <p>There are two off-the-shelf implementations. One is the DPM in Matlab from the inventor,
 the other is the HOG detector from OpenCV. For the task to detect pedestrians in a
@@ -82,7 +84,7 @@ with INRIA training data. Let’s see how it performs.</p>
 <pre><code>76.4% (68)
 </code></pre>
 
-<p>Speed-wise:</p>
+<p><strong>Speed-wise</strong>:</p>
 
 <p>Let’s time it on INRIA dataset (288 images).</p>
 
@@ -91,17 +93,17 @@ with INRIA training data. Let’s see how it performs.</p>
 
 <p>On my laptop, it reports:</p>
 
-<pre><code>real	8m19.444s
-user	8m15.187s
-sys	0m3.332s
+<pre><code>real    8m19.444s
+user    8m15.187s
+sys     0m3.332s
 </code></pre>
 
 <p>OpenCV’s HOG detector should be much faster because its algorithm is much simpler
 than DPM, but how fast it is?</p>
 
-<pre><code>real	1m55.861s
-user	1m54.171s
-sys	0m0.136s
+<pre><code>real    1m55.861s
+user    1m54.171s
+sys     0m0.136s
 </code></pre>
 
 <p>Their detector is about 4.34 times faster.</p>

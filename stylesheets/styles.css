@@ -49,6 +49,11 @@ a small {
   display:block;
 }
 
+h1 a {
+  color:#222;
+  font-weight:bold;
+}
+
 ul.main-list {
   font-size: 1.15em;
   list-style-type: none;

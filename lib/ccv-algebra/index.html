@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -93,7 +93,7 @@
 <pre><code>void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type)
 </code></pre>
 
-<p>General purpose matrix multiplication. This method requires <a href="http://www.netlib.org/blas/">cblas</a> library.</p>
+<p>General purpose matrix multiplication. This function has a hard dependency on <a href="http://www.netlib.org/blas/">cblas</a> library.</p>
 
 <p>As general as it is, it computes:</p>
 

@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -20,6 +20,8 @@
 </ul>
 </header>
 <section><h1>BBF: Brightness Binary Feature</h1>
+<p><a href="/lib/ccv-bbf/">Library Reference: ccv_bbf.c</a></p>
+
 <h2 id="whats-bbf">What’s BBF?</h2>
 
 <p>The original paper refers to:
@@ -43,7 +45,7 @@ use the magic:</p>
 <p>The tests are performed with MIT+CMU face detection dataset
 (http://vasc.ri.cmu.edu/idb/html/face/frontal_images/index.html)</p>
 
-<p>Setup:</p>
+<p><strong>Setup</strong>:</p>
 
 <p>Download the tarball, copy out files in newtest/ test/ and test-low/ to a single
 folder, let’s say: all/. Since ccv doesn’t support gif format, you need to do file
@@ -62,7 +64,7 @@ same directory of bbfdetect binary:</p>
 <pre><code>find &lt;the directory of converted files&gt;/*.png &gt; filelist.txt
 </code></pre>
 
-<p>Speed-wise:</p>
+<p><strong>Speed-wise</strong>:</p>
 
 <p>run</p>
 
@@ -86,7 +88,7 @@ sys     0m0.050s
 
 <p>You see the difference.</p>
 
-<p>Accuracy-wise:</p>
+<p><strong>Accuracy-wise</strong>:</p>
 
 <p>I wrote a little script called validator.rb that can check the output of bbfdetect
 against ground truth, before run the script, you need to do some house-cleaning

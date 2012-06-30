@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -52,7 +52,7 @@
 <pre><code>void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
 </code></pre>
 
-<p>Convolve on dense matrix a with dense matrix b.</p>
+<p>Convolve on dense matrix a with dense matrix b. This function has a soft dependency on <a href="http://fftw.org/">FFTW3</a>. If no FFTW3 exists, ccv will use <a href="http://sourceforge.net/projects/kissfft/">KissFFT</a> shipped with it. FFTW3 is about 35% faster than KissFFT.</p>
 
 <ul>
   <li><strong>a</strong>: dense matrix a.</li>

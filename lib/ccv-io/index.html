@@ -10,7 +10,7 @@
 <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
 <![endif]-->
 </head><body><div class="wrapper">
-<header><h1>ccv</h1>
+<header><h1><a href="/">ccv</a></h1>
 <p>A Modern Computer Vision Library</p>
 <p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
 <ul>
@@ -25,7 +25,7 @@
 <pre><code>int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
 </code></pre>
 
-<p>Read image from a file.</p>
+<p>Read image from a file. This function has soft dependencies on <a href="http://libjpeg.sourceforge.net/">LibJPEG</a> and <a href="http://www.libpng.org/pub/png/libpng.html">LibPNG</a>. No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).</p>
 
 <ul>
   <li><strong>in</strong>: the file name.</li>
@@ -38,7 +38,7 @@
 <pre><code>int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
 </code></pre>
 
-<p>Write image to a file.</p>
+<p>Write image to a file. This function has soft dependencies on <a href="http://libjpeg.sourceforge.net/">LibJPEG</a> and <a href="http://www.libpng.org/pub/png/libpng.html">LibPNG</a>. No these libraries, no JPEG nor PNG write support.</p>
 
 <ul>
   <li><strong>mat</strong>: the input image.</li>
