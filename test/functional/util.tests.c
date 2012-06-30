@@ -170,9 +170,11 @@ TEST_CASE("matrix flatten")
 	dmt->data.u8[7] = 250;
 	ccv_dense_matrix_t* result = 0;
 	ccv_flatten(dmt, (ccv_matrix_t**)&result, 0, 0);
+	ccv_matrix_free(dmt);
 	int rf[4] = {300, 200, 45, 450};
 	REQUIRE_EQ(CCV_GET_CHANNEL(result->type), CCV_C1, "flatten matrix should has only one channel");
 	REQUIRE_ARRAY_EQ(int, result->data.i32, rf, 4, "matrix flatten should has same value as reference array");
+	ccv_matrix_free(result);
 }
 
 #include "case_main.h"
