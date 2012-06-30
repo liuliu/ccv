@@ -6,8 +6,10 @@
 #ifndef GUARD_ccv_h
 #define GUARD_ccv_h
 
+#ifndef _MSC_VER
 #include <unistd.h>
 #include <stdint.h>
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
@@ -18,7 +20,11 @@
 #include <xmmintrin.h>
 #endif
 #include <assert.h>
+#ifdef _WIN32
+#include <malloc.h>
+#else
 #include <alloca.h>
+#endif
 
 #define CCV_PI (3.141592653589793)
 #define ccmalloc malloc
