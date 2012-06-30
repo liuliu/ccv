@@ -69,16 +69,16 @@ Let's time it on INRIA dataset (288 images).
 
 On my laptop, it reports:
 
-	real	8m19.444s
-	user	8m15.187s
-	sys		0m3.332s
+	real    8m19.444s
+	user    8m15.187s
+	sys     0m3.332s
 
 OpenCV's HOG detector should be much faster because its algorithm is much simpler
 than DPM, but how fast it is?
 
-	real	1m55.861s
-	user	1m54.171s
-	sys		0m0.136s
+	real    1m55.861s
+	user    1m54.171s
+	sys     0m0.136s
 
 Their detector is about 4.34 times faster.
 
