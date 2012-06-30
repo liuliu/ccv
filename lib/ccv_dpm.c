@@ -1,10 +1,12 @@
 #include "ccv.h"
 #include "ccv_internal.h"
-#include <sys/time.h>
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_multifit.h>
 #include <gsl/gsl_randist.h>
+#endif
+#ifndef _WIN32
+#include <sys/time.h>
 #endif
 #ifdef USE_OPENMP
 #include <omp.h>
