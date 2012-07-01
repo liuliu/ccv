@@ -559,7 +559,7 @@ void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
 	}
 }
 
-ccv_array_t* ccv_array_new(int rnum, int rsize)
+ccv_array_t* ccv_array_new(int rnum, int rsize, int type, uint64_t sig)
 {
 	ccv_array_t* array = (ccv_array_t*)ccmalloc(sizeof(ccv_array_t));
 	array->rnum = 0;
@@ -663,7 +663,7 @@ int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f g
 		}
 	}
 	if (*index == 0)
-		*index = ccv_array_new(array->rnum, sizeof(int));
+		*index = ccv_array_new(array->rnum, sizeof(int), 0, 0);
 	else
 		ccv_array_clear(*index);
 	ccv_array_t* idx = *index;
@@ -694,7 +694,7 @@ ccv_contour_t* ccv_contour_new(int set)
 	contour->rect.width = contour->rect.height = 0;
 	contour->size = 0;
 	if (set)
-		contour->set = ccv_array_new(5, sizeof(ccv_point_t));
+		contour->set = ccv_array_new(5, sizeof(ccv_point_t), 0, 0);
 	else
 		contour->set = 0;
 	return contour;

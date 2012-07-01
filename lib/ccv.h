@@ -145,7 +145,7 @@ typedef union {
 	struct {
 		uint64_t sign;
 		uint64_t off;
-		uint64_t age_and_size;
+		uint64_t type;
 	} terminal;
 } ccv_cache_index_t;
 
@@ -155,15 +155,15 @@ typedef struct {
 	uint32_t age;
 	size_t up;
 	size_t size;
-	ccv_cache_index_free_f ffree;
+	ccv_cache_index_free_f ffree[16];
 } ccv_cache_t;
 
 /* I made it as generic as possible */
 
-void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up);
-void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign);
-int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size);
-void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign);
+void ccv_cache_init(ccv_cache_t* cache, size_t up, int cache_types, ccv_cache_index_free_f ffree, ...);
+void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign, uint8_t* type);
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uint8_t type);
+void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign, uint8_t* type);
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
 void ccv_cache_cleanup(ccv_cache_t* cache);
 void ccv_cache_close(ccv_cache_t* cache);
@@ -369,18 +369,23 @@ inline static ccv_rect_t ccv_rect(int x, int y, int width, int height)
 }
 
 typedef struct {
+	int type;
+	uint64_t sig;
 	int rnum;
 	int size;
 	int rsize;
 	void* data;
 } ccv_array_t;
 
-ccv_array_t* ccv_array_new(int rnum, int rsize);
+ccv_array_t* ccv_array_new(int rnum, int rsize, int type, uint64_t sig);
 void ccv_array_push(ccv_array_t* array, void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
+void ccv_make_array_immutable(ccv_array_t* array);
+void ccv_make_array_mutable(ccv_array_t* array);
 void ccv_array_zero(ccv_array_t* array);
 void ccv_array_clear(ccv_array_t* array);
+void ccv_array_free_immediately(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
 #define ccv_array_get(a, i) (((char*)((a)->data)) + (a)->rsize * (i))
@@ -522,6 +527,13 @@ typedef struct {
 } ccv_sift_param_t;
 
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
+
+/* mser related method */
+
+typedef struct {
+} ccv_mser_param_t;
+
+ccv_array_t* ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {

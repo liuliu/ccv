@@ -4,7 +4,7 @@
 
 TEST_CASE("dynamic array")
 {
-	ccv_array_t* array = ccv_array_new(2, 4);
+	ccv_array_t* array = ccv_array_new(2, 4, 0, 0);
 	int i;
 	i = 1;
 	ccv_array_push(array, &i);
@@ -41,7 +41,7 @@ int is_equal(const void* r1, const void* r2, void* data)
 
 TEST_CASE("group array with is_equal function")
 {
-	ccv_array_t* array = ccv_array_new(2, 4);
+	ccv_array_t* array = ccv_array_new(2, 4, 0, 0);
 	int i;
 	i = 1;
 	ccv_array_push(array, &i);

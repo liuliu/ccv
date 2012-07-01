@@ -18,7 +18,7 @@ uint64_t uniqid()
 TEST_CASE("random cache put/delete/get")
 {
 	ccv_cache_t cache;
-	ccv_cache_init(&cache, ccfree, N);
+	ccv_cache_init(&cache, N, 1, ccfree);
 	uint64_t sigs[N];
 	void* mems[N];
 	int i;
@@ -26,7 +26,7 @@ TEST_CASE("random cache put/delete/get")
 	{
 		sigs[i] = uniqid();
 		mems[i] = ccmalloc(1);
-		ccv_cache_put(&cache, sigs[i], mems[i], 1);
+		ccv_cache_put(&cache, sigs[i], mems[i], 1, 0);
 	 	REQUIRE_EQ(i, cache.size, "at %d should has cache size %d", i, i);
 	}
 	uint8_t deleted[N];
@@ -43,7 +43,7 @@ TEST_CASE("random cache put/delete/get")
 		if (!deleted[i])
 		{
 			mems[i] = ccmalloc(1);
-			ccv_cache_put(&cache, sigs[i], mems[i], 1);
+			ccv_cache_put(&cache, sigs[i], mems[i], 1, 0);
 		}
 	}
 	for (i = 0; i < N; i++)
@@ -53,12 +53,12 @@ TEST_CASE("random cache put/delete/get")
 			ccv_cache_delete(&cache, sigs[i]);
 		else {
 			mems[i] = ccmalloc(1);
-			ccv_cache_put(&cache, sigs[i], mems[i], 1);
+			ccv_cache_put(&cache, sigs[i], mems[i], 1, 0);
 		}
 	}
 	for (i = 0; i < N; i++)
 	{
-		void* x = ccv_cache_get(&cache, sigs[i]);
+		void* x = ccv_cache_get(&cache, sigs[i], 0);
 		if (!deleted[i] && x) // x may be pull off the cache
 		{
 			REQUIRE_EQ((uint64_t)mems[i], (uint64_t)x, "value at %d should be consistent", i);

@@ -1202,9 +1202,9 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4 + 3], 0, 1, 1);
 		}
 	ccv_array_t* idx_seq;
-	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t));
-	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
-	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_comp_t));
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_comp_t), 0, 0);
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_comp_t), 0, 0);
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_comp_t), 0, 0);
 	/* detect in multi scale */
 	for (t = 0; t < count; t++)
 	{
@@ -1359,7 +1359,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	/* the following code from OpenCV's haar feature implementation */
 	if (params.flags & CCV_BBF_NO_NESTED)
 	{
-		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t));
+		result_seq2 = ccv_array_new(64, sizeof(ccv_comp_t), 0, 0);
 		idx_seq = 0;
 		// group retrieved rectangles in order to filter out noise
 		int ncomp = ccv_array_group(result_seq, &idx_seq, _ccv_is_equal, 0);

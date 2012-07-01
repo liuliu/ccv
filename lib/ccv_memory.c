@@ -12,7 +12,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	ccv_dense_matrix_t* mat;
 	if (ccv_cache_opt && sig != 0)
 	{
-		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig);
+		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig, 0);
 		if (mat)
 		{
 			mat->type |= CCV_GARBAGE;
@@ -157,7 +157,7 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 			ccfree(dmt);
 		else {
 			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL(dmt->type) + 3) & -4) * dmt->rows;
-			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size);
+			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size, 0);
 		}
 	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
@@ -200,7 +200,7 @@ void ccv_disable_cache(void)
 void ccv_enable_cache(size_t size)
 {
 	ccv_cache_opt = 1;
-	ccv_cache_init(&ccv_cache, ccfree, size);
+	ccv_cache_init(&ccv_cache, size, 1, ccfree);
 }
 
 void ccv_enable_default_cache(void)

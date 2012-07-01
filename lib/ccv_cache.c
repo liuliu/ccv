@@ -1,13 +1,25 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 
-void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up)
+#define CCV_GET_CACHE_TYPE(x) ((x) >> 56)
+#define CCV_GET_TERMINAL_AGE(x) (((x) >> 32) & 0x0FFFFFFF)
+#define CCV_GET_TERMINAL_SIZE(x) ((x) & 0xFFFFFFFF)
+#define CCV_SET_TERMINAL_TYPE(x, y, z) (((uint64_t)(x) << 56) | ((uint64_t)(y) << 32) | (z))
+
+void ccv_cache_init(ccv_cache_t* cache, size_t up, int cache_types, ccv_cache_index_free_f ffree, ...)
 {
+	assert(cache_types  > 0 && cache_types <= 16);
 	cache->rnum = 0;
 	cache->age = 0;
 	cache->up = up;
 	cache->size = 0;
-	cache->ffree = ffree;
+	va_list arguments;
+	va_start(arguments, ffree);
+	int i;
+	cache->ffree[0] = ffree;
+	for (i = 1; i < cache_types; i++)
+		cache->ffree[i] = va_arg(arguments, ccv_cache_index_free_f);
+	va_end(arguments);
 	memset(&cache->origin, 0, sizeof(ccv_cache_index_t));
 }
 
@@ -79,10 +91,10 @@ static void _ccv_cache_aging(ccv_cache_index_t* branch, uint64_t sign)
 		{
 			ccv_cache_index_t* set = (ccv_cache_index_t*)(branch->branch.set - (branch->branch.set & 0x3));
 			uint32_t total = compute_bits(branch->branch.bitmap);
-			uint32_t min_age = (set[0].terminal.off & 0x1) ? (set[0].terminal.age_and_size >> 32) : set[0].branch.age;
+			uint32_t min_age = (set[0].terminal.off & 0x1) ? CCV_GET_TERMINAL_AGE(set[0].terminal.type) : set[0].branch.age;
 			for (j = 1; j < total; j++)
 			{
-				uint32_t age = (set[j].terminal.off & 0x1) ? (set[j].terminal.age_and_size >> 32) : set[j].branch.age;
+				uint32_t age = (set[j].terminal.off & 0x1) ? CCV_GET_TERMINAL_AGE(set[j].terminal.type) : set[j].branch.age;
 				if (age < min_age)
 					min_age = age;
 			}
@@ -130,7 +142,7 @@ static ccv_cache_index_t* _ccv_cache_seek(ccv_cache_index_t* branch, uint64_t si
 	return 0;
 }
 
-void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
+void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign, uint8_t* type)
 {
 	if (cache->rnum == 0)
 		return 0;
@@ -142,6 +154,8 @@ void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
 		return 0;
 	if (branch->terminal.sign != sign)
 		return 0;
+	if (type)
+		*type = CCV_GET_CACHE_TYPE(branch->terminal.type);
 	return (void*)(branch->terminal.off - (branch->terminal.off & 0x3));
 }
 
@@ -171,7 +185,7 @@ static void _ccv_cache_lru(ccv_cache_t* cache)
 			uint32_t total = compute_bits(branch->branch.bitmap);
 			for (j = 0; j < total; j++)
 			{
-				uint32_t age = (set[j].terminal.off & 0x1) ? (set[j].terminal.age_and_size >> 32) : set[j].branch.age;
+				uint32_t age = (set[j].terminal.off & 0x1) ? CCV_GET_TERMINAL_AGE(set[j].terminal.type) : set[j].branch.age;
 				assert(age >= min_age);
 				if (age == min_age)
 				{
@@ -191,7 +205,7 @@ static void _ccv_cache_depleted(ccv_cache_t* cache, size_t size)
 		_ccv_cache_lru(cache);
 }
 
-int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
+int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uint8_t type)
 {
 	assert(((uint64_t)x & 0x3) == 0);
 	if (size > cache->up)
@@ -218,16 +232,16 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 	{
 		if (sign == branch->terminal.sign)
 		{
-			cache->ffree((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
+			cache->ffree[CCV_GET_CACHE_TYPE(branch->terminal.type)]((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 			branch->terminal.off = (uint64_t)x | 0x1;
-			uint32_t old_size = branch->terminal.age_and_size & 0xffffffff;
+			uint32_t old_size = CCV_GET_TERMINAL_SIZE(branch->terminal.type);
 			cache->size = cache->size + size - old_size;
-			branch->terminal.age_and_size = ((uint64_t)cache->age << 32) | size;
+			branch->terminal.type = CCV_SET_TERMINAL_TYPE(type, cache->age, size);
 			_ccv_cache_aging(&cache->origin, sign);
 			return 1;
 		} else {
 			ccv_cache_index_t t = *branch;
-			uint32_t age = branch->terminal.age_and_size >> 32;
+			uint32_t age = CCV_GET_TERMINAL_AGE(branch->terminal.type);
 			uint64_t j = 63;
 			j = j << (depth * 6);
 			int dice, udice;
@@ -257,7 +271,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 			int u = dice < udice;
 			set[u].terminal.sign = sign;
 			set[u].terminal.off = (uint64_t)x | 0x1;
-			set[u].terminal.age_and_size = ((uint64_t)cache->age << 32) | size;
+			set[u].terminal.type = CCV_SET_TERMINAL_TYPE(type, cache->age, size);
 			set[1 - u] = t;
 		}
 	} else {
@@ -273,7 +287,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size)
 			set[i] = set[i - 1];
 		set[start].terminal.off = (uint64_t)x | 0x1;
 		set[start].terminal.sign = sign;
-		set[start].terminal.age_and_size = ((uint64_t)cache->age << 32) | size;
+		set[start].terminal.type = CCV_SET_TERMINAL_TYPE(type, cache->age, size);
 		branch->branch.set = (uint64_t)set;
 		branch->branch.bitmap |= k;
 		if (total == 63)
@@ -301,7 +315,7 @@ static void _ccv_cache_cleanup(ccv_cache_index_t* branch)
 	}
 }
 
-static void _ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_index_free_f ffree)
+static void _ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_index_free_f ffree[])
 {
 	int leaf = branch->terminal.off & 0x1;
 	if (!leaf)
@@ -313,11 +327,12 @@ static void _ccv_cache_cleanup_and_free(ccv_cache_index_t* branch, ccv_cache_ind
 			_ccv_cache_cleanup_and_free(set + i, ffree);
 		ccfree(set);
 	} else {
-		ffree((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
+		assert(CCV_GET_CACHE_TYPE(branch->terminal.type) >= 0 && CCV_GET_CACHE_TYPE(branch->terminal.type) < 16);
+		ffree[CCV_GET_CACHE_TYPE(branch->terminal.type)]((void*)(branch->terminal.off - (branch->terminal.off & 0x3)));
 	}
 }
 
-void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
+void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign, uint8_t* type)
 {
 	if (!bits_in_16bits_init)
 		precomputed_16bits();
@@ -367,7 +382,9 @@ void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 	if (branch->terminal.sign != sign)
 		return 0;
 	void* result = (void*)(branch->terminal.off - (branch->terminal.off & 0x3));
-	uint32_t size = branch->terminal.age_and_size & 0xffffffff;
+	if (type)
+		*type = CCV_GET_CACHE_TYPE(branch->terminal.type);
+	uint32_t size = CCV_GET_TERMINAL_SIZE(branch->terminal.type);
 	if (branch != &cache->origin)
 	{
 		uint64_t k = 1, j = 63;
@@ -402,10 +419,12 @@ void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
 
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
 {
-	void* result = ccv_cache_out(cache, sign);
+	uint8_t type = 0;
+	void* result = ccv_cache_out(cache, sign, &type);
 	if (result != 0)
 	{
-		cache->ffree(result);
+		assert(type >= 0 && type < 16);
+		cache->ffree[type](result);
 		return 0;
 	}
 	return -1;

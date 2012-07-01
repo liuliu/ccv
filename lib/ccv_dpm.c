@@ -853,7 +853,7 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 		return 0;
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	_ccv_dpm_feature_pyramid(image, pyr, scale_upto, params.interval);
-	ccv_array_t* av = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*));
+	ccv_array_t* av = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*), 0, 0);
 	int enough = 64 / model->count;
 	for (i = 0; i < model->count; i++)
 	{
@@ -1281,7 +1281,7 @@ static int _ccv_dpm_read_negative_feature_vectors(ccv_array_t** _negv, int _nega
 	int negative_cache_size, negnum;
 	fscanf(r, "%d %d", &negative_cache_size, &negnum);
 	assert(negative_cache_size == _negative_cache_size);
-	ccv_array_t* negv = *_negv = ccv_array_new(negnum, sizeof(ccv_dpm_feature_vector_t*));
+	ccv_array_t* negv = *_negv = ccv_array_new(negnum, sizeof(ccv_dpm_feature_vector_t*), 0, 0);
 	int i;
 	for (i = 0; i < negnum; i++)
 	{
@@ -1536,7 +1536,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			double alpha = params.alpha;
 			if (negv)
 			{
-				ccv_array_t* av = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*));
+				ccv_array_t* av = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*), 0, 0);
 				for (j = 0; j < negv->rnum; j++)
 				{
 					ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, j);
@@ -1549,7 +1549,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				ccv_array_free(negv);
 				negv = av;
 			} else {
-				negv = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*));
+				negv = ccv_array_new(64, sizeof(ccv_dpm_feature_vector_t*), 0, 0);
 			}
 			FLUSH(" - collecting negative examples -- (0%%)");
 			if (negv->rnum < params.negative_cache_size)
@@ -1750,9 +1750,9 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	_ccv_dpm_feature_pyramid(a, pyr, scale_upto, params.interval);
 	ccv_array_t* idx_seq;
-	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_root_comp_t));
-	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t));
-	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_root_comp_t));
+	ccv_array_t* seq = ccv_array_new(64, sizeof(ccv_root_comp_t), 0, 0);
+	ccv_array_t* seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t), 0, 0);
+	ccv_array_t* result_seq = ccv_array_new(64, sizeof(ccv_root_comp_t), 0, 0);
 	for (c = 0; c < count; c++)
 	{
 		ccv_dpm_mixture_model_t* model = _model[c];
@@ -1904,7 +1904,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	/* the following code from OpenCV's haar feature implementation */
 	if (params.flags & CCV_DPM_NO_NESTED)
 	{
-		result_seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t));
+		result_seq2 = ccv_array_new(64, sizeof(ccv_root_comp_t), 0, 0);
 		idx_seq = 0;
 		// group retrieved rectangles in order to filter out noise
 		int ncomp = ccv_array_group(result_seq, &idx_seq, _ccv_is_equal, 0);
