@@ -7,7 +7,7 @@
 #define GUARD_ccv_internal_h
 
 /* the following macro enables the usage such as:
- * ccv_matrix_return_if_cached(, db, dc, dd, ...);
+ * ccv_object_return_if_cached(, db, dc, dd, ...);
  * effectively, it only returns when db, dc and dd are all successfully retrieved from cache */
 
 #define INTERNAL_GARBAGE_TYPEDEF_CONCATENATE_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) \
@@ -19,12 +19,12 @@
 #define INTERNAL_EXPAND_RENEW_MATRIX_LINE(...) INTERNAL_EXPAND_RENEW_MATRIX_LINE_N(__VA_ARGS__)
 
 #define INTERNAL_SEQ_PADDING_ZERO() 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-#define ccv_revive_matrix_if_cached(...) \
+#define ccv_revive_object_if_cached(...) \
 	INTERNAL_EXPAND_RENEW_MATRIX_LINE(__VA_ARGS__, INTERNAL_SEQ_PADDING_ZERO());
 
-#define ccv_matrix_return_if_cached(rv, ...) { \
+#define ccv_object_return_if_cached(rv, ...) { \
 	if (INTERNAL_GARBAGE_TYPEDEF_CONCATENATE(__VA_ARGS__, INTERNAL_SEQ_PADDING_ZERO())) { \
-		ccv_revive_matrix_if_cached(__VA_ARGS__); \
+		ccv_revive_object_if_cached(__VA_ARGS__); \
 		return rv; } }
 
 /* the following 9 lines to generate unique name was taken from Catch: https://github.com/philsquared/Catch
@@ -72,12 +72,12 @@
 	snprintf(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), (size), (string), ##__VA_ARGS__); \
 	size_t INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_) = (size);
 
-#define ccv_declare_matrix_signature(var, cond, submacro, ...) \
+#define ccv_declare_derived_signature(var, cond, submacro, ...) \
 	submacro; \
-	uint64_t var = (cond) ? ccv_matrix_generate_signature(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_), __VA_ARGS__) : 0;
+	uint64_t var = (cond) ? ccv_cache_generate_signature(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_), __VA_ARGS__) : 0;
 
-/* the following macro enables more finer-control of ccv_declare_matrix_signature, notably, it supports much more complex conditions:
- * ccv_declare_matrix_signature_case(sig,
+/* the following macro enables more finer-control of ccv_declare_derived_signature, notably, it supports much more complex conditions:
+ * ccv_declare_derived_signature_case(sig,
  * ccv_sign_with_format(64, "function_name(%f,%f,%f)", a_parameter, b_parameter, c_parameter),
  * ccv_sign_if(% the first custom condition %, a->sig, 0),
  * ccv_sign_if(% the second custom condition %, a->sig, b->sig, 0), ...)
@@ -86,7 +86,7 @@
 
 #define ccv_sign_if(cond, ...) \
 	if (cond) { \
-		INTERNAL_CATCH_UNIQUE_NAME(_ccv_temp_sig_) = ccv_matrix_generate_signature(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_), __VA_ARGS__); \
+		INTERNAL_CATCH_UNIQUE_NAME(_ccv_temp_sig_) = ccv_cache_generate_signature(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_), __VA_ARGS__); \
 	}
 
 #define INTERNAL_EXPAND_MACRO_ARGUMENT_TO_LINE_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) \
@@ -95,7 +95,7 @@
 
 #define INTERNAL_SEQ_PADDING_LINE() ,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
 
-#define ccv_declare_matrix_signature_case(var, submacro, ...) \
+#define ccv_declare_derived_signature_case(var, submacro, ...) \
 	submacro; \
 	uint64_t INTERNAL_CATCH_UNIQUE_NAME(_ccv_temp_sig_) = 0; \
 	INTERNAL_EXPAND_MACRO_ARGUMENT_TO_LINE(__VA_ARGS__, INTERNAL_SEQ_PADDING_LINE()); \

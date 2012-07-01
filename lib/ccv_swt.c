@@ -45,10 +45,10 @@ static inline int _ccv_median(int* buf, int low, int high)
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
 {
 	assert(a->type & CCV_C1);
-	ccv_declare_matrix_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%la,%la)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%la,%la)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_matrix_return_if_cached(, db);
+	ccv_object_return_if_cached(, db);
 	ccv_dense_matrix_t* c = 0;
 	ccv_canny(a, &c, 0, params.size, params.low_thresh, params.high_thresh);
 	ccv_dense_matrix_t* dx = 0;
@@ -214,7 +214,7 @@ ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
 	memset(marker, 0, sizeof(int) * a->rows * a->cols);
 	int* m_ptr = marker;
 	ccv_point_t* buffer = (ccv_point_t*)ccmalloc(sizeof(ccv_point_t) * a->rows * a->cols);
-	ccv_array_t* contours = ccv_array_new(5, sizeof(ccv_contour_t*), 0, 0);
+	ccv_array_t* contours = ccv_array_new(sizeof(ccv_contour_t*), 5, 0);
 	for (i = 0; i < a->rows; i++)
 	{
 		for (j = 0; j < a->cols; j++)
@@ -269,7 +269,7 @@ typedef struct {
 static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_matrix_t* swt, ccv_swt_param_t params)
 {
 	ccv_array_t* contours = _ccv_swt_connected_component(swt, 3);
-	ccv_array_t* letters = ccv_array_new(5, sizeof(ccv_letter_t), 0, 0);
+	ccv_array_t* letters = ccv_array_new(sizeof(ccv_letter_t), 5, 0);
 	int i, j, x, y;
 	int* buffer = (int*)ccmalloc(sizeof(int) * swt->rows * swt->cols);
 	double aspect_ratio_inv = 1.0 / params.aspect_ratio;
@@ -323,7 +323,7 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 	}
 	ccv_array_free(contours);
 	memset(buffer, 0, sizeof(int) * swt->rows * swt->cols);
-	ccv_array_t* new_letters = ccv_array_new(5, sizeof(ccv_letter_t), 0, 0);
+	ccv_array_t* new_letters = ccv_array_new(sizeof(ccv_letter_t), 5, 0);
 	for (i = 0; i < letters->rnum; i++)
 	{
 		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(letters, i);
@@ -461,7 +461,7 @@ static void _ccv_swt_add_letter(ccv_textline_t* textline, ccv_letter_t* letter)
 static ccv_array_t* _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_t params)
 {
 	int i, j;
-	ccv_array_t* pairs = ccv_array_new(letters->rnum * letters->rnum, sizeof(ccv_letter_pair_t), 0, 0);
+	ccv_array_t* pairs = ccv_array_new(sizeof(ccv_letter_pair_t), letters->rnum * letters->rnum, 0);
 	double thickness_ratio_inv = 1.0 / params.thickness_ratio;
 	double height_ratio_inv = 1.0 / params.height_ratio;
 	for (i = 0; i < letters->rnum - 1; i++)
@@ -502,7 +502,7 @@ static ccv_array_t* _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_
 	}
 	ccv_array_free(idx);
 	ccv_array_free(pairs);
-	ccv_array_t* regions = ccv_array_new(5, sizeof(ccv_textline_t), 0, 0);
+	ccv_array_t* regions = ccv_array_new(sizeof(ccv_textline_t), 5, 0);
 	for (i = 0; i < nchains; i++)
 		if (chain[i].neighbors >= params.letter_thresh && chain[i].rect.width > chain[i].rect.height * params.elongate_ratio)
 			ccv_array_push(regions, chain + i);
@@ -526,7 +526,7 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 			n = t->neighbors - 1;
 	}
 	int* buffer = (int*)alloca(n * sizeof(int));
-	ccv_array_t* words = ccv_array_new(textline->rnum, sizeof(ccv_rect_t), 0, 0);
+	ccv_array_t* words = ccv_array_new(sizeof(ccv_rect_t), textline->rnum, 0);
 	for (i = 0; i < textline->rnum; i++)
 	{
 		ccv_textline_t* t = (ccv_textline_t*)ccv_array_get(textline, i);
@@ -603,7 +603,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	ccv_array_t* words;
 	if (params.breakdown)
 	{
-		textline2 = ccv_array_new(ntl, sizeof(ccv_textline_t), 0, 0);
+		textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
 		ccv_array_zero(textline2);
 		textline2->rnum = ntl;
 		for (i = 0; i < textline->rnum; i++)
@@ -631,7 +631,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	} else {
 		ccv_array_free(lettersB);
 		ccv_array_free(lettersF);
-		words = ccv_array_new(ntl, sizeof(ccv_rect_t), 0, 0);
+		words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
 		ccv_array_zero(words);
 		words->rnum = ntl;
 		for (i = 0; i < textline->rnum; i++)

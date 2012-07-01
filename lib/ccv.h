@@ -205,7 +205,7 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
-uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
+uint64_t ccv_cache_generate_signature(const char* msg, int len, uint64_t sig_start, ...);
 
 #define CCV_DEFAULT_CACHE_SIZE (1024 * 1024 * 64)
 
@@ -371,13 +371,14 @@ inline static ccv_rect_t ccv_rect(int x, int y, int width, int height)
 typedef struct {
 	int type;
 	uint64_t sig;
+	int refcount;
 	int rnum;
 	int size;
 	int rsize;
 	void* data;
 } ccv_array_t;
 
-ccv_array_t* ccv_array_new(int rnum, int rsize, int type, uint64_t sig);
+ccv_array_t* ccv_array_new(int rsize, int rnum, uint64_t sig);
 void ccv_array_push(ccv_array_t* array, void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);

@@ -181,7 +181,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_
 	ccv_array_t* keypoints = *_keypoints;
 	int custom_keypoints = 0;
 	if (keypoints == 0)
-		keypoints = *_keypoints = ccv_array_new(10, sizeof(ccv_keypoint_t), 0, 0);
+		keypoints = *_keypoints = ccv_array_new(sizeof(ccv_keypoint_t), 10, 0);
 	else
 		custom_keypoints = 1;
 	int i, j, k, x, y;

@@ -77,14 +77,14 @@ TEST_CASE("garbage collector 95\% hit rate")
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
 		dmt->data.i32[0] = i;
-		dmt->sig = ccv_matrix_generate_signature((const char*)&i, 4, 0);
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
 		dmt->type |= CCV_REUSABLE;
 		ccv_matrix_free(dmt);
 	}
 	int percent = 0, total = 0;
 	for (i = N - 1; i > N * 6 / 100; i--)
 	{
-		uint64_t sig = ccv_matrix_generate_signature((const char*)&i, 4, 0);
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
 		if (i == dmt->data.i32[0])
 			++percent;

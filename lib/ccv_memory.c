@@ -4,6 +4,12 @@
 
 static ccv_cache_t ccv_cache;
 
+/**
+ * For new typed cache object:
+ * ccv_dense_matrix_t: type 0
+ * ccv_array_t: type 1
+ **/
+
 /* option to enable/disable cache */
 static int ccv_cache_opt = 0;
 
@@ -12,10 +18,12 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	ccv_dense_matrix_t* mat;
 	if (ccv_cache_opt && sig != 0)
 	{
-		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig, 0);
+		uint8_t type;
+		mat = (ccv_dense_matrix_t*)ccv_cache_out(&ccv_cache, sig, &type);
 		if (mat)
 		{
-			mat->type |= CCV_GARBAGE;
+			assert(type == 0);
+			mat->type |= CCV_GARBAGE; // set the flag so the upper level function knows this is from recycle-bin
 			mat->refcount = 1;
 			return mat;
 		}
@@ -23,7 +31,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat = (ccv_dense_matrix_t*)(data ? data : ccmalloc(ccv_compute_dense_matrix_size(rows, cols, type)));
 	mat->sig = sig;
 	mat->type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE) & ~CCV_GARBAGE;
-	mat->type |= data ? CCV_UNMANAGED : CCV_REUSABLE;
+	mat->type |= data ? CCV_UNMANAGED : CCV_REUSABLE; // it still could be reusable because the signature could be derived one.
 	mat->rows = rows;
 	mat->cols = cols;
 	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
@@ -40,7 +48,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int 
 		prefer_type = CCV_GET_DATA_TYPE(x->type) | CCV_GET_CHANNEL(x->type);
 	}
 	if (sig != 0)
-		sig = ccv_matrix_generate_signature((const char*)&prefer_type, sizeof(int), sig, 0);
+		sig = ccv_cache_generate_signature((const char*)&prefer_type, sizeof(int), sig, 0);
 	if (x == 0)
 	{
 		x = ccv_dense_matrix_new(rows, cols, prefer_type, 0, sig);
@@ -67,11 +75,11 @@ void ccv_make_matrix_immutable(ccv_matrix_t* mat)
 	if (type & CCV_MATRIX_DENSE)
 	{
 		ccv_dense_matrix_t* dmt = (ccv_dense_matrix_t*)mat;
-		assert(dmt->sig == 0);
+		assert(dmt->sig == 0); // you cannot make matrix with derived signature immutable (it is immutable already)
 		/* immutable matrix made this way is not reusable (collected), because its signature
 		 * only depends on the content, not the operation to generate it */
 		dmt->type &= ~CCV_REUSABLE;
-		dmt->sig = ccv_matrix_generate_signature((char*)dmt->data.u8, dmt->rows * dmt->step, (uint64_t)dmt->type, 0);
+		dmt->sig = ccv_cache_generate_signature((char*)dmt->data.u8, dmt->rows * dmt->step, (uint64_t)dmt->type, 0);
 	}
 }
 
@@ -157,7 +165,7 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 			ccfree(dmt);
 		else {
 			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL(dmt->type) + 3) & -4) * dmt->rows;
-			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size, 0);
+			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size, 0 /* type 0 */);
 		}
 	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
@@ -185,6 +193,65 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	}
 }
 
+ccv_array_t* ccv_array_new(int rsize, int rnum, uint64_t sig)
+{
+	ccv_array_t* array;
+	if (ccv_cache_opt && sig != 0)
+	{
+		uint8_t type;
+		array = (ccv_array_t*)ccv_cache_out(&ccv_cache, sig, &type);
+		if (array)
+		{
+			assert(type == 1);
+			array->type |= CCV_GARBAGE;
+			array->refcount = 1;
+			return array;
+		}
+	}
+	array = (ccv_array_t*)ccmalloc(sizeof(ccv_array_t));
+	array->sig = sig;
+	array->type = CCV_REUSABLE & ~CCV_GARBAGE;
+	array->rnum = 0;
+	array->rsize = rsize;
+	array->size = ccv_max(rnum, 2 /* allocate memory for at least 2 items */);
+	array->data = ccmalloc(array->size * rsize);
+	return array;
+}
+
+void ccv_make_array_mutable(ccv_array_t* array)
+{
+	array->sig = 0;
+	array->type &= ~CCV_REUSABLE;
+}
+
+void ccv_make_array_immutable(ccv_array_t* array)
+{
+	assert(array->sig == 0);
+	array->type &= ~CCV_REUSABLE;
+	/* TODO: trim the array */
+	array->sig = ccv_cache_generate_signature(array->data, array->size * array->rsize, (uint64_t)array->rsize, 0);
+}
+
+void ccv_array_free_immediately(ccv_array_t* array)
+{
+	array->refcount = 0;
+	ccfree(array->data);
+	ccfree(array);
+}
+
+void ccv_array_free(ccv_array_t* array)
+{
+	if (!ccv_cache_opt || !(array->type & CCV_REUSABLE) || array->sig == 0)
+	{
+		array->refcount = 0;
+		ccfree(array->data);
+		ccfree(array);
+	} else {
+		size_t size = sizeof(ccv_array_t) + array->size * array->rsize;
+		ccv_cache_put(&ccv_cache, array->sig, array, size, 1 /* type 1 */);
+	}
+}
+
 void ccv_drain_cache(void)
 {
 	if (ccv_cache.rnum > 0)
@@ -200,7 +267,7 @@ void ccv_disable_cache(void)
 void ccv_enable_cache(size_t size)
 {
 	ccv_cache_opt = 1;
-	ccv_cache_init(&ccv_cache, size, 1, ccfree);
+	ccv_cache_init(&ccv_cache, size, 2, ccv_matrix_free_immediately, ccv_array_free_immediately);
 }
 
 void ccv_enable_default_cache(void)
@@ -208,7 +275,7 @@ void ccv_enable_default_cache(void)
 	ccv_enable_cache(CCV_DEFAULT_CACHE_SIZE);
 }
 
-uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
+uint64_t ccv_cache_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
 {
 	blk_SHA_CTX ctx;
 	blk_SHA1_Init(&ctx);
