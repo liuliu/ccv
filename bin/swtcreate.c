@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 		int locations;
 		fscanf(r, "%d", &locations);
 		int j;
-		aow[i] = ccv_array_new(locations, sizeof(ccv_rect_t));
+		aow[i] = ccv_array_new(sizeof(ccv_rect_t), locations, 0);
 		for (j = 0; j < locations; j++)
 		{
 			double x, y, width, height;
