@@ -1,6 +1,6 @@
 CC = `cat ../lib/.CC`# -faddress-sanitizer -fno-omit-frame-pointer
-LDFLAGS = -L"../lib" -lccv `cat ../lib/.LN` -lm
-CFLAGS = -O1 -Wall -I"../lib" `cat ../lib/.DEF`
+LDFLAGS = -L"../lib" -lccv `cat ../lib/.LN`
+CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.DEF`
 
 TARGETS = bbffmt siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert
 

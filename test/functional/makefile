@@ -19,5 +19,5 @@ libccv.a:
 	${MAKE} -C ../../lib
 
 %.o: %.c ../../lib/ccv.h
-	@echo "$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)
+	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
+	@$(CC) $< -o $@ -c $(CFLAGS)
