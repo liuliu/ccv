@@ -13,14 +13,14 @@ uint64_t uniqid()
 	return sign.u;
 }
 
-#define N (250000)
+#define N (1000000)
 
 TEST_CASE("random cache put/delete/get")
 {
 	ccv_cache_t cache;
 	ccv_cache_init(&cache, N, 1, ccfree);
-	uint64_t sigs[N];
-	void* mems[N];
+	uint64_t* sigs = ccmalloc(sizeof(uint64_t) * N);
+	void** mems = ccmalloc(sizeof(void*) * N);
 	int i;
 	for (i = 0; i < N; i++)
 	{
@@ -66,6 +66,8 @@ TEST_CASE("random cache put/delete/get")
 	 		REQUIRE_EQ(0, (uint64_t)x, "at %d should not exist", i);
 	}
 	ccv_cache_close(&cache);
+	ccfree(mems);
+	ccfree(sigs);
 }
 
 TEST_CASE("garbage collector 95\% hit rate")
@@ -92,6 +94,33 @@ TEST_CASE("garbage collector 95\% hit rate")
 		ccv_matrix_free_immediately(dmt);
 	}
 	REQUIRE((double)percent / (double)total > 0.95, "the cache hit (%lf) should be greater than 95%%", (double)percent / (double)total);
+	ccv_disable_cache();
+}
+
+TEST_CASE("garbage collector 47\% hit rate")
+{
+	int i;
+	// deliberately let only cache size fits 90% of data
+	ccv_enable_cache((sizeof(ccv_dense_matrix_t) + 4) * N * 45 / 100);
+	for (i = 0; i < N; i++)
+	{
+		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
+		dmt->data.i32[0] = i;
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		dmt->type |= CCV_REUSABLE;
+		ccv_matrix_free(dmt);
+	}
+	int percent = 0, total = 0;
+	for (i = N - 1; i > N * 6 / 100; i--)
+	{
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
+		if (i == dmt->data.i32[0])
+			++percent;
+		++total;
+		ccv_matrix_free_immediately(dmt);
+	}
+	REQUIRE((double)percent / (double)total > 0.47, "the cache hit (%lf) should be greater than 47%%", (double)percent / (double)total);
 	ccv_disable_cache();
 }
 
