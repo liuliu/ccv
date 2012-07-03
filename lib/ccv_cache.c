@@ -1,10 +1,10 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 
-#define CCV_GET_CACHE_TYPE(x) ((x) >> 56)
+#define CCV_GET_CACHE_TYPE(x) ((x) >> 60)
 #define CCV_GET_TERMINAL_AGE(x) (((x) >> 32) & 0x0FFFFFFF)
 #define CCV_GET_TERMINAL_SIZE(x) ((x) & 0xFFFFFFFF)
-#define CCV_SET_TERMINAL_TYPE(x, y, z) (((uint64_t)(x) << 56) | ((uint64_t)(y) << 32) | (z))
+#define CCV_SET_TERMINAL_TYPE(x, y, z) (((uint64_t)(x) << 60) | ((uint64_t)(y) << 32) | (z))
 
 void ccv_cache_init(ccv_cache_t* cache, size_t up, int cache_types, ccv_cache_index_free_f ffree, ...)
 {
@@ -295,7 +295,6 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uin
 		if (total == 63)
 			branch->branch.set |= 0x2;
 	}
-	_ccv_cache_aging(&cache->origin, sign);
 	cache->rnum++;
 	cache->size += size;
 	return 0;

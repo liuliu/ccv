@@ -140,7 +140,7 @@ typedef union {
 	struct {
 		uint64_t bitmap;
 		uint64_t set;
-		uint32_t age;
+		uint64_t age;
 	} branch;
 	struct {
 		uint64_t sign;
