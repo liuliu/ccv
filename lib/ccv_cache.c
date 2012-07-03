@@ -217,6 +217,8 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uin
 		cache->age = 1;
 		cache->origin.terminal.off = (uint64_t)x | 0x1;
 		cache->origin.terminal.sign = sign;
+		cache->origin.terminal.type = CCV_SET_TERMINAL_TYPE(type, cache->age, size);
+		cache->size = size;
 		cache->rnum = 1;
 		return 0;
 	}
@@ -293,6 +295,7 @@ int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uin
 		if (total == 63)
 			branch->branch.set |= 0x2;
 	}
+	_ccv_cache_aging(&cache->origin, sign);
 	cache->rnum++;
 	cache->size += size;
 	return 0;

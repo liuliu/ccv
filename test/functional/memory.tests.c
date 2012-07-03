@@ -27,7 +27,7 @@ TEST_CASE("random cache put/delete/get")
 		sigs[i] = uniqid();
 		mems[i] = ccmalloc(1);
 		ccv_cache_put(&cache, sigs[i], mems[i], 1, 0);
-	 	REQUIRE_EQ(i, cache.size, "at %d should has cache size %d", i, i);
+	 	REQUIRE_EQ(i + 1, cache.size, "at %d should has cache size %d", i, i);
 	}
 	uint8_t deleted[N];
 	for (i = 0; i < N; i++)
@@ -92,6 +92,54 @@ TEST_CASE("garbage collector 95\% hit rate")
 		ccv_matrix_free_immediately(dmt);
 	}
 	REQUIRE((double)percent / (double)total > 0.95, "the cache hit (%lf) should be greater than 95%%", (double)percent / (double)total);
+	ccv_disable_cache();
+}
+
+TEST_CASE("multi-type garbage collector 92\% hit rate")
+{
+	int i;
+	ccv_enable_cache(((sizeof(ccv_dense_matrix_t) + 4) + (sizeof(ccv_array_t) + 4 * 4)) * N * 90 / 100);
+	for (i = 0; i < N; i++)
+	{
+		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
+		dmt->data.i32[0] = i;
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		dmt->type |= CCV_REUSABLE;
+		ccv_matrix_free(dmt);
+		ccv_array_t* array = ccv_array_new(4, 4, 0);
+		int j = i;
+		ccv_array_push(array, &j);
+		j = 0;
+		ccv_array_push(array, &j);
+		j = ~i;
+		ccv_array_push(array, &j);
+		j = -i;
+		ccv_array_push(array, &j);
+		array->sig = ccv_cache_generate_signature((const char*)&j, 4, 0);
+		array->type |= CCV_REUSABLE;
+		ccv_array_free(array);
+	}
+	int percent = 0, total = 0;
+	for (i = N - 1; i > N * 6 / 100; i--)
+	{
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
+		if (i == dmt->data.i32[0])
+			++percent;
+		++total;
+		ccv_matrix_free_immediately(dmt);
+		int j = -i;
+		sig = ccv_cache_generate_signature((const char*)&j, 4, 0);
+		ccv_array_t* array = ccv_array_new(4, 4, sig);
+		if (i == *(int*)ccv_array_get(array, 0) &&
+			0 == *(int*)ccv_array_get(array, 1) &&
+			~i == *(int*)ccv_array_get(array, 2) &&
+			-i == *(int*)ccv_array_get(array, 3))
+			++percent;
+		++total;
+		ccv_array_free_immediately(array);
+	}
+	REQUIRE((double)percent / (double)total > 0.92, "the cache hit (%lf) should be greater than 92%%", (double)percent / (double)total);
 	ccv_disable_cache();
 }
 
