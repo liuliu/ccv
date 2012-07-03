@@ -18,6 +18,6 @@ clean:
 libccv.a:
 	${MAKE} -C ../../lib
 
-%.o: %.c ../lib/ccv.h
-	@echo "$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $(INCFLAGS) $< -o $@ -c $(CFLAGS)
+%.o: %.c ../../lib/ccv.h
+	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
+	@$(CC) $< -o $@ -c $(CFLAGS)

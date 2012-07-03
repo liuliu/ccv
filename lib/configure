@@ -27,7 +27,7 @@ if [ -e .DEF -a -e .LN ] ; then
 	LDFLAGS=`cat .LN`
 else
 	CFLAGS=" "
-	LDFLAGS=" "
+	LDFLAGS="-lm "
 	echo -ne "  Enable \033[4mSSE2\033[m [Y/n] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
