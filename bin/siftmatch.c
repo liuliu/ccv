@@ -17,19 +17,20 @@ int main(int argc, char** argv)
 	ccv_read(argv[1], &object, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	ccv_read(argv[2], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	unsigned int elapsed_time = get_current_time();
-	ccv_sift_param_t param;
-	param.noctaves = 3;
-	param.nlevels = 6;
-	param.up2x = 1;
-	param.edge_threshold = 10;
-	param.norm_threshold = 0;
-	param.peak_threshold = 0;
+	ccv_sift_param_t params = {
+		.noctaves = 3,
+		.nlevels = 6,
+		.up2x = 1,
+		.edge_threshold = 10,
+		.norm_threshold = 0,
+		.peak_threshold = 0,
+	};
 	ccv_array_t* obj_keypoints = 0;
 	ccv_dense_matrix_t* obj_desc = 0;
-	ccv_sift(object, &obj_keypoints, &obj_desc, 0, param);
+	ccv_sift(object, &obj_keypoints, &obj_desc, 0, params);
 	ccv_array_t* image_keypoints = 0;
 	ccv_dense_matrix_t* image_desc = 0;
-	ccv_sift(image, &image_keypoints, &image_desc, 0, param);
+	ccv_sift(image, &image_keypoints, &image_desc, 0, params);
 	elapsed_time = get_current_time() - elapsed_time;
 	int i, j, k;
 	int match = 0;

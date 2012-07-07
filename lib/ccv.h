@@ -532,7 +532,25 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
 /* mser related method */
 
 typedef struct {
+	/* parameters for MSER */
+	int delta;
+	int min_area; /* default: 60 */
+	int max_area;
+	double max_variance;
+	double min_diversity;
+	/* parameters for MSCR */
+	double area_threshold; /* default: 1.01 */
+	double min_margin; /* default: 0.003 */
+	int max_evolution;
+	double edge_blur_sigma; /* default: 1.0 */
 } ccv_mser_param_t;
+
+typedef struct {
+	ccv_rect_t rect;
+	int size;
+	long m10, m01, m11, m20, m02;
+	ccv_point_t keypoint;
+} ccv_mser_keypoint_t;
 
 ccv_array_t* ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
