@@ -3,9 +3,25 @@
 #ifdef HAVE_LIBJPEG
 #include <jpeglib.h>
 #endif
+
 #ifdef HAVE_LIBPNG
-#include <libpng/png.h>
+  #ifdef __APPLE__
+    #include "TargetConditionals.h"
+    #if TARGET_OS_IPHONE
+         // iOS
+    #elif TARGET_IPHONE_SIMULATOR
+        // iOS Simulator
+    #elif TARGET_OS_MAC
+      #include <zlib.h>
+      #include <png.h>
+    #else
+        // Unsupported platform
+    #endif
+  #else
+    #include <libpng/png.h>
+  #endif
 #endif
+
 #ifdef HAVE_LIBJPEG
 #include "io/_ccv_io_libjpeg.c"
 #endif
