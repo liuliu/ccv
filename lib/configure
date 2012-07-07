@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 
+if [ `uname` == "Darwin" ] ; then
+  IS_OSX=true
+fi
+
 if [ "$1" = "force" ] ; then
 	rm -f .CC .DEF .LN
 fi
@@ -49,6 +53,10 @@ else
 	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBPNG "
 			LDFLAGS="$LDFLAGS-lpng -lz "
+      if [[ $IS_OSX ]] ; then
+        CFLAGS="$CFLAGS-I/usr/X11/include "
+        LDFLAGS="$LDFLAGS-L/usr/X11/lib "
+      fi
 			;;
 	esac
 	echo -ne "  With \033[4mgsl\033[m [Y/n] ? "
