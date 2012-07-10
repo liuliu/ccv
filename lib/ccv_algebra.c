@@ -1,7 +1,11 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #ifdef HAVE_CBLAS
-#include <cblas.h>
+# ifdef HAVE_GSL
+#  include <gsl/gsl_cblas.h>
+# else
+#  include <cblas.h>
+#endif
 #endif
 
 double ccv_trace(ccv_matrix_t* mat)
