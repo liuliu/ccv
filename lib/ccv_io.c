@@ -18,7 +18,8 @@
         // Unsupported platform
     #endif
   #else
-    #include <libpng/png.h>
+    #include <zlib.h>
+    #include <png.h>
   #endif
 #endif
 
