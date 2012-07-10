@@ -38,3 +38,15 @@ implementation is what it lacks of. After years, we stuck in between either the
 high-performance, battle-tested but old algorithm implementations, or the new,
 shining but Matlab algorithms. ccv is my take on this problem, hope you enjoy
 it.
+
+Building
+--------
+
+The CMake build system is used to configure and build ccv. It is recommended
+that you build out of the source tree in a dedicated 'build' directory:
+
+    $ mkdir build
+    $ cd build
+    $ cmake ..
+    $ make all && make test
+
