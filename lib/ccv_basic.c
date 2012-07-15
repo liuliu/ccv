@@ -221,6 +221,7 @@ static void _ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 {
 	int i = 0;
 	float scale = (float)(180.0 / CCV_PI);
+#ifdef HAVE_SSE2
 #ifndef _WIN32
 	union { int i; float fl; } iabsmask; iabsmask.i = 0x7fffffff;
 	__m128 eps = _mm_set1_ps((float)1e-6), absmask = _mm_set1_ps(iabsmask.fl);
@@ -249,6 +250,7 @@ static void _ccv_atan2(float* x, float* y, float* angle, float* mag, int len)
 		_mm_storeu_ps(angle + i, a4);
 		_mm_storeu_ps(mag + i, m4);
 	}
+#endif
 #endif
 	for(; i < len; i++)
 	{

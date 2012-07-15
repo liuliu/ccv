@@ -32,7 +32,7 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-msse2 "
+	*	  ) CFLAGS="$CFLAGS-msse2 -D HAVE_SSE2 "
 			;;
 	esac
 	echo -ne "  With \033[4mlibjpeg\033[m [Y/n] ? "
