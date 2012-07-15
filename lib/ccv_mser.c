@@ -541,6 +541,7 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 				max_point.y = ccv_max(max_point.y, node->point.y); \
 				node = node->next; \
 			} \
+			assert(max_point.x - min_point.x > 1 && max_point.y - min_point.y > 1); \
 			assert(node->prev == mscr_area->tail); /* endless double link list */ \
 			mser_keypoint.rect = ccv_rect(min_point.x, min_point.y, max_point.x - min_point.x + 1, max_point.y - min_point.y + 1); \
 			ccv_array_push(seq, &mser_keypoint); \
