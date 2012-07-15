@@ -413,6 +413,7 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 					ccv_mscr_root_t root;
 					ccv_array_push(mscr_root_list, &root);
 					root0 = (ccv_mscr_root_t*)ccv_array_get(mscr_root_list, mscr_root_list->rnum - 1);
+					root1 = (node1->root >= 0) ? (ccv_mscr_root_t*)ccv_array_get(mscr_root_list, node1->root) : 0; // the memory may be reallocated
 					node0->root = mscr_root_list->rnum - 1;
 					_ccv_mscr_init_root(root0, node0);
 				}
@@ -425,11 +426,6 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 					root0->step_now = i;
 				}
 				node1->shortcut = node0;
-				node0->prev->next = node1;
-				ccv_mscr_node_t* prev = node0->prev;
-				node0->prev = node1->prev;
-				node1->prev->next = node0; // consider self-referencing
-				node1->prev = prev;
 				if (root1)
 				{
 					root0->size += root1->size;
@@ -453,6 +449,11 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 				 * set a.prev point to 5
 				 * the result endless double link list will be:
 				 * 0->1->2->3->4->5->a->b->c->d->0 */
+				node0->prev->next = node1;
+				ccv_mscr_node_t* prev = node0->prev;
+				node0->prev = node1->prev;
+				node1->prev->next = node0; // consider self-referencing
+				node1->prev = prev;
 				if (root0->size > root0->last_size * params.area_threshold)
 				// this is one condition check for Equation (10) */
 				{
@@ -461,9 +462,7 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 						ccv_mscr_area_t* mscr_area = (ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->mscr_area);
 						/* Page (4), compute the margin between the reinit point and before the next reinit point */
 						mscr_area->margin = root0->chi - root0->prev_chi;
-						if (mscr_area->margin > params.min_margin &&
-							root0->max_point.y - root0->min_point.y > 1 && // extreme rectangle rule
-							root0->max_point.x - root0->min_point.x > 1)
+						if (mscr_area->margin > params.min_margin)
 							mscr_area->seq_no = ++seq_no;
 						root0->mscr_area = -1;
 					}
@@ -478,7 +477,8 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 					double slope = (double)(root0->size - root0->prev_size) / (root0->chi - root0->prev_chi);
 					if (slope < root0->min_slope)
 					{
-						if (i > root0->reinit + 1 && root0->size >= params.min_area && root0->size <= params.max_area)
+						if (i > root0->reinit + 1 && root0->size >= params.min_area && root0->size <= params.max_area &&
+							root0->max_point.y - root0->min_point.y > 1 && root0->max_point.x - root0->min_point.x > 1) // extreme rectangle rule
 						{
 							ccv_mscr_area_t* last_mscr_area = (root0->last_mscr_area >= 0) ? (ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->last_mscr_area) : 0;
 							if (!last_mscr_area || /* I added the diversity check for MSCR, as most MSER algorithm does */
