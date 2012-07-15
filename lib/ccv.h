@@ -252,17 +252,31 @@ void ccv_enable_cache(size_t size);
 
 enum {
 	CCV_IO_GRAY           = 0x100,
-	CCV_IO_COLOR          = 0x300,
+	CCV_IO_RGB_COLOR      = 0x300,
+};
+
+enum {
+	// read self-describe in-memory data
 	CCV_IO_ANY_STREAM     = 0x010,
 	CCV_IO_PLAIN_STREAM   = 0x011,
 	CCV_IO_DEFLATE_STREAM = 0x012,
 	CCV_IO_JPEG_STREAM    = 0x013,
 	CCV_IO_PNG_STREAM     = 0x014,
+	// read self-describe on-disk data
 	CCV_IO_ANY_FILE       = 0x020,
 	CCV_IO_BMP_FILE       = 0x021,
 	CCV_IO_JPEG_FILE      = 0x022,
 	CCV_IO_PNG_FILE       = 0x023,
 	CCV_IO_BINARY_FILE    = 0x024,
+	// read not-self-describe in-memory data (a.k.a. raw data)
+	// you need to specify rows, cols, or scanline for these data
+	CCV_IO_RGB_RAW        = 0x031,
+	CCV_IO_RGBA_RAW       = 0x032,
+	CCV_IO_ARGB_RAW       = 0x033,
+	CCV_IO_BGR_RAW        = 0x034,
+	CCV_IO_BGRA_RAW       = 0x035,
+	CCV_IO_ABGR_RAW       = 0x036,
+	CCV_IO_GRAY_RAW       = 0x037,
 };
 
 enum {
@@ -272,7 +286,14 @@ enum {
 	CCV_IO_ATTEMPTED,
 };
 
-int ccv_read(const char* in, ccv_dense_matrix_t** x, int type);
+int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline);
+#define ccv_read_n(in, x, type, rows, cols, scanline, ...) \
+	ccv_read_impl(in, x, type, rows, cols, scanline)
+#define ccv_read(in, x, type, ...) \
+	ccv_read_n(in, x, type, ##__VA_ARGS__, 0, 0, 0)
+// this is a way to implement function-signature based dispatch, you can call either
+// ccv_read(in, x, type) or ccv_read(in, x, type, rows, cols, scanline)
+// notice that you can implement this with va_* functions, but that is not type-safe
 int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf);
 
 /* basic algebra algorithms ccv_algebra.c */
@@ -455,6 +476,22 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 
 enum {
+	CCV_FLIP_X = 0x01,
+	CCV_FLIP_Y = 0x02,
+};
+
+void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
+void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
+
+enum {
+	CCV_RGB_TO_YUV = 0x01,
+};
+
+void ccv_color_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag);
+
+/* resample algorithms ccv_resample.c */
+
+enum {
 	CCV_INTER_AREA    = 0x01,
 	CCV_INTER_LINEAR  = 0X02,
 	CCV_INTER_CUBIC   = 0X03,
@@ -464,14 +501,6 @@ enum {
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
-
-enum {
-	CCV_FLIP_X = 0x01,
-	CCV_FLIP_Y = 0x02,
-};
-
-void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
-void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
 /* classic computer vision algorithms ccv_classic.c */
 

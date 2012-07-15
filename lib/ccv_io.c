@@ -1,37 +1,31 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#ifdef HAVE_LIBPNG
+#ifdef __APPLE__
+#include "TargetConditionals.h"
+#if TARGET_OS_IPHONE
+// iOS
+#elif TARGET_IPHONE_SIMULATOR
+// iOS Simulator
+#elif TARGET_OS_MAC
+#include <zlib.h>
+#include <png.h>
+#else
+// Unsupported platform
+#endif
+#else
+#include <libpng/png.h>
+#endif
+#include "io/_ccv_io_libpng.c"
+#endif
 #ifdef HAVE_LIBJPEG
 #include <jpeglib.h>
-#endif
-
-#ifdef HAVE_LIBPNG
-  #ifdef __APPLE__
-    #include "TargetConditionals.h"
-    #if TARGET_OS_IPHONE
-         // iOS
-    #elif TARGET_IPHONE_SIMULATOR
-        // iOS Simulator
-    #elif TARGET_OS_MAC
-      #include <zlib.h>
-      #include <png.h>
-    #else
-        // Unsupported platform
-    #endif
-  #else
-    #include <libpng/png.h>
-  #endif
-#endif
-
-#ifdef HAVE_LIBJPEG
 #include "io/_ccv_io_libjpeg.c"
-#endif
-#ifdef HAVE_LIBPNG
-#include "io/_ccv_io_libpng.c"
 #endif
 #include "io/_ccv_io_bmp.c"
 #include "io/_ccv_io_binary.c"
 
-int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
+int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
 {
 	FILE* fd = 0;
 	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;

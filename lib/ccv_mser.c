@@ -106,15 +106,15 @@ static double chitab3[] = { 0,  0.0150057,  0.0239478,  0.0315227,
 
 static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
 {
-	assert((dx == 1 && dy == 0) || (dx == 0 && dy == 1));
+	assert((dx == 1 && dy == 0) || (dx == 0 && dy == 1) || (dx * dy == 1) || (dx * dy == -1));
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_mscr_chi(%d,%d)", dx, dy), a->sig, 0);
 	type = (CCV_GET_DATA_TYPE(type) == CCV_64F) ? CCV_64F | CCV_C1 : CCV_32F | CCV_C1;
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - dy, a->cols - dx, CCV_C1 | CCV_32F | CCV_64F, type, sig);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - abs(dy), a->cols - abs(dx), CCV_C1 | CCV_32F | CCV_64F, type, sig);
 	ccv_object_return_if_cached(, db);
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
 	unsigned char *aptr = a->data.u8;
 	unsigned char *bptr = db->data.u8;
-	if (dx == 1)
+	if (dx == 1 && dy == 0)
 	{
 #define for_block(_for_set_b, _for_get_a) \
 		for (i = 0; i < db->rows; i++) \
@@ -124,28 +124,60 @@ static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int typ
 				double v = (double)((_for_get_a(aptr, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr, j * ch + ch, 0) + 1e-10); \
 				for (k = 1; k < ch; k++) \
 					v += (double)((_for_get_a(aptr, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr, j * ch + ch + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, v, 0); \
+				_for_set_b(bptr, j, sqrt(v), 0); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
 		}
-		ccv_matrix_setter(db->type, ccv_matrix_getter, a->type, for_block);
+		ccv_matrix_setter_float_only(db->type, ccv_matrix_getter, a->type, for_block);
 #undef for_block
-	} else if (dy == 1) {
+	} else if (dy == 1 && dx == 0) {
 #define for_block(_for_set_b, _for_get_a) \
 		for (i = 0; i < db->rows; i++) \
 		{ \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				double v = (double)((_for_get_a(aptr, j * ch + a->step, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr, j * ch + a->step, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr, j * ch + a->step, 0) + 1e-10); \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr + a->step, j * ch, 0) + 1e-10); \
 				for (k = 1; k < ch; k++) \
-					v += (double)((_for_get_a(aptr, j * ch + a->step + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr, j * ch + a->step + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr, j * ch + a->step + k, 0) + 1e-10); \
-				_for_set_b(bptr, j, v, 0); \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr + a->step, j * ch + k, 0) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v), 0); \
 			} \
 			aptr += a->step; \
 			bptr += db->step; \
 		}
-		ccv_matrix_setter(db->type, ccv_matrix_getter, a->type, for_block);
+		ccv_matrix_setter_float_only(db->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
+	} else if (dx * dy == 1) {
+#define for_block(_for_set_b, _for_get_a) \
+		for (i = 0; i < db->rows; i++) \
+		{ \
+			for (j = 0; j < db->cols; j++) \
+			{ \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0)) * (_for_get_a(aptr + a->step, j * ch + ch, 0) - _for_get_a(aptr, j * ch, 0))) / (double)(_for_get_a(aptr, j * ch, 0) + _for_get_a(aptr + a->step, j * ch + ch, 0) + 1e-10); \
+				for (k = 1; k < ch; k++) \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + ch + k, 0) - _for_get_a(aptr, j * ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + k, 0) + _for_get_a(aptr + a->step, j * ch + ch + k, 0) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v * 0.5), 0); \
+			} \
+			aptr += a->step; \
+			bptr += db->step; \
+		}
+		ccv_matrix_setter_float_only(db->type, ccv_matrix_getter, a->type, for_block);
+#undef for_block
+	} else if (dx * dy == -1) {
+#define for_block(_for_set_b, _for_get_a) \
+		for (i = 0; i < db->rows; i++) \
+		{ \
+			for (j = 0; j < db->cols; j++) \
+			{ \
+				double v = (double)((_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch + ch, 0)) * (_for_get_a(aptr + a->step, j * ch, 0) - _for_get_a(aptr, j * ch + ch, 0))) / (double)(_for_get_a(aptr, j * ch + ch, 0) + _for_get_a(aptr + a->step, j * ch, 0) + 1e-10); \
+				for (k = 1; k < ch; k++) \
+					v += (double)((_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + ch + k, 0)) * (_for_get_a(aptr + a->step, j * ch + k, 0) - _for_get_a(aptr, j * ch + ch + k, 0))) / (double)(_for_get_a(aptr, j * ch + ch + k, 0) + _for_get_a(aptr + a->step, j * ch + k, 0) + 1e-10); \
+				_for_set_b(bptr, j, sqrt(v * 0.5), 0); \
+			} \
+			aptr += a->step; \
+			bptr += db->step; \
+		}
+		ccv_matrix_setter_float_only(db->type, ccv_matrix_getter, a->type, for_block);
 #undef for_block
 	}
 }
@@ -157,21 +189,25 @@ typedef struct ccv_mscr_node {
 	// double link list
 	struct ccv_mscr_node* prev;
 	struct ccv_mscr_node* next;
+	ccv_point_t point;
+	int root;
+} ccv_mscr_node_t;
+
+typedef struct {
+	int size;
 	int rank;
 	int reinit;
 	int step_now;
 	int last_size;
-	int size;
 	int prev_size;
 	double chi;
 	double prev_chi;
 	double min_slope;
-	ccv_point_t point;
 	ccv_point_t min_point;
 	ccv_point_t max_point;
 	int last_mscr_area;
 	int mscr_area;
-} ccv_mscr_node_t;
+} ccv_mscr_root_t; // extended structure for ccv_mscr_node_t
 
 typedef struct {
 	double chi;
@@ -192,16 +228,20 @@ static CCV_IMPLEMENT_QSORT(_ccv_mscr_edge_qsort, ccv_mscr_edge_t, less_than)
 
 static void _ccv_mscr_init_node(ccv_mscr_node_t* node, int x, int y)
 {
-	node->rank = 0;
-	node->reinit = 0x7FFFFFFF;
+	node->prev = node->next = node->shortcut = node; // endless double link list
 	node->point.x = x;
 	node->point.y = y;
-	node->min_point = node->max_point = node->point;
-	node->step_now = 0;
-	node->chi = node->prev_chi = 0;
-	node->last_size = node->size = node->prev_size = 1;
-	node->prev = node->next = node->shortcut = node; // endless double link list
-	node->last_mscr_area = node->mscr_area = -1;
+	node->root = -1;
+}
+
+static void _ccv_mscr_init_root(ccv_mscr_root_t* root, ccv_mscr_node_t* node)
+{
+	root->reinit = 0x7FFFFFFF;
+	root->min_point = root->max_point = node->point;
+	root->step_now = 0;
+	root->chi = root->prev_chi = 0;
+	root->last_size = root->size = root->prev_size = 1;
+	root->last_mscr_area = root->mscr_area = -1;
 }
 
 static ccv_mscr_node_t* _ccv_mscr_find_root(ccv_mscr_node_t* node)
@@ -232,6 +272,7 @@ static ccv_mscr_node_t* _ccv_mscr_find_root(ccv_mscr_node_t* node)
 
 static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t* b, ccv_array_t* seq, ccv_mser_param_t params)
 {
+	/* using 8-neighbor, as the inventor does for his default implementation */
 	ccv_dense_matrix_t* dx = 0;
 	_ccv_mscr_chi(a, &dx, CCV_32F, 1, 0);
 	ccv_dense_matrix_t* bdx = 0;
@@ -242,20 +283,23 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 	ccv_dense_matrix_t* bdy = 0;
 	ccv_blur(dy, &bdy, 0, params.edge_blur_sigma);
 	ccv_matrix_free(dy);
+	ccv_dense_matrix_t* dxy = 0;
+	_ccv_mscr_chi(a, &dxy, CCV_32F, 1, 1);
+	ccv_dense_matrix_t* bdxy = 0;
+	ccv_blur(dxy, &bdxy, 0, params.edge_blur_sigma);
+	ccv_matrix_free(dxy);
+	ccv_dense_matrix_t* dxy2 = 0;
+	_ccv_mscr_chi(a, &dxy2, CCV_32F, 1, -1);
+	ccv_dense_matrix_t* bdxy2 = 0;
+	ccv_blur(dxy2, &bdxy2, 0, params.edge_blur_sigma);
+	ccv_matrix_free(dxy2);
 	int i, j;
 	ccv_mscr_node_t* node = (ccv_mscr_node_t*)ccmalloc(sizeof(ccv_mscr_node_t) * a->rows * a->cols);
+	ccv_mscr_edge_t* edge = (ccv_mscr_edge_t*)ccmalloc(sizeof(ccv_mscr_edge_t) * (bdx->rows * bdx->cols + bdy->rows * bdy->cols + bdxy->rows * bdxy->cols + bdxy2->rows * bdxy2->cols));
 	ccv_mscr_node_t* pnode = node;
-	for (i = 0; i < a->rows; i++)
-		for (j = 0; j < a->cols; j++)
-		{
-			_ccv_mscr_init_node(pnode, j, i);
-			++pnode;
-		}
-	ccv_mscr_edge_t* edge = (ccv_mscr_edge_t*)ccmalloc(sizeof(ccv_mscr_edge_t) * (bdx->rows * bdx->cols + bdy->rows * bdy->cols));
 	ccv_mscr_edge_t* pedge = edge;
 	/* generate edge graph and sort them */
 	double mean = 0;
-	pnode = node;
 	float* bdx_ptr = bdx->data.f32;
 	assert(bdx->cols == a->cols - 1);
 	for (i = 0; i < bdx->rows; i++)
@@ -265,8 +309,10 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 			mean += pedge->chi = bdx_ptr[j];
 			pedge->node[0] = pnode + j;
 			pedge->node[1] = pnode + j + 1;
+			_ccv_mscr_init_node(pnode + j, j, i); // init node in this for-loop
 			++pedge;
 		}
+		_ccv_mscr_init_node(pnode + bdx->cols, bdx->cols, i);
 		pnode += a->cols;
 		bdx_ptr += bdx->cols;
 	}
@@ -285,14 +331,47 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 		pnode += a->cols;
 		bdy_ptr += bdy->cols;
 	}
-	_ccv_mscr_edge_qsort(edge, bdx->rows * bdx->cols + bdy->rows * bdy->cols, 0);
+	assert(bdxy->rows == a->rows - 1 && bdxy->cols == a->cols - 1);
+	pnode = node;
+	float* bdxy_ptr = bdxy->data.f32;
+	for (i = 0; i < bdxy->rows; i++)
+	{
+		for (j = 0; j < bdxy->cols; j++)
+		{
+			mean += pedge->chi = bdxy_ptr[j];
+			pedge->node[0] = pnode + j;
+			pedge->node[1] = pnode + a->cols + j + 1;
+			++pedge;
+		}
+		pnode += a->cols;
+		bdxy_ptr += bdxy->cols;
+	}
+	assert(bdxy2->rows == a->rows - 1 && bdxy2->cols == a->cols - 1);
+	pnode = node;
+	float* bdxy2_ptr = bdxy2->data.f32;
+	for (i = 0; i < bdxy2->rows; i++)
+	{
+		for (j = 0; j < bdxy2->cols; j++)
+		{
+			mean += pedge->chi = bdxy2_ptr[j];
+			pedge->node[0] = pnode + j + 1;
+			pedge->node[1] = pnode + a->cols + j;
+			++pedge;
+		}
+		pnode += a->cols;
+		bdxy2_ptr += bdxy2->cols;
+	}
+	mean /= (double)(bdx->rows * bdx->cols + bdy->rows * bdy->cols + bdxy->rows * bdxy->cols + bdxy2->rows * bdxy2->cols);
+	ccv_mscr_edge_t* edge_end = edge + bdx->rows * bdx->cols + bdy->rows * bdy->cols + bdxy->rows * bdxy->cols + bdxy2->rows * bdxy2->cols;
 	ccv_matrix_free(bdx);
 	ccv_matrix_free(bdy);
+	ccv_matrix_free(bdxy);
+	ccv_matrix_free(bdxy2);
+	_ccv_mscr_edge_qsort(edge, edge_end - edge, 0);
 	/* evolute on the edge graph */
 	int seq_no = 0;
 	pedge = edge;
-	ccv_mscr_edge_t* edge_end = edge + bdx->rows * bdx->cols + bdy->rows * bdy->cols;
-	mean /= (double)(bdx->rows * bdx->cols + bdy->rows * bdy->cols);
+	ccv_array_t* mscr_root_list = ccv_array_new(sizeof(ccv_mscr_root_t), 64, 0);
 	ccv_array_t* mscr_area_list = ccv_array_new(sizeof(ccv_mscr_area_t), 64, 0);
 	for (i = 0; (i < params.max_evolution) && (pedge < edge_end); i++)
 	{
@@ -303,41 +382,68 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 		// to process all the edges in the list that chi < thres
 		while (pedge < edge_end && pedge->chi < thres)
 		{
-			ccv_mscr_node_t* root0 = _ccv_mscr_find_root(pedge->node[0]);
-			ccv_mscr_node_t* root1 = _ccv_mscr_find_root(pedge->node[1]);
-			if (root0 != root1)
+			ccv_mscr_node_t* node0 = _ccv_mscr_find_root(pedge->node[0]);
+			ccv_mscr_node_t* node1 = _ccv_mscr_find_root(pedge->node[1]);
+			if (node0 != node1)
 			{
-				if (root1->rank > root0->rank)
+				ccv_mscr_root_t* root0 = (node0->root >= 0) ? (ccv_mscr_root_t*)ccv_array_get(mscr_root_list, node0->root) : 0;
+				ccv_mscr_root_t* root1 = (node1->root >= 0) ? (ccv_mscr_root_t*)ccv_array_get(mscr_root_list, node1->root) : 0;
+#define swap_node_and_root() \
+	do { \
+		ccv_mscr_node_t* node = node0; \
+		node0 = node1; \
+		node1 = node; \
+		ccv_mscr_root_t* root = root0; \
+		root0 = root1; \
+		root1 = root; \
+	} while (0) // to force it function-like (must include ;)
+				if (root0 && root1)
 				{
-					ccv_mscr_node_t* root = root0;
-					root0 = root1;
-					root1 = root;
-				} else if (root1->rank == root0->rank) {
-					if (root1->size > root0->size)
-					{
-						ccv_mscr_node_t* root = root0;
-						root0 = root1;
-						root1 = root;
+					if (root1->rank > root0->rank)
+						swap_node_and_root();
+					else if (root1->rank == root0->rank) {
+						if (root1->size > root0->size)
+							swap_node_and_root();
+						++root0->rank;
 					}
-					++root0->rank;
+				} else if (root1 && !root0)
+					swap_node_and_root();
+				if (!root0)
+				{
+					ccv_mscr_root_t root;
+					ccv_array_push(mscr_root_list, &root);
+					root0 = (ccv_mscr_root_t*)ccv_array_get(mscr_root_list, mscr_root_list->rnum - 1);
+					node0->root = mscr_root_list->rnum - 1;
+					_ccv_mscr_init_root(root0, node0);
 				}
+				if (root1 && root1->last_mscr_area >= 0 && root0->last_mscr_area == -1)
+					root0->last_mscr_area = root1->last_mscr_area;
 				if (root0->step_now < i)
 				/* faithful record the last size for area threshold check */
 				{
 					root0->last_size = root0->size;
 					root0->step_now = i;
 				}
-				root1->shortcut = root0;
-				root0->size += root1->size;
-				root0->min_point.x = ccv_min(root0->min_point.x, root1->min_point.x);
-				root0->min_point.y = ccv_min(root0->min_point.y, root1->min_point.y);
-				root0->max_point.x = ccv_max(root0->max_point.x, root1->max_point.x);
-				root0->max_point.y = ccv_max(root0->max_point.y, root1->max_point.y);
-				root0->prev->next = root1;
-				ccv_mscr_node_t* prev = root0->prev;
-				root0->prev = root1->prev;
-				root1->prev->next = root0; // consider self-referencing
-				root1->prev = prev;
+				node1->shortcut = node0;
+				node0->prev->next = node1;
+				ccv_mscr_node_t* prev = node0->prev;
+				node0->prev = node1->prev;
+				node1->prev->next = node0; // consider self-referencing
+				node1->prev = prev;
+				if (root1)
+				{
+					root0->size += root1->size;
+					root0->min_point.x = ccv_min(root0->min_point.x, root1->min_point.x);
+					root0->min_point.y = ccv_min(root0->min_point.y, root1->min_point.y);
+					root0->max_point.x = ccv_max(root0->max_point.x, root1->max_point.x);
+					root0->max_point.y = ccv_max(root0->max_point.y, root1->max_point.y);
+				} else {
+					++root0->size;
+					root0->min_point.x = ccv_min(root0->min_point.x, node1->point.x);
+					root0->min_point.y = ccv_min(root0->min_point.y, node1->point.y);
+					root0->max_point.x = ccv_max(root0->max_point.x, node1->point.x);
+					root0->max_point.y = ccv_max(root0->max_point.y, node1->point.y);
+				}
 				/* insert one endless double link list to another, see illustration:
 				 * 0->1->2->3->4->5->0
 				 * a->b->c->d->a
@@ -374,21 +480,22 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 					{
 						if (i > root0->reinit + 1 && root0->size >= params.min_area && root0->size <= params.max_area)
 						{
-							if (root0->last_mscr_area < 0 || /* I added the diversity check for MSCR, as most MSER algorithm does */
-								(double)(root0->size - ((ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->last_mscr_area))->size) / (double)((ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->last_mscr_area))->size > params.min_diversity)
+							ccv_mscr_area_t* last_mscr_area = (root0->last_mscr_area >= 0) ? (ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->last_mscr_area) : 0;
+							if (!last_mscr_area || /* I added the diversity check for MSCR, as most MSER algorithm does */
+								(double)(root0->size - last_mscr_area->size) / (double)last_mscr_area->size > params.min_diversity)
 							{
 								if (root0->mscr_area >= 0)
 								{
 									ccv_mscr_area_t* mscr_area = (ccv_mscr_area_t*)ccv_array_get(mscr_area_list, root0->mscr_area);
-									mscr_area->head = root0;
-									mscr_area->tail = root0->prev;
+									mscr_area->head = node0;
+									mscr_area->tail = node0->prev;
 									mscr_area->margin = 0;
 									mscr_area->size = root0->size;
 									mscr_area->seq_no = 0;
 								} else {
 									ccv_mscr_area_t mscr_area = {
-										.head = root0,
-										.tail = root0->prev,
+										.head = node0,
+										.tail = node0->prev,
 										.margin = 0,
 										.size = root0->size,
 										.seq_no = 0,
@@ -405,6 +512,7 @@ static void _ccv_mscr(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_ma
 			++pedge;
 		}
 	}
+	ccv_array_free(mscr_root_list);
 	assert(seq->rsize == sizeof(ccv_mser_keypoint_t));
 	ccv_zero(b);
 	unsigned char* b_ptr = b->data.u8;
