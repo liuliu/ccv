@@ -68,7 +68,7 @@ _gaq.push(['_trackPageview']);
 <span class="line-numbers"> <a href="#n4" name="n4">4</a></span>    ccv_dense_matrix_t* image = <span style="color:#00D">0</span>;
 <span class="line-numbers"> <a href="#n5" name="n5">5</a></span>    ccv_read(argv[<span style="color:#00D">1</span>], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 <span class="line-numbers"> <a href="#n6" name="n6">6</a></span>    ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[<span style="color:#00D">2</span>]);
-<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>    ccv_bbf_params_t params = { .interval = <span style="color:#00D">8</span>, .min_neighbors = <span style="color:#00D">2</span>, .accurate = <span style="color:#00D">1</span>, .flags = <span style="color:#00D">0</span>, .size = ccv_size(<span style="color:#00D">24</span>, <span style="color:#00D">24</span>) };
+<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>    ccv_bbf_param_t params = { .interval = <span style="color:#00D">8</span>, .min_neighbors = <span style="color:#00D">2</span>, .accurate = <span style="color:#00D">1</span>, .flags = <span style="color:#00D">0</span>, .size = ccv_size(<span style="color:#00D">24</span>, <span style="color:#00D">24</span>) };
 <span class="line-numbers"> <a href="#n8" name="n8">8</a></span>    ccv_array_t* faces = ccv_bbf_detect_objects(image, &amp;cascade, <span style="color:#00D">1</span>, params);
 <span class="line-numbers"> <a href="#n9" name="n9">9</a></span>    <span style="color:#0a5;font-weight:bold">int</span> i;
 <span class="line-numbers"><strong><a href="#n10" name="n10">10</a></strong></span>    <span style="color:#080;font-weight:bold">for</span> (i = <span style="color:#00D">0</span>; i &lt; faces-&gt;rnum; i++)
