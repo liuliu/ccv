@@ -566,9 +566,11 @@ typedef struct {
 	/* parameters for MSER */
 	int delta;
 	int min_area; /* default: 60 */
+	int direction; /* default: 0, 0 for both, -1 for bright to dark, 1 for dark to bright */
 	int max_area;
 	double max_variance;
 	double min_diversity;
+	int range; /* from 0 to range, inclusive */
 	/* parameters for MSCR */
 	double area_threshold; /* default: 1.01 */
 	double min_margin; /* default: 0.003 */

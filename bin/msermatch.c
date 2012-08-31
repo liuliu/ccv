@@ -24,11 +24,14 @@ int main(int argc, char** argv)
 		.min_margin = 0.003,
 		.max_evolution = 200,
 		.edge_blur_sigma = sqrt(3.0),
+		.delta = 5,
+		.max_variance = 0.25,
 	};
 	if (image)
 	{
 		ccv_dense_matrix_t* yuv = 0;
-		ccv_color_transform(image, &yuv, 0, CCV_RGB_TO_YUV);
+		// ccv_color_transform(image, &yuv, 0, CCV_RGB_TO_YUV);
+		ccv_read(argv[1], &yuv, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 		unsigned int elapsed_time = get_current_time();
 		ccv_dense_matrix_t* mser = 0;
 		ccv_array_t* mser_keypoint = ccv_mser(yuv, 0, &mser, 0, params);
@@ -48,8 +51,8 @@ int main(int argc, char** argv)
 				}
 			}
 		ccv_write(image, argv[2], 0, CCV_IO_PNG_FILE, 0);
-		ccv_matrix_free(image);
 		ccv_matrix_free(yuv);
+		ccv_matrix_free(image);
 	}
 	ccv_disable_cache();
 	return 0;
