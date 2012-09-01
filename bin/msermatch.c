@@ -26,6 +26,7 @@ int main(int argc, char** argv)
 		.edge_blur_sigma = sqrt(3.0),
 		.delta = 5,
 		.max_variance = 0.25,
+		.direction = CCV_BRIGHT_TO_DARK,
 	};
 	if (image)
 	{

@@ -58,6 +58,7 @@ typedef struct {
 
 static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t* b, ccv_array_t* seq, ccv_mser_param_t params)
 {
+	assert(params.direction == CCV_BRIGHT_TO_DARK || params.direction == CCV_DARK_TO_BRIGHT);
 	int v, i, j;
 	ccv_mser_node_t* node = (ccv_mser_node_t*)ccmalloc(sizeof(ccv_mser_node_t) * a->rows * a->cols);
 	ccv_mser_node_t** rnode = (ccv_mser_node_t**)ccmalloc(sizeof(ccv_mser_node_t*) * a->rows * a->cols);
@@ -68,6 +69,9 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 	memset(buck, 0, sizeof(int) * (params.range + 2));
 	unsigned char* aptr = a->data.u8;
 	ccv_mser_node_t* pnode = node;
+	// this for_block is the only computation that can be shared between dark to bright and bright to dark
+	// two MSER alternatives, and it only occupies 10% of overall time, we won't share this computation
+	// at all (also, we need to reinitialize node for the two passes anyway).
 #define for_block(_, _for_get) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
@@ -94,7 +98,9 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 	ccv_array_t* history_list = ccv_array_new(sizeof(ccv_mser_history_t), 64, 0);
 	for (v = 0; v <= params.range; v++)
 	{
-		for (i = buck[v]; i < buck[v + 1]; i++)
+		int range_segment = buck[params.direction == CCV_DARK_TO_BRIGHT ? v : params.range - v];
+		int range_segment_cap = buck[params.direction == CCV_DARK_TO_BRIGHT ? v + 1 : params.range - v + 1];
+		for (i = range_segment; i < range_segment_cap; i++)
 		{
 			ccv_mser_node_t* pnode = rnode[i];
 			// try to merge pnode with its neighbors

@@ -585,6 +585,11 @@ typedef struct {
 	ccv_point_t keypoint;
 } ccv_mser_keypoint_t;
 
+enum {
+	CCV_BRIGHT_TO_DARK = -1,
+	CCV_DARK_TO_BRIGHT = 1,
+};
+
 ccv_array_t* ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */

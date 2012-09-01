@@ -42,7 +42,7 @@ static inline int _ccv_median(int* buf, int low, int high)
 }
 
 /* ccv_swt is only the method to generate stroke width map */
-void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+void ccv_msft_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
 {
 	assert(a->type & CCV_C1);
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%la,%la)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
@@ -202,6 +202,11 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_matrix_free(c);
 	ccv_matrix_free(dx);
 	ccv_matrix_free(dy);
+}
+
+void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+{
+	ccv_msft_swt(a, b, type, params);
 }
 
 ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
