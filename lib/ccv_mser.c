@@ -133,6 +133,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 							node0->root = history_list->rnum;
 							ccv_array_push(history_list, &root);
 							root0 = (ccv_mser_history_t*)ccv_array_get(history_list, history_list->rnum - 1);
+							root1 = (node1->root >= 0) ? (ccv_mser_history_t*)ccv_array_get(history_list, node1->root) : 0; // the memory may be reallocated
 						} else if (root0->value < v) {
 							// conceal the old root as history (er), making a new one and pointing to it
 							root0->shortcut = root0->parent = history_list->rnum;
@@ -141,6 +142,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 							node0->root = history_list->rnum;
 							ccv_array_push(history_list, &root);
 							root0 = (ccv_mser_history_t*)ccv_array_get(history_list, history_list->rnum - 1);
+							root1 = (node1->root >= 0) ? (ccv_mser_history_t*)ccv_array_get(history_list, node1->root) : 0; // the memory may be reallocated
 							root0->rank = ccv_max(root0->rank, (root1 ? root1->rank : 0)) + 1;
 						}
 						if (root1 && root1->value < root0->value) // in this case, root1 is sealed as well
@@ -235,7 +237,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 	assert(seq->rsize == sizeof(ccv_mser_keypoint_t));
 	ccv_zero(b);
 	unsigned char* b_ptr = b->data.u8;
-	int seq_no = 0;
+	int seq_no = 1;
 #define for_block(_, _for_set, _for_get) \
 	for (i = 0; i < history_list->rnum; i++) \
 	{ \
