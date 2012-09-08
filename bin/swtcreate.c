@@ -2,6 +2,21 @@
 #include <sys/time.h>
 #include <ctype.h>
 
+static int _CCV_PRINT_COUNT = 0;
+static int _CCV_PRINT_LOOP = 0;
+
+#define FLUSH(a, ...) \
+	do { \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf("\b"); \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf(" "); \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf("\b"); \
+		_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
+		fflush(stdout); \
+	} while (0) // using do while (0) to force ; line end
+
 double ccv_swt_evaluate(int n, ccv_dense_matrix_t** images, ccv_array_t** truth, double a, ccv_swt_param_t params)
 {
 	int i, j, k;
@@ -78,11 +93,27 @@ int main(int argc, char** argv)
 			ccv_array_push(aow[i], &rect);
 		}
 	}
-	ccv_swt_param_t params = { .size = 5, .low_thresh = 93, .high_thresh = 279, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 0.5, .thickness_ratio = 2, .height_ratio = 2, .intensity_thresh = 29, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .elongate_ratio = 1.3, .breakdown = 1, .breakdown_ratio = 3 };
+	ccv_swt_param_t params = {
+		.size = 3,
+		.low_thresh = 125,
+		.high_thresh = 300,
+		.max_height = 300,
+		.min_height = 10,
+		.aspect_ratio = 10,
+		.variance_ratio = 0.5,
+		.thickness_ratio = 1.5,
+		.height_ratio = 3,
+		.intensity_thresh = 255,
+		.distance_ratio = 3,
+		.intersect_ratio = 2,
+		.letter_thresh = 3,
+		.elongate_ratio = 1.5,
+		.breakdown = 1,
+		.breakdown_ratio = 5.0,
+	};
 	double best_f = 0;
 	ccv_swt_param_t best_params = params;
-	/*
-	for (i = 50; i < 200; i++)
+	for (i = 50; i < 100; i++)
 	{
 		params.low_thresh = i;
 		params.high_thresh = i * 3;
@@ -91,9 +122,10 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at low_thresh = %d\n", best_f, i);
 		}
+		FLUSH("current f : %lf, best f : %lf, at low_thresh = %d", f, best_f, best_params.low_thresh);
 	}
+	printf("\n");
 	params = best_params;
 	for (i = params.low_thresh * 2; i < params.low_thresh * 4; i++)
 	{
@@ -103,9 +135,10 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at high_thresh = %d\n", best_f, i);
 		}
+		FLUSH("current f : %lf, best f : %lf, at high_thresh = %d", f, best_f, best_params.high_thresh);
 	}
+	printf("\n");
 	params = best_params;
 	for (i = 5; i < 30; i++)
 	{
@@ -115,9 +148,10 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at intensity_thresh = %d\n", best_f, i);
 		}
+		FLUSH("current f : %lf, best f : %lf, at intensity_thresh = %d", f, best_f, best_params.intensity_thresh);
 	}
+	printf("\n");
 	params = best_params;
 	for (i = 1; i <= 30; i++)
 	{
@@ -127,9 +161,10 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at variance_ratio = %lf\n", best_f, params.variance_ratio);
 		}
+		FLUSH("current f : %lf, best f : %lf, at variance_ratio = %lf", f, best_f, best_params.variance_ratio);
 	}
+	printf("\n");
 	params = best_params;
 	for (i = 1; i <= 100; i++)
 	{
@@ -139,11 +174,12 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at elongate_ratio = %lf\n", best_f, params.elongate_ratio);
 		}
+		FLUSH("current f : %lf, best f : %lf, at elongate_ratio = %lf", f, best_f, best_params.elongate_ratio);
 	}
-	*/
-	for (i = 1; i <= 200; i++)
+	printf("\n");
+	params = best_params;
+	for (i = 50; i <= 150; i++)
 	{
 		params.breakdown_ratio = i / 10.0;
 		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
@@ -151,10 +187,10 @@ int main(int argc, char** argv)
 		{
 			best_params = params;
 			best_f = f;
-			printf("best f = %lf at breakdown_ratio = %lf\n", best_f, params.breakdown_ratio);
 		}
+		FLUSH("current f : %lf, best f : %lf, at breakdown_ratio = %lf", f, best_f, best_params.breakdown_ratio);
 	}
-	printf("best parameters for swt is:\n\tlow_thresh = %lf\n\thigh_thresh = %lf\n\tintensity_thresh = %d\n\tvariance_ratio = %lf\n\telongate_ratio = %lf\n\tbreakdown_ratio = %lf\n", best_params.low_thresh, best_params.high_thresh, best_params.intensity_thresh, best_params.variance_ratio, best_params.elongate_ratio, best_params.breakdown_ratio);
+	printf("\nbest parameters for swt is:\n\tlow_thresh = %d\n\thigh_thresh = %d\n\tintensity_thresh = %d\n\tvariance_ratio = %lf\n\telongate_ratio = %lf\n\tbreakdown_ratio = %lf\n", best_params.low_thresh, best_params.high_thresh, best_params.intensity_thresh, best_params.variance_ratio, best_params.elongate_ratio, best_params.breakdown_ratio);
 	ccfree(aof);
 	ccfree(aow);
 	ccv_disable_cache();

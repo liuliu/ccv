@@ -67,34 +67,70 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 	// put it in a block so that the memory allocated can be released in the end
 	int* buck = (int*)alloca(sizeof(int) * (params.range + 2));
 	memset(buck, 0, sizeof(int) * (params.range + 2));
-	unsigned char* aptr = a->data.u8;
 	ccv_mser_node_t* pnode = node;
 	// this for_block is the only computation that can be shared between dark to bright and bright to dark
 	// two MSER alternatives, and it only occupies 10% of overall time, we won't share this computation
 	// at all (also, we need to reinitialize node for the two passes anyway).
-#define for_block(_, _for_get) \
-	for (i = 0; i < a->rows; i++) \
-	{ \
-		for (j = 0; j < a->cols; j++) \
-			++buck[_for_get(aptr, j, 0)]; \
-		aptr += a->step; \
-	} \
-	for (i = 1; i <= params.range; i++) \
-		buck[i] += buck[i - 1]; \
-	buck[params.range + 1] = buck[params.range]; \
-	aptr = a->data.u8; \
-	for (i = 0; i < a->rows; i++) \
-	{ \
-		for (j = 0; j < a->cols; j++) \
+	if (h != 0)
+	{
+		unsigned char* aptr = a->data.u8;
+		unsigned char* hptr = h->data.u8;
+#define for_block(_for_get_a, _for_get_h) \
+		for (i = 0; i < a->rows; i++) \
 		{ \
-			_ccv_mser_init_node(pnode, j, i); \
-			rnode[--buck[_for_get(aptr, j, 0)]] = pnode; \
-			++pnode; \
+			for (j = 0; j < a->cols; j++) \
+				if (!_for_get_h(hptr, j, 0)) \
+					++buck[_for_get_a(aptr, j, 0)]; \
+			aptr += a->step; \
+			hptr += h->step; \
 		} \
-		aptr += a->step; \
-	}
-	ccv_matrix_getter_integer_only(a->type, for_block);
+		for (i = 1; i <= params.range; i++) \
+			buck[i] += buck[i - 1]; \
+		buck[params.range + 1] = buck[params.range]; \
+		aptr = a->data.u8; \
+		hptr = h->data.u8; \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			for (j = 0; j < a->cols; j++) \
+			{ \
+				_ccv_mser_init_node(pnode, j, i); \
+				if (!_for_get_h(hptr, j, 0)) \
+					rnode[--buck[_for_get_a(aptr, j, 0)]] = pnode; \
+				else \
+					pnode->shortcut = 0; /* this means the pnode is not available */ \
+				++pnode; \
+			} \
+			aptr += a->step; \
+			hptr += h->step; \
+		}
+		ccv_matrix_getter_integer_only_a(a->type, ccv_matrix_getter_integer_only, h->type, for_block);
 #undef for_block
+	} else {
+		unsigned char* aptr = a->data.u8;
+#define for_block(_, _for_get) \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			for (j = 0; j < a->cols; j++) \
+				++buck[_for_get(aptr, j, 0)]; \
+			aptr += a->step; \
+		} \
+		for (i = 1; i <= params.range; i++) \
+			buck[i] += buck[i - 1]; \
+		buck[params.range + 1] = buck[params.range]; \
+		aptr = a->data.u8; \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			for (j = 0; j < a->cols; j++) \
+			{ \
+				_ccv_mser_init_node(pnode, j, i); \
+				rnode[--buck[_for_get(aptr, j, 0)]] = pnode; \
+				++pnode; \
+			} \
+			aptr += a->step; \
+		}
+		ccv_matrix_getter_integer_only(a->type, for_block);
+#undef for_block
+	}
 	ccv_array_t* history_list = ccv_array_new(sizeof(ccv_mser_history_t), 64, 0);
 	for (v = 0; v <= params.range; v++)
 	{
@@ -114,6 +150,8 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 				if (x >= 0 && x < a->cols && y >= 0 && y < a->rows)
 				{
 					ccv_mser_node_t* nnode = pnode + dx[j] + dy[j] * a->cols;
+					if (nnode->shortcut == 0) // this is a void node, skip
+						continue;
 					ccv_mser_node_t* node1 = _ccv_mser_find_root(nnode);
 					if (node0 != node1)
 					{
@@ -139,7 +177,7 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 							node0->root = history_list->rnum;
 							ccv_array_push(history_list, &root);
 							root0 = (ccv_mser_history_t*)ccv_array_get(history_list, history_list->rnum - 1);
-							root1 = (node1->root >= 0) ? (ccv_mser_history_t*)ccv_array_get(history_list, node1->root) : 0; // the memory may be reallocated
+							assert(node1->root == -1);
 						} else if (root0->value < v) {
 							// conceal the old root as history (er), making a new one and pointing to it
 							root0->shortcut = root0->parent = history_list->rnum;
@@ -151,8 +189,14 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 							root1 = (node1->root >= 0) ? (ccv_mser_history_t*)ccv_array_get(history_list, node1->root) : 0; // the memory may be reallocated
 							root0->rank = ccv_max(root0->rank, (root1 ? root1->rank : 0)) + 1;
 						}
-						if (root1 && root1->value < root0->value) // in this case, root1 is sealed as well
-							root1->parent = node0->root;
+						if (root1)
+						{
+							if (root1->value < root0->value) // in this case, root1 is sealed as well
+								root1->parent = node0->root;
+							// thus, if root1->parent == itself && root1->shortcut != itself
+							// it is voided, and not sealed
+							root1->shortcut = node0->root;
+						}
 						// merge the two
 						node1->shortcut = node0;
 						root0->size += root1 ? root1->size : 1;
@@ -177,10 +221,18 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 			}
 		}
 	}
+	// void non-extremal regions, the region that hasn't sealed, but was merged
+	for (i = 0; i < history_list->rnum; i++)
+	{
+		ccv_mser_history_t* er = (ccv_mser_history_t*)ccv_array_get(history_list, i);
+		er->stable = !(er->parent == i && er->shortcut != i);
+	}
 	// compute variations
 	for (i = 0; i < history_list->rnum; i++)
 	{
 		ccv_mser_history_t* er = (ccv_mser_history_t*)ccv_array_get(history_list, i);
+		if (!er->stable)
+			continue;
 		int top_val = er->value + params.delta;
 		int top = er->shortcut;
 		for (;;)
@@ -194,7 +246,6 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 		}
 		ccv_mser_history_t* ter = (ccv_mser_history_t*)ccv_array_get(history_list, top);
 		er->variance = (float)(ter->size - er->size) / er->size;
-		er->stable = 1;
 		ccv_mser_history_t* ner = (ccv_mser_history_t*)ccv_array_get(history_list, er->parent);
 		ner->shortcut = ccv_max(top, ner->shortcut);
 	}
@@ -202,6 +253,8 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 	for (i = 0; i < history_list->rnum; i++)
 	{
 		ccv_mser_history_t* er = (ccv_mser_history_t*)ccv_array_get(history_list, i);
+		if (!er->stable || i == er->parent)
+			continue;
 		ccv_mser_history_t* per = (ccv_mser_history_t*)ccv_array_get(history_list, er->parent);
 		if (per->value > er->value + 1)
 			continue;

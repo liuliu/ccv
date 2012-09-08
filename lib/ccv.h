@@ -198,12 +198,12 @@ typedef struct {
 
 /* matrix memory operations ccv_memory.c */
 #define ccv_compute_dense_matrix_size(rows, cols, type) (sizeof(ccv_dense_matrix_t) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
-ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
-ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
+ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 void ccv_make_matrix_mutable(ccv_matrix_t* mat);
 void ccv_make_matrix_immutable(ccv_matrix_t* mat);
-ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
+ccv_sparse_matrix_t* __attribute__((warn_unused_result)) ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
@@ -401,7 +401,7 @@ typedef struct {
 	void* data;
 } ccv_array_t;
 
-ccv_array_t* ccv_array_new(int rsize, int rnum, uint64_t sig);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_array_new(int rsize, int rnum, uint64_t sig);
 void ccv_array_push(ccv_array_t* array, void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
@@ -508,6 +508,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
+void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
@@ -590,7 +591,7 @@ enum {
 	CCV_DARK_TO_BRIGHT = 1,
 };
 
-ccv_array_t* ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
@@ -598,8 +599,8 @@ typedef struct {
 	int direction;
 	/* canny parameters */
 	int size;
-	double low_thresh;
-	double high_thresh;
+	int low_thresh;
+	int high_thresh;
 	/* geometry filtering parameters */
 	int max_height;
 	int min_height;
@@ -619,7 +620,7 @@ typedef struct {
 } ccv_swt_param_t;
 
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
-ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
 
 /* I'd like to include Deformable Part Models as a general object detection method in here
  * The difference between BBF and DPM:
@@ -697,8 +698,8 @@ enum {
 };
 
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
-ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
-ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
+ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_load_dpm_mixture_model(const char* directory);
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
@@ -760,9 +761,9 @@ enum {
 };
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
-ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
-ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory);
-ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
+ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_load_bbf_classifier_cascade(const char* directory);
+ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classifier_cascade_read_binary(char* s);
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 

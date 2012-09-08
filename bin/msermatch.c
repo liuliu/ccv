@@ -26,7 +26,7 @@ int main(int argc, char** argv)
 		.edge_blur_sigma = sqrt(3.0),
 		.delta = 5,
 		.max_variance = 0.25,
-		.direction = CCV_BRIGHT_TO_DARK,
+		.direction = CCV_DARK_TO_BRIGHT,
 	};
 	if (image)
 	{
@@ -34,9 +34,15 @@ int main(int argc, char** argv)
 		// ccv_color_transform(image, &yuv, 0, CCV_RGB_TO_YUV);
 		ccv_read(argv[1], &yuv, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 		unsigned int elapsed_time = get_current_time();
+		ccv_dense_matrix_t* canny = 0;
+		ccv_canny(yuv, &canny, 0, 3, 175, 320);
+		ccv_dense_matrix_t* outline = 0;
+		ccv_close_outline(canny, &outline, 0);
+		ccv_matrix_free(canny);
 		ccv_dense_matrix_t* mser = 0;
-		ccv_array_t* mser_keypoint = ccv_mser(yuv, 0, &mser, 0, params);
+		ccv_array_t* mser_keypoint = ccv_mser(yuv, outline, &mser, 0, params);
 		elapsed_time = get_current_time() - elapsed_time;
+		ccv_matrix_free(outline);
 		printf("total : %d in time %dms\n", mser_keypoint->rnum, elapsed_time);
 		ccv_array_free(mser_keypoint);
 		ccv_make_matrix_mutable(image);

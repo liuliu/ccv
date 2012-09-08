@@ -11,7 +11,24 @@ unsigned int get_current_time()
 
 int main(int argc, char** argv)
 {
-	ccv_swt_param_t params = { .size = 3, .low_thresh = 175, .high_thresh = 320, .max_height = 300, .min_height = 10, .aspect_ratio = 10, .variance_ratio = 0.5, .thickness_ratio = 1.5, .height_ratio = 2, .intensity_thresh = 30, .distance_ratio = 3, .intersect_ratio = 2, .letter_thresh = 3, .elongate_ratio = 1.3, .breakdown = 1, .breakdown_ratio = 12.8 };
+	ccv_swt_param_t params = {
+		.size = 3,
+		.low_thresh = 78,
+		.high_thresh = 234,
+		.max_height = 800,
+		.min_height = 10,
+		.aspect_ratio = 10,
+		.variance_ratio = 0.5,
+		.thickness_ratio = 1.5,
+		.height_ratio = 3,
+		.intensity_thresh = 27,
+		.distance_ratio = 3,
+		.intersect_ratio = 2,
+		.letter_thresh = 3,
+		.elongate_ratio = 1.1,
+		.breakdown = 1,
+		.breakdown_ratio = 9.9,
+	};
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
@@ -61,4 +78,3 @@ int main(int argc, char** argv)
 	ccv_disable_cache();
 	return 0;
 }
-

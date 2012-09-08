@@ -195,7 +195,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
  * profiling, the current implementation still uses integer to speed up */
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
 {
-	assert(a->type & CCV_C1);
+	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%la,%la)", size, low_thresh, high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_8U | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
@@ -340,6 +340,49 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 		ccv_matrix_free(mg);
 		/* FIXME: Canny implementation for general case */
 	}
+}
+
+void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+{
+	assert((CCV_GET_CHANNEL(a->type) == CCV_C1) && ((a->type & CCV_8U) || (a->type & CCV_32S) || (a->type & CCV_64S)));
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_close_outline"), a->sig, 0);
+	type = ((type == 0) || (type & CCV_32F) || (type & CCV_64F)) ? CCV_GET_DATA_TYPE(a->type) | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
+	ccv_object_return_if_cached(, db);
+	int i, j;
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = db->data.u8;
+	ccv_zero(db);
+#define for_block(_for_get, _for_set_b, _for_get_b) \
+	for (i = 0; i < a->rows - 1; i++) \
+	{ \
+		for (j = 0; j < a->cols - 1; j++) \
+		{ \
+			if (!_for_get_b(b_ptr, j, 0)) \
+				_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+			if (_for_get(a_ptr, j, 0) && _for_get(a_ptr + a->step, j + 1, 0)) \
+			{ \
+				_for_set_b(b_ptr + a->step, j, 1, 0); \
+				_for_set_b(b_ptr, j + 1, 1, 0); \
+			} \
+			if (_for_get(a_ptr + a->step, j, 0) && _for_get(a_ptr, j + 1, 0)) \
+			{ \
+				_for_set_b(b_ptr, j, 1, 0); \
+				_for_set_b(b_ptr + a->step, j + 1, 1, 0); \
+			} \
+		} \
+		if (!_for_get_b(b_ptr, a->cols - 1, 0)) \
+			_for_set_b(b_ptr, a->cols - 1, _for_get(a_ptr, a->cols - 1, 0), 0); \
+		a_ptr += a->step; \
+		b_ptr += db->step; \
+	} \
+	for (j = 0; j < a->cols; j++) \
+	{ \
+		if (!_for_get_b(b_ptr, j, 0)) \
+			_for_set_b(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
+	}
+	ccv_matrix_getter_integer_only(a->type, ccv_matrix_setter_getter_integer_only, db->type, for_block);
+#undef for_block
 }
 
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
