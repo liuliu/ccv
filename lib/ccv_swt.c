@@ -42,15 +42,18 @@ static inline int _ccv_median(int* buf, int low, int high)
 }
 
 /* ccv_swt is only the method to generate stroke width map */
-void ccv_msft_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
 {
 	assert(a->type & CCV_C1);
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%d,%d)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
+	ccv_dense_matrix_t* cc = 0;
+	ccv_canny(a, &cc, 0, params.size, params.low_thresh, params.high_thresh);
 	ccv_dense_matrix_t* c = 0;
-	ccv_canny(a, &c, 0, params.size, params.low_thresh, params.high_thresh);
+	ccv_close_outline(cc, &c, 0);
+	ccv_matrix_free(cc);
 	ccv_dense_matrix_t* dx = 0;
 	ccv_sobel(a, &dx, 0, params.size, 0);
 	ccv_dense_matrix_t* dy = 0;
@@ -100,16 +103,8 @@ void ccv_msft_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_s
 		ray_increment(); \
 		if (x0 >= a->cols - 1 || x0 < 1 || y0 >= a->rows - 1 || y0 < 1) \
 			break; \
-		if (abs(i - y0) < 2 && abs(j - x0) < 2) \
-		{ \
-			if (c_ptr[x0 + (y0 - i) * c->step]) \
-			{ \
-				kx = x0; \
-				ky = y0; \
-				flag = 1; \
-				break; \
-			} \
-		} else { /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
+		if (abs(i - y0) >= 2 || abs(j - x0) >= 2) \
+		{ /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
 			flag = 0; \
 			for (k = 0; k < 5; k++) \
 			{ \
@@ -202,298 +197,6 @@ void ccv_msft_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_s
 	ccv_matrix_free(c);
 	ccv_matrix_free(dx);
 	ccv_matrix_free(dy);
-}
-
-typedef struct {
-	int direction;
-	ccv_point_t point;
-} ccv_swt_node_t;
-
-static void _ccv_swt_edge_trace(ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t* c, int direction, int size)
-{
-	ccv_dense_matrix_t* dx = 0;
-	ccv_sobel(a, &dx, 0, size, 0);
-	ccv_dense_matrix_t* dy = 0;
-	ccv_sobel(a, &dy, 0, 0, size);
-	int dx5[] = {-1, 0, 1, 0, 0};
-	int dy5[] = {0, 0, 0, -1, 1};
-	int adx, ady, sx, sy, err, e2, x0, y0, kx, ky;
-	int rdx, rdy, flag;
-#define ray_reset() \
-	err = adx - ady; e2 = 0; \
-	x0 = j; y0 = i;
-#define ray_increment() \
-	e2 = 2 * err; \
-	if (e2 > -ady) \
-	{ \
-		err -= ady; \
-		x0 += sx; \
-	} \
-	if (e2 < adx) \
-	{ \
-		err += adx; \
-		y0 += sy; \
-	}
-#define ray_emit(xx, xy, yx, yy, _for_get_xy, _for_set_d, _for_get_d) \
-	rdx = _for_get_xy(dx_ptr, j, 0) * (xx) + _for_get_xy(dy_ptr, j, 0) * (xy); \
-	rdy = _for_get_xy(dx_ptr, j, 0) * (yx) + _for_get_xy(dy_ptr, j, 0) * (yy); \
-	adx = abs(rdx); \
-	ady = abs(rdy); \
-	sx = rdx > 0 ? direction : -direction; \
-	sy = rdy > 0 ? direction : -direction; \
-	/* Bresenham's line algorithm */ \
-	ray_reset(); \
-	flag = 0; \
-	for (w = 0; w < 50; w++) \
-	{ \
-		ray_increment(); \
-		if (x0 >= a->cols - 1 || x0 < 1 || y0 >= a->rows - 1 || y0 < 1) \
-			break; \
-		if (abs(i - y0) < 2 && abs(j - x0) < 2) \
-		{ \
-			if (c_ptr[x0 + (y0 - i) * c->step] || !_for_get_d(d_ptr + (y0 - i) * d->step, x0, 0)) \
-				break; \
-		} else { /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
-			if (!_for_get_d(d_ptr + (y0 - i) * d->step, x0, 0)) \
-				break; \
-			flag = 0; \
-			for (k = 0; k < 5; k++) \
-			{ \
-				kx = x0 + dx5[k]; \
-				ky = y0 + dy5[k]; \
-				if (c_ptr[kx + (ky - i) * c->step]) \
-				{ \
-					flag = 1; \
-					break; \
-				} \
-			} \
-			if (flag) \
-				break; \
-		} \
-		_for_set_d(d_ptr + (y0 - i) * d->step, x0, 0, 0); \
-	}
-	int i, j, k, w;
-	unsigned char* dx_ptr = dx->data.u8;
-	unsigned char* dy_ptr = dy->data.u8;
-	unsigned char* d_ptr = d->data.u8;
-	unsigned char* c_ptr = c->data.u8;
-#define for_block(_for_get_xy, _for_set_d, _for_get_d) \
-	for (i = 0; i < c->rows; i++) \
-	{ \
-		for (j = 0; j < c->cols; j++) \
-			if (c_ptr[j]) \
-			{ \
-				ray_emit(1, 0, 0, 1, _for_get_xy, _for_set_d, _for_get_d); \
-				ray_emit(1, -1, 1, 1, _for_get_xy, _for_set_d, _for_get_d); \
-				ray_emit(1, 1, -1, 1, _for_get_xy, _for_set_d, _for_get_d); \
-			} \
-		dx_ptr += dx->step; \
-		dy_ptr += dy->step; \
-		d_ptr += d->step; \
-		c_ptr += c->step; \
-	}
-	ccv_matrix_getter(dx->type, ccv_matrix_setter_getter, d->type, for_block);
-#undef for_block
-	ccv_matrix_free(dx);
-	ccv_matrix_free(dy);
-}
-
-void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
-{
-	ccv_msft_swt(a, b, type, params);
-	return;
-	assert(a->type & CCV_C1);
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%d,%d)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
-	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
-	ccv_object_return_if_cached(, db);
-	ccv_dense_matrix_t* canny = 0;
-	ccv_canny(a, &canny, 0, params.size, params.low_thresh, params.high_thresh);
-	ccv_dense_matrix_t* outline = 0;
-	ccv_close_outline(canny, &outline, 0);
-	ccv_dense_matrix_t* vv = 0;
-	ccv_visualize(outline, &vv, 0);
-	ccv_write(vv, "vv.png", 0, CCV_IO_PNG_FILE, 0);
-	ccv_matrix_free(vv);
-	ccv_dense_matrix_t* mser = 0;
-	ccv_mser_param_t mser_params = {
-		.min_area = 60,
-		.max_area = (int)(a->rows * a->cols * 0.3 + 0.5),
-		.min_diversity = 0.2,
-		.area_threshold = 1.01,
-		.min_margin = 0.003,
-		.max_evolution = 200,
-		.edge_blur_sigma = sqrt(3.0),
-		.delta = 5,
-		.max_variance = 0.25,
-		.direction = params.direction,
-	};
-	ccv_array_t* keypoint = ccv_mser(a, 0, &mser, 0, mser_params);
-	ccv_array_free(keypoint);
-	// from mser, the result in mser is non-zero integer
-	ccv_dense_matrix_t* d = ccv_dense_matrix_new(a->rows, a->cols, CCV_32S | CCV_C1, 0, 0);
-	int i, j, k;
-	int* di = d->data.i32;
-	int* mi = mser->data.i32;
-	for (i = 0; i < d->rows; i++)
-	{
-		for (j = 0; j < d->cols; j++)
-			di[j] = (mi[j] == 0) ? 0 : 10000;
-		di += d->cols;
-		mi += mser->cols;
-	}
-	ccv_matrix_free(mser);
-	_ccv_swt_edge_trace(a, d, canny, params.direction, params.size);
-	ccv_matrix_free(canny);
-	ccv_dense_matrix_t* dt = 0;
-	ccv_distance_transform(d, &dt, 0, 0, 0, 0, 0, 0, 0, 1, 1, CCV_GSEDT | CCV_POSITIVE);
-	ccv_matrix_free(d);
-	// ccv_distance_transform will assume output f32 data type for input i32 type
-	// d is not cached, thus, dt won't be cached, it is OK to manipulate dt directly
-	dt->type = (dt->type & ~CCV_32F) | CCV_32S; // change type to i32
-	float* dti = dt->data.f32;
-	for (i = 0; i < dt->rows; i++)
-	{
-		for (j = 0; j < dt->cols; j++)
-			((int*)dti)[j] = (int)(sqrt(dti[j]) * 2 + 0.5); // round it up
-		dti += dt->cols;
-	}
-	// now dt is a i32 type matrix
-	di = dt->data.i32;
-	int* buck = (int*)alloca(sizeof(int) * (100 + 2));
-	memset(buck, 0, sizeof(int) * (100 + 2));
-	for (i = 0; i < dt->rows; i++)
-	{
-		for (j = 0; j < dt->cols; j++)
-			if (di[j] <= 100 && di[j] > 0)
-				++buck[di[j]];
-		di += dt->cols;
-	}
-	for (i = 1; i <= 100; i++)
-		buck[i] += buck[i - 1];
-	buck[100 + 1] = buck[100];
-	ccv_swt_node_t* node = (ccv_swt_node_t*)ccmalloc(sizeof(ccv_swt_node_t) * dt->rows * dt->cols);
-	memset(node, 0, sizeof(ccv_swt_node_t) * dt->cols);
-	ccv_swt_node_t** rnode = (ccv_swt_node_t**)ccmalloc(sizeof(ccv_swt_node_t*) * buck[100 + 1]);
-	ccv_swt_node_t* pnode = node;
-	di = dt->data.i32;
-	int dx[] = {-1, 0, 1, -1, 1, -1, 0, 1};
-	int dy[] = {-1, -1, -1, 0, 0, 1, 1, 1};
-	for (i = 0; i < dt->rows - 1; i++)
-	{
-		pnode[dt->cols].direction = 0;
-		for (j = 0; j < dt->cols - 1; j++)
-		{
-			pnode->point.x = j;
-			pnode->point.y = i;
-			pnode[dt->cols + 1].direction = 0;
-			if (di[j + 1] < di[j])
-				pnode->direction |= 1 << 4;
-			else if (di[j] < di[j + 1])
-				pnode[1].direction |= 1 << 3;
-			if (di[j + dt->cols] < di[j])
-				pnode->direction |= 1 << 6;
-			else if (di[j] < di[j + dt->cols])
-				pnode[dt->cols].direction |= 1 << 1;
-			if (di[j + dt->cols + 1] < di[j])
-				pnode->direction |= 1 << 7;
-			else if (di[j] < di[j + dt->cols + 1])
-				pnode[dt->cols + 1].direction |= 1 << 0;
-			if (di[j + dt->cols] < di[j + 1])
-				pnode[1].direction |= 1 << 5;
-			else if (di[j + 1] < di[j + dt->cols])
-				pnode[dt->cols].direction |= 1 << 2;
-			if (di[j] <= 100 && di[j] > 0)
-				rnode[--buck[di[j]]] = pnode;
-			++pnode;
-		}
-		pnode->point.x = dt->cols - 1;
-		pnode->point.y = i;
-		if (di[dt->cols - 1] <= 100 && di[dt->cols - 1] > 0)
-			rnode[--buck[di[dt->cols - 1]]] = pnode;
-		++pnode;
-		di += dt->cols;
-	}
-	for (j = 0; j < dt->cols - 1; j++)
-	{
-		pnode->point.x = j;
-		pnode->point.y = dt->rows - 1;
-		if (di[j + 1] < di[j])
-			pnode->direction |= 1 << 4;
-		else if (di[j] < di[j + 1])
-			pnode[1].direction |= 1 << 3;
-		if (di[j] <= 100 && di[j] > 0)
-			rnode[--buck[di[j]]] = pnode;
-		++pnode;
-	}
-	pnode->point.x = dt->cols - 1;
-	pnode->point.y = dt->rows - 1;
-	if (di[dt->cols - 1] <= 100 && di[dt->cols - 1] > 0)
-		rnode[--buck[di[dt->cols - 1]]] = pnode;
-	di = dt->data.i32;
-	ccv_swt_node_t** bnode = (ccv_swt_node_t**)ccmalloc(sizeof(ccv_swt_node_t*) * dt->rows * dt->cols);
-	for (k = 100; k > 0; k--)
-	{
-		for (i = buck[k]; i < buck[k + 1]; i++)
-		{
-			pnode = rnode[i];
-			if (di[pnode->point.x + pnode->point.y * dt->cols] == k) // it may be cleaned up
-			{
-				// breath first search
-				int open = 0, closed = 0;
-				bnode[open] = pnode;
-				while (closed >= open)
-				{
-					if (bnode[open]->direction > 0)
-						for (j = 0; j < 8; j++)
-							if (bnode[open]->direction & (1 << j))
-								if (di[bnode[open]->point.x + dx[j] + (bnode[open]->point.y + dy[j]) * dt->cols] != k)
-								{
-									++closed;
-									bnode[closed] = bnode[open] + dx[j] + dy[j] * dt->cols;
-									di[bnode[closed]->point.x + bnode[closed]->point.y * dt->cols] = k;
-								}
-					++open;
-				}
-			}
-		}
-	}
-	ccfree(rnode);
-	ccfree(bnode);
-	ccfree(node);
-	unsigned char* bptr = db->data.u8;
-#define for_block(_, _for_set) \
-	for (i = 0; i < db->rows; i++) \
-	{ \
-		for (j = 0; j < db->cols; j++) \
-			if (di[j] >= 2 && di[j] <= 40) \
-				_for_set(bptr, j, di[j], 0); \
-			else \
-				_for_set(bptr, j, 0, 0); \
-		di += dt->cols; \
-		bptr += db->step; \
-	}
-	ccv_matrix_setter(db->type, for_block);
-#undef for_block
-	di = dt->data.i32;
-	for (i = 0; i < dt->rows; i++)
-	{
-		for (j = 0; j < dt->cols; j++)
-		{
-			if (di[j] > 40 || di[j] < 2)
-				di[j] = 0;
-			else
-				di[j] = di[j] * 100;
-		}
-		di += dt->cols;
-	}
-	ccv_dense_matrix_t* v = 0;
-	ccv_visualize(dt, &v, 0);
-	ccv_matrix_free(dt);
-	char buf[100];
-	sprintf(buf, "output-%d.png", (params.direction + 1) / 2);
-	ccv_write(v, buf, 0, CCV_IO_PNG_FILE, 0);
-	ccv_matrix_free(v);
 }
 
 ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
