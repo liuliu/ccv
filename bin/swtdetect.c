@@ -13,21 +13,21 @@ int main(int argc, char** argv)
 {
 	ccv_swt_param_t params = {
 		.size = 3,
-		.low_thresh = 78,
-		.high_thresh = 234,
-		.max_height = 800,
+		.low_thresh = 76,
+		.high_thresh = 228,
+		.max_height = 300,
 		.min_height = 10,
 		.aspect_ratio = 10,
-		.variance_ratio = 0.5,
+		.variance_ratio = 0.6,
 		.thickness_ratio = 1.5,
-		.height_ratio = 3,
-		.intensity_thresh = 27,
+		.height_ratio = 2,
+		.intensity_thresh = 26,
 		.distance_ratio = 3,
 		.intersect_ratio = 2,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.1,
+		.elongate_ratio = 1.6,
 		.breakdown = 1,
-		.breakdown_ratio = 9.9,
+		.breakdown_ratio = 0.78,
 	};
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
@@ -75,6 +75,7 @@ int main(int argc, char** argv)
 			fclose(r);
 		}
 	}
-	ccv_disable_cache();
+	ccv_drain_cache();
 	return 0;
 }
+

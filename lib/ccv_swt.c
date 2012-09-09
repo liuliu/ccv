@@ -41,6 +41,15 @@ static inline int _ccv_median(int* buf, int low, int high)
 	}
 }
 
+typedef struct {
+	int x0, x1, y0, y1;
+	int w;
+} ccv_swt_stroke_t;
+
+#define less_than(s1, s2, aux) ((s1).w < (s2).w)
+static CCV_IMPLEMENT_QSORT(_ccv_swt_stroke_qsort, ccv_swt_stroke_t, less_than)
+#undef less_than
+
 /* ccv_swt is only the method to generate stroke width map */
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
 {
@@ -60,6 +69,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_sobel(a, &dy, 0, 0, params.size);
 	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
+	ccv_array_t* strokes = ccv_array_new(sizeof(ccv_swt_stroke_t), 64, 0);
 	unsigned char* b_ptr = db->data.u8;
 	unsigned char* c_ptr = c->data.u8;
 	unsigned char* dx_ptr = dx->data.u8;
@@ -73,6 +83,13 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 #define ray_reset() \
 	err = adx - ady; e2 = 0; \
 	x0 = j; y0 = i;
+#define ray_reset_by_stroke(stroke) \
+	adx = abs(stroke->x1 - stroke->x0); \
+	ady = abs(stroke->y1 - stroke->y0); \
+	sx = stroke->x1 > stroke->x0 ? 1 : -1; \
+	sy = stroke->y1 > stroke->y0 ? 1 : -1; \
+	err = adx - ady; e2 = 0; \
+	x0 = stroke->x0; y0 = stroke->y0;
 #define ray_increment() \
 	e2 = 2 * err; \
 	if (e2 > -ady) \
@@ -91,8 +108,8 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	rdy = _for_get_d(dx_ptr, j, 0) * (yx) + _for_get_d(dy_ptr, j, 0) * (yy); \
 	adx = abs(rdx); \
 	ady = abs(rdy); \
-	sx = rdx > 0 ? params.direction : -params.direction; \
-	sy = rdy > 0 ? params.direction : -params.direction; \
+	sx = rdx > 0 ? -params.direction : params.direction; \
+	sy = rdy > 0 ? -params.direction : params.direction; \
 	/* Bresenham's line algorithm */ \
 	ray_reset(); \
 	flag = 0; \
@@ -143,35 +160,25 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		if (flag) \
 		{ \
 			x1 = x0; y1 = y0; \
-			int n = 0; \
 			ray_reset(); \
 			w = (int)(sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0)) + 0.5); \
 			/* extend the line to be width of 1 */ \
 			for (;;) \
 			{ \
 				if (_for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) == 0 || _for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > w) \
-				{ \
 					_for_set_b(b_ptr + (y0 - i) * db->step, x0, w, 0); \
-					buf[n++] = w; \
-				} else if (_for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) != 0) \
-					buf[n++] = _for_get_b(b_ptr + (y0 - i) * db->step, x0, 0); \
 				if (x0 == x1 && y0 == y1) \
 					break; \
 				ray_increment(); \
 			} \
-			int nw = _ccv_median(buf, 0, n - 1); \
-			if (nw != w) \
-			{ \
-				ray_reset(); \
-				for (;;) \
-				{ \
-					if (_for_get_b(b_ptr + (y0 - i) * db->step, x0, 0) > nw) \
-						_for_set_b(b_ptr + (y0 - i) * db->step, x0, nw, 0); \
-					if (x0 == x1 && y0 == y1) \
-						break; \
-					ray_increment(); \
-				} \
-			} \
+			ccv_swt_stroke_t stroke = { \
+				.x0 = j, \
+				.x1 = x1, \
+				.y0 = i, \
+				.y1 = y1, \
+				.w = w \
+			}; \
+			ccv_array_push(strokes, &stroke); \
 		} \
 	}
 #define for_block(_for_get_d, _for_set_b, _for_get_b) \
@@ -188,18 +195,47 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		c_ptr += c->step; \
 		dx_ptr += dx->step; \
 		dy_ptr += dy->step; \
+	} \
+	b_ptr = db->data.u8; \
+	/* compute median width of stroke, from shortest strokes to longest */ \
+	_ccv_swt_stroke_qsort((ccv_swt_stroke_t*)ccv_array_get(strokes, 0), strokes->rnum, 0); \
+	for (i = 0; i < strokes->rnum; i++) \
+	{ \
+		ccv_swt_stroke_t* stroke = (ccv_swt_stroke_t*)ccv_array_get(strokes, i); \
+		ray_reset_by_stroke(stroke); \
+		int n = 0; \
+		for (;;) \
+		{ \
+			buf[n++] = _for_get_b(b_ptr + y0 * db->step, x0, 0); \
+			if (x0 == stroke->x1 && y0 == stroke->y1) \
+				break; \
+			ray_increment(); \
+		} \
+		int nw = _ccv_median(buf, 0, n - 1); \
+		if (nw != stroke->w) \
+		{ \
+			ray_reset_by_stroke(stroke); \
+			for (;;) \
+			{ \
+				_for_set_b(b_ptr + y0 * db->step, x0, nw, 0); \
+				if (x0 == stroke->x1 && y0 == stroke->y1) \
+					break; \
+				ray_increment(); \
+			} \
+		} \
 	}
 	ccv_matrix_getter(dx->type, ccv_matrix_setter_getter, db->type, for_block);
 #undef for_block
 #undef ray_emit
 #undef ray_reset
 #undef ray_increment
+	ccv_array_free(strokes);
 	ccv_matrix_free(c);
 	ccv_matrix_free(dx);
 	ccv_matrix_free(dy);
 }
 
-ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
+ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio, int min_height, int max_height)
 {
 	int i, j, k;
 	int* a_ptr = a->data.i32;
@@ -224,24 +260,29 @@ ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio)
 				for (; closed < open; closed++)
 				{
 					ccv_contour_push(contour, *closed);
-					// int w = a_ptr[closed->x + (closed->y - i) * a->cols];
+					double w = a_ptr[closed->x + (closed->y - i) * a->cols];
 					for (k = 0; k < 8; k++)
 					{
 						int nx = closed->x + dx8[k];
 						int ny = closed->y + dy8[k];
 						if (nx >= 0 && nx < a->cols && ny >= 0 && ny < a->rows &&
 							a_ptr[nx + (ny - i) * a->cols] != 0 &&
-							!m_ptr[nx + (ny - i) * a->cols]) // &&
-							// (a_ptr[nx + (ny - i) * a->cols] <= ratio * w && a_ptr[nx + (ny - i) * a->cols] * ratio >= w))
+							!m_ptr[nx + (ny - i) * a->cols] &&
+							(a_ptr[nx + (ny - i) * a->cols] <= ratio * w && a_ptr[nx + (ny - i) * a->cols] * ratio >= w))
 						{
 							m_ptr[nx + (ny - i) * a->cols] = 1;
+							// compute new average w
+							w = (w * (int)(open - closed + 1) + a_ptr[nx + (ny - i) * a->cols]) / (double)(open - closed + 2);
 							open->x = nx;
 							open->y = ny;
 							open++;
 						}
 					}
 				}
-				ccv_array_push(contours, &contour);
+				if (contour->rect.height < min_height || contour->rect.height > max_height)
+					ccv_contour_free(contour);
+				else
+					ccv_array_push(contours, &contour);
 			}
 		a_ptr += a->cols;
 		m_ptr += a->cols;
@@ -263,9 +304,10 @@ typedef struct {
 
 static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_matrix_t* swt, ccv_swt_param_t params)
 {
-	ccv_array_t* contours = _ccv_swt_connected_component(swt, 3);
+	ccv_array_t* contours = _ccv_swt_connected_component(swt, 3, params.min_height, params.max_height);
 	ccv_array_t* letters = ccv_array_new(sizeof(ccv_letter_t), 5, 0);
 	int i, j, x, y;
+	// merge contours that inside other contours
 	int* buffer = (int*)ccmalloc(sizeof(int) * swt->rows * swt->cols);
 	double aspect_ratio_inv = 1.0 / params.aspect_ratio;
 	for (i = 0; i < contours->rnum; i++)
@@ -328,10 +370,11 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 			buffer[point->x + point->y * swt->cols] = i + 1;
 		}
 	}
+	// filter out letters that intersects more than 2 other letters
 	for (i = 0; i < letters->rnum; i++)
 	{
 		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(letters, i);
-		if (sqrt(letter->variance) > letter->mean * params.variance_ratio)
+		if (letter->variance > letter->mean * params.variance_ratio)
 		{
 			ccv_contour_free(letter->contour);
 			continue;
@@ -456,7 +499,7 @@ static void _ccv_swt_add_letter(ccv_textline_t* textline, ccv_letter_t* letter)
 static ccv_array_t* _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_t params)
 {
 	int i, j;
-	ccv_array_t* pairs = ccv_array_new(sizeof(ccv_letter_pair_t), letters->rnum * letters->rnum, 0);
+	ccv_array_t* pairs = ccv_array_new(sizeof(ccv_letter_pair_t), letters->rnum, 0);
 	double thickness_ratio_inv = 1.0 / params.thickness_ratio;
 	double height_ratio_inv = 1.0 / params.height_ratio;
 	for (i = 0; i < letters->rnum - 1; i++)
@@ -517,7 +560,7 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 	for (i = 0; i < textline->rnum; i++)
 	{
 		ccv_textline_t* t = (ccv_textline_t*)ccv_array_get(textline, i);
-		if (t->neighbors > n + 1)
+		if (t->neighbors - 1 > n)
 			n = t->neighbors - 1;
 	}
 	int* buffer = (int*)alloca(n * sizeof(int));
@@ -539,7 +582,7 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 		double var;
 		int threshold = ccv_otsu(&otsu, &var, range);
 		mean = mean / (t->neighbors - 1);
-		if (var > mean * params.breakdown_ratio)
+		if (sqrt(var) > mean * params.breakdown_ratio)
 		{
 			ccv_textline_t nt = { .neighbors = 0 };
 			_ccv_swt_add_letter(&nt, t->letters[0]);
@@ -571,20 +614,20 @@ static int _ccv_is_same_textline(const void* a, const void* b, void* data)
 	int width = ccv_min(t1->rect.x + t1->rect.width, t2->rect.x + t2->rect.width) - ccv_max(t1->rect.x, t2->rect.x);
 	int height = ccv_min(t1->rect.y + t1->rect.height, t2->rect.y + t2->rect.height) - ccv_max(t1->rect.y, t2->rect.y);
 	/* overlapped 80% */
-	return (width > 0 && height > 0 && width * height * 10 > ccv_min(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height) * 8);
+	return (width > 0 && height > 0 && width * height * 10 > ccv_max(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height));
 }
 
 ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 {
 	ccv_dense_matrix_t* swt = 0;
-	params.direction = CCV_BRIGHT_TO_DARK;
+	params.direction = CCV_DARK_TO_BRIGHT;
 	ccv_swt(a, &swt, 0, params);
 	/* perform connected component analysis */
 	ccv_array_t* lettersB = _ccv_swt_connected_letters(a, swt, params);
 	ccv_matrix_free(swt);
 	ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
 	swt = 0;
-	params.direction = CCV_DARK_TO_BRIGHT;
+	params.direction = CCV_BRIGHT_TO_DARK;
 	ccv_swt(a, &swt, 0, params);
 	ccv_array_t* lettersF = _ccv_swt_connected_letters(a, swt, params);
 	ccv_matrix_free(swt);

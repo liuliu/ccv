@@ -173,7 +173,15 @@ static void _ccv_set_union_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, cc
 						}
 						if (!root0)
 						{
-							ccv_mser_history_t root = {.rank = 0, .size = 1, .value = v, .shortcut = history_list->rnum, .parent = history_list->rnum, .head = node0, .tail = node1};
+							ccv_mser_history_t root = {
+								.rank = 0,
+								.size = 1,
+								.value = v,
+								.shortcut = history_list->rnum,
+								.parent = history_list->rnum,
+								.head = node0,
+								.tail = node1
+							};
 							node0->root = history_list->rnum;
 							ccv_array_push(history_list, &root);
 							root0 = (ccv_mser_history_t*)ccv_array_get(history_list, history_list->rnum - 1);

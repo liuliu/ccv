@@ -95,25 +95,25 @@ int main(int argc, char** argv)
 	}
 	ccv_swt_param_t params = {
 		.size = 3,
-		.low_thresh = 125,
-		.high_thresh = 300,
+		.low_thresh = 76,
+		.high_thresh = 228,
 		.max_height = 300,
 		.min_height = 10,
 		.aspect_ratio = 10,
-		.variance_ratio = 0.5,
+		.variance_ratio = 0.6,
 		.thickness_ratio = 1.5,
 		.height_ratio = 3,
-		.intensity_thresh = 255,
+		.intensity_thresh = 26,
 		.distance_ratio = 3,
 		.intersect_ratio = 2,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.5,
+		.elongate_ratio = 1.6,
 		.breakdown = 1,
-		.breakdown_ratio = 5.0,
+		.breakdown_ratio = 0.78,
 	};
 	double best_f = 0;
 	ccv_swt_param_t best_params = params;
-	for (i = 50; i < 100; i++)
+	for (i = 50; i < 150; i++)
 	{
 		params.low_thresh = i;
 		params.high_thresh = i * 3;
@@ -179,9 +179,9 @@ int main(int argc, char** argv)
 	}
 	printf("\n");
 	params = best_params;
-	for (i = 50; i <= 150; i++)
+	for (i = 1; i <= 150; i++)
 	{
-		params.breakdown_ratio = i / 10.0;
+		params.breakdown_ratio = i / 100.0;
 		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
 		if (f > best_f)
 		{
