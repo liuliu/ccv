@@ -6,6 +6,23 @@
 #ifndef GUARD_ccv_internal_h
 #define GUARD_ccv_internal_h
 
+static int _CCV_PRINT_COUNT __attribute__ ((unused)) = 0;
+static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
+
+/* macro printf utilities */
+
+#define FLUSH(a, ...) \
+	do { \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf("\b"); \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf(" "); \
+		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+			printf("\b"); \
+		_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
+		fflush(stdout); \
+	} while (0) // using do while (0) to force ; line end
+
 /* the following macro enables the usage such as:
  * ccv_object_return_if_cached(, db, dc, dd, ...);
  * effectively, it only returns when db, dc and dd are all successfully retrieved from cache */

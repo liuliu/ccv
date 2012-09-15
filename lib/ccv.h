@@ -604,6 +604,7 @@ typedef struct {
 	/* geometry filtering parameters */
 	int max_height;
 	int min_height;
+	int min_area;
 	double aspect_ratio;
 	double variance_ratio;
 	/* grouping parameters */

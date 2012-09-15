@@ -1,23 +1,10 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #include <sys/time.h>
 #include <ctype.h>
 
-static int _CCV_PRINT_COUNT = 0;
-static int _CCV_PRINT_LOOP = 0;
-
-#define FLUSH(a, ...) \
-	do { \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf(" "); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
-		fflush(stdout); \
-	} while (0) // using do while (0) to force ; line end
-
-double ccv_swt_evaluate(int n, ccv_dense_matrix_t** images, ccv_array_t** truth, double a, ccv_swt_param_t params)
+// compute f-rate of swt
+static double _ccv_evaluate_swt(int n, ccv_dense_matrix_t** images, ccv_array_t** truth, double a, ccv_swt_param_t params, double* precision, double* recall)
 {
 	int i, j, k;
 	double total_f = 0, total_precision = 0, total_recall = 0;
@@ -61,8 +48,18 @@ double ccv_swt_evaluate(int n, ccv_dense_matrix_t** images, ccv_array_t** truth,
 	total_f /= n;
 	total_precision /= n;
 	total_recall /= n;
+	if (precision)
+		*precision = total_precision;
+	if (recall)
+		*recall = total_recall;
 	return total_f;
 }
+
+typedef struct {
+	double min_value;
+	double max_value;
+	double step;
+} ccv_swt_range_t;
 
 int main(int argc, char** argv)
 {
@@ -97,102 +94,176 @@ int main(int argc, char** argv)
 		.size = 3,
 		.low_thresh = 76,
 		.high_thresh = 228,
-		.max_height = 300,
+		.max_height = 500,
 		.min_height = 10,
+		.min_area = 60,
 		.aspect_ratio = 10,
-		.variance_ratio = 0.6,
+		.variance_ratio = 0.72,
 		.thickness_ratio = 1.5,
-		.height_ratio = 3,
+		.height_ratio = 2,
 		.intensity_thresh = 26,
 		.distance_ratio = 3,
 		.intersect_ratio = 2,
 		.letter_thresh = 3,
 		.elongate_ratio = 1.6,
 		.breakdown = 1,
-		.breakdown_ratio = 0.78,
+		.breakdown_ratio = 1.0,
 	};
-	double best_f = 0;
+	ccv_swt_range_t size_range = {
+		.min_value = 1,
+		.max_value = 3,
+		.step = 2,
+	};
+	ccv_swt_range_t low_thresh_range = {
+		.min_value = 50,
+		.max_value = 150,
+		.step = 1,
+	};
+	ccv_swt_range_t high_thresh_range = {
+		.min_value = 200,
+		.max_value = 350,
+		.step = 1,
+	};
+	ccv_swt_range_t max_height_range = {
+		.min_value = 500,
+		.max_value = 500,
+		.step = 1,
+	};
+	ccv_swt_range_t min_height_range = {
+		.min_value = 5,
+		.max_value = 30,
+		.step = 1,
+	};
+	ccv_swt_range_t min_area_range = {
+		.min_value = 10,
+		.max_value = 100,
+		.step = 1,
+	};
+	ccv_swt_range_t aspect_ratio_range = {
+		.min_value = 5,
+		.max_value = 15,
+		.step = 1,
+	};
+	ccv_swt_range_t variance_ratio_range = {
+		.min_value = 0.3,
+		.max_value = 1.0,
+		.step = 0.01,
+	};
+	ccv_swt_range_t thickness_ratio_range = {
+		.min_value = 1.0,
+		.max_value = 2.0,
+		.step = 0.1,
+	};
+	ccv_swt_range_t height_ratio_range = {
+		.min_value = 1.0,
+		.max_value = 3.0,
+		.step = 0.1,
+	};
+	ccv_swt_range_t intensity_thresh_range = {
+		.min_value = 1,
+		.max_value = 50,
+		.step = 1,
+	};
+	ccv_swt_range_t distance_ratio_range = {
+		.min_value = 1.0,
+		.max_value = 5.0,
+		.step = 0.1,
+	};
+	ccv_swt_range_t intersect_ratio_range = {
+		.min_value = 0.0,
+		.max_value = 5.0,
+		.step = 0.1,
+	};
+	ccv_swt_range_t letter_thresh_range = {
+		.min_value = 0,
+		.max_value = 5,
+		.step = 1,
+	};
+	ccv_swt_range_t elongate_ratio_range = {
+		.min_value = 0.1,
+		.max_value = 2.5,
+		.step = 0.1,
+	};
+	ccv_swt_range_t breakdown_ratio_range = {
+		.min_value = 0.5,
+		.max_value = 1.5,
+		.step = 0.01,
+	};
+	double best_f = 0, best_precision = 0, best_recall = 0;
+	double a = 0.5;
+	double v;
 	ccv_swt_param_t best_params = params;
-	for (i = 50; i < 150; i++)
-	{
-		params.low_thresh = i;
-		params.high_thresh = i * 3;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at low_thresh = %d", f, best_f, best_params.low_thresh);
+#define optimize(parameter, type, rounding) \
+	params = best_params; \
+	for (v = parameter##_range.min_value; v <= parameter##_range.max_value; v += parameter##_range.step) \
+	{ \
+		params.parameter = (type)(v + rounding); \
+		double f, recall, precision; \
+		f = _ccv_evaluate_swt(images, aof, aow, a, params, &precision, &recall); \
+		if (f > best_f) \
+		{ \
+			best_params = params; \
+			best_f = f; \
+			best_precision = precision; \
+			best_recall = recall; \
+		} \
+		FLUSH("current f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <<[%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
 	}
-	printf("\n");
-	params = best_params;
-	for (i = params.low_thresh * 2; i < params.low_thresh * 4; i++)
-	{
-		params.high_thresh = i;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at high_thresh = %d", f, best_f, best_params.high_thresh);
-	}
-	printf("\n");
-	params = best_params;
-	for (i = 5; i < 30; i++)
-	{
-		params.intensity_thresh = i;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at intensity_thresh = %d", f, best_f, best_params.intensity_thresh);
-	}
-	printf("\n");
-	params = best_params;
-	for (i = 1; i <= 30; i++)
-	{
-		params.variance_ratio = i / 10.0;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at variance_ratio = %lf", f, best_f, best_params.variance_ratio);
-	}
-	printf("\n");
-	params = best_params;
-	for (i = 1; i <= 100; i++)
-	{
-		params.elongate_ratio = i / 10.0;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at elongate_ratio = %lf", f, best_f, best_params.elongate_ratio);
-	}
-	printf("\n");
-	params = best_params;
-	for (i = 1; i <= 150; i++)
-	{
-		params.breakdown_ratio = i / 100.0;
-		double f = ccv_swt_evaluate(images, aof, aow, 0.5, params);
-		if (f > best_f)
-		{
-			best_params = params;
-			best_f = f;
-		}
-		FLUSH("current f : %lf, best f : %lf, at breakdown_ratio = %lf", f, best_f, best_params.breakdown_ratio);
-	}
-	printf("\nbest parameters for swt is:\n\tlow_thresh = %d\n\thigh_thresh = %d\n\tintensity_thresh = %d\n\tvariance_ratio = %lf\n\telongate_ratio = %lf\n\tbreakdown_ratio = %lf\n", best_params.low_thresh, best_params.high_thresh, best_params.intensity_thresh, best_params.variance_ratio, best_params.elongate_ratio, best_params.breakdown_ratio);
+	int max_round = 10;
+	for (i = 0; i < max_round; i++)
+	optimize(size, int, 0.5);
+	optimize(low_thresh, int, 0.5);
+	optimize(high_thresh, int, 0.5);
+	optimize(max_height, int, 0.5);
+	optimize(min_height, int, 0.5);
+	optimize(min_area, int, 0.5);
+	optimize(aspect_ratio, double, 0);
+	optimize(variance_ratio, double, 0);
+	optimize(thickness_ratio, double, 0);
+	optimize(height_ratio, double, 0);
+	optimize(intensity_thresh, int, 0.5);
+	optimize(distance_ratio, double, 0);
+	optimize(intersect_ratio, double, 0);
+	optimize(letter_thresh, int, 0.5);
+	optimize(elongate_ratio, double, 0);
+	optimize(breakdown_ratio, double, 0);
+	printf("\nAt round %d(of %d) : best parameters for swt is:\n"
+		   "\tsize = %d\n"
+		   "\tlow_thresh = %d\n"
+		   "\thigh_thresh = %d\n"
+		   "\tmax_height = %d\n"
+		   "\tmin_height = %d\n"
+		   "\tmin_area = %d\n"
+		   "\taspect_ratio = %lf\n"
+		   "\tvariance_ratio = %lf\n"
+		   "\tthickness_ratio = %lf\n"
+		   "\theight_ratio = %lf\n"
+		   "\tintensity_thresh = %d\n"
+		   "\tdistance_ratio = %lf\n"
+		   "\tintersect_ratio = %lf\n"
+		   "\tletter_thresh = %d\n"
+		   "\telongate_ratio = %lf\n"
+		   "\tbreakdown_ratio = %lf\n",
+		   i + 1, max_round,
+		   best_params.size,
+		   best_params.low_thresh,
+		   best_params.high_thresh,
+		   best_params.max_height,
+		   best_params.min_height,
+		   best_params.min_area,
+		   best_params.aspect_ratio,
+		   best_params.variance_ratio,
+		   best_params.thickness_ratio,
+		   best_params.height_ratio,
+		   best_params.intensity_thresh,
+		   best_params.distance_ratio,
+		   best_params.intersect_ratio,
+		   best_params.letter_thresh,
+		   best_params.elongate_ratio,
+		   best_params.breakdown_ratio);
+#undef optimize
 	ccfree(aof);
 	ccfree(aow);
-	ccv_disable_cache();
+	ccv_drain_cache();
 	return 0;
 }

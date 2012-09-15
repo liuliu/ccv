@@ -905,21 +905,6 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 	return av;
 }
 
-static int _CCV_PRINT_COUNT = 0;
-static int _CCV_PRINT_LOOP = 0;
-
-#define FLUSH(a, ...) \
-	do { \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf(" "); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
-		fflush(stdout); \
-	} while (0) // using do while (0) to force ; line end
-
 static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char** bgfiles, int bgnum, ccv_dpm_mixture_model_t* model, ccv_dpm_new_param_t params, float threshold)
 {
 	int i, j;

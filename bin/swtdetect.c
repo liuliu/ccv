@@ -15,10 +15,11 @@ int main(int argc, char** argv)
 		.size = 3,
 		.low_thresh = 76,
 		.high_thresh = 228,
-		.max_height = 300,
+		.max_height = 500,
 		.min_height = 10,
+		.min_area = 60,
 		.aspect_ratio = 10,
-		.variance_ratio = 0.6,
+		.variance_ratio = 0.72,
 		.thickness_ratio = 1.5,
 		.height_ratio = 2,
 		.intensity_thresh = 26,
@@ -27,7 +28,7 @@ int main(int argc, char** argv)
 		.letter_thresh = 3,
 		.elongate_ratio = 1.6,
 		.breakdown = 1,
-		.breakdown_ratio = 0.78,
+		.breakdown_ratio = 1.0,
 	};
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
@@ -37,14 +38,17 @@ int main(int argc, char** argv)
 		unsigned int elapsed_time = get_current_time();
 		ccv_array_t* words = ccv_swt_detect_words(image, params);
 		elapsed_time = get_current_time() - elapsed_time;
-		int i;
-		for (i = 0; i < words->rnum; i++)
+		if (words)
 		{
-			ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
-			printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
+			int i;
+			for (i = 0; i < words->rnum; i++)
+			{
+				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
+				printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
+			}
+			printf("total : %d in time %dms\n", words->rnum, elapsed_time);
+			ccv_array_free(words);
 		}
-		printf("total : %d in time %dms\n", words->rnum, elapsed_time);
-		ccv_array_free(words);
 		ccv_matrix_free(image);
 	} else {
 		FILE* r = fopen(argv[1], "rt");
