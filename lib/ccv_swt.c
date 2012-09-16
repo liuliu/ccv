@@ -297,7 +297,7 @@ typedef struct {
 	ccv_point_t center;
 	int thickness;
 	int intensity;
-	double variance;
+	double std;
 	double mean;
 	ccv_contour_t* contour;
 } ccv_letter_t;
@@ -342,9 +342,9 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		double variance = 0;
 		for (j = 0; j < contour->size; j++)
 			variance += (mean - buffer[j]) * (mean - buffer[j]);
-		variance = sqrt(variance / contour->size);
+		variance = variance / contour->size;
 		ccv_letter_t letter;
-		letter.variance = variance;
+		letter.std = sqrt(variance);
 		letter.mean = mean;
 		letter.thickness = _ccv_median(buffer, 0, contour->size - 1);
 		letter.rect = contour->rect;
@@ -367,39 +367,43 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		}
 	}
 	// filter out letters that intersects more than 2 other letters
+	int* another = params.letter_occlude_thresh ? (int*)alloca(sizeof(int) * params.letter_occlude_thresh) : 0;
 	for (i = 0; i < letters->rnum; i++)
 	{
 		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(letters, i);
-		if (letter->variance > letter->mean * params.variance_ratio)
+		if (letter->std > letter->mean * params.std_ratio)
 		{
 			ccv_contour_free(letter->contour);
 			continue;
 		}
-		int another[] = {0, 0, 0};
 		int more = 0;
-		for (x = letter->rect.x; x < letter->rect.x + letter->rect.width; x++)
-			for (y = letter->rect.y; y < letter->rect.y + letter->rect.height; y++)
-				if (buffer[x + swt->cols * y] && buffer[x + swt->cols * y] != i + 1)
+		if (another)
+		{
+			// one letter cannot occlude with more than params.letter_occlude_thresh other letters
+			memset(another, 0, sizeof(int) * params.letter_occlude_thresh);
+			for (x = letter->rect.x; x < letter->rect.x + letter->rect.width; x++)
+			{
+				for (y = letter->rect.y; y < letter->rect.y + letter->rect.height; y++)
 				{
-					if (another[0])
+					int group = buffer[x + swt->cols * y];
+					if (group && group != i + 1)
 					{
-						if (buffer[x + swt->cols * y] != another[0])
-						{
-							if (another[1])
+						more = 1;
+						for (j = 0; j < params.letter_occlude_thresh; j++)
+							if (!another[j] || another[j] == group)
 							{
-								if (buffer[x + swt->cols * y] != another[1])
-								{
-									more = 1;
-									break;
-								}
-							} else {
-								another[1] = buffer[x + swt->cols * y];
+								another[j] = group;
+								more = 0;
+								break;
 							}
-						}
-					} else {
-						another[0] = buffer[x + swt->cols * y];
+						if (more)
+							break;
 					}
 				}
+				if (more)
+					break;
+			}
+		}
 		if (more)
 		{
 			ccv_contour_free(letter->contour);

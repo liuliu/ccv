@@ -92,20 +92,21 @@ int main(int argc, char** argv)
 	}
 	ccv_swt_param_t params = {
 		.size = 3,
-		.low_thresh = 76,
-		.high_thresh = 228,
+		.low_thresh = 142,
+		.high_thresh = 208,
 		.max_height = 500,
-		.min_height = 10,
-		.min_area = 60,
+		.min_height = 12,
+		.min_area = 78,
+		.letter_occlude_thresh = 2,
 		.aspect_ratio = 10,
-		.variance_ratio = 0.72,
-		.thickness_ratio = 1.5,
-		.height_ratio = 2,
-		.intensity_thresh = 26,
-		.distance_ratio = 3,
-		.intersect_ratio = 2,
+		.std_ratio = 0.78,
+		.thickness_ratio = 1.8,
+		.height_ratio = 1.9,
+		.intensity_thresh = 27,
+		.distance_ratio = 3.9,
+		.intersect_ratio = 1.9,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.6,
+		.elongate_ratio = 1.4,
 		.breakdown = 1,
 		.breakdown_ratio = 1.0,
 	};
@@ -134,6 +135,11 @@ int main(int argc, char** argv)
 		.max_value = 30,
 		.step = 1,
 	};
+	ccv_swt_range_t letter_occlude_thresh_range = {
+		.min_value = 0,
+		.max_value = 5,
+		.step = 1,
+	};
 	ccv_swt_range_t min_area_range = {
 		.min_value = 10,
 		.max_value = 100,
@@ -144,8 +150,8 @@ int main(int argc, char** argv)
 		.max_value = 15,
 		.step = 1,
 	};
-	ccv_swt_range_t variance_ratio_range = {
-		.min_value = 0.3,
+	ccv_swt_range_t std_ratio_range = {
+		.min_value = 0.1,
 		.max_value = 1.0,
 		.step = 0.01,
 	};
@@ -207,60 +213,66 @@ int main(int argc, char** argv)
 			best_precision = precision; \
 			best_recall = recall; \
 		} \
-		FLUSH("current f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <<[%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
-	}
+		FLUSH("current f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best f : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
+	} \
+	printf("\n");
 	int max_round = 10;
 	for (i = 0; i < max_round; i++)
-	optimize(size, int, 0.5);
-	optimize(low_thresh, int, 0.5);
-	optimize(high_thresh, int, 0.5);
-	optimize(max_height, int, 0.5);
-	optimize(min_height, int, 0.5);
-	optimize(min_area, int, 0.5);
-	optimize(aspect_ratio, double, 0);
-	optimize(variance_ratio, double, 0);
-	optimize(thickness_ratio, double, 0);
-	optimize(height_ratio, double, 0);
-	optimize(intensity_thresh, int, 0.5);
-	optimize(distance_ratio, double, 0);
-	optimize(intersect_ratio, double, 0);
-	optimize(letter_thresh, int, 0.5);
-	optimize(elongate_ratio, double, 0);
-	optimize(breakdown_ratio, double, 0);
-	printf("\nAt round %d(of %d) : best parameters for swt is:\n"
-		   "\tsize = %d\n"
-		   "\tlow_thresh = %d\n"
-		   "\thigh_thresh = %d\n"
-		   "\tmax_height = %d\n"
-		   "\tmin_height = %d\n"
-		   "\tmin_area = %d\n"
-		   "\taspect_ratio = %lf\n"
-		   "\tvariance_ratio = %lf\n"
-		   "\tthickness_ratio = %lf\n"
-		   "\theight_ratio = %lf\n"
-		   "\tintensity_thresh = %d\n"
-		   "\tdistance_ratio = %lf\n"
-		   "\tintersect_ratio = %lf\n"
-		   "\tletter_thresh = %d\n"
-		   "\telongate_ratio = %lf\n"
-		   "\tbreakdown_ratio = %lf\n",
-		   i + 1, max_round,
-		   best_params.size,
-		   best_params.low_thresh,
-		   best_params.high_thresh,
-		   best_params.max_height,
-		   best_params.min_height,
-		   best_params.min_area,
-		   best_params.aspect_ratio,
-		   best_params.variance_ratio,
-		   best_params.thickness_ratio,
-		   best_params.height_ratio,
-		   best_params.intensity_thresh,
-		   best_params.distance_ratio,
-		   best_params.intersect_ratio,
-		   best_params.letter_thresh,
-		   best_params.elongate_ratio,
-		   best_params.breakdown_ratio);
+	{
+		optimize(size, int, 0.5);
+		optimize(low_thresh, int, 0.5);
+		optimize(high_thresh, int, 0.5);
+		optimize(max_height, int, 0.5);
+		optimize(min_height, int, 0.5);
+		optimize(min_area, int, 0.5);
+		optimize(letter_occlude_thresh, int, 0.5);
+		optimize(aspect_ratio, double, 0);
+		optimize(std_ratio, double, 0);
+		optimize(thickness_ratio, double, 0);
+		optimize(height_ratio, double, 0);
+		optimize(intensity_thresh, int, 0.5);
+		optimize(distance_ratio, double, 0);
+		optimize(intersect_ratio, double, 0);
+		optimize(letter_thresh, int, 0.5);
+		optimize(elongate_ratio, double, 0);
+		optimize(breakdown_ratio, double, 0);
+		printf("\nAt round %d(of %d) : best parameters for swt is:\n"
+			   "\tsize = %d\n"
+			   "\tlow_thresh = %d\n"
+			   "\thigh_thresh = %d\n"
+			   "\tmax_height = %d\n"
+			   "\tmin_height = %d\n"
+			   "\tmin_area = %d\n"
+			   "\tletter_occlude_thresh = %d\n"
+			   "\taspect_ratio = %lf\n"
+			   "\tstd_ratio = %lf\n"
+			   "\tthickness_ratio = %lf\n"
+			   "\theight_ratio = %lf\n"
+			   "\tintensity_thresh = %d\n"
+			   "\tdistance_ratio = %lf\n"
+			   "\tintersect_ratio = %lf\n"
+			   "\tletter_thresh = %d\n"
+			   "\telongate_ratio = %lf\n"
+			   "\tbreakdown_ratio = %lf\n",
+			   i + 1, max_round,
+			   best_params.size,
+			   best_params.low_thresh,
+			   best_params.high_thresh,
+			   best_params.max_height,
+			   best_params.min_height,
+			   best_params.min_area,
+			   best_params.letter_occlude_thresh,
+			   best_params.aspect_ratio,
+			   best_params.std_ratio,
+			   best_params.thickness_ratio,
+			   best_params.height_ratio,
+			   best_params.intensity_thresh,
+			   best_params.distance_ratio,
+			   best_params.intersect_ratio,
+			   best_params.letter_thresh,
+			   best_params.elongate_ratio,
+			   best_params.breakdown_ratio);
+	}
 #undef optimize
 	ccfree(aof);
 	ccfree(aow);

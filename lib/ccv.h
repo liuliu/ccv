@@ -605,8 +605,9 @@ typedef struct {
 	int max_height;
 	int min_height;
 	int min_area;
+	int letter_occlude_thresh;
 	double aspect_ratio;
-	double variance_ratio;
+	double std_ratio;
 	/* grouping parameters */
 	double thickness_ratio;
 	double height_ratio;
