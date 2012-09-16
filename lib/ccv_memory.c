@@ -164,7 +164,12 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 		if (!ccv_cache_opt || !(dmt->type & CCV_REUSABLE) || dmt->sig == 0)
 			ccfree(dmt);
 		else {
-			size_t size = sizeof(ccv_dense_matrix_t) + ((dmt->cols * CCV_GET_DATA_TYPE_SIZE(dmt->type) * CCV_GET_CHANNEL(dmt->type) + 3) & -4) * dmt->rows;
+			assert(CCV_GET_DATA_TYPE(dmt->type) == CCV_8U ||
+				   CCV_GET_DATA_TYPE(dmt->type) == CCV_32S ||
+				   CCV_GET_DATA_TYPE(dmt->type) == CCV_32F ||
+				   CCV_GET_DATA_TYPE(dmt->type) == CCV_64S ||
+				   CCV_GET_DATA_TYPE(dmt->type) == CCV_64F);
+			size_t size = ccv_compute_dense_matrix_size(dmt->rows, dmt->cols, dmt->type);
 			ccv_cache_put(&ccv_cache, dmt->sig, dmt, size, 0 /* type 0 */);
 		}
 	} else if (type & CCV_MATRIX_SPARSE) {

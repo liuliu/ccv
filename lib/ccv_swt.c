@@ -624,15 +624,6 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	/* perform connected component analysis */
 	ccv_array_t* lettersB = _ccv_swt_connected_letters(a, swt, params);
 	ccv_matrix_free(swt);
-	/*
-	for (i = 0; i < lettersB->rnum; i++)
-	{
-		ccv_letter_t* letter = (ccv_letter_t*)ccv_array_get(lettersB, i);
-		printf("%d %d %d %d\n", letter->rect.x, letter->rect.y, letter->rect.width, letter->rect.height);
-	}
-	printf("total %d\n", lettersB->rnum);
-	return 0;
-	*/
 	ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
 	swt = 0;
 	params.direction = CCV_BRIGHT_TO_DARK;

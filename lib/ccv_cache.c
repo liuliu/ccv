@@ -166,6 +166,13 @@ static void _ccv_cache_lru(ccv_cache_t* cache)
 	int leaf = branch->terminal.off & 0x1;
 	if (leaf)
 	{
+		void* result = (void*)(branch->terminal.off - (branch->terminal.off & 0x3));
+		uint8_t type = CCV_GET_CACHE_TYPE(branch->terminal.type);
+		if (result != 0)
+		{
+			assert(type >= 0 && type < 16);
+			cache->ffree[type](result);
+		}
 		cache->rnum = 0;
 		cache->size = 0;
 		return;

@@ -4,30 +4,35 @@
 #include <ctype.h>
 
 // compute f-rate of swt
-static double _ccv_evaluate_swt(int n, ccv_dense_matrix_t** images, ccv_array_t** truth, double a, ccv_swt_param_t params, double* precision, double* recall)
+static double _ccv_evaluate_swt(ccv_array_t* images, ccv_array_t* gt, double a, ccv_swt_param_t params, double* precision, double* recall)
 {
 	int i, j, k;
 	double total_f = 0, total_precision = 0, total_recall = 0;
-	for (i = 0; i < n; i++)
+	for (i = 0; i < images->rnum; i++)
 	{
-		ccv_array_t* words = ccv_swt_detect_words(images[i], params);
+		char* name = *(char**)ccv_array_get(images, i);
+		ccv_array_t* truth = *(ccv_array_t**)ccv_array_get(gt, i);
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(name, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+		ccv_array_t* words = ccv_swt_detect_words(image, params);
+		ccv_matrix_free(image);
 		double f = 0, precision = 0, recall = 0;
 		for (j = 0; j < words->rnum; j++)
 		{
 			ccv_rect_t* estimate = (ccv_rect_t*)ccv_array_get(words, j);
 			int match = 0;
-			for (k = 0; k < truth[i]->rnum; k++)
+			for (k = 0; k < truth->rnum; k++)
 			{
-				ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(truth[i], k);
+				ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(truth, k);
 				match = ccv_max(match, ccv_max(ccv_min(target->x + target->width, estimate->x + estimate->width) - ccv_max(target->x, estimate->x), 0) * ccv_max(ccv_min(target->y + target->height, estimate->y + estimate->height) - ccv_max(target->y, estimate->y), 0));
 			}
 			precision += (double)match / (double)(estimate->width * estimate->height);
 		}
 		if (words->rnum > 0)
 			precision /= words->rnum;
-		for (j = 0; j < truth[i]->rnum; j++)
+		for (j = 0; j < truth->rnum; j++)
 		{
-			ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(truth[i], j);
+			ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(truth, j);
 			int match = 0;
 			for (k = 0; k < words->rnum; k++)
 			{
@@ -37,17 +42,17 @@ static double _ccv_evaluate_swt(int n, ccv_dense_matrix_t** images, ccv_array_t*
 			recall += (double)match / (double)(target->width * target->height);
 		}
 		ccv_array_free(words);
-		if (truth[i]->rnum > 0)
-			recall /= truth[i]->rnum;
+		if (truth->rnum > 0)
+			recall /= truth->rnum;
 		if (precision > 0 && recall > 0)
 			f = 1 / (a / precision + (1 - a) / recall);
 		total_f += f;
 		total_precision += precision;
 		total_recall += recall;
 	}
-	total_f /= n;
-	total_precision /= n;
-	total_recall /= n;
+	total_f /= images->rnum;
+	total_precision /= images->rnum;
+	total_recall /= images->rnum;
 	if (precision)
 		*precision = total_precision;
 	if (recall)
@@ -66,47 +71,57 @@ int main(int argc, char** argv)
 	FILE* r = fopen(argv[1], "rt");
 	if (argc == 3)
 		chdir(argv[2]);
-	int images;
-	fscanf(r, "%d", &images);
-	int i;
 	ccv_enable_default_cache();
-	ccv_dense_matrix_t** aof = (ccv_dense_matrix_t**)ccmalloc(sizeof(ccv_dense_matrix_t*) * images);
-	ccv_array_t** aow = (ccv_array_t**)ccmalloc(sizeof(ccv_array_t**) * images);
-	for (i = 0; i < images; i++)
+	ccv_array_t* aof = ccv_array_new(sizeof(char*), 64, 0);
+	ccv_array_t* aow = ccv_array_new(sizeof(ccv_array_t*), 64, 0);
+	ccv_array_t* cw = 0;
+	char* file = (char*)malloc(1024);
+	size_t len = 1024;
+	ssize_t read;
+	while ((read = getline(&file, &len, r)) != -1)
 	{
-		char file[1000];
-		fscanf(r, "%s", file);
-		aof[i] = 0;
-		ccv_read(file, aof + i, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-		int locations;
-		fscanf(r, "%d", &locations);
-		int j;
-		aow[i] = ccv_array_new(sizeof(ccv_rect_t), locations, 0);
-		for (j = 0; j < locations; j++)
+		while(read > 1 && isspace(file[read - 1]))
+			read--;
+		file[read] = 0;
+		double x, y, width, height;
+		int recognized = sscanf(file, "%lf %lf %lf %lf", &x, &y, &width, &height);
+		if (recognized == 4)
 		{
-			double x, y, width, height;
-			fscanf(r, "%lf %lf %lf %lf", &x, &y, &width, &height);
-			ccv_rect_t rect = { .x = (int)x, .y = (int)y, .width = (int)width, .height = (int)height };
-			ccv_array_push(aow[i], &rect);
+			ccv_rect_t rect = {
+				.x = (int)(x + 0.5),
+				.y = (int)(y + 0.5),
+				.width = (int)(width + 0.5),
+				.height = (int)(height + 0.5)
+			};
+			ccv_array_push(cw, &rect);
+		} else {
+			char* name = (char*)malloc(ccv_min(1023, strlen(file)) + 1);
+			strncpy(name, file, ccv_min(1023, strlen(file)) + 1);
+			ccv_array_push(aof, &name);
+			cw = ccv_array_new(sizeof(ccv_rect_t), 1, 0);
+			ccv_array_push(aow, &cw);
 		}
 	}
+	free(file);
+	printf("loaded %d images for parameter search\n", aof->rnum);
+	int i;
 	ccv_swt_param_t params = {
 		.size = 3,
 		.low_thresh = 142,
 		.high_thresh = 208,
 		.max_height = 500,
-		.min_height = 12,
-		.min_area = 78,
+		.min_height = 8,
+		.min_area = 77,
 		.letter_occlude_thresh = 2,
-		.aspect_ratio = 10,
-		.std_ratio = 0.78,
+		.aspect_ratio = 8,
+		.std_ratio = 0.84,
 		.thickness_ratio = 1.8,
 		.height_ratio = 1.9,
-		.intensity_thresh = 27,
+		.intensity_thresh = 31,
 		.distance_ratio = 3.9,
-		.intersect_ratio = 1.9,
+		.intersect_ratio = 1.3,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.4,
+		.elongate_ratio = 1.0,
 		.breakdown = 1,
 		.breakdown_ratio = 1.0,
 	};
@@ -205,7 +220,7 @@ int main(int argc, char** argv)
 	{ \
 		params.parameter = (type)(v + rounding); \
 		double f, recall, precision; \
-		f = _ccv_evaluate_swt(images, aof, aow, a, params, &precision, &recall); \
+		f = _ccv_evaluate_swt(aof, aow, a, params, &precision, &recall); \
 		if (f > best_f) \
 		{ \
 			best_params = params; \
@@ -236,7 +251,7 @@ int main(int argc, char** argv)
 		optimize(letter_thresh, int, 0.5);
 		optimize(elongate_ratio, double, 0);
 		optimize(breakdown_ratio, double, 0);
-		printf("\nAt round %d(of %d) : best parameters for swt is:\n"
+		printf("At round %d(of %d) : best parameters for swt is:\n"
 			   "\tsize = %d\n"
 			   "\tlow_thresh = %d\n"
 			   "\thigh_thresh = %d\n"
@@ -274,8 +289,15 @@ int main(int argc, char** argv)
 			   best_params.breakdown_ratio);
 	}
 #undef optimize
-	ccfree(aof);
-	ccfree(aow);
+	for (i = 0; i < aof->rnum; i++)
+	{
+		char* name = *(char**)ccv_array_get(aof, i);
+		free(name);
+		ccv_array_t* cw = *(ccv_array_t**)ccv_array_get(aow, i);
+		ccv_array_free(cw);
+	}
+	ccv_array_free(aof);
+	ccv_array_free(aow);
 	ccv_drain_cache();
 	return 0;
 }
