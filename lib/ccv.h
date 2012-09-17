@@ -374,6 +374,11 @@ inline static ccv_size_t ccv_size(int width, int height)
 	return size;
 }
 
+inline static int ccv_size_is_zero(ccv_size_t size)
+{
+	return size.width == 0 && size.height == 0;
+}
+
 typedef struct {
 	int x;
 	int y;
@@ -389,6 +394,11 @@ inline static ccv_rect_t ccv_rect(int x, int y, int width, int height)
 	rect.width = width;
 	rect.height = height;
 	return rect;
+}
+
+inline static int ccv_rect_is_zero(ccv_rect_t rect)
+{
+	return rect.x == 0 && rect.y == 0 && rect.width == 0 && rect.height == 0;
 }
 
 typedef struct {
@@ -595,8 +605,11 @@ ccv_array_t* __attribute__((warn_unused_result)) ccv_mser(ccv_dense_matrix_t* a,
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
-	int up2x;
+	int interval; // for scale invariant option
+	int min_neighbors; // minimal neighbors to make a detection valid, this is for scale-invariant version
+	int scale_invariant; // enable scale invariant swt (to scale to different sizes and then combine the results)
 	int direction;
+	double same_word_thresh[2]; // overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1)
 	/* canny parameters */
 	int size;
 	int low_thresh;

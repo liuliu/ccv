@@ -612,76 +612,167 @@ static int _ccv_is_same_textline(const void* a, const void* b, void* data)
 	int width = ccv_min(t1->rect.x + t1->rect.width, t2->rect.x + t2->rect.width) - ccv_max(t1->rect.x, t2->rect.x);
 	int height = ccv_min(t1->rect.y + t1->rect.height, t2->rect.y + t2->rect.height) - ccv_max(t1->rect.y, t2->rect.y);
 	/* overlapped 10% */
-	return (width > 0 && height > 0 && width * height * 10 > ccv_max(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height));
+	double* thresh = (double*)data;
+	return (width > 0 && height > 0 &&
+			width * height > thresh[0] * ccv_max(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height) &&
+			width * height > thresh[1] * ccv_min(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height));
 }
 
 ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 {
-	int i;
-	ccv_dense_matrix_t* swt = 0;
-	params.direction = CCV_DARK_TO_BRIGHT;
-	ccv_swt(a, &swt, 0, params);
-	/* perform connected component analysis */
-	ccv_array_t* lettersB = _ccv_swt_connected_letters(a, swt, params);
-	ccv_matrix_free(swt);
-	ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
-	swt = 0;
-	params.direction = CCV_BRIGHT_TO_DARK;
-	ccv_swt(a, &swt, 0, params);
-	ccv_array_t* lettersF = _ccv_swt_connected_letters(a, swt, params);
-	ccv_matrix_free(swt);
-	ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
-	for (i = 0; i < textline2->rnum; i++)
-		ccv_array_push(textline, ccv_array_get(textline2, i));
-	ccv_array_free(textline2);
-	ccv_array_t* idx = 0;
-	int ntl = ccv_array_group(textline, &idx, _ccv_is_same_textline, 0);
-	ccv_array_t* words;
-	if (params.breakdown)
+	int hr = a->rows * 2 / (params.min_height + params.max_height);
+	int wr = a->cols * 2 / (params.min_height + params.max_height);
+	double scale = pow(2., 1. / (params.interval + 1.));
+	int next = params.interval + 1;
+	int scale_upto = params.scale_invariant ? (int)(log((double)ccv_min(hr, wr)) / log(scale)) : 1;
+	int i, k;
+	ccv_array_t* all_words = params.scale_invariant ? ccv_array_new(sizeof(ccv_rect_t), 2, 0) : 0;
+	ccv_dense_matrix_t* phx = a;
+	ccv_dense_matrix_t* pyr = a;
+	double cscale = 1.0;
+	for (k = 0; k < scale_upto; k++)
 	{
-		textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
-		ccv_array_zero(textline2);
-		textline2->rnum = ntl;
-		for (i = 0; i < textline->rnum; i++)
+		// create down-sampled image on-demand because swt itself is very memory intensive
+		if (k % next)
 		{
-			ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
-			int k = *(int*)ccv_array_get(idx, i);
-			ccv_textline_t* r2 = (ccv_textline_t*)ccv_array_get(textline2, k);
-			if (r2->rect.width < r->rect.width)
+			if (pyr != phx)
+				ccv_matrix_free(pyr);
+			pyr = 0;
+			int j = k % next;
+			ccv_resample(phx, &pyr, 0, (int)(phx->rows / pow(scale, j)), (int)(phx->cols / pow(scale, j)), CCV_INTER_AREA);
+		} else if (k > 0) {
+			ccv_dense_matrix_t* pha = phx;
+			phx = 0;
+			ccv_sample_down(pha, &phx, 0, 0, 0);
+			if (pha != a)
+				ccv_matrix_free(pha);
+			pyr = phx;
+		}
+		ccv_dense_matrix_t* swt = 0;
+		params.direction = CCV_DARK_TO_BRIGHT;
+		ccv_swt(pyr, &swt, 0, params);
+		/* perform connected component analysis */
+		ccv_array_t* lettersB = _ccv_swt_connected_letters(pyr, swt, params);
+		ccv_matrix_free(swt);
+		ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
+		swt = 0;
+		params.direction = CCV_BRIGHT_TO_DARK;
+		ccv_swt(pyr, &swt, 0, params);
+		ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
+		ccv_matrix_free(swt);
+		ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
+		for (i = 0; i < textline2->rnum; i++)
+			ccv_array_push(textline, ccv_array_get(textline2, i));
+		ccv_array_free(textline2);
+		ccv_array_t* idx = 0;
+		int ntl = ccv_array_group(textline, &idx, _ccv_is_same_textline, params.same_word_thresh);
+		ccv_array_t* words;
+		if (params.breakdown)
+		{
+			textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
+			ccv_array_zero(textline2);
+			textline2->rnum = ntl;
+			for (i = 0; i < textline->rnum; i++)
 			{
-				if (r2->letters)
-					ccfree(r2->letters);
-				*r2 = *r;
-			} else if (r->letters) {
-				ccfree(r->letters);
+				ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
+				int k = *(int*)ccv_array_get(idx, i);
+				ccv_textline_t* r2 = (ccv_textline_t*)ccv_array_get(textline2, k);
+				if (r2->rect.width < r->rect.width)
+				{
+					if (r2->letters)
+						ccfree(r2->letters);
+					*r2 = *r;
+				} else if (r->letters) {
+					ccfree(r->letters);
+				}
+			}
+			ccv_array_free(idx);
+			ccv_array_free(textline);
+			words = _ccv_swt_break_words(textline2, params);
+			for (i = 0; i < textline2->rnum; i++)
+				ccfree(((ccv_textline_t*)ccv_array_get(textline2, i))->letters);
+			ccv_array_free(textline2);
+			ccv_array_free(lettersB);
+			ccv_array_free(lettersF);
+		} else {
+			ccv_array_free(lettersB);
+			ccv_array_free(lettersF);
+			words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
+			ccv_array_zero(words);
+			words->rnum = ntl;
+			for (i = 0; i < textline->rnum; i++)
+			{
+				ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
+				if (r->letters)
+					ccfree(r->letters);
+				int k = *(int*)ccv_array_get(idx, i);
+				ccv_rect_t* r2 = (ccv_rect_t*)ccv_array_get(words, k);
+				if (r2->width * r2->height < r->rect.width * r->rect.height)
+					*r2 = r->rect;
+			}
+			ccv_array_free(idx);
+			ccv_array_free(textline);
+		}
+		if (params.scale_invariant)
+		{
+			for (i = 0; i < words->rnum; i++)
+			{
+				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
+				rect->x = (int)(rect->x * cscale + 0.5);
+				rect->y = (int)(rect->y * cscale + 0.5);
+				rect->width = (int)(rect->width * cscale + 0.5);
+				rect->height = (int)(rect->height * cscale + 0.5);
+				ccv_array_push(all_words, rect);
+			}
+			ccv_array_free(words);
+			cscale *= scale;
+		} else
+			all_words = words;
+	}
+	if (params.scale_invariant && params.min_neighbors)
+	{
+		// de-dup logic, similar to what BBF / DPM have
+		ccv_array_t* idx = 0;
+		int ntl = ccv_array_group(all_words, &idx, _ccv_is_same_textline, params.same_word_thresh);
+		ccv_array_t* new_words = ccv_array_new(sizeof(ccv_comp_t), ntl, 0);
+		ccv_array_zero(new_words);
+		new_words->rnum = ntl;
+		for (i = 0; i < all_words->rnum; i++)
+		{
+			ccv_rect_t* r1 = (ccv_rect_t*)ccv_array_get(all_words, i);
+			int k = *(int*)ccv_array_get(idx, i);
+			ccv_comp_t* r2 = (ccv_comp_t*)ccv_array_get(new_words, k);
+			if (r2->neighbors)
+			{
+				++r2->neighbors;
+				// simply pick the biggest
+				if (r1->width * r1->height > r2->rect.width * r2->rect.height)
+					r2->rect = *r1;
+			} else {
+				r2->rect = *r1;
+				r2->neighbors = 1;
 			}
 		}
-		ccv_array_free(idx);
-		ccv_array_free(textline);
-		words = _ccv_swt_break_words(textline2, params);
-		for (i = 0; i < textline2->rnum; i++)
-			ccfree(((ccv_textline_t*)ccv_array_get(textline2, i))->letters);
-		ccv_array_free(textline2);
-		ccv_array_free(lettersB);
-		ccv_array_free(lettersF);
-	} else {
-		ccv_array_free(lettersB);
-		ccv_array_free(lettersF);
-		words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
-		ccv_array_zero(words);
-		words->rnum = ntl;
-		for (i = 0; i < textline->rnum; i++)
+		ccv_array_free(all_words);
+		if (params.min_neighbors > 1)
 		{
-			ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
-			if (r->letters)
-				ccfree(r->letters);
-			int k = *(int*)ccv_array_get(idx, i);
-			ccv_rect_t* r2 = (ccv_rect_t*)ccv_array_get(words, k);
-			if (r2->width * r2->height < r->rect.width * r->rect.height)
-				*r2 = r->rect;
-		}
-		ccv_array_free(idx);
-		ccv_array_free(textline);
+			// filter out min_neighbors
+			all_words = ccv_array_new(sizeof(ccv_comp_t), new_words->rnum / 2, 0);
+			for (i = 0; i < new_words->rnum; i++)
+			{
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(new_words, i);
+				int n = comp->neighbors;
+				if (n >= params.min_neighbors)
+					ccv_array_push(all_words, comp);
+			}
+			ccv_array_free(new_words);
+		} else
+			// just copy the pointer for min_neighbors == 1
+			all_words = new_words;
 	}
-	return words;
+	if (pyr != phx)
+		ccv_matrix_free(pyr);
+	if (phx != a)
+		ccv_matrix_free(phx);
+	return all_words;
 }

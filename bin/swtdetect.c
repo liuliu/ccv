@@ -12,6 +12,10 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	ccv_swt_param_t params = {
+		.interval = 0,
+		.same_word_thresh = { 0.5, 0.9 },
+		.min_neighbors = 1,
+		.scale_invariant = 1,
 		.size = 3,
 		.low_thresh = 74,
 		.high_thresh = 212,
