@@ -611,7 +611,7 @@ static int _ccv_is_same_textline(const void* a, const void* b, void* data)
 	ccv_textline_t* t2 = (ccv_textline_t*)b;
 	int width = ccv_min(t1->rect.x + t1->rect.width, t2->rect.x + t2->rect.width) - ccv_max(t1->rect.x, t2->rect.x);
 	int height = ccv_min(t1->rect.y + t1->rect.height, t2->rect.y + t2->rect.height) - ccv_max(t1->rect.y, t2->rect.y);
-	/* overlapped 80% */
+	/* overlapped 10% */
 	return (width > 0 && height > 0 && width * height * 10 > ccv_max(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height));
 }
 

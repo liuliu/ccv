@@ -13,21 +13,21 @@ int main(int argc, char** argv)
 {
 	ccv_swt_param_t params = {
 		.size = 3,
-		.low_thresh = 142,
-		.high_thresh = 208,
+		.low_thresh = 74,
+		.high_thresh = 212,
 		.max_height = 500,
-		.min_height = 8,
-		.min_area = 77,
-		.letter_occlude_thresh = 2,
-		.aspect_ratio = 8,
-		.std_ratio = 0.84,
+		.min_height = 12,
+		.min_area = 95,
+		.letter_occlude_thresh = 4,
+		.aspect_ratio = 6,
+		.std_ratio = 0.78,
 		.thickness_ratio = 1.8,
-		.height_ratio = 1.9,
-		.intensity_thresh = 31,
-		.distance_ratio = 3.9,
-		.intersect_ratio = 1.3,
+		.height_ratio = 2.0,
+		.intensity_thresh = 33,
+		.distance_ratio = 3.4,
+		.intersect_ratio = 1.2,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.0,
+		.elongate_ratio = 1.3,
 		.breakdown = 1,
 		.breakdown_ratio = 1.0,
 	};
@@ -57,18 +57,19 @@ int main(int argc, char** argv)
 			chdir(argv[2]);
 		if(r)
 		{
-			char file[1000 + 1];
-			while(fgets(file, 1000, r))
+			size_t len = 1024;
+			char* file = (char*)malloc(len);
+			ssize_t read;
+			while((read = getline(&file, &len, r)) != -1)
 			{
-				int len = (int)strlen(file);
-				while(len > 0 && isspace(file[len - 1]))
-					len--;
-				file[len] = '\0';
+				while(read > 1 && isspace(file[read - 1]))
+					read--;
+				file[read] = 0;
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				ccv_array_t* words = ccv_swt_detect_words(image, params);
 				int i;
-				printf("%s\n%d\n", file, words->rnum);
+				printf("%s\n", file);
 				for (i = 0; i < words->rnum; i++)
 				{
 					ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
@@ -77,6 +78,7 @@ int main(int argc, char** argv)
 				ccv_array_free(words);
 				ccv_matrix_free(image);
 			}
+			free(file);
 			fclose(r);
 		}
 	}

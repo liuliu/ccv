@@ -71,7 +71,7 @@ int main(int argc, char** argv)
 	FILE* r = fopen(argv[1], "rt");
 	if (argc == 3)
 		chdir(argv[2]);
-	ccv_enable_default_cache();
+	ccv_enable_cache(1024 * 1024 * 1024);
 	ccv_array_t* aof = ccv_array_new(sizeof(char*), 64, 0);
 	ccv_array_t* aow = ccv_array_new(sizeof(ccv_array_t*), 64, 0);
 	ccv_array_t* cw = 0;
@@ -107,21 +107,21 @@ int main(int argc, char** argv)
 	int i;
 	ccv_swt_param_t params = {
 		.size = 3,
-		.low_thresh = 142,
-		.high_thresh = 208,
+		.low_thresh = 74,
+		.high_thresh = 212,
 		.max_height = 500,
-		.min_height = 8,
-		.min_area = 77,
-		.letter_occlude_thresh = 2,
-		.aspect_ratio = 8,
-		.std_ratio = 0.84,
+		.min_height = 12,
+		.min_area = 95,
+		.letter_occlude_thresh = 4,
+		.aspect_ratio = 6,
+		.std_ratio = 0.78,
 		.thickness_ratio = 1.8,
-		.height_ratio = 1.9,
-		.intensity_thresh = 31,
-		.distance_ratio = 3.9,
-		.intersect_ratio = 1.3,
+		.height_ratio = 2.0,
+		.intensity_thresh = 33,
+		.distance_ratio = 3.4,
+		.intersect_ratio = 1.2,
 		.letter_thresh = 3,
-		.elongate_ratio = 1.0,
+		.elongate_ratio = 1.3,
 		.breakdown = 1,
 		.breakdown_ratio = 1.0,
 	};
