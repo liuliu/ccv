@@ -31,7 +31,7 @@ int main(int argc, char** argv)
 		.distance_ratio = 3.3,
 		.intersect_ratio = 1.2,
 		.letter_thresh = 4,
-		.elongate_ratio = 2.4,
+		.elongate_ratio = 1.9,
 		.breakdown = 1,
 		.breakdown_ratio = 0.82,
 	};

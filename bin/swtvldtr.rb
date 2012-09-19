@@ -78,7 +78,7 @@ truth.each do |fn, rects|
 	end
 	# one to many match, starts with ground truth
 	rects.each_index do |i|
-		next if tG[i]
+		next if tG[i] or cG[i] <= 1
 		one_sum = 0
 		many = Array.new
 		estimate[fn].each_index do |j|
@@ -106,7 +106,7 @@ truth.each do |fn, rects|
 	end
 	# one to many match, with estimate
 	estimate[fn].each_index do |j|
-		next if tD[j]
+		next if tD[j] or cD[j] <= 1
 		one_sum = 0
 		many = Array.new
 		rects.each_index do |i|
@@ -134,18 +134,18 @@ truth.each do |fn, rects|
 	end
 end
 
-total = 0
+total_estimate = 0
 estimate.each do |fn, rects|
-	total += rects.count
+	total_estimate += rects.count
 end
-precision = precision.to_f / total.to_f
+precision = precision.to_f / total_estimate.to_f
 
-total = 0
+total_truth = 0
 truth.each do |fn, rects|
-	total += rects.count
+	total_truth += rects.count
 end
-recall = recall.to_f / total.to_f
+recall = recall.to_f / total_truth.to_f
 
 print "precision: " + ((precision * 10000).round / 100).to_s + "%\n"
 print "recall: " + ((recall * 10000).round / 100).to_s + "%\n"
-print "hmean: " + ((2.0 * precision * recall / (precision + recall) * 10000).round / 100).to_s + "%\n"
+print "harmonic mean: " + ((2.0 * precision * recall / (precision + recall) * 10000).round / 100).to_s + "%\n"

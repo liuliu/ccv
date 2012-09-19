@@ -43,20 +43,16 @@ static double one_d = 0.4;
 static double om_one = 0.8;
 static double center_diff_thr = 1.0;
 
-// compute hmean of swt
-static double _ccv_evaluate_swt(ccv_array_t* images, ccv_array_t* gt, double a, ccv_swt_param_t params, double* precision, double* recall)
+// compute harmonic mean of precision / recall of swt
+static double _ccv_evaluate_wolf(ccv_array_t* detected, ccv_array_t* gt, double a, ccv_swt_param_t params, double* precision, double* recall)
 {
 	int i, j, k;
 	int total_detected = 0, total_truth = 0;
 	double total_precision = 0, total_recall = 0;
-	for (i = 0; i < images->rnum; i++)
+	for (i = 0; i < detected->rnum; i++)
 	{
-		char* name = *(char**)ccv_array_get(images, i);
+		ccv_array_t* words = *(ccv_array_t**)ccv_array_get(detected, i);
 		ccv_array_t* truth = *(ccv_array_t**)ccv_array_get(gt, i);
-		ccv_dense_matrix_t* image = 0;
-		ccv_read(name, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-		ccv_array_t* words = ccv_swt_detect_words(image, params);
-		ccv_matrix_free(image);
 		if (words->rnum == 0 || truth->rnum == 0)
 		{
 			ccv_array_free(words);
@@ -121,7 +117,7 @@ static double _ccv_evaluate_swt(ccv_array_t* images, ccv_array_t* gt, double a, 
 		// one to many match, starts with ground truth
 		for (j = 0; j < truth->rnum; j++)
 		{
-			if (tG[j])
+			if (tG[j] || cG[j] <= 1)
 				continue;
 			double one_sum = 0;
 			int no_many = 0;
@@ -156,7 +152,7 @@ static double _ccv_evaluate_swt(ccv_array_t* images, ccv_array_t* gt, double a, 
 		// one to many match, with estimate
 		for (k = 0; k < words->rnum; k++)
 		{
-			if (tD[k])
+			if (tD[k] || cD[k] <= 1)
 				continue;
 			double one_sum = 0;
 			int no_many = 0;
@@ -248,10 +244,10 @@ int main(int argc, char** argv)
 	if (argc <= 1)
 		exit_with_help();
 	ccv_swt_param_t params = {
-		.interval = 5,
+		.interval = 0,
 		.same_word_thresh = { 0.5, 0.9 },
-		.min_neighbors = 2,
-		.scale_invariant = 1,
+		.min_neighbors = 0,
+		.scale_invariant = 0,
 		.size = 3,
 		.low_thresh = 65,
 		.high_thresh = 212,
@@ -267,7 +263,7 @@ int main(int argc, char** argv)
 		.distance_ratio = 3.3,
 		.intersect_ratio = 1.2,
 		.letter_thresh = 4,
-		.elongate_ratio = 2.4,
+		.elongate_ratio = 1.9,
 		.breakdown = 1,
 		.breakdown_ratio = 0.82,
 	};
@@ -373,7 +369,7 @@ int main(int argc, char** argv)
 		.step = 0.01,
 		.enable = 1,
 	};
-	int i, k, iterations = 10;
+	int i, j, k, iterations = 1; // 10;
 	while (getopt_long_only(argc - 1, argv + 1, "", swt_options, &k) != -1)
 	{
 		switch (k)
@@ -484,11 +480,32 @@ int main(int argc, char** argv)
 	if (parameter##_range.enable) \
 	{ \
 		params = best_params; \
+		int total_iterations = 0; \
 		for (v = parameter##_range.min_value; v <= parameter##_range.max_value; v += parameter##_range.step) \
+			++total_iterations; \
+		ccv_array_t** detected = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * total_iterations); \
+		for (v = parameter##_range.min_value, j = 0; v <= parameter##_range.max_value; v += parameter##_range.step, j++) \
+			detected[j] = ccv_array_new(sizeof(ccv_array_t*), 64, 0); \
+		for (j = 0; j < aof->rnum; j++) \
+		{ \
+			char* name = *(char**)ccv_array_get(aof, j); \
+			ccv_dense_matrix_t* image = 0; \
+			ccv_read(name, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE); \
+			for (v = parameter##_range.min_value, k = 0; v <= parameter##_range.max_value; v += parameter##_range.step, k++) \
+			{ \
+				params.parameter = (type)(v + rounding); \
+				ccv_array_t* words = ccv_swt_detect_words(image, params); \
+				ccv_array_push(detected[k], &words); \
+				FLUSH("perform SWT on %s (%d / %d) for " #parameter " = (%lg <- [%lg, %lg])", name, j + 1, aof->rnum, v, parameter##_range.min_value, parameter##_range.max_value); \
+			} \
+			ccv_matrix_free(image); \
+		} \
+		for (v = parameter##_range.min_value, j = 0; v <= parameter##_range.max_value; v += parameter##_range.step, j++) \
 		{ \
 			params.parameter = (type)(v + rounding); \
 			double f, recall, precision; \
-			f = _ccv_evaluate_swt(aof, aow, a, params, &precision, &recall); \
+			f = _ccv_evaluate_wolf(detected[j], aow, a, params, &precision, &recall); \
+			ccv_array_free(detected[j]); \
 			if (f > best_f) \
 			{ \
 				best_params = params; \
@@ -496,7 +513,7 @@ int main(int argc, char** argv)
 				best_precision = precision; \
 				best_recall = recall; \
 			} \
-			FLUSH("current hmean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best hmean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
+			FLUSH("current harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
 		} \
 		printf("\n"); \
 	}
