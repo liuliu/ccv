@@ -584,13 +584,16 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 		mean = mean / (t->neighbors - 1);
 		if (sqrt(var) > mean * params.breakdown_ratio)
 		{
-			ccv_textline_t nt = { .neighbors = 0 };
+			ccv_textline_t nt = { .neighbors = 0, .letters = 0 };
 			_ccv_swt_add_letter(&nt, t->letters[0]);
 			for (j = 0; j < t->neighbors - 1; j++)
 			{
 				if (buffer[j] > threshold)
 				{
 					ccv_array_push(words, &nt.rect);
+					if (nt.letters)
+						ccfree(nt.letters);
+					nt.letters = 0;
 					nt.neighbors = 0;
 				}
 				_ccv_swt_add_letter(&nt, t->letters[j + 1]);
@@ -635,8 +638,6 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 		// create down-sampled image on-demand because swt itself is very memory intensive
 		if (k % next)
 		{
-			if (pyr != phx)
-				ccv_matrix_free(pyr);
 			pyr = 0;
 			int j = k % next;
 			ccv_resample(phx, &pyr, 0, (int)(phx->rows / pow(scale, j)), (int)(phx->cols / pow(scale, j)), CCV_INTER_AREA);
@@ -660,6 +661,8 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 		ccv_swt(pyr, &swt, 0, params);
 		ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
 		ccv_matrix_free(swt);
+		if (pyr != phx)
+			ccv_matrix_free(pyr);
 		ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
 		for (i = 0; i < textline2->rnum; i++)
 			ccv_array_push(textline, ccv_array_get(textline2, i));
@@ -753,6 +756,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 				r2->neighbors = 1;
 			}
 		}
+		ccv_array_free(idx);
 		ccv_array_free(all_words);
 		if (params.min_neighbors > 1)
 		{
@@ -770,8 +774,6 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 			// just copy the pointer for min_neighbors == 1
 			all_words = new_words;
 	}
-	if (pyr != phx)
-		ccv_matrix_free(pyr);
 	if (phx != a)
 		ccv_matrix_free(phx);
 	return all_words;

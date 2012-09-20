@@ -44,162 +44,151 @@ static double om_one = 0.8;
 static double center_diff_thr = 1.0;
 
 // compute harmonic mean of precision / recall of swt
-static double _ccv_evaluate_wolf(ccv_array_t* detected, ccv_array_t* gt, double a, ccv_swt_param_t params, double* precision, double* recall)
+static void _ccv_evaluate_wolf(ccv_array_t* words, ccv_array_t* truth, ccv_swt_param_t params, double* precision, double* recall)
 {
-	int i, j, k;
-	int total_detected = 0, total_truth = 0;
-	double total_precision = 0, total_recall = 0;
-	for (i = 0; i < detected->rnum; i++)
+	if (words->rnum == 0 || truth->rnum == 0)
+		return;
+	int j, k;
+	double total_recall = 0, total_precision = 0;
+	int* cG = (int*)ccmalloc(sizeof(int) * truth->rnum);
+	int* cD = (int*)ccmalloc(sizeof(int) * words->rnum);
+	memset(cG, 0, sizeof(int) * truth->rnum);
+	memset(cD, 0, sizeof(int) * words->rnum);
+	double* mG = (double*)ccmalloc(sizeof(double) * truth->rnum * words->rnum);
+	double* mD = (double*)ccmalloc(sizeof(double) * truth->rnum * words->rnum);
+	memset(mG, 0, sizeof(double) * truth->rnum * words->rnum);
+	memset(mD, 0, sizeof(double) * truth->rnum * words->rnum);
+	for (j = 0; j < truth->rnum; j++)
 	{
-		ccv_array_t* words = *(ccv_array_t**)ccv_array_get(detected, i);
-		ccv_array_t* truth = *(ccv_array_t**)ccv_array_get(gt, i);
-		if (words->rnum == 0 || truth->rnum == 0)
-		{
-			ccv_array_free(words);
-			continue;
-		}
-		total_detected += words->rnum;
-		total_truth += truth->rnum;
-		int* cG = (int*)ccmalloc(sizeof(int) * truth->rnum);
-		int* cD = (int*)ccmalloc(sizeof(int) * words->rnum);
-		memset(cG, 0, sizeof(int) * truth->rnum);
-		memset(cD, 0, sizeof(int) * words->rnum);
-		double* mG = (double*)ccmalloc(sizeof(double) * truth->rnum * words->rnum);
-		double* mD = (double*)ccmalloc(sizeof(double) * truth->rnum * words->rnum);
-		memset(mG, 0, sizeof(double) * truth->rnum * words->rnum);
-		memset(mD, 0, sizeof(double) * truth->rnum * words->rnum);
-		for (j = 0; j < truth->rnum; j++)
-		{
-			ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(truth, j);
-			for (k = 0; k < words->rnum; k++)
-			{
-				ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(words, k);
-				int match = ccv_max(ccv_min(target->x + target->width, rect->x + rect->width) - ccv_max(target->x, rect->x), 0) * ccv_max(ccv_min(target->y + target->height, rect->y + rect->height) - ccv_max(target->y, rect->y), 0);
-				if (match > 0)
-				{
-					mG[j * words->rnum + k] = (double)match / (double)(rect->width * rect->height);
-					mD[k * truth->rnum + j] = (double)match / (double)(target->width * target->height);
-					++cG[j];
-					++cD[k];
-				}
-			}
-		}
-		unsigned char* tG = (unsigned char*)ccmalloc(truth->rnum);
-		unsigned char* tD = (unsigned char*)ccmalloc(words->rnum);
-		memset(tG, 0, truth->rnum);
-		memset(tD, 0, words->rnum);
-		// one to one match
-		for (j = 0; j < truth->rnum; j++)
-		{
-			if (cG[j] != 1)
-				continue;
-			ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(truth, j);
-			for (k = 0; k < words->rnum; k++)
-			{
-				if (cD[j] != 1)
-					continue;
-				ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(words, k);
-				if (mG[j * words->rnum + k] >= one_g && mD[k * truth->rnum + j] >= one_d)
-				{
-					double dx = (target->x + target->width * 0.5) - (rect->x + rect->width * 0.5);
-					double dy = (target->y + target->height * 0.5) - (rect->y + rect->height * 0.5);
-					double d = sqrt(dx * dx + dy * dy) * 2.0 / (sqrt(target->width * target->width + target->height * target->height) + sqrt(rect->width * rect->width + rect->height * rect->height));
-					if (d < center_diff_thr)
-					{
-						total_recall += 1.0;
-						total_precision += 1.0;
-						tG[j] = tD[k] = 1;
-					}
-				}
-			}
-		}
-		int* many = (int*)ccmalloc(sizeof(int) * ccv_max(words->rnum, truth->rnum));
-		// one to many match, starts with ground truth
-		for (j = 0; j < truth->rnum; j++)
-		{
-			if (tG[j] || cG[j] <= 1)
-				continue;
-			double one_sum = 0;
-			int no_many = 0;
-			for (k = 0; k < words->rnum; k++)
-			{
-				if (tD[k])
-					continue;
-				double many_single = mD[k * truth->rnum + j];
-				if (many_single >= one_d)
-				{
-					one_sum += mG[j * words->rnum + k];
-					many[no_many] = k;
-					++no_many;
-				}
-			}
-			if (no_many == 1)
-			{
-				// degrade to one to one match
-				if (mG[j * words->rnum + many[0]] >= one_g && mD[many[0] * truth->rnum + j] >= one_d)
-				{
-					total_recall += 1.0;
-					total_precision += 1.0;
-					tG[j] = tD[many[0]] = 1;
-				}
-			} else if (one_sum >= one_g) {
-				for (k = 0; k < no_many; k++)
-					tD[many[k]] = 1;
-				total_recall += om_one;
-				total_precision += om_one * no_many;
-			}
-		}
-		// one to many match, with estimate
+		ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(truth, j);
 		for (k = 0; k < words->rnum; k++)
 		{
-			if (tD[k] || cD[k] <= 1)
-				continue;
-			double one_sum = 0;
-			int no_many = 0;
-			for (j = 0; j < truth->rnum; j++)
+			ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(words, k);
+			int match = ccv_max(ccv_min(target->x + target->width, rect->x + rect->width) - ccv_max(target->x, rect->x), 0) * ccv_max(ccv_min(target->y + target->height, rect->y + rect->height) - ccv_max(target->y, rect->y), 0);
+			if (match > 0)
 			{
-				if (tG[j])
-					continue;
-				double many_single = mG[j * words->rnum + k];
-				if (many_single >= one_g)
-				{
-					one_sum += mD[k * truth->rnum + j];
-					many[no_many] = j;
-					++no_many;
-				}
+				mG[j * words->rnum + k] = (double)match / (double)(rect->width * rect->height);
+				mD[k * truth->rnum + j] = (double)match / (double)(target->width * target->height);
+				++cG[j];
+				++cD[k];
 			}
-			if (no_many == 1)
+		}
+	}
+	unsigned char* tG = (unsigned char*)ccmalloc(truth->rnum);
+	unsigned char* tD = (unsigned char*)ccmalloc(words->rnum);
+	memset(tG, 0, truth->rnum);
+	memset(tD, 0, words->rnum);
+	// one to one match
+	for (j = 0; j < truth->rnum; j++)
+	{
+		if (cG[j] != 1)
+			continue;
+		ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(truth, j);
+		for (k = 0; k < words->rnum; k++)
+		{
+			if (cD[k] != 1)
+				continue;
+			ccv_rect_t* target = (ccv_rect_t*)ccv_array_get(words, k);
+			if (mG[j * words->rnum + k] >= one_g && mD[k * truth->rnum + j] >= one_d)
 			{
-				// degrade to one to one match
-				if (mG[many[0] * words->rnum + k] >= one_g && mD[k * truth->rnum + many[0]] >= one_d)
+				double dx = (target->x + target->width * 0.5) - (rect->x + rect->width * 0.5);
+				double dy = (target->y + target->height * 0.5) - (rect->y + rect->height * 0.5);
+				double d = sqrt(dx * dx + dy * dy) * 2.0 / (sqrt(target->width * target->width + target->height * target->height) + sqrt(rect->width * rect->width + rect->height * rect->height));
+				if (d < center_diff_thr)
 				{
 					total_recall += 1.0;
 					total_precision += 1.0;
-					tG[many[0]] = tD[k] = 1;
+					assert(tG[j] == 0);
+					assert(tD[k] == 0);
+					tG[j] = tD[k] = 1;
 				}
-			} else if (one_sum >= one_g) {
-				for (j = 0; j < no_many; j++)
-					tG[many[j]] = 1;
-				total_recall += om_one * no_many;
-				total_precision += om_one;
 			}
 		}
-		ccv_array_free(words);
-		ccfree(many);
-		ccfree(tG);
-		ccfree(tD);
-		ccfree(cG);
-		ccfree(cD);
-		ccfree(mG);
-		ccfree(mD);
 	}
-	total_precision /= total_detected;
-	total_recall /= total_truth;
+	int* many = (int*)ccmalloc(sizeof(int) * ccv_max(words->rnum, truth->rnum));
+	// one to many match, starts with ground truth
+	for (j = 0; j < truth->rnum; j++)
+	{
+		if (tG[j] || cG[j] <= 1)
+			continue;
+		double one_sum = 0;
+		int no_many = 0;
+		for (k = 0; k < words->rnum; k++)
+		{
+			if (tD[k])
+				continue;
+			double many_single = mD[k * truth->rnum + j];
+			if (many_single >= one_d)
+			{
+				one_sum += mG[j * words->rnum + k];
+				many[no_many] = k;
+				++no_many;
+			}
+		}
+		if (no_many == 1)
+		{
+			// degrade to one to one match
+			if (mG[j * words->rnum + many[0]] >= one_g && mD[many[0] * truth->rnum + j] >= one_d)
+			{
+				total_recall += 1.0;
+				total_precision += 1.0;
+				tG[j] = tD[many[0]] = 1;
+			}
+		} else if (one_sum >= one_g) {
+			for (k = 0; k < no_many; k++)
+				tD[many[k]] = 1;
+			total_recall += om_one;
+			total_precision += om_one / (1 + log(no_many));
+		}
+	}
+	// one to many match, with estimate
+	for (k = 0; k < words->rnum; k++)
+	{
+		if (tD[k] || cD[k] <= 1)
+			continue;
+		double one_sum = 0;
+		int no_many = 0;
+		for (j = 0; j < truth->rnum; j++)
+		{
+			if (tG[j])
+				continue;
+			double many_single = mG[j * words->rnum + k];
+			if (many_single >= one_g)
+			{
+				one_sum += mD[k * truth->rnum + j];
+				many[no_many] = j;
+				++no_many;
+			}
+		}
+		if (no_many == 1)
+		{
+			// degrade to one to one match
+			if (mG[many[0] * words->rnum + k] >= one_g && mD[k * truth->rnum + many[0]] >= one_d)
+			{
+				total_recall += 1.0;
+				total_precision += 1.0;
+				tG[many[0]] = tD[k] = 1;
+			}
+		} else if (one_sum >= one_g) {
+			for (j = 0; j < no_many; j++)
+				tG[many[j]] = 1;
+			total_recall += om_one / (1 + log(no_many));
+			total_precision += om_one;
+		}
+	}
+	ccfree(many);
+	ccfree(tG);
+	ccfree(tD);
+	ccfree(cG);
+	ccfree(cD);
+	ccfree(mG);
+	ccfree(mD);
+	assert(total_precision < words->rnum + 0.1);
+	assert(total_recall < truth->rnum + 0.1);
 	if (precision)
 		*precision = total_precision;
 	if (recall)
 		*recall = total_recall;
-	return 1.0 / (a / total_precision + (1.0 - a) / total_recall);
 }
 
 typedef struct {
@@ -244,9 +233,9 @@ int main(int argc, char** argv)
 	if (argc <= 1)
 		exit_with_help();
 	ccv_swt_param_t params = {
-		.interval = 0,
+		.interval = 5,
 		.same_word_thresh = { 0.5, 0.9 },
-		.min_neighbors = 0,
+		.min_neighbors = 2,
 		.scale_invariant = 0,
 		.size = 3,
 		.low_thresh = 65,
@@ -369,7 +358,7 @@ int main(int argc, char** argv)
 		.step = 0.01,
 		.enable = 1,
 	};
-	int i, j, k, iterations = 1; // 10;
+	int i, j, k, l, iterations = 10;
 	while (getopt_long_only(argc - 1, argv + 1, "", swt_options, &k) != -1)
 	{
 		switch (k)
@@ -483,19 +472,48 @@ int main(int argc, char** argv)
 		int total_iterations = 0; \
 		for (v = parameter##_range.min_value; v <= parameter##_range.max_value; v += parameter##_range.step) \
 			++total_iterations; \
-		ccv_array_t** detected = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * total_iterations); \
-		for (v = parameter##_range.min_value, j = 0; v <= parameter##_range.max_value; v += parameter##_range.step, j++) \
-			detected[j] = ccv_array_new(sizeof(ccv_array_t*), 64, 0); \
+		double* precision = (double*)ccmalloc(sizeof(double) * total_iterations); \
+		double* recall = (double*)ccmalloc(sizeof(double) * total_iterations); \
+		double* total_words = (double*)ccmalloc(sizeof(double) * total_iterations); \
+		memset(precision, 0, sizeof(double) * total_iterations); \
+		memset(recall, 0, sizeof(double) * total_iterations); \
+		memset(total_words, 0, sizeof(double) * total_iterations); \
+		double total_truth = 0; \
 		for (j = 0; j < aof->rnum; j++) \
 		{ \
 			char* name = *(char**)ccv_array_get(aof, j); \
 			ccv_dense_matrix_t* image = 0; \
 			ccv_read(name, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE); \
+			ccv_array_t* truth = *(ccv_array_t**)ccv_array_get(aow, j); \
+			total_truth += truth->rnum; \
+			int upscaled = (image->rows < 500 || image->cols < 500); \
+			if (upscaled) \
+			{ \
+				ccv_dense_matrix_t* up2x = 0; \
+				ccv_sample_up(image, &up2x, 0, 0, 0); \
+				ccv_matrix_free(image); \
+				image = up2x; \
+			} \
 			for (v = parameter##_range.min_value, k = 0; v <= parameter##_range.max_value; v += parameter##_range.step, k++) \
 			{ \
 				params.parameter = (type)(v + rounding); \
 				ccv_array_t* words = ccv_swt_detect_words(image, params); \
-				ccv_array_push(detected[k], &words); \
+				if (upscaled) \
+					for (l = 0; l < words->rnum; l++) \
+					{ \
+						ccv_rect_t* word = (ccv_rect_t*)ccv_array_get(words, l); \
+						word->x /= 2; \
+						word->y /= 2; \
+						word->width /= 2; \
+						word->height /= 2; \
+					} \
+				double one_precision = 0, one_recall = 0; \
+				_ccv_evaluate_wolf(words, truth, params, &one_precision, &one_recall); \
+				assert(one_precision <= words->rnum + 0.1); \
+				precision[k] += one_precision; \
+				recall[k] += one_recall; \
+				total_words[k] += words->rnum; \
+				ccv_array_free(words); \
 				FLUSH("perform SWT on %s (%d / %d) for " #parameter " = (%lg <- [%lg, %lg])", name, j + 1, aof->rnum, v, parameter##_range.min_value, parameter##_range.max_value); \
 			} \
 			ccv_matrix_free(image); \
@@ -503,19 +521,23 @@ int main(int argc, char** argv)
 		for (v = parameter##_range.min_value, j = 0; v <= parameter##_range.max_value; v += parameter##_range.step, j++) \
 		{ \
 			params.parameter = (type)(v + rounding); \
-			double f, recall, precision; \
-			f = _ccv_evaluate_wolf(detected[j], aow, a, params, &precision, &recall); \
-			ccv_array_free(detected[j]); \
+			double f, total_precision = precision[j], total_recall = recall[j]; \
+			total_precision /= total_words[j]; \
+			total_recall /= total_truth; \
+			f = 1.0 / (a / total_precision + (1.0 - a) / total_recall); \
 			if (f > best_f) \
 			{ \
 				best_params = params; \
 				best_f = f; \
-				best_precision = precision; \
-				best_recall = recall; \
+				best_precision = total_precision; \
+				best_recall = total_recall; \
 			} \
-			FLUSH("current harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, precision * 100, recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
+			FLUSH("current harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, total_precision * 100, total_recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
 		} \
 		printf("\n"); \
+		ccfree(precision); \
+		ccfree(recall); \
+		ccfree(total_words); \
 	}
 	for (i = 0; i < iterations; i++)
 	{

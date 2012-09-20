@@ -101,7 +101,7 @@ truth.each do |fn, rects|
 				tD[j] = true
 			end
 			recall += om_one
-			precision += om_one * many.count
+			precision += om_one / (1.0 + Math.log(many.count))
 		end
 	end
 	# one to many match, with estimate
@@ -128,7 +128,7 @@ truth.each do |fn, rects|
 			many.each do |i|
 				tG[i] = true
 			end
-			recall += om_one * many.count
+			recall += om_one / (1.0 + Math.log(many.count))
 			precision += om_one
 		end
 	end
