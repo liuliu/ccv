@@ -13,24 +13,24 @@ truth = Hash.new
 file = File.new(ARGV[0])
 filename = nil
 file.each do |line|
-	if line =~ /\d+\s\d+\s\d+\s\d+/
+	if line =~ /-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+/
 		truth[filename] = Array.new unless truth.has_key? filename
 		nb = line.split " "
 		truth[filename] << { :x => nb[0].to_f, :y => nb[1].to_f, :width => nb[2].to_f, :height => nb[3].to_f }
 	else
-		filename = line
+		filename = line.strip
 	end
 end
 
 estimate = Hash.new
 file = File.new(ARGV[1])
 file.each do |line|
-	if line =~ /\d+\s\d+\s\d+\s\d+/
+	if line =~ /-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+/
 		estimate[filename] = Array.new unless estimate.has_key? filename
 		nb = line.split(" ")
 		estimate[filename] << { :x => nb[0].to_f, :y => nb[1].to_f, :width => nb[2].to_f, :height => nb[3].to_f }
 	else
-		filename = line
+		filename = line.strip
 	end
 end
 

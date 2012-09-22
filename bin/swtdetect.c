@@ -12,26 +12,26 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	ccv_swt_param_t params = {
-		.interval = 2,
-		.same_word_thresh = { 0.5, 0.9 },
-		.min_neighbors = 0,
+		.interval = 1,
+		.same_word_thresh = { 0.1, 0.8 },
+		.min_neighbors = 1,
 		.scale_invariant = 1,
 		.size = 3,
-		.low_thresh = 75,
-		.high_thresh = 250,
+		.low_thresh = 124,
+		.high_thresh = 204,
 		.max_height = 300,
-		.min_height = 14,
-		.min_area = 75,
+		.min_height = 8,
+		.min_area = 38,
 		.letter_occlude_thresh = 3,
-		.aspect_ratio = 10,
-		.std_ratio = 0.75,
-		.thickness_ratio = 2.0,
-		.height_ratio = 2.0,
-		.intensity_thresh = 35,
-		.distance_ratio = 3.0,
-		.intersect_ratio = 1.5,
+		.aspect_ratio = 8,
+		.std_ratio = 0.83,
+		.thickness_ratio = 1.5,
+		.height_ratio = 1.7,
+		.intensity_thresh = 31,
+		.distance_ratio = 2.9,
+		.intersect_ratio = 1.3,
 		.letter_thresh = 3,
-		.elongate_ratio = 2.0,
+		.elongate_ratio = 1.9,
 		.breakdown = 1,
 		.breakdown_ratio = 1.0,
 	};
@@ -41,10 +41,7 @@ int main(int argc, char** argv)
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_dense_matrix_t* up2x = 0;
-		ccv_sample_up(image, &up2x, 0, 0, 0);
-		ccv_array_t* words = ccv_swt_detect_words(up2x, params);
-		ccv_matrix_free(up2x);
+		ccv_array_t* words = ccv_swt_detect_words(image, params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (words)
 		{
@@ -52,7 +49,7 @@ int main(int argc, char** argv)
 			for (i = 0; i < words->rnum; i++)
 			{
 				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
-				printf("%d %d %d %d\n", rect->x / 2, rect->y / 2, rect->width / 2, rect->height / 2);
+				printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
 			}
 			printf("total : %d in time %dms\n", words->rnum, elapsed_time);
 			ccv_array_free(words);
@@ -73,32 +70,16 @@ int main(int argc, char** argv)
 					read--;
 				file[read] = 0;
 				image = 0;
+				printf("%s\n", file);
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-				if (image->rows < 500 || image->cols < 500)
+				ccv_array_t* words = ccv_swt_detect_words(image, params);
+				int i;
+				for (i = 0; i < words->rnum; i++)
 				{
-					ccv_dense_matrix_t* up2x = 0;
-					ccv_sample_up(image, &up2x, 0, 0, 0);
-					ccv_array_t* words = ccv_swt_detect_words(up2x, params);
-					ccv_matrix_free(up2x);
-					int i;
-					printf("%s\n", file);
-					for (i = 0; i < words->rnum; i++)
-					{
-						ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
-						printf("%d %d %d %d\n", rect->x / 2, rect->y / 2, rect->width / 2, rect->height / 2);
-					}
-					ccv_array_free(words);
-				} else {
-					ccv_array_t* words = ccv_swt_detect_words(image, params);
-					int i;
-					printf("%s\n", file);
-					for (i = 0; i < words->rnum; i++)
-					{
-						ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
-						printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
-					}
-					ccv_array_free(words);
+					ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
+					printf("%d %d %d %d\n", rect->x, rect->y, rect->width, rect->height);
 				}
+				ccv_array_free(words);
 				ccv_matrix_free(image);
 			}
 			free(file);

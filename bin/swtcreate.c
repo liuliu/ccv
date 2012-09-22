@@ -233,28 +233,28 @@ int main(int argc, char** argv)
 	if (argc <= 1)
 		exit_with_help();
 	ccv_swt_param_t params = {
-		.interval = 5,
-		.same_word_thresh = { 0.5, 0.9 },
-		.min_neighbors = 2,
+		.interval = 1,
+		.same_word_thresh = { 0.2, 0.8 },
+		.min_neighbors = 1,
 		.scale_invariant = 0,
 		.size = 3,
-		.low_thresh = 65,
-		.high_thresh = 212,
-		.max_height = 500,
-		.min_height = 14,
-		.min_area = 94,
-		.letter_occlude_thresh = 4,
-		.aspect_ratio = 9,
-		.std_ratio = 0.95,
-		.thickness_ratio = 1.7,
-		.height_ratio = 1.8,
-		.intensity_thresh = 34,
-		.distance_ratio = 3.3,
-		.intersect_ratio = 1.2,
-		.letter_thresh = 4,
-		.elongate_ratio = 1.9,
+		.low_thresh = 78,
+		.high_thresh = 214,
+		.max_height = 300,
+		.min_height = 10,
+		.min_area = 75,
+		.letter_occlude_thresh = 2,
+		.aspect_ratio = 10,
+		.std_ratio = 0.5,
+		.thickness_ratio = 1.5,
+		.height_ratio = 2.0,
+		.intensity_thresh = 45,
+		.distance_ratio = 3.0,
+		.intersect_ratio = 2.0,
+		.letter_thresh = 3,
+		.elongate_ratio = 1.3,
 		.breakdown = 1,
-		.breakdown_ratio = 0.82,
+		.breakdown_ratio = 1.0,
 	};
 	ccv_swt_range_t size_range = {
 		.min_value = 1,
@@ -358,7 +358,7 @@ int main(int argc, char** argv)
 		.step = 0.01,
 		.enable = 1,
 	};
-	int i, j, k, l, iterations = 10;
+	int i, j, k, iterations = 10;
 	while (getopt_long_only(argc - 1, argv + 1, "", swt_options, &k) != -1)
 	{
 		switch (k)
@@ -486,27 +486,10 @@ int main(int argc, char** argv)
 			ccv_read(name, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE); \
 			ccv_array_t* truth = *(ccv_array_t**)ccv_array_get(aow, j); \
 			total_truth += truth->rnum; \
-			int upscaled = (image->rows < 500 || image->cols < 500); \
-			if (upscaled) \
-			{ \
-				ccv_dense_matrix_t* up2x = 0; \
-				ccv_sample_up(image, &up2x, 0, 0, 0); \
-				ccv_matrix_free(image); \
-				image = up2x; \
-			} \
 			for (v = parameter##_range.min_value, k = 0; v <= parameter##_range.max_value; v += parameter##_range.step, k++) \
 			{ \
 				params.parameter = (type)(v + rounding); \
 				ccv_array_t* words = ccv_swt_detect_words(image, params); \
-				if (upscaled) \
-					for (l = 0; l < words->rnum; l++) \
-					{ \
-						ccv_rect_t* word = (ccv_rect_t*)ccv_array_get(words, l); \
-						word->x /= 2; \
-						word->y /= 2; \
-						word->width /= 2; \
-						word->height /= 2; \
-					} \
 				double one_precision = 0, one_recall = 0; \
 				_ccv_evaluate_wolf(words, truth, params, &one_precision, &one_recall); \
 				assert(one_precision <= words->rnum + 0.1); \
@@ -542,14 +525,12 @@ int main(int argc, char** argv)
 	for (i = 0; i < iterations; i++)
 	{
 		optimize(size, int, 0.5);
-		optimize(low_thresh, int, 0.5);
-		optimize(high_thresh, int, 0.5);
+		optimize(std_ratio, double, 0);
 		optimize(max_height, int, 0.5);
 		optimize(min_height, int, 0.5);
 		optimize(min_area, int, 0.5);
 		optimize(letter_occlude_thresh, int, 0.5);
 		optimize(aspect_ratio, double, 0);
-		optimize(std_ratio, double, 0);
 		optimize(thickness_ratio, double, 0);
 		optimize(height_ratio, double, 0);
 		optimize(intensity_thresh, int, 0.5);
@@ -558,6 +539,8 @@ int main(int argc, char** argv)
 		optimize(letter_thresh, int, 0.5);
 		optimize(elongate_ratio, double, 0);
 		optimize(breakdown_ratio, double, 0);
+		optimize(low_thresh, int, 0.5);
+		optimize(high_thresh, int, 0.5);
 		printf("At iteration %d(of %d) : best parameters for swt is:\n"
 			   "\tsize = %d\n"
 			   "\tlow_thresh = %d\n"

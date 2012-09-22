@@ -35,7 +35,7 @@ method described in ICDAR 2003 contest, ccv's implementation was able to achieve
 precision rate at 66% and recall rate at 59% (numbers reported in the paper are
 precision rate 73% and recall rate at 60%).
 
-However, these results are quite out-dated, and using [ICDAR 2011 dataset](http://robustreading.opendfki.de/wiki/SceneText)
+However, these results are quite out-dated, and by using [ICDAR 2011 dataset](http://robustreading.opendfki.de/wiki/SceneText),
 more meaningful comparison is possible.
 
 With ccv's scale-invariant SWT implementation, and do parameter search on ICDAR
@@ -52,3 +52,7 @@ and doesn't use any language specific features.
 
 Speed-wise:
 
+How can I adopt SWT for my application?
+---------------------------------------
+
+SWT has
