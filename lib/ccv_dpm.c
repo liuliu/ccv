@@ -77,8 +77,8 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 	if (hog2x == 0)
 		return;
 	ccv_make_matrix_mutable(root_feature);
-	int rwh = (root_classifier->root.w->rows - 1) / 2;
-	int rww = (root_classifier->root.w->cols - 1) / 2;
+	int rwh = (root_classifier->root.w->rows - 1) / 2, rww = (root_classifier->root.w->cols - 1) / 2;
+	int rwh_1 = root_classifier->root.w->rows / 2, rww_1 = root_classifier->root.w->cols / 2;
 	int i, x, y;
 	for (i = 0; i < root_classifier->count; i++)
 	{
@@ -97,10 +97,10 @@ static void _ccv_dpm_compute_score(ccv_dpm_root_classifier_t* root_classifier, c
 		int offx = part->x + pww - rww * 2;
 		int minx = pww, maxx = part_feature[i]->cols - part->w->cols + pww;
 		float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-		for (y = rwh; y < root_feature->rows - rwh; y++)
+		for (y = rwh; y < root_feature->rows - rwh_1; y++)
 		{
 			int iy = ccv_clamp(y * 2 + offy, miny, maxy);
-			for (x = rww; x < root_feature->cols - rww; x++)
+			for (x = rww; x < root_feature->cols - rww_1; x++)
 			{
 				int ix = ccv_clamp(x * 2 + offx, minx, maxx);
 				f_ptr[x] -= ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[i], iy, ix, 0);
@@ -301,9 +301,108 @@ static void _ccv_dpm_check_root_classifier_symmetry(ccv_dense_matrix_t* w)
 	}
 }
 
-static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_classifier_t* root_classifier, int label, int cnum, int* labels, char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, double C, int symmetric, int grayscale)
+typedef struct {
+	int id;
+	int count;
+	float score;
+	int x, y;
+	float scale_x, scale_y;
+	ccv_dpm_part_classifier_t root;
+	ccv_dpm_part_classifier_t* part;
+} ccv_dpm_feature_vector_t;
+
+static ccv_array_t* _ccv_dpm_randomize_examples(gsl_rng* rng, char** bgfiles, int bgnum, int negnum, int id, int rows, int cols, int grayscale)
 {
-	int i, j, x, y, k, l, n;
+	int i;
+	ccv_array_t* negv = ccv_array_new(sizeof(ccv_dpm_feature_vector_t), negnum, 0);
+	FLUSH(" - generating negative examples for model %d : 0 / %d", id, negnum);
+	while (negv->rnum < negnum)
+	{
+		double p = (double)negnum / (double)bgnum;
+		for (i = 0; i < bgnum; i++)
+			if (gsl_rng_uniform(rng) < p)
+			{
+				ccv_dense_matrix_t* image = 0;
+				ccv_read(bgfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+				assert(image != 0);
+				ccv_dense_matrix_t* slice = 0;
+				int y = gsl_rng_uniform_int(rng, image->rows - rows * CCV_DPM_WINDOW_SIZE);
+				int x = gsl_rng_uniform_int(rng, image->cols - cols * CCV_DPM_WINDOW_SIZE);
+				ccv_slice(image, (ccv_matrix_t**)&slice, 0, y, x, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE);
+				ccv_matrix_free(image);
+				ccv_dense_matrix_t* hog = 0;
+				ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+				ccv_matrix_free(slice);
+				ccv_dpm_feature_vector_t vector = {
+					.id = id,
+					.count = 0,
+					.part = 0,
+				};
+				ccv_make_matrix_mutable(hog);
+				assert(hog->rows == rows && hog->cols == cols && CCV_GET_CHANNEL(hog->type) == 31 && CCV_GET_DATA_TYPE(hog->type) == CCV_32F);
+				vector.root.w = hog;
+				ccv_array_push(negv, &vector);
+				FLUSH(" - generating negative examples for model %d : %d / %d", id, negv->rnum, negnum);
+				if (negv->rnum >= negnum)
+					break;
+			}
+	}
+	return negv;
+}
+
+static ccv_array_t* _ccv_dpm_summon_examples_by_bounding_boxes(char** posfiles, ccv_rect_t* bboxes, int posnum, int id, int rows, int cols, int grayscale)
+{
+	int i;
+	FLUSH(" - generating positive examples for model %d : 0 / %d", id, posnum);
+	ccv_array_t* posv = ccv_array_new(sizeof(ccv_dpm_feature_vector_t), posnum, 0);
+	for (i = 0; i < posnum; i++)
+	{
+		ccv_rect_t bbox = bboxes[i];
+		int mcols = (int)(sqrtf(bbox.width * bbox.height * cols / (float)rows) + 0.5);
+		int mrows = (int)(sqrtf(bbox.width * bbox.height * rows / (float)cols) + 0.5);
+		bbox.x = bbox.x + (bbox.width - mcols) / 2;
+		bbox.y = bbox.y + (bbox.height - mrows) / 2;
+		bbox.width = mcols;
+		bbox.height = mrows;
+		ccv_dpm_feature_vector_t vector = {
+			.id = id,
+			.count = 0,
+			.part = 0,
+		};
+		// resolution is too low to be useful
+		if (mcols * 2 < cols * CCV_DPM_WINDOW_SIZE || mrows * 2 < rows * CCV_DPM_WINDOW_SIZE)
+		{
+			vector.root.w = 0;
+			ccv_array_push(posv, &vector);
+			continue;
+		}
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(posfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+		assert(image != 0);
+		ccv_dense_matrix_t* up2x = 0;
+		ccv_sample_up(image, &up2x, 0, 0, 0);
+		ccv_matrix_free(image);
+		ccv_dense_matrix_t* slice = 0;
+		ccv_slice(up2x, (ccv_matrix_t**)&slice, 0, bbox.y * 2, bbox.x * 2, bbox.height * 2, bbox.width * 2);
+		ccv_matrix_free(up2x);
+		ccv_dense_matrix_t* resize = 0;
+		ccv_resample(slice, &resize, 0, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE, CCV_INTER_AREA);
+		ccv_matrix_free(slice);
+		ccv_dense_matrix_t* hog = 0;
+		ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
+		ccv_matrix_free(resize);
+		ccv_make_matrix_mutable(hog);
+		assert(hog->rows == rows && hog->cols == cols && CCV_GET_CHANNEL(hog->type) == 31 && CCV_GET_DATA_TYPE(hog->type) == CCV_32F);
+		vector.root.w = hog;
+		ccv_array_push(posv, &vector);
+		FLUSH(" - generating positive examples for model %d : %d / %d", id, i + 1, posnum);
+	}
+	return posv;
+}
+
+static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_classifier_t* root_classifier, int label, int cnum, int* labels, ccv_array_t* posex, ccv_array_t* negex, double C, int symmetric, int grayscale)
+{
+	int i, j, x, y, k, l;
 	int cols = root_classifier->root.w->cols;
 	int cols2c = (cols + 1) / 2;
 	int rows = root_classifier->root.w->rows;
@@ -311,39 +410,16 @@ static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_class
 	struct problem prob;
 	prob.n = symmetric ? 31 * cols2c * rows + 1 : 31 * cols * rows + 1;
 	prob.bias = symmetric ? 0.5 : 1.0; // for symmetric, since we only pass half features in, need to set bias to be half too
-	prob.y = (int*)malloc(sizeof(int) * (cnum + negnum) * (!!symmetric + 1));
-	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (cnum + negnum) * (!!symmetric + 1));
-	printf(" - generating positive examples ");
-	fflush(stdout);
+	prob.y = (int*)malloc(sizeof(int) * (cnum + negex->rnum) * (!!symmetric + 1));
+	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (cnum + negex->rnum) * (!!symmetric + 1));
+	FLUSH(" - converting examples to liblinear format: %d / %d", 0, (cnum + negex->rnum) * (!!symmetric + 1));
 	l = 0;
-	for (i = 0; i < posnum; i++)
+	for (i = 0; i < posex->rnum; i++)
 		if (labels[i] == label)
 		{
-			ccv_rect_t bbox = bboxes[i];
-			int mcols = (int)(sqrtf(bbox.width * bbox.height * cols / (float)rows) + 0.5);
-			int mrows = (int)(sqrtf(bbox.width * bbox.height * rows / (float)cols) + 0.5);
-			bbox.x = bbox.x + (bbox.width - mcols) / 2;
-			bbox.y = bbox.y + (bbox.height - mrows) / 2;
-			bbox.width = mcols;
-			bbox.height = mrows;
-			if (mcols * 2 < cols * CCV_DPM_WINDOW_SIZE || mrows * 2 < rows * CCV_DPM_WINDOW_SIZE)
-			// resolution is too low to be useful
+			ccv_dense_matrix_t* hog = ((ccv_dpm_feature_vector_t*)ccv_array_get(posex, i))->root.w;
+			if (!hog)
 				continue;
-			ccv_dense_matrix_t* image = 0;
-			ccv_read(posfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-			assert(image != 0);
-			ccv_dense_matrix_t* up2x = 0;
-			ccv_sample_up(image, &up2x, 0, 0, 0);
-			ccv_matrix_free(image);
-			ccv_dense_matrix_t* slice = 0;
-			ccv_slice(up2x, (ccv_matrix_t**)&slice, 0, bbox.y * 2, bbox.x * 2, bbox.height * 2, bbox.width * 2);
-			ccv_matrix_free(up2x);
-			ccv_dense_matrix_t* resize = 0;
-			ccv_resample(slice, &resize, 0, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE, CCV_INTER_AREA);
-			ccv_matrix_free(slice);
-			ccv_dense_matrix_t* hog = 0;
-			ccv_hog(resize, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-			ccv_matrix_free(resize);
 			struct feature_node* features;
 			if (symmetric)
 			{
@@ -401,94 +477,69 @@ static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_class
 				prob.y[l] = 1;
 				++l;
 			}
-			ccv_matrix_free(hog);
-			printf(".");
-			fflush(stdout);
+			FLUSH(" - converting examples to liblinear format: %d / %d", l, (cnum + negex->rnum) * (!!symmetric + 1));
 		}
-	printf("\n - generating negative examples ");
-	fflush(stdout);
-	n = 0;
-	while (n < negnum)
+	for (i = 0; i < negex->rnum; i++)
 	{
-		double p = (double)negnum / (double)bgnum;
-		for (i = 0; i < bgnum; i++)
-			if (gsl_rng_uniform(rng) < p)
+		ccv_dense_matrix_t* hog = ((ccv_dpm_feature_vector_t*)ccv_array_get(negex, i))->root.w;
+		struct feature_node* features;
+		if (symmetric)
+		{
+			features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols2c * rows + 2));
+			float* hptr = hog->data.f32;
+			j = 0;
+			for (y = 0; y < rows; y++)
 			{
-				ccv_dense_matrix_t* image = 0;
-				ccv_read(bgfiles[i], &image, (grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
-				assert(image != 0);
-				ccv_dense_matrix_t* slice = 0;
-				int y = gsl_rng_uniform_int(rng, image->rows - rows * CCV_DPM_WINDOW_SIZE);
-				int x = gsl_rng_uniform_int(rng, image->cols - cols * CCV_DPM_WINDOW_SIZE);
-				ccv_slice(image, (ccv_matrix_t**)&slice, 0, y, x, rows * CCV_DPM_WINDOW_SIZE, cols * CCV_DPM_WINDOW_SIZE);
-				ccv_matrix_free(image);
-				ccv_dense_matrix_t* hog = 0;
-				ccv_hog(slice, &hog, 0, 9, CCV_DPM_WINDOW_SIZE);
-				ccv_matrix_free(slice);
-				struct feature_node* features;
-				if (symmetric)
-				{
-					features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols2c * rows + 2));
-					float* hptr = hog->data.f32;
-					j = 0;
-					for (y = 0; y < rows; y++)
-					{
-						for (x = 0; x < cols2c; x++)
-							for (k = 0; k < 31; k++)
-							{
-								features[j].index = j + 1;
-								features[j].value = hptr[x * 31 + k];
-								++j;
-							}
-						hptr += hog->cols * 31;
-					}
-					features[j].index = j + 1;
-					features[j].value = prob.bias;
-					features[j + 1].index = -1;
-					prob.x[l] = features;
-					prob.y[l] = -1;
-					++l;
-					features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols2c * rows + 2));
-					hptr = hog->data.f32;
-					j = 0;
-					for (y = 0; y < rows; y++)
-					{
-						for (x = 0; x < cols2c; x++)
-							for (k = 0; k < 31; k++)
-							{
-								features[j].index = j + 1;
-								features[j].value = hptr[(cols - 1 - x) * 31 + _ccv_dpm_sym_lut[k]];
-								++j;
-							}
-						hptr += hog->cols * 31;
-					}
-					features[j].index = j + 1;
-					features[j].value = prob.bias;
-					features[j + 1].index = -1;
-					prob.x[l] = features;
-					prob.y[l] = -1;
-					++l;
-				} else {
-					features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
-					for (j = 0; j < 31 * rows * cols; j++)
+				for (x = 0; x < cols2c; x++)
+					for (k = 0; k < 31; k++)
 					{
 						features[j].index = j + 1;
-						features[j].value = hog->data.f32[j];
+						features[j].value = hptr[x * 31 + k];
+						++j;
 					}
-					features[31 * rows * cols].index = 31 * rows * cols + 1;
-					features[31 * rows * cols].value = prob.bias;
-					features[31 * rows * cols + 1].index = -1;
-					prob.x[l] = features;
-					prob.y[l] = -1;
-					++l;
-				}
-				ccv_matrix_free(hog);
-				++n;
-				printf(".");
-				fflush(stdout);
-				if (n >= negnum)
-					break;
+				hptr += hog->cols * 31;
 			}
+			features[j].index = j + 1;
+			features[j].value = prob.bias;
+			features[j + 1].index = -1;
+			prob.x[l] = features;
+			prob.y[l] = -1;
+			++l;
+			features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols2c * rows + 2));
+			hptr = hog->data.f32;
+			j = 0;
+			for (y = 0; y < rows; y++)
+			{
+				for (x = 0; x < cols2c; x++)
+					for (k = 0; k < 31; k++)
+					{
+						features[j].index = j + 1;
+						features[j].value = hptr[(cols - 1 - x) * 31 + _ccv_dpm_sym_lut[k]];
+						++j;
+					}
+				hptr += hog->cols * 31;
+			}
+			features[j].index = j + 1;
+			features[j].value = prob.bias;
+			features[j + 1].index = -1;
+			prob.x[l] = features;
+			prob.y[l] = -1;
+			++l;
+		} else {
+			features = (struct feature_node*)malloc(sizeof(struct feature_node) * (31 * cols * rows + 2));
+			for (j = 0; j < 31 * rows * cols; j++)
+			{
+				features[j].index = j + 1;
+				features[j].value = hog->data.f32[j];
+			}
+			features[31 * rows * cols].index = 31 * rows * cols + 1;
+			features[31 * rows * cols].value = prob.bias;
+			features[31 * rows * cols + 1].index = -1;
+			prob.x[l] = features;
+			prob.y[l] = -1;
+			++l;
+		}
+		FLUSH(" - converting examples to liblinear format: %d / %d", l, (cnum + negex->rnum) * (!!symmetric + 1));
 	}
 	prob.l = l;
 	printf("\n - generated %d examples with %d dimensions each\n"
@@ -643,16 +694,6 @@ static void _ccv_dpm_initialize_part_classifiers(ccv_dpm_root_classifier_t* root
 	ccv_matrix_free(w);
 }
 
-typedef struct {
-	int id;
-	int count;
-	float score;
-	int x, y;
-	float scale_x, scale_y;
-	ccv_dpm_part_classifier_t root;
-	ccv_dpm_part_classifier_t* part;
-} ccv_dpm_feature_vector_t;
-
 static void _ccv_dpm_initialize_feature_vector_on_pattern(ccv_dpm_feature_vector_t* vector, ccv_dpm_root_classifier_t* root, int id)
 {
 	int i;
@@ -672,10 +713,12 @@ static void _ccv_dpm_initialize_feature_vector_on_pattern(ccv_dpm_feature_vector
 static void _ccv_dpm_feature_vector_cleanup(ccv_dpm_feature_vector_t* vector)
 {
 	int i;
-	ccv_matrix_free(vector->root.w);
+	if (vector->root.w)
+		ccv_matrix_free(vector->root.w);
 	for (i = 0; i < vector->count; i++)
 		ccv_matrix_free(vector->part[i].w);
-	ccfree(vector->part);
+	if (vector->part)
+		ccfree(vector->part);
 }
 
 static void _ccv_dpm_feature_vector_free(ccv_dpm_feature_vector_t* vector)
@@ -691,6 +734,7 @@ static double _ccv_dpm_vector_score(ccv_dpm_mixture_model_t* model, ccv_dpm_feat
 	ccv_dpm_root_classifier_t* root_classifier = model->root + v->id;
 	double score = root_classifier->beta;
 	int i, k, ch = CCV_GET_CHANNEL(v->root.w->type);
+	assert(ch == 31);
 	float *vptr = v->root.w->data.f32;
 	float *wptr = root_classifier->root.w->data.f32;
 	for (i = 0; i < v->root.w->rows * v->root.w->cols * ch; i++)
@@ -795,12 +839,12 @@ static ccv_dpm_feature_vector_t* _ccv_dpm_collect_best(ccv_dense_matrix_t* image
 			ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
 			ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
 			_ccv_dpm_compute_score(root_classifier, pyr[j], pyr[j - next], &root_feature, part_feature, dx, dy);
-			int rwh = (root_classifier->root.w->rows - 1) / 2;
-			int rww = (root_classifier->root.w->cols - 1) / 2;
+			int rwh = (root_classifier->root.w->rows - 1) / 2, rww = (root_classifier->root.w->cols - 1) / 2;
+			int rwh_1 = root_classifier->root.w->rows / 2, rww_1 = root_classifier->root.w->cols / 2;
 			float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-			for (y = rwh; y < root_feature->rows - rwh; y++)
+			for (y = rwh; y < root_feature->rows - rwh_1; y++)
 			{
-				for (x = rww; x < root_feature->cols - rww; x++)
+				for (x = rww; x < root_feature->cols - rww_1; x++)
 				{
 					ccv_rect_t rect = ccv_rect((int)((x - rww) * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)((y - rwh) * CCV_DPM_WINDOW_SIZE * scale_y + 0.5), (int)(root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x + 0.5), (int)(root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y + 0.5));
 					if ((double)(ccv_max(0, ccv_min(rect.x + rect.width, bbox.x + bbox.width) - ccv_max(rect.x, bbox.x)) *
@@ -867,12 +911,12 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 			ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
 			ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
 			_ccv_dpm_compute_score(root_classifier, pyr[j], pyr[j - next], &root_feature, part_feature, dx, dy);
-			int rwh = (root_classifier->root.w->rows - 1) / 2;
-			int rww = (root_classifier->root.w->cols - 1) / 2;
+			int rwh = (root_classifier->root.w->rows - 1) / 2, rww = (root_classifier->root.w->cols - 1) / 2;
+			int rwh_1 = root_classifier->root.w->rows / 2, rww_1 = root_classifier->root.w->cols / 2;
 			float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-			for (y = rwh; y < root_feature->rows - rwh; y++)
+			for (y = rwh; y < root_feature->rows - rwh_1; y++)
 			{
-				for (x = rww; x < root_feature->cols - rww; x++)
+				for (x = rww; x < root_feature->cols - rww_1; x++)
 					if (f_ptr[x] + root_classifier->beta > threshold)
 					{
 						// initialize v
@@ -1324,6 +1368,10 @@ static void _ccv_dpm_check_params(ccv_dpm_new_param_t params)
 #define MINI_BATCH (10)
 #define REGQ (100)
 
+static void _ccv_dpm_optimize_mixture_model(ccv_dpm_mixture_model_t* model, int* labels, ccv_array_t** posex, ccv_array_t** negex, double C, int symmetric)
+{
+}
+
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params)
 {
 	int t, d, c, i, j, k;
@@ -1427,6 +1475,14 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		fflush(stdout);
 		innum += mnum[i];
 	}
+	ccv_array_t** posex = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * params.components);
+	for (i = 0; i < params.components; i++)
+		posex[i] = _ccv_dpm_summon_examples_by_bounding_boxes(posfiles, bboxes, posnum, i, rows[i], cols[i], params.grayscale);
+	printf("\n");
+	ccv_array_t** negex = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * params.components);
+	for (i = 0; i < params.components; i++)
+		negex[i] = _ccv_dpm_randomize_examples(rng, bgfiles, bgnum, negnum * mnum[i] / posnum, i, rows[i], cols[i], params.grayscale);
+	printf("\n");
 	for (i = 0; i < params.components; i++)
 	{
 		if (model->root[i].root.w != 0)
@@ -1437,11 +1493,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		ccv_dpm_root_classifier_t* root_classifier = model->root + i;
 		root_classifier->root.w = ccv_dense_matrix_new(rows[i], cols[i], CCV_32F | 31, 0, 0);
 		printf("initializing root mixture model for model %d(%d)\n", i + 1, params.components);
-		_ccv_dpm_initialize_root_classifier(rng, root_classifier, i, mnum[i], labels, posfiles, bboxes, posnum, bgfiles, bgnum, negnum, params.C, params.symmetric, params.grayscale);
+		_ccv_dpm_initialize_root_classifier(rng, root_classifier, i, mnum[i], labels, posex[i], negex[i], params.C, params.symmetric, params.grayscale);
 		_ccv_dpm_write_checkpoint(model, 0, checkpoint);
 	}
-	ccfree(fn);
-	ccfree(labels);
 	// check symmetric property of generated root feature
 	if (params.symmetric)
 		for (i = 0; i < params.components; i++)
@@ -1453,9 +1507,21 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	{
 		/* TODO: coordinate-descent for lsvm */
 		printf("optimizing root mixture model with coordinate-descent approach\n");
+		_ccv_dpm_optimize_mixture_model(model, labels, posex, negex, params.C, params.symmetric);
 	} else {
 		printf("components == 1, skipped coordinate-descent to optimize root mixture model\n");
 	}
+	for (i = 0; i < params.components; i++)
+	{
+		for (j = 0; j < posex[i]->rnum; j++)
+			_ccv_dpm_feature_vector_cleanup((ccv_dpm_feature_vector_t*)ccv_array_get(posex[i], j));
+		ccv_array_free(posex[i]);
+		for (j = 0; j < negex[i]->rnum; j++)
+			_ccv_dpm_feature_vector_cleanup((ccv_dpm_feature_vector_t*)ccv_array_get(negex[i], j));
+		ccv_array_free(negex[i]);
+	}
+	ccfree(fn);
+	ccfree(labels);
 	/* initialize part filter */
 	printf("initializing part filters\n");
 	for (i = 0; i < params.components; i++)
@@ -1526,6 +1592,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				{
 					ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, j);
 					double score = _ccv_dpm_vector_score(model, v);
+					assert(!isnan(score));
 					if (score >= -1)
 						ccv_array_push(av, &v);
 					else
@@ -1566,12 +1633,14 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						if (posv[k] != 0)
 						{
 							double score = _ccv_dpm_vector_score(model, posv[k]); // the loss for mini-batch method (computed on model)
+							assert(!isnan(score));
 							if (score <= 1)
 								_ccv_dpm_stochastic_gradient_descent(_model, posv[k], 1, alpha * pos_weight, regz_rate, params.symmetric);
 						}
 					} else {
 						ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, k - posnum);
 						double score = _ccv_dpm_vector_score(model, v);
+						assert(!isnan(score));
 						if (score >= -1)
 							_ccv_dpm_stochastic_gradient_descent(_model, v, -1, alpha * neg_weight, regz_rate, params.symmetric);
 					}
@@ -1596,6 +1665,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 					if (posv[i] != 0)
 					{
 						double score = _ccv_dpm_vector_score(model, posv[i]);
+						assert(!isnan(score));
 						double hinge_loss = ccv_max(0, 1.0 - score);
 						positive_loss += hinge_loss;
 						loss += pos_weight * hinge_loss;
@@ -1604,6 +1674,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				{
 					ccv_dpm_feature_vector_t* v = *(ccv_dpm_feature_vector_t**)ccv_array_get(negv, i);
 					double score = _ccv_dpm_vector_score(model, v);
+					assert(!isnan(score));
 					double hinge_loss = ccv_max(0, 1.0 + score);
 					negative_loss += hinge_loss;
 					loss += neg_weight * hinge_loss;
@@ -1637,6 +1708,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				if (posv[i])
 				{
 					scores[j] = _ccv_dpm_vector_score(model, posv[i]);
+					assert(!isnan(scores[j]));
 					j++;
 				}
 			_ccv_dpm_score_qsort(scores, j, 0);
@@ -1753,12 +1825,17 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
 				ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
 				_ccv_dpm_compute_score(root, pyr[i], pyr[i - next], &root_feature, part_feature, dx, dy);
-				int rwh = (root->root.w->rows - 1) / 2;
-				int rww = (root->root.w->cols - 1) / 2;
+				int rwh = (root->root.w->rows - 1) / 2, rww = (root->root.w->cols - 1) / 2;
+				int rwh_1 = root->root.w->rows / 2, rww_1 = root->root.w->cols / 2;
+				/* these values are designed to make sure works with odd/even number of rows/cols
+				 * of the root classifier:
+				 * suppose the image is 6x6, and the root classifier is 6x6, the scan area should starts
+				 * at (2,2) and end at (2,2), thus, it is capped by (rwh, rww) to (6 - rwh_1 - 1, 6 - rww_1 - 1)
+				 * this computation works for odd root classifier too (i.e. 5x5) */
 				float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-				for (y = rwh; y < root_feature->rows - rwh; y++)
+				for (y = rwh; y < root_feature->rows - rwh_1; y++)
 				{
-					for (x = rww; x < root_feature->cols - rww; x++)
+					for (x = rww; x < root_feature->cols - rww_1; x++)
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
 							ccv_root_comp_t comp;
@@ -1777,8 +1854,8 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								int pww = (part->w->cols - 1) / 2, pwh = (part->w->rows - 1) / 2;
 								int offy = part->y + pwh - rwh * 2;
 								int offx = part->x + pww - rww * 2;
-								int iy = ccv_clamp(y * 2 + offy, pwh, part_feature[k]->rows - pwh);
-								int ix = ccv_clamp(x * 2 + offx, pww, part_feature[k]->cols - pww);
+								int iy = ccv_clamp(y * 2 + offy, pwh, part_feature[k]->rows - part->w->rows + pwh);
+								int ix = ccv_clamp(x * 2 + offx, pww, part_feature[k]->cols - part->w->cols + pww);
 								int ry = ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dy[k], iy, ix, 0);
 								int rx = ccv_get_dense_matrix_cell_value_by(CCV_32S | CCV_C1, dx[k], iy, ix, 0);
 								drift_x += part->alpha[0] * rx + part->alpha[1] * ry;
@@ -1959,7 +2036,7 @@ ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
 		{
 			fscanf(r, "%d %d %d", &part_classifier[j].x, &part_classifier[j].y, &part_classifier[j].z);
 			fscanf(r, "%lf %lf %lf %lf", &part_classifier[j].dx, &part_classifier[j].dy, &part_classifier[j].dxx, &part_classifier[j].dyy);
-			fscanf(r, "%f %f %f %f %f %f", &part_classifier[j].alpha[0], &part_classifier[j].alpha[1], &part_classifier[j].alpha[2], &part_classifier[j].alpha[3], &part_classifier[j].alpha[3], &part_classifier[j].alpha[5]);
+			fscanf(r, "%f %f %f %f %f %f", &part_classifier[j].alpha[0], &part_classifier[j].alpha[1], &part_classifier[j].alpha[2], &part_classifier[j].alpha[3], &part_classifier[j].alpha[4], &part_classifier[j].alpha[5]);
 			fscanf(r, "%d %d %d", &rows, &cols, &part_classifier[j].counterpart);
 			part_classifier[j].w = ccv_dense_matrix_new(rows, cols, CCV_32F | 31, ccmalloc(ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31)), 0);
 			size += ccv_compute_dense_matrix_size(rows, cols, CCV_32F | 31);
