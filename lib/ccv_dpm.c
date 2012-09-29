@@ -1825,15 +1825,13 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 				assert(v->id >= 0 && v->id < model->count);
 				++negvnum[v->id];
 			}
-			int early_continue = 1;
-			for (i = 0; i < model->count; i++)
-				if (negvnum[i] <= ccv_max(params.negative_cache_size / (model->count * 2), ccv_max(REGQ, MINI_BATCH)))
+			if (negv->rnum <= ccv_max(params.negative_cache_size / 2, ccv_max(REGQ, MINI_BATCH)))
+			{
+				for (i = 0; i < model->count; i++)
 					// we cannot get sufficient negatives, adjust constant and abort for next round
 					_ccv_dpm_adjust_model_constant(model, i, posv, posnum, params.percentile_breakdown);
-				else
-					early_continue = 0;
-			if (early_continue)
 				continue;
+			}
 			printf(" - negative examples divided by components : %d", negvnum[0]);
 			for (i = 1; i < model->count; i++)
 				printf(", %d", negvnum[i]);
@@ -1845,7 +1843,9 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 			{
 				for (p = 0; p < model->count; p++)
 				{
-					if (negvnum[p] == 0 || posvnum[p] == 0)
+					// if don't have enough negnum or posnum, aborting
+					if (negvnum[p] <= ccv_max(params.negative_cache_size / (model->count * 3), ccv_max(REGQ, MINI_BATCH)) ||
+						posvnum[p] <= ccv_max(REGQ, MINI_BATCH))
 						continue;
 					double pos_weight = sqrt((double)negvnum[p] / posvnum[p] * params.balance); // positive weight
 					double neg_weight = sqrt((double)posvnum[p] / negvnum[p] / params.balance); // negative weight

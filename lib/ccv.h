@@ -253,8 +253,15 @@ void ccv_enable_cache(size_t size);
 /* basic io ccv_io.c */
 
 enum {
-	CCV_IO_GRAY           = 0x100,
-	CCV_IO_RGB_COLOR      = 0x300,
+	// modifier for converting to gray-scale
+	CCV_IO_GRAY      = 0x100,
+	// modifier for converting to color
+	CCV_IO_RGB_COLOR = 0x300,
+};
+
+enum {
+	// modifier for not copy the data over when read raw in-memory data
+	CCV_IO_NO_COPY = 0x10000,
 };
 
 enum {
@@ -286,6 +293,7 @@ enum {
 	CCV_IO_CONTINUE,
 	CCV_IO_ERROR,
 	CCV_IO_ATTEMPTED,
+	CCV_IO_UNKNOWN,
 };
 
 int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline);

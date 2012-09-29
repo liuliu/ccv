@@ -25,16 +25,9 @@
 #include "io/_ccv_io_bmp.c"
 #include "io/_ccv_io_binary.c"
 
-int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
+int ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
 {
-	FILE* fd = 0;
 	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;
-	if (type & CCV_IO_ANY_FILE)
-	{
-		fd = fopen(in, "rb");
-		if (!fd)
-			return CCV_IO_ERROR;
-	}
 	if ((type & 0XFF) == CCV_IO_ANY_FILE)
 	{
 		unsigned char sig[8];
@@ -72,6 +65,20 @@ int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, in
 	if (type & CCV_IO_ANY_FILE)
 		fclose(fd);
 	return CCV_IO_FINAL;
+}
+
+int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
+{
+	FILE* fd = 0;
+	if (type & CCV_IO_ANY_FILE)
+	{
+		fd = fopen(in, "rb");
+		if (!fd)
+			return CCV_IO_ERROR;
+		return ccv_read_and_close_fd(fd, x, type);
+	} else {
+	}
+	return CCV_IO_UNKNOWN;
 }
 
 int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)

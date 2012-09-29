@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 		.interval = 8,
 		.min_neighbors = 1,
 		.flags = 0,
-		.threshold = 0.8
+		.threshold = 1.5
 	};
 	if (image != 0)
 	{

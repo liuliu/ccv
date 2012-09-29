@@ -2,7 +2,7 @@
 #include "ccv_internal.h"
 #include "3rdparty/sha1/sha1.h"
 
-static ccv_cache_t ccv_cache;
+__thread static ccv_cache_t ccv_cache;
 
 /**
  * For new typed cache object:
@@ -11,7 +11,7 @@ static ccv_cache_t ccv_cache;
  **/
 
 /* option to enable/disable cache */
-static int ccv_cache_opt = 0;
+__thread static int ccv_cache_opt = 0;
 
 ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig)
 {

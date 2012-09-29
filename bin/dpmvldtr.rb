@@ -5,31 +5,43 @@ exit unless ARGV.length == 2
 truth = Hash.new
 total = 0
 
-files = Dir.glob(ARGV[0] + '/*.txt')
-
-files.each do |file|
-	name = nil;
-	boxes = Array.new
-	File.new(file).each_line do |line|
-		next if line[0] == '#'
-		name = line[line.rindex('/') + 1, line.rindex('"') - (line.rindex('/') + 1)] if line[0, 14].downcase  == "image filename"
-		if line[0, 16].downcase == "bounding box for"
-			i = line.scan(/object\s*(\d+)/)[0][0].to_i
-			coord = line.scan(/\((\d+),\s*(\d+)\)\s*-\s*\((\d+),\s*(\d+)\)/)[0]
-			boxes[i - 1] = { :found => false, :x => coord[0].to_i, :y => coord[1].to_i, :width => coord[2].to_i - coord[0].to_i, :height => coord[3].to_i - coord[1].to_i }
-		end
-	end
-	truth[name] = boxes;
-	total += boxes.length;
+File.new(ARGV[0]).each_line do |line|
+	args = line.split " "
+	name, x, y, width, height = args[0].to_s, args[1].to_i, args[2].to_i, args[3].to_i, args[4].to_i
+	truth[name] = Array.new unless truth.has_key? name
+	truth[name] << { :found => false, :x => x, :y => y, :width => width, :height => height }
 end
+
+truth.each do |name, boxes|
+	total += boxes.count
+end
+
+# files = Dir.glob(ARGV[0] + '/*.txt')
+
+# files.each do |file|
+# 	name = nil;
+# 	boxes = Array.new
+# 	File.new(file).each_line do |line|
+# 		next if line[0] == '#'
+# 		name = line[line.rindex('/') + 1, line.rindex('"') - (line.rindex('/') + 1)] if line[0, 14].downcase  == "image filename"
+# 		if line[0, 16].downcase == "bounding box for"
+# 			i = line.scan(/object\s*(\d+)/)[0][0].to_i
+# 			coord = line.scan(/\((\d+),\s*(\d+)\)\s*-\s*\((\d+),\s*(\d+)\)/)[0]
+# 			boxes[i - 1] = { :found => false, :x => coord[0].to_i, :y => coord[1].to_i, :width => coord[2].to_i - coord[0].to_i, :height => coord[3].to_i - coord[1].to_i }
+# 		end
+# 	end
+# 	truth[name] = boxes;
+# 	total += boxes.length;
+# end
 
 fa = 0
 tp = 0
 
 File.new(ARGV[1]).each_line do |line|
 	next if line[0] == '|'
-	args = line.split(" ")
-	name = args[0][args[0].rindex('/') + 1, args[0].length - (args[0].rindex('/') + 1)]
+	args = line.split " "
+	name = args[0].to_s
+	# name = args[0][args[0].rindex('/') + 1, args[0].length - (args[0].rindex('/') + 1)]
 	if !truth[name]
 		fa += 1
 	else
