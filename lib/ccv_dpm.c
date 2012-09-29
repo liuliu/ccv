@@ -1876,7 +1876,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 						}
 						++l;
 						if (l % REGQ == REGQ - 1)
-							_ccv_dpm_regularize_mixture_model(_model, 0, 1.0 - pow(1.0 - alpha / (double)((posvnum[p] + negvnum[p]) * (!!params.symmetric + 1)), REGQ));
+							_ccv_dpm_regularize_mixture_model(_model, p, 1.0 - pow(1.0 - alpha / (double)((posvnum[p] + negvnum[p]) * (!!params.symmetric + 1)), REGQ));
 						if (l % MINI_BATCH == MINI_BATCH - 1)
 						{
 							// mimicking mini-batch way of doing things
@@ -1886,7 +1886,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 							_model = _ccv_dpm_model_copy(model);
 						}
 					}
-					_ccv_dpm_regularize_mixture_model(_model, 0, 1.0 - pow(1.0 - alpha / (double)((posvnum[p] + negvnum[p]) * (!!params.symmetric + 1)), (((posvnum[p] + negvnum[p]) % REGQ) + 1) % (REGQ + 1)));
+					_ccv_dpm_regularize_mixture_model(_model, p, 1.0 - pow(1.0 - alpha / (double)((posvnum[p] + negvnum[p]) * (!!params.symmetric + 1)), (((posvnum[p] + negvnum[p]) % REGQ) + 1) % (REGQ + 1)));
 					_ccv_dpm_mixture_model_cleanup(model);
 					ccfree(model);
 					model = _model;
