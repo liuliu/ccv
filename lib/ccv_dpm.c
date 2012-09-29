@@ -1405,7 +1405,7 @@ static ccv_dpm_mixture_model_t* _ccv_dpm_optimize_root_mixture_model(gsl_rng* rn
 	int* label = (int*)ccmalloc(sizeof(int) * (posnum + negnum));
 	int* order = (int*)ccmalloc(sizeof(int) * (posnum + negnum));
 	double previous_positive_loss = 0, previous_negative_loss = 0, positive_loss = 0, negative_loss = 0, loss = 0;
-	double regz_rate = C / model->count;
+	double regz_rate = C;
 	for (c = 0; c < relabels; c++)
 	{
 		int* pos_prog = (int*)alloca(sizeof(int) * model->count);
@@ -1758,7 +1758,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	_ccv_dpm_read_gradient_descent_progress(&c, &d, gradient_progress_checkpoint);
 	for (; c < params.relabels; c++)
 	{
-		double regz_rate = params.C / model->count;
+		double regz_rate = params.C;
 		ccv_dpm_mixture_model_t* _model;
 		if (0 == _ccv_dpm_read_positive_feature_vectors(posv, posnum, feature_vector_checkpoint))
 		{
