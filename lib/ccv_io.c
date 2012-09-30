@@ -24,8 +24,9 @@
 #endif
 #include "io/_ccv_io_bmp.c"
 #include "io/_ccv_io_binary.c"
+#include "io/_ccv_io_raw.c"
 
-int ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
+static int _ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
 {
 	int ctype = (type & 0xF00) ? CCV_8U | ((type & 0xF00) >> 8) : 0;
 	if ((type & 0XFF) == CCV_IO_ANY_FILE)
@@ -67,6 +68,41 @@ int ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
 	return CCV_IO_FINAL;
 }
 
+static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows, int cols, int scanline)
+{
+	assert(rows > 0 && cols > 0 && scanline > 0);
+	if (type & CCV_IO_NO_COPY)
+	{
+		// there is no conversion that we can apply if it is NO_COPY mode
+		assert((type && 0xFF) == CCV_IO_ANY_RAW);
+		*x = ccv_dense_matrix_new(rows, cols, type, data, 0);
+		(*x)->step = scanline;
+	} else {
+		switch (type & 0xFF)
+		{
+			case CCV_IO_RGB_RAW:
+				_ccv_read_rgb_raw(x, data, type, rows, cols, scanline);
+				break;
+			case CCV_IO_RGBA_RAW:
+				break;
+			case CCV_IO_ARGB_RAW:
+				break;
+			case CCV_IO_BGR_RAW:
+				break;
+			case CCV_IO_BGRA_RAW:
+				break;
+			case CCV_IO_ABGR_RAW:
+				break;
+			case CCV_IO_GRAY_RAW:
+				_ccv_read_gray_raw(x, data, type, rows, cols, scanline);
+				break;
+		}
+	}
+	if (*x != 0)
+		ccv_make_matrix_immutable(*x);
+	return CCV_IO_FINAL;
+}
+
 int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
 {
 	FILE* fd = 0;
@@ -75,8 +111,17 @@ int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, in
 		fd = fopen(in, "rb");
 		if (!fd)
 			return CCV_IO_ERROR;
-		return ccv_read_and_close_fd(fd, x, type);
-	} else {
+		return _ccv_read_and_close_fd(fd, x, type);
+	} else if (type & CCV_IO_ANY_STREAM) {
+		assert(rows > 8);
+		assert((type & 0xFF) == CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
+		fd = fmemopen((void*)in, (size_t)rows, "rb");
+		if (!fd)
+			return CCV_IO_ERROR;
+		type = (type & ~0x10) | 0x20;
+		return _ccv_read_and_close_fd(fd, x, type);
+	} else if (type & CCV_IO_ANY_RAW) {
+		return _ccv_read_raw(x, (void*)in /* it can be modifiable if it is NO_COPY mode */, type, rows, cols, scanline);
 	}
 	return CCV_IO_UNKNOWN;
 }

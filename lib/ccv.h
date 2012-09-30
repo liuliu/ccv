@@ -267,10 +267,11 @@ enum {
 enum {
 	// read self-describe in-memory data
 	CCV_IO_ANY_STREAM     = 0x010,
-	CCV_IO_PLAIN_STREAM   = 0x011,
-	CCV_IO_DEFLATE_STREAM = 0x012,
-	CCV_IO_JPEG_STREAM    = 0x013,
-	CCV_IO_PNG_STREAM     = 0x014,
+	CCV_IO_BMP_STREAM     = 0x011,
+	CCV_IO_JPEG_STREAM    = 0x012,
+	CCV_IO_PNG_STREAM     = 0x013,
+	CCV_IO_PLAIN_STREAM   = 0x014,
+	CCV_IO_DEFLATE_STREAM = 0x015,
 	// read self-describe on-disk data
 	CCV_IO_ANY_FILE       = 0x020,
 	CCV_IO_BMP_FILE       = 0x021,
@@ -279,13 +280,14 @@ enum {
 	CCV_IO_BINARY_FILE    = 0x024,
 	// read not-self-describe in-memory data (a.k.a. raw data)
 	// you need to specify rows, cols, or scanline for these data
-	CCV_IO_RGB_RAW        = 0x031,
-	CCV_IO_RGBA_RAW       = 0x032,
-	CCV_IO_ARGB_RAW       = 0x033,
-	CCV_IO_BGR_RAW        = 0x034,
-	CCV_IO_BGRA_RAW       = 0x035,
-	CCV_IO_ABGR_RAW       = 0x036,
-	CCV_IO_GRAY_RAW       = 0x037,
+	CCV_IO_ANY_RAW        = 0x040,
+	CCV_IO_RGB_RAW        = 0x041,
+	CCV_IO_RGBA_RAW       = 0x042,
+	CCV_IO_ARGB_RAW       = 0x043,
+	CCV_IO_BGR_RAW        = 0x044,
+	CCV_IO_BGRA_RAW       = 0x045,
+	CCV_IO_ABGR_RAW       = 0x046,
+	CCV_IO_GRAY_RAW       = 0x047,
 };
 
 enum {

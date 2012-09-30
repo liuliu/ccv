@@ -19,7 +19,7 @@ void exit_with_help()
 	"    --base-dir : change the base directory so that the program can read images from there\n"
 	"    --iterations : how many iterations are needed for stochastic gradient descent [DEFAULT TO 1000]\n"
 	"    --root-relabels : how many relabel procedures are needed for root model optimization [DEFAULT TO 20]\n"
-	"    --data-minings : how many data mining procedures are needed for discovering hard examples [DEFAULT TO 100]\n"
+	"    --data-minings : how many data mining procedures are needed for discovering hard examples [DEFAULT TO 50]\n"
 	"    --relabels : how many relabel procedures are needed for part model optimization [DEFAULT TO 10]\n"
 	"    --alpha : the step size for stochastic gradient descent [DEFAULT TO 0.01]\n"
 	"    --alpha-ratio : decrease the step size for each iteration [DEFAULT TO 0.995]\n"
@@ -78,7 +78,7 @@ int main(int argc, char** argv)
 								   .balance = 1.5,
 								   .alpha_ratio = 0.995,
 								   .iterations = 1000,
-								   .data_minings = 100,
+								   .data_minings = 50,
 								   .root_relabels = 20,
 								   .relabels = 10,
 								   .negative_cache_size = 2000,
