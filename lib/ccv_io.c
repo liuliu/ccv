@@ -74,8 +74,28 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 	if (type & CCV_IO_NO_COPY)
 	{
 		// there is no conversion that we can apply if it is NO_COPY mode
-		assert((type && 0xFF) == CCV_IO_ANY_RAW);
-		*x = ccv_dense_matrix_new(rows, cols, type, data, 0);
+		// NO_COPY mode generate an "unreusable" matrix, which requires you to
+		// manually release its data block (which is, in fact the same data
+		// block you passed in)
+		int ctype = CCV_8U | CCV_C1;
+		switch (type & 0xFF)
+		{
+			case CCV_IO_RGB_RAW:
+			case CCV_IO_BGR_RAW:
+				ctype = CCV_8U | CCV_C3;
+				break;
+			case CCV_IO_RGBA_RAW:
+			case CCV_IO_ARGB_RAW:
+			case CCV_IO_BGRA_RAW:
+			case CCV_IO_ABGR_RAW:
+				ctype = CCV_8U | CCV_C4;
+				break;
+			case CCV_IO_GRAY_RAW:
+			default:
+				/* default one */
+				break;
+		}
+		*x = ccv_dense_matrix_new(rows, cols, ctype | CCV_NO_DATA_ALLOC, data, 0);
 		(*x)->step = scanline;
 	} else {
 		switch (type & 0xFF)
@@ -84,14 +104,19 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 				_ccv_read_rgb_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_RGBA_RAW:
+				_ccv_read_rgba_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_ARGB_RAW:
+				_ccv_read_argb_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_BGR_RAW:
+				_ccv_read_bgr_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_BGRA_RAW:
+				_ccv_read_bgra_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_ABGR_RAW:
+				_ccv_read_abgr_raw(x, data, type, rows, cols, scanline);
 				break;
 			case CCV_IO_GRAY_RAW:
 				_ccv_read_gray_raw(x, data, type, rows, cols, scanline);
@@ -103,21 +128,23 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 	return CCV_IO_FINAL;
 }
 
-int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
+int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
 {
 	FILE* fd = 0;
 	if (type & CCV_IO_ANY_FILE)
 	{
-		fd = fopen(in, "rb");
+		assert(rows == 0 && cols == 0 && scanline == 0);
+		fd = fopen((const char*)in, "rb");
 		if (!fd)
 			return CCV_IO_ERROR;
 		return _ccv_read_and_close_fd(fd, x, type);
 	} else if (type & CCV_IO_ANY_STREAM) {
-		assert(rows > 8);
+		assert(rows > 8 && cols == 0 && scanline == 0);
 		assert((type & 0xFF) == CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
 		fd = fmemopen((void*)in, (size_t)rows, "rb");
 		if (!fd)
 			return CCV_IO_ERROR;
+		// mimicking itself as a "file"
 		type = (type & ~0x10) | 0x20;
 		return _ccv_read_and_close_fd(fd, x, type);
 	} else if (type & CCV_IO_ANY_RAW) {

@@ -10,7 +10,7 @@ om_one = 0.8
 center_diff_thr = 1.0
 
 truth = Hash.new
-file = File.new(ARGV[0])
+file = File.new ARGV[0]
 filename = nil
 file.each do |line|
 	if line =~ /-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+/
@@ -23,7 +23,7 @@ file.each do |line|
 end
 
 estimate = Hash.new
-file = File.new(ARGV[1])
+file = File.new ARGV[1]
 file.each do |line|
 	if line =~ /-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+\s-{0,1}\d+/
 		estimate[filename] = Array.new unless estimate.has_key? filename

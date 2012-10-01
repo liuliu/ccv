@@ -56,9 +56,10 @@ enum {
 };
 
 enum {
-	CCV_GARBAGE   = 0x80000000, // matrix is in cache (not used by any functions)
-	CCV_REUSABLE  = 0x40000000, // matrix can be recycled
-	CCV_UNMANAGED = 0x20000000, // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
+	CCV_GARBAGE       = 0x80000000, // matrix is in cache (not used by any functions)
+	CCV_REUSABLE      = 0x40000000, // matrix can be recycled
+	CCV_UNMANAGED     = 0x20000000, // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
+	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
 };
 
 typedef union {
@@ -298,7 +299,7 @@ enum {
 	CCV_IO_UNKNOWN,
 };
 
-int ccv_read_impl(const char* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline);
+int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline);
 #define ccv_read_n(in, x, type, rows, cols, scanline, ...) \
 	ccv_read_impl(in, x, type, rows, cols, scanline)
 #define ccv_read(in, x, type, ...) \
