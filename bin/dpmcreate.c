@@ -28,6 +28,7 @@ void exit_with_help()
 	"    --negative-cache-size : the cache size for negative examples it should be smaller than negative-count and larger than 100 [DEFAULT TO 2000]\n"
 	"    --include-overlap : the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object [DEFAULT TO 0.7]\n"
 	"    --grayscale : 0 or 1, whether to exploit color in a given image [DEFAULT TO 0]\n"
+	"    --discard-estimating-constant : 0 or 1, when estimating bounding boxes, discarding constant (which may be accumulated error) [DEFAULT TO 1]\n"
 	"    --percentile-breakdown : 0.00 - 1.00, the percentile use for breakdown threshold [DEFAULT TO 0.05]\n\n"
 	);
 	exit(-1);
@@ -60,6 +61,7 @@ int main(int argc, char** argv)
 		{"percentile-breakdown", 1, 0, 0},
 		{"include-overlap", 1, 0, 0},
 		{"grayscale", 1, 0, 0},
+		{"discard-estimating-constant", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
 	char* positive_list = 0;
@@ -68,24 +70,27 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	int negative_count = 0;
 	ccv_dpm_param_t detector = { .interval = 8, .min_neighbors = 0, .flags = 0, .threshold = 0.0 };
-	ccv_dpm_new_param_t params = { .components = 0,
-								   .detector = detector,
-								   .parts = 0,
-								   .min_area = 3000,
-								   .max_area = 5000,
-								   .symmetric = 1,
-								   .alpha = 0.01,
-								   .balance = 1.5,
-								   .alpha_ratio = 0.995,
-								   .iterations = 1000,
-								   .data_minings = 50,
-								   .root_relabels = 20,
-								   .relabels = 10,
-								   .negative_cache_size = 2000,
-								   .C = 0.002,
-								   .percentile_breakdown = 0.05,
-								   .include_overlap = 0.7,
-								   .grayscale = 0 };
+	ccv_dpm_new_param_t params = {
+		.components = 0,
+		.detector = detector,
+		.parts = 0,
+		.min_area = 3000,
+		.max_area = 5000,
+		.symmetric = 1,
+		.alpha = 0.01,
+		.balance = 1.5,
+		.alpha_ratio = 0.995,
+		.iterations = 1000,
+		.data_minings = 50,
+		.root_relabels = 20,
+		.relabels = 10,
+		.negative_cache_size = 2000,
+		.C = 0.002,
+		.percentile_breakdown = 0.05,
+		.include_overlap = 0.7,
+		.grayscale = 0,
+		.discard_estimating_constant = 1,
+	};
 	int i, k;
 	while (getopt_long_only(argc, argv, "", dpm_options, &k) != -1)
 	{
@@ -151,6 +156,9 @@ int main(int argc, char** argv)
 				break;
 			case 20:
 				params.grayscale = !!atoi(optarg);
+				break;
+			case 21:
+				params.discard_estimating_constant = !!atoi(optarg);
 				break;
 		}
 	}

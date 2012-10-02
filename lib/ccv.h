@@ -710,6 +710,7 @@ typedef struct {
 	int data_minings;
 	int root_relabels;
 	int relabels;
+	int discard_estimating_constant; // 1
 	int negative_cache_size; // 1000
 	double include_overlap; // 0.7
 	double alpha;

@@ -952,6 +952,8 @@ static ccv_array_t* _ccv_dpm_collect_all(gsl_rng* rng, ccv_dense_matrix_t* image
 						ccv_dpm_feature_vector_t* v = (ccv_dpm_feature_vector_t*)ccmalloc(sizeof(ccv_dpm_feature_vector_t));
 						_ccv_dpm_initialize_feature_vector_on_pattern(v, root_classifier, order[i]);
 						_ccv_dpm_collect_feature_vector(v, f_ptr[x] + root_classifier->beta, x, y, pyr[j], pyr[j - next], dx, dy);
+						v->scale_x = scale_x;
+						v->scale_y = scale_y;
 						ccv_array_push(av, &v);
 						if (av->rnum >= enough * (i + 1))
 							break;
@@ -1048,7 +1050,7 @@ static void _ccv_dpm_initialize_root_rectangle_estimator(ccv_dpm_mixture_model_t
 				ccv_rect_t bbox = bboxes[j];
 				gsl_vector_set(y[0], c, (bbox.x + bbox.width * 0.5) / (v->scale_x * CCV_DPM_WINDOW_SIZE) - v->x);
 				gsl_vector_set(y[1], c, (bbox.y + bbox.height * 0.5) / (v->scale_y * CCV_DPM_WINDOW_SIZE) - v->y);
-				gsl_vector_set(y[2], c, (bbox.width + bbox.height) / (root_classifier->root.w->rows * CCV_DPM_WINDOW_SIZE * v->scale_y + root_classifier->root.w->cols * CCV_DPM_WINDOW_SIZE * v->scale_x) - 1.0);
+				gsl_vector_set(y[2], c, sqrt((bbox.width * bbox.height) / (root_classifier->root.w->rows * v->scale_x * CCV_DPM_WINDOW_SIZE * root_classifier->root.w->cols * v->scale_y * CCV_DPM_WINDOW_SIZE)) - 1.0);
 				++c;
 			}
 		}
@@ -1057,7 +1059,7 @@ static void _ccv_dpm_initialize_root_rectangle_estimator(ccv_dpm_mixture_model_t
 		for (j = 0; j < 3; j++)
 		{
 			gsl_multifit_linear(X, y[j], z, cov, &chisq, workspace);
-			root_classifier->alpha[j] = gsl_vector_get(z, 0);
+			root_classifier->alpha[j] = params.discard_estimating_constant ? 0 : gsl_vector_get(z, 0);
 			for (k = 0; k < root_classifier->count; k++)
 			{
 				ccv_dpm_part_classifier_t* part_classifier = root_classifier->part + k;
@@ -2102,7 +2104,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								comp.part[k].rect = ccv_rect((int)((rx - pww) * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)((ry - pwh) * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5), (int)(part->w->cols * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)(part->w->rows * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5));
 								comp.part[k].confidence = -ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 							}
-							comp.rect = ccv_rect((int)((x + drift_x) * CCV_DPM_WINDOW_SIZE * scale_x - rww * CCV_DPM_WINDOW_SIZE * (scale_x + drift_scale) + 0.5), (int)((y + drift_y) * CCV_DPM_WINDOW_SIZE * scale_y - rwh * CCV_DPM_WINDOW_SIZE * (scale_y + drift_scale) + 0.5), (int)(root->root.w->cols * CCV_DPM_WINDOW_SIZE * (scale_x + drift_scale) + 0.5), (int)(root->root.w->rows * CCV_DPM_WINDOW_SIZE * (scale_y + drift_scale) + 0.5));
+							comp.rect = ccv_rect((int)((x + drift_x) * CCV_DPM_WINDOW_SIZE * scale_x - rww * CCV_DPM_WINDOW_SIZE * scale_x * (1.0 + drift_scale) + 0.5), (int)((y + drift_y) * CCV_DPM_WINDOW_SIZE * scale_y - rwh * CCV_DPM_WINDOW_SIZE * scale_y * (1.0 + drift_scale) + 0.5), (int)(root->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x * (1.0 + drift_scale) + 0.5), (int)(root->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y * (1.0 + drift_scale) + 0.5));
 							ccv_array_push(seq, &comp);
 						}
 					f_ptr += root_feature->cols;

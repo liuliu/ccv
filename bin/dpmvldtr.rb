@@ -8,6 +8,7 @@ total = 0
 File.new(ARGV[0]).each_line do |line|
 	args = line.split " "
 	name, x, y, width, height = args[0].to_s, args[1].to_i, args[2].to_i, args[3].to_i, args[4].to_i
+#	next if width < 44 or height < 28
 	truth[name] = Array.new unless truth.has_key? name
 	truth[name] << { :found => false, :x => x, :y => y, :width => width, :height => height }
 end
