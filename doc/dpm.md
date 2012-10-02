@@ -1,7 +1,7 @@
 DPM: Deformable Parts Model
 ===========================
 
-what's DPM?
+What's DPM?
 -----------
 
 The original paper refers to:
@@ -116,3 +116,12 @@ It takes about 3 days on my laptop to get meaningful data, and unfortunately,
 current implementation doesn't support OpenMP, and you have to be patient.
 
 Good luck!
+
+Other models?
+-------------
+
+I've trained one more mixture model: samples/car.m
+
+It has been trained with VOC2011 trainval dataset, and the result on validation dataset:
+
+46.19% (16)

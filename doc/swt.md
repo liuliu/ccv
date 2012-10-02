@@ -54,5 +54,3 @@ Speed-wise:
 
 How can I adopt SWT for my application?
 ---------------------------------------
-
-SWT has
