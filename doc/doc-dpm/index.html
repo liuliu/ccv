@@ -32,7 +32,7 @@ _gaq.push(['_trackPageview']);
 <section><h1>DPM: Deformable Parts Model</h1>
 <p><a href="/lib/ccv-dpm/">Library Reference: ccv_dpm.c</a></p>
 
-<h2 id="whats-dpm">what’s DPM?</h2>
+<h2 id="whats-dpm">What’s DPM?</h2>
 
 <p>The original paper refers to:
 Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</p>
@@ -56,7 +56,7 @@ the selling point. However, this implementation tries to optimize for speed as
 well. For a 640x480 photo, this implementation will be done in about one second,
 without multi-thread support.</p>
 
-<p><strong>Accuracy-wise</strong>:</p>
+<p>Accuracy-wise:</p>
 
 <p>There are two off-the-shelf implementations. One is the DPM in Matlab from the inventor,
 the other is the HOG detector from OpenCV. For the task to detect pedestrians in a
@@ -94,7 +94,7 @@ with INRIA training data. Let’s see how it performs.</p>
 <pre><code>76.4% (68)
 </code></pre>
 
-<p><strong>Speed-wise</strong>:</p>
+<p>Speed-wise:</p>
 
 <p>Let’s time it on INRIA dataset (288 images).</p>
 
@@ -157,7 +157,26 @@ current implementation doesn’t support OpenMP, and you have to be patient.</p>
 
 <p>Good luck!</p>
 
+<h2 id="other-models">Other models?</h2>
+
+<p>I’ve trained one more mixture model: samples/car.m</p>
+
+<p>It has been trained with VOC2011 trainval dataset, and the result on validation dataset:</p>
+
+<p>46.19% (16)</p>
+
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
 </section>
 <footer>
 <p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
