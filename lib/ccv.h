@@ -314,8 +314,8 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 double ccv_trace(ccv_matrix_t* mat);
 
 enum {
-	CCV_L2_NORM  = 0x01, // |dx| + |dy|
-	CCV_L1_NORM  = 0x02, // sqrt(dx^2 + dy^2)
+	CCV_L1_NORM  = 0x01, // |dx| + |dy|
+	CCV_L2_NORM  = 0x02, // sqrt(dx^2 + dy^2)
 	CCV_GSEDT    = 0x04, // Generalized Squared Euclidean Distance Transform:
 						 // a * dx + b * dy + c * dx^2 + d * dy^2, when combined with CCV_L1_NORM:
 						 // a * |dx| + b * |dy| + c * dx^2 + d * dy^2
