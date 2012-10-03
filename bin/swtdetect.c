@@ -11,37 +11,13 @@ unsigned int get_current_time()
 
 int main(int argc, char** argv)
 {
-	ccv_swt_param_t params = {
-		.interval = 1,
-		.same_word_thresh = { 0.1, 0.8 },
-		.min_neighbors = 1,
-		.scale_invariant = 0,
-		.size = 3,
-		.low_thresh = 124,
-		.high_thresh = 204,
-		.max_height = 300,
-		.min_height = 8,
-		.min_area = 38,
-		.letter_occlude_thresh = 3,
-		.aspect_ratio = 8,
-		.std_ratio = 0.83,
-		.thickness_ratio = 1.5,
-		.height_ratio = 1.7,
-		.intensity_thresh = 31,
-		.distance_ratio = 2.9,
-		.intersect_ratio = 1.3,
-		.letter_thresh = 3,
-		.elongate_ratio = 1.9,
-		.breakdown = 1,
-		.breakdown_ratio = 1.0,
-	};
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* words = ccv_swt_detect_words(image, params);
+		ccv_array_t* words = ccv_swt_detect_words(image, ccv_swt_default_params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (words)
 		{
@@ -72,7 +48,7 @@ int main(int argc, char** argv)
 				image = 0;
 				printf("%s\n", file);
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-				ccv_array_t* words = ccv_swt_detect_words(image, params);
+				ccv_array_t* words = ccv_swt_detect_words(image, ccv_swt_default_params);
 				int i;
 				for (i = 0; i < words->rnum; i++)
 				{

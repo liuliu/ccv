@@ -13,6 +13,13 @@
 #include <linear.h>
 #endif
 
+ccv_dpm_param_t ccv_dpm_default_params = {
+	.interval = 8,
+	.min_neighbors = 1,
+	.flags = 0,
+	.threshold = 0.6,
+};
+
 #define CCV_DPM_WINDOW_SIZE (8)
 
 static int _ccv_dpm_scale_upto(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, int interval)

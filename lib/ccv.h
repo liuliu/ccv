@@ -645,6 +645,8 @@ typedef struct {
 	double breakdown_ratio;
 } ccv_swt_param_t;
 
+extern ccv_swt_param_t ccv_swt_default_params;
+
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
 
@@ -725,6 +727,8 @@ enum {
 	CCV_DPM_NO_NESTED = 0x10000000,
 };
 
+extern ccv_dpm_param_t ccv_dpm_default_params;
+
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
 ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_load_dpm_mixture_model(const char* directory);
@@ -787,6 +791,8 @@ typedef struct {
 enum {
 	CCV_BBF_NO_NESTED = 0x10000000,
 };
+
+extern ccv_bbf_param_t ccv_bbf_default_params;
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);

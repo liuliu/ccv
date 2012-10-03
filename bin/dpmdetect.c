@@ -17,16 +17,10 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
 	ccv_dpm_mixture_model_t* model = ccv_load_dpm_mixture_model(argv[2]);
-	ccv_dpm_param_t params = {
-		.interval = 8,
-		.min_neighbors = 1,
-		.flags = 0,
-		.threshold = 0.6,
-	};
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, params);
+		ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, ccv_dpm_default_params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (seq)
 		{
@@ -60,7 +54,7 @@ int main(int argc, char** argv)
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, params);
+				ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, ccv_dpm_default_params);
 				if (seq != 0)
 				{
 					for (i = 0; i < seq->rnum; i++)

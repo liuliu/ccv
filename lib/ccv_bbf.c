@@ -9,6 +9,17 @@
 #include <omp.h>
 #endif
 
+ccv_bbf_param_t ccv_bbf_default_params = {
+	.interval = 5,
+	.min_neighbors = 2,
+	.accurate = 1,
+	.flags = 0,
+	.size = {
+		24,
+		24,
+	},
+};
+
 #define _ccv_width_padding(x) (((x) + 3) & -4)
 
 static inline int _ccv_run_bbf_feature(ccv_bbf_feature_t* feature, int* step, unsigned char** u8)

@@ -17,17 +17,10 @@ int main(int argc, char** argv)
 	ccv_dense_matrix_t* image = 0;
 	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-	ccv_bbf_param_t params = {
-		.interval = 5,
-		.min_neighbors = 2,
-		.accurate = 1,
-		.flags = 0,
-		.size = ccv_size(24, 24)
-	};
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
+		ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, ccv_bbf_default_params);
 		elapsed_time = get_current_time() - elapsed_time;
 		for (i = 0; i < seq->rnum; i++)
 		{
@@ -54,7 +47,7 @@ int main(int argc, char** argv)
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, params);
+				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, ccv_bbf_default_params);
 				for (i = 0; i < seq->rnum; i++)
 				{
 					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
