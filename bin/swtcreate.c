@@ -200,6 +200,26 @@ typedef struct {
 
 static void decode_range(const char* arg, ccv_swt_range_t* range)
 {
+	range->enable = 0;
+	if (strcmp(arg, "x") && strcmp(arg, "X"))
+	{
+		char* pch = strtok((char*)arg, ",");
+		if (pch)
+		{
+			range->min_value = strtod(pch, 0);
+			pch = strtok(0, ",");
+			if (pch)
+			{
+				range->step = strtod(pch, 0);
+				pch = strtok(0, ",");
+				if (pch)
+				{
+					range->max_value = strtod(pch, 0);
+					range->enable = 1;
+				}
+			}
+		}
+	}
 }
 
 int main(int argc, char** argv)
@@ -460,7 +480,41 @@ int main(int argc, char** argv)
 		}
 	}
 	free(file);
-	printf("loaded %d images for parameter search\n", aof->rnum);
+	printf("loaded %d images for parameter search of:\n", aof->rnum);
+	if (size_range.enable)
+		printf(" - canny size from %d to %d, += %lg\n", (int)(size_range.min_value + 0.5), (int)(size_range.max_value + 0.5), size_range.step);
+	if (std_ratio_range.enable)
+		printf(" - std threshold ratio from %lg to %lg, += %lg\n", std_ratio_range.min_value, std_ratio_range.max_value, std_ratio_range.step);
+	if (max_height_range.enable)
+		printf(" - maximum height from %d to %d, += %lg\n", (int)(max_height_range.min_value + 0.5), (int)(max_height_range.max_value + 0.5), max_height_range.step);
+	if (min_height_range.enable)
+		printf(" - minimum height from %d to %d, += %lg\n", (int)(min_height_range.min_value + 0.5), (int)(min_height_range.max_value + 0.5), min_height_range.step);
+	if (min_area_range.enable)
+		printf(" - minimum area from %d to %d, += %lg\n", (int)(min_area_range.min_value + 0.5), (int)(min_area_range.max_value + 0.5), min_area_range.step);
+	if (letter_occlude_thresh_range.enable)
+		printf(" - letter occlude threshold from %d to %d, += %lg\n", (int)(letter_occlude_thresh_range.min_value + 0.5), (int)(letter_occlude_thresh_range.max_value + 0.5), letter_occlude_thresh_range.step);
+	if (aspect_ratio_range.enable)
+		printf(" - aspect ratio threshold from %lg to %lg, += %lg\n", aspect_ratio_range.min_value, aspect_ratio_range.max_value, aspect_ratio_range.step);
+	if (thickness_ratio_range.enable)
+		printf(" - thickness ratio threshold from %lg to %lg, += %lg\n", thickness_ratio_range.min_value, thickness_ratio_range.max_value, thickness_ratio_range.step);
+	if (height_ratio_range.enable)
+		printf(" - height ratio threshold from %lg to %lg, += %lg\n", height_ratio_range.min_value, height_ratio_range.max_value, height_ratio_range.step);
+	if (intensity_thresh_range.enable)
+		printf(" - intensity threshold from %d to %d, += %lg\n", (int)(intensity_thresh_range.min_value + 0.5), (int)(intensity_thresh_range.max_value + 0.5), intensity_thresh_range.step);
+	if (distance_ratio_range.enable)
+		printf(" - distance ratio threshold from %lg to %lg, += %lg\n", distance_ratio_range.min_value, distance_ratio_range.max_value, distance_ratio_range.step);
+	if (intersect_ratio_range.enable)
+		printf(" - intersect ratio threshold from %lg to %lg, += %lg\n", intersect_ratio_range.min_value, intersect_ratio_range.max_value, intersect_ratio_range.step);
+	if (letter_thresh_range.enable)
+		printf(" - minimum number of letters from %d to %d, += %lg\n", (int)(letter_thresh_range.min_value + 0.5), (int)(letter_thresh_range.max_value + 0.5), letter_thresh_range.step);
+	if (elongate_ratio_range.enable)
+		printf(" - elongate ratio threshold from %lg to %lg, += %lg\n", elongate_ratio_range.min_value, elongate_ratio_range.max_value, elongate_ratio_range.step);
+	if (breakdown_ratio_range.enable)
+		printf(" - breakdown ratio threshold from %lg to %lg, += %lg\n", breakdown_ratio_range.min_value, breakdown_ratio_range.max_value, breakdown_ratio_range.step);
+	if (low_thresh_range.enable)
+		printf(" - canny low threshold from %d to %d, += %lg\n", (int)(low_thresh_range.min_value + 0.5), (int)(low_thresh_range.max_value + 0.5), low_thresh_range.step);
+	if (high_thresh_range.enable)
+		printf(" - canny high threshold from %d to %d, += %lg\n", (int)(high_thresh_range.min_value + 0.5), (int)(high_thresh_range.max_value + 0.5), high_thresh_range.step);
 	double best_f = 0, best_precision = 0, best_recall = 0;
 	double a = 0.5;
 	double v;
