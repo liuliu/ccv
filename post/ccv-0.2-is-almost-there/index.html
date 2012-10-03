@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
-<title>ccv - a modern computer vision library</title>
+<title>ccv 0.2 is almost there</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
 <link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
@@ -29,65 +29,38 @@ _gaq.push(['_trackPageview']);
 <li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
 </ul>
 </header>
-<section><h1>Documentation</h1><ul class="main-list">
+<section><h1>ccv 0.2 is almost there</h1>
+<p>October 2nd, 2012</p>
+<p>In the next 2 days, I will cut a new branch from unstable to replace current stable
+branch, and announcing 0.2 release.</p>
 
-	
+<p>0.2 supposes to be a bug-fix release, thus, you won’t expect a significant new
+features in it, but whatever, here is what’s new:</p>
 
-	
+<p>1). thread-safety by having application-wide cache thread-local;</p>
 
-	
+<p>2). support ccv_read from memory;</p>
 
-	
+<p>3). preliminary MSER implementation;</p>
 
-	
+<p>4). more concise documentation and improvements on SWT;</p>
 
-	
-<li><a href="/doc/doc-swt">SWT: Stroke Width Transform</a></li>
-	
+<p>5). DPM supports real mixture model creation, with new car.m model in ./samples/;</p>
 
-	
-<li><a href="/doc/doc-sift">SIFT: Scale Invariant Feature Transform</a></li>
-	
+<p>It has been 3 months since the last release, and hopefully, after this release,
+the upcoming schedule will be more regularized.</p>
 
-	
-<li><a href="/doc/doc-dpm">DPM: Deformable Parts Model</a></li>
-	
-
-	
-<li><a href="/doc/doc-cache">Cache: We are Terrible Magicians</a></li>
-	
-
-	
-<li><a href="/doc/doc-bbf">BBF: Brightness Binary Feature</a></li>
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-	
-
-</ul><h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
 </section>
 <footer>
 <p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
