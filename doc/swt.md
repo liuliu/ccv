@@ -1,6 +1,8 @@
 SWT: Stroke Width Transform
 ===========================
 
+*(This documentation is still largely work in progress, use with caution)*
+
 What's SWT?
 -----------
 

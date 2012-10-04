@@ -448,6 +448,8 @@ int main(int argc, char** argv)
 		}
 	}
 	FILE* r = fopen(argv[1], "rt");
+	if (!r)
+		exit_with_help();
 	ccv_enable_cache(1024 * 1024 * 1024);
 	ccv_array_t* aof = ccv_array_new(sizeof(char*), 64, 0);
 	ccv_array_t* aow = ccv_array_new(sizeof(ccv_array_t*), 64, 0);
