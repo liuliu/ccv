@@ -1,0 +1,86 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>ccv cut the 0.2 stable, and what's new</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/unstable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/unstable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>ccv cut the 0.2 stable, and what's new</h1>
+<p>October 4th, 2012</p>
+<p>I’ve cut the stable branch off unstable yesterday, and a r0.2-rc branch as well.
+This marks the 0.2 version of ccv finally here.</p>
+
+<p>ccv 0.2 expects to be a bug-fix release, and should address several “obvious”
+problems have after the first release. Thus, two important issues get addressed
+in this release:</p>
+
+<p>1). thread-safety. The first release version of ccv is not thread-safe when
+enabled the application-wide cache, because access and mutation on this cache is
+not thread-safe. In this release, the application-wide cache becomes thread
+local, thus, have its thread-safety now.</p>
+
+<p>2). read in-memory data. It is always possible to create a ccv_dense_matrix_t
+yourself and fill it out with in-memory data, but the lacking of canonical way
+to read in-memory data into ccv seems problematic in the community. In this
+release, ccv_read will take more options, and one of them is to read in-memory
+self-describe data (such as in-memory JPEG or PNG), another is to read RGB plain
+formatted bytes directly. <a href="/lib/ccv-io/">read more</a>.</p>
+
+<p>In 0.2, DPM finally can train multi-components model (a.k.a. the “real” mixture
+model), and I’ve included a car model for you to try out:</p>
+
+<p><img src="/photo/2012-10-04-car.png" alt="car" /></p>
+
+<p>Largely still <em>work-in-progress</em>, the SWT included a swtcreate tool for you to
+tune SWT parameters to fit your use-cases, and the text segregation gets better
+too:</p>
+
+<p><img src="/photo/2012-10-04-text-break.png" alt="text-break" /></p>
+
+<p>The last 3 months have been “bumpy” for me, and after the summer school in
+Berkeley, I should be able to release ccv more regularly. Hope you enjoy.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>
