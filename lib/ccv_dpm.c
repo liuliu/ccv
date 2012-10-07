@@ -441,7 +441,8 @@ static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_class
 	struct problem prob;
 	prob.n = symmetric ? 31 * cols2c * rows + 1 : 31 * cols * rows + 1;
 	prob.bias = symmetric ? 0.5 : 1.0; // for symmetric, since we only pass half features in, need to set bias to be half too
-	prob.y = (int*)malloc(sizeof(int) * (cnum + negex->rnum) * (!!symmetric + 1));
+	// new version (1.91) of liblinear uses double instead of int (1.8) for prob.y, cannot cast for that.
+	prob.y = malloc(sizeof(prob.y[0]) * (cnum + negex->rnum) * (!!symmetric + 1));
 	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (cnum + negex->rnum) * (!!symmetric + 1));
 	FLUSH(" - converting examples to liblinear format: %d / %d", 0, (cnum + negex->rnum) * (!!symmetric + 1));
 	l = 0;
