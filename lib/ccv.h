@@ -801,6 +801,19 @@ ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classi
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 
+/* TLD: Track-Learn-Detection is a long-term object tracking framework, which achieved very high
+ * tracking accuracy, this is the tracking algorithm of choice ccv implements */
+
+typedef struct {
+} ccv_tld_t;
+
+typedef struct {
+} ccv_tld_param_t;
+
+ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
+ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a);
+void ccv_tld_free(ccv_tld_t* tld);
+
 /* modern machine learning algorithms */
 /* RBM, LLE, APCluster */
 
