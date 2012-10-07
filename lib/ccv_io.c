@@ -141,12 +141,15 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 	} else if (type & CCV_IO_ANY_STREAM) {
 		assert(rows > 8 && cols == 0 && scanline == 0);
 		assert((type & 0xFF) == CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
+		// this is only supported by glibc
 		fd = fmemopen((void*)in, (size_t)rows, "rb");
 		if (!fd)
 			return CCV_IO_ERROR;
 		// mimicking itself as a "file"
 		type = (type & ~0x10) | 0x20;
 		return _ccv_read_and_close_fd(fd, x, type);
+#endif
 	} else if (type & CCV_IO_ANY_RAW) {
 		return _ccv_read_raw(x, (void*)in /* it can be modifiable if it is NO_COPY mode */, type, rows, cols, scanline);
 	}
