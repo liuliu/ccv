@@ -100,6 +100,30 @@ else
 			;;
 	*	  ) ;;
 	esac
+	echo -ne "  With \033[4mavcodec\033[m [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D HAVE_AVCODEC "
+			LDFLAGS="$LDFLAGS-lavcodec "
+			;;
+	*	  ) ;;
+	esac
+	echo -ne "  With \033[4mavformat\033[m [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D HAVE_AVFORMAT "
+			LDFLAGS="$LDFLAGS-lavformat "
+			;;
+	*	  ) ;;
+	esac
+	echo -ne "  With \033[4mswscale\033[m [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D HAVE_SWSCALE "
+			LDFLAGS="$LDFLAGS-lswscale "
+			;;
+	*	  ) ;;
+	esac
 	echo $CFLAGS > .DEF
 	echo $LDFLAGS > .LN
 fi
