@@ -448,6 +448,18 @@ inline static ccv_point_t ccv_point(int x, int y)
 }
 
 typedef struct {
+	float x, y;
+} ccv_decimal_point_t;
+
+inline static ccv_decimal_point_t ccv_decimal_point(float x, float y)
+{
+	ccv_decimal_point_t point;
+	point.x = x;
+	point.y = y;
+	return point;
+}
+
+typedef struct {
 	ccv_rect_t rect;
 	int size;
 	ccv_array_t* set;
@@ -532,6 +544,13 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
+
+typedef struct {
+	ccv_decimal_point_t point;
+	uint8_t status;
+} ccv_decimal_point_with_status_t;
+
+void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_array_t* point_a, ccv_array_t** point_b, ccv_size_t win_size, int level, double min_eigen);
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */

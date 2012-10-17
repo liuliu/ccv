@@ -429,3 +429,197 @@ int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
 		*outvar = maxVar / total / total;
 	return threshold;
 }
+
+#define LK_MAX_ITER (30)
+#define LK_EPSILON (0.01)
+
+/* this code is a rewrite from OpenCV's legendary Lucas-Kanade optical flow implementation */
+void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_array_t* point_a, ccv_array_t** point_b, ccv_size_t win_size, int level, double min_eigen)
+{
+	assert(a && b && a->rows == b->rows && a->cols == b->cols);
+	assert(CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(b->type) && CCV_GET_DATA_TYPE(a->type) == CCV_GET_DATA_TYPE(b->type));
+	assert(CCV_GET_CHANNEL(a->type) == 1);
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_8U);
+	assert(point_a->rnum > 0);
+	level = ccv_clamp(level + 1, 1, (int)(log((double)ccv_min(a->rows, a->cols) / ccv_max(win_size.width * 2, win_size.height * 2)) / log(2.0) + 0.5));
+	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_format(128, "ccv_optical_flow_lucas_kanade(%d,%d,%d,%la)", win_size.width, win_size.height, level, min_eigen), a->sig, b->sig, 0);
+	ccv_array_t* seq = *point_b = ccv_array_new(sizeof(ccv_decimal_point_with_status_t), point_a->rnum, sig);
+	ccv_object_return_if_cached(, seq);
+	seq->rnum = point_a->rnum;
+	ccv_dense_matrix_t** pyr_a = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * level);
+	ccv_dense_matrix_t** pyr_a_dx = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * level);
+	ccv_dense_matrix_t** pyr_a_dy = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * level);
+	ccv_dense_matrix_t** pyr_b = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * level);
+	int i, j, t, x, y;
+	/* generating image pyramid */
+	pyr_a[0] = a;
+	pyr_a_dx[0] = pyr_a_dy[0] = 0;
+	ccv_sobel(pyr_a[0], &pyr_a_dx[0], 0, 3, 0);
+	ccv_sobel(pyr_a[0], &pyr_a_dy[0], 0, 0, 3);
+	pyr_b[0] = b;
+	for (i = 1; i < level; i++)
+	{
+		pyr_a[i] = pyr_a_dx[i] = pyr_a_dy[i] = pyr_b[i] = 0;
+		ccv_sample_down(pyr_a[i - 1], &pyr_a[i], 0, 0, 0);
+		ccv_sobel(pyr_a[i], &pyr_a_dx[i], 0, 3, 0);
+		ccv_sobel(pyr_a[i], &pyr_a_dy[i], 0, 0, 3);
+		ccv_sample_down(pyr_b[i - 1], &pyr_b[i], 0, 0, 0);
+	}
+	int* wi = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
+	int* widx = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
+	int* widy = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
+	ccv_decimal_point_t half_win = ccv_decimal_point((win_size.width - 1) * 0.5f, (win_size.height - 1) * 0.5f);
+	const int W_BITS14 = 14, W_BITS6 = 6;
+	const float FLT_SCALE = 1.0f / (1 << 20);
+#define DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+	// clean up status to 1
+	for (i = 0; i < point_a->rnum; i++)
+	{
+		ccv_decimal_point_with_status_t* point_with_status = (ccv_decimal_point_with_status_t*)ccv_array_get(seq, i);
+		point_with_status->status = 1;
+	}
+	int prev_rows, prev_cols;
+	for (t = level - 1; t >= 0; t--)
+	{
+		ccv_dense_matrix_t* a = pyr_a[t];
+		ccv_dense_matrix_t* adx = pyr_a_dx[t];
+		ccv_dense_matrix_t* ady = pyr_a_dy[t];
+		assert(CCV_GET_DATA_TYPE(adx->type) == CCV_32S);
+		assert(CCV_GET_DATA_TYPE(ady->type) == CCV_32S);
+		ccv_dense_matrix_t* b = pyr_b[t];
+		for (i = 0; i < point_a->rnum; i++)
+		{
+			ccv_decimal_point_t prev_point = *(ccv_decimal_point_t*)ccv_array_get(point_a, i);
+			ccv_decimal_point_with_status_t* point_with_status = (ccv_decimal_point_with_status_t*)ccv_array_get(seq, i);
+			prev_point.x = prev_point.x / (float)(1 << t);
+			prev_point.y = prev_point.y / (float)(1 << t);
+			ccv_decimal_point_t next_point;
+			if (t == level - 1)
+				next_point = prev_point;
+			else {
+				next_point.x = point_with_status->point.x * 2 + (a->cols - prev_cols * 2) * 0.5;
+				next_point.y = point_with_status->point.y * 2 + (a->rows - prev_rows * 2) * 0.5;
+			}
+			point_with_status->point = next_point;
+			prev_point.x -= half_win.x;
+			prev_point.y -= half_win.y;
+			ccv_point_t iprev_point = ccv_point((int)prev_point.x, (int)prev_point.y);
+			if (iprev_point.x < 0 || iprev_point.x >= a->cols - win_size.width ||
+				iprev_point.y < 0 || iprev_point.y >= a->rows - win_size.height)
+			{
+				if (t == 0)
+					point_with_status->status = 0;
+				continue;
+			}
+			float xd = prev_point.x - iprev_point.x;
+			float yd = prev_point.y - iprev_point.y;
+			int iw00 = (int)((1 - xd) * (1 - yd) * (1 << W_BITS14) + 0.5);
+			int iw01 = (int)(xd * (1 - yd) * (1 << W_BITS14) + 0.5);
+			int iw10 = (int)((1 - xd) * yd * (1 << W_BITS14) + 0.5);
+			int iw11 = (1 << W_BITS14) - iw00 - iw01 - iw10;
+			float a11 = 0, a12 = 0, a22 = 0;
+			unsigned char* a_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, a, iprev_point.y, iprev_point.x, 1);
+			int* adx_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, adx, iprev_point.y, iprev_point.x, 1);
+			int* ady_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, ady, iprev_point.y, iprev_point.x, 1);
+			int* wi_ptr = wi;
+			int* widx_ptr = widx;
+			int* widy_ptr = widy;
+			for (y = 0; y < win_size.height; y++)
+			{
+				for (x = 0; x < win_size.width; x++)
+				{
+					wi_ptr[x] = DESCALE(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS6);
+					widx_ptr[x] = DESCALE(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS6);
+					widy_ptr[x] = DESCALE(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS6);
+					a11 += (float)(widx_ptr[x] * widx_ptr[x]);
+					a12 += (float)(widx_ptr[x] * widy_ptr[x]);
+					a22 += (float)(widy_ptr[x] * widy_ptr[x]);
+				}
+				a_ptr += a->step;
+				adx_ptr += adx->cols;
+				ady_ptr += ady->cols;
+				wi_ptr += win_size.width;
+				widx_ptr += win_size.width;
+				widy_ptr += win_size.width;
+			}
+			a11 *= FLT_SCALE;
+			a12 *= FLT_SCALE;
+			a22 *= FLT_SCALE;
+			float D = a11 * a22 - a12 * a12;
+			float eigen = (a22 + a11 - sqrtf((a11 - a22) * (a11 - a22) + 4.0f * a12 * a12)) / (2 * win_size.width * win_size.height);
+			if (eigen < min_eigen || D < FLT_EPSILON)
+			{
+				if (t == 0)
+					point_with_status->status = 0;
+				continue;
+			}
+			D = 1.0f / D;
+			next_point.x -= half_win.x;
+			next_point.y -= half_win.y;
+			ccv_decimal_point_t prev_delta;
+			for (j = 0; j < LK_MAX_ITER; j++)
+			{
+				ccv_point_t inext_point = ccv_point((int)next_point.x, (int)next_point.y);
+				if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width ||
+					inext_point.y < 0 || inext_point.y >= a->rows - win_size.height)
+					break;
+				float xd = next_point.x - inext_point.x;
+				float yd = next_point.y - inext_point.y;
+				int iw00 = (int)((1 - xd) * (1 - yd) * (1 << W_BITS14) + 0.5);
+				int iw01 = (int)(xd * (1 - yd) * (1 << W_BITS14) + 0.5);
+				int iw10 = (int)((1 - xd) * yd * (1 << W_BITS14) + 0.5);
+				int iw11 = (1 << W_BITS14) - iw00 - iw01 - iw10;
+				float b1 = 0, b2 = 0;
+				unsigned char* b_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, b, inext_point.y, inext_point.x, 1);
+				int* wi_ptr = wi;
+				int* widx_ptr = widx;
+				int* widy_ptr = widy;
+				for (y = 0; y < win_size.height; y++)
+				{
+					for (x = 0; x < win_size.width; x++)
+					{
+						int diff = DESCALE(b_ptr[x] * iw00 + b_ptr[x + 1] * iw01 + b_ptr[x + b->step] * iw10 + b_ptr[x + b->step + 1] * iw11, W_BITS6) - wi_ptr[x];
+						b1 += (float)(diff * widx_ptr[x]);
+						b2 += (float)(diff * widy_ptr[x]);
+					}
+					b_ptr += b->step;
+					wi_ptr += win_size.width;
+					widx_ptr += win_size.width;
+					widy_ptr += win_size.width;
+				}
+				b1 *= FLT_SCALE;
+				b2 *= FLT_SCALE;
+				ccv_decimal_point_t delta = ccv_decimal_point((a12 * b2 - a22 * b1) * D, (a12 * b1 - a11 * b2) * D);
+				next_point.x += delta.x;
+				next_point.y += delta.y;
+				if (delta.x * delta.x + delta.y * delta.y < LK_EPSILON)
+					break;
+				if (j > 0 && fabs(prev_delta.x - delta.x) < 0.01 && fabs(prev_delta.y - delta.y) < 0.01)
+				{
+					next_point.x -= delta.x * 0.5;
+					next_point.y -= delta.y * 0.5;
+					break;
+				}
+				prev_delta = delta;
+			}
+			ccv_point_t inext_point = ccv_point((int)next_point.x, (int)next_point.y);
+			if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width ||
+				inext_point.y < 0 || inext_point.y >= a->rows - win_size.height)
+				point_with_status->status = 0;
+			else {
+				point_with_status->point.x = next_point.x + half_win.x;
+				point_with_status->point.y = next_point.y + half_win.y;
+			}
+		}
+		prev_rows = a->rows;
+		prev_cols = a->cols;
+		ccv_matrix_free(adx);
+		ccv_matrix_free(ady);
+		if (t > 0)
+		{
+			ccv_matrix_free(a);
+			ccv_matrix_free(b);
+		}
+	}
+#undef DESCALE
+}
