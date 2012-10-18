@@ -536,6 +536,7 @@ enum {
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
+void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float y, float x, int rows, int cols);
 
 /* classic computer vision algorithms ccv_classic.c */
 
@@ -824,13 +825,19 @@ void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
  * tracking accuracy, this is the tracking algorithm of choice ccv implements */
 
 typedef struct {
-} ccv_tld_t;
-
-typedef struct {
+	/* short-term lucas-kanade tracking parameters */
+	ccv_size_t win_size;
+	int level;
+	double min_eigen;
 } ccv_tld_param_t;
 
+typedef struct {
+	ccv_tld_param_t params;
+	ccv_comp_t box;
+} ccv_tld_t;
+
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
-ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a);
+ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b);
 void ccv_tld_free(ccv_tld_t* tld);
 
 /* modern machine learning algorithms */

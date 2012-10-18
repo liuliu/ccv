@@ -13,15 +13,9 @@ $(TARGETS): %: %.o libccv.a
 	@echo "$(CC) -o $@ $< $(LDFLAGS)"
 	@$(CC) -o $@ $< $(LDFLAGS)
 
-# lucas_kanade: lucas_kanade.o libccv.a
-#	clang++ -o $@ $< $(LDFLAGS) -L"/usr/local/lib" -lopencv_highgui -lopencv_imgproc -lopencv_core -lopencv_video
-
 libccv.a:
 	${MAKE} -C ../lib
 
 %.o: %.c ../lib/ccv.h
 	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
 	@$(CC) $< -o $@ -c $(CFLAGS)
-
-# %.o: %.cpp ../lib/ccv.h
-#	clang++ $< -o $@ -c $(CFLAGS)

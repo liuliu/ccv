@@ -442,7 +442,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_8U);
 	assert(point_a->rnum > 0);
 	level = ccv_clamp(level + 1, 1, (int)(log((double)ccv_min(a->rows, a->cols) / ccv_max(win_size.width * 2, win_size.height * 2)) / log(2.0) + 0.5));
-	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_format(128, "ccv_optical_flow_lucas_kanade(%d,%d,%d,%la)", win_size.width, win_size.height, level, min_eigen), a->sig, b->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0 && point_a->sig != 0, ccv_sign_with_format(128, "ccv_optical_flow_lucas_kanade(%d,%d,%d,%la)", win_size.width, win_size.height, level, min_eigen), a->sig, b->sig, point_a->sig, 0);
 	ccv_array_t* seq = *point_b = ccv_array_new(sizeof(ccv_decimal_point_with_status_t), point_a->rnum, sig);
 	ccv_object_return_if_cached(, seq);
 	seq->rnum = point_a->rnum;
@@ -469,7 +469,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 	int* widx = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	int* widy = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	ccv_decimal_point_t half_win = ccv_decimal_point((win_size.width - 1) * 0.5f, (win_size.height - 1) * 0.5f);
-	const int W_BITS14 = 14, W_BITS6 = 6;
+	const int W_BITS14 = 14, W_BITS4 = 4;
 	const float FLT_SCALE = 1.0f / (1 << 20);
 #define DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 	// clean up status to 1
@@ -518,9 +518,9 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 			int iw10 = (int)((1 - xd) * yd * (1 << W_BITS14) + 0.5);
 			int iw11 = (1 << W_BITS14) - iw00 - iw01 - iw10;
 			float a11 = 0, a12 = 0, a22 = 0;
-			unsigned char* a_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, a, iprev_point.y, iprev_point.x, 1);
-			int* adx_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, adx, iprev_point.y, iprev_point.x, 1);
-			int* ady_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, ady, iprev_point.y, iprev_point.x, 1);
+			unsigned char* a_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, a, iprev_point.y, iprev_point.x, 0);
+			int* adx_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, adx, iprev_point.y, iprev_point.x, 0);
+			int* ady_ptr = (int*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_32S, ady, iprev_point.y, iprev_point.x, 0);
 			int* wi_ptr = wi;
 			int* widx_ptr = widx;
 			int* widy_ptr = widy;
@@ -528,9 +528,9 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 			{
 				for (x = 0; x < win_size.width; x++)
 				{
-					wi_ptr[x] = DESCALE(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS6);
-					widx_ptr[x] = DESCALE(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS6);
-					widy_ptr[x] = DESCALE(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS6);
+					wi_ptr[x] = DESCALE(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS4);
+					widx_ptr[x] = DESCALE(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS4);
+					widy_ptr[x] = DESCALE(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS4);
 					a11 += (float)(widx_ptr[x] * widx_ptr[x]);
 					a12 += (float)(widx_ptr[x] * widy_ptr[x]);
 					a22 += (float)(widy_ptr[x] * widy_ptr[x]);
@@ -570,7 +570,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 				int iw10 = (int)((1 - xd) * yd * (1 << W_BITS14) + 0.5);
 				int iw11 = (1 << W_BITS14) - iw00 - iw01 - iw10;
 				float b1 = 0, b2 = 0;
-				unsigned char* b_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, b, inext_point.y, inext_point.x, 1);
+				unsigned char* b_ptr = (unsigned char*)ccv_get_dense_matrix_cell_by(CCV_C1 | CCV_8U, b, inext_point.y, inext_point.x, 0);
 				int* wi_ptr = wi;
 				int* widx_ptr = widx;
 				int* widy_ptr = widy;
@@ -578,7 +578,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 				{
 					for (x = 0; x < win_size.width; x++)
 					{
-						int diff = DESCALE(b_ptr[x] * iw00 + b_ptr[x + 1] * iw01 + b_ptr[x + b->step] * iw10 + b_ptr[x + b->step + 1] * iw11, W_BITS6) - wi_ptr[x];
+						int diff = DESCALE(b_ptr[x] * iw00 + b_ptr[x + 1] * iw01 + b_ptr[x + b->step] * iw10 + b_ptr[x + b->step + 1] * iw11, W_BITS4) - wi_ptr[x];
 						b1 += (float)(diff * widx_ptr[x]);
 						b2 += (float)(diff * widy_ptr[x]);
 					}
