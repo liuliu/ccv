@@ -18,16 +18,15 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 		*x = im = ccv_dense_matrix_new((int) height, (int) width, (type) ? type : CCV_8U | (((color_type & PNG_COLOR_MASK_COLOR) == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), 0, 0);
 
 	png_set_strip_alpha(png_ptr);
+	png_set_strip_16(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_PALETTE)
 		png_set_palette_to_rgb(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
 		png_set_expand_gray_1_2_4_to_8(png_ptr);
 	if (CCV_GET_CHANNEL(im->type) == CCV_C3)
 		png_set_gray_to_rgb(png_ptr);
-	else if (CCV_GET_CHANNEL(im->type) == CCV_C1) {
+	else if (CCV_GET_CHANNEL(im->type) == CCV_C1)
 		png_set_rgb_to_gray(png_ptr, 1, -1, -1);
-		png_set_strip_16(png_ptr);
-	}
 
 	png_read_update_info(png_ptr, info_ptr);
 
