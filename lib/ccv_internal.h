@@ -551,7 +551,48 @@ void func_name(T *array, size_t total, user_data_type aux)                      
 
 #define _ccv_qsort_default_swap(a, b, array, aux, t) CCV_SWAP((a), (b), (t))
 
-#define CCV_IMPLEMENT_QSORT(func_name, T, cmp)  \
+#define CCV_IMPLEMENT_QSORT(func_name, T, cmp) \
     CCV_IMPLEMENT_QSORT_EX(func_name, T, cmp, _ccv_qsort_default_swap, int)
+
+#define CCV_IMPLEMENT_MEDIAN(func_name, T) \
+T func_name(T* buf, int low, int high) \
+{                                                    \
+	int middle, ll, hh, w;                           \
+	int median = (low + high) / 2;                   \
+	for (;;)                                         \
+	{                                                \
+		if (high <= low)                             \
+			return buf[median];                      \
+		if (high == low + 1)                         \
+		{                                            \
+			if (buf[low] > buf[high])                \
+				CCV_SWAP(buf[low], buf[high], w);    \
+			return buf[median];                      \
+		}                                            \
+		middle = (low + high) / 2;                   \
+		if (buf[middle] > buf[high])                 \
+			CCV_SWAP(buf[middle], buf[high], w);     \
+		if (buf[low] > buf[high])                    \
+			CCV_SWAP(buf[low], buf[high], w);        \
+		if (buf[middle] > buf[low])                  \
+			CCV_SWAP(buf[middle], buf[low], w);      \
+		CCV_SWAP(buf[middle], buf[low + 1], w);      \
+		ll = low + 1;                                \
+		hh = high;                                   \
+		for (;;)                                     \
+		{                                            \
+			do ll++; while (buf[low] > buf[ll]);     \
+			do hh--; while (buf[hh] > buf[low]);     \
+			if (hh < ll)                             \
+				break;                               \
+			CCV_SWAP(buf[ll], buf[hh], w);           \
+		}                                            \
+		CCV_SWAP(buf[low], buf[hh], w);              \
+		if (hh <= median)                            \
+			low = ll;                                \
+		else if (hh >= median)                       \
+			high = hh - 1;                           \
+	}                                                \
+}
 
 #endif
