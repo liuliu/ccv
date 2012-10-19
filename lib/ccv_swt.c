@@ -26,45 +26,7 @@ ccv_swt_param_t ccv_swt_default_params = {
 	.breakdown_ratio = 1.0,
 };
 
-static inline int _ccv_median(int* buf, int low, int high)
-{
-	int middle, ll, hh, w;
-	int median = (low + high) / 2;
-	for (;;)
-	{
-		if (high <= low)
-			return buf[median];
-		if (high == low + 1)
-		{
-			if (buf[low] > buf[high])
-				CCV_SWAP(buf[low], buf[high], w);
-			return buf[median];
-		}
-		middle = (low + high) / 2;
-		if (buf[middle] > buf[high])
-			CCV_SWAP(buf[middle], buf[high], w);
-		if (buf[low] > buf[high])
-			CCV_SWAP(buf[low], buf[high], w);
-		if (buf[middle] > buf[low])
-			CCV_SWAP(buf[middle], buf[low], w);
-		CCV_SWAP(buf[middle], buf[low + 1], w);
-		ll = low + 1;
-		hh = high;
-		for (;;)
-		{
-			do ll++; while (buf[low] > buf[ll]);
-			do hh--; while (buf[hh] > buf[low]);
-			if (hh < ll)
-				break;
-			CCV_SWAP(buf[ll], buf[hh], w);
-		}
-		CCV_SWAP(buf[low], buf[hh], w);
-		if (hh <= median)
-			low = ll;
-		else if (hh >= median)
-			high = hh - 1;
-	}
-}
+static inline CCV_IMPLEMENT_MEDIAN(_ccv_swt_median, int)
 
 typedef struct {
 	int x0, x1, y0, y1;
@@ -236,7 +198,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 				break; \
 			ray_increment(); \
 		} \
-		int nw = _ccv_median(buf, 0, n - 1); \
+		int nw = _ccv_swt_median(buf, 0, n - 1); \
 		if (nw != stroke->w) \
 		{ \
 			ray_reset_by_stroke(stroke); \
@@ -371,7 +333,7 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		ccv_letter_t letter;
 		letter.std = sqrt(variance);
 		letter.mean = mean;
-		letter.thickness = _ccv_median(buffer, 0, contour->size - 1);
+		letter.thickness = _ccv_swt_median(buffer, 0, contour->size - 1);
 		letter.rect = contour->rect;
 		letter.center.x = letter.rect.x + letter.rect.width / 2;
 		letter.center.y = letter.rect.y + letter.rect.height / 2;
