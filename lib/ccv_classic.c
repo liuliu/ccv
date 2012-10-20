@@ -469,7 +469,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 	int* widx = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	int* widy = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	ccv_decimal_point_t half_win = ccv_decimal_point((win_size.width - 1) * 0.5f, (win_size.height - 1) * 0.5f);
-	const int W_BITS14 = 14, W_BITS4 = 4;
+	const int W_BITS14 = 14, W_BITS4 = 4, W_BITS6 = 6;
 	const float FLT_SCALE = 1.0f / (1 << 20);
 #define DESCALE(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 	// clean up status to 1
@@ -529,8 +529,9 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 				for (x = 0; x < win_size.width; x++)
 				{
 					wi_ptr[x] = DESCALE(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS4);
-					widx_ptr[x] = DESCALE(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS4);
-					widy_ptr[x] = DESCALE(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS4);
+					// because we use 3x3 sobel, which scaled derivative up by 4
+					widx_ptr[x] = DESCALE(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS6);
+					widy_ptr[x] = DESCALE(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS6);
 					a11 += (float)(widx_ptr[x] * widx_ptr[x]);
 					a12 += (float)(widx_ptr[x] * widy_ptr[x]);
 					a22 += (float)(widy_ptr[x] * widy_ptr[x]);

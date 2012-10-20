@@ -8,8 +8,8 @@ static CCV_IMPLEMENT_MEDIAN(_ccv_tld_median, float)
 
 static float _ccv_tld_norm_cross_correlate(ccv_dense_matrix_t* r0, ccv_dense_matrix_t* r1)
 {
-	assert(CCV_GET_CHANNEL(r0->type) == CCV_C1 && CCV_GET_DATA_TYPE_SIZE(r0->type) == CCV_8U);
-	assert(CCV_GET_CHANNEL(r1->type) == CCV_C1 && CCV_GET_DATA_TYPE_SIZE(r1->type) == CCV_8U);
+	assert(CCV_GET_CHANNEL(r0->type) == CCV_C1 && CCV_GET_DATA_TYPE(r0->type) == CCV_8U);
+	assert(CCV_GET_CHANNEL(r1->type) == CCV_C1 && CCV_GET_DATA_TYPE(r1->type) == CCV_8U);
 	assert(r0->rows == r1->rows && r0->cols == r1->cols);
 	int x, y;
 	int sum0 = 0, sum1 = 0;
@@ -67,9 +67,11 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	ccv_dense_matrix_t* r1 = (ccv_dense_matrix_t*)alloca(ccv_compute_dense_matrix_size(TLD_PATCH_SIZE, TLD_PATCH_SIZE, CCV_8U | CCV_C1));
 	r0 = ccv_dense_matrix_new(TLD_PATCH_SIZE, TLD_PATCH_SIZE, CCV_8U | CCV_C1, r0, 0);
 	r1 = ccv_dense_matrix_new(TLD_PATCH_SIZE, TLD_PATCH_SIZE, CCV_8U | CCV_C1, r1, 0);
+	int i, j, k, size;
+	int* wrt = (int*)alloca(sizeof(int) * point_a->rnum);
+	{ // will reclaim the stack
 	float* fberr = (float*)alloca(sizeof(float) * point_a->rnum);
 	float* sim = (float*)alloca(sizeof(float) * point_a->rnum);
-	int i, k;
 	for (i = 0, k = 0; i < point_a->rnum; i++)
 	{
 		ccv_decimal_point_t* p0 = (ccv_decimal_point_t*)ccv_array_get(point_a, i);
@@ -81,15 +83,83 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 			ccv_decimal_slice(a, &r0, 0, p0->y - (TLD_PATCH_SIZE - 1) * 0.5, p0->x - (TLD_PATCH_SIZE - 1) * 0.5, TLD_PATCH_SIZE, TLD_PATCH_SIZE);
 			ccv_decimal_slice(a, &r1, 0, p1->point.y - (TLD_PATCH_SIZE - 1) * 0.5, p1->point.x - (TLD_PATCH_SIZE - 1) * 0.5, TLD_PATCH_SIZE, TLD_PATCH_SIZE);
 			sim[k] = _ccv_tld_norm_cross_correlate(r0, r1);
+			wrt[k] = i;
 			++k;
 		}
 	}
-	if (k == 0)
-		return newbox;
-	int size = k;
-	float simmd = _ccv_tld_median(sim, 0, size - 1);
-	float fberrmd = _ccv_tld_median(fberr, 0, size - 1);
 	ccv_array_free(point_c);
+	if (k == 0)
+	{
+		// early termination because we don't have qualified tracking points
+		ccv_array_free(point_b);
+		ccv_array_free(point_a);
+		return newbox;
+	}
+	size = k;
+	float simmd = _ccv_tld_median(sim, 0, size - 1);
+	for (i = 0, k = 0; i < size; i++)
+		if (sim[i] > simmd)
+		{
+			fberr[k] = fberr[i];
+			wrt[k] = wrt[i];
+			++k;
+		}
+	float fberrmd = _ccv_tld_median(fberr, 0, size - 1);
+	size = k;
+	for (i = 0, k = 0; i < size; i++)
+		if (fberr[i] <= fberrmd)
+			wrt[k++] = wrt[i];
+	if (k == 0)
+	{
+		// early termination because we don't have qualified tracking points
+		ccv_array_free(point_b);
+		ccv_array_free(point_a);
+		return newbox;
+	}
+	} // reclaim stack
+	float dx, dy;
+	{ // will reclaim the stack
+	float* offx = (float*)alloca(sizeof(float) * size);
+	float* offy = (float*)alloca(sizeof(float) * size);
+	for (i = 0; i < size; i++)
+	{
+		ccv_decimal_point_t* p0 = (ccv_decimal_point_t*)ccv_array_get(point_a, wrt[i]);
+		ccv_decimal_point_t* p1 = (ccv_decimal_point_t*)ccv_array_get(point_b, wrt[i]);
+		offx[i] = p1->x - p0->x;
+		offy[i] = p1->y - p0->y;
+	}
+	dx = _ccv_tld_median(offx, 0, size - 1);
+	dy = _ccv_tld_median(offy, 0, size - 1);
+	} // reclaim stack
+	if (size > 1)
+	{
+		float* s = (float*)alloca(sizeof(float) * size * (size - 1) / 2);
+		k = 0;
+		for (i = 0; i < size - 1; i++)
+		{
+			ccv_decimal_point_t* p0i = (ccv_decimal_point_t*)ccv_array_get(point_a, wrt[i]);
+			ccv_decimal_point_t* p1i = (ccv_decimal_point_t*)ccv_array_get(point_b, wrt[i]);
+			for (j = i + 1; j < size; j++)
+			{
+				ccv_decimal_point_t* p0j = (ccv_decimal_point_t*)ccv_array_get(point_a, wrt[j]);
+				ccv_decimal_point_t* p1j = (ccv_decimal_point_t*)ccv_array_get(point_b, wrt[j]);
+				s[k] = sqrtf(((p1i->x - p1j->x) * (p1i->x - p1j->x) + (p1i->y - p1j->y) * (p1i->y - p1j->y)) /
+							 ((p0i->x - p0j->x) * (p0i->x - p0j->x) + (p0i->y - p0j->y) * (p0i->y - p0j->y)));
+				++k;
+			}
+		}
+		assert(size * (size - 1) / 2 == k);
+		float ds = _ccv_tld_median(s, 0, size * (size - 1) / 2 - 1);
+		newbox.x = (int)(box.x + dx - box.width * (ds - 1.0) * 0.5 + 0.5);
+		newbox.y = (int)(box.y + dy - box.height * (ds - 1.0) * 0.5 + 0.5);
+		newbox.width = (int)(box.width * ds + 0.5);
+		newbox.height = (int)(box.height * ds + 0.5);
+	} else {
+		newbox.width = box.width;
+		newbox.height = box.height;
+		newbox.x = (int)(box.x + dx + 0.5);
+		newbox.y = (int)(box.y + dy + 0.5);
+	}
 	ccv_array_free(point_b);
 	ccv_array_free(point_a);
 	return newbox;
@@ -108,7 +178,7 @@ ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_comp_t result;
-	_ccv_tld_short_term_track(a, b, tld->box.rect, tld->params);
+	result.rect = _ccv_tld_short_term_track(a, b, tld->box.rect, tld->params);
 	return result;
 }
 

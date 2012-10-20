@@ -557,7 +557,8 @@ void func_name(T *array, size_t total, user_data_type aux)                      
 #define CCV_IMPLEMENT_MEDIAN(func_name, T) \
 T func_name(T* buf, int low, int high) \
 {                                                    \
-	int middle, ll, hh, w;                           \
+	T w;                                             \
+	int middle, ll, hh;                              \
 	int median = (low + high) / 2;                   \
 	for (;;)                                         \
 	{                                                \
