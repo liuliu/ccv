@@ -105,6 +105,13 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 			++k;
 		}
 	float fberrmd = _ccv_tld_median(fberr, 0, size - 1);
+	if (fberrmd >= params.min_forward_backward_error)
+	{
+		// early termination because we don't have qualified tracking points
+		ccv_array_free(point_b);
+		ccv_array_free(point_a);
+		return newbox;
+	}
 	size = k;
 	for (i = 0, k = 0; i < size; i++)
 		if (fberr[i] <= fberrmd)
@@ -165,7 +172,11 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	return newbox;
 }
 
-ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
+void _ccv_tld_box(ccv_rect_t box, ccv_array_t** good, ccv_array_t** bad, double include_overlap, double exclude_overlap)
+{
+}
+
+ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
 {
 	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t));
 	tld->params = params;

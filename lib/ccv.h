@@ -821,6 +821,21 @@ ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classi
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 
+/* Ferns classifier: this is a fern implementation that specifically used for TLD
+ * see: http://cvlab.epfl.ch/alumni/oezuysal/ferns.html for more about ferns */
+
+typedef struct {
+	int ferns;
+	int features;
+	int scales;
+	// decided to go flat organized fern so that we can profiling different memory layout impacts the performance
+	ccv_point_t fern[1];
+} ccv_ferns_t;
+
+ccv_ferns_t* __attribute__((warn_unused_result)) ccv_ferns_new(int nferns, int features, int scale, ccv_size_t* sizes);
+float ccv_ferns_predict(ccv_ferns_t* ferns, ccv_dense_matrix_t* a);
+void ccv_ferns_free(ccv_ferns_t* ferns);
+
 /* TLD: Track-Learn-Detection is a long-term object tracking framework, which achieved very high
  * tracking accuracy, this is the tracking algorithm of choice ccv implements */
 
@@ -829,6 +844,7 @@ typedef struct {
 	ccv_size_t win_size;
 	int level;
 	double min_eigen;
+	double min_forward_backward_error;
 } ccv_tld_param_t;
 
 typedef struct {

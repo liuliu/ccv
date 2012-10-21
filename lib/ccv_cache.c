@@ -47,7 +47,7 @@ static uint32_t compute_bits(uint64_t m) {
 			bits_in_16bits[(m >> 32) & 0xffff] + bits_in_16bits[(m >> 48) & 0xffff]);
 }
 
-/* udate age along a path in the radix tree */
+/* update age along a path in the radix tree */
 static void _ccv_cache_aging(ccv_cache_index_t* branch, uint64_t sign)
 {
 	if (!bits_in_16bits_init)
