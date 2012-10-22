@@ -172,8 +172,64 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	return newbox;
 }
 
-void _ccv_tld_box(ccv_rect_t box, ccv_array_t** good, ccv_array_t** bad, double include_overlap, double exclude_overlap)
+ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_rect_t box, ccv_array_t** scale, ccv_array_t** good, ccv_array_t** bad, ccv_tld_param_t params)
 {
+	const float SHIFT = 0.1;
+	const float SCALES[] = {
+		0.16151, 0.19381, 0.23257, 0.27908, 0.33490, 0.40188, 0.48225,
+		0.57870, 0.69444, 0.83333, 1, 1.20000, 1.44000, 1.72800,
+		2.07360, 2.48832, 2.98598, 3.58318, 4.29982, 5.15978, 6.19174
+	};
+	ccv_array_t* ascale = *scale = ccv_array_new(sizeof(ccv_size_t), 21, 0);
+	ccv_array_t* agood = *good = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	ccv_array_t* abad = *bad = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	int s;
+	double max_overlap = -DBL_MAX;
+	ccv_comp_t best_box = {
+		.id = 0,
+		.rect = ccv_rect(0, 0, 0, 0),
+	};
+	for (s = 0; s < 21; s++)
+	{
+		int width = (int)(box.width * SCALES[s] + 0.5);
+		int height = (int)(box.height * SCALES[s] + 0.5);
+		int min_side = ccv_min(width, height);
+		if (min_side < params.min_win || width > image_size.width || height > image_size.height)
+			continue;
+		ccv_size_t scale = ccv_size(width, height);
+		ccv_array_push(ascale, &scale);
+		for (float y = 0; y < image_size.height - height; y += SHIFT * min_side)
+		{
+			for (float x = 0; x < image_size.width - width; x += SHIFT * min_side)
+			{
+				ccv_comp_t comp;
+				comp.rect = ccv_rect((int)(x + 0.5), (int)(y + 0.5), width, height);
+				comp.id = ascale->rnum - 1;
+				double overlap = ccv_max(ccv_min(comp.rect.x + comp.rect.width, box.x + box.width) - ccv_max(comp.rect.x, box.x), 0) *
+								 ccv_max(ccv_min(comp.rect.y + comp.rect.height, box.y + box.height) - ccv_max(comp.rect.y, box.y), 0);
+				overlap = overlap / (comp.rect.width * comp.rect.height + box.width * box.height - overlap);
+				if (overlap > params.include_overlap)
+				{
+					if (overlap > max_overlap)
+					{
+						max_overlap = overlap;
+						best_box = comp;
+					}
+					ccv_array_push(agood, &comp);
+				} else if (overlap < params.exclude_overlap) {
+					ccv_array_push(abad, &comp);
+				}
+			}
+		}
+	}
+	return best_box;
+}
+
+void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern)
+{
+	ccv_dense_matrix_t roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, box.rect.y, box.rect.x, 0), 0);
+	roi.step = a->step;
+	ccv_ferns_feature(ferns, &roi, box.id, fern);
 }
 
 ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
@@ -181,6 +237,12 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t));
 	tld->params = params;
 	tld->box.rect = box;
+	ccv_size_t image_size = ccv_size(a->cols, a->rows);
+	ccv_array_t* scales = 0;
+	ccv_array_t* good = 0;
+	ccv_array_t* bad = 0;
+	_ccv_tld_generate_box_for(image_size, box, &scales, &good, &bad, params);
+	tld->ferns = ccv_ferns_new(1, 1, scales->rnum, (ccv_size_t*)ccv_array_get(scales, 0));
 	return tld;
 }
 
@@ -195,5 +257,6 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 
 void ccv_tld_free(ccv_tld_t* tld)
 {
+	ccv_ferns_free(tld->ferns);
 	ccfree(tld);
 }

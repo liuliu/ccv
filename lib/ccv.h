@@ -825,15 +825,21 @@ void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
  * see: http://cvlab.epfl.ch/alumni/oezuysal/ferns.html for more about ferns */
 
 typedef struct {
-	int ferns;
+	int structs;
 	int features;
 	int scales;
+	int posteriors;
+	float threshold;
+	int* cnum;
+	float* posterior;
 	// decided to go flat organized fern so that we can profiling different memory layout impacts the performance
 	ccv_point_t fern[1];
 } ccv_ferns_t;
 
-ccv_ferns_t* __attribute__((warn_unused_result)) ccv_ferns_new(int nferns, int features, int scale, ccv_size_t* sizes);
-float ccv_ferns_predict(ccv_ferns_t* ferns, ccv_dense_matrix_t* a);
+ccv_ferns_t* __attribute__((warn_unused_result)) ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes);
+void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uint32_t* fern);
+void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat);
+float ccv_ferns_predict(ccv_ferns_t* ferns, uint32_t* fern);
 void ccv_ferns_free(ccv_ferns_t* ferns);
 
 /* TLD: Track-Learn-Detection is a long-term object tracking framework, which achieved very high
@@ -845,11 +851,16 @@ typedef struct {
 	int level;
 	double min_eigen;
 	double min_forward_backward_error;
+	/* samples generation parameters */
+	int min_win;
+	double include_overlap;
+	double exclude_overlap;
 } ccv_tld_param_t;
 
 typedef struct {
 	ccv_tld_param_t params;
 	ccv_comp_t box;
+	ccv_ferns_t* ferns;
 } ccv_tld_t;
 
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
