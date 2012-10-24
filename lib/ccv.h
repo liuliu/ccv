@@ -861,6 +861,7 @@ typedef struct {
 	ccv_tld_param_t params;
 	ccv_comp_t box;
 	ccv_ferns_t* ferns;
+	ccv_array_t* sv[2];
 } ccv_tld_t;
 
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);

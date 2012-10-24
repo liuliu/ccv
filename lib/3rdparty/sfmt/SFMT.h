@@ -119,6 +119,7 @@ const char * sfmt_get_idstring(sfmt_t * sfmt);
 int sfmt_get_min_array_size32(sfmt_t * sfmt);
 int sfmt_get_min_array_size64(sfmt_t * sfmt);
 void sfmt_gen_rand_all(sfmt_t * sfmt);
+void sfmt_genrand_shuffle(sfmt_t * sfmt, void *array, int size, int rsize);
 
 #ifndef ONLY64
 /**

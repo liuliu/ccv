@@ -328,6 +328,30 @@ void sfmt_fill_array64(sfmt_t * sfmt, uint64_t *array, int size) {
     swap((w128_t *)array, size /2);
 #endif
 }
+/**
+ * This function randomly shuffle the given array
+ *
+ * @param sfmt SFMT internal state
+ * @param array the array that is going to be shuffled
+ * @param size the size of the array
+ * @param rsize the size of each record in the array
+ */
+#include <alloca.h>
+
+void sfmt_genrand_shuffle(sfmt_t * sfmt, void *array, int size, int rsize) {
+	int i, j;
+	char *t = (char *)alloca(rsize);
+	char *ptr = (char *)array;
+	char *ptri = ptr + (size - 1) * rsize;
+	for (i = size - 1; i >= 0; i--) {
+		j = sfmt_genrand_uint32(sfmt) % (i + 1);
+		char *ptrj = ptr + j * rsize;
+		memcpy(t, ptri, rsize);
+		memcpy(ptri, ptrj, rsize);
+		memcpy(ptrj, t, rsize);
+		ptri -= rsize;
+	}
+}
 
 /**
  * This function initializes the internal state array with a 32-bit

@@ -97,11 +97,11 @@ static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 typedef struct {
 	int si, di;
 	float alpha;
-} ccv_decimal_alpha;
+} ccv_area_alpha_t;
 
 static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
-	ccv_decimal_alpha* xofs = (ccv_decimal_alpha*)alloca(sizeof(ccv_decimal_alpha) * a->cols * 2);
+	ccv_area_alpha_t* xofs = (ccv_area_alpha_t*)alloca(sizeof(ccv_area_alpha_t) * a->cols * 2);
 	int ch = CCV_GET_CHANNEL(a->type);
 	double scale_x = (double)a->cols / b->cols;
 	double scale_y = (double)a->rows / b->rows;
@@ -187,6 +187,151 @@ static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 #undef for_block
 }
 
+typedef struct {
+	int si[4];
+	float coeffs[4];
+} ccv_cubic_coeffs_t;
+
+typedef struct {
+	int si[4];
+	int coeffs[4];
+} ccv_cubic_integer_coeffs_t;
+
+static void _ccv_init_cubic_coeffs(int si, int sz, float s, ccv_cubic_coeffs_t* coeff)
+{
+	const float A = -0.75f;
+	coeff->si[0] = ccv_max(si - 1, 0);
+	coeff->si[1] = si;
+	coeff->si[2] = ccv_min(si + 1, sz - 1);
+	coeff->si[3] = ccv_min(si + 2, sz - 1);
+	float x = s - si;
+	coeff->coeffs[0] = ((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A;
+	coeff->coeffs[1] = ((A + 2) * x - (A + 3)) * x * x + 1;
+	coeff->coeffs[2] = ((A + 2) * (1 - x) - (A + 3)) * (1 - x) * (1 - x) + 1;
+	coeff->coeffs[3] = 1.f - coeff->coeffs[0] - coeff->coeffs[1] - coeff->coeffs[2];
+}
+
+static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+{
+	assert(CCV_GET_DATA_TYPE(b->type) == CCV_32F || CCV_GET_DATA_TYPE(b->type) == CCV_64F);
+	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
+	ccv_cubic_coeffs_t* xofs = (ccv_cubic_coeffs_t*)alloca(sizeof(ccv_cubic_coeffs_t) * b->cols);
+	float scale_x = (float)a->cols / b->cols;
+	for (i = 0; i < b->cols; i++)
+	{
+		float sx = (i + 0.5) * scale_x - 0.5;
+		_ccv_init_cubic_coeffs((int)sx, a->cols, sx, xofs + i);
+	}
+	float scale_y = (float)a->rows / b->rows;
+	unsigned char* buf = (unsigned char*)alloca(b->step * 4);
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = b->data.u8;
+	int psi = -1, siy = 0;
+#define for_block(_for_get, _for_set_b, _for_get_b) \
+	for (i = 0; i < b->rows; i++) \
+	{ \
+		ccv_cubic_coeffs_t yofs; \
+		float sy = (i + 0.5) * scale_y - 0.5; \
+		_ccv_init_cubic_coeffs((int)sy, a->rows, sy, &yofs); \
+		if (yofs.si[3] > psi) \
+		{ \
+			for (; siy <= yofs.si[3]; siy++) \
+			{ \
+				unsigned char* row = buf + (siy & 0x3) * b->step; \
+				for (j = 0; j < b->cols; j++) \
+					for (k = 0; k < ch; k++) \
+						_for_set_b(row, j * ch + k, _for_get(a_ptr, xofs[j].si[0] * ch + k, 0) * xofs[j].coeffs[0] + \
+													_for_get(a_ptr, xofs[j].si[1] * ch + k, 0) * xofs[j].coeffs[1] + \
+													_for_get(a_ptr, xofs[j].si[2] * ch + k, 0) * xofs[j].coeffs[2] + \
+													_for_get(a_ptr, xofs[j].si[3] * ch + k, 0) * xofs[j].coeffs[3], 0); \
+				a_ptr += a->step; \
+			} \
+			psi = yofs.si[3]; \
+		} \
+		unsigned char* row[4] = { \
+			buf + (yofs.si[0] & 0x3) * b->step, \
+			buf + (yofs.si[1] & 0x3) * b->step, \
+			buf + (yofs.si[2] & 0x3) * b->step, \
+			buf + (yofs.si[3] & 0x3) * b->step, \
+		}; \
+		for (j = 0; j < b->cols * ch; j++) \
+			_for_set_b(b_ptr, j, _for_get_b(row[0], j, 0) * yofs.coeffs[0] + _for_get_b(row[1], j, 0) * yofs.coeffs[1] + \
+								 _for_get_b(row[2], j, 0) * yofs.coeffs[2] + _for_get_b(row[3], j, 0) * yofs.coeffs[3], 0); \
+		b_ptr += b->step; \
+	}
+	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_float_only, b->type, for_block);
+#undef for_block
+}
+
+static void _ccv_init_cubic_integer_coeffs(int si, int sz, float s, ccv_cubic_integer_coeffs_t* coeff)
+{
+	const float A = -0.75f;
+	coeff->si[0] = ccv_max(si - 1, 0);
+	coeff->si[1] = si;
+	coeff->si[2] = ccv_min(si + 1, sz - 1);
+	coeff->si[3] = ccv_min(si + 2, sz - 1);
+	float x = s - si;
+	const int W_BITS = 1 << 6;
+	coeff->coeffs[0] = (int)((((A * (x + 1) - 5 * A) * (x + 1) + 8 * A) * (x + 1) - 4 * A) * W_BITS + 0.5);
+	coeff->coeffs[1] = (int)((((A + 2) * x - (A + 3)) * x * x + 1) * W_BITS + 0.5);
+	coeff->coeffs[2] = (int)((((A + 2) * (1 - x) - (A + 3)) * (1 - x) * (1 - x) + 1) * W_BITS + 0.5);
+	coeff->coeffs[3] = W_BITS - coeff->coeffs[0] - coeff->coeffs[1] - coeff->coeffs[2];
+}
+
+static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
+{
+	assert(CCV_GET_DATA_TYPE(b->type) == CCV_8U || CCV_GET_DATA_TYPE(b->type) == CCV_32S || CCV_GET_DATA_TYPE(b->type) == CCV_64S);
+	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
+	int no_8u_type = (b->type & CCV_8U) ? CCV_32S : b->type;
+	ccv_cubic_integer_coeffs_t* xofs = (ccv_cubic_integer_coeffs_t*)alloca(sizeof(ccv_cubic_integer_coeffs_t) * b->cols);
+	float scale_x = (float)a->cols / b->cols;
+	for (i = 0; i < b->cols; i++)
+	{
+		float sx = (i + 0.5) * scale_x - 0.5;
+		_ccv_init_cubic_integer_coeffs((int)sx, a->cols, sx, xofs + i);
+	}
+	float scale_y = (float)a->rows / b->rows;
+	int bufstep = b->cols * ch * CCV_GET_DATA_TYPE_SIZE(no_8u_type);
+	unsigned char* buf = (unsigned char*)alloca(bufstep * 4);
+	unsigned char* a_ptr = a->data.u8;
+	unsigned char* b_ptr = b->data.u8;
+	int psi = -1, siy = 0;
+#define for_block(_for_get_a, _for_set, _for_get, _for_set_b) \
+	for (i = 0; i < b->rows; i++) \
+	{ \
+		ccv_cubic_integer_coeffs_t yofs; \
+		float sy = (i + 0.5) * scale_y - 0.5; \
+		_ccv_init_cubic_integer_coeffs((int)sy, a->rows, sy, &yofs); \
+		if (yofs.si[3] > psi) \
+		{ \
+			for (; siy <= yofs.si[3]; siy++) \
+			{ \
+				unsigned char* row = buf + (siy & 0x3) * bufstep; \
+				for (j = 0; j < b->cols; j++) \
+					for (k = 0; k < ch; k++) \
+						_for_set(row, j * ch + k, _for_get_a(a_ptr, xofs[j].si[0] * ch + k, 0) * xofs[j].coeffs[0] + \
+												  _for_get_a(a_ptr, xofs[j].si[1] * ch + k, 0) * xofs[j].coeffs[1] + \
+												  _for_get_a(a_ptr, xofs[j].si[2] * ch + k, 0) * xofs[j].coeffs[2] + \
+												  _for_get_a(a_ptr, xofs[j].si[3] * ch + k, 0) * xofs[j].coeffs[3], 0); \
+				a_ptr += a->step; \
+			} \
+			psi = yofs.si[3]; \
+		} \
+		unsigned char* row[4] = { \
+			buf + (yofs.si[0] & 0x3) * bufstep, \
+			buf + (yofs.si[1] & 0x3) * bufstep, \
+			buf + (yofs.si[2] & 0x3) * bufstep, \
+			buf + (yofs.si[3] & 0x3) * bufstep, \
+		}; \
+		for (j = 0; j < b->cols * ch; j++) \
+			_for_set_b(b_ptr, j, ccv_descale(_for_get(row[0], j, 0) * yofs.coeffs[0] + _for_get(row[1], j, 0) * yofs.coeffs[1] + \
+											 _for_get(row[2], j, 0) * yofs.coeffs[2] + _for_get(row[3], j, 0) * yofs.coeffs[3], 12), 0); \
+		b_ptr += b->step; \
+	}
+	ccv_matrix_getter(a->type, ccv_matrix_setter_getter_integer_only, no_8u_type, ccv_matrix_setter_integer_only, b->type, for_block);
+#undef for_block
+}
+
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type)
 {
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_resample(%d,%d,%d)", rows, cols, type), a->sig, 0);
@@ -205,20 +350,25 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 	switch (type)
 	{
 		case CCV_INTER_AREA:
-			if (a->rows > db->rows && a->cols > db->cols)
-			{
-				/* using the fast alternative (fix point scale, 0x100 to avoid overflow) */
-				if (CCV_GET_DATA_TYPE(a->type) == CCV_8U && CCV_GET_DATA_TYPE(db->type) == CCV_8U && a->rows * a->cols / (db->rows * db->cols) < 0x100)
-					_ccv_resample_area_8u(a, db);
-				else
-					_ccv_resample_area(a, db);
-				break;
-			}
+			assert(a->rows >= db->rows && a->cols >= db->cols);
+			/* using the fast alternative (fix point scale, 0x100 to avoid overflow) */
+			if (CCV_GET_DATA_TYPE(a->type) == CCV_8U && CCV_GET_DATA_TYPE(db->type) == CCV_8U && a->rows * a->cols / (db->rows * db->cols) < 0x100)
+				_ccv_resample_area_8u(a, db);
+			else
+				_ccv_resample_area(a, db);
+			break;
 		case CCV_INTER_LINEAR:
+			assert(0 && "CCV_INTER_LINEAR is not implemented");
 			break;
 		case CCV_INTER_CUBIC:
+			assert(db->rows >= a->rows && db->cols >= a->cols);
+			if (CCV_GET_DATA_TYPE(db->type) == CCV_32F || CCV_GET_DATA_TYPE(db->type) == CCV_64F)
+				_ccv_resample_cubic_float_only(a, db);
+			else
+				_ccv_resample_cubic_integer_only(a, db);
 			break;
 		case CCV_INTER_LANCZOS:
+			assert(0 && "CCV_INTER_LANCZOS is not implemented");
 			break;
 	}
 }

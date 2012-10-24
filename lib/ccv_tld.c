@@ -1,5 +1,6 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#include "3rdparty/sfmt/SFMT.h"
 
 #define TLD_GRID_SPARSITY (10)
 #define TLD_PATCH_SIZE (10)
@@ -243,6 +244,42 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_array_t* bad = 0;
 	_ccv_tld_generate_box_for(image_size, box, &scales, &good, &bad, params);
 	tld->ferns = ccv_ferns_new(1, 1, scales->rnum, (ccv_size_t*)ccv_array_get(scales, 0));
+	tld->sv[0] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
+	tld->sv[1] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, (uint32_t)tld);
+	sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
+	int badex = (int)(bad->rnum * 0.5 + 0.5);
+	int* idx = (int*)ccmalloc(sizeof(int) * (badex + good->rnum));
+	int i, k;
+	for (i = 0; i < badex + good->rnum; i++)
+		idx[i] = i;
+	sfmt_genrand_shuffle(&sfmt, idx, badex + good->rnum, sizeof(int));
+	// train the fern classifier
+	{
+	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+	for (i = 0; i < badex + good->rnum; i++)
+	{
+		k = idx[i];
+		if (k < badex)
+		{
+			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
+			_ccv_tld_ferns_feature_for(tld->ferns, a, *box, fern);
+			// fix the thresholding for negative
+			if (ccv_ferns_predict(tld->ferns, fern) > tld->ferns->threshold)
+				ccv_ferns_correct(tld->ferns, fern, 0, 1);
+		} else {
+			k -= badex;
+			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k);
+			_ccv_tld_ferns_feature_for(tld->ferns, a, *box, fern);
+			// fix the thresholding for positive
+			if (ccv_ferns_predict(tld->ferns, fern) < tld->ferns->threshold)
+				ccv_ferns_correct(tld->ferns, fern, 1, 1);
+		}
+	}
+	}
+	ccfree(idx);
+	// train the nearest-neighbor classifier
 	return tld;
 }
 
@@ -257,6 +294,13 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 
 void ccv_tld_free(ccv_tld_t* tld)
 {
+	int i;
+	for (i = 0; i < tld->sv[0]->rnum; i++)
+		ccv_matrix_free(*(ccv_dense_matrix_t**)ccv_array_get(tld->sv[0], i));
+	ccv_array_free(tld->sv[0]);
+	for (i = 0; i < tld->sv[1]->rnum; i++)
+		ccv_matrix_free(*(ccv_dense_matrix_t**)ccv_array_get(tld->sv[1], i));
+	ccv_array_free(tld->sv[1]);
 	ccv_ferns_free(tld->ferns);
 	ccfree(tld);
 }
