@@ -529,8 +529,8 @@ void ccv_color_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type
 enum {
 	CCV_INTER_AREA    = 0x01,
 	CCV_INTER_LINEAR  = 0X02,
-	CCV_INTER_CUBIC   = 0X03,
-	CCV_INTER_LANCZOS = 0X04,
+	CCV_INTER_CUBIC   = 0X04,
+	CCV_INTER_LANCZOS = 0X08,
 };
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
@@ -855,13 +855,27 @@ typedef struct {
 	int min_win;
 	double include_overlap;
 	double exclude_overlap;
+	/* fern classifier setting */
+	int structs;
+	int features;
+	/* nearest neighbor thresholds */
+	double ncc_same; // the same object
+	double ncc_thres; // highly correlated
+	double ncc_collect; // modest correlated, worth to collect as negative example
+	/* top detections */
+	int top_n;
 } ccv_tld_param_t;
 
 typedef struct {
 	ccv_tld_param_t params;
-	ccv_comp_t box;
-	ccv_ferns_t* ferns;
-	ccv_array_t* sv[2];
+	ccv_comp_t box; // tracking comp
+	ccv_rect_t input; // the user input rect
+	ccv_ferns_t* ferns; // ferns classifier
+	ccv_array_t* sv[2]; // example-based classifier
+	ccv_size_t patch; // resized to patch for example-based classifier
+	int found; // if the last time found a valid box
+	int validity; // last tracking is valid
+	ccv_array_t* top; // top matches
 } ccv_tld_t;
 
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);

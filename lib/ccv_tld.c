@@ -173,79 +173,203 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	return newbox;
 }
 
-ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_rect_t box, ccv_array_t** scale, ccv_array_t** good, ccv_array_t** bad, ccv_tld_param_t params)
+static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_t r2)
 {
-	const float SHIFT = 0.1;
-	const float SCALES[] = {
-		0.16151, 0.19381, 0.23257, 0.27908, 0.33490, 0.40188, 0.48225,
-		0.57870, 0.69444, 0.83333, 1, 1.20000, 1.44000, 1.72800,
-		2.07360, 2.48832, 2.98598, 3.58318, 4.29982, 5.15978, 6.19174
-	};
-	ccv_array_t* ascale = *scale = ccv_array_new(sizeof(ccv_size_t), 21, 0);
+	int intersect = ccv_max(0, ccv_min(r1.x + r1.width, r2.x + r2.width) - ccv_max(r1.x, r2.x)) * ccv_max(0, ccv_min(r1.y + r1.height, r2.y + r2.height) - ccv_max(r1.y, r2.y));
+	return (float)intersect / (r1.width * r1.height + r2.width * r2.height - intersect);
+}
+
+static const float SHIFT = 0.1;
+static const float SCALES[] = {
+	0.16151, 0.19381, 0.23257, 0.27908, 0.33490, 0.40188, 0.48225,
+	0.57870, 0.69444, 0.83333, 1, 1.20000, 1.44000, 1.72800,
+	2.07360, 2.48832, 2.98598, 3.58318, 4.29982, 5.15978, 6.19174
+};
+
+#define for_each_size(new_width, new_height, box_width, box_height, min_win, image_width, image_height) \
+	{ \
+		int INTERNAL_CATCH_UNIQUE_NAME(s); \
+		for (INTERNAL_CATCH_UNIQUE_NAME(s) = 0; INTERNAL_CATCH_UNIQUE_NAME(s) < 21; INTERNAL_CATCH_UNIQUE_NAME(s)++) \
+		{ \
+			int new_width = (int)(box_width * SCALES[INTERNAL_CATCH_UNIQUE_NAME(s)] + 0.5); \
+			int new_height = (int)(box_height * SCALES[INTERNAL_CATCH_UNIQUE_NAME(s)] + 0.5); \
+			int INTERNAL_CATCH_UNIQUE_NAME(min_side) = ccv_min(new_width, new_height); \
+			if (INTERNAL_CATCH_UNIQUE_NAME(min_side) < min_win || new_width > image_width || new_height > image_height) \
+				continue;
+#define end_for_each_size } }
+
+#define for_each_box(new_comp, box_width, box_height, min_win, image_width, image_height) \
+	{ \
+		int INTERNAL_CATCH_UNIQUE_NAME(is) = 0; \
+		for_each_size(INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height), box_width, box_height, min_win, image_width, image_height) \
+			++INTERNAL_CATCH_UNIQUE_NAME(is); \
+			float INTERNAL_CATCH_UNIQUE_NAME(x), INTERNAL_CATCH_UNIQUE_NAME(y); \
+			int INTERNAL_CATCH_UNIQUE_NAME(piy) = -1; \
+			for (INTERNAL_CATCH_UNIQUE_NAME(y) = 0; \
+				 INTERNAL_CATCH_UNIQUE_NAME(y) < image_height - INTERNAL_CATCH_UNIQUE_NAME(height); \
+				 INTERNAL_CATCH_UNIQUE_NAME(y) += SHIFT * INTERNAL_CATCH_UNIQUE_NAME(min_side)) /* min_side is exposed by for_each_size, and because the ubiquity of this macro, its name gets leaked */ \
+			{ \
+				int INTERNAL_CATCH_UNIQUE_NAME(iy) = (int)(INTERNAL_CATCH_UNIQUE_NAME(y) + 0.5); \
+				if (INTERNAL_CATCH_UNIQUE_NAME(iy) == INTERNAL_CATCH_UNIQUE_NAME(piy)) \
+					continue; \
+				INTERNAL_CATCH_UNIQUE_NAME(piy) = INTERNAL_CATCH_UNIQUE_NAME(iy); \
+				int INTERNAL_CATCH_UNIQUE_NAME(pix) = -1; \
+				for (INTERNAL_CATCH_UNIQUE_NAME(x) = 0; \
+					 INTERNAL_CATCH_UNIQUE_NAME(x) < image_width - INTERNAL_CATCH_UNIQUE_NAME(width); \
+					 INTERNAL_CATCH_UNIQUE_NAME(x) += SHIFT * INTERNAL_CATCH_UNIQUE_NAME(min_side)) \
+				{ \
+					int INTERNAL_CATCH_UNIQUE_NAME(ix) = (int)(INTERNAL_CATCH_UNIQUE_NAME(x) + 0.5); \
+					if (INTERNAL_CATCH_UNIQUE_NAME(ix) == INTERNAL_CATCH_UNIQUE_NAME(pix)) \
+						continue; \
+					INTERNAL_CATCH_UNIQUE_NAME(pix) = INTERNAL_CATCH_UNIQUE_NAME(ix); \
+					ccv_comp_t new_comp; \
+					new_comp.rect = ccv_rect(INTERNAL_CATCH_UNIQUE_NAME(ix), INTERNAL_CATCH_UNIQUE_NAME(iy), INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height)); \
+					new_comp.id = INTERNAL_CATCH_UNIQUE_NAME(is) - 1;
+#define end_for_each_box } } end_for_each_size }
+
+static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_rect_t box, ccv_array_t** good, ccv_array_t** bad, ccv_tld_param_t params)
+{
 	ccv_array_t* agood = *good = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
 	ccv_array_t* abad = *bad = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
-	int s;
 	double max_overlap = -DBL_MAX;
 	ccv_comp_t best_box = {
 		.id = 0,
 		.rect = ccv_rect(0, 0, 0, 0),
 	};
-	for (s = 0; s < 21; s++)
-	{
-		int width = (int)(box.width * SCALES[s] + 0.5);
-		int height = (int)(box.height * SCALES[s] + 0.5);
-		int min_side = ccv_min(width, height);
-		if (min_side < params.min_win || width > image_size.width || height > image_size.height)
-			continue;
-		ccv_size_t scale = ccv_size(width, height);
-		ccv_array_push(ascale, &scale);
-		for (float y = 0; y < image_size.height - height; y += SHIFT * min_side)
+	for_each_box(comp, box.width, box.height, params.min_win, image_size.width, image_size.height)
+		double overlap = _ccv_tld_rect_intersect(comp.rect, box);
+		if (overlap > params.include_overlap)
 		{
-			for (float x = 0; x < image_size.width - width; x += SHIFT * min_side)
+			if (overlap > max_overlap)
 			{
-				ccv_comp_t comp;
-				comp.rect = ccv_rect((int)(x + 0.5), (int)(y + 0.5), width, height);
-				comp.id = ascale->rnum - 1;
-				double overlap = ccv_max(ccv_min(comp.rect.x + comp.rect.width, box.x + box.width) - ccv_max(comp.rect.x, box.x), 0) *
-								 ccv_max(ccv_min(comp.rect.y + comp.rect.height, box.y + box.height) - ccv_max(comp.rect.y, box.y), 0);
-				overlap = overlap / (comp.rect.width * comp.rect.height + box.width * box.height - overlap);
-				if (overlap > params.include_overlap)
-				{
-					if (overlap > max_overlap)
-					{
-						max_overlap = overlap;
-						best_box = comp;
-					}
-					ccv_array_push(agood, &comp);
-				} else if (overlap < params.exclude_overlap) {
-					ccv_array_push(abad, &comp);
-				}
+				max_overlap = overlap;
+				best_box = comp;
 			}
-		}
-	}
+			ccv_array_push(agood, &comp);
+		} else if (overlap < params.exclude_overlap)
+			ccv_array_push(abad, &comp);
+	end_for_each_box
 	return best_box;
 }
 
-void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern)
+static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern)
 {
 	ccv_dense_matrix_t roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, box.rect.y, box.rect.x, 0), 0);
 	roi.step = a->step;
 	ccv_ferns_feature(ferns, &roi, box.id, fern);
 }
 
+static void _ccv_tld_fetch_patch(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_rect_t box, ccv_dense_matrix_t** b, int type)
+{
+	ccv_dense_matrix_t* c = 0;
+	if (box.width == tld->patch.width && box.height == tld->patch.height)
+		ccv_slice(a, (ccv_matrix_t**)b, type, box.y, box.x, box.height, box.width);
+	else {
+		assert((box.width >= tld->patch.width && box.height >= tld->patch.height) ||
+			   (box.width <= tld->patch.width && box.height <= tld->patch.height));
+		ccv_slice(a, (ccv_matrix_t**)&c, type, box.y, box.x, box.height, box.width);
+		ccv_resample(c, b, type, tld->patch.height, tld->patch.width, CCV_INTER_AREA | CCV_INTER_CUBIC);
+		ccv_matrix_free(c);
+	}
+}
+
+static float _ccv_tld_sv_classify(ccv_tld_t* tld, ccv_dense_matrix_t* a, int pnum, int nnum, int* anyp, int* anyn)
+{
+	assert(a->rows == tld->patch.height && a->cols == tld->patch.width);
+	int i;
+	pnum = (pnum <= 0) ? tld->sv[1]->rnum : ccv_min(pnum, tld->sv[1]->rnum);
+	if (pnum == 0)
+		return 0;
+	nnum = (nnum <= 0) ? tld->sv[0]->rnum : ccv_min(nnum, tld->sv[0]->rnum);
+	if (nnum == 0)
+		return 1;
+	float maxp = -1;
+	for (i = 0; i < pnum; i++)
+	{
+		ccv_dense_matrix_t* b = *(ccv_dense_matrix_t**)ccv_array_get(tld->sv[1], i);
+		float ncc = _ccv_tld_norm_cross_correlate(a, b);
+		if (ncc > maxp)
+			maxp = ncc;
+	}
+	if (anyp)
+		*anyp = (maxp > tld->params.ncc_same);
+	float maxn = -1;
+	for (i = 0; i < nnum; i++)
+	{
+		ccv_dense_matrix_t* b = *(ccv_dense_matrix_t**)ccv_array_get(tld->sv[0], i);
+		float ncc = _ccv_tld_norm_cross_correlate(a, b);
+		if (ncc > maxn)
+			maxn = ncc;
+	}
+	if (anyn)
+		*anyn = (maxn > tld->params.ncc_same);
+	return (1 - maxn) / (2 - maxn - maxp);
+}
+
+// return 0 means that we will retain the given example (thus, you don't want to free it)
+static int _ccv_tld_sv_support(ccv_tld_t* tld, ccv_dense_matrix_t* a, int y)
+{
+	int anyp, anyn;
+	if (y == 1 && tld->sv[1]->rnum == 0)
+	{
+		ccv_array_push(tld->sv[1], &a);
+		return 0;
+	}
+	float conf = _ccv_tld_sv_classify(tld, a, 0, 0, &anyp, &anyn);
+	if (y == 1 && conf < tld->params.ncc_thres)
+	{
+		ccv_array_push(tld->sv[1], &a);
+		return 0;
+	} else if (y == 0 && conf > tld->params.ncc_collect) {
+		ccv_array_push(tld->sv[0], &a);
+		return 0;
+	}
+	return -1;
+}
+
+typedef struct {
+	ccv_comp_t box;
+	ccv_dense_matrix_t* patch;
+	uint32_t* fern;
+} ccv_tld_feature_t;
+
+#define PATCH_SIZE (20)
+
+static void _ccv_tld_check_params(ccv_tld_param_t params)
+{
+	assert(params.top_n > 0);
+	assert(params.structs > 0);
+	assert(params.features > 0 && params.features <= 32);
+	assert(params.win_size.width > 0 && params.win_size.height > 0);
+	assert((params.win_size.width & 1) == 1 && (params.win_size.height & 1) == 1);
+	assert(params.level >= 0);
+	assert(params.min_eigen > 0);
+	assert(params.min_forward_backward_error > 0);
+}
+
 ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
 {
-	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t));
+	_ccv_tld_check_params(params);
+	ccv_size_t patch = ccv_size((int)(sqrtf(PATCH_SIZE * PATCH_SIZE * (float)box.width / box.height) + 0.5),
+								(int)(sqrtf(PATCH_SIZE * PATCH_SIZE * (float)box.height / box.width) + 0.5));
+	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t) + params.top_n * (sizeof(ccv_tld_feature_t) + sizeof(uint32_t) * params.structs + ccv_compute_dense_matrix_size(patch.height, patch.width, CCV_8U | CCV_C1)));
+	tld->patch = patch;
 	tld->params = params;
-	tld->box.rect = box;
-	ccv_size_t image_size = ccv_size(a->cols, a->rows);
-	ccv_array_t* scales = 0;
-	ccv_array_t* good = 0;
-	ccv_array_t* bad = 0;
-	_ccv_tld_generate_box_for(image_size, box, &scales, &good, &bad, params);
-	tld->ferns = ccv_ferns_new(1, 1, scales->rnum, (ccv_size_t*)ccv_array_get(scales, 0));
+	tld->box.rect = tld->input = box;
+	{
+		ccv_size_t scales[21];
+		int is = 0;
+		for_each_size(width, height, box.width, box.height, params.min_win, a->cols, a->rows)
+			scales[is] = ccv_size(width, height);
+			++is;
+		end_for_each_size
+		tld->ferns = ccv_ferns_new(params.structs, params.features, is, scales);
+	}
 	tld->sv[0] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
 	tld->sv[1] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
+	ccv_array_t* good = 0;
+	ccv_array_t* bad = 0;
+	ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(a->cols, a->rows), box, &good, &bad, params);
 	sfmt_t sfmt;
 	sfmt_init_gen_rand(&sfmt, (uint32_t)tld);
 	sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
@@ -278,9 +402,227 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 		}
 	}
 	}
+	ccv_array_free(good);
 	ccfree(idx);
 	// train the nearest-neighbor classifier
+	ccv_dense_matrix_t* b = 0;
+	_ccv_tld_fetch_patch(tld, a, best_box.rect, &b, 0);
+	ccv_array_push(tld->sv[1], &b);
+	for (i = 0; i < bad->rnum; i++)
+	{
+		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
+		ccv_dense_matrix_t* b = 0;
+		_ccv_tld_fetch_patch(tld, a, box->rect, &b, 0);
+		if (_ccv_tld_sv_support(tld, b, 0) != 0)
+			ccv_matrix_free(b);
+	}
+	ccv_array_free(bad);
+	// init tld params
+	tld->found = 1; // assume last time has found (we just started)
+	// top is ccv_tld_feature_t, and its continuous memory region for a feature
+	tld->top = ccv_array_new(sizeof(ccv_tld_feature_t*), params.top_n, 0);
+	unsigned char* features = (unsigned char*)(tld + 1);
+	for (i = 0; i < params.top_n; i++)
+	{
+		ccv_tld_feature_t* feature = (ccv_tld_feature_t*)features;
+		memset(feature, 0, sizeof(ccv_tld_feature_t));
+		feature->fern = (uint32_t*)(features + sizeof(ccv_tld_feature_t));
+		feature->patch = ccv_dense_matrix_new(patch.height, patch.width, CCV_8U | CCV_C1, features + sizeof(ccv_tld_feature_t) + sizeof(uint32_t) * params.structs, 0);
+		ccv_array_push(tld->top, &feature);
+		features += sizeof(ccv_tld_feature_t) + sizeof(uint32_t) * params.structs + ccv_compute_dense_matrix_size(patch.height, patch.width, CCV_8U | CCV_C1);
+	}
+	tld->top->rnum = 0;
 	return tld;
+}
+
+static void _ccv_tld_online_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_t dd)
+{
+	ccv_dense_matrix_t* b = 0;
+	_ccv_tld_fetch_patch(tld, a, dd.rect, &b, 0);
+	int anyp, anyn;
+	float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
+	if (c > tld->params.ncc_thres && !anyn)
+	{
+		ccv_array_t* good = 0;
+		ccv_array_t* bad = 0;
+		ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(a->cols, a->rows), dd.rect, &good, &bad, tld->params);
+		sfmt_t sfmt;
+		sfmt_init_gen_rand(&sfmt, (uint32_t)tld);
+		sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
+		int* idx = (int*)ccmalloc(sizeof(int) * (bad->rnum + good->rnum));
+		int i, k;
+		for (i = 0; i < bad->rnum + good->rnum; i++)
+			idx[i] = i;
+		sfmt_genrand_shuffle(&sfmt, idx, bad->rnum + good->rnum, sizeof(int));
+		// train the fern classifier
+		{
+		uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+		for (i = 0; i < bad->rnum + good->rnum; i++)
+		{
+			k = idx[i];
+			if (k < bad->rnum)
+			{
+				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
+				_ccv_tld_ferns_feature_for(tld->ferns, a, *box, fern);
+				// fix the thresholding for negative
+				if (ccv_ferns_predict(tld->ferns, fern) > tld->ferns->threshold)
+					ccv_ferns_correct(tld->ferns, fern, 0, 1);
+			} else {
+				k -= bad->rnum;
+				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k);
+				_ccv_tld_ferns_feature_for(tld->ferns, a, *box, fern);
+				// fix the thresholding for positive
+				if (ccv_ferns_predict(tld->ferns, fern) < tld->ferns->threshold)
+					ccv_ferns_correct(tld->ferns, fern, 1, 1);
+			}
+		}
+		}
+		ccv_array_free(good);
+		ccfree(idx);
+		// train the nearest-neighbor classifier
+		ccv_dense_matrix_t* b = 0;
+		_ccv_tld_fetch_patch(tld, a, best_box.rect, &b, 0);
+		ccv_array_push(tld->sv[1], &b);
+		for (i = 0; i < bad->rnum; i++)
+		{
+			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
+			ccv_dense_matrix_t* b = 0;
+			_ccv_tld_fetch_patch(tld, a, box->rect, &b, 0);
+			if (_ccv_tld_sv_support(tld, b, 0) != 0)
+				ccv_matrix_free(b);
+		}
+		ccv_array_free(bad);
+	}
+	ccv_matrix_free(b);
+}
+
+static void _ccv_tld_feature_heapify_down(ccv_tld_t* tld, int i)
+{
+	for (;;)
+	{
+		int left = 2 * (i + 1) - 1;
+		int right = 2 * (i + 1);
+		int smallest = i;
+		ccv_tld_feature_t* smallest_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, smallest);
+		if (left < tld->top->rnum)
+		{
+			ccv_tld_feature_t* left_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, left);
+			if (left_feature->box.confidence < smallest_feature->box.confidence)
+			{
+				smallest = left;
+				smallest_feature = left_feature;
+			}
+		}
+		if (right < tld->top->rnum)
+		{
+			ccv_tld_feature_t* right_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, right);
+			if (right_feature->box.confidence < smallest_feature->box.confidence)
+			{
+				smallest = right;
+				smallest_feature = right_feature;
+			}
+		}
+		if (smallest == i)
+			break;
+		*(ccv_tld_feature_t**)ccv_array_get(tld->top, smallest) = *(ccv_tld_feature_t**)ccv_array_get(tld->top, i);
+		*(ccv_tld_feature_t**)ccv_array_get(tld->top, i) = smallest_feature;
+		i = smallest;
+	}
+}
+
+static void _ccv_tld_feature_heapify_up(ccv_tld_t* tld, int smallest)
+{
+	for (;;)
+	{
+		int one = smallest;
+		int parent = (smallest + 1) / 2 - 1;
+		ccv_tld_feature_t* parent_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, parent);
+		ccv_tld_feature_t* smallest_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, smallest);
+		if (smallest_feature->box.confidence < parent_feature->box.confidence)
+		{
+			smallest = parent;
+			smallest_feature = parent_feature;
+		}
+		// if current one is no smaller than the parent one, stop
+		if (smallest == one)
+			break;
+		*(ccv_tld_feature_t**)ccv_array_get(tld->top, smallest) = *(ccv_tld_feature_t**)ccv_array_get(tld->top, parent);
+		*(ccv_tld_feature_t**)ccv_array_get(tld->top, parent) = smallest_feature;
+		int other = 2 * (parent + 1) - !(one & 1);
+		ccv_tld_feature_t* other_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, other);
+		// if current one is no smaller than the other one, stop, and this requires a percolating down
+		if (other_feature->box.confidence < smallest_feature->box.confidence)
+			break;
+	}
+	// have to percolating down to avoid it is bigger than the other side of the sub-tree
+	_ccv_tld_feature_heapify_down(tld, smallest);
+}
+
+static void _ccv_tld_feature_push(ccv_tld_t* tld, uint32_t* fern, ccv_dense_matrix_t* a, ccv_comp_t box)
+{
+	assert(a->rows == tld->patch.height && a->cols == tld->patch.width);
+	// maintain a heap of top n tld feature
+	if (tld->top->rnum < tld->params.top_n)
+	{
+		ccv_tld_feature_t* feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, tld->top->rnum);
+		memcpy(feature->fern, fern, sizeof(uint32_t) * tld->ferns->structs);
+		memcpy(feature->patch->data.u8, a->data.u8, a->step * a->rows);
+		feature->box = box;
+		++tld->top->rnum;
+		_ccv_tld_feature_heapify_up(tld, tld->top->rnum - 1);
+	} else {
+		ccv_tld_feature_t* feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, 0);
+		if (feature->box.confidence < box.confidence)
+		{
+			memcpy(feature->fern, fern, sizeof(uint32_t) * tld->ferns->structs);
+			memcpy(feature->patch->data.u8, a->data.u8, a->step * a->rows);
+			feature->box = box;
+			_ccv_tld_feature_heapify_down(tld, 0);
+		}
+	}
+}
+
+static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* a)
+{
+	int i;
+	tld->top->rnum = 0;
+	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+	for_each_box(box, tld->input.width, tld->input.height, tld->params.min_win, a->cols, a->rows)
+		_ccv_tld_ferns_feature_for(tld->ferns, a, box, fern);
+		box.confidence = ccv_ferns_predict(tld->ferns, fern);
+		if (box.confidence > tld->ferns->threshold)
+		{
+			ccv_tld_feature_t* top_feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, 0);
+			if (tld->top->rnum < tld->params.top_n ||
+				top_feature->box.confidence < box.confidence)
+			{
+				ccv_dense_matrix_t* b = 0;
+				ccv_slice(a, (ccv_matrix_t**)&b, 0, box.rect.y, box.rect.x, box.rect.height, box.rect.width);
+				_ccv_tld_feature_push(tld, fern, b, box);
+				ccv_matrix_free(b);
+			}
+		}
+	end_for_each_box
+	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), tld->top->rnum, 0);
+	for (i = 0; i < tld->top->rnum; i++)
+	{
+		ccv_tld_feature_t* feature = *(ccv_tld_feature_t**)ccv_array_get(tld->top, i);
+		int anyp = 0, anyn = 0;
+		float c = _ccv_tld_sv_classify(tld, feature->patch, 0, 0, &anyp, &anyn);
+		if (c > tld->params.ncc_thres)
+		{
+			feature->box.confidence = c;
+			ccv_array_push(seq, &feature->box);
+		}
+	}
+	return seq;
+}
+
+static int _ccv_is_equal(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	return _ccv_tld_rect_intersect(r1->rect, r2->rect) > 0.5;
 }
 
 // since there is no refcount syntax for ccv yet, we won't implicitly retain any matrix in ccv_tld_t
@@ -288,7 +630,111 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
 	ccv_comp_t result;
-	result.rect = _ccv_tld_short_term_track(a, b, tld->box.rect, tld->params);
+	int tracked = 0;
+	tld->validity = 0;
+	if (tld->found)
+	{
+		result.rect = _ccv_tld_short_term_track(a, b, tld->box.rect, tld->params);
+		if (!ccv_rect_is_zero(result.rect))
+		{
+			tracked = 1;
+			int anyp = 0, anyn = 0;
+			result.confidence = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
+			if (result.confidence > tld->params.ncc_thres)
+				tld->validity = 1;
+		}
+	}
+	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, b);
+	int i;
+	// cluster detected result
+	if (dd->rnum > 1)
+	{
+		ccv_array_t* idx_dd = 0;
+		// group retrieved rectangles in order to filter out noise
+		int ncomp = ccv_array_group(dd, &idx_dd, _ccv_is_equal, 0);
+		ccv_comp_t* comps = (ccv_comp_t*)ccmalloc(ncomp * sizeof(ccv_comp_t));
+		memset(comps, 0, ncomp * sizeof(ccv_comp_t));
+		for (i = 0; i < dd->rnum; i++)
+		{
+			ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(dd, i);
+			int idx = *(int*)ccv_array_get(idx_dd, i);
+			++comps[idx].neighbors;
+			comps[idx].rect.x += r1.rect.x;
+			comps[idx].rect.y += r1.rect.y;
+			comps[idx].rect.width += r1.rect.width;
+			comps[idx].rect.height += r1.rect.height;
+			comps[idx].confidence += r1.confidence;
+		}
+		ccv_array_clear(dd);
+		for(i = 0; i < ncomp; i++)
+		{
+			int n = comps[i].neighbors;
+			ccv_comp_t comp;
+			comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
+			comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
+			comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
+			comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
+			comp.neighbors = comps[i].neighbors;
+			comp.confidence = comps[i].confidence / n;
+			ccv_array_push(dd, &comp);
+		}
+		ccv_array_free(idx_dd);
+		ccfree(comps);
+	}
+	if (tracked)
+	{
+		if (dd->rnum > 0)
+		{
+			ccv_comp_t* ddcomp = 0;
+			int confident_matches = 0;
+			for (i = 0; i < dd->rnum; i++)
+			{
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(dd, i);
+				if (_ccv_tld_rect_intersect(result.rect, comp->rect) < 0.5 && comp->confidence > result.confidence)
+				{
+					++confident_matches;
+					ddcomp = comp;
+				}
+			}
+			if (confident_matches == 1)
+			{
+				// only one match, reinitialize tracking
+				result = *ddcomp;
+				// but the result is not a valid tracking
+				tld->validity = 0;
+			} else {
+				// too much confident matches, we will focus on close matches instead
+				int close_matches = 0;
+				ccv_rect_t ddc = ccv_rect(0, 0, 0, 0);
+				for (i = 0; i < dd->rnum; i++)
+				{
+					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(dd, i);
+					if (_ccv_tld_rect_intersect(result.rect, comp->rect) > 0.7)
+					{
+						ddc.y += comp->rect.y;
+						ddc.x += comp->rect.x;
+						ddc.height += comp->rect.height;
+						ddc.width += comp->rect.width;
+						++close_matches;
+					}
+				}
+				if (close_matches > 0)
+				{
+					// reweight the tracking result
+					result.rect.x = (20 * result.rect.x + ddc.x * 2 + close_matches + 10) / (20 + 2 * close_matches);
+					result.rect.y = (20 * result.rect.y + ddc.y * 2 + close_matches + 10) / (20 + 2 * close_matches);
+					result.rect.width = (20 * result.rect.width + ddc.width * 2 + close_matches + 10) / (20 + 2 * close_matches);
+					result.rect.height = (20 * result.rect.height + ddc.height * 2 + close_matches + 10) / (20 + 2 * close_matches);
+				}
+			}
+		}
+	} else if (dd->rnum == 1) {
+		// only reinitialize tracker when detection result is exactly one
+		result = *(ccv_comp_t*)ccv_array_get(dd, 0);
+	}
+	ccv_array_free(dd);
+	if (tld->validity)
+		_ccv_tld_online_learn(tld, b, result);
 	return result;
 }
 
@@ -301,6 +747,7 @@ void ccv_tld_free(ccv_tld_t* tld)
 	for (i = 0; i < tld->sv[1]->rnum; i++)
 		ccv_matrix_free(*(ccv_dense_matrix_t**)ccv_array_get(tld->sv[1], i));
 	ccv_array_free(tld->sv[1]);
+	ccv_array_free(tld->top);
 	ccv_ferns_free(tld->ferns);
 	ccfree(tld);
 }

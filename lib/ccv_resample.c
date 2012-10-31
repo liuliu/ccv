@@ -347,29 +347,23 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 		}
 		return;
 	}
-	switch (type)
+	if ((type & CCV_INTER_AREA) && a->rows >= db->rows && a->cols >= db->cols)
 	{
-		case CCV_INTER_AREA:
-			assert(a->rows >= db->rows && a->cols >= db->cols);
-			/* using the fast alternative (fix point scale, 0x100 to avoid overflow) */
-			if (CCV_GET_DATA_TYPE(a->type) == CCV_8U && CCV_GET_DATA_TYPE(db->type) == CCV_8U && a->rows * a->cols / (db->rows * db->cols) < 0x100)
-				_ccv_resample_area_8u(a, db);
-			else
-				_ccv_resample_area(a, db);
-			break;
-		case CCV_INTER_LINEAR:
-			assert(0 && "CCV_INTER_LINEAR is not implemented");
-			break;
-		case CCV_INTER_CUBIC:
-			assert(db->rows >= a->rows && db->cols >= a->cols);
-			if (CCV_GET_DATA_TYPE(db->type) == CCV_32F || CCV_GET_DATA_TYPE(db->type) == CCV_64F)
-				_ccv_resample_cubic_float_only(a, db);
-			else
-				_ccv_resample_cubic_integer_only(a, db);
-			break;
-		case CCV_INTER_LANCZOS:
-			assert(0 && "CCV_INTER_LANCZOS is not implemented");
-			break;
+		/* using the fast alternative (fix point scale, 0x100 to avoid overflow) */
+		if (CCV_GET_DATA_TYPE(a->type) == CCV_8U && CCV_GET_DATA_TYPE(db->type) == CCV_8U && a->rows * a->cols / (db->rows * db->cols) < 0x100)
+			_ccv_resample_area_8u(a, db);
+		else
+			_ccv_resample_area(a, db);
+	} else if (type & CCV_INTER_CUBIC) {
+		assert(db->rows >= a->rows && db->cols >= a->cols);
+		if (CCV_GET_DATA_TYPE(db->type) == CCV_32F || CCV_GET_DATA_TYPE(db->type) == CCV_64F)
+			_ccv_resample_cubic_float_only(a, db);
+		else
+			_ccv_resample_cubic_integer_only(a, db);
+	} else if (type & CCV_INTER_LINEAR) {
+		assert(0 && "CCV_INTER_LINEAR is not implemented");
+	} else if (type & CCV_INTER_LINEAR) {
+		assert(0 && "CCV_INTER_LANCZOS is not implemented");
 	}
 }
 
