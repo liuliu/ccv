@@ -862,6 +862,7 @@ typedef struct {
 	double ncc_same; // the same object
 	double ncc_thres; // highly correlated
 	double ncc_collect; // modest correlated, worth to collect as negative example
+	int bad_patches; // number of bad patches
 	/* top detections */
 	int top_n;
 } ccv_tld_param_t;
@@ -876,6 +877,8 @@ typedef struct {
 	int found; // if the last time found a valid box
 	int validity; // last tracking is valid
 	ccv_array_t* top; // top matches
+	double ferns_thres; // computed dynamically from negative examples
+	double ncc_thres; // computed dynamically from negative examples
 } ccv_tld_t;
 
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);

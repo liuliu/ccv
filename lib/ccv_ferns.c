@@ -6,15 +6,15 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 {
 	assert(structs > 0 && features > 0 && scales > 0);
 	int posteriors = (int)(powf(2.0, features) + 0.5);
-	ccv_ferns_t* ferns = (ccv_ferns_t*)ccmalloc(sizeof(ccv_ferns_t) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1) + sizeof(float) * structs * posteriors + sizeof(int) * structs * posteriors * 2);
+	ccv_ferns_t* ferns = (ccv_ferns_t*)ccmalloc(sizeof(ccv_ferns_t) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1) + sizeof(float) * structs * posteriors * 2 + sizeof(int) * structs * posteriors * 2);
 	ferns->structs = structs;
 	ferns->features = features;
 	ferns->scales = scales;
 	ferns->posteriors = posteriors;
 	ferns->posterior = (float*)((uint8_t*)(ferns + 1) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1));
 	// now only for 2 classes
-	ferns->cnum = (int*)(ferns->posterior + structs * posteriors);
-	memset(ferns->posterior, 0, sizeof(float) * structs * posteriors + sizeof(int) * structs * posteriors * 2);
+	ferns->cnum = (int*)(ferns->posterior + structs * posteriors * 2);
+	memset(ferns->posterior, 0, sizeof(float) * structs * posteriors * 2 + sizeof(int) * structs * posteriors * 2);
 	int i, j, k;
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, (uint32_t)ferns);
@@ -49,7 +49,7 @@ void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uin
 		uint32_t leaf = 0; \
 		for (j = 0; j < ferns->features; j++) \
 		{ \
-			if (_for_get(a_ptr + fern_feature[0].y * a->step, fern_feature[0].x, 0) > _for_get(a_ptr + fern_feature[0].y * a->step, fern_feature[0].x, 0)) \
+			if (_for_get(a_ptr + fern_feature[0].y * a->step, fern_feature[0].x, 0) > _for_get(a_ptr + fern_feature[1].y * a->step, fern_feature[1].x, 0)) \
 				leaf = (leaf << 1) | 1; \
 			else \
 				leaf = leaf << 1; \
@@ -73,27 +73,26 @@ void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat)
 	{
 		uint32_t k = fern[i];
 		cnum[k * 2 + c] += repeat;
-		if (cnum[k * 2] == 0)
-			post[k] = 0;
-		else
 			// needs to compute the log of it
-			post[k] = logf((float)cnum[k * 2] / (cnum[k * 2] + cnum[k * 2 + 1]));
+		post[k * 2] = (float)(cnum[k * 2] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2);
+		post[k * 2 + 1] = (float)(cnum[k * 2 + 1] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2);
 		cnum += ferns->posteriors * 2;
-		post += ferns->posteriors;
+		post += ferns->posteriors * 2;
 	}
 }
 
 float ccv_ferns_predict(ccv_ferns_t* ferns, uint32_t* fern)
 {
-	float votes = 0;
+	float votes[] = {0, 0};
 	int i;
 	float* post = ferns->posterior;
 	for (i = 0; i < ferns->structs; i++)
 	{
-		votes += post[fern[i]];
-		post += ferns->posteriors;
+		votes[0] += post[fern[i] * 2];
+		votes[1] += post[fern[i] * 2 + 1];
+		post += ferns->posteriors * 2;
 	}
-	return votes;
+	return votes[1];
 }
 
 void ccv_ferns_free(ccv_ferns_t* ferns)
