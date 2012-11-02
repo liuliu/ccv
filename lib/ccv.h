@@ -879,6 +879,7 @@ typedef struct {
 	ccv_array_t* top; // top matches
 	double ferns_thres; // computed dynamically from negative examples
 	double ncc_thres; // computed dynamically from negative examples
+	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);

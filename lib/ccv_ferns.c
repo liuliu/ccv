@@ -14,8 +14,11 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 	ferns->posterior = (float*)((uint8_t*)(ferns + 1) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1));
 	// now only for 2 classes
 	ferns->cnum = (int*)(ferns->posterior + structs * posteriors * 2);
-	memset(ferns->posterior, 0, sizeof(float) * structs * posteriors * 2 + sizeof(int) * structs * posteriors * 2);
+	memset(ferns->cnum, 0, sizeof(int) * structs * posteriors * 2);
 	int i, j, k;
+	float log5 = logf(0.5);
+	for (i = 0; i < structs * posteriors * 2; i++)
+		ferns->posterior[i] = log5; // initialize to 0.5
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, (uint32_t)ferns);
 	for (i = 0; i < structs; i++)
@@ -33,7 +36,7 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 			}
 		}
 	}
-	ferns->threshold = 0.5 * structs;
+	ferns->threshold = 0;
 	return ferns;
 }
 
@@ -73,9 +76,9 @@ void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat)
 	{
 		uint32_t k = fern[i];
 		cnum[k * 2 + c] += repeat;
-			// needs to compute the log of it
-		post[k * 2] = (float)(cnum[k * 2] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2);
-		post[k * 2 + 1] = (float)(cnum[k * 2 + 1] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2);
+		// needs to compute the log of it, otherwise, this is not a "real" fern implementation
+		post[k * 2] = logf((float)(cnum[k * 2] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2));
+		post[k * 2 + 1] = logf((float)(cnum[k * 2 + 1] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2));
 		cnum += ferns->posteriors * 2;
 		post += ferns->posteriors * 2;
 	}
@@ -92,7 +95,7 @@ float ccv_ferns_predict(ccv_ferns_t* ferns, uint32_t* fern)
 		votes[1] += post[fern[i] * 2 + 1];
 		post += ferns->posteriors * 2;
 	}
-	return votes[1];
+	return votes[1] - votes[0];
 }
 
 void ccv_ferns_free(ccv_ferns_t* ferns)
