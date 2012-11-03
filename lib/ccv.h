@@ -851,6 +851,9 @@ typedef struct {
 	int level;
 	double min_eigen;
 	double min_forward_backward_error;
+	/* image pyramid (different resolution) generation parameters */
+	int interval;
+	double shift;
 	/* samples generation parameters */
 	int min_win;
 	double include_overlap;
@@ -870,20 +873,29 @@ typedef struct {
 typedef struct {
 	ccv_tld_param_t params;
 	ccv_comp_t box; // tracking comp
-	ccv_rect_t input; // the user input rect
 	ccv_ferns_t* ferns; // ferns classifier
 	ccv_array_t* sv[2]; // example-based classifier
 	ccv_size_t patch; // resized to patch for example-based classifier
 	int found; // if the last time found a valid box
-	int validity; // last tracking is valid
 	ccv_array_t* top; // top matches
 	double ferns_thres; // computed dynamically from negative examples
 	double ncc_thres; // computed dynamically from negative examples
 	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
+typedef struct {
+	int perform_track;
+	int perform_learn;
+	int track_success;
+	int fern_detects;
+	int ncc_detects;
+	int clustered_detects;
+	int confident_matches;
+	int close_matches;
+} ccv_tld_info_t;
+
 ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
-ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b);
+ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info);
 void ccv_tld_free(ccv_tld_t* tld);
 
 /* modern machine learning algorithms */
