@@ -9,7 +9,7 @@
 #include <omp.h>
 #endif
 
-ccv_bbf_param_t ccv_bbf_default_params = {
+const ccv_bbf_param_t ccv_bbf_default_params = {
 	.interval = 5,
 	.min_neighbors = 2,
 	.accurate = 1,

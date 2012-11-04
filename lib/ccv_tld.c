@@ -2,6 +2,28 @@
 #include "ccv_internal.h"
 #include "3rdparty/sfmt/SFMT.h"
 
+const ccv_tld_param_t ccv_tld_default_params = {
+	.win_size = {
+		15,
+		15,
+	},
+	.level = 5,
+	.min_forward_backward_error = 100,
+	.min_eigen = 0.05,
+	.min_win = 20,
+	.interval = 3,
+	.shift = 0.1,
+	.top_n = 50,
+	.include_overlap = 0.7,
+	.exclude_overlap = 0.2,
+	.structs = 30,
+	.features = 13,
+	.ncc_same = 0.95,
+	.ncc_thres = 0.65,
+	.ncc_collect = 0.5,
+	.bad_patches = 100,
+};
+
 #define TLD_GRID_SPARSITY (10)
 #define TLD_PATCH_SIZE (10)
 
@@ -44,6 +66,8 @@ static float _ccv_tld_norm_cross_correlate(ccv_dense_matrix_t* r0, ccv_dense_mat
 		r0_ptr += r0->step;
 		r1_ptr += r1->step;
 	}
+	if (r0r0 * r1r1 < 1e-6)
+		return 0;
 	return r0r1 / sqrtf(r0r0 * r1r1);
 }
 
@@ -89,7 +113,9 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 		ccv_decimal_point_t* p0 = (ccv_decimal_point_t*)ccv_array_get(point_a, i);
 		ccv_decimal_point_with_status_t* p1 = (ccv_decimal_point_with_status_t*)ccv_array_get(point_b, i);
 		ccv_decimal_point_with_status_t* p2 = (ccv_decimal_point_with_status_t*)ccv_array_get(point_c, i);
-		if (p1->status && p2->status)
+		if (p1->status && p2->status &&
+			p1->point.x >= 0 && p1->point.x < a->cols && p1->point.y >= 0 && p1->point.y < a->rows &&
+			p2->point.x >= 0 && p2->point.x < a->cols && p2->point.y >= 0 && p2->point.y < a->rows)
 		{
 			fberr[k] = (p2->point.x - p0->x) * (p2->point.x - p0->x) + (p2->point.y - p0->y) * (p2->point.y - p0->y);
 			ccv_decimal_slice(a, &r0, 0, p0->y - (TLD_PATCH_SIZE - 1) * 0.5, p0->x - (TLD_PATCH_SIZE - 1) * 0.5, TLD_PATCH_SIZE, TLD_PATCH_SIZE);
@@ -116,6 +142,7 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 			wrt[k] = wrt[i];
 			++k;
 		}
+	size = k;
 	float fberrmd = _ccv_tld_median(fberr, 0, size - 1);
 	if (fberrmd >= params.min_forward_backward_error)
 	{
@@ -128,6 +155,7 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	for (i = 0, k = 0; i < size; i++)
 		if (fberr[i] <= fberrmd)
 			wrt[k++] = wrt[i];
+	size = k;
 	if (k == 0)
 	{
 		// early termination because we don't have qualified tracking points
@@ -457,8 +485,8 @@ static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_th
 ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
 {
 	_ccv_tld_check_params(params);
-	ccv_size_t patch = ccv_size((int)(sqrtf(PATCH_SIZE * PATCH_SIZE * (float)box.width / box.height) + 0.5),
-								(int)(sqrtf(PATCH_SIZE * PATCH_SIZE * (float)box.height / box.width) + 0.5));
+	ccv_size_t patch = ccv_size((int)(sqrtf(params.min_win * params.min_win * (float)box.width / box.height) + 0.5),
+								(int)(sqrtf(params.min_win * params.min_win * (float)box.height / box.width) + 0.5));
 	ccv_array_t* good = 0;
 	ccv_array_t* bad = 0;
 	ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(a->cols, a->rows), patch, box, 20, &good, &bad, params);

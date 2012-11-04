@@ -14,6 +14,8 @@ int main(int argc, char** argv)
 #ifdef HAVE_AVCODEC
 #ifdef HAVE_AVFORMAT
 #ifdef HAVE_SWSCALE
+	assert(argc == 6);
+	ccv_rect_t box = ccv_rect(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
 	// init av-related structs
 	AVFormatContext* ic = 0;
 	int video_stream = -1;
@@ -58,8 +60,29 @@ int main(int argc, char** argv)
 	struct SwsContext* picture_ctx = sws_getCachedContext(0, video_st->codec->width, video_st->codec->height, video_st->codec->pix_fmt, video_st->codec->width, video_st->codec->height, PIX_FMT_RGB24, SWS_BICUBIC, 0, 0, 0);
 	sws_scale(picture_ctx, (const uint8_t* const*)picture->data, picture->linesize, 0, video_st->codec->height, rgb_picture.data, rgb_picture.linesize);
 	ccv_dense_matrix_t* x = 0;
-	ccv_read(rgb_picture.data[0], &x, CCV_IO_RGB_RAW | CCV_IO_NO_COPY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
-	ccv_write(x, "output.png", 0, CCV_IO_PNG_FILE, 0);
+	ccv_read(rgb_picture.data[0], &x, CCV_IO_RGB_RAW | CCV_IO_GRAY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
+	ccv_tld_t* tld = ccv_tld_new(x, box, ccv_tld_default_params);
+	ccv_dense_matrix_t* y = 0;
+	for (;;)
+	{
+		got_picture = 0;
+		int result = av_read_frame(ic, &packet);
+		if (result == AVERROR(EAGAIN))
+			continue;
+		avcodec_decode_video2(video_st->codec, picture, &got_picture, &packet);
+		if (!got_picture)
+			break;
+		sws_scale(picture_ctx, (const uint8_t* const*)picture->data, picture->linesize, 0, video_st->codec->height, rgb_picture.data, rgb_picture.linesize);
+		ccv_read(rgb_picture.data[0], &y, CCV_IO_RGB_RAW | CCV_IO_GRAY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
+		ccv_tld_info_t info;
+		ccv_comp_t newbox = ccv_tld_track_object(tld, x, y, &info);
+		if (tld->found)
+			printf("%d %d %d %d %f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
+		else
+			printf("0\n");
+		x = y;
+		y = 0;
+	}
 	ccv_matrix_free(x);
 #endif
 #endif

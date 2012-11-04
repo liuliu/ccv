@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 
-ccv_swt_param_t ccv_swt_default_params = {
+const ccv_swt_param_t ccv_swt_default_params = {
 	.interval = 1,
 	.same_word_thresh = { 0.1, 0.8 },
 	.min_neighbors = 1,

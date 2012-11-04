@@ -13,7 +13,7 @@
 #include <linear.h>
 #endif
 
-ccv_dpm_param_t ccv_dpm_default_params = {
+const ccv_dpm_param_t ccv_dpm_default_params = {
 	.interval = 8,
 	.min_neighbors = 1,
 	.flags = 0,
