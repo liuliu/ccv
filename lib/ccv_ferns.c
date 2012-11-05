@@ -42,7 +42,7 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 
 void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uint32_t* fern)
 {
-	ccv_point_t* fern_feature = ferns->fern + scale * ferns->structs * ferns->features;
+	ccv_point_t* fern_feature = ferns->fern + scale * ferns->structs * ferns->features * 2;
 	int i, j;
 	unsigned char* a_ptr = a->data.u8;
 	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);

@@ -10,7 +10,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.level = 5,
 	.min_forward_backward_error = 100,
 	.min_eigen = 0.05,
-	.min_win = 20,
+	.min_win = 15,
 	.interval = 3,
 	.shift = 0.1,
 	.top_n = 50,
@@ -18,9 +18,9 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.exclude_overlap = 0.2,
 	.structs = 30,
 	.features = 13,
-	.ncc_same = 0.95,
-	.ncc_thres = 0.65,
-	.ncc_collect = 0.5,
+	.nnc_same = 0.95,
+	.nnc_thres = 0.65,
+	.nnc_collect = 0.5,
 	.bad_patches = 100,
 };
 
@@ -218,7 +218,7 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 	return (float)intersect / (r1.width * r1.height + r2.width * r2.height - intersect);
 }
 
-#define for_each_size(new_width, new_height, box_width, box_height, interval, min_win, image_width, image_height) \
+#define for_each_size(new_width, new_height, box_width, box_height, interval, image_width, image_height) \
 	{ \
 		double INTERNAL_CATCH_UNIQUE_NAME(scale) = pow(2.0, 1.0 / (interval + 1.0)); \
 		int INTERNAL_CATCH_UNIQUE_NAME(scale_upto) = (int)(log((double)ccv_min((double)image_width / box_width, (double)image_height / box_height)) / log(INTERNAL_CATCH_UNIQUE_NAME(scale))); \
@@ -228,18 +228,16 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 		{ \
 			int new_width = (int)(box_width * INTERNAL_CATCH_UNIQUE_NAME(ss) + 0.5); \
 			int new_height = (int)(box_height * INTERNAL_CATCH_UNIQUE_NAME(ss) + 0.5); \
-			int INTERNAL_CATCH_UNIQUE_NAME(min_side) = ccv_min(new_width, new_height); \
 			INTERNAL_CATCH_UNIQUE_NAME(ss) *= INTERNAL_CATCH_UNIQUE_NAME(scale); \
-			if (INTERNAL_CATCH_UNIQUE_NAME(min_side) < min_win || new_width > image_width || new_height > image_height) \
-				continue;
+			if (new_width > image_width || new_height > image_height) \
+				break;
 #define end_for_each_size } }
 
-#define for_each_box(new_comp, box_width, box_height, interval, shift, min_win, image_width, image_height) \
+#define for_each_box(new_comp, box_width, box_height, interval, shift, image_width, image_height) \
 	{ \
-		int INTERNAL_CATCH_UNIQUE_NAME(is) = 0; \
-		for_each_size(INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height), box_width, box_height, interval, min_win, image_width, image_height) \
-			++INTERNAL_CATCH_UNIQUE_NAME(is); \
+		for_each_size(INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height), box_width, box_height, interval, image_width, image_height) \
 			float INTERNAL_CATCH_UNIQUE_NAME(x), INTERNAL_CATCH_UNIQUE_NAME(y); \
+			int INTERNAL_CATCH_UNIQUE_NAME(min_side) = ccv_min(INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height)); \
 			int INTERNAL_CATCH_UNIQUE_NAME(piy) = -1; \
 			for (INTERNAL_CATCH_UNIQUE_NAME(y) = 0; \
 				 INTERNAL_CATCH_UNIQUE_NAME(y) < image_height - INTERNAL_CATCH_UNIQUE_NAME(height); \
@@ -260,7 +258,7 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 					INTERNAL_CATCH_UNIQUE_NAME(pix) = INTERNAL_CATCH_UNIQUE_NAME(ix); \
 					ccv_comp_t new_comp; \
 					new_comp.rect = ccv_rect(INTERNAL_CATCH_UNIQUE_NAME(ix), INTERNAL_CATCH_UNIQUE_NAME(iy), INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height)); \
-					new_comp.id = INTERNAL_CATCH_UNIQUE_NAME(is) - 1;
+					new_comp.id = INTERNAL_CATCH_UNIQUE_NAME(s);
 #define end_for_each_box } } end_for_each_size }
 
 static void _ccv_tld_box_percolate_down(ccv_array_t* good, int i)
@@ -343,7 +341,7 @@ static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_size_t in
 		.rect = ccv_rect(0, 0, 0, 0),
 	};
 	int i = 0;
-	for_each_box(comp, input_size.width, input_size.height, params.interval, params.shift, params.min_win, image_size.width, image_size.height)
+	for_each_box(comp, input_size.width, input_size.height, params.interval, params.shift, image_size.width, image_size.height)
 		double overlap = _ccv_tld_rect_intersect(comp.rect, box);
 		comp.neighbors = i++;
 		comp.confidence = overlap;
@@ -382,12 +380,12 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 
 static void _ccv_tld_fetch_patch(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_rect_t box)
 {
-	ccv_dense_matrix_t* c = 0;
 	if (box.width == tld->patch.width && box.height == tld->patch.height)
 		ccv_slice(a, (ccv_matrix_t**)b, type, box.y, box.x, box.height, box.width);
 	else {
 		assert((box.width >= tld->patch.width && box.height >= tld->patch.height) ||
 			   (box.width <= tld->patch.width && box.height <= tld->patch.height));
+		ccv_dense_matrix_t* c = 0;
 		ccv_slice(a, (ccv_matrix_t**)&c, type, box.y, box.x, box.height, box.width);
 		ccv_resample(c, b, type, tld->patch.height, tld->patch.width, CCV_INTER_AREA | CCV_INTER_CUBIC);
 		ccv_matrix_free(c);
@@ -408,24 +406,24 @@ static float _ccv_tld_sv_classify(ccv_tld_t* tld, ccv_dense_matrix_t* a, int pnu
 	for (i = 0; i < pnum; i++)
 	{
 		ccv_dense_matrix_t* b = *(ccv_dense_matrix_t**)ccv_array_get(tld->sv[1], i);
-		float ncc = _ccv_tld_norm_cross_correlate(a, b);
-		if (ncc > maxp)
-			maxp = ncc;
+		float nnc = _ccv_tld_norm_cross_correlate(a, b);
+		if (nnc > maxp)
+			maxp = nnc;
 	}
 	maxp = (maxp + 1) * 0.5; // make it in 0~1 range
 	if (anyp)
-		*anyp = (maxp > tld->params.ncc_same);
+		*anyp = (maxp > tld->params.nnc_same);
 	float maxn = -1;
 	for (i = 0; i < nnum; i++)
 	{
 		ccv_dense_matrix_t* b = *(ccv_dense_matrix_t**)ccv_array_get(tld->sv[0], i);
-		float ncc = _ccv_tld_norm_cross_correlate(a, b);
-		if (ncc > maxn)
-			maxn = ncc;
+		float nnc = _ccv_tld_norm_cross_correlate(a, b);
+		if (nnc > maxn)
+			maxn = nnc;
 	}
 	maxn = (maxn + 1) * 0.5; // make it in 0~1 range
 	if (anyn)
-		*anyn = (maxn > tld->params.ncc_same);
+		*anyn = (maxn > tld->params.nnc_same);
 	return (1 - maxn) / (2 - maxn - maxp);
 }
 
@@ -439,18 +437,16 @@ static int _ccv_tld_sv_correct(ccv_tld_t* tld, ccv_dense_matrix_t* a, int y)
 		return 0;
 	}
 	float conf = _ccv_tld_sv_classify(tld, a, 0, 0, &anyp, &anyn);
-	if (y == 1 && conf < tld->params.ncc_thres)
+	if (y == 1 && conf < tld->params.nnc_thres)
 	{
 		ccv_array_push(tld->sv[1], &a);
 		return 0;
-	} else if (y == 0 && conf > tld->params.ncc_collect) {
+	} else if (y == 0 && conf > tld->params.nnc_collect) {
 		ccv_array_push(tld->sv[0], &a);
 		return 0;
 	}
 	return -1;
 }
-
-#define PATCH_SIZE (20)
 
 static void _ccv_tld_check_params(ccv_tld_param_t params)
 {
@@ -493,14 +489,14 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t) + sizeof(uint32_t) * params.structs * best_box.neighbors);
 	tld->patch = patch;
 	tld->params = params;
-	tld->ncc_thres = params.ncc_thres;
+	tld->nnc_thres = params.nnc_thres;
 	tld->box.rect = box;
 	{
 	double scale = pow(2.0, 1.0 / (params.interval + 1.0));
 	int scale_upto = (int)(log((double)ccv_min((double)a->cols / patch.width, (double)a->rows / patch.height)) / log(scale));
 	ccv_size_t* scales = (ccv_size_t*)alloca(sizeof(ccv_size_t) * scale_upto);
 	int is = 0;
-	for_each_size(width, height, patch.width, patch.height, params.interval, params.min_win, a->cols, a->rows)
+	for_each_size(width, height, patch.width, patch.height, params.interval, a->cols, a->rows)
 		scales[is] = ccv_size(width, height);
 		++is;
 	end_for_each_size;
@@ -594,7 +590,8 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 	_ccv_tld_fetch_patch(tld, a, &b, 0, dd.rect);
 	int anyp, anyn;
 	float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
-	if (c > tld->ncc_thres && !anyn)
+	ccv_matrix_free(b);
+	if (c > tld->nnc_thres && !anyn)
 	{
 		ccv_array_t* good = 0;
 		ccv_array_t* bad = 0;
@@ -663,7 +660,6 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 		}
 		ccv_array_free(bad);
 	}
-	ccv_matrix_free(b);
 }
 
 static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_tld_info_t* info)
@@ -673,7 +669,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 	uint32_t* fern = tld->fern_buffer;
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
-	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, tld->params.min_win, a->cols, a->rows)
+	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, a->cols, a->rows)
 		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern);
 		box.confidence = ccv_ferns_predict(tld->ferns, fern);
 		if (box.confidence > tld->ferns_thres)
@@ -702,7 +698,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 		_ccv_tld_fetch_patch(tld, a, &b, 0, box->rect);
 		float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
 		ccv_matrix_free(b);
-		if (c > tld->ncc_thres)
+		if (c > tld->nnc_thres)
 		{
 			box->confidence = c;
 			ccv_array_push(seq, box);
@@ -738,7 +734,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			_ccv_tld_fetch_patch(tld, b, &c, 0, result.rect);
 			result.confidence = _ccv_tld_sv_classify(tld, c, 0, 0, &anyp, &anyn);
 			ccv_matrix_free(c);
-			if (result.confidence > tld->ncc_thres)
+			if (result.confidence > tld->nnc_thres)
 				verified = 1;
 		}
 	}
@@ -746,7 +742,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 		info->track_success = tracked;
 	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, b, info);
 	if (info)
-		info->ncc_detects = dd->rnum;
+		info->nnc_detects = dd->rnum;
 	int i;
 	// cluster detected result
 	if (dd->rnum > 1)

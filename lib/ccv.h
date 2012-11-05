@@ -862,9 +862,9 @@ typedef struct {
 	int structs;
 	int features;
 	/* nearest neighbor thresholds */
-	double ncc_same; // the same object
-	double ncc_thres; // highly correlated
-	double ncc_collect; // modest correlated, worth to collect as negative example
+	double nnc_same; // the same object
+	double nnc_thres; // highly correlated
+	double nnc_collect; // modest correlated, worth to collect as negative example
 	int bad_patches; // number of bad patches
 	/* top detections */
 	int top_n;
@@ -881,7 +881,7 @@ typedef struct {
 	int found; // if the last time found a valid box
 	ccv_array_t* top; // top matches
 	double ferns_thres; // computed dynamically from negative examples
-	double ncc_thres; // computed dynamically from negative examples
+	double nnc_thres; // computed dynamically from negative examples
 	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
@@ -890,7 +890,7 @@ typedef struct {
 	int perform_learn;
 	int track_success;
 	int fern_detects;
-	int ncc_detects;
+	int nnc_detects;
 	int clustered_detects;
 	int confident_matches;
 	int close_matches;
