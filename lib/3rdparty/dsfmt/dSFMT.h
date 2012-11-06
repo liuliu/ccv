@@ -131,7 +131,7 @@ typedef unsigned __int64 uint64_t;
 #    include <altivec.h>
 #  endif
 /** 128-bit data structure */
-union W128_T {
+union dW128_T {
     vector unsigned int s;
     uint64_t u[2];
     uint32_t u32[4];
@@ -142,7 +142,7 @@ union W128_T {
 #  include <emmintrin.h>
 
 /** 128-bit data structure */
-union W128_T {
+union dW128_T {
     __m128i si;
     __m128d sd;
     uint64_t u[2];
@@ -151,7 +151,7 @@ union W128_T {
 };
 #else  /* standard C */
 /** 128-bit data structure */
-union W128_T {
+union dW128_T {
     uint64_t u[2];
     uint32_t u32[4];
     double d[2];
@@ -159,11 +159,11 @@ union W128_T {
 #endif
 
 /** 128-bit data type */
-typedef union W128_T w128_t;
+typedef union dW128_T dw128_t;
 
 /** the 128-bit internal state array */
 struct DSFMT_T {
-    w128_t status[DSFMT_N + 1];
+    dw128_t status[DSFMT_N + 1];
     int idx;
 };
 typedef struct DSFMT_T dsfmt_t;

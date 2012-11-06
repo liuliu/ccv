@@ -31,13 +31,13 @@ static const int dsfmt_mexp = DSFMT_MEXP;
   ----------------*/
 inline static uint32_t ini_func1(uint32_t x);
 inline static uint32_t ini_func2(uint32_t x);
-inline static void gen_rand_array_c1o2(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_c1o2(dsfmt_t *dsfmt, dw128_t *array,
 				       int size);
-inline static void gen_rand_array_c0o1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_c0o1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size);
-inline static void gen_rand_array_o0c1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_o0c1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size);
-inline static void gen_rand_array_o0o1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_o0o1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size);
 inline static int idxof(int i);
 static void initial_mask(dsfmt_t *dsfmt);
@@ -73,7 +73,7 @@ inline static int idxof(int i) {
  * in the range [0, 1).
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_c0o1(w128_t *w) {
+inline static void convert_c0o1(dw128_t *w) {
     w->sd = _mm_add_pd(w->sd, sse2_double_m_one.d128);
 }
 
@@ -83,7 +83,7 @@ inline static void convert_c0o1(w128_t *w) {
  * in the range (0, 1].
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_o0c1(w128_t *w) {
+inline static void convert_o0c1(dw128_t *w) {
     w->sd = _mm_sub_pd(sse2_double_two.d128, w->sd);
 }
 
@@ -93,7 +93,7 @@ inline static void convert_o0c1(w128_t *w) {
  * in the range (0, 1).
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_o0o1(w128_t *w) {
+inline static void convert_o0o1(dw128_t *w) {
     w->si = _mm_or_si128(w->si, sse2_int_one.i128);
     w->sd = _mm_add_pd(w->sd, sse2_double_m_one.d128);
 }
@@ -104,7 +104,7 @@ inline static void convert_o0o1(w128_t *w) {
  * in the range [0, 1).
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_c0o1(w128_t *w) {
+inline static void convert_c0o1(dw128_t *w) {
     w->d[0] -= 1.0;
     w->d[1] -= 1.0;
 }
@@ -115,7 +115,7 @@ inline static void convert_c0o1(w128_t *w) {
  * in the range (0, 1].
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_o0c1(w128_t *w) {
+inline static void convert_o0c1(dw128_t *w) {
     w->d[0] = 2.0 - w->d[0];
     w->d[1] = 2.0 - w->d[1];
 }
@@ -126,7 +126,7 @@ inline static void convert_o0c1(w128_t *w) {
  * in the range (0, 1).
  * @param w 128bit stracture of double precision floating point numbers (I/O)
  */
-inline static void convert_o0o1(w128_t *w) {
+inline static void convert_o0o1(dw128_t *w) {
     w->u[0] |= 1;
     w->u[1] |= 1;
     w->d[0] -= 1.0;
@@ -141,10 +141,10 @@ inline static void convert_o0o1(w128_t *w) {
  * @param array an 128-bit array to be filled by pseudorandom numbers.
  * @param size number of 128-bit pseudorandom numbers to be generated.
  */
-inline static void gen_rand_array_c1o2(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_c1o2(dsfmt_t *dsfmt, dw128_t *array,
 				       int size) {
     int i, j;
-    w128_t lung;
+    dw128_t lung;
 
     lung = dsfmt->status[DSFMT_N];
     do_recursion(&array[0], &dsfmt->status[0], &dsfmt->status[DSFMT_POS1],
@@ -179,10 +179,10 @@ inline static void gen_rand_array_c1o2(dsfmt_t *dsfmt, w128_t *array,
  * @param array an 128-bit array to be filled by pseudorandom numbers.
  * @param size number of 128-bit pseudorandom numbers to be generated.
  */
-inline static void gen_rand_array_c0o1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_c0o1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size) {
     int i, j;
-    w128_t lung;
+    dw128_t lung;
 
     lung = dsfmt->status[DSFMT_N];
     do_recursion(&array[0], &dsfmt->status[0], &dsfmt->status[DSFMT_POS1],
@@ -222,10 +222,10 @@ inline static void gen_rand_array_c0o1(dsfmt_t *dsfmt, w128_t *array,
  * @param array an 128-bit array to be filled by pseudorandom numbers.
  * @param size number of 128-bit pseudorandom numbers to be generated.
  */
-inline static void gen_rand_array_o0o1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_o0o1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size) {
     int i, j;
-    w128_t lung;
+    dw128_t lung;
 
     lung = dsfmt->status[DSFMT_N];
     do_recursion(&array[0], &dsfmt->status[0], &dsfmt->status[DSFMT_POS1],
@@ -265,10 +265,10 @@ inline static void gen_rand_array_o0o1(dsfmt_t *dsfmt, w128_t *array,
  * @param array an 128-bit array to be filled by pseudorandom numbers.
  * @param size number of 128-bit pseudorandom numbers to be generated.
  */
-inline static void gen_rand_array_o0c1(dsfmt_t *dsfmt, w128_t *array,
+inline static void gen_rand_array_o0c1(dsfmt_t *dsfmt, dw128_t *array,
 				       int size) {
     int i, j;
-    w128_t lung;
+    dw128_t lung;
 
     lung = dsfmt->status[DSFMT_N];
     do_recursion(&array[0], &dsfmt->status[0], &dsfmt->status[DSFMT_POS1],
@@ -409,7 +409,7 @@ int dsfmt_get_min_array_size(void) {
  */
 void dsfmt_gen_rand_all(dsfmt_t *dsfmt) {
     int i;
-    w128_t lung;
+    dw128_t lung;
 
     lung = dsfmt->status[DSFMT_N];
     do_recursion(&dsfmt->status[0], &dsfmt->status[0],
@@ -456,7 +456,7 @@ void dsfmt_gen_rand_all(dsfmt_t *dsfmt) {
 void dsfmt_fill_array_close1_open2(dsfmt_t *dsfmt, double array[], int size) {
     assert(size % 2 == 0);
     assert(size >= DSFMT_N64);
-    gen_rand_array_c1o2(dsfmt, (w128_t *)array, size / 2);
+    gen_rand_array_c1o2(dsfmt, (dw128_t *)array, size / 2);
 }
 
 /**
@@ -474,7 +474,7 @@ void dsfmt_fill_array_close1_open2(dsfmt_t *dsfmt, double array[], int size) {
 void dsfmt_fill_array_open_close(dsfmt_t *dsfmt, double array[], int size) {
     assert(size % 2 == 0);
     assert(size >= DSFMT_N64);
-    gen_rand_array_o0c1(dsfmt, (w128_t *)array, size / 2);
+    gen_rand_array_o0c1(dsfmt, (dw128_t *)array, size / 2);
 }
 
 /**
@@ -492,7 +492,7 @@ void dsfmt_fill_array_open_close(dsfmt_t *dsfmt, double array[], int size) {
 void dsfmt_fill_array_close_open(dsfmt_t *dsfmt, double array[], int size) {
     assert(size % 2 == 0);
     assert(size >= DSFMT_N64);
-    gen_rand_array_c0o1(dsfmt, (w128_t *)array, size / 2);
+    gen_rand_array_c0o1(dsfmt, (dw128_t *)array, size / 2);
 }
 
 /**
@@ -510,7 +510,7 @@ void dsfmt_fill_array_close_open(dsfmt_t *dsfmt, double array[], int size) {
 void dsfmt_fill_array_open_open(dsfmt_t *dsfmt, double array[], int size) {
     assert(size % 2 == 0);
     assert(size >= DSFMT_N64);
-    gen_rand_array_o0o1(dsfmt, (w128_t *)array, size / 2);
+    gen_rand_array_o0o1(dsfmt, (dw128_t *)array, size / 2);
 }
 
 #if defined(__INTEL_COMPILER)

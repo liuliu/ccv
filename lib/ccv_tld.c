@@ -1,6 +1,7 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 #include "3rdparty/sfmt/SFMT.h"
+#include "3rdparty/dsfmt/dSFMT.h"
 
 const ccv_tld_param_t ccv_tld_default_params = {
 	.win_size = {
@@ -371,11 +372,64 @@ static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_size_t in
 	return best_box;
 }
 
-static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern)
+static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern, dsfmt_t* dsfmt)
 {
-	ccv_dense_matrix_t roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, box.rect.y, box.rect.x, 0), 0);
-	roi.step = a->step;
-	ccv_ferns_feature(ferns, &roi, box.id, fern);
+	assert(box.rect.x >= 0 && box.rect.x < a->cols);
+	assert(box.rect.y >= 0 && box.rect.y < a->rows);
+	assert(box.rect.x + box.rect.width <= a->cols);
+	assert(box.rect.y + box.rect.height <= a->rows);
+	if (!dsfmt)
+	{
+		ccv_dense_matrix_t roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, box.rect.y, box.rect.x, 0), 0);
+		roi.step = a->step;
+		ccv_ferns_feature(ferns, &roi, box.id, fern);
+	} else {
+		float rotate_x = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
+		float rotate_y = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
+		float rotate_z = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
+		float scale = 1.02 - 0.04 * dsfmt_genrand_close_open(dsfmt);
+		float m00 = cosf(rotate_z) * scale;
+		float m01 = cosf(rotate_y) * sinf(rotate_z);
+		float m02 = (0.04 * dsfmt_genrand_close_open(dsfmt) - 0.02) * box.rect.width;
+		float m10 = sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z);
+		float m11 = (sinf(rotate_y) * sinf(rotate_z) + cosf(rotate_x) * cosf(rotate_z)) * scale;
+		float m12 = (0.04 * dsfmt_genrand_close_open(dsfmt) - 0.02) * box.rect.height;
+		float m20 = sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z);
+		float m21 = sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z);
+		float m22 = cosf(rotate_x) * cosf(rotate_y);
+		ccv_decimal_point_t p00 = ccv_perspective_transform_apply(ccv_decimal_point(0, 0), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);
+		ccv_decimal_point_t p01 = ccv_perspective_transform_apply(ccv_decimal_point(box.rect.width, 0), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);
+		ccv_decimal_point_t p10 = ccv_perspective_transform_apply(ccv_decimal_point(0, box.rect.height), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);
+		ccv_decimal_point_t p11 = ccv_perspective_transform_apply(ccv_decimal_point(box.rect.width, box.rect.height), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);
+		int padding_top = (int)(ccv_max(0, -ccv_min(p00.y, p01.y)) + 0.5) + 5;
+		padding_top = box.rect.y - ccv_max(box.rect.y - padding_top, 0);
+		int padding_right = (int)(ccv_max(0, ccv_max(p01.x, p11.x) - box.rect.width) + 0.5) + 5;
+		padding_right = ccv_min(box.rect.x + box.rect.width + padding_right, a->cols) - (box.rect.x + box.rect.width);
+		int padding_bottom = (int)(ccv_max(0, ccv_max(p10.y, p11.y) - box.rect.height) + 0.5) + 5;
+		padding_bottom = ccv_min(box.rect.y + box.rect.height + padding_bottom, a->rows) - (box.rect.y + box.rect.height);
+		int padding_left = (int)(ccv_max(0, -ccv_min(p00.x, p10.x)) + 0.5) + 5;
+		padding_left = box.rect.x - ccv_max(box.rect.x - padding_left, 0);
+		ccv_rect_t hull = ccv_rect(box.rect.x - padding_left, box.rect.y - padding_top,
+								   box.rect.width + padding_left + padding_right,
+								   box.rect.height + padding_top + padding_bottom);
+		assert(hull.x >= 0 && hull.x < a->cols);
+		assert(hull.y >= 0 && hull.y < a->rows);
+		assert(hull.x + hull.width <= a->cols);
+		assert(hull.y + hull.height <= a->rows);
+		ccv_dense_matrix_t roi = ccv_dense_matrix(hull.height, hull.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, hull.y, hull.x, 0), 0);
+		roi.step = a->step;
+		ccv_dense_matrix_t* b = 0;
+		ccv_perspective_transform(&roi, &b, 0, m00, m01, m02, m10, m11, m12, m20, m21, m22);
+		/* add noise
+		int i;
+		for (i = 0; i < b->rows * b->step; i++)
+			b->data.u8[i] = ccv_clamp(b->data.u8[i] + (dsfmt_genrand_uint32(dsfmt) % 10 - 5), 0, 255);
+		*/
+		roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(b->type) | CCV_GET_CHANNEL(b->type), ccv_get_dense_matrix_cell(b, padding_top, padding_left, 0), 0);
+		roi.step = b->step;
+		ccv_ferns_feature(ferns, &roi, box.id, fern);
+		ccv_matrix_free(b);
+	}
 }
 
 static void _ccv_tld_fetch_patch(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_rect_t box)
@@ -470,7 +524,7 @@ static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_th
 	for (i = 0; i < bad->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
-		_ccv_tld_ferns_feature_for(ferns, ga, *box, fern);
+		_ccv_tld_ferns_feature_for(ferns, ga, *box, fern, 0);
 		float c = ccv_ferns_predict(ferns, fern);
 		if (c > ferns_thres)
 			ferns_thres = c;
@@ -514,27 +568,25 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 		idx[i] = i;
 	sfmt_genrand_shuffle(&sfmt, idx, badex + good->rnum, sizeof(int));
 	// train the fern classifier
-	uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + good->rnum));
+	uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + 1));
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
-	uint32_t* pfern = fern;
+	uint32_t* pfern = fern + tld->ferns->structs;
 	for (j = 0; j < badex + good->rnum; j++)
 	{
 		k = idx[j];
 		if (k < badex)
 		{
 			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
-			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern);
-		} else {
-			k -= badex;
-			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k);
-			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern);
+			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0);
+			pfern += tld->ferns->structs;
 		}
-		pfern += tld->ferns->structs;
 	}
-	for (i = 0; i < 10; i++)
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
+	for (i = 0; i < 20; i++)
 	{
-		pfern = fern;
+		pfern = fern + tld->ferns->structs;
 		for (j = 0; j < badex + good->rnum; j++)
 		{
 			k = idx[j];
@@ -543,13 +595,14 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 				// fix the thresholding for negative
 				if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
 					ccv_ferns_correct(tld->ferns, pfern, 0, 2);
+				pfern += tld->ferns->structs;
 			} else {
-				k -= badex;
+				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k - badex);
+				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt);
 				// fix the thresholding for positive
-				if (ccv_ferns_predict(tld->ferns, pfern) <= tld->ferns->threshold)
-					ccv_ferns_correct(tld->ferns, pfern, 1, 2);
+				if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns->threshold)
+					ccv_ferns_correct(tld->ferns, fern, 1, 2);
 			}
-			pfern += tld->ferns->structs;
 		}
 	}
 	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, bad);
@@ -604,8 +657,8 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 		for (i = 0; i < bad->rnum + good->rnum; i++)
 			idx[i] = i;
 		sfmt_genrand_shuffle(&sfmt, idx, bad->rnum + good->rnum, sizeof(int));
-		uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (bad->rnum + good->rnum));
-		uint32_t* pfern =fern;
+		uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (bad->rnum + 1));
+		uint32_t* pfern =fern + tld->ferns->structs;
 		for (j = 0; j < bad->rnum + good->rnum; j++)
 		{
 			k = idx[j];
@@ -615,17 +668,17 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 				ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
 				assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
 				memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
-			} else {
-				ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
-				assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
-				memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
+				pfern += tld->ferns->structs;
 			}
-			pfern += tld->ferns->structs;
 		}
+		ccv_dense_matrix_t* ga = 0;
+		ccv_blur(a, &ga, 0, 1.5);
+		dsfmt_t dsfmt;
+		dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
 		// train the fern classifier
 		for (i = 0; i < 10; i++)
 		{
-			pfern = fern;
+			pfern = fern + tld->ferns->structs;
 			for (j = 0; j < bad->rnum + good->rnum; j++)
 			{
 				k = idx[j];
@@ -634,20 +687,20 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 					// fix the thresholding for negative
 					if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns_thres)
 						ccv_ferns_correct(tld->ferns, pfern, 0, 1);
+					pfern += tld->ferns->structs;
 				} else {
+					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
+					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt);
 					// fix the thresholding for positive
-					if (ccv_ferns_predict(tld->ferns, pfern) <= tld->ferns_thres)
-						ccv_ferns_correct(tld->ferns, pfern, 1, 1);
+					if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns_thres)
+						ccv_ferns_correct(tld->ferns, fern, 1, 1);
 				}
-				pfern += tld->ferns->structs;
 			}
 		}
 		ccfree(fern);
 		ccv_array_free(bad);
 		ccv_array_free(good);
 		ccfree(idx);
-		ccv_dense_matrix_t* ga = 0;
-		ccv_blur(a, &ga, 0, 1.5);
 		// train the nearest-neighbor classifier
 		ccv_dense_matrix_t* b = 0;
 		_ccv_tld_fetch_patch(tld, ga, &b, 0, best_box.rect);
@@ -676,7 +729,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
 	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, a->cols, a->rows)
-		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern);
+		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0);
 		box.confidence = ccv_ferns_predict(tld->ferns, fern);
 		if (box.confidence > tld->ferns_thres)
 		{
