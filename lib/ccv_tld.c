@@ -13,7 +13,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.min_win = 15,
 	.interval = 3,
 	.shift = 0.1,
-	.top_n = 50,
+	.top_n = 100,
 	.include_overlap = 0.7,
 	.exclude_overlap = 0.2,
 	.structs = 30,
@@ -553,22 +553,22 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 		}
 	}
 	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, bad);
-	ccv_matrix_free(ga);
 	ccfree(fern);
 	ccv_array_free(good);
 	ccfree(idx);
 	// train the nearest-neighbor classifier
 	ccv_dense_matrix_t* b = 0;
-	_ccv_tld_fetch_patch(tld, a, &b, 0, best_box.rect);
+	_ccv_tld_fetch_patch(tld, ga, &b, 0, best_box.rect);
 	ccv_array_push(tld->sv[1], &b);
 	for (i = 0; i < ccv_min(tld->params.bad_patches, bad->rnum); i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
 		ccv_dense_matrix_t* b = 0;
-		_ccv_tld_fetch_patch(tld, a, &b, 0, box->rect);
+		_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
 		if (_ccv_tld_sv_correct(tld, b, 0) != 0)
 			ccv_matrix_free(b);
 	}
+	ccv_matrix_free(ga);
 	ccv_array_free(bad);
 	// init tld params
 	tld->found = 1; // assume last time has found (we just started)
@@ -591,7 +591,7 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 	int anyp, anyn;
 	float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
 	ccv_matrix_free(b);
-	if (c > tld->nnc_thres && !anyn)
+	if (c > tld->params.nnc_collect && !anyn)
 	{
 		ccv_array_t* good = 0;
 		ccv_array_t* bad = 0;
@@ -643,22 +643,28 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 			}
 		}
 		ccfree(fern);
+		ccv_array_free(bad);
 		ccv_array_free(good);
 		ccfree(idx);
+		ccv_dense_matrix_t* ga = 0;
+		ccv_blur(a, &ga, 0, 1.5);
 		// train the nearest-neighbor classifier
 		ccv_dense_matrix_t* b = 0;
-		_ccv_tld_fetch_patch(tld, a, &b, 0, best_box.rect);
+		_ccv_tld_fetch_patch(tld, ga, &b, 0, best_box.rect);
 		if (_ccv_tld_sv_correct(tld, b, 1) != 0)
 			ccv_matrix_free(b);
-		for (i = 0; i < ccv_min(tld->params.bad_patches, bad->rnum); i++)
+		for (i = 0; i < tld->top->rnum; i++)
 		{
-			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
-			ccv_dense_matrix_t* b = 0;
-			_ccv_tld_fetch_patch(tld, a, &b, 0, box->rect);
-			if (_ccv_tld_sv_correct(tld, b, 0) != 0)
-				ccv_matrix_free(b);
+			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(tld->top, i);
+			if (_ccv_tld_rect_intersect(box->rect, best_box.rect) < tld->params.exclude_overlap)
+			{
+				ccv_dense_matrix_t* b = 0;
+				_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
+				if (_ccv_tld_sv_correct(tld, b, 0) != 0)
+					ccv_matrix_free(b);
+			}
 		}
-		ccv_array_free(bad);
+		ccv_matrix_free(ga);
 	}
 }
 
@@ -674,21 +680,22 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 		box.confidence = ccv_ferns_predict(tld->ferns, fern);
 		if (box.confidence > tld->ferns_thres)
 		{
-			ccv_comp_t* top_box = (ccv_comp_t*)ccv_array_get(tld->top, 0);
 			if (tld->top->rnum < tld->params.top_n)
 			{
 				ccv_array_push(tld->top, &box);
 				_ccv_tld_box_percolate_up(tld->top, tld->top->rnum - 1);
-			} else if (top_box->confidence < box.confidence) {
-				*(ccv_comp_t*)ccv_array_get(tld->top, 0) = box;
-				_ccv_tld_box_percolate_down(tld->top, 0);
+			} else {
+				ccv_comp_t* top_box = (ccv_comp_t*)ccv_array_get(tld->top, 0);
+				if (top_box->confidence < box.confidence)
+				{
+					*(ccv_comp_t*)ccv_array_get(tld->top, 0) = box;
+					_ccv_tld_box_percolate_down(tld->top, 0);
+				}
 			}
 		}
 		fern += tld->ferns->structs;
 	end_for_each_box;
 	ccv_matrix_free(ga);
-	if (info)
-		info->fern_detects = tld->top->rnum;
 	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), tld->top->rnum, 0);
 	for (i = 0; i < tld->top->rnum; i++)
 	{
@@ -742,7 +749,10 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 		info->track_success = tracked;
 	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, b, info);
 	if (info)
+	{
+		info->fern_detects = tld->top->rnum;
 		info->nnc_detects = dd->rnum;
+	}
 	int i;
 	// cluster detected result
 	if (dd->rnum > 1)

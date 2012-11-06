@@ -124,15 +124,4 @@ TEST_CASE("otsu threshold")
 	ccv_matrix_free(image);
 }
 
-TEST_CASE("matrix decimal slice")
-{
-	ccv_dense_matrix_t* image = 0;
-	ccv_read("../../samples/chessbox.png", &image, CCV_IO_ANY_FILE);
-	ccv_dense_matrix_t* b = 0;
-	ccv_decimal_slice(image, &b, 0, 33.5, 41.5, 111, 91);
-	REQUIRE_MATRIX_FILE_EQ(b, "data/chessbox.decimal.slice.bin", "should have data/chessbox.png sliced at (33.5, 41.5) with 111 x 91");
-	ccv_matrix_free(image);
-	ccv_matrix_free(b);
-}
-
 #include "case_main.h"
