@@ -14,7 +14,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.min_win = 20,
 	.interval = 3,
 	.shift = 0.1,
-	.top_n = 50,
+	.top_n = 100,
 	.include_overlap = 0.7,
 	.exclude_overlap = 0.2,
 	.structs = 30,
@@ -22,6 +22,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.validate_set = 0.5,
 	.nnc_same = 0.95,
 	.nnc_thres = 0.65,
+	.nnc_verify = 0.7,
 	.nnc_collect = 0.5,
 	.bad_patches = 100,
 	.new_deform = 20,
@@ -450,6 +451,25 @@ static void _ccv_tld_fetch_patch(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dens
 	}
 }
 
+static double _ccv_tld_box_variance(ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, ccv_rect_t box)
+{
+	assert(CCV_GET_DATA_TYPE(sat->type) == CCV_32S);
+	assert(CCV_GET_DATA_TYPE(sqsat->type) == CCV_64S);
+	int tls = (box.x > 0 && box.y > 0) ? sat->data.i32[box.x - 1 + (box.y - 1) * sat->cols] : 0;
+	int trs = (box.y > 0) ? sat->data.i32[box.x + box.width - 1 + (box.y - 1) * sat->cols] : 0;
+	int bls = (box.x > 0) ? sat->data.i32[box.x - 1 + (box.y + box.height - 1) * sat->cols] : 0;
+	int brs = sat->data.i32[box.x + box.width - 1 + (box.y + box.height - 1) * sat->cols];
+	double mean = (double)(brs - trs - bls + tls) / (box.width * box.height);
+	int64_t tlsq = (box.x > 0 && box.y > 0) ? sqsat->data.i64[box.x - 1 + (box.y - 1) * sqsat->cols] : 0;
+	int64_t trsq = (box.y > 0) ? sqsat->data.i64[box.x + box.width - 1 + (box.y - 1) * sqsat->cols] : 0;
+	int64_t blsq = (box.x > 0) ? sqsat->data.i64[box.x - 1 + (box.y + box.height - 1) * sqsat->cols] : 0;
+	int64_t brsq = sqsat->data.i64[box.x + box.width - 1 + (box.y + box.height - 1) * sqsat->cols];
+	double variance = (double)(brsq - trsq - blsq + tlsq) / (box.width * box.height);
+	variance = variance - mean * mean;
+	assert(variance >= 0);
+	return variance;
+}
+
 static float _ccv_tld_sv_classify(ccv_tld_t* tld, ccv_dense_matrix_t* a, int pnum, int nnum, int* anyp, int* anyn)
 {
 	assert(a->rows == tld->patch.height && a->cols == tld->patch.width);
@@ -521,17 +541,20 @@ static void _ccv_tld_check_params(ccv_tld_param_t params)
 	assert(params.shift > 0 && params.shift < 1);
 }
 
-static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_thres, ccv_dense_matrix_t* ga, ccv_array_t* bad)
+static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad)
 {
 	int i;
 	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * ferns->structs);
 	for (i = 0; i < bad->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
-		_ccv_tld_ferns_feature_for(ferns, ga, *box, fern, 0, 0, 0, 0);
-		float c = ccv_ferns_predict(ferns, fern);
-		if (c > ferns_thres)
-			ferns_thres = c;
+		if (_ccv_tld_box_variance(sat, sqsat, box->rect) > var_thres)
+		{
+			_ccv_tld_ferns_feature_for(ferns, ga, *box, fern, 0, 0, 0, 0);
+			float c = ccv_ferns_predict(ferns, fern);
+			if (c > ferns_thres)
+				ferns_thres = c;
+		}
 	}
 	return ferns_thres;
 }
@@ -548,6 +571,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	tld->patch = patch;
 	tld->params = params;
 	tld->nnc_thres = params.nnc_thres;
+	tld->nnc_verify_thres = params.nnc_verify;
 	tld->frame_signature = a->sig;
 	tld->box.rect = box;
 	{
@@ -576,6 +600,17 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + 1));
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
+	ccv_dense_matrix_t* b = 0;
+	_ccv_tld_fetch_patch(tld, ga, &b, 0, best_box.rect);
+	tld->var_thres = ccv_variance(b) * 0.5;
+	ccv_array_push(tld->sv[1], &b);
+	ccv_dense_matrix_t* sat = 0;
+	ccv_sat(a, &sat, 0, CCV_NO_PADDING);
+	ccv_dense_matrix_t* sq = 0;
+	ccv_multiply(a, a, (ccv_matrix_t**)&sq, 0);
+	ccv_dense_matrix_t* sqsat = 0;
+	ccv_sat(sq, &sqsat, 0, CCV_NO_PADDING);
+	ccv_matrix_free(sq);
 	uint32_t* pfern = fern + tld->ferns->structs;
 	for (j = 0; j < badex + good->rnum; j++)
 	{
@@ -583,8 +618,13 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 		if (k < badex)
 		{
 			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
-			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0, 0, 0, 0);
-			pfern += tld->ferns->structs;
+			assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
+			if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres * 0.5)
+			{
+				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0, 0, 0, 0);
+				pfern += tld->ferns->structs;
+			} else
+				box->neighbors = -1; // void out this box due to low variance
 		}
 	}
 	dsfmt_t dsfmt;
@@ -597,6 +637,9 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 			k = idx[j];
 			if (k < badex)
 			{
+				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
+				if (box->neighbors < 0)
+					continue; // skip low variance one
 				// fix the thresholding for negative
 				if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
 					ccv_ferns_correct(tld->ferns, pfern, 0, 2);
@@ -610,22 +653,25 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 			}
 		}
 	}
-	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, bad);
+	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, sat, sqsat, tld->var_thres * 0.5, bad);
 	ccfree(fern);
 	ccv_array_free(good);
 	ccfree(idx);
 	// train the nearest-neighbor classifier
-	ccv_dense_matrix_t* b = 0;
-	_ccv_tld_fetch_patch(tld, ga, &b, 0, best_box.rect);
-	ccv_array_push(tld->sv[1], &b);
-	for (i = 0; i < ccv_min(tld->params.bad_patches, bad->rnum); i++)
+	for (i = 0, k = 0; i < bad->rnum && k < params.bad_patches; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
-		ccv_dense_matrix_t* b = 0;
-		_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
-		if (_ccv_tld_sv_correct(tld, b, 0) != 0)
-			ccv_matrix_free(b);
+		if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres * 0.5)
+		{
+			ccv_dense_matrix_t* b = 0;
+			_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
+			if (_ccv_tld_sv_correct(tld, b, 0) != 0)
+				ccv_matrix_free(b);
+			++k;
+		}
 	}
+	ccv_matrix_free(sqsat);
+	ccv_matrix_free(sat);
 	ccv_matrix_free(ga);
 	ccv_array_free(bad);
 	// init tld params
@@ -638,7 +684,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	return tld;
 }
 
-static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_t dd)
+static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, ccv_comp_t dd)
 {
 	ccv_dense_matrix_t* b = 0;
 	float scale = sqrtf((float)(dd.rect.width * dd.rect.height) / (tld->patch.width * tld->patch.height));
@@ -647,17 +693,18 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_
 					   (int)(dd.rect.y + (dd.rect.height - tld->patch.height * scale) + 0.5),
 					   (int)(tld->patch.width * scale + 0.5),
 					   (int)(tld->patch.height * scale + 0.5));
-	_ccv_tld_fetch_patch(tld, a, &b, 0, dd.rect);
+	_ccv_tld_fetch_patch(tld, ga, &b, 0, dd.rect);
+	double variance = ccv_variance(b);
 	int anyp, anyn;
 	float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
 	ccv_matrix_free(b);
-	if (c > tld->params.nnc_collect && !anyn)
+	if (c > tld->params.nnc_collect && !anyn && variance > tld->var_thres)
 	{
 		ccv_array_t* good = 0;
 		ccv_array_t* bad = 0;
-		ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(a->cols, a->rows), tld->patch, dd.rect, 10, &good, &bad, tld->params);
+		ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(ga->cols, ga->rows), tld->patch, dd.rect, 10, &good, &bad, tld->params);
 		sfmt_t sfmt;
-		sfmt_init_gen_rand(&sfmt, (uint32_t)a);
+		sfmt_init_gen_rand(&sfmt, (uint32_t)ga);
 		sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 		int* idx = (int*)ccmalloc(sizeof(int) * (bad->rnum + good->rnum));
 		int i, j, k;
@@ -674,12 +721,14 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_
 				// fix the thresholding for negative
 				ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
 				assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
-				memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
-				pfern += tld->ferns->structs;
+				if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres)
+				{
+					memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
+					pfern += tld->ferns->structs;
+				} else
+					box->neighbors = -1; // void out the box
 			}
 		}
-		ccv_dense_matrix_t* ga = 0;
-		ccv_blur(a, &ga, 0, 1.5);
 		dsfmt_t dsfmt;
 		dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
 		// train the fern classifier
@@ -691,6 +740,9 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_
 				k = idx[j];
 				if (k < bad->rnum)
 				{
+					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
+					if (box->neighbors < 0) // this box is already void
+						continue;
 					// fix the thresholding for negative
 					if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns_thres)
 						ccv_ferns_correct(tld->ferns, pfern, 0, 1);
@@ -724,7 +776,6 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_
 					ccv_matrix_free(b);
 			}
 		}
-		ccv_matrix_free(ga);
 		// shuffle them
 		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[0], 0), tld->sv[0]->rnum, sizeof(ccv_dense_matrix_t*));
 		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[1], 0), tld->sv[1]->rnum, sizeof(ccv_dense_matrix_t*));
@@ -733,28 +784,29 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_
 	return -1;
 }
 
-static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_tld_info_t* info)
+static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, ccv_tld_info_t* info)
 {
 	int i;
 	tld->top->rnum = 0;
 	uint32_t* fern = tld->fern_buffer;
-	ccv_dense_matrix_t* ga = 0;
-	ccv_blur(a, &ga, 0, 1.5);
-	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, a->cols, a->rows)
-		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0, 0, 0, 0);
-		box.confidence = ccv_ferns_predict(tld->ferns, fern);
-		if (box.confidence > tld->ferns_thres)
+	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, ga->cols, ga->rows)
+		if (_ccv_tld_box_variance(sat, sqsat, box.rect) > tld->var_thres)
 		{
-			if (tld->top->rnum < tld->params.top_n)
+			_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0, 0, 0, 0);
+			box.confidence = ccv_ferns_predict(tld->ferns, fern);
+			if (box.confidence > tld->ferns_thres)
 			{
-				ccv_array_push(tld->top, &box);
-				_ccv_tld_box_percolate_up(tld->top, tld->top->rnum - 1);
-			} else {
-				ccv_comp_t* top_box = (ccv_comp_t*)ccv_array_get(tld->top, 0);
-				if (top_box->confidence < box.confidence)
+				if (tld->top->rnum < tld->params.top_n)
 				{
-					*(ccv_comp_t*)ccv_array_get(tld->top, 0) = box;
-					_ccv_tld_box_percolate_down(tld->top, 0);
+					ccv_array_push(tld->top, &box);
+					_ccv_tld_box_percolate_up(tld->top, tld->top->rnum - 1);
+				} else {
+					ccv_comp_t* top_box = (ccv_comp_t*)ccv_array_get(tld->top, 0);
+					if (top_box->confidence < box.confidence)
+					{
+						*(ccv_comp_t*)ccv_array_get(tld->top, 0) = box;
+						_ccv_tld_box_percolate_down(tld->top, 0);
+					}
 				}
 			}
 		}
@@ -776,7 +828,6 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 		}
 		ccv_matrix_free(b);
 	}
-	ccv_matrix_free(ga);
 	return seq;
 }
 
@@ -795,6 +846,8 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 	int tracked = 0;
 	int verified = 0;
 	assert(tld->frame_signature == a->sig);
+	ccv_dense_matrix_t* gb = 0;
+	ccv_blur(b, &gb, 0, 1.5);
 	if (info)
 		info->perform_track = tld->found;
 	if (tld->found)
@@ -805,20 +858,24 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			tracked = 1;
 			verified = tld->verified; // inherit it is verified from last frame
 			int anyp = 0, anyn = 0;
-			ccv_dense_matrix_t* gb = 0;
-			ccv_blur(b, &gb, 0, 1.5);
 			ccv_dense_matrix_t* c = 0;
 			_ccv_tld_fetch_patch(tld, gb, &c, 0, result.rect);
-			ccv_matrix_free(gb);
 			result.confidence = _ccv_tld_sv_classify(tld, c, 0, 0, &anyp, &anyn);
 			ccv_matrix_free(c);
-			if (result.confidence > tld->nnc_thres)
+			if (result.confidence > tld->nnc_verify_thres)
 				verified = 1;
 		}
 	}
 	if (info)
 		info->track_success = tracked;
-	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, b, info);
+	ccv_dense_matrix_t* sat = 0;
+	ccv_sat(b, &sat, 0, CCV_NO_PADDING);
+	ccv_dense_matrix_t* sq = 0;
+	ccv_multiply(b, b, (ccv_matrix_t**)&sq, 0);
+	ccv_dense_matrix_t* sqsat = 0;
+	ccv_sat(sq, &sqsat, 0, CCV_NO_PADDING);
+	ccv_matrix_free(sq);
+	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, gb, sat, sqsat, info);
 	if (info)
 	{
 		info->ferns_detects = tld->top->rnum;
@@ -928,7 +985,10 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 	if (info)
 		info->perform_learn = verified;
 	if (verified)
-		verified = (_ccv_tld_quick_learn(tld, b, result) == 0);
+		verified = (_ccv_tld_quick_learn(tld, gb, sat, sqsat, result) == 0);
+	ccv_matrix_free(sqsat);
+	ccv_matrix_free(sat);
+	ccv_matrix_free(gb);
 	tld->verified = verified;
 	tld->box = result;
 	tld->frame_signature = b->sig;

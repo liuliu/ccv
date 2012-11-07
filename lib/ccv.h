@@ -340,6 +340,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat, int flag);
+double ccv_variance(ccv_matrix_t* mat);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
@@ -869,6 +870,7 @@ typedef struct {
 	float validate_set; // 0.5 for conservative confidence
 	float nnc_same; // the same object
 	float nnc_thres; // highly correlated
+	float nnc_verify; // correlated with tracking
 	float nnc_collect; // modest correlated, worth to collect as negative example
 	int bad_patches; // number of bad patches
 	/* deformation round */
@@ -897,7 +899,8 @@ typedef struct {
 	ccv_array_t* top; // top matches
 	float ferns_thres; // computed dynamically from negative examples
 	float nnc_thres; // computed dynamically from negative examples
-	float var_thres; // computed dynamically from the supplied same
+	float nnc_verify_thres; // computed dynamically from negative examples
+	double var_thres; // computed dynamically from the supplied same
 	uint64_t frame_signature;
 	int count;
 	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer

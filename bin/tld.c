@@ -112,7 +112,7 @@ int main(int argc, char** argv)
 		if (tld->found)
 			printf("%d %d %d %d %f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
 		else
-			printf("0\n");
+			printf("NaN NaN NaN NaN\n");
 		x = y;
 		y = 0;
 	}

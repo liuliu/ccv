@@ -162,6 +162,29 @@ double ccv_sum(ccv_matrix_t* mat, int flag)
 	return sum;
 }
 
+double ccv_variance(ccv_matrix_t* mat)
+{
+	ccv_dense_matrix_t* dmt = ccv_get_dense_matrix(mat);
+	double mean = 0, variance = 0;
+	unsigned char* m_ptr = dmt->data.u8;
+	int i, j, ch = CCV_GET_CHANNEL(dmt->type);
+#define for_block(_, _for_get) \
+	for (i = 0; i < dmt->rows; i++) \
+	{ \
+		for (j = 0; j < dmt->cols * ch; j++) \
+		{ \
+			mean += _for_get(m_ptr, j, 0); \
+			variance += _for_get(m_ptr, j, 0) * _for_get(m_ptr, j, 0); \
+		} \
+		m_ptr += dmt->step; \
+	}
+	ccv_matrix_getter(dmt->type, for_block);
+#undef for_block
+	mean = mean / (dmt->rows * dmt->cols * ch);
+	variance = variance / (dmt->rows * dmt->cols * ch);
+	return variance - mean * mean;
+}
+
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
