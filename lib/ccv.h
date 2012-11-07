@@ -853,23 +853,33 @@ typedef struct {
 	/* short-term lucas-kanade tracking parameters */
 	ccv_size_t win_size;
 	int level;
-	double min_eigen;
-	double min_forward_backward_error;
+	float min_eigen;
+	float min_forward_backward_error;
 	/* image pyramid (different resolution) generation parameters */
 	int interval;
-	double shift;
+	float shift;
 	/* samples generation parameters */
 	int min_win;
-	double include_overlap;
-	double exclude_overlap;
+	float include_overlap;
+	float exclude_overlap;
 	/* fern classifier setting */
 	int structs;
 	int features;
 	/* nearest neighbor thresholds */
-	double nnc_same; // the same object
-	double nnc_thres; // highly correlated
-	double nnc_collect; // modest correlated, worth to collect as negative example
+	float validate_set; // 0.5 for conservative confidence
+	float nnc_same; // the same object
+	float nnc_thres; // highly correlated
+	float nnc_collect; // modest correlated, worth to collect as negative example
 	int bad_patches; // number of bad patches
+	/* deformation round */
+	int new_deform;
+	int track_deform;
+	float new_deform_angle;
+	float track_deform_angle;
+	float new_deform_scale;
+	float track_deform_scale;
+	float new_deform_shift;
+	float track_deform_shift;
 	/* top detections */
 	int top_n;
 } ccv_tld_param_t;
@@ -883,9 +893,13 @@ typedef struct {
 	ccv_array_t* sv[2]; // example-based classifier
 	ccv_size_t patch; // resized to patch for example-based classifier
 	int found; // if the last time found a valid box
+	int verified; // the last frame is verified, therefore, a successful tracking is verified too
 	ccv_array_t* top; // top matches
-	double ferns_thres; // computed dynamically from negative examples
-	double nnc_thres; // computed dynamically from negative examples
+	float ferns_thres; // computed dynamically from negative examples
+	float nnc_thres; // computed dynamically from negative examples
+	float var_thres; // computed dynamically from the supplied same
+	uint64_t frame_signature;
+	int count;
 	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
@@ -893,7 +907,7 @@ typedef struct {
 	int perform_track;
 	int perform_learn;
 	int track_success;
-	int fern_detects;
+	int ferns_detects;
 	int nnc_detects;
 	int clustered_detects;
 	int confident_matches;

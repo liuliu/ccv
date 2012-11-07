@@ -57,6 +57,7 @@ int main(int argc, char** argv)
 			continue;
 		avcodec_decode_video2(video_st->codec, picture, &got_picture, &packet);
 	}
+	ccv_enable_default_cache();
 	struct SwsContext* picture_ctx = sws_getCachedContext(0, video_st->codec->width, video_st->codec->height, video_st->codec->pix_fmt, video_st->codec->width, video_st->codec->height, PIX_FMT_RGB24, SWS_BICUBIC, 0, 0, 0);
 	sws_scale(picture_ctx, (const uint8_t* const*)picture->data, picture->linesize, 0, video_st->codec->height, rgb_picture.data, rgb_picture.linesize);
 	ccv_dense_matrix_t* x = 0;
@@ -76,6 +77,38 @@ int main(int argc, char** argv)
 		ccv_read(rgb_picture.data[0], &y, CCV_IO_RGB_RAW | CCV_IO_GRAY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
 		ccv_tld_info_t info;
 		ccv_comp_t newbox = ccv_tld_track_object(tld, x, y, &info);
+		printf("%04d: performed learn: %d, performed track: %d, successfully track: %d; %d passed fern detector, %d passed nnc detector, %d merged, %d confident matches, %d close matches\n", tld->count, info.perform_learn, info.perform_track, info.track_success, info.ferns_detects, info.nnc_detects, info.clustered_detects, info.confident_matches, info.close_matches);
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(rgb_picture.data[0], &image, CCV_IO_RGB_RAW | CCV_IO_RGB_COLOR, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
+		// draw out
+		// for (i = 0; i < tld->top->rnum; i++)
+		if (tld->found)
+		{
+			ccv_comp_t* comp = &newbox; // (ccv_comp_t*)ccv_array_get(tld->top, i);
+			int x, y;
+			for (x = comp->rect.x; x < comp->rect.x + comp->rect.width; x++)
+			{
+				image->data.u8[image->step * comp->rect.y + x * 3] =
+				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3] = 255;
+				image->data.u8[image->step * comp->rect.y + x * 3 + 1] =
+				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 1] =
+				image->data.u8[image->step * comp->rect.y + x * 3 + 2] =
+				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 2] = 0;
+			}
+			for (y = comp->rect.y; y < comp->rect.y + comp->rect.height; y++)
+			{
+				image->data.u8[image->step * y + comp->rect.x * 3] =
+				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3] = 255;
+				image->data.u8[image->step * y + comp->rect.x * 3 + 1] =
+				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 1] =
+				image->data.u8[image->step * y + comp->rect.x * 3 + 2] =
+				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 2] = 0;
+			}
+		}
+		char filename[1024];
+		sprintf(filename, "tld-out/output-%04d.png", tld->count);
+		ccv_write(image, filename, 0, CCV_IO_PNG_FILE, 0);
+		ccv_matrix_free(image);
 		if (tld->found)
 			printf("%d %d %d %d %f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
 		else
@@ -84,6 +117,7 @@ int main(int argc, char** argv)
 		y = 0;
 	}
 	ccv_matrix_free(x);
+	ccv_disable_cache();
 #endif
 #endif
 #endif

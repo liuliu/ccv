@@ -11,18 +11,27 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.level = 5,
 	.min_forward_backward_error = 100,
 	.min_eigen = 0.05,
-	.min_win = 15,
+	.min_win = 20,
 	.interval = 3,
 	.shift = 0.1,
-	.top_n = 100,
+	.top_n = 50,
 	.include_overlap = 0.7,
 	.exclude_overlap = 0.2,
 	.structs = 30,
 	.features = 13,
+	.validate_set = 0.5,
 	.nnc_same = 0.95,
 	.nnc_thres = 0.65,
 	.nnc_collect = 0.5,
 	.bad_patches = 100,
+	.new_deform = 20,
+	.track_deform = 10,
+	.new_deform_angle = 20,
+	.track_deform_angle = 10,
+	.new_deform_scale = 0.02,
+	.track_deform_scale = 0.02,
+	.new_deform_shift = 0.02,
+	.track_deform_shift = 0.02,
 };
 
 #define TLD_GRID_SPARSITY (10)
@@ -372,7 +381,7 @@ static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_size_t in
 	return best_box;
 }
 
-static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern, dsfmt_t* dsfmt)
+static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, ccv_comp_t box, uint32_t* fern, dsfmt_t* dsfmt, float deform_angle, float deform_scale, float deform_shift)
 {
 	assert(box.rect.x >= 0 && box.rect.x < a->cols);
 	assert(box.rect.y >= 0 && box.rect.y < a->rows);
@@ -384,16 +393,16 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 		roi.step = a->step;
 		ccv_ferns_feature(ferns, &roi, box.id, fern);
 	} else {
-		float rotate_x = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
-		float rotate_y = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
-		float rotate_z = (40 * dsfmt_genrand_close_open(dsfmt) - 20) * CCV_PI / 180;
-		float scale = 1.02 - 0.04 * dsfmt_genrand_close_open(dsfmt);
+		float rotate_x = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
+		float rotate_y = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
+		float rotate_z = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
+		float scale = 1 + deform_scale  - deform_scale * 2 * dsfmt_genrand_close_open(dsfmt);
 		float m00 = cosf(rotate_z) * scale;
 		float m01 = cosf(rotate_y) * sinf(rotate_z);
-		float m02 = (0.04 * dsfmt_genrand_close_open(dsfmt) - 0.02) * box.rect.width;
+		float m02 = (deform_shift * 2 * dsfmt_genrand_close_open(dsfmt) - deform_shift) * box.rect.width;
 		float m10 = sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z);
 		float m11 = (sinf(rotate_y) * sinf(rotate_z) + cosf(rotate_x) * cosf(rotate_z)) * scale;
-		float m12 = (0.04 * dsfmt_genrand_close_open(dsfmt) - 0.02) * box.rect.height;
+		float m12 = (deform_shift * dsfmt_genrand_close_open(dsfmt) - deform_shift) * box.rect.height;
 		float m20 = sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z);
 		float m21 = sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z);
 		float m22 = cosf(rotate_x) * cosf(rotate_y);
@@ -420,11 +429,6 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 		roi.step = a->step;
 		ccv_dense_matrix_t* b = 0;
 		ccv_perspective_transform(&roi, &b, 0, m00, m01, m02, m10, m11, m12, m20, m21, m22);
-		/* add noise
-		int i;
-		for (i = 0; i < b->rows * b->step; i++)
-			b->data.u8[i] = ccv_clamp(b->data.u8[i] + (dsfmt_genrand_uint32(dsfmt) % 10 - 5), 0, 255);
-		*/
 		roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(b->type) | CCV_GET_CHANNEL(b->type), ccv_get_dense_matrix_cell(b, padding_top, padding_left, 0), 0);
 		roi.step = b->step;
 		ccv_ferns_feature(ferns, &roi, box.id, fern);
@@ -524,7 +528,7 @@ static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_th
 	for (i = 0; i < bad->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
-		_ccv_tld_ferns_feature_for(ferns, ga, *box, fern, 0);
+		_ccv_tld_ferns_feature_for(ferns, ga, *box, fern, 0, 0, 0, 0);
 		float c = ccv_ferns_predict(ferns, fern);
 		if (c > ferns_thres)
 			ferns_thres = c;
@@ -544,6 +548,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	tld->patch = patch;
 	tld->params = params;
 	tld->nnc_thres = params.nnc_thres;
+	tld->frame_signature = a->sig;
 	tld->box.rect = box;
 	{
 	double scale = pow(2.0, 1.0 / (params.interval + 1.0));
@@ -578,13 +583,13 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 		if (k < badex)
 		{
 			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
-			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0);
+			_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0, 0, 0, 0);
 			pfern += tld->ferns->structs;
 		}
 	}
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
-	for (i = 0; i < 20; i++)
+	for (i = 0; i < tld->params.new_deform; i++)
 	{
 		pfern = fern + tld->ferns->structs;
 		for (j = 0; j < badex + good->rnum; j++)
@@ -598,7 +603,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 				pfern += tld->ferns->structs;
 			} else {
 				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k - badex);
-				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt);
+				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt, params.new_deform_angle, params.new_deform_scale, params.new_deform_shift);
 				// fix the thresholding for positive
 				if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns->threshold)
 					ccv_ferns_correct(tld->ferns, fern, 1, 2);
@@ -625,13 +630,15 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_array_free(bad);
 	// init tld params
 	tld->found = 1; // assume last time has found (we just started)
+	tld->verified = 1; // assume last frame is verified tracking
 	// top is ccv_tld_feature_t, and its continuous memory region for a feature
 	tld->top = ccv_array_new(sizeof(ccv_comp_t), params.top_n, 0);
 	tld->top->rnum = 0;
+	tld->count = 0;
 	return tld;
 }
 
-static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_t dd)
+static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp_t dd)
 {
 	ccv_dense_matrix_t* b = 0;
 	float scale = sqrtf((float)(dd.rect.width * dd.rect.height) / (tld->patch.width * tld->patch.height));
@@ -676,7 +683,7 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 		dsfmt_t dsfmt;
 		dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
 		// train the fern classifier
-		for (i = 0; i < 10; i++)
+		for (i = 0; i < tld->params.track_deform; i++)
 		{
 			pfern = fern + tld->ferns->structs;
 			for (j = 0; j < bad->rnum + good->rnum; j++)
@@ -690,7 +697,7 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 					pfern += tld->ferns->structs;
 				} else {
 					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
-					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt);
+					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt, tld->params.track_deform_angle, tld->params.track_deform_scale, tld->params.track_deform_shift);
 					// fix the thresholding for positive
 					if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns_thres)
 						ccv_ferns_correct(tld->ferns, fern, 1, 1);
@@ -718,7 +725,12 @@ static void _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_comp
 			}
 		}
 		ccv_matrix_free(ga);
+		// shuffle them
+		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[0], 0), tld->sv[0]->rnum, sizeof(ccv_dense_matrix_t*));
+		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[1], 0), tld->sv[1]->rnum, sizeof(ccv_dense_matrix_t*));
+		return 0;
 	}
+	return -1;
 }
 
 static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_tld_info_t* info)
@@ -729,7 +741,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
 	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, a->cols, a->rows)
-		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0);
+		_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0, 0, 0, 0);
 		box.confidence = ccv_ferns_predict(tld->ferns, fern);
 		if (box.confidence > tld->ferns_thres)
 		{
@@ -748,22 +760,23 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 		}
 		fern += tld->ferns->structs;
 	end_for_each_box;
-	ccv_matrix_free(ga);
 	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), tld->top->rnum, 0);
 	for (i = 0; i < tld->top->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(tld->top, i);
 		int anyp = 0, anyn = 0;
 		ccv_dense_matrix_t* b = 0;
-		_ccv_tld_fetch_patch(tld, a, &b, 0, box->rect);
+		_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
 		float c = _ccv_tld_sv_classify(tld, b, 0, 0, &anyp, &anyn);
-		ccv_matrix_free(b);
 		if (c > tld->nnc_thres)
 		{
-			box->confidence = c;
+			// save only the conservative confidence (50% samples)
+			box->confidence = _ccv_tld_sv_classify(tld, b, ccv_max((int)(tld->sv[1]->rnum * tld->params.validate_set + 0.5), 1), 0, &anyp, &anyn);
 			ccv_array_push(seq, box);
 		}
+		ccv_matrix_free(b);
 	}
+	ccv_matrix_free(ga);
 	return seq;
 }
 
@@ -781,6 +794,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 	ccv_comp_t result;
 	int tracked = 0;
 	int verified = 0;
+	assert(tld->frame_signature == a->sig);
 	if (info)
 		info->perform_track = tld->found;
 	if (tld->found)
@@ -789,9 +803,13 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 		if (!ccv_rect_is_zero(result.rect))
 		{
 			tracked = 1;
+			verified = tld->verified; // inherit it is verified from last frame
 			int anyp = 0, anyn = 0;
+			ccv_dense_matrix_t* gb = 0;
+			ccv_blur(b, &gb, 0, 1.5);
 			ccv_dense_matrix_t* c = 0;
-			_ccv_tld_fetch_patch(tld, b, &c, 0, result.rect);
+			_ccv_tld_fetch_patch(tld, gb, &c, 0, result.rect);
+			ccv_matrix_free(gb);
 			result.confidence = _ccv_tld_sv_classify(tld, c, 0, 0, &anyp, &anyn);
 			ccv_matrix_free(c);
 			if (result.confidence > tld->nnc_thres)
@@ -803,7 +821,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 	ccv_array_t* dd = _ccv_tld_long_term_detect(tld, b, info);
 	if (info)
 	{
-		info->fern_detects = tld->top->rnum;
+		info->ferns_detects = tld->top->rnum;
 		info->nnc_detects = dd->rnum;
 	}
 	int i;
@@ -910,8 +928,11 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 	if (info)
 		info->perform_learn = verified;
 	if (verified)
-		_ccv_tld_quick_learn(tld, b, result);
+		verified = (_ccv_tld_quick_learn(tld, b, result) == 0);
+	tld->verified = verified;
 	tld->box = result;
+	tld->frame_signature = b->sig;
+	++tld->count;
 	return result;
 }
 
