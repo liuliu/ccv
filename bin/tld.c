@@ -88,27 +88,28 @@ int main(int argc, char** argv)
 		if (tld->found)
 		{
 			ccv_comp_t* comp = &newbox; // (ccv_comp_t*)ccv_array_get(tld->top, i);
-			if (comp->rect.x < 0 || comp->rect.x + comp->rect.width > image->cols ||
-				comp->rect.y < 0 || comp->rect.y + comp->rect.height > image->rows)
-				continue;
-			int x, y;
-			for (x = comp->rect.x; x < comp->rect.x + comp->rect.width; x++)
+			if (comp->rect.x >= 0 && comp->rect.x + comp->rect.width < image->cols &&
+				comp->rect.y >= 0 && comp->rect.y + comp->rect.height < image->rows)
 			{
-				image->data.u8[image->step * comp->rect.y + x * 3] =
-				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3] = 255;
-				image->data.u8[image->step * comp->rect.y + x * 3 + 1] =
-				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 1] =
-				image->data.u8[image->step * comp->rect.y + x * 3 + 2] =
-				image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 2] = 0;
-			}
-			for (y = comp->rect.y; y < comp->rect.y + comp->rect.height; y++)
-			{
-				image->data.u8[image->step * y + comp->rect.x * 3] =
-				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3] = 255;
-				image->data.u8[image->step * y + comp->rect.x * 3 + 1] =
-				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 1] =
-				image->data.u8[image->step * y + comp->rect.x * 3 + 2] =
-				image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 2] = 0;
+				int x, y;
+				for (x = comp->rect.x; x < comp->rect.x + comp->rect.width; x++)
+				{
+					image->data.u8[image->step * comp->rect.y + x * 3] =
+					image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3] = 255;
+					image->data.u8[image->step * comp->rect.y + x * 3 + 1] =
+					image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 1] =
+					image->data.u8[image->step * comp->rect.y + x * 3 + 2] =
+					image->data.u8[image->step * (comp->rect.y + comp->rect.height - 1) + x * 3 + 2] = 0;
+				}
+				for (y = comp->rect.y; y < comp->rect.y + comp->rect.height; y++)
+				{
+					image->data.u8[image->step * y + comp->rect.x * 3] =
+					image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3] = 255;
+					image->data.u8[image->step * y + comp->rect.x * 3 + 1] =
+					image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 1] =
+					image->data.u8[image->step * y + comp->rect.x * 3 + 2] =
+					image->data.u8[image->step * y + (comp->rect.x + comp->rect.width - 1) * 3 + 2] = 0;
+				}
 			}
 		}
 		char filename[1024];

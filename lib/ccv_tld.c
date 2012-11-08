@@ -15,6 +15,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.interval = 3,
 	.shift = 0.1,
 	.top_n = 100,
+	.rotation = 1,
 	.include_overlap = 0.7,
 	.exclude_overlap = 0.2,
 	.structs = 40,
@@ -737,32 +738,47 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 			}
 		sfmt_t* sfmt = (sfmt_t*)tld->sfmt;
 		sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
-		int* idx = (int*)ccmalloc(sizeof(int) * (bad->rnum + good->rnum));
-		for (i = 0; i < bad->rnum + good->rnum; i++)
+		int badex = (bad->rnum * 4 + 3) / 6; // only use 2 / 3 bad example for quick learn
+		int* idx = (int*)ccmalloc(sizeof(int) * (badex + good->rnum));
+		for (i = 0; i < badex + good->rnum; i++)
 			idx[i] = i;
-		sfmt_genrand_shuffle(sfmt, idx, bad->rnum + good->rnum, sizeof(int));
+		sfmt_genrand_shuffle(sfmt, idx, badex + good->rnum, sizeof(int));
 		dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
-		{
-		uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+		uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + 1));
+		int r0 = tld->count % (tld->params.rotation + 1), r1 = tld->params.rotation + 1;
 		// train the fern classifier
 		for (i = 0; i < 2; i++) // run it twice to take into account the cases we missed when warm up
 		{
-			for (j = 0; j < bad->rnum + good->rnum; j++)
+			uint32_t* pfern = fern + tld->ferns->structs;
+			for (j = 0; j < badex + good->rnum; j++)
 			{
 				k = idx[j];
-				if (k < bad->rnum)
+				if (k < badex)
 				{
 					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
-					assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
-					if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres)
+					if (i == 0)
 					{
-						uint32_t* fern = tld->fern_buffer + box->neighbors * tld->ferns->structs;
-						// fix the thresholding for negative
-						if (ccv_ferns_predict(tld->ferns, fern) >= tld->ferns->threshold)
-							ccv_ferns_correct(tld->ferns, fern, 0, 2); // just feel like to use 2
+						assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
+						if (box->neighbors % r1 == r0 &&
+							_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres)
+						{
+							// put them in order for faster access the next round
+							memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
+							// fix the thresholding for negative
+							if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
+								ccv_ferns_correct(tld->ferns, pfern, 0, 2); // just feel like to use 2
+							pfern += tld->ferns->structs;
+						} else
+							box->neighbors = -1;
+					} else {
+						if (box->neighbors < 0)
+							continue;
+						if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
+							ccv_ferns_correct(tld->ferns, pfern, 0, 2); // just feel like to use 2
+						pfern += tld->ferns->structs;
 					}
 				} else {
-					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
+					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - badex);
 					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, dsfmt, tld->params.track_deform_angle, tld->params.track_deform_scale, tld->params.track_deform_shift);
 					// fix the thresholding for positive
 					if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns_thres)
@@ -770,7 +786,7 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 				}
 			}
 		}
-		}
+		ccfree(fern);
 		ccv_array_free(bad);
 		ccv_array_free(good);
 		ccfree(idx);
@@ -800,11 +816,12 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 
 static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, ccv_tld_info_t* info)
 {
-	int i;
+	int i = 0, r0 = tld->count % (tld->params.rotation + 1), r1 = tld->params.rotation + 1;
 	tld->top->rnum = 0;
 	uint32_t* fern = tld->fern_buffer;
 	for_each_box(box, tld->patch.width, tld->patch.height, tld->params.interval, tld->params.shift, ga->cols, ga->rows)
-		if (_ccv_tld_box_variance(sat, sqsat, box.rect) > tld->var_thres)
+		if (i % r1 == r0 &&
+			_ccv_tld_box_variance(sat, sqsat, box.rect) > tld->var_thres)
 		{
 			_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0, 0, 0, 0);
 			box.confidence = ccv_ferns_predict(tld->ferns, fern);
@@ -825,6 +842,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 			}
 		}
 		fern += tld->ferns->structs;
+		++i;
 	end_for_each_box;
 	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), tld->top->rnum, 0);
 	for (i = 0; i < tld->top->rnum; i++)

@@ -886,6 +886,10 @@ typedef struct {
 	float track_deform_shift;
 	/* top detections */
 	int top_n;
+	/* speed up technique, instead of running slide window at
+	 * every frame, we will rotate them, for example, slide window 1
+	 * only gets examined at frame % rotation == 1 */
+	int rotation;
 } ccv_tld_param_t;
 
 extern const ccv_tld_param_t ccv_tld_default_params;
