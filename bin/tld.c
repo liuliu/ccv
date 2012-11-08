@@ -88,6 +88,9 @@ int main(int argc, char** argv)
 		if (tld->found)
 		{
 			ccv_comp_t* comp = &newbox; // (ccv_comp_t*)ccv_array_get(tld->top, i);
+			if (comp->rect.x < 0 || comp->rect.x + comp->rect.width > image->cols ||
+				comp->rect.y < 0 || comp->rect.y + comp->rect.height > image->rows)
+				continue;
 			int x, y;
 			for (x = comp->rect.x; x < comp->rect.x + comp->rect.width; x++)
 			{
@@ -120,6 +123,8 @@ int main(int argc, char** argv)
 		y = 0;
 	}
 	ccv_matrix_free(x);
+	ccv_tld_free(tld);
+	ccfree(rgb_picture.data[0]);
 	ccv_disable_cache();
 #endif
 #endif

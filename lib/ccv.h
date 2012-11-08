@@ -872,6 +872,7 @@ typedef struct {
 	float nnc_same; // the same object
 	float nnc_thres; // highly correlated
 	float nnc_verify; // correlated with tracking
+	float nnc_beyond; // this is the cap of nnc_thres
 	float nnc_collect; // modest correlated, worth to collect as negative example
 	int bad_patches; // number of bad patches
 	/* deformation round */

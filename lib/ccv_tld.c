@@ -23,6 +23,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.nnc_same = 0.95,
 	.nnc_thres = 0.65,
 	.nnc_verify = 0.7,
+	.nnc_beyond = 0.8,
 	.nnc_collect = 0.5,
 	.bad_patches = 100,
 	.new_deform = 20,
@@ -541,11 +542,11 @@ static void _ccv_tld_check_params(ccv_tld_param_t params)
 	assert(params.shift > 0 && params.shift < 1);
 }
 
-static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad)
+static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad, int starter)
 {
 	int i;
 	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * ferns->structs);
-	for (i = 0; i < bad->rnum; i++)
+	for (i = starter; i < bad->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
 		if (_ccv_tld_box_variance(sat, sqsat, box->rect) > var_thres)
@@ -559,11 +560,11 @@ static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_th
 	return ferns_thres;
 }
 
-static float _ccv_tld_nnc_compute_threshold(ccv_tld_t* tld, float nnc_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad)
+static float _ccv_tld_nnc_compute_threshold(ccv_tld_t* tld, float nnc_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad, int starter)
 {
 	int i;
 	dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
-	for (i = 0; i < bad->rnum; i++)
+	for (i = starter; i < bad->rnum; i++)
 	{
 		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
 		if (_ccv_tld_box_variance(sat, sqsat, box->rect) > var_thres)
@@ -593,7 +594,6 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t) + sizeof(uint32_t) * params.structs * best_box.neighbors);
 	tld->patch = patch;
 	tld->params = params;
-	tld->nnc_thres = params.nnc_thres;
 	tld->nnc_verify_thres = params.nnc_verify;
 	tld->frame_signature = a->sig;
 	tld->sfmt = ccmalloc(sizeof(sfmt_t));
@@ -616,13 +616,21 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	sfmt_init_gen_rand(sfmt, (uint32_t)a);
 	sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 	int badex = (bad->rnum + 1) / 2;
+	int i, j, k = good->rnum;
+	// inflate good so that it can be used many times for the deformation
+	for (i = 0; i < params.new_deform; i++)
+		for (j = 0; j < k; j++)
+		{
+			// needs to get it out first, otherwise the pointer may be invalid
+			// soon (when we realloc the array in push).
+			ccv_comp_t box = *(ccv_comp_t*)ccv_array_get(good, j);
+			ccv_array_push(good, &box);
+		}
 	int* idx = (int*)ccmalloc(sizeof(int) * (badex + good->rnum));
-	int i, j, k;
 	for (i = 0; i < badex + good->rnum; i++)
 		idx[i] = i;
 	sfmt_genrand_shuffle(sfmt, idx, badex + good->rnum, sizeof(int));
 	// train the fern classifier
-	uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + 1));
 	ccv_dense_matrix_t* ga = 0;
 	ccv_blur(a, &ga, 0, 1.5);
 	ccv_dense_matrix_t* b = 0;
@@ -636,39 +644,26 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_dense_matrix_t* sqsat = 0;
 	ccv_sat(sq, &sqsat, 0, CCV_NO_PADDING);
 	ccv_matrix_free(sq);
-	uint32_t* pfern = fern + tld->ferns->structs;
-	for (j = 0; j < badex + good->rnum; j++)
-	{
-		k = idx[j];
-		if (k < badex)
-		{
-			ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
-			assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
-			if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres * 0.5)
-			{
-				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, pfern, 0, 0, 0, 0);
-				pfern += tld->ferns->structs;
-			} else
-				box->neighbors = -1; // void out this box due to low variance
-		}
-	}
 	dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
-	dsfmt_init_gen_rand(dsfmt, (uint32_t)fern);
-	for (i = 0; i < tld->params.new_deform; i++)
+	dsfmt_init_gen_rand(dsfmt, (uint32_t)tld);
+	{ // save stack fr alloca
+	uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+	for (i = 0; i < 2; i++) // run twice to take into account when warm up, we missed a few examples
 	{
-		pfern = fern + tld->ferns->structs;
 		for (j = 0; j < badex + good->rnum; j++)
 		{
 			k = idx[j];
 			if (k < badex)
 			{
 				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, k);
-				if (box->neighbors < 0)
-					continue; // skip low variance one
-				// fix the thresholding for negative
-				if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
-					ccv_ferns_correct(tld->ferns, pfern, 0, 2);
-				pfern += tld->ferns->structs;
+				assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
+				if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres * 0.5)
+				{
+					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, 0, 0, 0, 0);
+					// fix the thresholding for negative
+					if (ccv_ferns_predict(tld->ferns, fern) >= tld->ferns->threshold)
+						ccv_ferns_correct(tld->ferns, fern, 0, 2);
+				}
 			} else {
 				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k - badex);
 				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, dsfmt, params.new_deform_angle, params.new_deform_scale, params.new_deform_shift);
@@ -678,8 +673,8 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 			}
 		}
 	}
-	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, sat, sqsat, tld->var_thres * 0.5, bad);
-	ccfree(fern);
+	} // reclaim stack
+	tld->ferns_thres = _ccv_tld_ferns_compute_threshold(tld->ferns, tld->ferns->threshold, ga, sat, sqsat, tld->var_thres * 0.5, bad, badex);
 	ccv_array_free(good);
 	ccfree(idx);
 	// train the nearest-neighbor classifier
@@ -695,7 +690,8 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 			++k;
 		}
 	}
-	tld->nnc_thres = _ccv_tld_nnc_compute_threshold(tld, tld->params.nnc_thres, ga, sat, sqsat, tld->var_thres * 0.5, bad);
+	tld->nnc_thres = _ccv_tld_nnc_compute_threshold(tld, tld->params.nnc_thres, ga, sat, sqsat, tld->var_thres * 0.5, bad, badex);
+	tld->nnc_thres = ccv_min(tld->nnc_thres, params.nnc_beyond);
 	ccv_matrix_free(sqsat);
 	ccv_matrix_free(sat);
 	ccv_matrix_free(ga);
@@ -729,48 +725,42 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 		ccv_array_t* good = 0;
 		ccv_array_t* bad = 0;
 		ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(ga->cols, ga->rows), tld->patch, dd.rect, 10, &good, &bad, tld->params);
+		int i, j, k = good->rnum;
+		// inflate good boxes to take into account deformations
+		for (i = 0; i < tld->params.track_deform; i++)
+			for (j = 0; j < k; j++)
+			{
+				// needs to get it out first, otherwise the pointer may be invalid
+				// soon (when we realloc the array in push).
+				ccv_comp_t box = *(ccv_comp_t*)ccv_array_get(good, j);
+				ccv_array_push(good, &box);
+			}
 		sfmt_t* sfmt = (sfmt_t*)tld->sfmt;
 		sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 		int* idx = (int*)ccmalloc(sizeof(int) * (bad->rnum + good->rnum));
-		int i, j, k;
 		for (i = 0; i < bad->rnum + good->rnum; i++)
 			idx[i] = i;
 		sfmt_genrand_shuffle(sfmt, idx, bad->rnum + good->rnum, sizeof(int));
-		uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (bad->rnum + 1));
-		uint32_t* pfern =fern + tld->ferns->structs;
-		for (j = 0; j < bad->rnum + good->rnum; j++)
-		{
-			k = idx[j];
-			if (k < bad->rnum)
-			{
-				// fix the thresholding for negative
-				ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
-				assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
-				if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres)
-				{
-					memcpy(pfern, tld->fern_buffer + box->neighbors * tld->ferns->structs, sizeof(uint32_t) * tld->ferns->structs);
-					pfern += tld->ferns->structs;
-				} else
-					box->neighbors = -1; // void out the box
-			}
-		}
 		dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
-		// train the fern classifier
-		for (i = 0; i < tld->params.track_deform; i++)
 		{
-			pfern = fern + tld->ferns->structs;
+		uint32_t* fern = (uint32_t*)alloca(sizeof(uint32_t) * tld->ferns->structs);
+		// train the fern classifier
+		for (i = 0; i < 2; i++) // run it twice to take into account the cases we missed when warm up
+		{
 			for (j = 0; j < bad->rnum + good->rnum; j++)
 			{
 				k = idx[j];
 				if (k < bad->rnum)
 				{
 					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(bad, k);
-					if (box->neighbors < 0) // this box is already void
-						continue;
-					// fix the thresholding for negative
-					if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
-						ccv_ferns_correct(tld->ferns, pfern, 0, 1);
-					pfern += tld->ferns->structs;
+					assert(box->neighbors >= 0 && box->neighbors < best_box.neighbors);
+					if (_ccv_tld_box_variance(sat, sqsat, box->rect) > tld->var_thres)
+					{
+						uint32_t* fern = tld->fern_buffer + box->neighbors * tld->ferns->structs;
+						// fix the thresholding for negative
+						if (ccv_ferns_predict(tld->ferns, fern) >= tld->ferns->threshold)
+							ccv_ferns_correct(tld->ferns, fern, 0, 2); // just feel like to use 2
+					}
 				} else {
 					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
 					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, dsfmt, tld->params.track_deform_angle, tld->params.track_deform_scale, tld->params.track_deform_shift);
@@ -780,7 +770,7 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 				}
 			}
 		}
-		ccfree(fern);
+		}
 		ccv_array_free(bad);
 		ccv_array_free(good);
 		ccfree(idx);
@@ -1029,6 +1019,8 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 void ccv_tld_free(ccv_tld_t* tld)
 {
 	int i;
+	ccfree(tld->dsfmt);
+	ccfree(tld->sfmt);
 	for (i = 0; i < tld->sv[0]->rnum; i++)
 		ccv_matrix_free(*(ccv_dense_matrix_t**)ccv_array_get(tld->sv[0], i));
 	ccv_array_free(tld->sv[0]);
