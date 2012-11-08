@@ -17,8 +17,8 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	.top_n = 100,
 	.include_overlap = 0.7,
 	.exclude_overlap = 0.2,
-	.structs = 30,
-	.features = 13,
+	.structs = 40,
+	.features = 18,
 	.validate_set = 0.5,
 	.nnc_same = 0.95,
 	.nnc_thres = 0.65,
@@ -251,7 +251,7 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 			int INTERNAL_CATCH_UNIQUE_NAME(min_side) = ccv_min(INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height)); \
 			int INTERNAL_CATCH_UNIQUE_NAME(piy) = -1; \
 			for (INTERNAL_CATCH_UNIQUE_NAME(y) = 0; \
-				 INTERNAL_CATCH_UNIQUE_NAME(y) < image_height - INTERNAL_CATCH_UNIQUE_NAME(height); \
+				 INTERNAL_CATCH_UNIQUE_NAME(y) < image_height - INTERNAL_CATCH_UNIQUE_NAME(height) - 0.5; \
 				 INTERNAL_CATCH_UNIQUE_NAME(y) += shift * INTERNAL_CATCH_UNIQUE_NAME(min_side)) /* min_side is exposed by for_each_size, and because the ubiquity of this macro, its name gets leaked */ \
 			{ \
 				int INTERNAL_CATCH_UNIQUE_NAME(iy) = (int)(INTERNAL_CATCH_UNIQUE_NAME(y) + 0.5); \
@@ -260,7 +260,7 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 				INTERNAL_CATCH_UNIQUE_NAME(piy) = INTERNAL_CATCH_UNIQUE_NAME(iy); \
 				int INTERNAL_CATCH_UNIQUE_NAME(pix) = -1; \
 				for (INTERNAL_CATCH_UNIQUE_NAME(x) = 0; \
-					 INTERNAL_CATCH_UNIQUE_NAME(x) < image_width - INTERNAL_CATCH_UNIQUE_NAME(width); \
+					 INTERNAL_CATCH_UNIQUE_NAME(x) < image_width - INTERNAL_CATCH_UNIQUE_NAME(width) - 0.5; \
 					 INTERNAL_CATCH_UNIQUE_NAME(x) += shift * INTERNAL_CATCH_UNIQUE_NAME(min_side)) \
 				{ \
 					int INTERNAL_CATCH_UNIQUE_NAME(ix) = (int)(INTERNAL_CATCH_UNIQUE_NAME(x) + 0.5); \
@@ -559,6 +559,29 @@ static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_th
 	return ferns_thres;
 }
 
+static float _ccv_tld_nnc_compute_threshold(ccv_tld_t* tld, float nnc_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad)
+{
+	int i;
+	dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
+	for (i = 0; i < bad->rnum; i++)
+	{
+		ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(bad, i);
+		if (_ccv_tld_box_variance(sat, sqsat, box->rect) > var_thres)
+		{
+			if (dsfmt_genrand_close_open(dsfmt) <= 0.1) // only pick 1 / 10 sample for this
+			{
+				ccv_dense_matrix_t* b = 0;
+				_ccv_tld_fetch_patch(tld, ga, &b, 0, box->rect);
+				float c = _ccv_tld_sv_classify(tld, b, 0, 0, 0, 0);
+				ccv_matrix_free(b);
+				if (c > nnc_thres)
+					nnc_thres = c;
+			}
+		}
+	}
+	return nnc_thres;
+}
+
 ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
 {
 	_ccv_tld_check_params(params);
@@ -573,6 +596,8 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	tld->nnc_thres = params.nnc_thres;
 	tld->nnc_verify_thres = params.nnc_verify;
 	tld->frame_signature = a->sig;
+	tld->sfmt = ccmalloc(sizeof(sfmt_t));
+	tld->dsfmt = ccmalloc(sizeof(dsfmt_t));
 	tld->box.rect = box;
 	{
 	double scale = pow(2.0, 1.0 / (params.interval + 1.0));
@@ -587,15 +612,15 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	}
 	tld->sv[0] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
 	tld->sv[1] = ccv_array_new(sizeof(ccv_dense_matrix_t*), 64, 0);
-	sfmt_t sfmt;
-	sfmt_init_gen_rand(&sfmt, (uint32_t)a);
-	sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
+	sfmt_t* sfmt = (sfmt_t*)tld->sfmt;
+	sfmt_init_gen_rand(sfmt, (uint32_t)a);
+	sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 	int badex = (bad->rnum + 1) / 2;
 	int* idx = (int*)ccmalloc(sizeof(int) * (badex + good->rnum));
 	int i, j, k;
 	for (i = 0; i < badex + good->rnum; i++)
 		idx[i] = i;
-	sfmt_genrand_shuffle(&sfmt, idx, badex + good->rnum, sizeof(int));
+	sfmt_genrand_shuffle(sfmt, idx, badex + good->rnum, sizeof(int));
 	// train the fern classifier
 	uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (badex + 1));
 	ccv_dense_matrix_t* ga = 0;
@@ -627,8 +652,8 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 				box->neighbors = -1; // void out this box due to low variance
 		}
 	}
-	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
+	dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
+	dsfmt_init_gen_rand(dsfmt, (uint32_t)fern);
 	for (i = 0; i < tld->params.new_deform; i++)
 	{
 		pfern = fern + tld->ferns->structs;
@@ -646,7 +671,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 				pfern += tld->ferns->structs;
 			} else {
 				ccv_comp_t* box = (ccv_comp_t*)ccv_array_get(good, k - badex);
-				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt, params.new_deform_angle, params.new_deform_scale, params.new_deform_shift);
+				_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, dsfmt, params.new_deform_angle, params.new_deform_scale, params.new_deform_shift);
 				// fix the thresholding for positive
 				if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns->threshold)
 					ccv_ferns_correct(tld->ferns, fern, 1, 2);
@@ -670,6 +695,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 			++k;
 		}
 	}
+	tld->nnc_thres = _ccv_tld_nnc_compute_threshold(tld, tld->params.nnc_thres, ga, sat, sqsat, tld->var_thres * 0.5, bad);
 	ccv_matrix_free(sqsat);
 	ccv_matrix_free(sat);
 	ccv_matrix_free(ga);
@@ -703,14 +729,13 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 		ccv_array_t* good = 0;
 		ccv_array_t* bad = 0;
 		ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(ga->cols, ga->rows), tld->patch, dd.rect, 10, &good, &bad, tld->params);
-		sfmt_t sfmt;
-		sfmt_init_gen_rand(&sfmt, (uint32_t)ga);
-		sfmt_genrand_shuffle(&sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
+		sfmt_t* sfmt = (sfmt_t*)tld->sfmt;
+		sfmt_genrand_shuffle(sfmt, ccv_array_get(bad, 0), bad->rnum, bad->rsize);
 		int* idx = (int*)ccmalloc(sizeof(int) * (bad->rnum + good->rnum));
 		int i, j, k;
 		for (i = 0; i < bad->rnum + good->rnum; i++)
 			idx[i] = i;
-		sfmt_genrand_shuffle(&sfmt, idx, bad->rnum + good->rnum, sizeof(int));
+		sfmt_genrand_shuffle(sfmt, idx, bad->rnum + good->rnum, sizeof(int));
 		uint32_t* fern = (uint32_t*)ccmalloc(sizeof(uint32_t) * tld->ferns->structs * (bad->rnum + 1));
 		uint32_t* pfern =fern + tld->ferns->structs;
 		for (j = 0; j < bad->rnum + good->rnum; j++)
@@ -729,8 +754,7 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 					box->neighbors = -1; // void out the box
 			}
 		}
-		dsfmt_t dsfmt;
-		dsfmt_init_gen_rand(&dsfmt, (uint32_t)fern);
+		dsfmt_t* dsfmt = (dsfmt_t*)tld->dsfmt;
 		// train the fern classifier
 		for (i = 0; i < tld->params.track_deform; i++)
 		{
@@ -744,12 +768,12 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 					if (box->neighbors < 0) // this box is already void
 						continue;
 					// fix the thresholding for negative
-					if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns_thres)
+					if (ccv_ferns_predict(tld->ferns, pfern) >= tld->ferns->threshold)
 						ccv_ferns_correct(tld->ferns, pfern, 0, 1);
 					pfern += tld->ferns->structs;
 				} else {
 					ccv_comp_t *box = (ccv_comp_t*)ccv_array_get(good, k - bad->rnum);
-					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, &dsfmt, tld->params.track_deform_angle, tld->params.track_deform_scale, tld->params.track_deform_shift);
+					_ccv_tld_ferns_feature_for(tld->ferns, ga, *box, fern, dsfmt, tld->params.track_deform_angle, tld->params.track_deform_scale, tld->params.track_deform_shift);
 					// fix the thresholding for positive
 					if (ccv_ferns_predict(tld->ferns, fern) <= tld->ferns_thres)
 						ccv_ferns_correct(tld->ferns, fern, 1, 1);
@@ -777,8 +801,8 @@ static int _ccv_tld_quick_learn(ccv_tld_t* tld, ccv_dense_matrix_t* ga, ccv_dens
 			}
 		}
 		// shuffle them
-		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[0], 0), tld->sv[0]->rnum, sizeof(ccv_dense_matrix_t*));
-		sfmt_genrand_shuffle(&sfmt, ccv_array_get(tld->sv[1], 0), tld->sv[1]->rnum, sizeof(ccv_dense_matrix_t*));
+		sfmt_genrand_shuffle(sfmt, ccv_array_get(tld->sv[0], 0), tld->sv[0]->rnum, sizeof(ccv_dense_matrix_t*));
+		sfmt_genrand_shuffle(sfmt, ccv_array_get(tld->sv[1], 0), tld->sv[1]->rnum, sizeof(ccv_dense_matrix_t*));
 		return 0;
 	}
 	return -1;
@@ -855,6 +879,12 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 		result.rect = _ccv_tld_short_term_track(a, b, tld->box.rect, tld->params);
 		if (!ccv_rect_is_zero(result.rect))
 		{
+			float scale = sqrtf((float)(result.rect.width * result.rect.height) / (tld->patch.width * tld->patch.height));
+			// regularize the rect to conform patch's aspect ratio
+			result.rect = ccv_rect((int)(result.rect.x + (result.rect.width - tld->patch.width * scale) + 0.5),
+								   (int)(result.rect.y + (result.rect.height - tld->patch.height * scale) + 0.5),
+								   (int)(tld->patch.width * scale + 0.5),
+								   (int)(tld->patch.height * scale + 0.5));
 			tracked = 1;
 			verified = tld->verified; // inherit it is verified from last frame
 			int anyp = 0, anyn = 0;

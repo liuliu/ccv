@@ -5,16 +5,17 @@
 ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes)
 {
 	assert(structs > 0 && features > 0 && scales > 0);
-	int posteriors = (int)(powf(2.0, features) + 0.5);
+	int posteriors = 1 << features;
 	ccv_ferns_t* ferns = (ccv_ferns_t*)ccmalloc(sizeof(ccv_ferns_t) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1) + sizeof(float) * structs * posteriors * 2 + sizeof(int) * structs * posteriors * 2);
 	ferns->structs = structs;
 	ferns->features = features;
 	ferns->scales = scales;
 	ferns->posteriors = posteriors;
+	ferns->cnum[0] = ferns->cnum[1] = 0;
 	ferns->posterior = (float*)((uint8_t*)(ferns + 1) + sizeof(ccv_point_t) * (structs * features * scales * 2 - 1));
 	// now only for 2 classes
-	ferns->cnum = (int*)(ferns->posterior + structs * posteriors * 2);
-	memset(ferns->cnum, 0, sizeof(int) * structs * posteriors * 2);
+	ferns->rnum = (int*)(ferns->posterior + structs * posteriors * 2);
+	memset(ferns->rnum, 0, sizeof(int) * structs * posteriors * 2);
 	int i, j, k;
 	float log5 = logf(0.5);
 	for (i = 0; i < structs * posteriors * 2; i++)
@@ -25,10 +26,18 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 	{
 		for (k = 0; k < features; k++)
 		{
-			double x1f = dsfmt_genrand_close_open(&dsfmt);
-			double y1f = dsfmt_genrand_close_open(&dsfmt);
-			double x2f = dsfmt_genrand_close_open(&dsfmt);
-			double y2f = dsfmt_genrand_close_open(&dsfmt);
+			double x1f, y1f, x2f, y2f;
+			// to restrict the space of ferns feature
+			if (dsfmt_genrand_uint32(&dsfmt) & 0x01)
+			{
+				x1f = dsfmt_genrand_close_open(&dsfmt);
+				x2f = dsfmt_genrand_close_open(&dsfmt);
+				y1f = y2f = dsfmt_genrand_close_open(&dsfmt);
+			} else {
+				x1f = x2f = dsfmt_genrand_close_open(&dsfmt);
+				y1f = dsfmt_genrand_close_open(&dsfmt);
+				y2f = dsfmt_genrand_close_open(&dsfmt);
+			}
 			for (j = 0; j < scales; j++)
 			{
 				ferns->fern[(j * structs * features + i * features + k) * 2] = ccv_point((int)(x1f * sizes[j].width), (int)(y1f * sizes[j].height));
@@ -71,15 +80,25 @@ void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat)
 	repeat += 1;
 	int i;
 	int* cnum = ferns->cnum;
+	int* rnum = ferns->rnum;
 	float* post = ferns->posterior;
+	cnum[c] += repeat;
+	float cw[] = {
+		1.0 / (cnum[0] + 1),
+		1.0 / (cnum[1] + 1),
+	};
 	for (i = 0; i < ferns->structs; i++)
 	{
 		uint32_t k = fern[i];
-		cnum[k * 2 + c] += repeat;
+		rnum[k * 2 + c] += repeat;
 		// needs to compute the log of it, otherwise, this is not a "real" fern implementation
-		post[k * 2] = logf((float)(cnum[k * 2] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2));
-		post[k * 2 + 1] = logf((float)(cnum[k * 2 + 1] + 1) / (cnum[k * 2] + cnum[k * 2 + 1] + 2));
-		cnum += ferns->posteriors * 2;
+		float rcw[] = {
+			rnum[k * 2] * cw[0] + 1e-5,
+			rnum[k * 2 + 1] * cw[1] + 1e-5,
+		};
+		post[k * 2] = logf(rcw[0] / (rcw[0] + rcw[1]));
+		post[k * 2 + 1] = logf(rcw[1] / (rcw[0] + rcw[1]));
+		rnum += ferns->posteriors * 2;
 		post += ferns->posteriors * 2;
 	}
 }

@@ -835,7 +835,8 @@ typedef struct {
 	int scales;
 	int posteriors;
 	float threshold;
-	int* cnum;
+	int cnum[2];
+	int* rnum;
 	float* posterior;
 	// decided to go flat organized fern so that we can profiling different memory layout impacts the performance
 	ccv_point_t fern[1];
@@ -903,6 +904,8 @@ typedef struct {
 	double var_thres; // computed dynamically from the supplied same
 	uint64_t frame_signature;
 	int count;
+	void* sfmt;
+	void* dsfmt;
 	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 

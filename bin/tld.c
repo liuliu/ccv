@@ -16,6 +16,9 @@ int main(int argc, char** argv)
 #ifdef HAVE_SWSCALE
 	assert(argc == 6);
 	ccv_rect_t box = ccv_rect(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
+	box.width = box.width - box.x + 1;
+	box.height = box.height - box.y + 1;
+	printf("%d,%d,%d,%d,%f\n", box.x, box.y, box.width + box.x - 1, box.height + box.y - 1, 1.0f);
 	// init av-related structs
 	AVFormatContext* ic = 0;
 	int video_stream = -1;
@@ -110,9 +113,9 @@ int main(int argc, char** argv)
 		ccv_write(image, filename, 0, CCV_IO_PNG_FILE, 0);
 		ccv_matrix_free(image);
 		if (tld->found)
-			printf("%d %d %d %d %f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
+			printf("%d,%d,%d,%d,%f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width + newbox.rect.x - 1, newbox.rect.height + newbox.rect.y - 1, newbox.confidence);
 		else
-			printf("NaN NaN NaN NaN\n");
+			printf("NaN,NaN,NaN,NaN,NaN\n");
 		x = y;
 		y = 0;
 	}

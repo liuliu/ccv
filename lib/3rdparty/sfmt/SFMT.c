@@ -345,10 +345,13 @@ void sfmt_genrand_shuffle(sfmt_t * sfmt, void *array, int size, int rsize) {
 	char *ptri = ptr + (size - 1) * rsize;
 	for (i = size - 1; i >= 0; i--) {
 		j = sfmt_genrand_uint32(sfmt) % (i + 1);
-		char *ptrj = ptr + j * rsize;
-		memcpy(t, ptri, rsize);
-		memcpy(ptri, ptrj, rsize);
-		memcpy(ptrj, t, rsize);
+		if (i != j)
+		{
+			char *ptrj = ptr + j * rsize;
+			memcpy(t, ptri, rsize);
+			memcpy(ptri, ptrj, rsize);
+			memcpy(ptrj, t, rsize);
+		}
 		ptri -= rsize;
 	}
 }
