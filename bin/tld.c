@@ -126,8 +126,7 @@ int main(int argc, char** argv)
 		if (tld->found)
 			printf("%05d: %d %d %d %d %f\n", tld->count, newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
 		else
-			printf("--------------\n");
-
+			printf("%05d: --------------\n", tld->count);
 		x = y;
 		y = 0;
 	}
