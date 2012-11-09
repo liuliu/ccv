@@ -16,9 +16,10 @@ int main(int argc, char** argv)
 #ifdef HAVE_SWSCALE
 	assert(argc == 6);
 	ccv_rect_t box = ccv_rect(atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), atoi(argv[5]));
-	box.width = box.width - box.x + 1;
-	box.height = box.height - box.y + 1;
-	printf("%d,%d,%d,%d,%f\n", box.x, box.y, box.width + box.x - 1, box.height + box.y - 1, 1.0f);
+	// box.width = box.width - box.x + 1;
+	// box.height = box.height - box.y + 1;
+	// printf("%d,%d,%d,%d,%f\n", box.x, box.y, box.width + box.x - 1, box.height + box.y - 1, 1.0f);
+	printf("%05d: %d %d %d %d %f\n", 0, box.x, box.y, box.width, box.height, 1.0f);
 	// init av-related structs
 	AVFormatContext* ic = 0;
 	int video_stream = -1;
@@ -80,7 +81,8 @@ int main(int argc, char** argv)
 		ccv_read(rgb_picture.data[0], &y, CCV_IO_RGB_RAW | CCV_IO_GRAY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
 		ccv_tld_info_t info;
 		ccv_comp_t newbox = ccv_tld_track_object(tld, x, y, &info);
-		printf("%04d: performed learn: %d, performed track: %d, successfully track: %d; %d passed fern detector, %d passed nnc detector, %d merged, %d confident matches, %d close matches\n", tld->count, info.perform_learn, info.perform_track, info.track_success, info.ferns_detects, info.nnc_detects, info.clustered_detects, info.confident_matches, info.close_matches);
+		/*
+		// printf("%04d: performed learn: %d, performed track: %d, successfully track: %d; %d passed fern detector, %d passed nnc detector, %d merged, %d confident matches, %d close matches\n", tld->count, info.perform_learn, info.perform_track, info.track_success, info.ferns_detects, info.nnc_detects, info.clustered_detects, info.confident_matches, info.close_matches);
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(rgb_picture.data[0], &image, CCV_IO_RGB_RAW | CCV_IO_RGB_COLOR, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
 		// draw out
@@ -120,6 +122,12 @@ int main(int argc, char** argv)
 			printf("%d,%d,%d,%d,%f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width + newbox.rect.x - 1, newbox.rect.height + newbox.rect.y - 1, newbox.confidence);
 		else
 			printf("NaN,NaN,NaN,NaN,NaN\n");
+		*/
+		if (tld->found)
+			printf("%05d: %d %d %d %d %f\n", tld->count, newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
+		else
+			printf("--------------\n");
+
 		x = y;
 		y = 0;
 	}
