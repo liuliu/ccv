@@ -17,6 +17,7 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	if (im == 0)
 		*x = im = ccv_dense_matrix_new((int) height, (int) width, (type) ? type : CCV_8U | (((color_type & PNG_COLOR_MASK_COLOR) == PNG_COLOR_TYPE_GRAY) ? CCV_C1 : CCV_C3), 0, 0);
 
+	png_set_strip_16(png_ptr);
 	png_set_strip_alpha(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_PALETTE)
 		png_set_palette_to_rgb(png_ptr);
