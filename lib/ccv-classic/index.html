@@ -76,6 +76,23 @@ _gaq.push(['_trackPageview']);
 
 <p>It turns the threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.</p>
 
+<h2 id="ccvopticalflowlucaskanade">ccv_optical_flow_lucas_kanade</h2>
+
+<pre><code>void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_array_t* point_a, ccv_array_t** point_b, ccv_size_t win_size, int level, double min_eigen)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Lucas%E2%80%93Kanade_Optical_Flow_Method">Lucas Kanade</a> optical flow implementation with image pyramid extension.</p>
+
+<ul>
+  <li><strong>a</strong>: the first frame</li>
+  <li><strong>b</strong>: the next frame</li>
+  <li><strong>point_a</strong>: the points in first frame, of <strong>ccv_decimal_point_t</strong> type</li>
+  <li><strong>point_b</strong>: the output points in the next frame, of <strong>ccv_decimal_point_with_status_t</strong> type</li>
+  <li><strong>win_size</strong>: the window size to compute each optical flow, it must be a odd number</li>
+  <li><strong>level</strong>: how many image pyramids to be used for the computation</li>
+  <li><strong>min_eigen</strong>: the minimal eigen-value to pass optical flow computation</li>
+</ul>
+
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 <div id="disqus_thread"></div>
 <script type="text/javascript">
