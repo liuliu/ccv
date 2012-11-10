@@ -19,6 +19,7 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 
 	png_set_strip_16(png_ptr);
 	png_set_strip_alpha(png_ptr);
+	png_set_strip_16(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_PALETTE)
 		png_set_palette_to_rgb(png_ptr);
 	if (color_type == PNG_COLOR_TYPE_GRAY && bit_depth < 8)
