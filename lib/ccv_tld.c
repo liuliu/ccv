@@ -541,6 +541,21 @@ static void _ccv_tld_check_params(ccv_tld_param_t params)
 	assert(params.bad_patches > 0);
 	assert(params.interval >= 0);
 	assert(params.shift > 0 && params.shift < 1);
+	assert(params.validate_set > 0 && params.validate_set < 1);
+	assert(params.nnc_same > 0.5 && params.nnc_same < 1);
+	assert(params.nnc_thres > 0.5 && params.nnc_thres < 1);
+	assert(params.nnc_verify > 0.5 && params.nnc_verify < 1);
+	assert(params.nnc_beyond > 0.5 && params.nnc_beyond < 1);
+	assert(params.nnc_collect >= 0.5 && params.nnc_collect < 1);
+	assert(params.new_deform > 0);
+	assert(params.track_deform > 0);
+	assert(params.new_deform_angle > 0);
+	assert(params.track_deform_angle > 0);
+	assert(params.new_deform_scale > 0);
+	assert(params.track_deform_scale > 0);
+	assert(params.new_deform_shift > 0);
+	assert(params.track_deform_shift > 0);
+	assert(params.rotation >= 0);
 }
 
 static float _ccv_tld_ferns_compute_threshold(ccv_ferns_t* ferns, float ferns_thres, ccv_dense_matrix_t* ga, ccv_dense_matrix_t* sat, ccv_dense_matrix_t* sqsat, double var_thres, ccv_array_t* bad, int starter)

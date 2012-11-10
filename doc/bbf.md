@@ -66,7 +66,7 @@ You see the difference.
 
 Accuracy-wise:
 
-I wrote a little script called validator.rb that can check the output of bbfdetect
+I wrote a little script called bbfvldr.rb that can check the output of bbfdetect
 against ground truth, before run the script, you need to do some house-cleaning
 work on the result.txt:
 

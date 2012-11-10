@@ -124,4 +124,4 @@ I've trained one more mixture model: samples/car.m
 
 It has been trained with VOC2011 trainval dataset, and the result on validation dataset:
 
-46.19% (16)
+	46.19% (16)

@@ -30,13 +30,17 @@ ccv_ferns_t* ccv_ferns_new(int structs, int features, int scales, ccv_size_t* si
 			// to restrict the space of ferns feature
 			if (dsfmt_genrand_uint32(&dsfmt) & 0x01)
 			{
-				x1f = dsfmt_genrand_close_open(&dsfmt);
-				x2f = dsfmt_genrand_close_open(&dsfmt);
-				y1f = y2f = dsfmt_genrand_close_open(&dsfmt);
+				do {
+					x1f = dsfmt_genrand_close_open(&dsfmt);
+					x2f = dsfmt_genrand_close_open(&dsfmt);
+					y1f = y2f = dsfmt_genrand_close_open(&dsfmt);
+				} while (fabs(x1f - x2f) >= 0.2);
 			} else {
-				x1f = x2f = dsfmt_genrand_close_open(&dsfmt);
-				y1f = dsfmt_genrand_close_open(&dsfmt);
-				y2f = dsfmt_genrand_close_open(&dsfmt);
+				do {
+					x1f = x2f = dsfmt_genrand_close_open(&dsfmt);
+					y1f = dsfmt_genrand_close_open(&dsfmt);
+					y2f = dsfmt_genrand_close_open(&dsfmt);
+				} while (fabs(y1f - y2f) >= 0.2);
 			}
 			for (j = 0; j < scales; j++)
 			{

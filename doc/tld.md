@@ -33,12 +33,12 @@ some meaningful data to analyze on.
 
 On motocross.mpg:
 
-	detections : 774
+	detections : 901
 	true detections : 1412
-	correct detections : 710
-	precision : 0.917313
-	recall : 0.502833
-	f-measure : 0.649588
+	correct detections : 833
+	precision : 0.924528
+	recall : 0.589943
+	f-measure : 0.720277
 
 The result on the same video reported in: Zdenek Kalal, Jiri Matas and Krystian Mikolajczyk, Online Learning of Robust Object Detectors during Unstable Tracking:
 
