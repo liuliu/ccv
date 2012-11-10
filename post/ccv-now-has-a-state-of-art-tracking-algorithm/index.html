@@ -1,0 +1,63 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>ccv now has a state-of-art tracking algorithm</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/unstable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/unstable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>ccv now has a state-of-art tracking algorithm</h1>
+<p>November 10th, 2012</p>
+<p>In the next few minutes, I will cut the 0.3-rc1 branch, and that will put the 0.3 version of ccv out of the door (well, not exactly, because all the development on unstable branch is public). Ever since 0.1 version, I’ve tried to consciously focus on different areas for each cycle, mainly, an odd version should be a version with new features, and an even version should be a version with performance improvement, bug fixes and renovated API design. It is exciting for me to unleash 0.3 version, with a major feature included: a tracking algorithm.</p>
+
+<p>From the beginning, ccv always focuses on implementing modern computer vision algorithms in a well-engineering way, e.g. algorithms that can be applicable in wide areas and is state-of-art in main stream computer vision research. That’s why ccv is the first one implemented BBF in open source, and the first one implemented DPM (both training and detection) in C. Now, ccv is the first one that implements the famous long-term tracking algorithm: TLD (a.k.a. <a href="http://info.ee.surrey.ac.uk/Personal/Z.Kalal/tld.html">“Predator” algorithm</a>) in C.</p>
+
+<iframe width="460" height="315" style="margin-bottom:16px" src="http://www.youtube.com/embed/IW2Y-zWAn0w" frameborder="0" allowfullscreen=""></iframe>
+
+<p>See more discussions and experiments on <a href="/doc/doc-tld">TLD: Track Learn Detect</a>.</p>
+
+<p>Thanks to <a href="http://info.ee.surrey.ac.uk/Personal/Z.Kalal/">Zdenek Kalal</a> for sharing his research with the rest of the world.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>
