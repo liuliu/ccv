@@ -539,6 +539,7 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
 
 /* transformation algorithms ccv_transform.c */
+
 void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float y, float x, int rows, int cols);
 ccv_decimal_point_t ccv_perspective_transform_apply(ccv_decimal_point_t point, ccv_size_t size, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22);
 void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22);
@@ -911,7 +912,7 @@ typedef struct {
 	int count;
 	void* sfmt;
 	void* dsfmt;
-	uint32_t fern_buffer[0]; // fetched ferns from image, this is a buffer
+	uint32_t fern_buffer[1]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
 typedef struct {

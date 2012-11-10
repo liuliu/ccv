@@ -607,7 +607,7 @@ ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t pa
 	ccv_array_t* good = 0;
 	ccv_array_t* bad = 0;
 	ccv_comp_t best_box = _ccv_tld_generate_box_for(ccv_size(a->cols, a->rows), patch, box, 20, &good, &bad, params);
-	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t) + sizeof(uint32_t) * params.structs * best_box.neighbors);
+	ccv_tld_t* tld = (ccv_tld_t*)ccmalloc(sizeof(ccv_tld_t) + sizeof(uint32_t) * (params.structs * best_box.neighbors - 1));
 	tld->patch = patch;
 	tld->params = params;
 	tld->nnc_verify_thres = params.nnc_verify;
