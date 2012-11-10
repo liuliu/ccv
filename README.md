@@ -30,8 +30,8 @@ One core concept of ccv development is "application driven". As a result, ccv
 end up implementing a handful state-of-art algorithms. It includes
 a very fast detection algorithm for rigid object (face etc.), an accurate
 object detection algorithm for somewhat difficult object (pedestrian, cat etc.),
-a state-of-art text detection algorithm</a>, and the long-standing feature point
-detection algorithm.
+a state-of-art text detection algorithm, a long term object tracking algorithm,
+and the long-standing feature point detection algorithm.
 
 For computer vision community, there is no shortage of good algorithms, good
 implementation is what it lacks of. After years, we stuck in between either the

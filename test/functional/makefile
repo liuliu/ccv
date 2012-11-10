@@ -1,5 +1,5 @@
 CC = `cat ../../lib/.CC`# -fprofile-arcs -ftest-coverage
-LDFLAGS = -L"../../lib" -lccv -pthread `cat ../../lib/.LN`
+LDFLAGS = -L"../../lib" -lccv `cat ../../lib/.LN`
 CFLAGS = -O3 -msse2 -Wall -I"../../lib" -I"../" `cat ../../lib/.DEF`
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests io.tests transform.tests
 
