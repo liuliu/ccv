@@ -54,8 +54,14 @@ h1 a {
   font-weight:bold;
 }
 
-h1 a.news {
+h2 a {
+  color:#222;
+  font-weight:bold;
+}
+
+h2 a.news {
   color:#268bd2;
+  font-size:1.25em;
 }
 
 ul.main-list {
