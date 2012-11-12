@@ -56,6 +56,7 @@ h1 a {
 
 h2 a.news {
   color:#268bd2;
+  font-weight:bold;
   font-size:1.25em;
 }
 
