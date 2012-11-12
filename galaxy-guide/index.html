@@ -74,7 +74,7 @@ _gaq.push(['_trackPageview']);
 <span class="line-numbers"><strong><a href="#n10" name="n10">10</a></strong></span>    <span style="color:#080;font-weight:bold">for</span> (i = <span style="color:#00D">0</span>; i &lt; faces-&gt;rnum; i++)
 <span class="line-numbers"><a href="#n11" name="n11">11</a></span>    {
 <span class="line-numbers"><a href="#n12" name="n12">12</a></span>        ccv_comp_t* face = (ccv_comp_t*)ccv_array_get(faces, i);
-<span class="line-numbers"><a href="#n13" name="n13">13</a></span>        printf(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">%d %d %d %d</span><span style="color:#b0b">\n</span><span style="color:#710">&quot;</span></span>, face-&gt;rect.x, face-&gt;rect.y, face-&gt;rect.width, face-&gt;rect.y);
+<span class="line-numbers"><a href="#n13" name="n13">13</a></span>        printf(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">%d %d %d %d</span><span style="color:#b0b">\n</span><span style="color:#710">&quot;</span></span>, face-&gt;rect.x, face-&gt;rect.y, face-&gt;rect.width, face-&gt;rect.height);
 <span class="line-numbers"><a href="#n14" name="n14">14</a></span>    }
 <span class="line-numbers"><a href="#n15" name="n15">15</a></span>    ccv_array_free(faces);
 <span class="line-numbers"><a href="#n16" name="n16">16</a></span>    ccv_bbf_classifier_cascade_free(cascade);
