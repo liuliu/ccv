@@ -14,7 +14,8 @@
 // Unsupported platform
 #endif
 #else
-#include <libpng/png.h>
+#include <zlib.h>
+#include <png.h>
 #endif
 #include "io/_ccv_io_libpng.c"
 #endif
