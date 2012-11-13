@@ -224,7 +224,8 @@ void dt_min_helper(float *src, float *dst, int *ptr, int step,
  if (d2 >= d1) {
    int d = (d1+d2) >> 1;
    int s = s1;
-   for (int p = s1+1; p <= s2; p++)
+   int p;
+   for (p = s1+1; p <= s2; p++)
      if (src[s*step] + a*square(d-s) + b*(d-s) > 
 	 src[p*step] + a*square(d-p) + b*(d-p))
 	s = p;
@@ -295,7 +296,8 @@ void dt_max_helper(float *src, float *dst, int *ptr, int step,
  if (d2 >= d1) {
    int d = (d1+d2) >> 1;
    int s = s1;
-   for (int p = s1+1; p <= s2; p++)
+   int p;
+   for (p = s1+1; p <= s2; p++)
      if (src[s*step] - a*square(d-s) - b*(d-s) <
 	 src[p*step] - a*square(d-p) - b*(d-p))
 	s = p;
