@@ -1,21 +1,21 @@
-CC = `cat ../lib/.CC`# -faddress-sanitizer -fno-omit-frame-pointer
-LDFLAGS = -L"../lib" -lccv `cat ../lib/.LN`
-CFLAGS = -O3 -Wall -I"../lib" `cat ../lib/.DEF`
+include ../config.mk
 
-TARGETS = bbffmt msermatch siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert tld
+#CC += -faddress-sanitizer -fno-omit-frame-pointer
+LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
+CFLAGS := -O3 -Wall -I"../lib" $(CFLAGS)
 
-all: libccv.a $(TARGETS)
+TARGETS := bbffmt msermatch siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert tld
+
+all: ../lib/libccv.a $(TARGETS)
 
 clean:
 	${MAKE} clean -C ../lib ; rm *.o $(TARGETS)
 
-$(TARGETS): %: %.o libccv.a
-	@echo "$(CC) -o $@ $< $(LDFLAGS)"
-	@$(CC) -o $@ $< $(LDFLAGS)
+$(TARGETS): %: %.o ../lib/libccv.a
+	$(CC) -o $@ $< $(LDFLAGS)
 
-libccv.a:
+../lib/libccv.a:
 	${MAKE} -C ../lib
 
 %.o: %.c ../lib/ccv.h
-	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)

@@ -1,26 +1,29 @@
-CC = `cat .CC`# -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS = -O3 -ffast-math -Wall `cat .DEF`# -fprofile-arcs -ftest-coverage
+-include ../config.mk
+
+#CC += -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS := -O3 -ffast-math -Wall $(CFLAGS) # -fprofile-arcs -ftest-coverage
 
 config:
-	@./configure
-	@make all
+	./configure
+	$(MAKE) all
 
 force: clean
-	@./configure force
-	@make all
+	./configure force
+	$(MAKE) all
 
-all: libccv.a
+../config.mk: ./configure
+	bash $<
+
+all: ../config.mk libccv.a
 
 clean:
 	rm -f *.o 3rdparty/sha1/*.o 3rdparty/kissfft/*.o 3rdparty/dsfmt/*.o libccv.a
 
-libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1/sha1.o 3rdparty/kissfft/kiss_fft.o 3rdparty/kissfft/kiss_fftnd.o 3rdparty/kissfft/kiss_fftr.o 3rdparty/kissfft/kiss_fftndr.o 3rdparty/kissfft/kissf_fft.o 3rdparty/kissfft/kissf_fftnd.o 3rdparty/kissfft/kissf_fftr.o 3rdparty/kissfft/kissf_fftndr.o 3rdparty/dsfmt/dSFMT.o 3rdparty/sfmt/SFMT.o ccv_io.o ccv_numeric.o ccv_algebra.o ccv_util.o ccv_basic.o ccv_resample.o ccv_transform.o ccv_classic.o ccv_daisy.o ccv_sift.o ccv_bbf.o ccv_mser.o ccv_swt.o ccv_dpm.o ccv_tld.o ccv_ferns.o
+libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1/sha1.o 3rdparty/kissfft/kiss_fft.o 3rdparty/kissfft/kiss_fftnd.o 3rdparty/kissfft/kiss_fftr.o 3rdparty/kissfft/kiss_fftndr.o 3rdparty/kissfft/kissf_fft.o 3rdparty/kissfft/kissf_fftnd.o 3rdparty/kissfft/kissf_fftr.o 3rdparty/kissfft/kissf_fftndr.o 3rdparty/dsfmt/dSFMT.o 3rdparty/sfmt/SFMT.o ccv_io.o ccv_numeric.o ccv_algebra.o ccv_util.o ccv_basic.o ccv_resample.o ccv_transform.o ccv_classic.o ccv_daisy.o ccv_sift.o ccv_bbf.o ccv_mser.o ccv_swt.o ccv_dpm.o ccv_tld.o ccv_ferns.o | ../config.mk
 	ar rcs $@ $^
 
 ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
-	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)
 
 %.o: %.c ccv.h ccv_internal.h
-	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)

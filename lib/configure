@@ -5,15 +5,20 @@ if [ `uname` == "Darwin" ] ; then
 fi
 
 if [ "$1" = "force" ] ; then
-	rm -f .CC .DEF .LN
+	rm -f ../config.mk
 fi
 
-if [ ! -e .CC -o ! -e .DEF -o ! -e .LN ] ; then
-	echo -e "\n There are a few questions for you:\n"
-fi
+contains_flag () {
+	if [ -f ../config.mk ]; then
+		grep -E "^$1 := " ../config.mk &>/dev/null;
+		return $?;
+	fi
 
-if [ -e .CC ] ; then
-	CC=`cat .CC`
+	return 1;
+}
+
+if contains_flag CC; then
+	CC=`grep -oE 'CC := [^#]+' ../config.mk | cut -b7-`
 else
 	echo -ne "  Default compiler: \033[4mclang\033[m [Y/n] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
@@ -23,12 +28,12 @@ else
 	*	  ) CC='clang'
 			;;
 	esac
-	echo $CC > .CC
+	echo "CC := $CC" >> ../config.mk
 fi
 
-if [ -e .DEF -a -e .LN ] ; then
-	CFLAGS=`cat .DEF`
-	LDFLAGS=`cat .LN`
+if contains_flag CFLAGS && contains_flag LDFLAGS; then
+	CFLAGS=`grep -oE 'CFLAGS := [^#]+' ../config.mk | cut -b11-`
+	LDFLAGS=`grep -oE 'LDFLAGS := [^#]+' ../config.mk | cut -b12-`
 else
 	CFLAGS=" "
 	LDFLAGS="-lm "
@@ -124,8 +129,8 @@ else
 			;;
 	*	  ) ;;
 	esac
-	echo $CFLAGS > .DEF
-	echo $LDFLAGS > .LN
+	echo "CFLAGS := $CFLAGS" >> ../config.mk
+	echo "LDFLAGS := $LDFLAGS" >> ../config.mk
 fi
 
 CFLAGS="${CFLAGS#"${CFLAGS%%[![:space:]]*}"}" # remove leading whitespaces

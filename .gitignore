@@ -28,3 +28,4 @@ bin/*.diff
 bin/data/*
 data/*
 tool/*
+config.mk
