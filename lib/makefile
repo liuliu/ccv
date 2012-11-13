@@ -1,13 +1,9 @@
-CC = `cat .CC`# -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS = -O3 -ffast-math -Wall `cat .DEF`# -fprofile-arcs -ftest-coverage
+include config.mk
 
-config:
-	@./configure
-	@make all
+#CC += -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS := -O3 -ffast-math -Wall $(CFLAGS)# -fprofile-arcs -ftest-coverage
 
-force: clean
-	@./configure force
-	@make all
+.PHONY: all clean
 
 all: libccv.a
 
@@ -18,9 +14,7 @@ libccv.a: ccv_cache.o ccv_memory.o 3rdparty/sha1/sha1.o 3rdparty/kissfft/kiss_ff
 	ar rcs $@ $^
 
 ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
-	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)
 
 %.o: %.c ccv.h ccv_internal.h
-	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
-	@$(CC) $< -o $@ -c $(CFLAGS)
+	$(CC) $< -o $@ -c $(CFLAGS)

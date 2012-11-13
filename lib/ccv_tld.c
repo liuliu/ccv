@@ -90,8 +90,9 @@ static ccv_rect_t _ccv_tld_short_term_track(ccv_dense_matrix_t* a, ccv_dense_mat
 	ccv_array_t* point_a = ccv_array_new(sizeof(ccv_decimal_point_t), (TLD_GRID_SPARSITY - 1) * (TLD_GRID_SPARSITY - 1), 0);
 	float gapx = (float)box.width / TLD_GRID_SPARSITY;
 	float gapy = (float)box.height / TLD_GRID_SPARSITY;
-	for (float x = gapx * 0.5; x < box.width; x += gapx)
-		for (float y = gapy * 0.5; y < box.height; y += gapy)
+	float x, y;
+	for (x = gapx * 0.5; x < box.width; x += gapx)
+		for (y = gapy * 0.5; y < box.height; y += gapy)
 		{
 			ccv_decimal_point_t point = ccv_decimal_point(box.x + x, box.y + y);
 			ccv_array_push(point_a, &point);

@@ -1,6 +1,7 @@
-CC = `cat ../../lib/.CC`
-LDFLAGS = -L"../../lib" -lccv `cat ../../lib/.LN`
-CFLAGS = -O3 -msse2 -Wall -I"../../lib" -I"../" `cat ../../lib/.DEF`
+include ../../lib/config.mk
+
+LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
+CFLAGS := -O3 -msse2 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = defects.l0.1.tests
 
 test: all

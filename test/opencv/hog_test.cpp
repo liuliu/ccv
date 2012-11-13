@@ -96,8 +96,9 @@ int main(int argc, char** argv)
 	unsigned int elapsed_time = get_current_time();
 	icvCreateHOG(gray, hog);
 	printf("elapsed time : %d\n", get_current_time() - elapsed_time);
-	for (int i = 0; i < x->rows; i++)
-		for (int j = 0; j < x->cols; j++)
+	int i, j;
+	for (i = 0; i < x->rows; i++)
+		for (j = 0; j < x->cols; j++)
 			x->data.i[i * x->cols + j] = hog[i * x->cols * 8 + j * 8];
 	cvSaveImage(argv[2], x);
 	cvReleaseMat(&gray);
