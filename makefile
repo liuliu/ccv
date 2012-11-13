@@ -23,6 +23,11 @@ include prefix.mk
 include $(s)rules.mk
 include suffix.mk
 
+s := test/
+include prefix.mk
+include $(s)rules.mk
+include suffix.mk
+
 # --- General rules -----------------------------------------------------------
 
 clean:

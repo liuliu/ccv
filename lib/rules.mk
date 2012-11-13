@@ -30,7 +30,7 @@ OBJECTS := \
 	$(b)ccv_util.o \
 
 TGT_DIR += \
-	$(b)3rdparty/dsfmt/ \
+	$(b)3rdparty/dsfmt \
 	$(b)3rdparty/kissfft \
 	$(b)3rdparty/sfmt \
 	$(b)3rdparty/sha1 \
