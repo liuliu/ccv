@@ -13,5 +13,5 @@ BINARIES := \
 
 $(BINARIES): $(LIBCCV_PATH)
 
-$(BINARIES): LDFLAGS += -Llib -lccv
+$(BINARIES): LDFLAGS += -L$(BUILD_DIR)lib -lccv
 $(BINARIES): CFLAGS += -Ilib
