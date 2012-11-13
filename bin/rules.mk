@@ -15,3 +15,5 @@ $(BINARIES): $(LIBCCV_PATH)
 
 $(BINARIES): LDFLAGS += -L$(BUILD_DIR)lib -lccv
 $(BINARIES): CFLAGS += -Ilib
+
+.PRECIOUS: $(patsubst %,%.o,$(BINARIES))

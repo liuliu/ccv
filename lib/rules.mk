@@ -36,7 +36,3 @@ TGT_DIR += \
 	$(b)3rdparty/sha1 \
 
 $(LIBCCV_PATH): $(OBJECTS)
-
-$(OBJECTS): $(s)ccv.h $(s)ccv_internal.h
-
-$(b)ccv_io.o: $(s)io/*.c
