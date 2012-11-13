@@ -16,7 +16,7 @@ TGT_DIR += \
 $(TEST_TARGETS): $(LIBCCV_PATH)
 
 $(TEST_TARGETS): LDFLAGS += -L$(BUILD_DIR)lib -lccv
-$(TEST_TARGETS): CFLAGS += -Ilib
+$(TEST_TARGETS): CFLAGS += -Ilib -Itest
 
 build: $(TEST_TARGETS)
 
