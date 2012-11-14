@@ -38,3 +38,12 @@ implementation is what it lacks of. After years, we stuck in between either the
 high-performance, battle-tested but old algorithm implementations, or the new,
 shining but Matlab algorithms. ccv is my take on this problem, hope you enjoy
 it.
+
+Compiling
+----------
+  * `cd lib`
+  * `./configure`
+  * `make`
+
+By default, it saves your configuration settings after the first `./configure`
+but if you would like to reconfigure, run `./configure force`
