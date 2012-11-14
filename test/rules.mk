@@ -21,4 +21,4 @@ $(TEST_TARGETS): CFLAGS += -Ilib -Itest
 build: $(TEST_TARGETS)
 
 test: build
-	for test in $(TEST_TARGETS); do ./"$Ftest"; done
+	for test in $(TEST_TARGETS); do ./"$$test"; done

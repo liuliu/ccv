@@ -2,10 +2,20 @@ include config.mk
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 CFLAGS := -O3 -ffast-math -Wall -MD $(CFLAGS)
+#LDFLAGS := -Wl,-O1 -Wl,--as-needed $(LDFLAGS)
 # -fprofile-arcs -ftest-coverage
 
 BUILD_DIR := build/
 LIBCCV_PATH := $(BUILD_DIR)lib/libccv.a
+
+# --- Remove unused builtin rules ---------------------------------------------
+%.c: %.w %.ch
+%:: RCS/%,v
+%:: RCS/%
+%:: SCCS/s.%
+%:: %,v
+%:: s.%
+MAKEFLAGS += -Rr
 
 .PHONY: all build
 all: build
@@ -36,11 +46,11 @@ clean:
 $(TGT_DIR):
 	mkdir -p $(TGT_DIR)
 
-#$(TARGETS): %: %.o ../lib/libccv.a
-#	$(CC) -o $@ $< $(LDFLAGS)
-
-$(b)%.o: $(s)%.c
-	$(CC) $< -o $@ -c $(CFLAGS)
-
-$(b)%.a:
+$(BUILD_DIR)%.a:
 	ar rcs $@ $^
+
+$(BUILD_DIR)%: %.c | $(TGT_DIR)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+
+$(BUILD_DIR)%.o: %.c | $(TGT_DIR)
+	$(CC) $(CFLAGS) -c -o $@ $<

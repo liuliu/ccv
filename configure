@@ -10,7 +10,7 @@ fi
 
 contains_flag () {
 	if [ -f config.mk ]; then
-		grep -E "^$1 ?= " config.mk &>/dev/null;
+		grep -E "^$1 := " config.mk &>/dev/null;
 		return $?;
 	fi
 
@@ -18,7 +18,7 @@ contains_flag () {
 }
 
 if contains_flag CC; then
-	CC=`grep -oE 'CC ?= [^#]+' config.mk | cut -b7-`
+	CC=`grep -oE 'CC := [^#]+' config.mk | cut -b7-`
 else
 	echo -ne "  Default compiler: \033[4mclang\033[m [Y/n] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
@@ -28,12 +28,16 @@ else
 	*	  ) CC='clang'
 			;;
 	esac
-	echo "CC ?= $CC" >> config.mk
+	echo "ifdef STATIC_ANALYSER" >> config.mk
+	echo "CC := $CC" >> config.mk
+	echo "else" >> config.mk
+	echo "CC := $CC" >> config.mk
+	echo "endif" >> config.mk
 fi
 
 if contains_flag CFLAGS && contains_flag LDFLAGS; then
-	CFLAGS=`grep -oE 'CFLAGS ?= [^#]+' config.mk | cut -b11-`
-	LDFLAGS=`grep -oE 'LDFLAGS ?= [^#]+' config.mk | cut -b12-`
+	CFLAGS=`grep -oE 'CFLAGS := [^#]+' config.mk | cut -b11-`
+	LDFLAGS=`grep -oE 'LDFLAGS := [^#]+' config.mk | cut -b12-`
 else
 	CFLAGS=" "
 	LDFLAGS="-lm "
@@ -41,14 +45,14 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-msse2 -D HAVE_SSE2 "
+	*	  ) CFLAGS="$CFLAGS-msse2 -DHAVE_SSE2 "
 			;;
 	esac
 	echo -ne "  With \033[4mlibjpeg\033[m [Y/n] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBJPEG "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_LIBJPEG "
 			LDFLAGS="$LDFLAGS-ljpeg "
 			;;
 	esac
@@ -56,7 +60,7 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBPNG "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_LIBPNG "
 			LDFLAGS="$LDFLAGS-lpng -lz "
       if [[ $IS_OSX ]] ; then
         CFLAGS="$CFLAGS-I/usr/X11/include "
@@ -68,7 +72,7 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_GSL "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_GSL "
 			LDFLAGS="$LDFLAGS-lgsl "
 			;;
 	esac
@@ -76,7 +80,7 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_FFTW3 "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_FFTW3 "
 			LDFLAGS="$LDFLAGS-lfftw3f -lfftw3 "
 			;;
 	esac
@@ -85,7 +89,7 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBLINEAR "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_LIBLINEAR "
 			LDFLAGS="$LDFLAGS-llinear "
 			;;
 	esac
@@ -93,14 +97,14 @@ else
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
 	[nN]* ) ;;
-	*	  ) CFLAGS="$CFLAGS-D HAVE_CBLAS "
+	*	  ) CFLAGS="$CFLAGS-DHAVE_CBLAS "
 			LDFLAGS="$LDFLAGS-lblas "
 			;;
 	esac
 	echo -ne "  Use \033[4mopenmp\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[yY]* ) CFLAGS="$CFLAGS-D USE_OPENMP -fopenmp "
+	[yY]* ) CFLAGS="$CFLAGS-DUSE_OPENMP -fopenmp "
 			LDFLAGS="$LDFLAGS-lgomp "
 			;;
 	*	  ) ;;
@@ -108,7 +112,7 @@ else
 	echo -ne "  With \033[4mavcodec\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[yY]* ) CFLAGS="$CFLAGS-D HAVE_AVCODEC "
+	[yY]* ) CFLAGS="$CFLAGS-DHAVE_AVCODEC "
 			LDFLAGS="$LDFLAGS-lavcodec "
 			;;
 	*	  ) ;;
@@ -116,7 +120,7 @@ else
 	echo -ne "  With \033[4mavformat\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[yY]* ) CFLAGS="$CFLAGS-D HAVE_AVFORMAT "
+	[yY]* ) CFLAGS="$CFLAGS-DHAVE_AVFORMAT "
 			LDFLAGS="$LDFLAGS-lavformat "
 			;;
 	*	  ) ;;
@@ -124,13 +128,13 @@ else
 	echo -ne "  With \033[4mswscale\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in
-	[yY]* ) CFLAGS="$CFLAGS-D HAVE_SWSCALE "
+	[yY]* ) CFLAGS="$CFLAGS-DHAVE_SWSCALE "
 			LDFLAGS="$LDFLAGS-lswscale "
 			;;
 	*	  ) ;;
 	esac
-	echo "CFLAGS ?= $CFLAGS" >> config.mk
-	echo "LDFLAGS ?= $LDFLAGS" >> config.mk
+	echo "CFLAGS := $CFLAGS" >> config.mk
+	echo "LDFLAGS := $LDFLAGS" >> config.mk
 fi
 
 CFLAGS="${CFLAGS#"${CFLAGS%%[![:space:]]*}"}" # remove leading whitespaces
