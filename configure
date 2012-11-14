@@ -28,8 +28,8 @@ else
 	*	  ) CC='clang'
 			;;
 	esac
-	echo "ifdef STATIC_ANALYSER" >> config.mk
-	echo "CC := $CC" >> config.mk
+	echo "ifdef STATIC_ANALYZER" >> config.mk
+	echo "CC := ccc-analyzer" >> config.mk
 	echo "else" >> config.mk
 	echo "CC := $CC" >> config.mk
 	echo "endif" >> config.mk
