@@ -63,15 +63,18 @@ ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int 
 		assert(x->rows == rows && x->cols == cols && (CCV_GET_DATA_TYPE(x->type) & types) && (CCV_GET_CHANNEL(x->type) == CCV_GET_CHANNEL(types)));
 		prefer_type = CCV_GET_DATA_TYPE(x->type) | CCV_GET_CHANNEL(x->type);
 	}
-	if (sig != 0)
+	if (sig == 0)
+    {
 		sig = ccv_cache_generate_signature((const char*)&prefer_type, sizeof(int), sig, 0);
-	if (x == 0)
-	{
-		x = ccv_dense_matrix_new(rows, cols, prefer_type, 0, sig);
-	} else {
-		x->sig = sig;
-	}
-	return x;
+    }
+    if (x == 0)
+    {
+        x = ccv_dense_matrix_new(rows, cols, prefer_type, 0, sig);
+    } else {
+        x->sig = sig;
+    }
+
+    return x;
 }
 
 void ccv_make_matrix_mutable(ccv_matrix_t* mat)
