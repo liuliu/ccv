@@ -93,6 +93,8 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 	snprintf(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), (size), (string), ##__VA_ARGS__); \
 	size_t INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_) = (size);
 
+#define CCV_EOF_SIGN ((uint64_t)0)
+
 #define ccv_declare_derived_signature(var, cond, submacro, ...) \
 	submacro; \
 	uint64_t var = (cond) ? ccv_cache_generate_signature(INTERNAL_CATCH_UNIQUE_NAME(_ccv_identifier_), INTERNAL_CATCH_UNIQUE_NAME(_ccv_string_size_), __VA_ARGS__) : 0;

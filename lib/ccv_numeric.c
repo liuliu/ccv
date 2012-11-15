@@ -918,7 +918,7 @@ void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_den
 
 void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
 {
-	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_literal("ccv_filter"), a->sig, b->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0, ccv_sign_with_literal("ccv_filter"), a->sig, b->sig, CCV_EOF_SIGN);
 	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* dd = *d = ccv_dense_matrix_renew(*d, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_object_return_if_cached(, dd);
@@ -968,19 +968,19 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag)
 {
 	assert(!(flag & CCV_L2_NORM) && (flag & CCV_GSEDT));
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, CCV_EOF_SIGN);
 	type = (CCV_GET_DATA_TYPE(type) == CCV_64F || CCV_GET_DATA_TYPE(a->type) == CCV_64F || CCV_GET_DATA_TYPE(a->type) == CCV_64S) ? CCV_GET_CHANNEL(a->type) | CCV_64F : CCV_GET_CHANNEL(a->type) | CCV_32F;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), type, sig);
 	ccv_dense_matrix_t* mx = 0;
 	ccv_dense_matrix_t* my = 0;
 	if (x != 0)
 	{
-		ccv_declare_derived_signature(xsig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_x(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+		ccv_declare_derived_signature(xsig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_x(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, CCV_EOF_SIGN);
 		mx = *x = ccv_dense_matrix_renew(*x, a->rows, a->cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, xsig);
 	}
 	if (y != 0)
 	{
-		ccv_declare_derived_signature(ysig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_y(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, 0);
+		ccv_declare_derived_signature(ysig, a->sig != 0, ccv_sign_with_format(64, "ccv_distance_transform_y(%la,%la,%la,%la,%d)", dx, dy, dxx, dyy, flag), a->sig, CCV_EOF_SIGN);
 		my = *y = ccv_dense_matrix_renew(*y, a->rows, a->cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, ysig);
 	}
 	ccv_object_return_if_cached(, db, mx, my);
