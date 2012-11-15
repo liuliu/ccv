@@ -3,9 +3,10 @@
 
 /* sobel filter is fundamental to many other high-level algorithms,
  * here includes 2 special case impl (for 1x3/3x1, 3x3) and one general impl */
+
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
 {
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_sobel(%d,%d)", dx, dy), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_sobel(%d,%d)", dx, dy), a->sig, (uint64_t)0);
 	type = (type == 0) ? CCV_32S | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_GET_CHANNEL(a->type) | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
@@ -322,9 +323,9 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 	/* this is the special case where ccv_declare_derived_signature_* macros cannot handle properly */
 	uint64_t sig = a->sig;
 	if (type & CCV_FLIP_Y)
-		sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature("ccv_flip_y", 10, sig, 0);
+		sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature("ccv_flip_y", 10, sig, (uint64_t)0);
 	if (type & CCV_FLIP_X)
-		sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature("ccv_flip_x", 10, sig, 0);
+		sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature("ccv_flip_x", 10, sig, (uint64_t)0);
 	ccv_dense_matrix_t* db;
 	if (b == 0)
 	{
@@ -332,7 +333,7 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 		if (a->sig != 0)
 		{
 			btype = CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type);
-			sig = ccv_cache_generate_signature((const char*)&btype, sizeof(int), sig, 0);
+			sig = ccv_cache_generate_signature((const char*)&btype, sizeof(int), sig, (uint64_t)0);
 			a->sig = sig;
 		}
 	} else {

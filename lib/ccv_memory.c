@@ -65,7 +65,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int 
 	}
 	if (sig == 0)
     {
-		sig = ccv_cache_generate_signature((const char*)&prefer_type, sizeof(int), sig, 0);
+		sig = ccv_cache_generate_signature((const char*)&prefer_type, sizeof(int), (uint64_t)0);
     }
     if (x == 0)
     {
@@ -98,7 +98,7 @@ void ccv_make_matrix_immutable(ccv_matrix_t* mat)
 		/* immutable matrix made this way is not reusable (collected), because its signature
 		 * only depends on the content, not the operation to generate it */
 		dmt->type &= ~CCV_REUSABLE;
-		dmt->sig = ccv_cache_generate_signature((char*)dmt->data.u8, dmt->rows * dmt->step, (uint64_t)dmt->type, 0);
+		dmt->sig = ccv_cache_generate_signature((char*)dmt->data.u8, dmt->rows * dmt->step, (uint64_t)dmt->type, (uint64_t)0);
 	}
 }
 
@@ -256,7 +256,7 @@ void ccv_make_array_immutable(ccv_array_t* array)
 	assert(array->sig == 0);
 	array->type &= ~CCV_REUSABLE;
 	/* TODO: trim the array */
-	array->sig = ccv_cache_generate_signature(array->data, array->size * array->rsize, (uint64_t)array->rsize, 0);
+	array->sig = ccv_cache_generate_signature(array->data, array->size * array->rsize, (uint64_t)array->rsize, (uint64_t)0);
 }
 
 void ccv_array_free_immediately(ccv_array_t* array)
