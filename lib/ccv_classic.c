@@ -7,7 +7,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 	int rows = a->rows / size;
 	int cols = a->cols / size;
 	b_type = (CCV_GET_DATA_TYPE(b_type) == CCV_64F) ? CCV_64F | (4 + sbin * 3) : CCV_32F | (4 + sbin * 3);
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_hog(%d,%d)", sbin, size), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_hog(%d,%d)", sbin, size), a->sig, CCV_EOF_SIGN);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_64F | CCV_32F | (4 + sbin * 3), b_type, sig);
 	ccv_object_return_if_cached(, db);
 	ccv_dense_matrix_t* ag = 0;
@@ -196,7 +196,7 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
 {
 	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%la,%la)", size, low_thresh, high_thresh), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_canny(%d,%la,%la)", size, low_thresh, high_thresh), a->sig, CCV_EOF_SIGN);
 	type = (type == 0) ? CCV_8U | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
@@ -345,7 +345,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
 	assert((CCV_GET_CHANNEL(a->type) == CCV_C1) && ((a->type & CCV_8U) || (a->type & CCV_32S) || (a->type & CCV_64S)));
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_close_outline"), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_close_outline"), a->sig, CCV_EOF_SIGN);
 	type = ((type == 0) || (type & CCV_32F) || (type & CCV_64F)) ? CCV_GET_DATA_TYPE(a->type) | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
@@ -442,7 +442,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_8U);
 	assert(point_a->rnum > 0);
 	level = ccv_clamp(level + 1, 1, (int)(log((double)ccv_min(a->rows, a->cols) / ccv_max(win_size.width * 2, win_size.height * 2)) / log(2.0) + 0.5));
-	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0 && point_a->sig != 0, ccv_sign_with_format(128, "ccv_optical_flow_lucas_kanade(%d,%d,%d,%la)", win_size.width, win_size.height, level, min_eigen), a->sig, b->sig, point_a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0 && b->sig != 0 && point_a->sig != 0, ccv_sign_with_format(128, "ccv_optical_flow_lucas_kanade(%d,%d,%d,%la)", win_size.width, win_size.height, level, min_eigen), a->sig, b->sig, point_a->sig, CCV_EOF_SIGN);
 	ccv_array_t* seq = *point_b = ccv_array_new(sizeof(ccv_decimal_point_with_status_t), point_a->rnum, sig);
 	ccv_object_return_if_cached(, seq);
 	seq->rnum = point_a->rnum;

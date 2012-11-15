@@ -449,7 +449,7 @@ static double chitab3[] = { 0,  0.0150057,  0.0239478,  0.0315227,
 static void _ccv_mscr_chi(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
 {
 	assert((dx == 1 && dy == 0) || (dx == 0 && dy == 1) || (dx * dy == 1) || (dx * dy == -1));
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_mscr_chi(%d,%d)", dx, dy), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_mscr_chi(%d,%d)", dx, dy), a->sig, CCV_EOF_SIGN);
 	type = (CCV_GET_DATA_TYPE(type) == CCV_64F) ? CCV_64F | CCV_C1 : CCV_32F | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows - abs(dy), a->cols - abs(dx), CCV_C1 | CCV_32F | CCV_64F, type, sig);
 	ccv_object_return_if_cached(, db);
@@ -851,9 +851,9 @@ static void _ccv_linear_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_d
 
 ccv_array_t* ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params)
 {
-	uint64_t psig = ccv_cache_generate_signature((const char*)&params, sizeof(params), 0);
-	ccv_declare_derived_signature_case(bsig, ccv_sign_with_literal("ccv_mser(matrix)"), ccv_sign_if(h == 0 && a->sig != 0, psig, a->sig, 0), ccv_sign_if(h != 0 && a->sig != 0 && h->sig != 0, psig, a->sig, h->sig, 0));
-	ccv_declare_derived_signature_case(rsig, ccv_sign_with_literal("ccv_mser(array)"), ccv_sign_if(h == 0 && a->sig != 0, psig, a->sig, 0), ccv_sign_if(h != 0 && a->sig != 0 && h->sig != 0, psig, a->sig, h->sig, 0));
+	uint64_t psig = ccv_cache_generate_signature((const char*)&params, sizeof(params), CCV_EOF_SIGN);
+	ccv_declare_derived_signature_case(bsig, ccv_sign_with_literal("ccv_mser(matrix)"), ccv_sign_if(h == 0 && a->sig != 0, psig, a->sig, CCV_EOF_SIGN), ccv_sign_if(h != 0 && a->sig != 0 && h->sig != 0, psig, a->sig, h->sig, CCV_EOF_SIGN));
+	ccv_declare_derived_signature_case(rsig, ccv_sign_with_literal("ccv_mser(array)"), ccv_sign_if(h == 0 && a->sig != 0, psig, a->sig, CCV_EOF_SIGN), ccv_sign_if(h != 0 && a->sig != 0 && h->sig != 0, psig, a->sig, h->sig, CCV_EOF_SIGN));
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, bsig);
 	ccv_array_t* seq = ccv_array_new(sizeof(ccv_mser_keypoint_t), 64, rsig);

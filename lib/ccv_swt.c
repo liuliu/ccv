@@ -41,7 +41,7 @@ static CCV_IMPLEMENT_QSORT(_ccv_swt_stroke_qsort, ccv_swt_stroke_t, less_than)
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
 {
 	assert(a->type & CCV_C1);
-	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%d,%d)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, 0);
+	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%d,%d)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, CCV_EOF_SIGN);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);

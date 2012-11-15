@@ -52,7 +52,7 @@ void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dais
 	memset(identifier, 0, ccv_max(sizeof(ccv_daisy_param_t) + 9, sizeof(double) * params.rad_q_no));
 	memcpy(identifier, "ccv_daisy", 9);
 	memcpy(identifier + 9, &params, sizeof(ccv_daisy_param_t));
-	uint64_t sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, a->sig, 0);
+	uint64_t sig = (a->sig == 0) ? 0 : ccv_cache_generate_signature(identifier, sizeof(ccv_daisy_param_t) + 9, a->sig, CCV_EOF_SIGN);
 	type = (type == 0) ? CCV_32F | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols * desc_size, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	int layer_size = a->rows * a->cols;
