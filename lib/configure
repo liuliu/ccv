@@ -95,6 +95,9 @@ else
 	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_CBLAS "
 			LDFLAGS="$LDFLAGS-lblas "
+      if [[ $IS_OSX ]] ; then
+        CFLAGS="$CFLAGS-I/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/Headers/ "
+      fi
 			;;
 	esac
 	echo -ne "  Use \033[4mopenmp\033[m [y/N] ? "
