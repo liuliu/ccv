@@ -54,7 +54,7 @@ inline static double _ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, i
 	{
 		double maxa = 0;
 		double maxabsa = 0;
-		int maxi = -1;
+		int maxi = j;
 		double tmp;
 
 		/* look for the maximally stable pivot */

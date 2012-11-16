@@ -1,7 +1,7 @@
 include ../../lib/config.mk
 
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
-CFLAGS := -O3 -msse2 -Wall -I"../../lib" -I"../" $(CFLAGS)
+CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = defects.l0.1.tests
 
 test: all

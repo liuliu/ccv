@@ -431,7 +431,7 @@ ebb_connection_init(ebb_connection *connection)
 }
 
 void 
-ebb_connection_schedule_close (ebb_connection *connection)
+ebb_connection_schedule_close(ebb_connection *connection)
 {
   ev_timer_start(connection->server->loop, &connection->goodbye_watcher);
 }
@@ -456,7 +456,7 @@ ebb_connection_reset_timeout(ebb_connection *connection)
  * will return 0 and ignore the request.
  */
 int 
-ebb_connection_write (ebb_connection *connection, const char *buf, size_t len, ebb_after_write_cb cb)
+ebb_connection_write(ebb_connection *connection, const char *buf, size_t len, ebb_after_write_cb cb)
 {
   if(ev_is_active(&connection->write_watcher))
     return 0;

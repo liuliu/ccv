@@ -1,7 +1,7 @@
 include ../lib/config.mk
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
-LDFLAGS := -L"../lib" -lccv -lev -lBlocksRuntime -ldispatch $(LDFLAGS)
-CFLAGS := -O3 -Wall -fblocks -I"../lib" $(CFLAGS)
+LDFLAGS := -L"../lib" -lccv -lev -ldispatch $(LDFLAGS)
+CFLAGS := -O3 -Wall -I"../lib" $(CFLAGS)
 
 TARGETS = ccv
 
@@ -10,8 +10,8 @@ all: libccv.a $(TARGETS)
 clean:
 	${MAKE} clean -C ../lib ; rm *.o $(TARGETS) -f
 
-$(TARGETS): serve.o ebb.o ebb_request_parser.o libccv.a
-	$(CC) -o $@ serve.o ebb.o ebb_request_parser.o $(LDFLAGS)
+$(TARGETS): serve.o uri.o bbf.o async.o ebb.o ebb_request_parser.o libccv.a
+	$(CC) -o $@ serve.o uri.o bbf.o async.o ebb.o ebb_request_parser.o $(LDFLAGS)
 
 libccv.a:
 	${MAKE} -C ../lib
