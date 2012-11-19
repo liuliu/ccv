@@ -10,6 +10,7 @@
 #include "ebb_request_parser.h"
 
 #include <stdio.h>
+#include <ctype.h>
 #include <assert.h>
 
 #define TRUE 1
@@ -27,7 +28,7 @@
                 , parser->FOR##_mark                \
                 , p - parser->FOR##_mark            \
                 );                                  \
- }
+  }
 #define HEADER_CALLBACK(FOR)                        \
   if(parser->FOR##_mark && CURRENT->on_##FOR) {     \
     CURRENT->on_##FOR( CURRENT                      \
@@ -35,7 +36,17 @@
                 , p - parser->FOR##_mark            \
                 , CURRENT->number_of_headers        \
                 );                                  \
- }
+  }
+
+#define EMIT_HEADER_CB(FOR, ptr, len)               \
+  if (CURRENT->on_##FOR) {                          \
+    CURRENT->on_##FOR(CURRENT, ptr, len, 0);        \
+  }
+#define EMIT_DATA_CB(FOR, ptr, len)                 \
+  if (CURRENT->on_##FOR) {                          \
+    CURRENT->on_##FOR(CURRENT, ptr, len);           \
+  }
+
 #define END_REQUEST                       \
     if(CURRENT->on_complete)              \
       CURRENT->on_complete(CURRENT);      \
@@ -119,7 +130,8 @@
       cs = -1;
       fbreak;
     }
-    CURRENT->multipart_boundary[CURRENT->multipart_boundary_len++] = *p;
+    CURRENT->multipart_boundary[1 + (++CURRENT->multipart_boundary_len)] = *p;
+    parser->multipart_state = s_start;
   } 
 
   action expect_continue {
@@ -216,6 +228,8 @@
          *
          */
         p += 1;
+	    if( CURRENT->multipart_boundary_len > 0 )
+	      multipart_parser_execute(parser, p, CURRENT->content_length);
         if( CURRENT->on_body )
           CURRENT->on_body(CURRENT, p, CURRENT->content_length); 
 
@@ -240,6 +254,8 @@
         p += 1;
         size_t eat = REMAINING;
 
+	    if( CURRENT->multipart_boundary_len > 0 && eat > 0 )
+	      multipart_parser_execute(parser, p, eat);
         if( CURRENT->on_body && eat > 0)
           CURRENT->on_body(CURRENT, p, eat); 
 
@@ -333,7 +349,7 @@
              )
            | ("Content-Type"i hsep 
               "multipart/form-data" any* 
-              "boundary=" quote token+ $multipart_boundary quote
+              "boundary=" ( (quote token+ $multipart_boundary quote) | (token+ $multipart_boundary) ) # boundary can be quoted or not quoted
              )
            | ("Transfer-Encoding"i %use_chunked_encoding hsep "identity" %use_identity_encoding)
            | ("Expect"i hsep "100-continue"i %expect_continue)
@@ -367,6 +383,26 @@
 
 #define COPYSTACK(dest, src)  for(i = 0; i < EBB_RAGEL_STACK_SIZE; i++) { dest[i] = src[i]; }
 
+enum multipart_state {
+  s_uninitialized = 1,
+  s_start,
+  s_start_boundary,
+  s_header_field_start,
+  s_header_field,
+  s_headers_almost_done,
+  s_header_value_start,
+  s_header_value,
+  s_header_value_almost_done,
+  s_part_data_start,
+  s_part_data,
+  s_part_data_almost_boundary,
+  s_part_data_boundary,
+  s_part_data_almost_end,
+  s_part_data_end,
+  s_part_data_final_hyphen,
+  s_end
+};
+
 void ebb_request_parser_init(ebb_request_parser *parser) 
 {
   int i;
@@ -388,9 +424,195 @@ void ebb_request_parser_init(ebb_request_parser *parser)
   parser->query_string_mark = parser->path_mark           = 
   parser->uri_mark          = parser->fragment_mark       = NULL;
 
+  parser->multipart_state = s_uninitialized;
   parser->new_request = NULL;
 }
 
+#define LF 10
+#define CR 13
+
+size_t multipart_parser_execute(ebb_request_parser* parser, const char *buf, size_t len)
+{
+  size_t i = 0;
+  size_t mark = 0;
+  char c, cl;
+  int is_last = 0;
+
+  while(!is_last) {
+    c = buf[i];
+    is_last = (i == (len - 1));
+    switch (parser->multipart_state) {
+      case s_start:
+        parser->multipart_index = 0;
+        parser->multipart_state = s_start_boundary;
+
+      /* fallthrough */
+      case s_start_boundary:
+	    // every time needs to take into account the first two '-'
+        if (parser->multipart_index == CURRENT->multipart_boundary_len + 2) {
+          if (c != CR) {
+            return i;
+          }
+          parser->multipart_index++;
+          break;
+        } else if (parser->multipart_index == (CURRENT->multipart_boundary_len + 3)) {
+          if (c != LF) {
+            return i;
+          }
+          parser->multipart_index = 0;
+          parser->multipart_state = s_header_field_start;
+          break;
+        }
+        if (c != CURRENT->multipart_boundary[parser->multipart_index]) {
+          return i;
+        }
+        parser->multipart_index++;
+        break;
+
+      case s_header_field_start:
+        mark = i;
+        parser->multipart_state = s_header_field;
+
+      /* fallthrough */
+      case s_header_field:
+        if (c == CR) {
+          parser->multipart_state = s_headers_almost_done;
+          break;
+        }
+
+        if (c == '-') {
+          break;
+        }
+
+        if (c == ':') {
+          EMIT_HEADER_CB(multipart_header_field, buf + mark, i - mark);
+          parser->multipart_state = s_header_value_start;
+          break;
+        }
+
+        cl = tolower(c);
+        if (cl < 'a' || cl > 'z') {
+          return i;
+        }
+        if (is_last)
+          EMIT_HEADER_CB(multipart_header_field, buf + mark, (i - mark) + 1);
+        break;
+
+      case s_headers_almost_done:
+        if (c != LF) {
+          return i;
+        }
+
+        parser->multipart_state = s_part_data_start;
+        break;
+
+      case s_header_value_start:
+        if (c == ' ') {
+          break;
+        }
+
+        mark = i;
+        parser->multipart_state = s_header_value;
+
+      /* fallthrough */
+      case s_header_value:
+        if (c == CR) {
+          EMIT_HEADER_CB(multipart_header_value, buf + mark, i - mark);
+          parser->multipart_state = s_header_value_almost_done;
+        }
+        if (is_last)
+          EMIT_HEADER_CB(multipart_header_value, buf + mark, (i - mark) + 1);
+        break;
+
+      case s_header_value_almost_done:
+        if (c != LF) {
+          return i;
+        }
+        parser->multipart_state = s_header_field_start;
+        break;
+
+      case s_part_data_start:
+        if (CURRENT->on_multipart_headers_complete)
+		  CURRENT->on_multipart_headers_complete(CURRENT);
+        mark = i;
+        parser->multipart_state = s_part_data;
+
+      /* fallthrough */
+      case s_part_data:
+        if (c == CR) {
+          EMIT_DATA_CB(part_data, buf + mark, i - mark);
+          mark = i;
+          parser->multipart_state = s_part_data_almost_boundary;
+          parser->multipart_lookbehind[0] = CR;
+          break;
+        }
+        if (is_last)
+          EMIT_DATA_CB(part_data, buf + mark, (i - mark) + 1);
+        break;
+
+      case s_part_data_almost_boundary:
+        if (c == LF) {
+          parser->multipart_state = s_part_data_boundary;
+          parser->multipart_lookbehind[1] = LF;
+          parser->multipart_index = 0;
+          break;
+        }
+        EMIT_DATA_CB(part_data, parser->multipart_lookbehind, 1);
+        parser->multipart_state = s_part_data;
+        mark = i --;
+        break;
+
+      case s_part_data_boundary:
+        if (CURRENT->multipart_boundary[parser->multipart_index] != c) {
+          EMIT_DATA_CB(part_data, parser->multipart_lookbehind, 2 + parser->multipart_index);
+          parser->multipart_state = s_part_data;
+          mark = i --;
+          break;
+        }
+        parser->multipart_lookbehind[2 + parser->multipart_index] = c;
+        if ((++ parser->multipart_index) == CURRENT->multipart_boundary_len + 2) {
+          if (CURRENT->on_part_data_complete)
+		    CURRENT->on_part_data_complete(CURRENT);
+          parser->multipart_state = s_part_data_almost_end;
+        }
+        break;
+
+      case s_part_data_almost_end:
+        if (c == '-') {
+          parser->multipart_state = s_part_data_final_hyphen;
+          break;
+        }
+        if (c == CR) {
+          parser->multipart_state = s_part_data_end;
+          break;
+        }
+        return i;
+   
+      case s_part_data_final_hyphen:
+        if (c == '-') {
+          parser->multipart_state = s_end;
+          break;
+        }
+        return i;
+
+      case s_part_data_end:
+        if (c == LF) {
+          parser->multipart_state = s_header_field_start;
+          break;
+        }
+        return i;
+
+      case s_end:
+        break;
+
+      default:
+        return 0;
+    }
+    ++i;
+  }
+
+  return len;
+}
 
 /** exec **/
 size_t ebb_request_parser_execute(ebb_request_parser *parser, const char *buffer, size_t len)
@@ -418,6 +640,8 @@ size_t ebb_request_parser_execute(ebb_request_parser *parser, const char *buffer
     if(eat == parser->chunk_size) {
       parser->eating = FALSE;
     }
+	if (CURRENT->multipart_boundary_len > 0)
+	  multipart_parser_execute(parser, p, eat);
     CURRENT->on_body(CURRENT, p, eat);
     p += eat;
     parser->chunk_size -= eat;
@@ -430,7 +654,8 @@ size_t ebb_request_parser_execute(ebb_request_parser *parser, const char *buffer
      */
     //printf("eat normal body (before parse)\n");
     size_t eat = MIN(len, CURRENT->content_length - CURRENT->body_read);
-
+	if (CURRENT->multipart_boundary_len > 0)
+	  multipart_parser_execute(parser, p, eat);
     CURRENT->on_body(CURRENT, p, eat);
     p += eat;
     CURRENT->body_read += eat;
@@ -486,11 +711,17 @@ void ebb_request_init(ebb_request *request)
   request->number_of_headers = 0;
   request->transfer_encoding = EBB_IDENTITY;
   request->multipart_boundary_len = 0;
+  request->multipart_boundary[0] = request->multipart_boundary[1] = '-';
   request->keep_alive = -1;
 
   request->on_complete = NULL;
   request->on_headers_complete = NULL;
   request->on_body = NULL;
+  request->on_multipart_headers_complete = NULL;
+  request->on_multipart_header_field = NULL;
+  request->on_multipart_header_value = NULL;
+  request->on_part_data_complete = NULL;
+  request->on_part_data = NULL;
   request->on_header_field = NULL;
   request->on_header_value = NULL;
   request->on_uri = NULL;

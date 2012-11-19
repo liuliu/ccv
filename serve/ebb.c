@@ -121,7 +121,6 @@ on_readable(EV_P_ ev_io *watcher, int revents)
     recv_buffer_size = buf->len;
   }
 
-
   recved = recv(connection->fd, recv_buffer, recv_buffer_size, 0);
   if(recved < 0) goto error;
   if(recved == 0) return;

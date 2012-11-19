@@ -18,7 +18,7 @@ typedef void (*ebb_header_cb)(ebb_request*, const char *at, size_t length, int h
 typedef void (*ebb_element_cb)(ebb_request*, const char *at, size_t length);
 
 #define EBB_RAGEL_STACK_SIZE 10
-#define EBB_MAX_MULTIPART_BOUNDARY_LEN 20
+#define EBB_MAX_MULTIPART_BOUNDARY_LEN 72 // RFC 2046, page 19
 
 struct ebb_request {
   enum { EBB_COPY
@@ -61,6 +61,12 @@ struct ebb_request {
   ebb_header_cb  on_header_field;
   ebb_header_cb  on_header_value;
   void (*on_headers_complete)(ebb_request *);
+  /* multipart data only */
+  ebb_header_cb  on_multipart_header_field;
+  ebb_header_cb  on_multipart_header_value;
+  ebb_element_cb on_part_data;
+  void (*on_multipart_headers_complete)(ebb_request *);
+  void (*on_part_data_complete)(ebb_request *);
   ebb_element_cb on_body;
   void (*on_complete)(ebb_request *);
   void *data;
@@ -79,6 +85,11 @@ struct ebb_request_parser {
   const char *path_mark; 
   const char *uri_mark; 
   const char *fragment_mark; 
+
+  /* multipart data only */
+  size_t multipart_index;
+  unsigned char multipart_state;
+  char multipart_lookbehind[EBB_MAX_MULTIPART_BOUNDARY_LEN + 2];
 
   /* Public */
   ebb_request* (*new_request)(void*);
