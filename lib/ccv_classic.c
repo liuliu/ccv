@@ -469,8 +469,8 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 	int* widx = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	int* widy = (int*)alloca(sizeof(int) * win_size.width * win_size.height);
 	ccv_decimal_point_t half_win = ccv_decimal_point((win_size.width - 1) * 0.5f, (win_size.height - 1) * 0.5f);
-	const int W_BITS14 = 14, W_BITS4 = 4, W_BITS6 = 6;
-	const float FLT_SCALE = 1.0f / (1 << 20);
+	const int W_BITS14 = 14, W_BITS7 = 7, W_BITS9 = 9;
+	const float FLT_SCALE = 1.0f / (1 << 25);
 	// clean up status to 1
 	for (i = 0; i < point_a->rnum; i++)
 	{
@@ -503,8 +503,8 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 			prev_point.x -= half_win.x;
 			prev_point.y -= half_win.y;
 			ccv_point_t iprev_point = ccv_point((int)prev_point.x, (int)prev_point.y);
-			if (iprev_point.x < 0 || iprev_point.x >= a->cols - win_size.width ||
-				iprev_point.y < 0 || iprev_point.y >= a->rows - win_size.height)
+			if (iprev_point.x < 0 || iprev_point.x >= a->cols - win_size.width - 1 ||
+				iprev_point.y < 0 || iprev_point.y >= a->rows - win_size.height - 1)
 			{
 				if (t == 0)
 					point_with_status->status = 0;
@@ -527,10 +527,10 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 			{
 				for (x = 0; x < win_size.width; x++)
 				{
-					wi_ptr[x] = ccv_descale(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS4);
+					wi_ptr[x] = ccv_descale(a_ptr[x] * iw00 + a_ptr[x + 1] * iw01 + a_ptr[x + a->step] * iw10 + a_ptr[x + a->step + 1] * iw11, W_BITS7);
 					// because we use 3x3 sobel, which scaled derivative up by 4
-					widx_ptr[x] = ccv_descale(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS6);
-					widy_ptr[x] = ccv_descale(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS6);
+					widx_ptr[x] = ccv_descale(adx_ptr[x] * iw00 + adx_ptr[x + 1] * iw01 + adx_ptr[x + adx->cols] * iw10 + adx_ptr[x + adx->cols + 1] * iw11, W_BITS9);
+					widy_ptr[x] = ccv_descale(ady_ptr[x] * iw00 + ady_ptr[x + 1] * iw01 + ady_ptr[x + ady->cols] + iw10 + ady_ptr[x + ady->cols + 1] * iw11, W_BITS9);
 					a11 += (float)(widx_ptr[x] * widx_ptr[x]);
 					a12 += (float)(widx_ptr[x] * widy_ptr[x]);
 					a22 += (float)(widy_ptr[x] * widy_ptr[x]);
@@ -560,8 +560,8 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 			for (j = 0; j < LK_MAX_ITER; j++)
 			{
 				ccv_point_t inext_point = ccv_point((int)next_point.x, (int)next_point.y);
-				if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width ||
-					inext_point.y < 0 || inext_point.y >= a->rows - win_size.height)
+				if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width - 1 ||
+					inext_point.y < 0 || inext_point.y >= a->rows - win_size.height - 1)
 					break;
 				float xd = next_point.x - inext_point.x;
 				float yd = next_point.y - inext_point.y;
@@ -578,7 +578,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 				{
 					for (x = 0; x < win_size.width; x++)
 					{
-						int diff = ccv_descale(b_ptr[x] * iw00 + b_ptr[x + 1] * iw01 + b_ptr[x + b->step] * iw10 + b_ptr[x + b->step + 1] * iw11, W_BITS4) - wi_ptr[x];
+						int diff = ccv_descale(b_ptr[x] * iw00 + b_ptr[x + 1] * iw01 + b_ptr[x + b->step] * iw10 + b_ptr[x + b->step + 1] * iw11, W_BITS7) - wi_ptr[x];
 						b1 += (float)(diff * widx_ptr[x]);
 						b2 += (float)(diff * widy_ptr[x]);
 					}
@@ -603,8 +603,8 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 				prev_delta = delta;
 			}
 			ccv_point_t inext_point = ccv_point((int)next_point.x, (int)next_point.y);
-			if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width ||
-				inext_point.y < 0 || inext_point.y >= a->rows - win_size.height)
+			if (inext_point.x < 0 || inext_point.x >= a->cols - win_size.width - 1 ||
+				inext_point.y < 0 || inext_point.y >= a->rows - win_size.height - 1)
 				point_with_status->status = 0;
 			else {
 				point_with_status->point.x = next_point.x + half_win.x;
