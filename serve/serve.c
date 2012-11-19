@@ -57,6 +57,11 @@ static void on_request_part_data(ebb_request* request, const char* at, size_t le
 	part_data[length] = eof;
 }
 
+static void on_request_part_data_complete(ebb_request* request)
+{
+	printf("completed one part\n");
+}
+
 static void on_request_body(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
@@ -135,6 +140,7 @@ static ebb_request* new_request(ebb_connection* connection)
 	request->data = request_extras;
 	request->on_path = on_request_path;
 	request->on_part_data = on_request_part_data;
+	request->on_part_data_complete = on_request_part_data_complete;
 	request->on_body = on_request_body;
 	request->on_query_string = on_request_query_string;
 	request->on_complete = on_request_dispatch;

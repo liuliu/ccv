@@ -10,7 +10,7 @@ const ccv_tld_param_t ccv_tld_default_params = {
 	},
 	.level = 5,
 	.min_forward_backward_error = 100,
-	.min_eigen = 0.05,
+	.min_eigen = 0.1,
 	.min_win = 20,
 	.interval = 3,
 	.shift = 0.1,
