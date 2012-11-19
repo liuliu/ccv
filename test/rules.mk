@@ -18,7 +18,5 @@ $(TEST_TARGETS): $(LIBCCV_PATH)
 $(TEST_TARGETS): LDFLAGS += -L$(BUILD_DIR)lib -lccv
 $(TEST_TARGETS): CFLAGS += -Ilib -Itest
 
-build: $(TEST_TARGETS)
-
-test: build
-	for test in $(TEST_TARGETS); do ./"$$test"; done
+test: build $(TEST_TARGETS)
+	for test in $(TEST_TARGETS); do LD_LIBRARY_PATH=$(BUILD_DIR)lib ./"$$test"; done
