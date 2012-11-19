@@ -18,7 +18,7 @@ contains_flag () {
 }
 
 if contains_flag CC; then
-	CC=`grep -oE 'CC := [^#]+' config.mk | cut -b7-`
+	CC=`grep -oE 'CC := [^#]+' config.mk | tail -n1 | cut -b7-`
 else
 	echo -ne "  Default compiler: \033[4mclang\033[m [Y/n] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
