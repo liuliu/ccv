@@ -9,7 +9,7 @@ TARGETS = bbffmt msermatch siftmatch bbfcreate bbfdetect swtcreate swtdetect dpm
 all: libccv.a $(TARGETS)
 
 clean:
-	${MAKE} clean -C ../lib ; rm *.o $(TARGETS)
+	${MAKE} clean -C ../lib ; rm -f *.o $(TARGETS)
 
 $(TARGETS): %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)

@@ -11,7 +11,7 @@ test: all
 all: $(TARGETS)
 
 clean:
-	${MAKE} clean -C ../../lib ; rm *.o $(TARGETS)
+	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
 
 %.tests: %.tests.o libccv.a
 	@echo "$(CC) -o $@ $< $(LDFLAGS)"
