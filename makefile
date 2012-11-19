@@ -2,7 +2,7 @@ include config.mk
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 CFLAGS := -O3 -ffast-math -Wall -MD $(CFLAGS)
-#LDFLAGS := -Wl,-O1 -Wl,--as-needed $(LDFLAGS)
+LDFLAGS := -Wl,-O1 -Wl,--as-needed $(LDFLAGS)
 # -fprofile-arcs -ftest-coverage
 
 BUILD_DIR := build/
