@@ -6,7 +6,7 @@ CFLAGS := -O3 -ffast-math -Wall -MD $(CFLAGS)
 # -fprofile-arcs -ftest-coverage
 
 BUILD_DIR := build/
-LIBCCV_PATH := $(BUILD_DIR)lib/libccv.a
+LIBCCV_PATH := $(BUILD_DIR)lib/libccv.so
 
 # --- Remove unused builtin rules ---------------------------------------------
 %.c: %.w %.ch
@@ -49,8 +49,11 @@ $(TGT_DIR):
 $(BUILD_DIR)%.a:
 	ar rcs $@ $^
 
-$(BUILD_DIR)%: %.c | $(TGT_DIR)
-	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)
+$(BUILD_DIR)%.so: $(BUILD_DIR)%.o | $(TGT_DIR)
+	$(CC) $(CFLAGS) -shared -o $@ $^ $(LDFLAGS)
 
 $(BUILD_DIR)%.o: %.c | $(TGT_DIR)
 	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(BUILD_DIR)%: $(BUILD_DIR)%.o | $(TGT_DIR)
+	$(CC) $(CFLAGS) -o $@ $< $(LDFLAGS)

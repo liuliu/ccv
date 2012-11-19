@@ -36,3 +36,10 @@ TGT_DIR += \
 	$(b)3rdparty/sha1 \
 
 $(LIBCCV_PATH): $(OBJECTS)
+
+# Every binary in bin/ needs -lccv, but the ccv library cannot and should not
+# try to link with itself. GNU Make propagates target-specific variables to all
+# the dependencies of the target. Therefore, filter -lccv from the LDFLAGS.
+$(LIBCCV_PATH): LDFLAGS := $(LDFLAGS:-lccv=)
+
+$(OBJECTS): CFLAGS += -fPIC
