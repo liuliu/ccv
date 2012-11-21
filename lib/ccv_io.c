@@ -141,7 +141,7 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 		return _ccv_read_and_close_fd(fd, x, type);
 	} else if (type & CCV_IO_ANY_STREAM) {
 		assert(rows > 8 && cols == 0 && scanline == 0);
-		assert((type & 0xFF) == CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
+		assert((type & 0xFF) != CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
 #if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
 		// this is only supported by glibc
 		fd = fmemopen((void*)in, (size_t)rows, "rb");

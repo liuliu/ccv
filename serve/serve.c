@@ -13,12 +13,12 @@ typedef struct {
 
 typedef struct {
 	ebb_connection* connection;
-	ccv_uri_dispatch_t* dispatcher;
+	uri_dispatch_t* dispatcher;
 	int recv_multipart;
 	int multipart_bm_pattern;
 	int multipart_boundary_delta1[255];
 	int multipart_boundary_delta2[EBB_MAX_MULTIPART_BOUNDARY_LEN];
-	void* params;
+	void* context;
 	ebb_buf response;
 } ebb_request_extras;
 
@@ -29,7 +29,7 @@ static void on_request_path(ebb_request* request, const char* at, size_t length)
 	char eof = path[length];
 	path[length] = '\0';
 	request_extras->dispatcher = find_uri_dispatch(path);
-	request_extras->params = 0;
+	request_extras->context = 0;
 	path[length] = eof;
 }
 
@@ -37,29 +37,32 @@ static void on_request_query_string(ebb_request* request, const char* at, size_t
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse)
-	{
-		char* query = (char*)at;
-		char eof = query[length];
-		query[length] = '\0';
-		request_extras->params = request_extras->dispatcher->parse(request_extras->params, 0, query);
-		query[length] = eof;
-	}
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_QUERY_STRING, 0);
 }
 
 static void on_request_part_data(ebb_request* request, const char* at, size_t length)
 {
-	// ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
-	char* part_data = (char*)at;
-	char eof = part_data[length];
-	part_data[length] = '\0';
-	printf("%s\n", part_data);
-	// reqest_extras->params = request_extras->dispatcher->parse(request_extras->params, 0, body);
-	part_data[length] = eof;
+	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
+	if (request_extras->dispatcher && request_extras->dispatcher->parse)
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_DATA, -1);
 }
 
 static void on_request_part_data_complete(ebb_request* request)
 {
-	printf("completed one part\n");
+}
+
+static void on_request_multipart_header_field(ebb_request* request, const char* at, size_t length, int header_index)
+{
+	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
+	if (request_extras->dispatcher && request_extras->dispatcher->parse)
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_HEADER_FIELD, header_index);
+}
+
+static void on_request_multipart_header_value(ebb_request* request, const char* at, size_t length, int header_index)
+{
+	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
+	if (request_extras->dispatcher && request_extras->dispatcher->parse)
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_HEADER_VALUE, header_index);
 }
 
 static void on_request_body(ebb_request* request, const char* at, size_t length)
@@ -70,7 +73,7 @@ static void on_request_body(ebb_request* request, const char* at, size_t length)
 		char* body = (char*)at;
 		char eof = body[length];
 		body[length] = '\0';
-		request_extras->params = request_extras->dispatcher->parse(request_extras->params, 0, body);
+		//request_extras->context = request_extras->dispatcher->parse(request_extras->context, 0, body);
 		body[length] = eof;
 	}
 }
@@ -99,13 +102,13 @@ static void on_request_execute(void* context)
 		case EBB_POST:
 			if (request_extras->dispatcher->post)
 			{
-				request_extras->response = request_extras->dispatcher->post(request_extras->params);
+				request_extras->response = request_extras->dispatcher->post(request_extras->dispatcher->context, request_extras->context);
 				break;
 			}
 		case EBB_GET:
 			if (request_extras->dispatcher->get)
 			{
-				request_extras->response = request_extras->dispatcher->get(request_extras->params);
+				request_extras->response = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context);
 				break;
 			}
 		default:
@@ -140,6 +143,8 @@ static ebb_request* new_request(ebb_connection* connection)
 	request->data = request_extras;
 	request->on_path = on_request_path;
 	request->on_part_data = on_request_part_data;
+	request->on_multipart_header_field = on_request_multipart_header_field;
+	request->on_multipart_header_value = on_request_multipart_header_value;
 	request->on_part_data_complete = on_request_part_data_complete;
 	request->on_body = on_request_body;
 	request->on_query_string = on_request_query_string;

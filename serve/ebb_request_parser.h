@@ -48,6 +48,7 @@ struct ebb_request {
   unsigned int version_major;        /* ro */
   unsigned int version_minor;        /* ro */
   int number_of_headers;             /* ro */
+  int number_of_multipart_headers;   /* ro */
   int keep_alive;                    /* private - use ebb_request_should_keep_alive */
 
   char multipart_boundary[EBB_MAX_MULTIPART_BOUNDARY_LEN]; /* ro */

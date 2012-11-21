@@ -40,7 +40,8 @@
 
 #define EMIT_HEADER_CB(FOR, ptr, len)               \
   if (CURRENT->on_##FOR) {                          \
-    CURRENT->on_##FOR(CURRENT, ptr, len, 0);        \
+    CURRENT->on_##FOR(CURRENT, ptr, len,            \
+	  CURRENT->number_of_multipart_headers);        \
   }
 #define EMIT_DATA_CB(FOR, ptr, len)                 \
   if (CURRENT->on_##FOR) {                          \
@@ -443,6 +444,7 @@ size_t multipart_parser_execute(ebb_request_parser* parser, const char *buf, siz
     is_last = (i == (len - 1));
     switch (parser->multipart_state) {
       case s_start:
+		CURRENT->number_of_multipart_headers = 0;
         parser->multipart_index = 0;
         parser->multipart_state = s_start_boundary;
 
@@ -459,6 +461,7 @@ size_t multipart_parser_execute(ebb_request_parser* parser, const char *buf, siz
           if (c != LF) {
             return i;
           }
+		  CURRENT->number_of_multipart_headers = 0;
           parser->multipart_index = 0;
           parser->multipart_state = s_header_field_start;
           break;
@@ -528,6 +531,7 @@ size_t multipart_parser_execute(ebb_request_parser* parser, const char *buf, siz
         if (c != LF) {
           return i;
         }
+		CURRENT->number_of_multipart_headers++;
         parser->multipart_state = s_header_field_start;
         break;
 
@@ -554,6 +558,7 @@ size_t multipart_parser_execute(ebb_request_parser* parser, const char *buf, siz
         if (c == LF) {
           parser->multipart_state = s_part_data_boundary;
           parser->multipart_lookbehind[1] = LF;
+		  CURRENT->number_of_multipart_headers = 0;
           parser->multipart_index = 0;
           break;
         }
@@ -710,6 +715,7 @@ void ebb_request_init(ebb_request *request)
   request->version_minor = 0;
   request->number_of_headers = 0;
   request->transfer_encoding = EBB_IDENTITY;
+  request->number_of_multipart_headers = 0;
   request->multipart_boundary_len = 0;
   request->multipart_boundary[0] = request->multipart_boundary[1] = '-';
   request->keep_alive = -1;

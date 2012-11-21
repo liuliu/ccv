@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #include "case.h"
 
 uint64_t uniqid()
@@ -79,14 +80,14 @@ TEST_CASE("garbage collector 95\% hit rate")
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
 		dmt->data.i32[0] = i;
-		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		dmt->type |= CCV_REUSABLE;
 		ccv_matrix_free(dmt);
 	}
 	int percent = 0, total = 0;
 	for (i = N - 1; i > N * 6 / 100; i--)
 	{
-		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
 		if (i == dmt->data.i32[0])
 			++percent;
@@ -106,14 +107,14 @@ TEST_CASE("garbage collector 47\% hit rate")
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
 		dmt->data.i32[0] = i;
-		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		dmt->type |= CCV_REUSABLE;
 		ccv_matrix_free(dmt);
 	}
 	int percent = 0, total = 0;
 	for (i = N - 1; i > N * 6 / 100; i--)
 	{
-		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
 		if (i == dmt->data.i32[0])
 			++percent;
@@ -132,7 +133,7 @@ TEST_CASE("multi-type garbage collector 92\% hit rate")
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
 		dmt->data.i32[0] = i;
-		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		dmt->sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		dmt->type |= CCV_REUSABLE;
 		ccv_matrix_free(dmt);
 		ccv_array_t* array = ccv_array_new(4, 4, 0);
@@ -144,21 +145,21 @@ TEST_CASE("multi-type garbage collector 92\% hit rate")
 		ccv_array_push(array, &j);
 		j = -i;
 		ccv_array_push(array, &j);
-		array->sig = ccv_cache_generate_signature((const char*)&j, 4, 0);
+		array->sig = ccv_cache_generate_signature((const char*)&j, 4, CCV_EOF_SIGN);
 		array->type |= CCV_REUSABLE;
 		ccv_array_free(array);
 	}
 	int percent = 0, total = 0;
 	for (i = N - 1; i > N * 6 / 100; i--)
 	{
-		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, 0);
+		uint64_t sig = ccv_cache_generate_signature((const char*)&i, 4, CCV_EOF_SIGN);
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, sig);
 		if (i == dmt->data.i32[0])
 			++percent;
 		++total;
 		ccv_matrix_free_immediately(dmt);
 		int j = -i;
-		sig = ccv_cache_generate_signature((const char*)&j, 4, 0);
+		sig = ccv_cache_generate_signature((const char*)&j, 4, CCV_EOF_SIGN);
 		ccv_array_t* array = ccv_array_new(4, 4, sig);
 		if (i == *(int*)ccv_array_get(array, 0) &&
 			0 == *(int*)ccv_array_get(array, 1) &&
