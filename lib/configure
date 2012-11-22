@@ -34,25 +34,25 @@ if [ `uname` == "Darwin" ] ; then
 		done
 		echo "XCODE_SDK := $SDK_CHOICE" >> config.mk
 	fi
-fi
-
-if contains_flag ARCH; then
-	ARCH=`grep -oE 'ARCH := [^#]+' config.mk | cut -b9-`
-else
-	DEFAULT_ARCH=$(uname -m)
-	if [[ $XCODE_SDK == iphoneos* ]] ; then
-		DEFAULT_ARCH='armv7s'
-	fi
+	
+	if contains_flag ARCH; then
+		ARCH=`grep -oE 'ARCH := [^#]+' config.mk | cut -b9-`
+	else
+		DEFAULT_ARCH=$(uname -m)
+		if [[ $XCODE_SDK == iphoneos* ]] ; then
+			DEFAULT_ARCH='armv7s'
+		fi
 	  
-	echo -ne "  Default architecture: \033[4m$DEFAULT_ARCH\033[m [Y/n] ? "
-	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
-	case $yn in
-	[nN]* ) read -p "  Your architecture: " CC
-			;;
-	*	  ) ARCH=$DEFAULT_ARCH
-			;;
-	esac
-	echo "ARCH := $ARCH" >> config.mk	  
+		echo -ne "  Default architecture: \033[4m$DEFAULT_ARCH\033[m [Y/n] ? "
+		read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+		case $yn in
+		[nN]* ) read -p "  Your architecture: " CC
+				;;
+		*	  ) ARCH=$DEFAULT_ARCH
+				;;
+		esac
+		echo "ARCH := $ARCH" >> config.mk	  
+	fi
 fi
 
 if contains_flag CC; then
