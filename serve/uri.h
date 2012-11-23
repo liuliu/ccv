@@ -60,6 +60,10 @@ void bool_parser_execute(bool_parser_t* parser, const char* buf, size_t len);
 
 typedef enum {
 	s_coord_start,
+	s_coord_x_before_decimal,
+	s_coord_x_after_decimal,
+	s_coord_y_before_decimal,
+	s_coord_y_after_decimal,
 	s_coord_illegal,
 } coord_state_t;
 
@@ -67,6 +71,7 @@ typedef struct {
 	coord_state_t state;
 	double x;
 	double y;
+	double division;
 } coord_parser_t;
 
 void coord_parser_init(coord_parser_t* parser);

@@ -72,6 +72,7 @@ static void uri_bbf_param_parser_terminate(bbf_param_parser_t* parser)
 			parser->params.accurate = parser->bool_parser.result;
 			break;
 		case s_bbf_name_size:
+			parser->params.size = ccv_size((int)(parser->coord_parser.x + 0.5), (int)(parser->coord_parser.y + 0.5));
 			break;
 		case s_bbf_name_model:
 			if (parser->string_parser.state == s_string_start)
@@ -135,6 +136,7 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 					bool_parser_init(&parser->bool_parser);
 				} else if (strcmp(parser->name, "size") == 0) {
 					parser->state = s_bbf_name_size;
+					coord_parser_init(&parser->coord_parser);
 				} else if (strcmp(parser->name, "model") == 0) {
 					parser->state = s_bbf_name_model;
 					string_parser_init(&parser->string_parser);
@@ -157,6 +159,7 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 					bool_parser_execute(&parser->bool_parser, buf, len);
 					break;
 				case s_bbf_name_size:
+					coord_parser_execute(&parser->coord_parser, buf, len);
 					break;
 				case s_bbf_name_model:
 					string_parser_execute(&parser->string_parser, buf, len);
@@ -192,8 +195,8 @@ ebb_buf uri_bbf_detect_objects_intro(const void* context, const void* parsed)
 {
 	ebb_buf buf;
 	const static char bbf_intro[] = 
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 156\r\n\r\n"
-		"<html><body><form enctype='multipart/form-data' method='post'><input name='model' value='face'><input type='file' name='source'><input type='submit'></form>\n";
+		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 189\r\n\r\n"
+		"<html><body><form enctype='multipart/form-data' method='post'><input name='size' value='24x24'><input name='model' value='face'><input type='file' name='source'><input type='submit'></form>\n";
 	buf.data = (void*)bbf_intro;
 	buf.len = sizeof(bbf_intro);
 	return buf;
