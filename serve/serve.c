@@ -5,7 +5,7 @@
 #include "uri.h"
 #include "async.h"
 
-static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: text/plain\r\nContent-Length: 4\r\n\r\n404\n";
+static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
 
 typedef struct {
 	ebb_request* request;
@@ -47,10 +47,6 @@ static void on_request_part_data(ebb_request* request, const char* at, size_t le
 		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_DATA, -1);
 }
 
-static void on_request_part_data_complete(ebb_request* request)
-{
-}
-
 static void on_request_multipart_header_field(ebb_request* request, const char* at, size_t length, int header_index)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
@@ -80,6 +76,12 @@ static void on_request_body(ebb_request* request, const char* at, size_t length)
 
 static void on_connection_response_continue(ebb_connection* connection)
 {
+	ebb_connection_extras* connection_extras = (ebb_connection_extras*)(connection->data);
+	ebb_request* request = connection_extras->request;
+	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
+	// call custom release function for the buffer
+	if (request_extras->response.data && request_extras->response.on_release)
+		request_extras->response.on_release(&request_extras->response);
 	ebb_connection_schedule_close(connection);
 }
 
@@ -97,24 +99,35 @@ static void on_request_execute(void* context)
 	// this is called off-thread
 	ebb_request* request = (ebb_request*)context;
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
+	const static char http_bad_request[] =
+		"HTTP/1.1 400 Bad Request\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf8\r\nContent-Length: 6\r\n\r\n"
+		"false\n";
+	int response_code = 0;
+	request_extras->response.on_release = 0;
 	switch (request->method)
 	{
 		case EBB_POST:
 			if (request_extras->dispatcher->post)
 			{
-				request_extras->response = request_extras->dispatcher->post(request_extras->dispatcher->context, request_extras->context);
+				response_code = request_extras->dispatcher->post(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
 				break;
 			}
 		case EBB_GET:
 			if (request_extras->dispatcher->get)
 			{
-				request_extras->response = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context);
+				response_code = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
 				break;
 			}
 		default:
 			request_extras->response.data = (void*)ebb_http_404;
 			request_extras->response.len = sizeof(ebb_http_404);
 			break;
+	}
+	if (response_code != 0)
+	{
+		assert(request_extras->response.on_release == 0);
+		request_extras->response.data = (void*)http_bad_request;
+		request_extras->response.len = sizeof(http_bad_request);
 	}
 	main_async_f(request, on_request_response);
 }
@@ -145,7 +158,6 @@ static ebb_request* new_request(ebb_connection* connection)
 	request->on_part_data = on_request_part_data;
 	request->on_multipart_header_field = on_request_multipart_header_field;
 	request->on_multipart_header_value = on_request_multipart_header_value;
-	request->on_part_data_complete = on_request_part_data_complete;
 	request->on_body = on_request_body;
 	request->on_query_string = on_request_query_string;
 	request->on_complete = on_request_dispatch;
@@ -175,10 +187,10 @@ int main(int argc, char** argv)
 	ebb_server_init(&server, EV_DEFAULT);
 	server.new_connection = new_connection;
 	ebb_server_listen_on_port(&server, 3350);
-	printf("Listen on 3350, http://localhost:3350/\n");
 	uri_init();
 	main_async_init();
 	main_async_start(EV_DEFAULT);
+	printf("listen on 3350, http://localhost:3350/\n");
 	ev_run(EV_DEFAULT_ 0);
 	main_async_destroy();
 	return 0;

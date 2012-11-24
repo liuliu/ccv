@@ -3,6 +3,12 @@
 
 #include "ebb.h"
 
+static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
+static const char ebb_http_empty_object[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n{}\n";
+static const char ebb_http_empty_array[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n[]\n";
+
+void uri_ebb_buf_free(ebb_buf* buf);
+
 typedef enum {
 	s_form_data_start,
 	s_form_data_header_field,
@@ -104,18 +110,23 @@ typedef struct {
 	void* context;
 	void* (*init)(void); // this runs on server start
 	void* (*parse)(const void*, void*, const char*, size_t, uri_parse_state_t, int); // this runs on main thread
-	ebb_buf (*get)(const void*, const void*); // this runs off thread
-	ebb_buf (*post)(const void*, const void*); // this runs off thread
+	int (*get)(const void*, const void*, ebb_buf*); // this runs off thread
+	int (*post)(const void*, const void*, ebb_buf*); // this runs off thread
 } uri_dispatch_t;
 
 uri_dispatch_t* find_uri_dispatch(const char* path);
 void uri_init(void);
 
-ebb_buf uri_root_discovery(const void* context, const void* parsed);
+int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_bbf_detect_objects_init(void);
 void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
-ebb_buf uri_bbf_detect_objects_intro(const void* context, const void* parsed);
-ebb_buf uri_bbf_detect_objects(const void* context, const void* parsed);
+int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
+
+void* uri_dpm_detect_objects_init(void);
+void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
 #endif

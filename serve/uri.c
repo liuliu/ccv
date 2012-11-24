@@ -1,5 +1,15 @@
 #include "uri.h"
 #include <string.h>
+#include <stdlib.h>
+#include <stdio.h>
+
+void uri_ebb_buf_free(ebb_buf* buf)
+{
+	free(buf->data);
+	buf->data = 0;
+	buf->len = buf->written = 0;
+	buf->on_release = 0;
+}
 
 static uri_dispatch_t uri_map[] = {
 	{
@@ -17,10 +27,10 @@ static uri_dispatch_t uri_map[] = {
 	},
 	{
 		.uri = "/dpm/detect.objects",
-		.init = 0,
-		.parse = 0,
-		.get = 0,
-		.post = 0,
+		.init = uri_dpm_detect_objects_init,
+		.parse = uri_dpm_detect_objects_parse,
+		.get = uri_dpm_detect_objects_intro,
+		.post = uri_dpm_detect_objects,
 	},
 	{
 		.uri = "/swt/detect.words",
@@ -54,16 +64,20 @@ void uri_init(void)
 	int i;
 	size_t len = sizeof(uri_map) / sizeof(uri_dispatch_t);
 	for (i = 0; i < len; i++)
-		uri_map[i].context = (uri_map[i].init) ? uri_map[i].init() : 0;
+		if (uri_map[i].init)
+		{
+			printf("init context for %s\n", uri_map[i].uri);
+			uri_map[i].context = uri_map[i].init();
+		} else
+			uri_map[i].context = 0;
 }
 
-ebb_buf uri_root_discovery(const void* context, const void* parsed)
+int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf)
 {
-	ebb_buf buf;
 	const static char root_discovery[] = 
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nContent-Type: text/plain\r\nContent-Length: 23\r\n\r\n"
-		"[\"/bbf/detect.objects\"]\n";
-	buf.data = (void*)root_discovery;
-	buf.len = sizeof(root_discovery);
-	return buf;
+		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nContent-Type: application/json\r\nContent-Length: 45\r\n\r\n"
+		"[\"/bbf/detect.objects\",\"/dpm/detect.objects\"]\n";
+	buf->data = (void*)root_discovery;
+	buf->len = sizeof(root_discovery);
+	return 0;
 }
