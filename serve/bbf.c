@@ -209,12 +209,12 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 	bbf_param_parser_t* parser = (bbf_param_parser_t*)parsed;
 	if (parser->state != s_bbf_start)
 		uri_bbf_param_parser_terminate(parser);
-	ccv_dense_matrix_t* image = 0;
 	if (parser->source.data == 0)
 	{
 		free(parser);
 		return -1;
 	}
+	ccv_dense_matrix_t* image = 0;
 	ccv_read(parser->source.data, &image, CCV_IO_ANY_STREAM | CCV_IO_GRAY, parser->source.written);
 	free(parser->source.data);
 	if (image == 0)
@@ -229,10 +229,10 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		free(parser);
 		return -1;
 	}
-	int i = 0;
 	if (seq->rnum > 0)
 	{
-		buf->len = seq->rnum * 21 + 2;
+		int i;
+		buf->len = 192 + seq->rnum * 21 + 2;
 		char* data = (char*)malloc(buf->len);
 		data[0] = '[';
 		buf->written = 1;
@@ -252,7 +252,7 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 			data[buf->written - 1] = (i == seq->rnum - 1) ? ']' : ',';
 		}
 		char http_header[192];
-		snprintf(http_header, 192, "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: %zd\r\n\r\n", buf->written);
+		snprintf(http_header, 192, ebb_http_header, buf->written);
 		size_t len = strnlen(http_header, 192);
 		if (buf->written + len + 1 >= buf->len)
 		{

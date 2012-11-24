@@ -3,6 +3,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+const char ebb_http_header[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: %zd\r\n\r\n";
+
 void uri_ebb_buf_free(ebb_buf* buf)
 {
 	free(buf->data);
