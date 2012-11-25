@@ -2,6 +2,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 
 void form_data_parser_init(form_data_parser_t* parser, void* context)
 {
@@ -300,4 +301,25 @@ void string_parser_execute(string_parser_t* parser, const char* buf, size_t len)
 		memcpy(parser->string + parser->cursor, buf, len);
 		parser->cursor += len;
 	}
+}
+
+void blob_parser_init(blob_parser_t* parser)
+{
+	parser->data.len = 0;
+	parser->data.written = 0;
+	parser->data.data = 0;
+}
+
+void blob_parser_execute(blob_parser_t* parser, const char* buf, size_t len)
+{
+	if (parser->data.len == 0)
+	{
+		parser->data.len = (len * 3 + 1) / 2;
+		parser->data.data = (unsigned char*)malloc(parser->data.len);
+	} else if (parser->data.written + len > parser->data.len) {
+		parser->data.len = ((parser->data.len + len) * 3 + 1) / 2;
+		parser->data.data = (unsigned char*)realloc(parser->data.data, parser->data.len);
+	}
+	memcpy(parser->data.data + parser->data.written, buf, len);
+	parser->data.written += len;
 }

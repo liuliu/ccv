@@ -17,9 +17,10 @@ void uri_ebb_buf_free(ebb_buf* buf)
 static uri_dispatch_t uri_map[] = {
 	{
 		.uri = "/",
-		.init = 0,
+		.init = uri_root_init,
 		.parse = 0,
 		.get = uri_root_discovery,
+		.destroy = uri_root_destroy,
 	},
 	{
 		.uri = "/bbf/detect.objects",
@@ -27,6 +28,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_bbf_detect_objects_parse,
 		.get = uri_bbf_detect_objects_intro,
 		.post = uri_bbf_detect_objects,
+		.destroy = uri_bbf_detect_objects_destroy,
 	},
 	{
 		.uri = "/dpm/detect.objects",
@@ -34,13 +36,15 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_dpm_detect_objects_parse,
 		.get = uri_dpm_detect_objects_intro,
 		.post = uri_dpm_detect_objects,
+		.destroy = uri_dpm_detect_objects_destroy,
 	},
 	{
 		.uri = "/swt/detect.words",
 		.init = 0,
-		.parse = 0,
-		.get = 0,
-		.post = 0,
+		.parse = uri_swt_detect_words_parse,
+		.get = uri_swt_detect_words_intro,
+		.post = uri_swt_detect_words,
+		.destroy = 0,
 	},
 	{
 		.uri = "/tld/track.object",
@@ -48,6 +52,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = 0,
 		.get = 0,
 		.post = 0,
+		.destroy = 0,
 	},
 };
 
@@ -69,14 +74,10 @@ uri_dispatch_t* find_uri_dispatch(const char* path)
 	return 0;
 }
 
-static ebb_buf root_discovery;
-
 void uri_init(void)
 {
 	int i;
 	size_t len = sizeof(uri_map) / sizeof(uri_dispatch_t);
-	assert(len > 1);
-	root_discovery.len = 1;
 	for (i = 0; i < len; i++)
 	{
 		if (uri_map[i].init)
@@ -85,35 +86,51 @@ void uri_init(void)
 			uri_map[i].context = uri_map[i].init();
 		} else
 			uri_map[i].context = 0;
-		if (i > 0)
-			root_discovery.len += strlen(uri_map[i].uri) + 3;
 	}
-	char* data = (char*)malloc(192 /* the head start for http header */ + root_discovery.len);
-	snprintf(data, 192, ebb_http_header, root_discovery.len);
-	root_discovery.written = strlen(data) + 2;
-	data[root_discovery.written - 2] = '[';
-	for (i = 1; i < len; i++)
-	{
-		size_t uri_len = strlen(uri_map[i].uri);
-		data[root_discovery.written - 1] = '"';
-		memcpy(data + root_discovery.written, uri_map[i].uri, uri_len);
-		root_discovery.written += uri_len + 3;
-		data[root_discovery.written - 3] = '"';
-		data[root_discovery.written - 2] = (i == len - 1) ? ']' : ',';
-	}
-	data[root_discovery.written - 1] = '\n';
-	root_discovery.len = root_discovery.written;
-	root_discovery.data = data;
 }
 
 void uri_destroy(void)
 {
-	free(root_discovery.data);
+}
+
+void* uri_root_init(void)
+{
+	int i;
+	size_t len = sizeof(uri_map) / sizeof(uri_dispatch_t);
+	assert(len > 1);
+	size_t root_len = 1;
+	for (i = 1; i < len; i++)
+		root_len += strlen(uri_map[i].uri) + 3;
+	char* data = (char*)malloc(sizeof(ebb_buf) + 192 /* the head start for http header */ + root_len);
+	ebb_buf* root_discovery = (ebb_buf*)data;
+	data += sizeof(ebb_buf);
+	snprintf(data, 192, ebb_http_header, root_len);
+	root_discovery->written = strlen(data) + 2;
+	data[root_discovery->written - 2] = '[';
+	for (i = 1; i < len; i++)
+	{
+		size_t uri_len = strlen(uri_map[i].uri);
+		data[root_discovery->written - 1] = '"';
+		memcpy(data + root_discovery->written, uri_map[i].uri, uri_len);
+		root_discovery->written += uri_len + 3;
+		data[root_discovery->written - 3] = '"';
+		data[root_discovery->written - 2] = (i == len - 1) ? ']' : ',';
+	}
+	data[root_discovery->written - 1] = '\n';
+	root_discovery->len = root_discovery->written;
+	root_discovery->data = data;
+	return root_discovery;
 }
 
 int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf)
 {
-	buf->data = root_discovery.data;
-	buf->len = root_discovery.len;
+	ebb_buf* root_discovery = (ebb_buf*)context;
+	buf->data = root_discovery->data;
+	buf->len = root_discovery->len;
 	return 0;
+}
+
+void uri_root_destroy(void* context)
+{
+	free(context);
 }

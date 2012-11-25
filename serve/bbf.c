@@ -33,6 +33,7 @@ typedef struct {
 		bool_parser_t bool_parser;
 		coord_parser_t coord_parser;
 		string_parser_t string_parser;
+		blob_parser_t blob_parser;
 	};
 } bbf_param_parser_t;
 
@@ -51,10 +52,9 @@ static void uri_bbf_param_parser_init(bbf_param_parser_t* parser)
 	parser->form_data_parser.on_name = on_form_data_name;
 	parser->params = ccv_bbf_default_params;
 	parser->state = s_bbf_start;
+	parser->cascade = 0;
 	parser->cursor = 0;
 	parser->source.data = 0;
-	parser->source.len = 0;
-	parser->source.written = 0;
 	memset(parser->name, 0, sizeof(parser->name));
 }
 
@@ -81,6 +81,9 @@ static void uri_bbf_param_parser_terminate(bbf_param_parser_t* parser)
 					parser->cascade = parser->context->face;
 			}
 			break;
+		case s_bbf_name_source:
+			parser->source = parser->blob_parser.data;
+			break;
 		default:
 			break;
 	}
@@ -105,6 +108,8 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 	switch (state)
 	{
 		case URI_QUERY_STRING:
+			break;
+		case URI_CONTENT_BODY:
 			break;
 		case URI_PARSE_TERMINATE:
 			if (parser->state != s_bbf_start)
@@ -142,6 +147,7 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 					string_parser_init(&parser->string_parser);
 				} else if (strcmp(parser->name, "source") == 0) {
 					parser->state = s_bbf_name_source;
+					blob_parser_init(&parser->blob_parser);
 				} else
 					parser->state = s_bbf_skip;
 			}
@@ -152,12 +158,18 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 				case s_bbf_name_interval:
 				case s_bbf_name_min_neighbors:
 					numeric_parser_execute(&parser->numeric_parser, buf, len);
+					if (parser->numeric_parser.state == s_numeric_illegal)
+						parser->state = s_bbf_skip;
 					break;
 				case s_bbf_name_accurate:
 					bool_parser_execute(&parser->bool_parser, buf, len);
+					if (parser->bool_parser.state == s_bool_illegal)
+						parser->state = s_bbf_skip;
 					break;
 				case s_bbf_name_size:
 					coord_parser_execute(&parser->coord_parser, buf, len);
+					if (parser->coord_parser.state == s_coord_illegal)
+						parser->state = s_bbf_skip;
 					break;
 				case s_bbf_name_model:
 					string_parser_execute(&parser->string_parser, buf, len);
@@ -165,16 +177,7 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 						parser->state = s_bbf_skip;
 					break;
 				case s_bbf_name_source:
-					if (parser->source.len == 0)
-					{
-						parser->source.len = (len * 3 + 1) / 2;
-						parser->source.data = (unsigned char*)malloc(parser->source.len);
-					} else if (parser->source.written + len > parser->source.len) {
-						parser->source.len = ((parser->source.len + len) * 3 + 1) / 2;
-						parser->source.data = (unsigned char*)realloc(parser->source.data, parser->source.len);
-					}
-					memcpy(parser->source.data + parser->source.written, buf, len);
-					parser->source.written += len;
+					blob_parser_execute(&parser->blob_parser, buf, len);
 					break;
 			}
 			break;
@@ -186,7 +189,14 @@ void* uri_bbf_detect_objects_init(void)
 {
 	bbf_context_t* context = (bbf_context_t*)malloc(sizeof(bbf_context_t));
 	context->face = ccv_load_bbf_classifier_cascade("../samples/face");
+	assert(context->face);
 	return context;
+}
+
+void uri_bbf_detect_objects_destroy(void* context)
+{
+	bbf_context_t* bbf_context = (bbf_context_t*)context;
+	ccv_bbf_classifier_cascade_free(bbf_context->face);
 }
 
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)

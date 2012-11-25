@@ -31,6 +31,7 @@ typedef struct {
 	union {
 		numeric_parser_t numeric_parser;
 		string_parser_t string_parser;
+		blob_parser_t blob_parser;
 	};
 } dpm_param_parser_t;
 
@@ -49,10 +50,9 @@ static void uri_dpm_param_parser_init(dpm_param_parser_t* parser)
 	parser->form_data_parser.on_name = on_form_data_name;
 	parser->params = ccv_dpm_default_params;
 	parser->state = s_dpm_start;
+	parser->mixture_model = 0;
 	parser->cursor = 0;
 	parser->source.data = 0;
-	parser->source.len = 0;
-	parser->source.written = 0;
 	memset(parser->name, 0, sizeof(parser->name));
 }
 
@@ -78,6 +78,9 @@ static void uri_dpm_param_parser_terminate(dpm_param_parser_t* parser)
 					parser->mixture_model = parser->context->car;
 			}
 			break;
+		case s_dpm_name_source:
+			parser->source = parser->blob_parser.data;
+			break;
 		default:
 			break;
 	}
@@ -102,6 +105,8 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 	switch (state)
 	{
 		case URI_QUERY_STRING:
+			break;
+		case URI_CONTENT_BODY:
 			break;
 		case URI_PARSE_TERMINATE:
 			if (parser->state != s_dpm_start)
@@ -136,6 +141,7 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 					string_parser_init(&parser->string_parser);
 				} else if (strcmp(parser->name, "source") == 0) {
 					parser->state = s_dpm_name_source;
+					blob_parser_init(&parser->blob_parser);
 				} else
 					parser->state = s_dpm_skip;
 			}
@@ -147,6 +153,8 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 				case s_dpm_name_min_neighbors:
 				case s_dpm_name_threshold:
 					numeric_parser_execute(&parser->numeric_parser, buf, len);
+					if (parser->numeric_parser.state == s_numeric_illegal)
+						parser->state = s_dpm_skip;
 					break;
 				case s_dpm_name_model:
 					string_parser_execute(&parser->string_parser, buf, len);
@@ -154,16 +162,7 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 						parser->state = s_dpm_skip;
 					break;
 				case s_dpm_name_source:
-					if (parser->source.len == 0)
-					{
-						parser->source.len = (len * 3 + 1) / 2;
-						parser->source.data = (unsigned char*)malloc(parser->source.len);
-					} else if (parser->source.written + len > parser->source.len) {
-						parser->source.len = ((parser->source.len + len) * 3 + 1) / 2;
-						parser->source.data = (unsigned char*)realloc(parser->source.data, parser->source.len);
-					}
-					memcpy(parser->source.data + parser->source.written, buf, len);
-					parser->source.written += len;
+					blob_parser_execute(&parser->blob_parser, buf, len);
 					break;
 			}
 			break;
@@ -176,7 +175,15 @@ void* uri_dpm_detect_objects_init(void)
 	dpm_context_t* context = (dpm_context_t*)malloc(sizeof(dpm_context_t));
 	context->pedestrian = ccv_load_dpm_mixture_model("../samples/pedestrian.m");
 	context->car = ccv_load_dpm_mixture_model("../samples/car.m");
+	assert(context->pedestrian && context->car);
 	return context;
+}
+
+void uri_dpm_detect_objects_destroy(void* context)
+{
+	dpm_context_t* dpm_context = (dpm_context_t*)context;
+	ccv_dpm_mixture_model_free(dpm_context->pedestrian);
+	ccv_dpm_mixture_model_free(dpm_context->car);
 }
 
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)

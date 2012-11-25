@@ -100,8 +100,16 @@ typedef struct {
 void string_parser_init(string_parser_t* parser);
 void string_parser_execute(string_parser_t* parser, const char* buf, size_t len);
 
+typedef struct {
+	ebb_buf data;
+} blob_parser_t;
+
+void blob_parser_init(blob_parser_t* parser);
+void blob_parser_execute(blob_parser_t* parser, const char* buf, size_t len);
+
 typedef enum {
 	URI_QUERY_STRING,
+	URI_CONTENT_BODY,
 	URI_MULTIPART_HEADER_FIELD,
 	URI_MULTIPART_HEADER_VALUE,
 	URI_MULTIPART_DATA,
@@ -115,22 +123,31 @@ typedef struct {
 	void* (*parse)(const void*, void*, const char*, size_t, uri_parse_state_t, int); // this runs on main thread
 	int (*get)(const void*, const void*, ebb_buf*); // this runs off thread
 	int (*post)(const void*, const void*, ebb_buf*); // this runs off thread
+	void (*destroy)(void*); // this runs on server shutdown
 } uri_dispatch_t;
 
 uri_dispatch_t* find_uri_dispatch(const char* path);
 void uri_init(void);
 void uri_destroy(void);
 
+void* uri_root_init(void);
+void uri_root_destroy(void* context);
 int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_bbf_detect_objects_init(void);
+void uri_bbf_detect_objects_destroy(void* context);
 void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_dpm_detect_objects_init(void);
+void uri_dpm_detect_objects_destroy(void* context);
 void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
+
+void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf);
 
 #endif
