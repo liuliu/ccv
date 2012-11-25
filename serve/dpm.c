@@ -181,9 +181,36 @@ void* uri_dpm_detect_objects_init(void)
 
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
+	/*
 	const static char dpm_desc[] = 
 		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 163\r\n\r\n"
 		"<html><body><form enctype='multipart/form-data' method='post'><input name='model' value='pedestrian'><input type='file' name='source'><input type='submit'></form>\n";
+	*/
+	const static char dpm_desc[] =
+		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 218\r\n\r\n"
+		"{"
+			"\"request\":{"
+				"\"model\":\"\","
+				"\"interval\":\"\","
+				"\"min_neighbors\":\"\","
+				"\"threshold\":\"\","
+				"\"source\":\"\""
+			"},"
+			"\"response\":[{"
+				"\"x\":\"\","
+				"\"y\":\"\","
+				"\"width\":\"\","
+				"\"height\":\"\","
+				"\"confidence\":\"\","
+				"\"parts\":[{"
+					"\"x\":\"\","
+					"\"y\":\"\","
+					"\"width\":\"\","
+					"\"height\":\"\","
+					"\"confidence\":\"\""
+				"}]"
+			"}]"
+		"}\n";
 	buf->data = (void*)dpm_desc;
 	buf->len = sizeof(dpm_desc);
 	return 0;
@@ -196,6 +223,12 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		uri_dpm_param_parser_terminate(parser);
 	if (parser->source.data == 0)
 	{
+		free(parser);
+		return -1;
+	}
+	if (parser->mixture_model == 0)
+	{
+		free(parser->source.data);
 		free(parser);
 		return -1;
 	}
@@ -223,10 +256,10 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		buf->written = 1;
 		for (i = 0; i < seq->rnum; i++)
 		{
-			char cell[64];
+			char cell[128];
 			ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
-			snprintf(cell, 64, "[[%d,%d,%d,%d,%f],[", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
-			size_t len = strnlen(cell, 64);
+			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f,\"parts\":[", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			size_t len = strnlen(cell, 128);
 			while (buf->written + len >= buf->len)
 			{
 				buf->len = (buf->len * 3 + 1) / 2;
@@ -236,8 +269,8 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 			buf->written += len;
 			for (j = 0; j < comp->pnum; j++)
 			{
-				snprintf(cell, 64, "[%d,%d,%d,%d,%f]", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
-				len = strnlen(cell, 64);
+				snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
+				len = strnlen(cell, 128);
 				while (buf->written + len + 3 >= buf->len)
 				{
 					buf->len = (buf->len * 3 + 1) / 2;
@@ -248,7 +281,7 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 				data[buf->written - 1] = (j == comp->pnum - 1) ? ']' : ',';
 			}
 			buf->written += 2;
-			data[buf->written - 2] = ']';
+			data[buf->written - 2] = '}';
 			data[buf->written - 1] = (i == seq->rnum - 1) ? ']' : ',';
 		}
 		char http_header[192];

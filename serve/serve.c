@@ -5,8 +5,6 @@
 #include "uri.h"
 #include "async.h"
 
-static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
-
 typedef struct {
 	ebb_request* request;
 } ebb_connection_extras;
@@ -83,6 +81,7 @@ static void on_connection_response_continue(ebb_connection* connection)
 	if (request_extras->response.data && request_extras->response.on_release)
 		request_extras->response.on_release(&request_extras->response);
 	ebb_connection_schedule_close(connection);
+	free(request);
 }
 
 static void on_request_response(void* context)
@@ -91,7 +90,6 @@ static void on_request_response(void* context)
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	ebb_connection* connection = request_extras->connection;
 	ebb_connection_write(connection, request_extras->response.data, request_extras->response.len, on_connection_response_continue);
-	ccfree(request);
 }
 
 static void on_request_execute(void* context)
@@ -138,13 +136,15 @@ static void on_request_dispatch(ebb_request* request)
 	ebb_connection* connection = request_extras->connection;
 	if (request_extras->dispatcher)
 		dispatch_async_f(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), request, on_request_execute);
-	else // write 404
+	else { // write 404
+		request_extras->response.data = 0;
 		ebb_connection_write(connection, ebb_http_404, sizeof(ebb_http_404), on_connection_response_continue);
+	}
 }
 
 static ebb_request* new_request(ebb_connection* connection)
 {
-	ebb_request* request = (ebb_request*)ccmalloc(sizeof(ebb_request) + sizeof(ebb_request_extras));
+	ebb_request* request = (ebb_request*)malloc(sizeof(ebb_request) + sizeof(ebb_request_extras));
 	ebb_request_init(request);
 	ebb_connection_extras* connection_extras = (ebb_connection_extras*)(connection->data);
 	connection_extras->request = request;
@@ -166,12 +166,12 @@ static ebb_request* new_request(ebb_connection* connection)
 
 static void on_connection_close(ebb_connection* connection)
 {
-	ccfree(connection);
+	free(connection);
 }
 
 static ebb_connection* new_connection(ebb_server* server, struct sockaddr_in* addr)
 {
-	ebb_connection* connection = (ebb_connection*)ccmalloc(sizeof(ebb_connection) + sizeof(ebb_connection_extras));
+	ebb_connection* connection = (ebb_connection*)malloc(sizeof(ebb_connection) + sizeof(ebb_connection_extras));
 	ebb_connection_init(connection);
 	ebb_connection_extras* connection_extras = (ebb_connection_extras*)(connection + 1);
 	connection_extras->request = 0;
@@ -193,5 +193,6 @@ int main(int argc, char** argv)
 	printf("listen on 3350, http://localhost:3350/\n");
 	ev_run(EV_DEFAULT_ 0);
 	main_async_destroy();
+	uri_destroy();
 	return 0;
 }

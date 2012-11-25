@@ -119,6 +119,7 @@ typedef struct {
 
 uri_dispatch_t* find_uri_dispatch(const char* path);
 void uri_init(void);
+void uri_destroy(void);
 
 int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf);
 

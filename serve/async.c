@@ -24,6 +24,9 @@ void main_async_f(void* context, void (*cb)(void*))
 	{
 		queue_length = (queue_length * 3 + 1) / 2;
 		async_queue = (main_async_t*)realloc(async_queue, sizeof(main_async_t) * queue_length);
+		// when expand the queue, the order of our circular buffer is not maintained
+		// thus, have to reset the queue_postion here
+		queue_position = queue_pending - 1;
 	}
 	async_queue[queue_position].context = context;
 	async_queue[queue_position].cb = cb;

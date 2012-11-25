@@ -191,14 +191,30 @@ void* uri_bbf_detect_objects_init(void)
 
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
+	/*
 	const static char bbf_desc[] = 
 		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 189\r\n\r\n"
 		"<html><body><form enctype='multipart/form-data' method='post'><input name='size' value='24x24'><input name='model' value='face'><input type='file' name='source'><input type='submit'></form>\n";
-	/*
-	const static char bbf_desc[] =
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: application/json\r\nContent-Length: 1\r\n\r\n"
-		"{\"model\":\"\",\"size\":\"\",\"interval\":\"\",\"min_neighbors\":\"\",\"accurate\":\"\",\"source\":\"\"}\n";
 	*/
+	const static char bbf_desc[] =
+		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 162\r\n\r\n"
+		"{"
+			"\"request\":{"
+				"\"model\":\"\","
+				"\"size\":\"\","
+				"\"interval\":\"\","
+				"\"min_neighbors\":\"\","
+				"\"accurate\":\"\","
+				"\"source\":\"\""
+			"},"
+			"\"response\":[{"
+				"\"x\":\"\","
+				"\"y\":\"\","
+				"\"width\":\"\","
+				"\"height\":\"\","
+				"\"confidence\":\"\""
+			"}]"
+		"}\n";
 	buf->data = (void*)bbf_desc;
 	buf->len = sizeof(bbf_desc);
 	return 0;
@@ -211,6 +227,12 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		uri_bbf_param_parser_terminate(parser);
 	if (parser->source.data == 0)
 	{
+		free(parser);
+		return -1;
+	}
+	if (parser->cascade == 0)
+	{
+		free(parser->source.data);
 		free(parser);
 		return -1;
 	}
@@ -238,10 +260,10 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		buf->written = 1;
 		for (i = 0; i < seq->rnum; i++)
 		{
-			char cell[64];
+			char cell[128];
 			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-			snprintf(cell, 64, "[%d,%d,%d,%d,%f]", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
-			size_t len = strnlen(cell, 64);
+			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			size_t len = strnlen(cell, 128);
 			while (buf->written + len + 1 >= buf->len)
 			{
 				buf->len = (buf->len * 3 + 1) / 2;
