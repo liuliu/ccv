@@ -183,6 +183,7 @@ typedef struct {
 
 void param_parser_terminate(param_parser_t* parser);
 int param_parser_map_alphabet(const param_dispatch_t* param_map, size_t len);
+ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len, const char* response_format);
 void param_parser_init(param_parser_t* parser, const param_dispatch_t* param_map, size_t len, void* parsed, void* context);
 void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 
@@ -217,8 +218,13 @@ int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_bu
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_swt_detect_words_init(void);
+void uri_swt_detect_words_destroy(void* context);
 void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf);
+
+void* uri_tld_track_object_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf);
 
 #endif

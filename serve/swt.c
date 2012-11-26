@@ -121,6 +121,10 @@ static const param_dispatch_t param_map[] = {
 };
 
 typedef struct {
+	ebb_buf desc;
+} swt_context_t;
+
+typedef struct {
 	param_parser_t param_parser;
 	ccv_swt_param_t params;
 	ebb_buf source;
@@ -129,7 +133,22 @@ typedef struct {
 void* uri_swt_detect_words_init(void)
 {
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
-	return 0;
+	swt_context_t* context = (swt_context_t*)malloc(sizeof(swt_context_t));
+	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
+		"[{"
+			"\"x\":\"integer\","
+			"\"y\":\"integer\","
+			"\"width\":\"integer\","
+			"\"height\":\"integer\""
+		"}]");
+	return context;
+}
+
+void uri_swt_detect_words_destroy(void* context)
+{
+	swt_context_t* swt_context = (swt_context_t*)context;
+	free(swt_context->desc.data);
+	free(swt_context);
 }
 
 static void uri_swt_param_parser_init(swt_param_parser_t* parser)
@@ -170,11 +189,9 @@ void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* 
 
 int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
-	const static char swt_desc[] = 
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 163\r\n\r\n"
-		"<html><body><form enctype='multipart/form-data' method='post'><input name='model' value='pedestrian'><input type='file' name='source'><input type='submit'></form>\n";
-	buf->data = (void*)swt_desc;
-	buf->len = sizeof(swt_desc);
+	swt_context_t* swt_context = (swt_context_t*)context;
+	buf->data = swt_context->desc.data;
+	buf->len = swt_context->desc.len;
 	return 0;
 }
 

@@ -38,6 +38,7 @@ static const param_dispatch_t param_map[] = {
 };
 
 typedef struct {
+	ebb_buf desc;
 	ccv_dpm_mixture_model_t* pedestrian;
 	ccv_dpm_mixture_model_t* car;
 } dpm_context_t;
@@ -104,6 +105,21 @@ void* uri_dpm_detect_objects_init(void)
 	context->car = ccv_load_dpm_mixture_model("../samples/car.m");
 	assert(context->pedestrian && context->car);
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
+	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
+		"[{"
+			"\"x\":\"integer\","
+			"\"y\":\"integer\","
+			"\"width\":\"integer\","
+			"\"height\":\"integer\","
+			"\"confidence\":\"number\","
+			"\"parts\":[{"
+				"\"x\":\"integer\","
+				"\"y\":\"integer\","
+				"\"width\":\"integer\","
+				"\"height\":\"integer\","
+				"\"confidence\":\"number\""
+			"}]"
+		"}]");
 	return context;
 }
 
@@ -112,43 +128,15 @@ void uri_dpm_detect_objects_destroy(void* context)
 	dpm_context_t* dpm_context = (dpm_context_t*)context;
 	ccv_dpm_mixture_model_free(dpm_context->pedestrian);
 	ccv_dpm_mixture_model_free(dpm_context->car);
+	free(dpm_context->desc.data);
 	free(dpm_context);
 }
 
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
-	/*
-	const static char dpm_desc[] = 
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 163\r\n\r\n"
-		"<html><body><form enctype='multipart/form-data' method='post'><input name='model' value='pedestrian'><input type='file' name='source'><input type='submit'></form>\n";
-	*/
-	const static char dpm_desc[] =
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 218\r\n\r\n"
-		"{"
-			"\"request\":{"
-				"\"model\":\"\","
-				"\"interval\":\"\","
-				"\"min_neighbors\":\"\","
-				"\"threshold\":\"\","
-				"\"source\":\"\""
-			"},"
-			"\"response\":[{"
-				"\"x\":\"\","
-				"\"y\":\"\","
-				"\"width\":\"\","
-				"\"height\":\"\","
-				"\"confidence\":\"\","
-				"\"parts\":[{"
-					"\"x\":\"\","
-					"\"y\":\"\","
-					"\"width\":\"\","
-					"\"height\":\"\","
-					"\"confidence\":\"\""
-				"}]"
-			"}]"
-		"}\n";
-	buf->data = (void*)dpm_desc;
-	buf->len = sizeof(dpm_desc);
+	dpm_context_t* dpm_context = (dpm_context_t*)context;
+	buf->data = dpm_context->desc.data;
+	buf->len = dpm_context->desc.len;
 	return 0;
 }
 

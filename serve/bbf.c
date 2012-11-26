@@ -43,6 +43,7 @@ static const param_dispatch_t param_map[] = {
 };
 
 typedef struct {
+	ebb_buf desc;
 	ccv_bbf_classifier_cascade_t* face;
 } bbf_context_t;
 
@@ -105,6 +106,14 @@ void* uri_bbf_detect_objects_init(void)
 	context->face = ccv_load_bbf_classifier_cascade("../samples/face");
 	assert(context->face);
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
+	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
+		"[{"
+			"\"x\":\"integer\","
+			"\"y\":\"integer\","
+			"\"width\":\"integer\","
+			"\"height\":\"integer\","
+			"\"confidence\":\"number\""
+		"}]");
 	return context;
 }
 
@@ -112,37 +121,15 @@ void uri_bbf_detect_objects_destroy(void* context)
 {
 	bbf_context_t* bbf_context = (bbf_context_t*)context;
 	ccv_bbf_classifier_cascade_free(bbf_context->face);
+	free(bbf_context->desc.data);
 	free(bbf_context);
 }
 
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
-	/*
-	const static char bbf_desc[] = 
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: text/html\r\nContent-Length: 189\r\n\r\n"
-		"<html><body><form enctype='multipart/form-data' method='post'><input name='size' value='24x24'><input name='model' value='face'><input type='file' name='source'><input type='submit'></form>\n";
-	*/
-	const static char bbf_desc[] =
-		"HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nAccept: \r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 162\r\n\r\n"
-		"{"
-			"\"request\":{"
-				"\"model\":\"\","
-				"\"size\":\"\","
-				"\"interval\":\"\","
-				"\"min_neighbors\":\"\","
-				"\"accurate\":\"\","
-				"\"source\":\"\""
-			"},"
-			"\"response\":[{"
-				"\"x\":\"\","
-				"\"y\":\"\","
-				"\"width\":\"\","
-				"\"height\":\"\","
-				"\"confidence\":\"\""
-			"}]"
-		"}\n";
-	buf->data = (void*)bbf_desc;
-	buf->len = sizeof(bbf_desc);
+	bbf_context_t* bbf_context = (bbf_context_t*)context;
+	buf->data = bbf_context->desc.data;
+	buf->len = bbf_context->desc.len;
 	return 0;
 }
 

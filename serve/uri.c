@@ -44,14 +44,14 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_swt_detect_words_parse,
 		.get = uri_swt_detect_words_intro,
 		.post = uri_swt_detect_words,
-		.destroy = 0,
+		.destroy = uri_swt_detect_words_destroy,
 	},
 	{
 		.uri = "/tld/track.object",
 		.init = 0,
-		.parse = 0,
-		.get = 0,
-		.post = 0,
+		.parse = uri_tld_track_object_parse,
+		.get = uri_tld_track_object_intro,
+		.post = uri_tld_track_object,
 		.destroy = 0,
 	},
 };

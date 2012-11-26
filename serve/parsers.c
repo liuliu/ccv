@@ -633,3 +633,112 @@ void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, u
 			break;
 	}
 }
+
+ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len, const char* response_format)
+{
+	ebb_buf body;
+	int i;
+	static const char int_type[] = "integer";
+	static const char bool_type[] = "boolean";
+	static const char number_type[] = "number";
+	static const char size_type[] = "size";
+	static const char point_type[] = "point";
+	static const char string_type[] = "string";
+	static const char blob_type[] = "blob";
+	size_t body_len = 12;
+	for (i = 0; i < len; i++)
+	{
+		body_len += strlen(param_map[i].property) + 6;
+		switch (param_map[i].type)
+		{
+			case PARAM_TYPE_INT:
+				body_len += sizeof(int_type) - 1;
+				break;
+			case PARAM_TYPE_FLOAT:
+			case PARAM_TYPE_DOUBLE:
+				body_len += sizeof(number_type) - 1;
+				break;
+			case PARAM_TYPE_BOOL:
+				body_len += sizeof(bool_type) - 1;
+				break;
+			case PARAM_TYPE_POINT:
+				body_len += sizeof(point_type) - 1;
+				break;
+			case PARAM_TYPE_SIZE:
+				body_len += sizeof(size_type) - 1;
+				break;
+			case PARAM_TYPE_STRING:
+				body_len += sizeof(string_type) - 1;
+				break;
+			case PARAM_TYPE_BLOB:
+				body_len += sizeof(blob_type) - 1;
+				break;
+		}
+	}
+	if (response_format)
+		body_len += 12 + strlen(response_format);
+	body_len += 1;
+	char* data = (char*)malloc(192 /* the head start for http header */ + body_len);
+	snprintf(data, 192, ebb_http_header, body_len);
+	body.written = strlen(data);
+	memcpy(data + body.written, "{\"request\":{", 12);
+	body.written += 12 + 1;
+	for (i = 0; i < len; i++)
+	{
+		data[body.written - 1] = '"';
+		size_t property_len = strlen(param_map[i].property);
+		memcpy(data + body.written, param_map[i].property, property_len);
+		body.written += property_len + 3;
+		data[body.written - 3] = '"';
+		data[body.written - 2] = ':';
+		data[body.written - 1] = '"';
+		switch (param_map[i].type)
+		{
+			case PARAM_TYPE_INT:
+				memcpy(data + body.written, int_type, sizeof(int_type) - 1);
+				body.written += sizeof(int_type) + 2;
+				break;
+			case PARAM_TYPE_FLOAT:
+			case PARAM_TYPE_DOUBLE:
+				memcpy(data + body.written, number_type, sizeof(number_type) - 1);
+				body.written += sizeof(number_type) + 2;
+				break;
+			case PARAM_TYPE_BOOL:
+				memcpy(data + body.written, bool_type, sizeof(bool_type) - 1);
+				body.written += sizeof(bool_type) + 2;
+				break;
+			case PARAM_TYPE_POINT:
+				memcpy(data + body.written, point_type, sizeof(point_type) - 1);
+				body.written += sizeof(point_type) + 2;
+				break;
+			case PARAM_TYPE_SIZE:
+				memcpy(data + body.written, size_type, sizeof(size_type) - 1);
+				body.written += sizeof(size_type) + 2;
+				break;
+			case PARAM_TYPE_STRING:
+				memcpy(data + body.written, string_type, sizeof(string_type) - 1);
+				body.written += sizeof(string_type) + 2;
+				break;
+			case PARAM_TYPE_BLOB:
+				memcpy(data + body.written, blob_type, sizeof(blob_type) - 1);
+				body.written += sizeof(blob_type) + 2;
+				break;
+		}
+		data[body.written - 3] = '"';
+		data[body.written - 2] = (i == len - 1) ? '}' : ',';
+	}
+	if (response_format)
+	{
+		memcpy(data + body.written - 1, ",\"response\":", 12);
+		body.written += 11;
+		size_t response_len = strlen(response_format);
+		memcpy(data + body.written, response_format, response_len);
+		body.written += response_len + 1;
+	}
+	data[body.written - 1] = '}';
+	data[body.written] = '\n';
+	body.len = body.written + 1;
+	body.data = data;
+	body.on_release = 0;
+	return body;
+}
