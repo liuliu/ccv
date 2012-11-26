@@ -4,95 +4,75 @@
 #include <stdio.h>
 #include <ctype.h>
 
+static void uri_bbf_on_model_string(void* context, char* string);
+static void uri_bbf_on_source_blob(void* context, ebb_buf data);
+
+static const param_dispatch_t param_map[] = {
+	{
+		.property = "accurate",
+		.type = PARAM_TYPE_BOOL,
+		.offset = offsetof(ccv_bbf_param_t, accurate),
+	},
+	{
+		.property = "interval",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_bbf_param_t, interval),
+	},
+	{
+		.property = "min_neighbors",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
+	},
+	{
+		.property = "model",
+		.type = PARAM_TYPE_STRING,
+		.on_string = uri_bbf_on_model_string,
+		.offset = 0,
+	},
+	{
+		.property = "size",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
+	},
+	{
+		.property = "source",
+		.type = PARAM_TYPE_BLOB,
+		.on_blob = uri_bbf_on_source_blob,
+		.offset = 0,
+	},
+};
+
 typedef struct {
 	ccv_bbf_classifier_cascade_t* face;
 } bbf_context_t;
 
-typedef enum {
-	s_bbf_start,
-	s_bbf_skip,
-	s_bbf_name_interval,
-	s_bbf_name_min_neighbors,
-	s_bbf_name_accurate,
-	s_bbf_name_size,
-	s_bbf_name_model,
-	s_bbf_name_source,
-} bbf_param_parse_state_t;
-
 typedef struct {
+	param_parser_t param_parser;
 	bbf_context_t* context;
-	bbf_param_parse_state_t state;
-	form_data_parser_t form_data_parser;
 	ccv_bbf_param_t params;
-	int cursor;
-	char name[16];
 	ccv_bbf_classifier_cascade_t* cascade;
 	ebb_buf source;
-	union {
-		numeric_parser_t numeric_parser;
-		bool_parser_t bool_parser;
-		coord_parser_t coord_parser;
-		string_parser_t string_parser;
-		blob_parser_t blob_parser;
-	};
 } bbf_param_parser_t;
-
-static void on_form_data_name(void* context, const char* buf, size_t len)
-{
-	bbf_param_parser_t* parser = (bbf_param_parser_t*)context;
-	if (len + parser->cursor > 15)
-		return;
-	memcpy(parser->name + parser->cursor, buf, len);
-	parser->cursor += len;
-}
 
 static void uri_bbf_param_parser_init(bbf_param_parser_t* parser)
 {
-	form_data_parser_init(&parser->form_data_parser, parser);
-	parser->form_data_parser.on_name = on_form_data_name;
+	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->params, parser);
 	parser->params = ccv_bbf_default_params;
-	parser->state = s_bbf_start;
 	parser->cascade = 0;
-	parser->cursor = 0;
 	parser->source.data = 0;
-	memset(parser->name, 0, sizeof(parser->name));
 }
 
-static void uri_bbf_param_parser_terminate(bbf_param_parser_t* parser)
+static void uri_bbf_on_model_string(void* context, char* string)
 {
-	switch (parser->state)
-	{
-		case s_bbf_name_interval:
-			parser->params.interval = (int)(parser->numeric_parser.result + 0.5);
-			break;
-		case s_bbf_name_min_neighbors:
-			parser->params.min_neighbors = (int)(parser->numeric_parser.result + 0.5);
-			break;
-		case s_bbf_name_accurate:
-			parser->params.accurate = parser->bool_parser.result;
-			break;
-		case s_bbf_name_size:
-			parser->params.size = ccv_size((int)(parser->coord_parser.x + 0.5), (int)(parser->coord_parser.y + 0.5));
-			break;
-		case s_bbf_name_model:
-			if (parser->string_parser.state == s_string_start)
-			{
-				if (strcmp(parser->string_parser.string, "face") == 0)
-					parser->cascade = parser->context->face;
-			}
-			break;
-		case s_bbf_name_source:
-			parser->source = parser->blob_parser.data;
-			break;
-		default:
-			break;
-	}
-	if (parser->state != s_bbf_start)
-	{
-		parser->state = s_bbf_start;
-		memset(parser->name, 0, sizeof(parser->name));
-		parser->cursor = 0;
-	}
+	bbf_param_parser_t* parser = (bbf_param_parser_t*)context;
+	if (strcmp(string, "face") == 0)
+		parser->cascade = parser->context->face;
+}
+
+static void uri_bbf_on_source_blob(void* context, ebb_buf data)
+{
+	bbf_param_parser_t* parser = (bbf_param_parser_t*)context;
+	parser->source = data;
 }
 
 void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index)
@@ -112,74 +92,10 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 		case URI_CONTENT_BODY:
 			break;
 		case URI_PARSE_TERMINATE:
-			if (parser->state != s_bbf_start)
-				uri_bbf_param_parser_terminate(parser); // collect result
-			break;
 		case URI_MULTIPART_HEADER_FIELD:
-			if (parser->state != s_bbf_start)
-				uri_bbf_param_parser_terminate(parser); // collect previous result
-			form_data_parser_execute(&parser->form_data_parser, buf, len, header_index);
-			break;
 		case URI_MULTIPART_HEADER_VALUE:
-			if (parser->state != s_bbf_start)
-				uri_bbf_param_parser_terminate(parser); // collect previous result
-			form_data_parser_execute(&parser->form_data_parser, buf, len, header_index);
-			break;
 		case URI_MULTIPART_DATA:
-			if (parser->state == s_bbf_start)
-			{
-				// need to use name to get the correct state
-				if (strcmp(parser->name, "interval") == 0)
-				{
-					parser->state = s_bbf_name_interval;
-					numeric_parser_init(&parser->numeric_parser);
-				} else if (strcmp(parser->name, "min_neighbors") == 0) {
-					parser->state = s_bbf_name_min_neighbors;
-					numeric_parser_init(&parser->numeric_parser);
-				} else if (strcmp(parser->name, "accurate") == 0) {
-					parser->state = s_bbf_name_accurate;
-					bool_parser_init(&parser->bool_parser);
-				} else if (strcmp(parser->name, "size") == 0) {
-					parser->state = s_bbf_name_size;
-					coord_parser_init(&parser->coord_parser);
-				} else if (strcmp(parser->name, "model") == 0) {
-					parser->state = s_bbf_name_model;
-					string_parser_init(&parser->string_parser);
-				} else if (strcmp(parser->name, "source") == 0) {
-					parser->state = s_bbf_name_source;
-					blob_parser_init(&parser->blob_parser);
-				} else
-					parser->state = s_bbf_skip;
-			}
-			switch (parser->state)
-			{
-				default:
-					break;
-				case s_bbf_name_interval:
-				case s_bbf_name_min_neighbors:
-					numeric_parser_execute(&parser->numeric_parser, buf, len);
-					if (parser->numeric_parser.state == s_numeric_illegal)
-						parser->state = s_bbf_skip;
-					break;
-				case s_bbf_name_accurate:
-					bool_parser_execute(&parser->bool_parser, buf, len);
-					if (parser->bool_parser.state == s_bool_illegal)
-						parser->state = s_bbf_skip;
-					break;
-				case s_bbf_name_size:
-					coord_parser_execute(&parser->coord_parser, buf, len);
-					if (parser->coord_parser.state == s_coord_illegal)
-						parser->state = s_bbf_skip;
-					break;
-				case s_bbf_name_model:
-					string_parser_execute(&parser->string_parser, buf, len);
-					if (parser->string_parser.state == s_string_overflow)
-						parser->state = s_bbf_skip;
-					break;
-				case s_bbf_name_source:
-					blob_parser_execute(&parser->blob_parser, buf, len);
-					break;
-			}
+			param_parser_execute(&parser->param_parser, buf, len, state, header_index);
 			break;
 	}
 	return parser;
@@ -190,6 +106,7 @@ void* uri_bbf_detect_objects_init(void)
 	bbf_context_t* context = (bbf_context_t*)malloc(sizeof(bbf_context_t));
 	context->face = ccv_load_bbf_classifier_cascade("../samples/face");
 	assert(context->face);
+	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	return context;
 }
 
@@ -197,6 +114,7 @@ void uri_bbf_detect_objects_destroy(void* context)
 {
 	bbf_context_t* bbf_context = (bbf_context_t*)context;
 	ccv_bbf_classifier_cascade_free(bbf_context->face);
+	free(bbf_context);
 }
 
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
@@ -233,8 +151,7 @@ int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_bu
 int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf)
 {
 	bbf_param_parser_t* parser = (bbf_param_parser_t*)parsed;
-	if (parser->state != s_bbf_start)
-		uri_bbf_param_parser_terminate(parser);
+	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)
 	{
 		free(parser);

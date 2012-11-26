@@ -40,7 +40,7 @@ static uri_dispatch_t uri_map[] = {
 	},
 	{
 		.uri = "/swt/detect.words",
-		.init = 0,
+		.init = uri_swt_detect_words_init,
 		.parse = uri_swt_detect_words_parse,
 		.get = uri_swt_detect_words_intro,
 		.post = uri_swt_detect_words,
@@ -91,6 +91,16 @@ void uri_init(void)
 
 void uri_destroy(void)
 {
+	int i;
+	size_t len = sizeof(uri_map) / sizeof(uri_dispatch_t);
+	for (i = 0; i < len; i++)
+	{
+		if (uri_map[i].destroy)
+		{
+			printf("destroy context for %s\n", uri_map[i].uri);
+			uri_map[i].destroy(uri_map[i].context);
+		}
+	}
 }
 
 void* uri_root_init(void)

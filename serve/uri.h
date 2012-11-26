@@ -2,6 +2,7 @@
 #define _GUARD_uri_h_
 
 #include "ebb.h"
+#include <stddef.h>
 
 /* have to be static const char so that can use sizeof */
 static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
@@ -116,6 +117,54 @@ typedef enum {
 	URI_PARSE_TERMINATE,
 } uri_parse_state_t;
 
+typedef enum {
+	PARAM_TYPE_INT,
+	PARAM_TYPE_FLOAT,
+	PARAM_TYPE_DOUBLE,
+	PARAM_TYPE_SIZE,
+	PARAM_TYPE_POINT,
+	PARAM_TYPE_STRING,
+	PARAM_TYPE_BOOL,
+	PARAM_TYPE_BLOB,
+} param_type_t;
+
+typedef struct {
+	char* property;
+	param_type_t type;
+	size_t offset;
+	void (*on_string)(void*, char*);
+	void (*on_blob)(void*, ebb_buf);
+} param_dispatch_t;
+
+typedef enum {
+	s_param_start = -1,
+	s_param_skip = -2,
+	/* the rest of the states are numerated from 0 to upper size of param_map */
+} param_parse_state_t;
+
+typedef struct {
+	param_parse_state_t state;
+	form_data_parser_t form_data_parser;
+	int cursor;
+	char name[16];
+	const param_dispatch_t* param_map;
+	size_t len;
+	char* parsed;
+	void* context;
+	union {
+		numeric_parser_t numeric_parser;
+		bool_parser_t bool_parser;
+		coord_parser_t coord_parser;
+		string_parser_t string_parser;
+		blob_parser_t blob_parser;
+	};
+} param_parser_t;
+
+void param_parser_terminate(param_parser_t* parser);
+int param_parser_map_alphabet(const param_dispatch_t* param_map, size_t len);
+void param_parser_init(param_parser_t* parser, const param_dispatch_t* param_map, size_t len, void* parsed, void* context);
+void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+
 typedef struct {
 	char* uri;
 	void* context;
@@ -146,6 +195,7 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
+void* uri_swt_detect_words_init(void);
 void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf);

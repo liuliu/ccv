@@ -1,7 +1,9 @@
 #include "uri.h"
+#include "ccv.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
+#include <assert.h>
 #include <stdlib.h>
 
 void form_data_parser_init(form_data_parser_t* parser, void* context)
@@ -322,4 +324,174 @@ void blob_parser_execute(blob_parser_t* parser, const char* buf, size_t len)
 	}
 	memcpy(parser->data.data + parser->data.written, buf, len);
 	parser->data.written += len;
+}
+
+static void on_form_data_name(void* context, const char* buf, size_t len)
+{
+	param_parser_t* parser = (param_parser_t*)context;
+	if (len + parser->cursor > 15)
+		return;
+	memcpy(parser->name + parser->cursor, buf, len);
+	parser->cursor += len;
+}
+
+int param_parser_map_alphabet(const param_dispatch_t* param_map, size_t len)
+{
+	int i;
+	for (i = 1; i < len; i++)
+		if (strcmp(param_map[i - 1].property, param_map[i].property) >= 0)
+			return -1;
+	return 0;
+}
+
+void param_parser_init(param_parser_t* parser, const param_dispatch_t* param_map, size_t len, void* parsed, void* context)
+{
+	form_data_parser_init(&parser->form_data_parser, parser);
+	parser->form_data_parser.on_name = on_form_data_name;
+	parser->state = s_param_start;
+	parser->param_map = param_map;
+	parser->len = len;
+	parser->parsed = (char*)parsed;
+	parser->context = context;
+	parser->cursor = 0;
+	memset(parser->name, 0, sizeof(parser->name));
+}
+
+void param_parser_terminate(param_parser_t* parser)
+{
+	if (parser->state >= 0)
+	{
+		const param_dispatch_t* dispatch = parser->param_map + parser->state;
+		switch (dispatch->type)
+		{
+			case PARAM_TYPE_INT:
+				*(int*)(parser->parsed + dispatch->offset) = (int)(parser->numeric_parser.result + 0.5);
+				break;
+			case PARAM_TYPE_FLOAT:
+				*(float*)(parser->parsed + dispatch->offset) = (float)parser->numeric_parser.result;
+				break;
+			case PARAM_TYPE_DOUBLE:
+				*(double*)(parser->parsed + dispatch->offset) = parser->numeric_parser.result;
+				break;
+			case PARAM_TYPE_BOOL:
+				*(int*)(parser->parsed + dispatch->offset) = parser->bool_parser.result;
+				break;
+			case PARAM_TYPE_SIZE:
+				*(ccv_size_t*)(parser->parsed + dispatch->offset) = ccv_size((int)(parser->coord_parser.x + 0.5), (int)(parser->coord_parser.y + 0.5));
+				break;
+			case PARAM_TYPE_POINT:
+				*(ccv_point_t*)(parser->parsed + dispatch->offset) = ccv_point((int)(parser->coord_parser.x + 0.5), (int)(parser->coord_parser.y + 0.5));
+				break;
+			case PARAM_TYPE_STRING:
+				if (dispatch->on_string)
+					dispatch->on_string(parser->context, parser->string_parser.string);
+				break;
+			case PARAM_TYPE_BLOB:
+				if (dispatch->on_blob)
+					dispatch->on_blob(parser->context, parser->blob_parser.data);
+				break;
+		}
+	}
+	if (parser->state != s_param_start)
+	{
+		parser->state = s_param_start;
+		memset(parser->name, 0, sizeof(parser->name));
+		parser->cursor = 0;
+	}
+}
+
+static int find_param_dispatch_state(param_parser_t* parser, const char* name)
+{
+	const param_dispatch_t* low = parser->param_map;
+	const param_dispatch_t* high = parser->param_map + parser->len - 1;
+	while (low <= high)
+	{
+		const param_dispatch_t* middle = low + (high - low) / 2;
+		int flag = strcmp(middle->property, name);
+		if (flag == 0)
+			return middle - parser->param_map;
+		else if (flag < 0)
+			low = middle + 1;
+		else
+			high = middle - 1;
+	}
+	return s_param_skip;
+}
+
+void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+{
+	switch (state)
+	{
+		default:
+			break;
+		case URI_PARSE_TERMINATE:
+			if (parser->state != s_param_start)
+				param_parser_terminate(parser); // collect result
+			break;
+		case URI_MULTIPART_HEADER_FIELD:
+		case URI_MULTIPART_HEADER_VALUE:
+			if (parser->state != s_param_start)
+				param_parser_terminate(parser);
+			assert(header_index >= 0);
+			form_data_parser_execute(&parser->form_data_parser, buf, len, header_index);
+			break;
+		case URI_MULTIPART_DATA:
+			if (parser->state == s_param_start)
+			{
+				parser->state = find_param_dispatch_state(parser, parser->name);
+				if (parser->state >= 0)
+					switch (parser->param_map[parser->state].type)
+					{
+						case PARAM_TYPE_INT:
+						case PARAM_TYPE_FLOAT:
+						case PARAM_TYPE_DOUBLE:
+							numeric_parser_init(&parser->numeric_parser);
+							break;
+						case PARAM_TYPE_BOOL:
+							bool_parser_init(&parser->bool_parser);
+							break;
+						case PARAM_TYPE_SIZE:
+						case PARAM_TYPE_POINT:
+							coord_parser_init(&parser->coord_parser);
+							break;
+						case PARAM_TYPE_STRING:
+							string_parser_init(&parser->string_parser);
+							break;
+						case PARAM_TYPE_BLOB:
+							blob_parser_init(&parser->blob_parser);
+							break;
+					}
+			}
+			if (parser->state >= 0)
+				switch (parser->param_map[parser->state].type)
+				{
+					case PARAM_TYPE_INT:
+					case PARAM_TYPE_FLOAT:
+					case PARAM_TYPE_DOUBLE:
+						numeric_parser_execute(&parser->numeric_parser, buf, len);
+						if (parser->numeric_parser.state == s_numeric_illegal)
+							parser->state = s_param_skip;
+						break;
+					case PARAM_TYPE_BOOL:
+						bool_parser_execute(&parser->bool_parser, buf, len);
+						if (parser->bool_parser.state == s_bool_illegal)
+							parser->state = s_param_skip;
+						break;
+					case PARAM_TYPE_SIZE:
+					case PARAM_TYPE_POINT:
+						coord_parser_execute(&parser->coord_parser, buf, len);
+						if (parser->coord_parser.state == s_coord_illegal)
+							parser->state = s_param_skip;
+						break;
+					case PARAM_TYPE_STRING:
+						string_parser_execute(&parser->string_parser, buf, len);
+						if (parser->string_parser.state == s_string_overflow)
+							parser->state = s_param_skip;
+						break;
+					case PARAM_TYPE_BLOB:
+						blob_parser_execute(&parser->blob_parser, buf, len);
+						break;
+				}
+			break;
+	}
 }

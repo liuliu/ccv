@@ -4,92 +4,73 @@
 #include <stdio.h>
 #include <ctype.h>
 
+static void uri_dpm_on_model_string(void* context, char* string);
+static void uri_dpm_on_source_blob(void* context, ebb_buf data);
+
+static const param_dispatch_t param_map[] = {
+	{
+		.property = "interval",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_dpm_param_t, interval),
+	},
+	{
+		.property = "min_neighbors",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_dpm_param_t, min_neighbors),
+	},
+	{
+		.property = "model",
+		.type = PARAM_TYPE_STRING,
+		.on_string = uri_dpm_on_model_string,
+		.offset = 0,
+	},
+	{
+		.property = "source",
+		.type = PARAM_TYPE_BLOB,
+		.on_blob = uri_dpm_on_source_blob,
+		.offset = 0,
+	},
+	{
+		.property = "threshold",
+		.type = PARAM_TYPE_FLOAT,
+		.offset = offsetof(ccv_dpm_param_t, threshold),
+	},
+};
+
 typedef struct {
 	ccv_dpm_mixture_model_t* pedestrian;
 	ccv_dpm_mixture_model_t* car;
 } dpm_context_t;
 
-typedef enum {
-	s_dpm_start,
-	s_dpm_skip,
-	s_dpm_name_interval,
-	s_dpm_name_min_neighbors,
-	s_dpm_name_threshold,
-	s_dpm_name_model,
-	s_dpm_name_source,
-} dpm_param_parse_state_t;
-
 typedef struct {
+	param_parser_t param_parser;
 	dpm_context_t* context;
-	dpm_param_parse_state_t state;
-	form_data_parser_t form_data_parser;
 	ccv_dpm_param_t params;
-	int cursor;
-	char name[16];
 	ccv_dpm_mixture_model_t* mixture_model;
 	ebb_buf source;
-	union {
-		numeric_parser_t numeric_parser;
-		string_parser_t string_parser;
-		blob_parser_t blob_parser;
-	};
 } dpm_param_parser_t;
-
-static void on_form_data_name(void* context, const char* buf, size_t len)
-{
-	dpm_param_parser_t* parser = (dpm_param_parser_t*)context;
-	if (len + parser->cursor > 15)
-		return;
-	memcpy(parser->name + parser->cursor, buf, len);
-	parser->cursor += len;
-}
 
 static void uri_dpm_param_parser_init(dpm_param_parser_t* parser)
 {
-	form_data_parser_init(&parser->form_data_parser, parser);
-	parser->form_data_parser.on_name = on_form_data_name;
+	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->params, parser);
 	parser->params = ccv_dpm_default_params;
-	parser->state = s_dpm_start;
 	parser->mixture_model = 0;
-	parser->cursor = 0;
 	parser->source.data = 0;
-	memset(parser->name, 0, sizeof(parser->name));
 }
 
-static void uri_dpm_param_parser_terminate(dpm_param_parser_t* parser)
+static void uri_dpm_on_model_string(void* context, char* string)
 {
-	switch (parser->state)
-	{
-		case s_dpm_name_interval:
-			parser->params.interval = (int)(parser->numeric_parser.result + 0.5);
-			break;
-		case s_dpm_name_min_neighbors:
-			parser->params.min_neighbors = (int)(parser->numeric_parser.result + 0.5);
-			break;
-		case s_dpm_name_threshold:
-			parser->params.threshold = parser->numeric_parser.result;
-			break;
-		case s_dpm_name_model:
-			if (parser->string_parser.state == s_string_start)
-			{
-				if (strcmp(parser->string_parser.string, "pedestrian") == 0)
-					parser->mixture_model = parser->context->pedestrian;
-				else if (strcmp(parser->string_parser.string, "car") == 0)
-					parser->mixture_model = parser->context->car;
-			}
-			break;
-		case s_dpm_name_source:
-			parser->source = parser->blob_parser.data;
-			break;
-		default:
-			break;
-	}
-	if (parser->state != s_dpm_start)
-	{
-		parser->state = s_dpm_start;
-		memset(parser->name, 0, sizeof(parser->name));
-		parser->cursor = 0;
-	}
+	dpm_param_parser_t* parser = (dpm_param_parser_t*)context;
+	if (strcmp(string, "pedestrian") == 0)
+		parser->mixture_model = parser->context->pedestrian;
+	else if (strcmp(string, "car") == 0)
+		parser->mixture_model = parser->context->car;
+}
+
+static void uri_dpm_on_source_blob(void* context, ebb_buf data)
+{
+	dpm_param_parser_t* parser = (dpm_param_parser_t*)context;
+	parser->source = data;
 }
 
 void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index)
@@ -109,62 +90,10 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 		case URI_CONTENT_BODY:
 			break;
 		case URI_PARSE_TERMINATE:
-			if (parser->state != s_dpm_start)
-				uri_dpm_param_parser_terminate(parser); // collect result
-			break;
 		case URI_MULTIPART_HEADER_FIELD:
-			if (parser->state != s_dpm_start)
-				uri_dpm_param_parser_terminate(parser); // collect previous result
-			form_data_parser_execute(&parser->form_data_parser, buf, len, header_index);
-			break;
 		case URI_MULTIPART_HEADER_VALUE:
-			if (parser->state != s_dpm_start)
-				uri_dpm_param_parser_terminate(parser); // collect previous result
-			form_data_parser_execute(&parser->form_data_parser, buf, len, header_index);
-			break;
 		case URI_MULTIPART_DATA:
-			if (parser->state == s_dpm_start)
-			{
-				// need to use name to get the correct state
-				if (strcmp(parser->name, "interval") == 0)
-				{
-					parser->state = s_dpm_name_interval;
-					numeric_parser_init(&parser->numeric_parser);
-				} else if (strcmp(parser->name, "min_neighbors") == 0) {
-					parser->state = s_dpm_name_min_neighbors;
-					numeric_parser_init(&parser->numeric_parser);
-				} else if (strcmp(parser->name, "threshold") == 0) {
-					parser->state = s_dpm_name_threshold;
-					numeric_parser_init(&parser->numeric_parser);
-				} else if (strcmp(parser->name, "model") == 0) {
-					parser->state = s_dpm_name_model;
-					string_parser_init(&parser->string_parser);
-				} else if (strcmp(parser->name, "source") == 0) {
-					parser->state = s_dpm_name_source;
-					blob_parser_init(&parser->blob_parser);
-				} else
-					parser->state = s_dpm_skip;
-			}
-			switch (parser->state)
-			{
-				default:
-					break;
-				case s_dpm_name_interval:
-				case s_dpm_name_min_neighbors:
-				case s_dpm_name_threshold:
-					numeric_parser_execute(&parser->numeric_parser, buf, len);
-					if (parser->numeric_parser.state == s_numeric_illegal)
-						parser->state = s_dpm_skip;
-					break;
-				case s_dpm_name_model:
-					string_parser_execute(&parser->string_parser, buf, len);
-					if (parser->string_parser.state == s_string_overflow)
-						parser->state = s_dpm_skip;
-					break;
-				case s_dpm_name_source:
-					blob_parser_execute(&parser->blob_parser, buf, len);
-					break;
-			}
+			param_parser_execute(&parser->param_parser, buf, len, state, header_index);
 			break;
 	}
 	return parser;
@@ -176,6 +105,7 @@ void* uri_dpm_detect_objects_init(void)
 	context->pedestrian = ccv_load_dpm_mixture_model("../samples/pedestrian.m");
 	context->car = ccv_load_dpm_mixture_model("../samples/car.m");
 	assert(context->pedestrian && context->car);
+	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	return context;
 }
 
@@ -184,6 +114,7 @@ void uri_dpm_detect_objects_destroy(void* context)
 	dpm_context_t* dpm_context = (dpm_context_t*)context;
 	ccv_dpm_mixture_model_free(dpm_context->pedestrian);
 	ccv_dpm_mixture_model_free(dpm_context->car);
+	free(dpm_context);
 }
 
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
@@ -226,8 +157,7 @@ int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_bu
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf)
 {
 	dpm_param_parser_t* parser = (dpm_param_parser_t*)parsed;
-	if (parser->state != s_dpm_start)
-		uri_dpm_param_parser_terminate(parser);
+	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)
 	{
 		free(parser);
