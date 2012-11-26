@@ -167,7 +167,7 @@ typedef struct {
 	query_string_parser_t query_string_parser;
 	int header_index;
 	int cursor;
-	char name[16];
+	char name[32];
 	const param_dispatch_t* param_map;
 	size_t len;
 	char* parsed;
@@ -223,6 +223,8 @@ void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* 
 int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf);
 
+void* uri_tld_track_object_init(void);
+void uri_tld_track_object_destroy(void* context);
 void* uri_tld_track_object_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf);

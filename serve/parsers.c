@@ -534,7 +534,7 @@ static void param_type_parser_execute(param_parser_t* parser, const char* buf, s
 static void on_form_data_name(void* context, const char* buf, size_t len)
 {
 	param_parser_t* parser = (param_parser_t*)context;
-	if (len + parser->cursor > 15)
+	if (len + parser->cursor > 31)
 		return;
 	memcpy(parser->name + parser->cursor, buf, len);
 	parser->cursor += len;

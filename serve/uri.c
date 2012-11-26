@@ -48,11 +48,11 @@ static uri_dispatch_t uri_map[] = {
 	},
 	{
 		.uri = "/tld/track.object",
-		.init = 0,
+		.init = uri_tld_track_object_init,
 		.parse = uri_tld_track_object_parse,
 		.get = uri_tld_track_object_intro,
 		.post = uri_tld_track_object,
-		.destroy = 0,
+		.destroy = uri_tld_track_object_destroy,
 	},
 };
 
