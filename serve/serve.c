@@ -12,10 +12,6 @@ typedef struct {
 typedef struct {
 	ebb_connection* connection;
 	uri_dispatch_t* dispatcher;
-	int recv_multipart;
-	int multipart_bm_pattern;
-	int multipart_boundary_delta1[255];
-	int multipart_boundary_delta2[EBB_MAX_MULTIPART_BOUNDARY_LEN];
 	void* context;
 	ebb_buf response;
 } ebb_request_extras;
@@ -63,13 +59,7 @@ static void on_request_body(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse && request->multipart_boundary_len == 0)
-	{
-		char* body = (char*)at;
-		char eof = body[length];
-		body[length] = '\0';
-		//request_extras->context = request_extras->dispatcher->parse(request_extras->context, 0, body);
-		body[length] = eof;
-	}
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_CONTENT_BODY, -1);
 }
 
 static void on_connection_response_continue(ebb_connection* connection)
@@ -151,8 +141,6 @@ static ebb_request* new_request(ebb_connection* connection)
 	ebb_request_extras* request_extras = (ebb_request_extras*)(request + 1);
 	request_extras->connection = connection;
 	request_extras->dispatcher = 0;
-	request_extras->recv_multipart = 0;
-	request_extras->multipart_bm_pattern = 0;
 	request->data = request_extras;
 	request->on_path = on_request_path;
 	request->on_part_data = on_request_part_data;

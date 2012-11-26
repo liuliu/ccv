@@ -88,9 +88,7 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char
 	switch (state)
 	{
 		case URI_QUERY_STRING:
-			break;
 		case URI_CONTENT_BODY:
-			break;
 		case URI_PARSE_TERMINATE:
 		case URI_MULTIPART_HEADER_FIELD:
 		case URI_MULTIPART_HEADER_VALUE:

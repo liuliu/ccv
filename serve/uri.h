@@ -19,7 +19,7 @@ typedef enum {
 	s_form_data_header_value_start,
 	s_form_data_header_value_name_start,
 	s_form_data_header_value_name_done,
-	s_form_data_end,
+	s_form_data_done,
 } form_data_state_t;
 
 typedef struct {
@@ -33,6 +33,24 @@ typedef struct {
 
 void form_data_parser_init(form_data_parser_t* parser, void* context);
 void form_data_parser_execute(form_data_parser_t* parser, const char* buf, size_t len, int header_index);
+
+typedef enum {
+	s_query_string_start,
+	s_query_string_field_start,
+	s_query_string_value_start,
+	s_query_string_value_done,
+} query_string_state_t;
+
+typedef struct {
+	query_string_state_t state;
+	void* context;
+	int header_index;
+	void (*on_field)(void*, const char*, size_t, int);
+	void (*on_value)(void*, const char*, size_t, int);
+} query_string_parser_t;
+
+void query_string_parser_init(query_string_parser_t* parser, void* context);
+void query_string_parser_execute(query_string_parser_t* parser, const char* buf, size_t len);
 
 typedef enum {
 	s_numeric_start,
@@ -144,7 +162,10 @@ typedef enum {
 
 typedef struct {
 	param_parse_state_t state;
+	param_parse_state_t source;
 	form_data_parser_t form_data_parser;
+	query_string_parser_t query_string_parser;
+	int header_index;
 	int cursor;
 	char name[16];
 	const param_dispatch_t* param_map;
