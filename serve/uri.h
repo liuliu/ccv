@@ -8,6 +8,7 @@
 static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
 static const char ebb_http_empty_object[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n{}\n";
 static const char ebb_http_empty_array[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n[]\n";
+static const char ebb_http_ok_true[] = "HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 5\r\n\r\ntrue\n";
 /* we should never sizeof ebb_http_header */
 extern const char ebb_http_header[];
 
@@ -194,6 +195,7 @@ typedef struct {
 	void* (*parse)(const void*, void*, const char*, size_t, uri_parse_state_t, int); // this runs on main thread
 	int (*get)(const void*, const void*, ebb_buf*); // this runs off thread
 	int (*post)(const void*, const void*, ebb_buf*); // this runs off thread
+	int (*delete)(const void*, const void*, ebb_buf*); // this runs off thread
 	void (*destroy)(void*); // this runs on server shutdown
 } uri_dispatch_t;
 
@@ -228,5 +230,6 @@ void uri_tld_track_object_destroy(void* context);
 void* uri_tld_track_object_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf);
+int uri_tld_track_object_free(const void* context, const void* parsed, ebb_buf* buf);
 
 #endif

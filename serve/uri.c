@@ -20,6 +20,8 @@ static uri_dispatch_t uri_map[] = {
 		.init = uri_root_init,
 		.parse = 0,
 		.get = uri_root_discovery,
+		.post = 0,
+		.delete = 0,
 		.destroy = uri_root_destroy,
 	},
 	{
@@ -28,6 +30,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_bbf_detect_objects_parse,
 		.get = uri_bbf_detect_objects_intro,
 		.post = uri_bbf_detect_objects,
+		.delete = 0,
 		.destroy = uri_bbf_detect_objects_destroy,
 	},
 	{
@@ -36,6 +39,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_dpm_detect_objects_parse,
 		.get = uri_dpm_detect_objects_intro,
 		.post = uri_dpm_detect_objects,
+		.delete = 0,
 		.destroy = uri_dpm_detect_objects_destroy,
 	},
 	{
@@ -44,6 +48,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_swt_detect_words_parse,
 		.get = uri_swt_detect_words_intro,
 		.post = uri_swt_detect_words,
+		.delete = 0,
 		.destroy = uri_swt_detect_words_destroy,
 	},
 	{
@@ -52,6 +57,7 @@ static uri_dispatch_t uri_map[] = {
 		.parse = uri_tld_track_object_parse,
 		.get = uri_tld_track_object_intro,
 		.post = uri_tld_track_object,
+		.delete = uri_tld_track_object_free,
 		.destroy = uri_tld_track_object_destroy,
 	},
 };

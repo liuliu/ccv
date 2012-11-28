@@ -106,6 +106,12 @@ static void on_request_execute(void* context)
 				response_code = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
 				break;
 			}
+		case EBB_DELETE:
+			if (request_extras->dispatcher->delete)
+			{
+				response_code = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
+				break;
+			}
 		default:
 			request_extras->response.data = (void*)ebb_http_404;
 			request_extras->response.len = sizeof(ebb_http_404);
