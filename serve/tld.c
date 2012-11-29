@@ -262,6 +262,7 @@ static void uri_tld_param_parser_init(tld_param_parser_t* parser)
 	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->uri_params, parser);
 	parser->uri_params.params = ccv_tld_default_params;
 	parser->uri_params.box = ccv_rect(0, 0, 0, 0);
+	parser->uri_params.tld = -1;
 	parser->previous.data = 0;
 	parser->source.data = 0;
 }
@@ -301,6 +302,7 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 {
 	tld_context_t* tld_context = (tld_context_t*)context;
 	tld_param_parser_t* parser = (tld_param_parser_t*)parsed;
+	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)
 	{
 		if (parser->previous.data)
@@ -324,8 +326,10 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 	}
 	int i;
 	ccv_dense_matrix_t* previous = 0;
-	if (parser->previous.data == 0)
+	if (parser->previous.data == 0 || parser->previous.written == 0)
 	{
+		if (parser->previous.data)
+			free(parser->previous.data);
 		// to initialize
 		if (ccv_rect_is_zero(parser->uri_params.box))
 		{
@@ -379,7 +383,7 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 		{
 			// TODO: find previous in cache
 		} else
-			ccv_read(parser->previous.data, &previous, CCV_IO_ANY_STREAM | CCV_IO_GRAY, parser->source.written);
+			ccv_read(parser->previous.data, &previous, CCV_IO_ANY_STREAM | CCV_IO_GRAY, parser->previous.written);
 		free(parser->previous.data);
 		if (previous == 0)
 		{
@@ -389,14 +393,17 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 		dispatch_semaphore_wait(tld_context->semaphore, DISPATCH_TIME_FOREVER);
 		ccv_tld_t* tld = parser->uri_params.tld < tld_context->tlds->rnum ? *(ccv_tld_t**)ccv_array_get(tld_context->tlds, parser->uri_params.tld) : 0;
 		dispatch_semaphore_signal(tld_context->semaphore);
-		if (tld == 0)
+		if (tld == 0 || tld->frame_signature != previous->sig)
 		{
 			ccv_matrix_free(previous);
+			ccv_matrix_free(source);
 			free(parser);
 			return -1;
 		}
 		ccv_tld_info_t info;
 		ccv_comp_t box = ccv_tld_track_object(tld, previous, source, &info);
+		ccv_matrix_free(previous);
+		ccv_matrix_free(source);
 		char cell[320];
 		snprintf(cell, 320,
 			"{\"tld\":%d,"
@@ -456,12 +463,15 @@ int uri_tld_track_object_free(const void* context, const void* parsed, ebb_buf* 
 	}
 	dispatch_semaphore_wait(tld_context->semaphore, DISPATCH_TIME_FOREVER);
 	ccv_tld_t* tld = parser->uri_params.tld < tld_context->tlds->rnum ? *(ccv_tld_t**)ccv_array_get(tld_context->tlds, parser->uri_params.tld) : 0;
+	if (!tld)
+		*(ccv_tld_t**)ccv_array_get(tld_context->tlds, parser->uri_params.tld) = 0;
 	dispatch_semaphore_signal(tld_context->semaphore);
 	if (!tld)
 	{
 		free(parser);
 		return -1;
 	} else {
+		ccv_tld_free(tld);
 		buf->data = (void*)ebb_http_ok_true;
 		buf->len = sizeof(ebb_http_ok_true) - 1;
 		free(parser);

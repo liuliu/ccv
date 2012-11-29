@@ -36,6 +36,15 @@ static void _ccv_read_png_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 		row_vectors[i] = im->data.u8 + i * im->step;
 	png_read_image(png_ptr, row_vectors);
 	png_read_end(png_ptr, 0);
+	int ch = CCV_GET_CHANNEL(im->type);
+	// empty out the padding
+	if (im->cols * ch < im->step)
+	{
+		size_t extra = im->step - im->cols * ch;
+		unsigned char* ptr = im->data.u8 + im->cols * ch;
+		for (i = 0; i < im->rows; i++, ptr += im->step)
+			memset(ptr, 0, extra);
+	}
 
 	png_destroy_read_struct(&png_ptr, &info_ptr, 0);
 }

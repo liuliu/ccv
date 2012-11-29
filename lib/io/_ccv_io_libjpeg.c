@@ -193,16 +193,31 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 	buffer = (*cinfo.mem->alloc_sarray)((j_common_ptr) &cinfo, JPOOL_IMAGE, row_stride, 1);
 
 	unsigned char* ptr = im->data.u8;
+	int i;
+	int ch = CCV_GET_CHANNEL(im->type);
 	if(cinfo.num_components != 4)
 	{
-		if ((cinfo.num_components > 1 && CCV_GET_CHANNEL(im->type) == CCV_C3) || (cinfo.num_components == 1 && CCV_GET_CHANNEL(im->type) == CCV_C1))
+		if ((cinfo.num_components > 1 && ch == CCV_C3) || (cinfo.num_components == 1 && ch == CCV_C1))
 		{
 			/* no format coversion, direct copy */
-			while (cinfo.output_scanline < cinfo.output_height)
+			if (im->cols * ch < im->step)
 			{
-				jpeg_read_scanlines(&cinfo, buffer, 1);
-				memcpy(ptr, buffer[0], im->step);
-				ptr += im->step;
+				size_t extra = im->step - im->cols * ch;
+				// empty the padding
+				while (cinfo.output_scanline < cinfo.output_height)
+				{
+					jpeg_read_scanlines(&cinfo, buffer, 1);
+					memcpy(ptr, buffer[0], im->step);
+					memset(ptr + im->cols * ch, 0, extra);
+					ptr += im->step;
+				}
+			} else {
+				while (cinfo.output_scanline < cinfo.output_height)
+				{
+					jpeg_read_scanlines(&cinfo, buffer, 1);
+					memcpy(ptr, buffer[0], im->step);
+					ptr += im->step;
+				}
 			}
 		} else {
 			if (cinfo.num_components > 1 && CCV_GET_CHANNEL(im->type) == CCV_C1)
@@ -211,7 +226,6 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 				while (cinfo.output_scanline < cinfo.output_height)
 				{
 					jpeg_read_scanlines(&cinfo, buffer, 1);
-					int i;
 					unsigned char* g = ptr;
 					unsigned char* rgb = (unsigned char*)buffer[0];
 					for(i = 0; i < im->cols; i++, rgb += 3, g++)
@@ -223,13 +237,20 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 				while (cinfo.output_scanline < cinfo.output_height)
 				{
 					jpeg_read_scanlines(&cinfo, buffer, 1);
-					int i;
 					unsigned char* g = (unsigned char*)buffer[0];
 					unsigned char* rgb = ptr;
 					for(i = 0; i < im->cols; i++, rgb += 3, g++)
 						rgb[0] = rgb[1] = rgb[2] = *g;
 					ptr += im->step;
 				}
+			}
+			// empty out the padding
+			if (im->cols * ch < im->step)
+			{
+				size_t extra = im->step - im->cols * ch;
+				unsigned char* ptr = im->data.u8 + im->cols * ch;
+				for (i = 0; i < im->rows; i++, ptr += im->step)
+					memset(ptr, 0, extra);
 			}
 		}
 	} else {
@@ -239,7 +260,6 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 			while (cinfo.output_scanline < cinfo.output_height)
 			{
 				jpeg_read_scanlines(&cinfo, buffer, 1);
-				int i;
 				unsigned char* cmyk = (unsigned char*)buffer[0];
 				unsigned char* g = ptr;
 				for(i = 0; i < im->cols; i++, g++, cmyk += 4)
@@ -257,7 +277,6 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 			while (cinfo.output_scanline < cinfo.output_height)
 			{
 				jpeg_read_scanlines(&cinfo, buffer, 1);
-				int i;
 				unsigned char* cmyk = (unsigned char*)buffer[0];
 				unsigned char* rgb = ptr;
 				for(i = 0; i < im->cols; i++, rgb += 3, cmyk += 4)
@@ -272,6 +291,14 @@ static void _ccv_read_jpeg_fd(FILE* in, ccv_dense_matrix_t** x, int type)
 				}
 				ptr += im->step;
 			}
+		}
+		// empty out the padding
+		if (im->cols * ch < im->step)
+		{
+			size_t extra = im->step - im->cols * ch;
+			unsigned char* ptr = im->data.u8 + im->cols * ch;
+			for (i = 0; i < im->rows; i++, ptr += im->step)
+				memset(ptr, 0, extra);
 		}
 	}
 
