@@ -606,6 +606,8 @@ typedef struct {
 	float norm_threshold;
 } ccv_sift_param_t;
 
+extern const ccv_sift_param_t ccv_sift_default_params;
+
 void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t** desc, int type, ccv_sift_param_t params);
 
 /* mser related method */

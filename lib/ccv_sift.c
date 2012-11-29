@@ -32,6 +32,15 @@
 #include "ccv.h"
 #include "ccv_internal.h"
 
+const ccv_sift_param_t ccv_sift_default_params = {
+	.noctaves = 3,
+	.nlevels = 6,
+	.up2x = 1,
+	.edge_threshold = 10,
+	.norm_threshold = 0,
+	.peak_threshold = 0,
+};
+
 inline static double _ccv_keypoint_interpolate(float N9[3][9], int ix, int iy, int is, ccv_keypoint_t* kp)
 {
 	double Dxx = N9[1][3] - 2 * N9[1][4] + N9[1][5]; 

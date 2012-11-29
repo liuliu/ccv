@@ -43,6 +43,15 @@ static uri_dispatch_t uri_map[] = {
 		.destroy = uri_dpm_detect_objects_destroy,
 	},
 	{
+		.uri = "/sift",
+		.init = uri_sift_init,
+		.parse = uri_sift_parse,
+		.get = uri_sift_intro,
+		.post = uri_sift,
+		.delete = 0,
+		.destroy = uri_sift_destroy,
+	},
+	{
 		.uri = "/swt/detect.words",
 		.init = uri_swt_detect_words_init,
 		.parse = uri_swt_detect_words_parse,

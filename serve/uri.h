@@ -219,6 +219,12 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
+void* uri_sift_init(void);
+void uri_sift_destroy(void* context);
+void* uri_sift_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_sift_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_sift(const void* context, const void* parsed, ebb_buf* buf);
+
 void* uri_swt_detect_words_init(void);
 void uri_swt_detect_words_destroy(void* context);
 void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
