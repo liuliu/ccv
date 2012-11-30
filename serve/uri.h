@@ -145,6 +145,8 @@ typedef enum {
 	PARAM_TYPE_STRING,
 	PARAM_TYPE_BOOL,
 	PARAM_TYPE_BLOB,
+	PARAM_TYPE_BODY, // alias for BLOB, in cases that is not multi-part, this is get result from http body
+	PARAM_TYPE_ID, // alias for INT, in cases that is a part of uri, it will triumph any parameter passed in later
 } param_type_t;
 
 typedef struct {
@@ -163,7 +165,8 @@ typedef enum {
 
 typedef struct {
 	param_parse_state_t state;
-	param_parse_state_t source;
+	param_parse_state_t body;
+	param_parse_state_t resource;
 	form_data_parser_t form_data_parser;
 	query_string_parser_t query_string_parser;
 	int header_index;
@@ -186,13 +189,13 @@ void param_parser_terminate(param_parser_t* parser);
 int param_parser_map_alphabet(const param_dispatch_t* param_map, size_t len);
 ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len, const char* response_format);
 void param_parser_init(param_parser_t* parser, const param_dispatch_t* param_map, size_t len, void* parsed, void* context);
-void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void param_parser_execute(param_parser_t* parser, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 
 typedef struct {
 	char* uri;
 	void* context;
 	void* (*init)(void); // this runs on server start
-	void* (*parse)(const void*, void*, const char*, size_t, uri_parse_state_t, int); // this runs on main thread
+	void* (*parse)(const void*, void*, int, const char*, size_t, uri_parse_state_t, int); // this runs on main thread
 	int (*get)(const void*, const void*, ebb_buf*); // this runs off thread
 	int (*post)(const void*, const void*, ebb_buf*); // this runs off thread
 	int (*delete)(const void*, const void*, ebb_buf*); // this runs off thread
@@ -209,31 +212,31 @@ int uri_root_discovery(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_bbf_detect_objects_init(void);
 void uri_bbf_detect_objects_destroy(void* context);
-void* uri_bbf_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void* uri_bbf_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_dpm_detect_objects_init(void);
 void uri_dpm_detect_objects_destroy(void* context);
-void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void* uri_dpm_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_sift_init(void);
 void uri_sift_destroy(void* context);
-void* uri_sift_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void* uri_sift_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_sift_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_sift(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_swt_detect_words_init(void);
 void uri_swt_detect_words_destroy(void* context);
-void* uri_swt_detect_words_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void* uri_swt_detect_words_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_swt_detect_words_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf);
 
 void* uri_tld_track_object_init(void);
 void uri_tld_track_object_destroy(void* context);
-void* uri_tld_track_object_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+void* uri_tld_track_object_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
 int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf);
 int uri_tld_track_object_free(const void* context, const void* parsed, ebb_buf* buf);

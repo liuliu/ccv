@@ -34,7 +34,7 @@ static const param_dispatch_t param_map[] = {
 	},
 	{
 		.property = "source",
-		.type = PARAM_TYPE_BLOB,
+		.type = PARAM_TYPE_BODY,
 		.on_blob = uri_sift_on_source_blob,
 		.offset = 0,
 	},
@@ -93,7 +93,7 @@ void uri_sift_destroy(void* context)
 	free(sift_context);
 }
 
-void* uri_sift_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+void* uri_sift_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
 {
 	sift_param_parser_t* parser;
 	if (parsed)
@@ -111,7 +111,7 @@ void* uri_sift_parse(const void* context, void* parsed, const char* buf, size_t 
 		case URI_MULTIPART_HEADER_FIELD:
 		case URI_MULTIPART_HEADER_VALUE:
 		case URI_MULTIPART_DATA:
-			param_parser_execute(&parser->param_parser, buf, len, state, header_index);
+			param_parser_execute(&parser->param_parser, resource_id, buf, len, state, header_index);
 			break;
 	}
 	return parser;
@@ -127,6 +127,8 @@ int uri_sift_intro(const void* context, const void* parsed, ebb_buf* buf)
 
 int uri_sift(const void* context, const void* parsed, ebb_buf* buf)
 {
+	if (!parsed)
+		return -1;
 	sift_param_parser_t* parser = (sift_param_parser_t*)parsed;
 	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)

@@ -438,6 +438,10 @@ void param_parser_terminate(param_parser_t* parser)
 			case PARAM_TYPE_INT:
 				*(int*)(parser->parsed + dispatch->offset) = (int)(parser->numeric_parser.result + 0.5);
 				break;
+			case PARAM_TYPE_ID:
+				if (*(int*)(parser->parsed + dispatch->offset) < 0) // original is illegal resource id
+					*(int*)(parser->parsed + dispatch->offset) = (int)(parser->numeric_parser.result + 0.5);
+				break;
 			case PARAM_TYPE_FLOAT:
 				*(float*)(parser->parsed + dispatch->offset) = (float)parser->numeric_parser.result;
 				break;
@@ -458,6 +462,7 @@ void param_parser_terminate(param_parser_t* parser)
 					dispatch->on_string(parser->context, parser->string_parser.string);
 				break;
 			case PARAM_TYPE_BLOB:
+			case PARAM_TYPE_BODY:
 				if (dispatch->on_blob)
 					dispatch->on_blob(parser->context, parser->blob_parser.data);
 				break;
@@ -477,6 +482,7 @@ static void param_type_parser_init(param_parser_t* parser)
 	switch (parser->param_map[parser->state].type)
 	{
 		case PARAM_TYPE_INT:
+		case PARAM_TYPE_ID:
 		case PARAM_TYPE_FLOAT:
 		case PARAM_TYPE_DOUBLE:
 			numeric_parser_init(&parser->numeric_parser);
@@ -492,6 +498,7 @@ static void param_type_parser_init(param_parser_t* parser)
 			string_parser_init(&parser->string_parser);
 			break;
 		case PARAM_TYPE_BLOB:
+		case PARAM_TYPE_BODY:
 			blob_parser_init(&parser->blob_parser);
 			break;
 	}
@@ -503,6 +510,7 @@ static void param_type_parser_execute(param_parser_t* parser, const char* buf, s
 	switch (parser->param_map[parser->state].type)
 	{
 		case PARAM_TYPE_INT:
+		case PARAM_TYPE_ID:
 		case PARAM_TYPE_FLOAT:
 		case PARAM_TYPE_DOUBLE:
 			numeric_parser_execute(&parser->numeric_parser, buf, len);
@@ -526,6 +534,7 @@ static void param_type_parser_execute(param_parser_t* parser, const char* buf, s
 				parser->state = s_param_skip;
 			break;
 		case PARAM_TYPE_BLOB:
+		case PARAM_TYPE_BODY:
 			blob_parser_execute(&parser->blob_parser, buf, len);
 			break;
 	}
@@ -585,11 +594,27 @@ void param_parser_init(param_parser_t* parser, const param_dispatch_t* param_map
 	parser->context = context;
 	parser->cursor = 0;
 	memset(parser->name, 0, sizeof(parser->name));
-	// we treat "source" differently, because it is the parameter for content body
-	parser->source = find_param_dispatch_state(parser, "source");
+	// find out the special bodies that we cared about (PARAM_TYPE_BODY and PARAM_TYPE_ID)
+	parser->body = parser->resource = s_param_start;
+	int i;
+	for (i = 0; i < len; i++)
+		switch (param_map[i].type)
+		{
+			default:
+				break;
+			case PARAM_TYPE_ID:
+				assert(parser->resource == s_param_start);
+				*(int*)(parser->parsed + param_map[i].offset) = -1; // set id == -1 first.
+				parser->resource = i;
+				break;
+			case PARAM_TYPE_BODY:
+				assert(parser->body == s_param_start);
+				parser->body = i;
+				break;
+		}
 }
 
-void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+void param_parser_execute(param_parser_t* parser, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
 {
 	switch (state)
 	{
@@ -599,13 +624,13 @@ void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, u
 			query_string_parser_execute(&parser->query_string_parser, buf, len);
 			break;
 		case URI_CONTENT_BODY:
-			if (parser->source == s_param_skip)
+			if (parser->body == s_param_skip)
 				break;
-			if (parser->state != s_param_start && parser->state != parser->source)
+			if (parser->state != s_param_start && parser->state != parser->body)
 				param_parser_terminate(parser);
 			if (parser->state == s_param_start)
 			{
-				parser->state = parser->source;
+				parser->state = parser->body;
 				param_type_parser_init(parser);
 			}
 			param_type_parser_execute(parser, buf, len);
@@ -632,6 +657,8 @@ void param_parser_execute(param_parser_t* parser, const char* buf, size_t len, u
 				param_type_parser_execute(parser, buf, len);
 			break;
 	}
+	if (resource_id >= 0 && parser->resource != s_param_start)
+		*(int*)(parser->parsed + parser->param_map[parser->resource].offset) = resource_id;
 }
 
 ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len, const char* response_format)
@@ -652,6 +679,7 @@ ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len
 		switch (param_map[i].type)
 		{
 			case PARAM_TYPE_INT:
+			case PARAM_TYPE_ID:
 				body_len += sizeof(int_type) - 1;
 				break;
 			case PARAM_TYPE_FLOAT:
@@ -671,6 +699,7 @@ ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len
 				body_len += sizeof(string_type) - 1;
 				break;
 			case PARAM_TYPE_BLOB:
+			case PARAM_TYPE_BODY:
 				body_len += sizeof(blob_type) - 1;
 				break;
 		}
@@ -695,6 +724,7 @@ ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len
 		switch (param_map[i].type)
 		{
 			case PARAM_TYPE_INT:
+			case PARAM_TYPE_ID:
 				memcpy(data + body.written, int_type, sizeof(int_type) - 1);
 				body.written += sizeof(int_type) + 2;
 				break;
@@ -720,6 +750,7 @@ ebb_buf param_parser_map_http_body(const param_dispatch_t* param_map, size_t len
 				body.written += sizeof(string_type) + 2;
 				break;
 			case PARAM_TYPE_BLOB:
+			case PARAM_TYPE_BODY:
 				memcpy(data + body.written, blob_type, sizeof(blob_type) - 1);
 				body.written += sizeof(blob_type) + 2;
 				break;

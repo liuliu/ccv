@@ -26,7 +26,7 @@ static const param_dispatch_t param_map[] = {
 	},
 	{
 		.property = "source",
-		.type = PARAM_TYPE_BLOB,
+		.type = PARAM_TYPE_BODY,
 		.on_blob = uri_dpm_on_source_blob,
 		.offset = 0,
 	},
@@ -74,7 +74,7 @@ static void uri_dpm_on_source_blob(void* context, ebb_buf data)
 	parser->source = data;
 }
 
-void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+void* uri_dpm_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
 {
 	dpm_param_parser_t* parser;
 	if (parsed)
@@ -92,7 +92,7 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, const char
 		case URI_MULTIPART_HEADER_FIELD:
 		case URI_MULTIPART_HEADER_VALUE:
 		case URI_MULTIPART_DATA:
-			param_parser_execute(&parser->param_parser, buf, len, state, header_index);
+			param_parser_execute(&parser->param_parser, resource_id, buf, len, state, header_index);
 			break;
 	}
 	return parser;
@@ -142,6 +142,8 @@ int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_bu
 
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf)
 {
+	if (!parsed)
+		return -1;
 	dpm_param_parser_t* parser = (dpm_param_parser_t*)parsed;
 	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)

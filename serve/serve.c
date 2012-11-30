@@ -11,6 +11,7 @@ typedef struct {
 
 typedef struct {
 	ebb_connection* connection;
+	int resource;
 	uri_dispatch_t* dispatcher;
 	void* context;
 	ebb_buf response;
@@ -20,46 +21,62 @@ static void on_request_path(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	char* path = (char*)at;
-	char eof = path[length];
-	path[length] = '\0';
+	int i;
+	int resource = 0, multiple = 1;
+	for (i = length - 1; i >= 0; i--)
+		if (path[i] >= '0' && path[i] <= '9')
+		{
+			resource += (path[i] - '0') * multiple;
+			multiple *= 10;
+		} else if (path[i] != '/') {
+			i = length;
+			resource = -1;
+			break;
+		} else
+			break;
+	char eof = path[i];
+	path[i] = '\0';
 	request_extras->dispatcher = find_uri_dispatch(path);
+	request_extras->resource = resource;
 	request_extras->context = 0;
-	path[length] = eof;
+	if (resource >= 0 && request_extras->dispatcher && request_extras->dispatcher->parse)
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_PARSE_TERMINATE, 0); // this kicks off resource id
+	path[i] = eof;
 }
 
 static void on_request_query_string(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse)
-		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_QUERY_STRING, 0);
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_QUERY_STRING, 0);
 }
 
 static void on_request_part_data(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse)
-		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_DATA, -1);
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_MULTIPART_DATA, -1);
 }
 
 static void on_request_multipart_header_field(ebb_request* request, const char* at, size_t length, int header_index)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse)
-		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_HEADER_FIELD, header_index);
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_MULTIPART_HEADER_FIELD, header_index);
 }
 
 static void on_request_multipart_header_value(ebb_request* request, const char* at, size_t length, int header_index)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse)
-		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_MULTIPART_HEADER_VALUE, header_index);
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_MULTIPART_HEADER_VALUE, header_index);
 }
 
 static void on_request_body(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
 	if (request_extras->dispatcher && request_extras->dispatcher->parse && request->multipart_boundary_len == 0)
-		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, at, length, URI_CONTENT_BODY, -1);
+		request_extras->context = request_extras->dispatcher->parse(request_extras->dispatcher->context, request_extras->context, request_extras->resource, at, length, URI_CONTENT_BODY, -1);
 }
 
 static void on_connection_response_continue(ebb_connection* connection)
@@ -109,7 +126,7 @@ static void on_request_execute(void* context)
 		case EBB_DELETE:
 			if (request_extras->dispatcher->delete)
 			{
-				response_code = request_extras->dispatcher->get(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
+				response_code = request_extras->dispatcher->delete(request_extras->dispatcher->context, request_extras->context, &request_extras->response);
 				break;
 			}
 		default:

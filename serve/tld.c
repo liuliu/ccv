@@ -128,7 +128,7 @@ static const param_dispatch_t param_map[] = {
 	},
 	{
 		.property = "source",
-		.type = PARAM_TYPE_BLOB,
+		.type = PARAM_TYPE_BODY,
 		.on_blob = uri_tld_on_source_blob,
 		.offset = 0,
 	},
@@ -139,7 +139,7 @@ static const param_dispatch_t param_map[] = {
 	},
 	{
 		.property = "tld",
-		.type = PARAM_TYPE_INT,
+		.type = PARAM_TYPE_ID,
 		.offset = offsetof(ccv_tld_uri_param_t, tld),
 	},
 	{
@@ -272,7 +272,7 @@ static void uri_tld_param_parser_init(tld_param_parser_t* parser)
 	parser->source.data = 0;
 }
 
-void* uri_tld_track_object_parse(const void* context, void* parsed, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+void* uri_tld_track_object_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
 {
 	tld_param_parser_t* parser;
 	if (parsed)
@@ -289,7 +289,7 @@ void* uri_tld_track_object_parse(const void* context, void* parsed, const char* 
 		case URI_MULTIPART_HEADER_FIELD:
 		case URI_MULTIPART_HEADER_VALUE:
 		case URI_MULTIPART_DATA:
-			param_parser_execute(&parser->param_parser, buf, len, state, header_index);
+			param_parser_execute(&parser->param_parser, resource_id, buf, len, state, header_index);
 			break;
 	}
 	return parser;
@@ -305,6 +305,8 @@ int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf*
 
 int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 {
+	if (!parsed)
+		return -1;
 	tld_context_t* tld_context = (tld_context_t*)context;
 	tld_param_parser_t* parser = (tld_param_parser_t*)parsed;
 	param_parser_terminate(&parser->param_parser);
@@ -476,9 +478,12 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 
 int uri_tld_track_object_free(const void* context, const void* parsed, ebb_buf* buf)
 {
+	if (!parsed)
+		return -1;
 	tld_context_t* tld_context = (tld_context_t*)context;
 	tld_param_parser_t* parser = (tld_param_parser_t*)parsed;
-	if (parser->source.data == 0)
+	param_parser_terminate(&parser->param_parser);
+	if (parser->source.data)
 		free(parser->source.data);
 	if (parser->previous.data)
 		free(parser->previous.data);
