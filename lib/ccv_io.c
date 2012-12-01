@@ -129,6 +129,46 @@ static int _ccv_read_raw(ccv_dense_matrix_t** x, void* data, int type, int rows,
 	return CCV_IO_FINAL;
 }
 
+#if defined(__APPLE__) || defined(BSD)
+typedef struct {
+	char* buffer;
+	fpos_t pos;
+	size_t size;
+} ccv_io_mem_t;
+
+static int readfn(void* context, char* buf, int size)
+{
+	ccv_io_mem_t* mem = (ccv_io_mem_t*)context;
+	if (size + mem->pos > mem->size)
+		size = mem->size - mem->pos;
+	memcpy(buf, mem->buffer + mem->pos, size);
+	mem->pos += size;
+	return size;
+}
+
+static fpos_t seekfn(void* context, fpos_t off, int whence)
+{
+	ccv_io_mem_t* mem = (ccv_io_mem_t*)context;
+	fpos_t pos;
+	switch (whence)
+	{
+		case SEEK_SET:
+			pos = off;
+			break;
+		case SEEK_CUR:
+			pos = mem->pos + off;
+			break;
+		case SEEK_END:
+			pos = mem->size + off;
+			break;
+	}
+	if (pos >= mem->size)
+		return -1;
+	mem->pos = pos;
+	return pos;
+}
+#endif
+
 int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
 {
 	FILE* fd = 0;
@@ -142,9 +182,18 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 	} else if (type & CCV_IO_ANY_STREAM) {
 		assert(rows > 8 && cols == 0 && scanline == 0);
 		assert((type & 0xFF) != CCV_IO_DEFLATE_STREAM); // deflate stream (compressed stream) is not supported yet
-#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L || defined(__APPLE__) || defined(BSD)
 		// this is only supported by glibc
+#if _XOPEN_SOURCE >= 700 || _POSIX_C_SOURCE >= 200809L
 		fd = fmemopen((void*)in, (size_t)rows, "rb");
+#else
+		ccv_io_mem_t mem = {
+			.size = rows,
+			.pos = 0,
+			.buffer = (char*)in,
+		};
+		fd = funopen(&mem, readfn, 0, seekfn, 0);
+#endif
 		if (!fd)
 			return CCV_IO_ERROR;
 		// mimicking itself as a "file"
