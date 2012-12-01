@@ -380,7 +380,8 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 		snprintf(cell, 128, "{\"tld\":%d,\"box\":{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":1}}\n", tld_ident, parser->uri_params.box.x, parser->uri_params.box.y, parser->uri_params.box.width, parser->uri_params.box.height);
 		size_t len = strlen(cell);
 		char* data = (char*)malloc(192 + len);;
-		snprintf(data, 192, ebb_http_header, len);
+		static const char ebb_http_tld_created[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nLocation: /tld/track.object/%d\r\nContent-Length: %zd\r\n\r\n";
+		snprintf(data, 192, ebb_http_tld_created, tld_ident, len);
 		size_t data_len = strlen(data);
 		memcpy(data + data_len, cell, len);
 		buf->data = data;
