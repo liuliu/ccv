@@ -42,7 +42,8 @@ static void on_request_headers_complete(ebb_request* request)
 			{
 				resource += (uri[i] - '0') * multiple;
 				multiple *= 10;
-			} else if (uri[i] != '/') {
+			} else if (i == len - 1 || uri[i] != '/') {
+				// if we don't pass the first check, or it is not the end, reset i
 				i = len;
 				resource = -1;
 				break;
