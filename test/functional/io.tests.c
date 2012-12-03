@@ -334,4 +334,42 @@ TEST_CASE("read raw memory with no copy mode")
 	ccv_matrix_free(x);
 }
 
+TEST_CASE("read JPEG from memory")
+{
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/cmyk-jpeg-format.jpg", &x, CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* y = 0;
+	FILE* rb = fopen("../../samples/cmyk-jpeg-format.jpg", "rb");
+	fseek(rb, 0, SEEK_END);
+	long size = ftell(rb);
+	char* data = (char*)ccmalloc(size);
+	fseek(rb, 0, SEEK_SET);
+	fread(data, 1, size, rb);
+	fclose(rb);
+	ccv_read(data, &y, CCV_IO_ANY_STREAM, size);
+	ccfree(data);
+	REQUIRE_MATRIX_EQ(x, y, "read cmyk-jpeg-format.jpg from file system and memory should be the same");
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
+TEST_CASE("read PNG from memory")
+{
+	ccv_dense_matrix_t* x = 0;
+	ccv_read("../../samples/nature.png", &x, CCV_IO_ANY_FILE);
+	ccv_dense_matrix_t* y = 0;
+	FILE* rb = fopen("../../samples/nature.png", "rb");
+	fseek(rb, 0, SEEK_END);
+	long size = ftell(rb);
+	char* data = (char*)ccmalloc(size);
+	fseek(rb, 0, SEEK_SET);
+	fread(data, 1, size, rb);
+	fclose(rb);
+	ccv_read(data, &y, CCV_IO_ANY_STREAM, size);
+	ccfree(data);
+	REQUIRE_MATRIX_EQ(x, y, "read nature.png from file system and memory should be the same");
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+}
+
 #include "case_main.h"
