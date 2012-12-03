@@ -6,6 +6,8 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <ctype.h>
+#include <signal.h>
+#include <setjmp.h>
 
 /* the following functions come from Hans Boehm's conservative gc with slightly
  * modifications, here is the licence:
@@ -40,7 +42,7 @@
 
 /* Repeatedly perform a read call until the buffer is filled or	*/
 /* we encounter EOF.						*/
-ssize_t case_repeat_read(int fd, char *buf, size_t count)
+static ssize_t case_repeat_read(int fd, char *buf, size_t count)
 {
     ssize_t num_read = 0;
     ssize_t result;
@@ -60,7 +62,7 @@ ssize_t case_repeat_read(int fd, char *buf, size_t count)
 /* Determine the length of a file by incrementally reading it into a buffer */
 /* This would be silly to use on a file supporting lseek, but Linux	*/
 /* /proc files usually do not.	*/
-size_t case_get_file_len(int f)
+static size_t case_get_file_len(int f)
 {
     size_t total = 0;
     ssize_t result;
@@ -75,7 +77,7 @@ size_t case_get_file_len(int f)
     return total;
 }
 
-size_t case_get_maps_len(void)
+static size_t case_get_maps_len(void)
 {
     int f = open("/proc/self/maps", O_RDONLY);
     size_t result = case_get_file_len(f);
@@ -89,7 +91,7 @@ size_t case_get_maps_len(void)
  * This code could be simplified if we could determine its size
  * ahead of time.
  */
-char* case_get_maps()
+static char* case_get_maps()
 {
     int f;
     int result;
@@ -175,7 +177,7 @@ char* case_get_maps()
  * *prot and *mapping_name are assigned pointers into the original
  * buffer.
  */
-char* case_parse_map_entry(char* buf_ptr, void** start, void** end, char** prot, unsigned int* maj_dev, char** mapping_name)
+static char* case_parse_map_entry(char* buf_ptr, void** start, void** end, char** prot, unsigned int* maj_dev, char** mapping_name)
 {
     char *start_start, *end_start, *maj_dev_start;
     char *p;
@@ -225,7 +227,63 @@ char* case_parse_map_entry(char* buf_ptr, void** start, void** end, char** prot,
     return p;
 }
 
-static char __test_header__;
+#define MIN_PAGE_SIZE (256)
+
+static jmp_buf case_jmp_buf;
+
+static void case_fault_handler(int sig)
+{
+	longjmp(case_jmp_buf, 1);
+}
+
+static struct sigaction old_segv_act;
+static struct sigaction old_bus_act;
+
+static void case_setup_temporary_fault_handler(void)
+{
+	struct sigaction act;
+	act.sa_handler = case_fault_handler;
+	act.sa_flags = SA_RESTART;
+	(void)sigemptyset(&act.sa_mask);
+	(void)sigaction(SIGSEGV, &act, &old_segv_act);
+	(void)sigaction(SIGBUS, &act, &old_bus_act);
+}
+
+static void case_reset_fault_handler(void)
+{
+	(void)sigaction(SIGSEGV, &old_segv_act, 0);
+	(void)sigaction(SIGBUS, &old_bus_act, 0);
+}
+
+static void case_find_limit(char* p, void** start, void** end)
+{
+	static volatile char* result;
+	static volatile char sink;
+	case_setup_temporary_fault_handler();
+	if (setjmp(case_jmp_buf) == 0)
+	{
+		result = (char*)((uint64_t)p & (uint64_t)~(MIN_PAGE_SIZE - 1));
+		for (;;)
+		{
+			result -= MIN_PAGE_SIZE;
+			sink = *result;
+		}
+	}
+	*start = (void*)(result + MIN_PAGE_SIZE);
+	if (setjmp(case_jmp_buf) == 0)
+	{
+		result = (char*)((uint64_t)p & (uint64_t)~(MIN_PAGE_SIZE - 1));
+		for (;;)
+		{
+			result += MIN_PAGE_SIZE;
+			sink = *result;
+		}
+	}
+	*end = (void*)result;
+	case_reset_fault_handler();
+}
+
+static char _test_end[8];
 
 int main(int argc, char** argv)
 {
@@ -234,29 +292,32 @@ int main(int argc, char** argv)
 	void* end;
 	char* prot[4];
 	unsigned int maj_dev;
-	do {
-		buf = case_parse_map_entry(buf, &start, &end, (char**)&prot, &maj_dev, 0);
-		if (buf == NULL)
-			break;
-	} while ((uint64_t)start >= (uint64_t)&__test_header__ || (uint64_t)&__test_header__ >= (uint64_t)end);
+	static uint64_t the_sig = 0x883253372849284B;
+	if (buf == 0)
+	{
+		case_find_limit(_test_end, &start, &end);
+	} else {
+		do {
+			buf = case_parse_map_entry(buf, &start, &end, (char**)&prot, &maj_dev, 0);
+			if (buf == NULL)
+				break;
+		} while ((uint64_t)start >= (uint64_t)&_test_end || (uint64_t)&_test_end >= (uint64_t)end);
+	}
 	char* start_pointer = (char*)start;
 	int total = 0;
-#ifndef offsetof
-#define offsetof(st, m) __builtin_offsetof(st, m)
-#endif
-	int len = (uint64_t)end - (uint64_t)start - (sizeof(case_t) - offsetof(case_t, sig));
+	int len = (uint64_t)end - (uint64_t)start - sizeof(case_t) + 1;
 	int i;
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_suite = (case_t*)(start_pointer + i);
-		if (test_suite->sig == 0x883253372849284B)
+		if (test_suite->sig_head == the_sig && test_suite->sig_tail == the_sig)
 			total++;
 	}
 	int j = 1, pass = 0, fail = 0;
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_suite = (case_t*)(start_pointer + i);
-		if (test_suite->sig == 0x883253372849284B)
+		if (test_suite->sig_head == the_sig && test_suite->sig_tail == the_sig)
 		{
 			printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", j, total, test_suite->name);
 			fflush(stdout);
