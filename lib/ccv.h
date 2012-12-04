@@ -932,7 +932,18 @@ ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info);
 void ccv_tld_free(ccv_tld_t* tld);
 
-/* modern machine learning algorithms */
-/* RBM, LLE, APCluster */
+/* ICF: Integrate Channels Features, this is a theorized framework that retrospectively incorporates the original
+ * Viola-Jones detection method with various enhancement later. Specifically, this implementation is after:
+ * Pedestrian detection at 100 frames per second, Rodrigo Benenson, Markus Mathias, Radu Timofte and Luc Van Gool
+ * With WFS (width first search) tree from:
+ * High-Performance Rotation Invariant Multiview Face Detection, Chang Huang, Haizhou Ai, Yuan Li and Shihong Lao */
+
+typedef struct {
+} ccv_icf_classifier_t;
+
+typedef struct {
+} ccv_icf_param_t;
+
+ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_classifier_t** classifier, int count, ccv_icf_param_t params);
 
 #endif
