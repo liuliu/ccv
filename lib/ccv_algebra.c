@@ -260,7 +260,7 @@ void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, d
 	if (dd != dc && dc != 0)
 		memcpy(dd->data.u8, dc->data.u8, dc->step * dc->rows);
 
-#ifdef HAVE_CBLAS
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	switch (CCV_GET_DATA_TYPE(dd->type))
 	{
 		case CCV_32F:
