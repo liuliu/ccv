@@ -46,7 +46,7 @@ static int _ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
 		else if (memcmp(sig, "CCVBINDM", 8) == 0)
 			type = CCV_IO_BINARY_FILE;
 		else {
-			printf("Unknown file signature in '%s'\n", in);
+			printf("Unknown file signature in '%s'\n", sig);
 			exit(1); // XXX make exit/return gracefull later
 		};
 		fseek(fd, 0, SEEK_SET);
