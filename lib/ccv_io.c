@@ -13,6 +13,8 @@
 #else
 // Unsupported platform
 #include <png.h>
+#include <zconf.h>
+#include <zlib.h>
 #endif
 #else
 #include <zlib.h>
