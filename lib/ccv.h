@@ -461,6 +461,24 @@ inline static ccv_decimal_point_t ccv_decimal_point(float x, float y)
 }
 
 typedef struct {
+	float x, y, a, b;
+	float roll, pitch, yaw;
+} ccv_decimal_pose_t;
+
+inline static ccv_decimal_pose_t ccv_decimal_pose(float x, float y, float a, float b, float roll, float pitch, float yaw)
+{
+	ccv_decimal_pose_t pose;
+	pose.x = x;
+	pose.y = y;
+	pose.a = a;
+	pose.b = b;
+	pose.roll = roll;
+	pose.pitch = pitch;
+	pose.yaw = yaw;
+	return pose;
+}
+
+typedef struct {
 	ccv_rect_t rect;
 	int size;
 	ccv_array_t* set;
@@ -677,6 +695,17 @@ extern const ccv_swt_param_t ccv_swt_default_params;
 
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+
+/* it makes sense now to include a simple data structure that encapsulate the common idiom of
+ * having file name with a bounding box */
+
+typedef struct {
+	char* filename;
+	union {
+		ccv_rect_t box;
+		ccv_decimal_pose_t pose;
+	};
+} ccv_file_info_t;
 
 /* I'd like to include Deformable Part Models as a general object detection method in here
  * The difference between BBF and DPM:
@@ -938,12 +967,55 @@ void ccv_tld_free(ccv_tld_t* tld);
  * With WFS (width first search) tree from:
  * High-Performance Rotation Invariant Multiview Face Detection, Chang Huang, Haizhou Ai, Yuan Li and Shihong Lao */
 
-typedef struct {
-} ccv_icf_classifier_t;
+#define CCV_ICF_SAT_MAX (8)
 
 typedef struct {
+	int count;
+	int channel[CCV_ICF_SAT_MAX];
+	ccv_point_t sat[CCV_ICF_SAT_MAX * 2];
+	float alpha[CCV_ICF_SAT_MAX];
+	float beta;
+	float weigh[2];
+} ccv_icf_feature_t;
+
+typedef struct {
+	int index;
+	float threshold;
+} ccv_icf_threshold_t;
+
+typedef struct {
+	int count;
+	ccv_size_t size;
+	ccv_icf_threshold_t* thresholds;
+	ccv_icf_feature_t* features;
+} ccv_icf_classifier_cascade_t;
+
+typedef struct {
+	int interval;
+	ccv_icf_classifier_cascade_t* cascade;
+} ccv_icf_multiscale_classifier_cascade_t;
+
+typedef struct {
+	int min_neighbors;
+	int flags;
+	float threshold;
 } ccv_icf_param_t;
 
-ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_classifier_t** classifier, int count, ccv_icf_param_t params);
+typedef struct {
+	ccv_icf_param_t detector;
+	int interval;
+	ccv_size_t size;
+	int feature_size;
+	int select_feature_size;
+	float deform_angle;
+	float deform_scale;
+	float deform_shift;
+	double C;
+	double weight_trimming;
+} ccv_icf_new_param_t;
+
+void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params);
 
 #endif
