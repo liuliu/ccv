@@ -5,6 +5,7 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
+#include <sys/time.h>
 #ifdef USE_OPENMP
 #include <omp.h>
 #endif

@@ -1,9 +1,22 @@
+<<<<<<< HEAD
 include config.mk
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 CFLAGS := -O3 -ffast-math -Wall $(CFLAGS)# -fprofile-arcs -ftest-coverage
 
 .PHONY: all clean
+=======
+CC = `cat .cc.conf`# -faddress-sanitizer -fno-omit-frame-pointer
+CFLAGS = -O3 -ffast-math -mtune=native -Wall `cat .def.conf`
+
+config:
+	@./configure
+	@make all
+
+force: clean
+	@./configure force
+	@make all
+>>>>>>> added a simple config script
 
 all: libccv.a
 

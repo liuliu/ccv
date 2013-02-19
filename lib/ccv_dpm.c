@@ -1,10 +1,12 @@
 #include "ccv.h"
 #include "ccv_internal.h"
-#include <sys/time.h>
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_multifit.h>
 #include <gsl/gsl_randist.h>
+#endif
+#ifndef _WIN32
+#include <sys/time.h>
 #endif
 #ifdef USE_OPENMP
 #include <omp.h>
@@ -1015,6 +1017,18 @@ static void _ccv_dpm_collect_from_background(ccv_array_t* av, gsl_rng* rng, char
 }
 
 static void _ccv_dpm_initialize_root_rectangle_estimator(ccv_dpm_mixture_model_t* model, char** posfiles, ccv_rect_t* bboxes, int posnum, ccv_dpm_new_param_t params)
+{
+	int i;
+	for (i = 0; i < posnum; i++)
+	{
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(posfiles[i], &image, (params.grayscale ? CCV_IO_GRAY : 0) | CCV_IO_ANY_FILE);
+		ccv_dpm_feature_vector_t* v = _ccv_dpm_collect_best(image, model, bboxes[i], params.overlap, params.detector);
+		ccv_matrix_free(image);
+	}
+}
+
+static void _ccv_dpm_regularize_mixture_model(ccv_dpm_mixture_model_t* model, double regz)
 {
 	int i, j, k, c;
 	ccv_dpm_feature_vector_t** posv = (ccv_dpm_feature_vector_t**)ccmalloc(sizeof(ccv_dpm_feature_vector_t*) * posnum);
