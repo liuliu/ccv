@@ -118,13 +118,178 @@ typedef struct {
 } ccv_icf_example_state_t;
 
 typedef struct {
+	uint8_t classifier:1;
+	uint8_t positives:1;
+	uint8_t negatives:1;
+	uint8_t features:1;
+	uint8_t example_state:1;
+} ccv_icf_classifier_cascade_persistence_state_t;
+
+typedef struct {
+	ccv_icf_new_param_t params;
+	ccv_icf_multiscale_classifier_cascade_t* classifier;
 	ccv_array_t* positives;
 	ccv_array_t* negatives;
 	ccv_icf_feature_t* features;
 	ccv_size_t size;
 	double scale;
 	ccv_icf_example_state_t* example_state;
+	ccv_icf_classifier_cascade_persistence_state_t persistence_state;
 } ccv_icf_classifier_cascade_state_t;
+
+static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_state_t* state, const char* directory)
+{
+	char filename[1024];
+	snprintf(filename, 1024, "%s/state", directory);
+	FILE* w = fopen(filename, "w+");
+	fprintf(w, "%d %d %d %la\n", state->params.feature_size, state->size.width, state->size.height, state->scale);
+	fclose(w);
+	int i, q;
+	if (!state->persistence_state.positives)
+	{
+		snprintf(filename, 1024, "%s/positives", directory);
+		w = fopen(filename, "wb+");
+		fwrite(&state->positives->rnum, sizeof(state->positives->rnum), 1, w);
+		fwrite(&state->positives->rsize, sizeof(state->positives->rsize), 1, w);
+		for (i = 0; i < state->positives->rnum; i++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(state->positives, i);
+			assert(a->rows == state->size.height && a->cols == state->size.width);
+			fwrite(a, 1, state->positives->rsize, w);
+		}
+		fclose(w);
+		state->persistence_state.positives = 1;
+	}
+	if (!state->persistence_state.negatives)
+	{
+		assert(state->negatives->rsize == state->positives->rsize);
+		snprintf(filename, 1024, "%s/negatives", directory);
+		w = fopen(filename, "wb+");
+		fwrite(&state->negatives->rnum, sizeof(state->negatives->rnum), 1, w);
+		fwrite(&state->negatives->rsize, sizeof(state->negatives->rsize), 1, w);
+		for (i = 0; i < state->negatives->rnum; i++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(state->negatives, i);
+			assert(a->rows == state->size.height && a->cols == state->size.width);
+			fwrite(a, 1, state->negatives->rsize, w);
+		}
+		fclose(w);
+		state->persistence_state.negatives = 1;
+	}
+	if (!state->persistence_state.features)
+	{
+		snprintf(filename, 1024, "%s/features", directory);
+		w = fopen(filename, "w+");
+		for (i = 0; i < state->params.feature_size; i++)
+		{
+			ccv_icf_feature_t* feature = state->features + i;
+			fprintf(w, "%d %a %a %a\n", feature->count, feature->beta, feature->weigh[0], feature->weigh[1]);
+			for (q = 0; q < feature->count; q++)
+				fprintf(w, "%d %a %d %d %d %d\n", feature->channel[q], feature->alpha[q], feature->sat[q * 2].x, feature->sat[q * 2].y, feature->sat[q * 2 + 1].x, feature->sat[q * 2 + 1].y);
+		}
+		fclose(w);
+		state->persistence_state.features = 1;
+	}
+	if (!state->persistence_state.example_state)
+	{
+		snprintf(filename, 1024, "%s/example_state", directory);
+		w = fopen(filename, "w+");
+		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
+			fprintf(w, "%u %u %u %la\n", (uint32_t)state->example_state[i].binary, (uint32_t)state->example_state[i].correct, state->example_state[i].index, state->example_state[i].weight);
+		fclose(w);
+		state->persistence_state.example_state = 1;
+	}
+	if (!state->persistence_state.classifier)
+	{
+		ccv_icf_write_classifier_cascade(state->classifier, directory);
+		state->persistence_state.classifier = 1;
+	}
+}
+
+static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_icf_classifier_cascade_state_t* state)
+{
+	char filename[1024];
+	snprintf(filename, 1024, "%s/state", directory);
+	FILE* r = fopen(filename, "r");
+	if (r)
+	{
+		int feature_size;
+		fscanf(r, "%d %d %d %la", &feature_size, &state->size.width, &state->size.height, &state->scale);
+		assert(feature_size == state->params.feature_size);
+		fclose(r);
+	}
+	int i, q;
+	snprintf(filename, 1024, "%s/positives", directory);
+	r = fopen(filename, "rb");
+	if (r)
+	{
+		int rnum, rsize;
+		fread(&rnum, sizeof(rnum), 1, r);
+		fwrite(&rsize, sizeof(rsize), 1, r);
+		state->positives = ccv_array_new(rsize, rnum, 0);
+		for (i = 0; i < rnum; i++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)alloca(rsize);
+			fread(a, 1, rsize, r);
+			assert(a->rows == state->size.height && a->cols == state->size.width);
+			ccv_array_push(state->positives, a);
+		}
+		fclose(r);
+		state->persistence_state.positives = 1;
+	}
+	snprintf(filename, 1024, "%s/negatives", directory);
+	r = fopen(filename, "rb");
+	if (r)
+	{
+		int rnum, rsize;
+		fread(&rnum, sizeof(rnum), 1, r);
+		fread(&rsize, sizeof(rsize), 1, r);
+		state->negatives = ccv_array_new(rsize, rnum, 0);
+		for (i = 0; i < rnum; i++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)alloca(rsize);
+			fread(a, 1, rsize, r);
+			assert(a->rows == state->size.height && a->cols == state->size.width);
+			ccv_array_push(state->negatives, a);
+		}
+		fclose(r);
+		state->persistence_state.negatives = 1;
+	}
+	snprintf(filename, 1024, "%s/features", directory);
+	r = fopen(filename, "r");
+	if (r)
+	{
+		state->features = (ccv_icf_feature_t*)ccmalloc(state->params.feature_size * sizeof(ccv_icf_feature_t));
+		for (i = 0; i < state->params.feature_size; i++)
+		{
+			ccv_icf_feature_t* feature = state->features + i;
+			fscanf(r, "%d %a %a %a", &feature->count, &feature->beta, &feature->weigh[0], &feature->weigh[1]);
+			for (q = 0; q < feature->count; q++)
+				fscanf(r, "%d %a %d %d %d %d", &feature->channel[q], &feature->alpha[q], &feature->sat[q * 2].x, &feature->sat[q * 2].y, &feature->sat[q * 2 + 1].x, &feature->sat[q * 2 + 1].y);
+		}
+		fclose(r);
+		state->persistence_state.features = 1;
+	}
+	snprintf(filename, 1024, "%s/example_state", directory);
+	r = fopen(filename, "r");
+	if (r)
+	{
+		state->example_state = (ccv_icf_example_state_t*)ccmalloc((state->positives->rnum + state->negatives->rnum) * sizeof(ccv_icf_example_state_t));
+		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
+		{
+			uint32_t binary, correct, index;
+			double weight;
+			fscanf(r, "%u %u %u %la", &binary, &correct, &index, &weight);
+			state->example_state[i].binary = binary;
+			state->example_state[i].correct = correct;
+			state->example_state[i].index = index;
+			state->example_state[i].weight = weight;
+		}
+		fclose(r);
+		state->persistence_state.example_state = 1;
+	}
+	state->classifier = ccv_icf_read_classifier_cascade(directory);
+}
 
 static void _ccv_icf_feature_pre_learn(double C, ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
 {
@@ -260,7 +425,7 @@ static double _ccv_icf_rate_feature(ccv_icf_feature_t feature, ccv_array_t* posi
 	return rate;
 }
 
-void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params)
+ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params)
 {
 	_ccv_icf_check_params(params);
 	int i, j, k;
@@ -271,10 +436,18 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 	// we will keep all states inside this structure for easier save / resume across process
 	// this should work better than ad-hoc one we used in DPM / BBF implementation
 	ccv_icf_classifier_cascade_state_t cascade_state;
+	cascade_state.classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * params.interval);
+	cascade_state.classifier->interval = params.interval;
+	cascade_state.classifier->cascade = (ccv_icf_classifier_cascade_t*)(cascade_state.classifier + 1);
 	cascade_state.scale = 1;
-	for (i = 0; i < scale_upto; i++)
+	_ccv_icf_read_classifier_cascade_state(dir, &cascade_state);
+	for (i = 0; i < params.interval; i++)
 	{
+		ccv_icf_classifier_cascade_t* cascade = cascade_state.classifier->cascade + i;
 		cascade_state.size = ccv_size((int)(params.size.width * cascade_state.scale + 0.5), (int)(params.size.height * cascade_state.scale + 0.5));
+		cascade->size = cascade_state.size;
+		cascade->thresholds = 0;
+		printf(" - learn icf classifier cascade at size %dx%d\n", cascade_state.size.width, cascade_state.size.height);
 		cascade_state.features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.feature_size);
 		// generate random features
 		for (j = 0; j < params.feature_size; j++)
@@ -284,6 +457,7 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 		// collect positives (with random deformation)
 		for (j = 0; j < posfiles->rnum; j++)
 		{
+			FLUSH(" - collect positives %d%%", (j + 1) * 100 / posfiles->rnum);
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, j);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
@@ -296,6 +470,8 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 				ccv_matrix_free(image);
 			}
 		}
+		printf("\n");
+		_ccv_icf_write_classifier_cascade_state(&cascade_state, dir);
 		// randomly collect negatives (with random deformation)
 		int npp = negnum / bgfiles->rnum;
 		for (j = 0; j < bgfiles->rnum * npp; j += npp)
@@ -303,6 +479,7 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+			FLUSH(" - collect negatives %d%%", (j + 1) * 100 / (bgfiles->rnum * npp));
 			if (image)
 			{
 				double max_scale_ratio = ccv_min((double)image->rows / cascade_state.size.height, (double)image->cols / cascade_state.size.height);
@@ -323,6 +500,8 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 				ccv_matrix_free(image);
 			}
 		}
+		printf("\n");
+		_ccv_icf_write_classifier_cascade_state(&cascade_state, dir);
 		cascade_state.example_state = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * (cascade_state.negatives->rnum + cascade_state.positives->rnum));
 		for (j = 0; j < cascade_state.positives->rnum; j++)
 		{
@@ -336,9 +515,15 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 			cascade_state.example_state[cascade_state.positives->rnum + j].binary = 0;
 			cascade_state.example_state[cascade_state.positives->rnum + j].weight = 0.5 / cascade_state.negatives->rnum;
 		}
+		printf(" - seed icf features with svm\n");
+		_ccv_icf_write_classifier_cascade_state(&cascade_state, dir);
 		_ccv_icf_feature_pre_learn(params.C, cascade_state.features, params.feature_size, cascade_state.positives, cascade_state.negatives, cascade_state.example_state);
+		_ccv_icf_write_classifier_cascade_state(&cascade_state, dir);
+		cascade->count = params.select_feature_size;
+		cascade->features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.select_feature_size);
 		for (j = 0; j < params.select_feature_size; j++)
 		{
+			printf(" - boost feature %d of %d\n", j + 1, params.select_feature_size);
 			ccv_icf_feature_t best_feature = _ccv_icf_find_best_feature(cascade_state.features, params.feature_size, cascade_state.positives, cascade_state.negatives, cascade_state.example_state);
 			double rate = _ccv_icf_rate_feature(best_feature, cascade_state.positives, cascade_state.negatives, cascade_state.example_state);
 			double alpha = sqrt((1 - rate) / rate);
@@ -353,6 +538,10 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 			// balancing the weight to sum 1.0
 			for (k = 0; k < cascade_state.positives->rnum + cascade_state.negatives->rnum; k++)
 				cascade_state.example_state[k].weight *= reweigh;
+			cascade->features[j] = best_feature;
+			for (k = 0; k < best_feature.count; k++)
+				printf(" -  - (%d, %d) - (%d, %d)\n", best_feature.sat[k * 2].x, best_feature.sat[k * 2].y, best_feature.sat[k * 2 + 1].x, best_feature.sat[k * 2 + 1].y);
+			_ccv_icf_write_classifier_cascade_state(&cascade_state, dir);
 		}
 		ccfree(cascade_state.features);
 		ccv_array_free(cascade_state.positives);
@@ -360,6 +549,92 @@ void ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array
 		cascade_state.scale *= scale_factor;
 	}
 	gsl_rng_free(rng);
+	return cascade_state.classifier;
+}
+
+ccv_icf_multiscale_classifier_cascade_t* ccv_icf_read_classifier_cascade(const char* directory)
+{
+	char filename[1024];
+	snprintf(filename, 1024, "%s/multiscale", directory);
+	FILE* r = fopen(filename, "r");
+	if (r)
+	{
+		int interval = 0;
+		fscanf(r, "%d", &interval);
+		fclose(r);
+		ccv_icf_multiscale_classifier_cascade_t* classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * interval);
+		classifier->interval = interval;
+		classifier->cascade = (ccv_icf_classifier_cascade_t*)(classifier + 1);
+		int i, j, q;
+		for (i = 0; i < interval; i++)
+		{
+			snprintf(filename, 1024, "%s/cascade-%d", directory, i + 1);
+			r = fopen(filename, "r");
+			if (r)
+			{
+				ccv_icf_classifier_cascade_t* cascade = classifier->cascade + i;
+				fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
+				cascade->features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * cascade->count);
+				for (j = 0; j < cascade->count; j++)
+				{
+					ccv_icf_feature_t* feature = cascade->features + j;
+					fscanf(r, "%d %a %a %a", &feature->count, &feature->beta, &feature->weigh[0], &feature->weigh[1]);
+					for (q = 0; q < feature->count; q++)
+						fscanf(r, "%d %a %d %d %d %d", &feature->channel[q], &feature->alpha[q], &feature->sat[q * 2].x, &feature->sat[q * 2].y, &feature->sat[q * 2 + 1].x, &feature->sat[q * 2 + 1].y);
+				}
+				int thresholds = 0;
+				fscanf(r, "%d", &thresholds);
+				if (thresholds > 0)
+				{
+					cascade->thresholds = (ccv_icf_threshold_t*)ccmalloc(sizeof(ccv_icf_threshold_t) * thresholds);
+					for (j = 0; j < thresholds; j++)
+						fscanf(r, "%d %a", &cascade->thresholds[j].index, &cascade->thresholds[j].threshold);
+				} else
+					cascade->thresholds = 0;
+				fclose(r);
+			}
+		}
+	}
+	return 0;
+}
+
+void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory)
+{
+	char filename[1024];
+	snprintf(filename, 1024, "%s/multiscale", directory);
+	FILE* w = fopen(filename, "w+");
+	fprintf(w, "%d\n", classifier->interval);
+	fclose(w);
+	int i, j, q;
+	for (i = 0; i < classifier->interval; i++)
+	{
+		snprintf(filename, 1024, "%s/cascade-%d", directory, i + 1);
+		w = fopen(filename, "w+");
+		fprintf(w, "%d %d %d\n", classifier->cascade[i].count, classifier->cascade[i].size.width, classifier->cascade[i].size.height);
+		for (j = 0; j < classifier->cascade[i].count; j++)
+		{
+			ccv_icf_feature_t* feature = classifier->cascade[i].features + j;
+			fprintf(w, "%d %a %a %a\n", feature->count, feature->beta, feature->weigh[0], feature->weigh[1]);
+			for (q = 0; q < feature->count; q++)
+				fprintf(w, "%d %a\n%d %d %d %d\n", feature->channel[q], feature->alpha[q], feature->sat[q * 2].x, feature->sat[q * 2].y, feature->sat[q * 2 + 1].x, feature->sat[q * 2 + 1].y);
+		}
+		if (classifier->cascade[i].thresholds)
+		{
+			q = 0;
+			for (j = 0; classifier->cascade[i].thresholds[j].index < classifier->cascade[i].count; j++)
+				++q;
+			fprintf(w, "%d\n", q);
+			for (j = 0; j < q; j++)
+				fprintf(w, "%d %a\n", classifier->cascade[i].thresholds[j].index, classifier->cascade[i].thresholds[j].threshold);
+		} else {
+			fprintf(w, "0\n");
+		}
+		fclose(w);
+	}
+}
+
+void ccv_icf_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier)
+{
 }
 
 ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params)

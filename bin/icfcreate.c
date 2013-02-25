@@ -115,9 +115,10 @@ int main(int argc, char** argv)
 	params.deform_shift = 0.01;
 	params.deform_angle = 1;
 	params.deform_scale = 0.1;
-	params.feature_size = 5000;
+	params.C = 0.002;
+	params.feature_size = 15000;
 	params.select_feature_size = 1500;
-	ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
+	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	for (i = 0; i < posfiles->rnum; i++)
 	{
 		ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, i);
