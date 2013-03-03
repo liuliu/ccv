@@ -15,14 +15,25 @@ void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, 
 	float w10 = (1 - xd) * yd;
 	float w11 = xd * yd;
 	int dx = 0, dy = 0;
+	int rows_1 = 0, cols_1 = 0;
 	// it is going to be hard to deal with border efficiently, since this is used for tld, will ignore border for now
 	if (!(iy >= 0 && iy + rows < a->rows && ix >= 0 && ix + cols < a->cols))
 	{
 		ccv_zero(db);
 		if (iy < 0) { rows += iy; dy = -iy; iy = 0; }
-		if (iy + rows > a->rows) rows = a->rows - iy;
+		if (iy + rows >= a->rows)
+		{
+			rows = a->rows - iy - 1;
+			if (iy + rows > a->rows)
+				rows_1 = 1; // we need to do our best to padding the last row
+		}
 		if (ix < 0) { cols += ix; dx = -ix; ix = 0; }
-		if (x + cols > a->cols) cols = a->cols - ix;
+		if (x + cols >= a->cols)
+		{
+			cols = a->cols - ix - 1;
+			if (x + cols > a->cols)
+				cols_1 = 1; // we need to do our best to padding the last col
+		}
 	}
 	unsigned char* a_ptr = (unsigned char*)ccv_get_dense_matrix_cell(a, iy, ix, 0);
 	unsigned char* b_ptr = (unsigned char*)ccv_get_dense_matrix_cell(db, dy, dx, 0);
@@ -33,8 +44,19 @@ void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, 
 		{ \
 			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * G00 + _for_get(a_ptr, j + ch, 0) * G01 + _for_get(a_ptr + a->step, j, 0) * G10 + _for_get(a_ptr + a->step, j + ch, 0) * G11) / GALL, 0); \
 		} \
+		if (cols_1) \
+			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * (G00 + G01) + _for_get(a_ptr + a->step, j, 0) * G10 + _for_get(a_ptr + a->step, j + ch, 0) * G11) / GALL, 0); \
 		a_ptr += a->step; \
 		b_ptr += db->step; \
+	} \
+	if (rows_1) \
+	{ \
+		for (j = 0; j < cols * ch; j++) \
+		{ \
+			_for_set(b_ptr, j, (_for_get(a_ptr, j, 0) * (G00 + G10) + _for_get(a_ptr, j + ch, 0) * (G01 + G11)) / GALL, 0); \
+		} \
+		if (cols_1) \
+			_for_set(b_ptr, j, _for_get(a_ptr, j, 0), 0); \
 	}
 	/* unswitch in the manual way so that we can use integer interpolation */
 	if ((a->type & CCV_8U) || (a->type & CCV_32S) || (a->type & CCV_64S))
