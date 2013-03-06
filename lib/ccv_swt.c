@@ -64,6 +64,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_zero(db);
 	int dx5[] = {-1, 0, 1, 0, 0};
 	int dy5[] = {0, 0, 0, -1, 1};
+    int dy5_cstep [] = {0, 0, 0, -c->step, c->step};
 	int dx9[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
 	int dy9[] = {0, 0, 0, -1, -1, -1, 1, 1, 1};
 	int adx, ady, sx, sy, err, e2, x0, x1, y0, y1, kx, ky;
@@ -113,13 +114,14 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 			for (k = 0; k < 5; k++) \
 			{ \
 				kx = x0 + dx5[k]; \
-				ky = y0 + dy5[k]; \
-				if (c_ptr[kx + (ky - i) * c->step]) \
+				if (c_ptr[kx + dy5_cstep[k]]) \
 				{ \
+                    k++; \
 					flag = 1; \
 					break; \
 				} \
 			} \
+            ky = y0 + dy5[--k]; \
 			if (flag) \
 				break; \
 		} \
