@@ -103,8 +103,8 @@ else
 	fi
 	if [[ $IS_OSX ]] ; then
 		XCODE_SDK_PATH=$(xcodebuild -version -sdk $XCODE_SDK Path)
-		CFLAGS="$CFLAGS-isysroot $XCODE_SDK_PATH "
-		LDFLAGS="$LDFLAGS-isysroot $XCODE_SDK_PATH "
+		CFLAGS="$CFLAGS-isysroot $XCODE_SDK_PATH -I/usr/local/include "
+		LDFLAGS="$LDFLAGS-isysroot $XCODE_SDK_PATH -L/usr/local/lib "		
 	fi
 	if [[ $ARCH != arm* ]] ; then
 		echo -ne "  Enable \033[4mSSE2\033[m [Y/n] ? "
@@ -129,10 +129,6 @@ else
 	[nN]* ) ;;
 	*	  ) CFLAGS="$CFLAGS-D HAVE_LIBPNG "
 			LDFLAGS="$LDFLAGS-lpng -lz "
-      if [[ $IS_OSX ]] ; then
-        CFLAGS="$CFLAGS-I/usr/X11/include "
-        LDFLAGS="$LDFLAGS-L/usr/X11/lib "
-      fi
 			;;
 	esac
 	echo -ne "  With \033[4mgsl\033[m [Y/n] ? "
