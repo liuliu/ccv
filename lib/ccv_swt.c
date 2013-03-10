@@ -64,10 +64,9 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_zero(db);
 	int dx5[] = {-1, 0, 1, 0, 0};
 	int dy5[] = {0, 0, 0, -1, 1};
-	int dy5_cstep [] = {0, 0, 0, -c->step, c->step};
+    int dy5_cstep [] = {0, 0, 0, -c->step, c->step};
 	int dx9[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-	int dy9_dxstep[] = {0, 0, 0, -dx->step, -dx->step, -dx->step, dx->step, dx->step, dx->step};
-	int dy9_dystep[] = {0, 0, 0, -dy->step, -dy->step, -dy->step, dy->step, dy->step, dy->step};
+	int dy9[] = {0, 0, 0, -1, -1, -1, 1, 1, 1};
 	int adx, ady, sx, sy, err, e2, x0, x1, y0, y1, kx, ky;
 #define ray_reset() \
 	err = adx - ady; e2 = 0; \
@@ -117,12 +116,12 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 				kx = x0 + dx5[k]; \
 				if (c_ptr[kx + dy5_cstep[k]]) \
 				{ \
-					k++; \
+                    k++; \
 					flag = 1; \
 					break; \
 				} \
 			} \
-			ky = y0 + dy5[--k]; \
+            ky = y0 + dy5[--k]; \
 			if (flag) \
 				break; \
 		} \
@@ -137,10 +136,10 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		flag = 0; \
 		for (k = 0; k < 9; k++) \
 		{ \
-			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + dy9_dxstep[k], kx + dx9[k], 0) - \
-					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + dy9_dystep[k], kx + dx9[k], 0); \
-			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + dy9_dxstep[k], kx + dx9[k], 0) + \
-					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + dy9_dystep[k], kx + dx9[k], 0); \
+			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) - \
+					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
+			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) + \
+					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
 			if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
 			{ \
 				flag = 1; \
