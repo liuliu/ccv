@@ -64,8 +64,10 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_zero(db);
 	int dx5[] = {-1, 0, 1, 0, 0};
 	int dy5[] = {0, 0, 0, -1, 1};
+	int dy5_cstep [] = {0, 0, 0, -c->step, c->step};
 	int dx9[] = {-1, 0, 1, -1, 0, 1, -1, 0, 1};
-	int dy9[] = {0, 0, 0, -1, -1, -1, 1, 1, 1};
+	int dy9_dxstep[] = {0, 0, 0, -dx->step, -dx->step, -dx->step, dx->step, dx->step, dx->step};
+	int dy9_dystep[] = {0, 0, 0, -dy->step, -dy->step, -dy->step, dy->step, dy->step, dy->step};
 	int adx, ady, sx, sy, err, e2, x0, x1, y0, y1, kx, ky;
 #define ray_reset() \
 	err = adx - ady; e2 = 0; \
@@ -110,11 +112,12 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		if (abs(i - y0) >= 2 || abs(j - x0) >= 2) \
 		{ /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
 			flag = 0; \
+			int y0_offset = (ky - i) * c->step; \
 			for (k = 0; k < 5; k++) \
 			{ \
 				kx = x0 + dx5[k]; \
 				ky = y0 + dy5[k]; \
-				if (c_ptr[kx + (ky - i) * c->step]) \
+				if (c_ptr[kx + y0_offset + dy5_cstep[k]]) \
 				{ \
 					flag = 1; \
 					break; \
@@ -132,12 +135,14 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		 * and -1 / sqrt(3) < Tan(d_q - d_p) < 1 / sqrt(3)
 		 * also, we needs to check the whole 3x3 neighborhood in a hope that we don't miss one or two of them */ \
 		flag = 0; \
+		int y0_dx_offset = (ky - i) * dx->step; \
+		int y0_dy_offset = (ky - i) * dy->step; \
 		for (k = 0; k < 9; k++) \
 		{ \
-			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) - \
-					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
-			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + (ky - i + dy9[k]) * dx->step, kx + dx9[k], 0) + \
-					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + (ky - i + dy9[k]) * dy->step, kx + dx9[k], 0); \
+			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + y0_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) - \
+					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + y0_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
+			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + y0_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) + \
+					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + y0_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
 			if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
 			{ \
 				flag = 1; \
