@@ -599,15 +599,15 @@ static void _ccv_dpm_initialize_root_classifier(gsl_rng* rng, ccv_dpm_root_class
 		{
 			for (x = 0; x < cols2c; x++)
 				for (k = 0; k < 31; k++)
-					wptr[(cols - 1 - x) * 31 + _ccv_dpm_sym_lut[k]] = wptr[x * 31 + k] = linear->w[(y * cols2c + x) * 31 + k];
+					wptr[(cols - 1 - x) * 31 + _ccv_dpm_sym_lut[k]] = wptr[x * 31 + k] = linear->label[1] * linear->w[31 * rows * cols2c + 1 + (y * cols2c + x) * 31 + k] + linear->label[0] * linear->w[(y * cols2c + x) * 31 + k];
 			wptr += cols * 31;
 		}
 		// since for symmetric, lsvm only computed half features, to compensate that, we doubled the constant.
-		root_classifier->beta = linear->w[31 * rows * cols2c] * 2.0;
+		root_classifier->beta = (linear->label[1] * linear->w[62 * rows * cols2c + 1] + linear->label[0] * linear->w[31 * rows * cols2c]) * 2.0;
 	} else {
 		for (j = 0; j < 31 * rows * cols; j++)
-			root_classifier->root.w->data.f32[j] = linear->w[j];
-		root_classifier->beta = linear->w[31 * rows * cols];
+			root_classifier->root.w->data.f32[j] = linear->label[1] * linear->w[31 * rows * cols + 1 + j] + linear->label[0] * linear->w[j];
+		root_classifier->beta = linear->label[1] * linear->w[62 * rows * cols + 1] + linear->label[0] * linear->w[31 * rows * cols];
 	}
 	free_and_destroy_model(&linear);
 	free(prob.y);

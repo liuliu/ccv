@@ -361,7 +361,7 @@ static double _ccv_icf_rate_feature(ccv_icf_feature_t feature, ccv_array_t* posi
 		int ch = CCV_GET_CHANNEL(sat->type);
 		float c = feature.beta;
 		for (q = 0; q < feature.count; q++)
-			c += (ptr[(feature.sat[q * 2 + 1].x + 1 + (feature.sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature.channel[q]] - ptr[(feature.sat[q * 2].x + 1 + (feature.sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature.channel[q]] + ptr[(feature.sat[q * 2].x + 1 + (feature.sat[q * 2].y + 1) * sat->cols) * ch + feature.channel[q]] - ptr[(feature.sat[q * 2 + 1].x + 1 + (feature.sat[q * 2].y + 1) * sat->cols) * ch + feature.channel[q]]) * feature.alpha[q];
+			c += (ptr[(feature.sat[q * 2 + 1].x + 1 + (feature.sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature.channel[q]] - ptr[(feature.sat[q * 2].x + (feature.sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature.channel[q]] + ptr[(feature.sat[q * 2].x + feature.sat[q * 2].y * sat->cols) * ch + feature.channel[q]] - ptr[(feature.sat[q * 2 + 1].x + 1 + feature.sat[q * 2].y * sat->cols) * ch + feature.channel[q]]) * feature.alpha[q];
 		if (c > 0)
 		{
 			rate += example_state[i].binary ? example_state[i].weight : 0;
@@ -375,22 +375,24 @@ static double _ccv_icf_rate_feature(ccv_icf_feature_t feature, ccv_array_t* posi
 	return rate;
 }
 
-static void _ccv_icf_feature_pre_learn(double C, ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
+static void _ccv_icf_feature_pre_learn(gsl_rng* rng, double C, ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
 {
 #ifdef HAVE_LIBLINEAR
 	int i, j, q;
+	// we don't want to use all negatives (which can be millions) for the training, rather, we will use randomly selected few instead
+	int negnum = ccv_min(positives->rnum * 10, negatives->rnum);
 	struct problem prob;
-	prob.l = positives->rnum + negatives->rnum;
+	prob.l = positives->rnum + negnum;
 	prob.bias = 1.0;
-	prob.y = malloc(sizeof(prob.y[0]) * (positives->rnum + negatives->rnum));
-	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (positives->rnum + negatives->rnum));
+	prob.y = malloc(sizeof(prob.y[0]) * (positives->rnum + negnum));
+	prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * (positives->rnum + negnum));
 	int weight_label[] = {
 		1,
 		-1,
 	};
 	double weight[] = {
-		sqrt((double)negatives->rnum / positives->rnum),
-		sqrt((double)positives->rnum / negatives->rnum),
+		sqrt((double)negnum / positives->rnum),
+		sqrt((double)positives->rnum / negnum),
 	};
 	struct parameter linear_parameters = {
 		.solver_type = L2R_L1LOSS_SVC_DUAL,
@@ -400,14 +402,26 @@ static void _ccv_icf_feature_pre_learn(double C, ccv_icf_feature_t* features, in
 		.weight_label = weight_label,
 		.weight = weight,
 	};
-	struct feature_node* feature_cluster = (struct feature_node*)malloc(sizeof(struct feature_node) * (positives->rnum + negatives->rnum) * (CCV_ICF_SAT_MAX + 2));
+	struct feature_node* feature_cluster = (struct feature_node*)malloc(sizeof(struct feature_node) * (positives->rnum + negnum) * (CCV_ICF_SAT_MAX + 2));
 	for (i = 0; i < feature_size; i++)
 	{
 		ccv_icf_feature_t* feature = features + i;
 		prob.n = feature->count + 1;
 		struct feature_node* feature_node = feature_cluster;
+		// shuffle it first so that we have different group of negatives every time
+		gsl_ran_shuffle(rng, example_state, positives->rnum + negatives->rnum, sizeof(ccv_icf_example_state_t));
+		int l = 0;
+		int count[2] = {
+			0, 0
+		}; // init to 0
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
+			// if we already has negnum negatives, skip this negative
+			// or we have positives->rnum, skip this positive
+			if ((!example_state[j].binary && count[0] >= negnum) ||
+				(example_state[j].binary && count[1] >= positives->rnum))
+				continue;
+			++count[example_state[j].binary];
 			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(example_state[j].binary ? positives : negatives, example_state[j].index);
 			a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
 			ccv_dense_matrix_t* icf = 0;
@@ -425,14 +439,15 @@ static void _ccv_icf_feature_pre_learn(double C, ccv_icf_feature_t* features, in
 				assert(feature->sat[q * 2].x >= 0 && feature->sat[q * 2].y >= 0);
 				assert(feature->sat[q * 2 + 1].x >= 0 && feature->sat[q * 2].y >= 0);
 				assert(feature->channel[q] >= 0 && feature->channel[q] < ch);
-				feature_node[q].value = ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + 1 + (feature->sat[q * 2].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2].y + 1) * sat->cols) * ch + feature->channel[q]];
+				feature_node[q].value = (ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) / (float)((feature->sat[q * 2 + 1].x - feature->sat[q * 2].x + 1) * (feature->sat[q * 2 + 1].y - feature->sat[q * 2].y + 1) * 255.0); // printf("%f\n", feature_node[q].value);
 			}
 			ccv_matrix_free(sat);
 			feature_node[feature->count].index = feature->count + 1;
 			feature_node[feature->count].value = prob.bias;
 			feature_node[feature->count + 1].index = -1;
-			prob.x[j] = feature_node;
-			prob.y[j] = example_state[j].binary ? 1 : -1;
+			prob.x[l] = feature_node;
+			prob.y[l] = example_state[j].binary ? 1 : -1;
+			l++;
 			feature_node += feature->count + 2;
 		}
 		const char* err = check_parameter(&prob, &linear_parameters);
@@ -445,9 +460,10 @@ static void _ccv_icf_feature_pre_learn(double C, ccv_icf_feature_t* features, in
 		assert(linear != 0);
 		// test and print out what we have
 		for (q = 0; q < feature->count; q++)
-			feature->alpha[q] = linear->w[q];
-		feature->beta = linear->w[feature->count];
+			feature->alpha[q] = (linear->label[1] * linear->w[q + feature->count + 1] + linear->label[0] * linear->w[q]) / (float)((feature->sat[q * 2 + 1].x - feature->sat[q * 2].x + 1) * (feature->sat[q * 2 + 1].y - feature->sat[q * 2].y + 1));
+		feature->beta = (linear->label[1] * linear->w[feature->count * 2 + 1] + linear->label[0] * linear->w[feature->count]) * 255.0;
 		double rate = _ccv_icf_rate_feature(*feature, positives, negatives, example_state);
+		assert(rate > 0.5);
 		printf(" - model->label[0]: %d, model->nr_class: %d, model->nr_feature: %d, rate: %lf\n", linear->label[0], linear->nr_class, linear->nr_feature, rate);
 		free_and_destroy_model(&linear);
 	}
@@ -463,7 +479,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	assert(posfiles->rnum > 0);
 	assert(bgfiles->rnum > 0);
 	assert(posnum > 0 && negnum > 0);
-	int k;
+	int k, q;
 	int scale_upto = params.interval + 1;
 	double scale_factor = pow(2., 1. / scale_upto);
 	gsl_rng_env_setup();
@@ -494,19 +510,29 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.positives = ccv_array_new(ccv_compute_dense_matrix_size(z.size.height + 2, z.size.width + 2, CCV_8U | CCV_C1), posnum, 0);
 		// collect positives (with random deformation)
-		for (z.j = 0; z.j < posfiles->rnum; z.j++)
+		for (z.j = 0; z.j < posnum;)
 		{
-			FLUSH(" - collect positives %d%%", (z.j + 1) * 100 / posfiles->rnum);
-			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, z.j);
-			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
-			if (image)
+			FLUSH(" - collect positives %d%% (%d / %d)", (z.j + 1) * 100 / posnum, z.j + 1, posnum);
+			double ratio = (double)(posnum - z.j) / posfiles->rnum;
+			for (k = 0; k < posfiles->rnum; k++)
 			{
-				ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, file_info->pose, z.size, params.deform_angle, params.deform_scale, params.deform_shift);
-				feature->sig = 0;
-				ccv_array_push(z.positives, feature);
-				ccv_matrix_free(feature);
-				ccv_matrix_free(image);
+				ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, k);
+				ccv_dense_matrix_t* image = 0;
+				ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+				if (image)
+				{
+					for (q = 0; q < ratio; q++)
+						if (q < (int)ratio || gsl_rng_uniform(rng) <= ratio - (int)ratio)
+						{
+							FLUSH(" - collect positives %d%% (%d / %d)", (z.j + 1) * 100 / posnum, z.j + 1, posnum);
+							ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, file_info->pose, z.size, params.deform_angle, params.deform_scale, params.deform_shift);
+							feature->sig = 0;
+							ccv_array_push(z.positives, feature);
+							ccv_matrix_free(feature);
+							++z.j;
+						}
+					ccv_matrix_free(image);
+				}
 			}
 		}
 		printf("\n");
@@ -514,33 +540,43 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.negatives = ccv_array_new(ccv_compute_dense_matrix_size(z.size.height + 2, z.size.width + 2, CCV_8U | CCV_C1), negnum, 0);
 		// randomly collect negatives (with random deformation)
-		int npp = (negnum + bgfiles->rnum - 1) / bgfiles->rnum;
-		for (z.j = 0; z.j < bgfiles->rnum; z.j++)
+		for (z.j = 0; z.j < negnum;)
 		{
-			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, z.j);
-			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
-			FLUSH(" - collect negatives %d%%", (z.j + 1) * 100 / bgfiles->rnum);
-			if (image)
+			FLUSH(" - collect negatives %d%% (%d / %d)", (z.j + 1) * 100 / negnum, z.j + 1, negnum);
+			double ratio = (double)(negnum - z.j) / bgfiles->rnum;
+			for (k = 0; k < bgfiles->rnum; k++)
 			{
-				double max_scale_ratio = ccv_min((double)image->rows / z.size.height, (double)image->cols / z.size.height);
-				if (max_scale_ratio <= 0.5) // too small to be interesting
-					continue;
-				for (k = z.j * npp; k < ccv_min(z.j * npp + npp, negnum); k++)
+				ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, k);
+				ccv_dense_matrix_t* image = 0;
+				ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+				if (image)
 				{
-					ccv_decimal_pose_t pose;
-					double scale_ratio = gsl_rng_uniform(rng) * (max_scale_ratio - 0.5) + 0.5;
-					pose.a = z.size.width * 0.5 * scale_ratio;
-					pose.b = z.size.height * 0.5 * scale_ratio;
-					pose.x = gsl_rng_uniform_int(rng, ccv_max((int)(image->cols - pose.a * 2 + 1.5), 1)) + pose.a;
-					pose.y = gsl_rng_uniform_int(rng, ccv_max((int)(image->rows - pose.b * 2 + 1.5), 1)) + pose.b;
-					pose.roll = pose.pitch = pose.yaw = 0;
-					ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, pose, z.size, params.deform_angle, params.deform_scale, params.deform_shift);
-					feature->sig = 0;
-					ccv_array_push(z.negatives, feature);
-					ccv_matrix_free(feature);
+					double max_scale_ratio = ccv_min((double)image->rows / z.size.height, (double)image->cols / z.size.height);
+					if (max_scale_ratio <= 0.5) // too small to be interesting
+						continue;
+					for (q = 0; q < ratio; q++)
+						if (q < (int)ratio || gsl_rng_uniform(rng) <= ratio - (int)ratio)
+						{
+							FLUSH(" - collect negatives %d%% (%d / %d)", (z.j + 1) * 100 / negnum, z.j + 1, negnum);
+							ccv_decimal_pose_t pose;
+							double scale_ratio = gsl_rng_uniform(rng) * (max_scale_ratio - 0.5) + 0.5;
+							pose.a = z.size.width * 0.5 * scale_ratio;
+							pose.b = z.size.height * 0.5 * scale_ratio;
+							pose.x = gsl_rng_uniform_int(rng, ccv_max((int)(image->cols - pose.a * 2 + 1.5), 1)) + pose.a;
+							pose.y = gsl_rng_uniform_int(rng, ccv_max((int)(image->rows - pose.b * 2 + 1.5), 1)) + pose.b;
+							pose.roll = pose.pitch = pose.yaw = 0;
+							ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, pose, z.size, params.deform_angle, params.deform_scale, params.deform_shift);
+							feature->sig = 0;
+							ccv_array_push(z.negatives, feature);
+							ccv_matrix_free(feature);
+							++z.j;
+							if (z.j >= negnum)
+								break;
+						}
+					ccv_matrix_free(image);
 				}
-				ccv_matrix_free(image);
+				if (z.j >= negnum)
+					break;
 			}
 		}
 		printf("\n");
@@ -564,7 +600,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		z.x.example_state = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		printf(" - seed icf features with svm\n");
-		_ccv_icf_feature_pre_learn(params.C, z.features, params.feature_size, z.positives, z.negatives, z.example_state);
+		_ccv_icf_feature_pre_learn(rng, params.C, z.features, params.feature_size, z.positives, z.negatives, z.example_state);
 		z.x.features = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.classifier->cascade[z.i].count = params.select_feature_size;
