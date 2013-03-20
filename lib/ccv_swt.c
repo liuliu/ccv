@@ -112,7 +112,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		if (abs(i - y0) >= 2 || abs(j - x0) >= 2) \
 		{ /* ideally, I can encounter another edge directly, but in practice, we should search in a small region around it */ \
 			flag = 0; \
-			int y0_offset = (ky - i) * c->step; \
+			int y0_offset = (y0 - i) * c->step; \
 			for (k = 0; k < 5; k++) \
 			{ \
 				kx = x0 + dx5[k]; \
@@ -135,14 +135,14 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 		 * and -1 / sqrt(3) < Tan(d_q - d_p) < 1 / sqrt(3)
 		 * also, we needs to check the whole 3x3 neighborhood in a hope that we don't miss one or two of them */ \
 		flag = 0; \
-		int y0_dx_offset = (ky - i) * dx->step; \
-		int y0_dy_offset = (ky - i) * dy->step; \
+		int ky_dx_offset = (ky - i) * dx->step; \
+		int ky_dy_offset = (ky - i) * dy->step; \
 		for (k = 0; k < 9; k++) \
 		{ \
-			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + y0_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) - \
-					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + y0_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
-			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + y0_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) + \
-					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + y0_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
+			int tn = _for_get_d(dy_ptr, j, 0) * _for_get_d(dx_ptr + ky_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) - \
+					 _for_get_d(dx_ptr, j, 0) * _for_get_d(dy_ptr + ky_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
+			int td = _for_get_d(dx_ptr, j, 0) * _for_get_d(dx_ptr + ky_dx_offset + dy9_dxstep[k], kx + dx9[k], 0) + \
+					 _for_get_d(dy_ptr, j, 0) * _for_get_d(dy_ptr + ky_dy_offset + dy9_dystep[k], kx + dx9[k], 0); \
 			if (tn * 7 < -td * 4 && tn * 7 > td * 4) \
 			{ \
 				flag = 1; \
