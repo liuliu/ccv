@@ -1012,6 +1012,7 @@ typedef struct {
 	float deform_shift;
 	double C;
 	double weight_trimming;
+	double sample_rate;
 } ccv_icf_new_param_t;
 
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);

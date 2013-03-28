@@ -119,6 +119,8 @@ int main(int argc, char** argv)
 	params.C = 0.002;
 	params.feature_size = 15000;
 	params.select_feature_size = 1500;
+	params.sample_rate = 0.1;
+	params.weight_trimming = 0.95;
 	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	ccv_icf_write_classifier_cascade(classifier, working_dir);
 	for (i = 0; i < posfiles->rnum; i++)

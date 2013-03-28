@@ -76,6 +76,8 @@ static void _ccv_icf_check_params(ccv_icf_new_param_t params)
 	assert(params.deform_scale > 0);
 	assert(params.C > 0);
 	assert(params.feature_size > 0);
+	assert(params.weight_trimming > 0.5 && params.weight_trimming <= 1.0);
+	assert(params.sample_rate > 0 && params.sample_rate <= 1.0);
 }
 
 static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, float deform_angle, float deform_scale, float deform_shift)
@@ -146,6 +148,10 @@ typedef struct {
 	ccv_icf_example_state_t* example_state;
 	ccv_icf_classifier_cascade_persistence_state_t x;
 } ccv_icf_classifier_cascade_state_t;
+
+#define less_than(s1, s2, aux) ((s1).binary > (s2).binary || ((s1).binary == (s2).binary && (s1).weight > (s2).weight))
+static CCV_IMPLEMENT_QSORT(_ccv_icf_example_weight_trimming, ccv_icf_example_state_t, less_than)
+#undef less_than
 
 static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_state_t* state, const char* directory)
 {
@@ -299,16 +305,35 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 		fclose(r);
 	}
 	state->classifier = ccv_icf_read_classifier_cascade(directory);
+	if (!state->classifier)
+	{
+		state->classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * (state->params.interval + 1));
+		state->classifier->interval = state->params.interval;
+		state->classifier->cascade = (ccv_icf_classifier_cascade_t*)(state->classifier + 1);
+		state->scale = 1;
+	}
 }
 
-static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
+#define less_than(s1, s2, aux) ((s1).weight > (s2).weight)
+static CCV_IMPLEMENT_QSORT(_ccv_icf_feature_trimming, ccv_icf_example_state_t, less_than)
+#undef less_than
+
+static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features, int feature_size, double trimming, double sample_rate, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
 {
-	int i, j, q;
-	double* rate = (double*)ccmalloc(sizeof(double) * feature_size);
-	memset(rate, 0, sizeof(double) * feature_size);
+	int i, j, q, k = 1;
+	ccv_icf_example_state_t* rate = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * feature_size);
+	for (i = 0; i < feature_size; i++)
+		rate[i].weight = 0, rate[i].index = i;
+	double weight = 0;
+	int feature_trimming = feature_size;
 	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
+		if (weight > trimming)
+			break;
+		if (i % 97 == 0) // don't flush too fast
+			FLUSH(" - evaluate %d features through %d%% (%d / %d) examples", feature_trimming, (i + 1) * 100 / (positives->rnum + negatives->rnum), i + 1, positives->rnum + negatives->rnum);
 		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(example_state[i].binary ? positives : negatives, example_state[i].index);
+		weight += example_state[i].weight;
 		a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
 		ccv_dense_matrix_t* icf = 0;
 		// we have 1px padding around the image
@@ -318,28 +343,36 @@ static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features,
 		ccv_matrix_free(icf);
 		float* ptr = sat->data.f32;
 		int ch = CCV_GET_CHANNEL(sat->type);
-		for (j = 0; j < feature_size; j++)
+		if (i > (int)(sample_rate * k * negatives->rnum + 0.5 + positives->rnum))
 		{
-			ccv_icf_feature_t* feature = features + j;
+			_ccv_icf_feature_trimming(rate, feature_trimming, 0);
+			feature_trimming = ccv_max((int)((1 - k * sample_rate) * feature_size + 0.5), 2); // at least has 2 features to compete
+			++k;
+		}
+		for (j = 0; j < feature_trimming; j++)
+		{
+			ccv_icf_feature_t* feature = features + rate[j].index;
 			float c = feature->beta;
 			for (q = 0; q < feature->count; q++)
-				c += (ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + 1 + (feature->sat[q * 2].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2].y + 1) * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
+				c += (ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
 			if (c > 0)
-				rate[j] += example_state[i].binary ? example_state[i].weight : 0;
+				rate[j].weight += example_state[i].binary ? example_state[i].weight : 0;
 			else
-				rate[j] += example_state[i].binary ? 0 : example_state[i].weight;
+				rate[j].weight += example_state[i].binary ? 0 : example_state[i].weight;
 		}
 		ccv_matrix_free(sat);
 	}
 	ccv_icf_feature_t best_feature;
 	double best_rate = 0; // at least one feature should be better than 0
 	for (i = 0; i < feature_size; i++)
-		if (rate[i] > best_rate)
+		if (rate[i].weight > best_rate)
 		{
-			best_rate = rate[i];
-			best_feature = features[i];
+			best_rate = rate[i].weight;
+			best_feature = features[rate[i].index];
 		}
 	ccfree(rate);
+	printf("best rate: %lf\n", best_rate);
+	assert(best_rate > 0);
 	return best_feature;
 }
 
@@ -462,9 +495,7 @@ static void _ccv_icf_feature_pre_learn(gsl_rng* rng, double C, ccv_icf_feature_t
 		for (q = 0; q < feature->count; q++)
 			feature->alpha[q] = (linear->label[1] * linear->w[q + feature->count + 1] + linear->label[0] * linear->w[q]) / (float)((feature->sat[q * 2 + 1].x - feature->sat[q * 2].x + 1) * (feature->sat[q * 2 + 1].y - feature->sat[q * 2].y + 1));
 		feature->beta = (linear->label[1] * linear->w[feature->count * 2 + 1] + linear->label[0] * linear->w[feature->count]) * 255.0;
-		double rate = _ccv_icf_rate_feature(*feature, positives, negatives, example_state);
-		assert(rate > 0.5);
-		printf(" - model->label[0]: %d, model->nr_class: %d, model->nr_feature: %d, rate: %lf\n", linear->label[0], linear->nr_class, linear->nr_feature, rate);
+		printf(" - model->label[0]: %d, model->nr_class: %d, model->nr_feature: %d\n", linear->label[0], linear->nr_class, linear->nr_feature);
 		free_and_destroy_model(&linear);
 	}
 	free(feature_cluster);
@@ -489,13 +520,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	ccv_icf_classifier_cascade_state_t z;
 	z.params = params;
 	ccv_function_state_begin(_ccv_icf_read_classifier_cascade_state, z, dir);
-	if (!z.classifier)
-	{
-		z.classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * (params.interval + 1));
-		z.classifier->interval = params.interval;
-		z.classifier->cascade = (ccv_icf_classifier_cascade_t*)(z.classifier + 1);
-		z.scale = 1;
-	}
 	for (z.i = 0; z.i <= params.interval; z.i++)
 	{
 		z.size = ccv_size((int)(params.size.width * z.scale + 0.5), (int)(params.size.height * z.scale + 0.5));
@@ -607,9 +631,12 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		z.classifier->cascade[z.i].features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.select_feature_size);
 		for (z.j = 0; z.j < params.select_feature_size; z.j++)
 		{
+			gsl_ran_shuffle(rng, z.example_state, z.positives->rnum + z.negatives->rnum, sizeof(ccv_icf_example_state_t));
+			_ccv_icf_example_weight_trimming(z.example_state, z.positives->rnum + z.negatives->rnum, 0);
 			printf(" - boost feature %d of %d\n", z.j + 1, params.select_feature_size);
-			ccv_icf_feature_t best_feature = _ccv_icf_find_best_feature(z.features, params.feature_size, z.positives, z.negatives, z.example_state);
+			ccv_icf_feature_t best_feature = _ccv_icf_find_best_feature(z.features, params.feature_size, params.weight_trimming, params.sample_rate, z.positives, z.negatives, z.example_state);
 			double rate = _ccv_icf_rate_feature(best_feature, z.positives, z.negatives, z.example_state);
+			assert(rate > 0.5); // it has to be better than random chance
 			double alpha = sqrt((1 - rate) / rate);
 			double beta = 1.0 / alpha;
 			double reweigh = 0;
@@ -619,12 +646,14 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				reweigh += z.example_state[k].weight;
 			}
 			reweigh = 1.0 / reweigh;
+			printf("\n - at rate %lf\n", rate);
 			// balancing the weight to sum 1.0
 			for (k = 0; k < z.positives->rnum + z.negatives->rnum; k++)
 				z.example_state[k].weight *= reweigh;
 			z.classifier->cascade[z.i].features[z.j] = best_feature;
 			for (k = 0; k < best_feature.count; k++)
-				printf(" -  - (%d, %d) - (%d, %d)\n", best_feature.sat[k * 2].x, best_feature.sat[k * 2].y, best_feature.sat[k * 2 + 1].x, best_feature.sat[k * 2 + 1].y);
+				printf(" - %d - (%d, %d) - (%d, %d)\n", best_feature.channel[k], best_feature.sat[k * 2].x, best_feature.sat[k * 2].y, best_feature.sat[k * 2 + 1].x, best_feature.sat[k * 2 + 1].y);
+			z.x.example_state = 0;
 			ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		}
 		ccfree(z.features);
@@ -766,7 +795,7 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 							ccv_icf_feature_t* feature = cascade->features + p;
 							float c = feature->beta;
 							for (q = 0; q < feature->count; q++)
-								c += (ptr[(x + feature->sat[q * 2 + 1].x + feature->sat[q * 2 + 1].y * sat->cols) * ch + feature->channel[q]] - ptr[(x + feature->sat[q * 2].x + feature->sat[q * 2 + 1].y * sat->cols) * ch + feature->channel[q]] + ptr[(x + feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(x + feature->sat[q * 2 + 1].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
+								c += (ptr[(x + feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(x + feature->sat[q * 2].x + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(x + feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(x + feature->sat[q * 2 + 1].x + 1 + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
 							sum += c > 0 ? feature->weigh[0] : feature->weigh[1];
 							if (p == thresholds->index)
 							{
