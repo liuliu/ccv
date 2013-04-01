@@ -1001,6 +1001,8 @@ typedef struct {
 	float threshold;
 } ccv_icf_param_t;
 
+extern const ccv_icf_param_t ccv_icf_default_params;
+
 typedef struct {
 	ccv_icf_param_t detector;
 	int interval;

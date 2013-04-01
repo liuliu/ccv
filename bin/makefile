@@ -4,7 +4,7 @@ include ../lib/config.mk
 LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../lib" $(CFLAGS)
 
-TARGETS = bbffmt msermatch siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert tld icfcreate
+TARGETS = bbffmt msermatch siftmatch bbfcreate bbfdetect swtcreate swtdetect dpmcreate dpmdetect convert tld icfcreate icfdetect
 
 all: libccv.a $(TARGETS)
 

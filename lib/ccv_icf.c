@@ -3,6 +3,12 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 
+const ccv_icf_param_t ccv_icf_default_params = {
+	.min_neighbors = 2,
+	.threshold = 0,
+	.flags = 0,
+};
+
 // generating the integrate channels features (which combines the grayscale, gradient magnitude, and 6-direction HOG
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
@@ -146,6 +152,7 @@ typedef struct {
 	ccv_size_t size;
 	double scale;
 	ccv_icf_example_state_t* example_state;
+	uint64_t* precompute;
 	ccv_icf_classifier_cascade_persistence_state_t x;
 } ccv_icf_classifier_cascade_state_t;
 
@@ -211,6 +218,13 @@ static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_s
 	{
 		snprintf(filename, 1024, "%s/example_state", directory);
 		w = fopen(filename, "w+");
+		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
+			fprintf(w, "%u %u %u %la\n", (uint32_t)state->example_state[i].binary, (uint32_t)state->example_state[i].correct, state->example_state[i].index, state->example_state[i].weight);
+		fclose(w);
+		// making a copy as well
+		char copy[1024];
+		snprintf(copy, 1024, "%s/example_state.%d", directory, state->j);
+		w = fopen(copy, "w+");
 		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
 			fprintf(w, "%u %u %u %la\n", (uint32_t)state->example_state[i].binary, (uint32_t)state->example_state[i].correct, state->example_state[i].index, state->example_state[i].weight);
 		fclose(w);
@@ -308,7 +322,7 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 	if (!state->classifier)
 	{
 		state->classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * (state->params.interval + 1));
-		state->classifier->interval = state->params.interval;
+		state->classifier->interval = state->i + 1;
 		state->classifier->cascade = (ccv_icf_classifier_cascade_t*)(state->classifier + 1);
 		state->scale = 1;
 	}
@@ -318,22 +332,17 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 static CCV_IMPLEMENT_QSORT(_ccv_icf_feature_trimming, ccv_icf_example_state_t, less_than)
 #undef less_than
 
-static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features, int feature_size, double trimming, double sample_rate, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
+static uint64_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives)
 {
-	int i, j, q, k = 1;
-	ccv_icf_example_state_t* rate = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * feature_size);
-	for (i = 0; i < feature_size; i++)
-		rate[i].weight = 0, rate[i].index = i;
-	double weight = 0;
-	int feature_trimming = feature_size;
+	int i, j, q;
+	int step = ((feature_size - 1) >> 6) + 1;
+	uint64_t* precompute = (uint64_t*)ccmalloc(sizeof(uint64_t) * step * (positives->rnum + negatives->rnum));
+	uint64_t* result = precompute;
 	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
-		if (weight > trimming)
-			break;
-		if (i % 97 == 0) // don't flush too fast
-			FLUSH(" - evaluate %d features through %d%% (%d / %d) examples", feature_trimming, (i + 1) * 100 / (positives->rnum + negatives->rnum), i + 1, positives->rnum + negatives->rnum);
-		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(example_state[i].binary ? positives : negatives, example_state[i].index);
-		weight += example_state[i].weight;
+		if (i % 97 == 0 || i == positives->rnum + negatives->rnum - 1) // don't flush too fast
+			FLUSH(" - precompute %d features through %d%% (%d / %d) examples", feature_size, (i + 1) * 100 / (positives->rnum + negatives->rnum), i + 1, positives->rnum + negatives->rnum);
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(i < positives->rnum ? positives : negatives, i < positives->rnum ? i : i - positives->rnum);
 		a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
 		ccv_dense_matrix_t* icf = 0;
 		// we have 1px padding around the image
@@ -343,6 +352,41 @@ static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features,
 		ccv_matrix_free(icf);
 		float* ptr = sat->data.f32;
 		int ch = CCV_GET_CHANNEL(sat->type);
+		for (j = 0; j < feature_size; j++)
+		{
+			ccv_icf_feature_t* feature = features + j;
+			float c = feature->beta;
+			for (q = 0; q < feature->count; q++)
+				c += (ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
+			if ((c > 0 && i < positives->rnum) || (c <= 0 && i >= positives->rnum))
+				precompute[j >> 6] = precompute[j >> 6] | (1UL << (j & 63));
+			else
+				precompute[j >> 6] = precompute[j >> 6] & ~(1UL << (j & 63));
+		}
+		ccv_matrix_free(sat);
+		precompute += step;
+	}
+	printf("\n - features are precomputed on examples\n");
+	return result;
+}
+
+static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features, int feature_size, double trimming, double sample_rate, ccv_array_t* positives, ccv_array_t* negatives, uint64_t* precompute, ccv_icf_example_state_t* example_state)
+{
+	int i, j, k = 1;
+	ccv_icf_example_state_t* rate = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * feature_size);
+	for (i = 0; i < feature_size; i++)
+		rate[i].weight = 0, rate[i].index = i;
+	double weight = 0;
+	int feature_trimming = feature_size;
+	int step = ((feature_size - 1) >> 6) + 1;
+	for (i = 0; i < positives->rnum + negatives->rnum; i++)
+	{
+		if (weight > trimming && rate[0].weight > 0.5) // if the best feature doesn't beat random chance, we shouldn't abort
+			break;
+		weight += example_state[i].weight;
+		if (i % 499 == 0 || i == positives->rnum + negatives->rnum - 1) // don't flush too fast
+			FLUSH(" - evaluate %d features through %d%% (%d / %d) examples", feature_trimming, (i + 1) * 100 / (positives->rnum + negatives->rnum), i + 1, positives->rnum + negatives->rnum);
+		uint64_t* computed = precompute + (example_state[i].binary ? example_state[i].index : example_state[i].index + positives->rnum) * step;
 		if (i > (int)(sample_rate * k * negatives->rnum + 0.5 + positives->rnum))
 		{
 			_ccv_icf_feature_trimming(rate, feature_trimming, 0);
@@ -351,16 +395,9 @@ static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features,
 		}
 		for (j = 0; j < feature_trimming; j++)
 		{
-			ccv_icf_feature_t* feature = features + rate[j].index;
-			float c = feature->beta;
-			for (q = 0; q < feature->count; q++)
-				c += (ptr[(feature->sat[q * 2 + 1].x + 1 + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + (feature->sat[q * 2 + 1].y + 1) * sat->cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + 1 + feature->sat[q * 2].y * sat->cols) * ch + feature->channel[q]]) * feature->alpha[q];
-			if (c > 0)
-				rate[j].weight += example_state[i].binary ? example_state[i].weight : 0;
-			else
-				rate[j].weight += example_state[i].binary ? 0 : example_state[i].weight;
+			uint64_t correct = computed[rate[j].index >> 6] & (1UL << (rate[j].index & 63));
+			rate[j].weight += correct ? example_state[i].weight : 0;
 		}
-		ccv_matrix_free(sat);
 	}
 	ccv_icf_feature_t best_feature;
 	double best_rate = 0; // at least one feature should be better than 0
@@ -371,7 +408,7 @@ static ccv_icf_feature_t _ccv_icf_find_best_feature(ccv_icf_feature_t* features,
 			best_feature = features[rate[i].index];
 		}
 	ccfree(rate);
-	printf("best rate: %lf\n", best_rate);
+	printf("\n - on trimmed examples, rate at %lf\n", best_rate);
 	assert(best_rate > 0);
 	return best_feature;
 }
@@ -451,8 +488,7 @@ static void _ccv_icf_feature_pre_learn(gsl_rng* rng, double C, ccv_icf_feature_t
 		{
 			// if we already has negnum negatives, skip this negative
 			// or we have positives->rnum, skip this positive
-			if ((!example_state[j].binary && count[0] >= negnum) ||
-				(example_state[j].binary && count[1] >= positives->rnum))
+			if ((!example_state[j].binary && count[0] >= negnum) || (example_state[j].binary && count[1] >= positives->rnum))
 				continue;
 			++count[example_state[j].binary];
 			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(example_state[j].binary ? positives : negatives, example_state[j].index);
@@ -627,14 +663,15 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		_ccv_icf_feature_pre_learn(rng, params.C, z.features, params.feature_size, z.positives, z.negatives, z.example_state);
 		z.x.features = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
-		z.classifier->cascade[z.i].count = params.select_feature_size;
+		z.precompute = _ccv_icf_precompute_features(z.features, params.feature_size, z.positives, z.negatives);
 		z.classifier->cascade[z.i].features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.select_feature_size);
 		for (z.j = 0; z.j < params.select_feature_size; z.j++)
 		{
+			z.classifier->cascade[z.i].count = z.j + 1;
 			gsl_ran_shuffle(rng, z.example_state, z.positives->rnum + z.negatives->rnum, sizeof(ccv_icf_example_state_t));
 			_ccv_icf_example_weight_trimming(z.example_state, z.positives->rnum + z.negatives->rnum, 0);
 			printf(" - boost feature %d of %d\n", z.j + 1, params.select_feature_size);
-			ccv_icf_feature_t best_feature = _ccv_icf_find_best_feature(z.features, params.feature_size, params.weight_trimming, params.sample_rate, z.positives, z.negatives, z.example_state);
+			ccv_icf_feature_t best_feature = _ccv_icf_find_best_feature(z.features, params.feature_size, params.weight_trimming, params.sample_rate, z.positives, z.negatives, z.precompute, z.example_state);
 			double rate = _ccv_icf_rate_feature(best_feature, z.positives, z.negatives, z.example_state);
 			assert(rate > 0.5); // it has to be better than random chance
 			double alpha = sqrt((1 - rate) / rate);
@@ -646,7 +683,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				reweigh += z.example_state[k].weight;
 			}
 			reweigh = 1.0 / reweigh;
-			printf("\n - at rate %lf\n", rate);
+			printf(" - on all examples, best feature at rate %lf\n", rate);
 			// balancing the weight to sum 1.0
 			for (k = 0; k < z.positives->rnum + z.negatives->rnum; k++)
 				z.example_state[k].weight *= reweigh;
@@ -654,6 +691,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 			for (k = 0; k < best_feature.count; k++)
 				printf(" - %d - (%d, %d) - (%d, %d)\n", best_feature.channel[k], best_feature.sat[k * 2].x, best_feature.sat[k * 2].y, best_feature.sat[k * 2 + 1].x, best_feature.sat[k * 2 + 1].y);
 			z.x.example_state = 0;
+			z.x.classifier = 0;
 			ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		}
 		ccfree(z.features);
