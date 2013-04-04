@@ -221,13 +221,6 @@ static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_s
 		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
 			fprintf(w, "%u %u %u %la\n", (uint32_t)state->example_state[i].binary, (uint32_t)state->example_state[i].correct, state->example_state[i].index, state->example_state[i].weight);
 		fclose(w);
-		// making a copy as well
-		char copy[1024];
-		snprintf(copy, 1024, "%s/example_state.%d", directory, state->j);
-		w = fopen(copy, "w+");
-		for (i = 0; i < state->positives->rnum + state->negatives->rnum; i++)
-			fprintf(w, "%u %u %u %la\n", (uint32_t)state->example_state[i].binary, (uint32_t)state->example_state[i].correct, state->example_state[i].index, state->example_state[i].weight);
-		fclose(w);
 		state->x.example_state = 1;
 	}
 	if (!state->x.classifier)
@@ -557,7 +550,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		{
 			FLUSH(" - collect positives %d%% (%d / %d)", (z.j + 1) * 100 / posnum, z.j + 1, posnum);
 			double ratio = (double)(posnum - z.j) / posfiles->rnum;
-			for (k = 0; k < posfiles->rnum; k++)
+			for (k = 0; k < posfiles->rnum && z.j < posnum; k++)
 			{
 				ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, k);
 				ccv_dense_matrix_t* image = 0;
@@ -573,6 +566,8 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 							ccv_array_push(z.positives, feature);
 							ccv_matrix_free(feature);
 							++z.j;
+							if (z.j >= posnum)
+								break;
 						}
 					ccv_matrix_free(image);
 				}
@@ -587,14 +582,14 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		{
 			FLUSH(" - collect negatives %d%% (%d / %d)", (z.j + 1) * 100 / negnum, z.j + 1, negnum);
 			double ratio = (double)(negnum - z.j) / bgfiles->rnum;
-			for (k = 0; k < bgfiles->rnum; k++)
+			for (k = 0; k < bgfiles->rnum && z.j < negnum; k++)
 			{
 				ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, k);
 				ccv_dense_matrix_t* image = 0;
 				ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
 				if (image)
 				{
-					double max_scale_ratio = ccv_min((double)image->rows / z.size.height, (double)image->cols / z.size.height);
+					double max_scale_ratio = ccv_min((double)image->rows / z.size.height, (double)image->cols / z.size.width);
 					if (max_scale_ratio <= 0.5) // too small to be interesting
 						continue;
 					for (q = 0; q < ratio; q++)
@@ -618,8 +613,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 						}
 					ccv_matrix_free(image);
 				}
-				if (z.j >= negnum)
-					break;
 			}
 		}
 		printf("\n");
@@ -688,6 +681,10 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	gsl_rng_free(rng);
 	ccv_function_state_finish();
 	return z.classifier;
+}
+
+void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, double accept)
+{
 }
 
 ccv_icf_multiscale_classifier_cascade_t* ccv_icf_read_classifier_cascade(const char* directory)

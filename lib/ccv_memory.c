@@ -238,7 +238,7 @@ ccv_array_t* ccv_array_new(int rsize, int rnum, uint64_t sig)
 	array->rnum = 0;
 	array->rsize = rsize;
 	array->size = ccv_max(rnum, 2 /* allocate memory for at least 2 items */);
-	array->data = ccmalloc(array->size * rsize);
+	array->data = ccmalloc((size_t)array->size * (size_t)rsize);
 	return array;
 }
 
