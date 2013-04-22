@@ -565,14 +565,14 @@ void ccv_array_push(ccv_array_t* array, void* r)
 	if (array->rnum > array->size)
 	{
 		array->size = ccv_max(array->size * 3 / 2, array->size + 1);
-		array->data = ccrealloc(array->data, array->size * array->rsize);
+		array->data = ccrealloc(array->data, (size_t)array->size * (size_t)array->rsize);
 	}
 	memcpy(ccv_array_get(array, array->rnum - 1), r, array->rsize);
 }
 
 void ccv_array_zero(ccv_array_t* array)
 {
-	memset(array->data, 0, array->size * array->rsize);
+	memset(array->data, 0, (size_t)array->size * (size_t)array->rsize);
 }
 
 void ccv_array_clear(ccv_array_t* array)

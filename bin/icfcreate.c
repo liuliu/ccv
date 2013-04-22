@@ -21,6 +21,7 @@ int main(int argc, char** argv)
 		{"working-dir", 1, 0, 0},
 		{"negative-count", 1, 0, 0},
 		{"positive-count", 1, 0, 0},
+		{"acceptance", 1, 0, 0},
 		/* optional parameters */
 		{"base-dir", 1, 0, 0},
 		{0, 0, 0, 0}
@@ -31,6 +32,7 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	int negative_count = 0;
 	int positive_count = 0;
+	double acceptance = 0;
 	ccv_icf_param_t detector = { .min_neighbors = 0, .flags = 0, .threshold = 0.0 };
 	ccv_icf_new_param_t params = {
 		.detector = detector,
@@ -58,6 +60,9 @@ int main(int argc, char** argv)
 				positive_count = atoi(optarg);
 				break;
 			case 6:
+				acceptance = atof(optarg);
+				break;
+			case 7:
 				base_dir = optarg;
 				break;
 		}
@@ -117,10 +122,11 @@ int main(int argc, char** argv)
 	params.deform_angle = 1;
 	params.deform_scale = 0.1;
 	params.C = 0.002;
-	params.feature_size = 15000;
+	params.feature_size = 30000;
 	params.select_feature_size = 1500;
 	params.sample_rate = 0.1;
 	params.weight_trimming = 0.95;
+	params.acceptance = acceptance;
 	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	ccv_icf_write_classifier_cascade(classifier, working_dir);
 	for (i = 0; i < posfiles->rnum; i++)

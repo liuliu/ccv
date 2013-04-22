@@ -434,7 +434,7 @@ void ccv_array_clear(ccv_array_t* array);
 void ccv_array_free_immediately(ccv_array_t* array);
 void ccv_array_free(ccv_array_t* array);
 
-#define ccv_array_get(a, i) (((char*)((a)->data)) + (a)->rsize * (i))
+#define ccv_array_get(a, i) (((char*)((a)->data)) + (size_t)(a)->rsize * (size_t)(i))
 
 typedef struct {
 	int x, y;
@@ -975,7 +975,6 @@ typedef struct {
 	ccv_point_t sat[CCV_ICF_SAT_MAX * 2];
 	float alpha[CCV_ICF_SAT_MAX];
 	float beta;
-	float weigh[2];
 } ccv_icf_feature_t;
 
 typedef struct {
@@ -984,10 +983,15 @@ typedef struct {
 } ccv_icf_threshold_t;
 
 typedef struct {
+	ccv_icf_feature_t features[3];
+	float weigh[2];
+} ccv_icf_decision_tree_t;
+
+typedef struct {
 	int count;
 	ccv_size_t size;
 	ccv_icf_threshold_t* thresholds;
-	ccv_icf_feature_t* features;
+	ccv_icf_decision_tree_t* weak_classifier;
 } ccv_icf_classifier_cascade_t;
 
 typedef struct {
@@ -1015,11 +1019,12 @@ typedef struct {
 	double C;
 	double weight_trimming;
 	double sample_rate;
+	double acceptance;
 } ccv_icf_new_param_t;
 
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
-void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, double accept);
+void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params);
 ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* directory);
 void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
