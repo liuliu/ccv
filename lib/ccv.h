@@ -961,7 +961,7 @@ ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info);
 void ccv_tld_free(ccv_tld_t* tld);
 
-/* ICF: Integrate Channels Features, this is a theorized framework that retrospectively incorporates the original
+/* ICF: Integral Channels Features, this is a theorized framework that retrospectively incorporates the original
  * Viola-Jones detection method with various enhancement later. Specifically, this implementation is after:
  * Pedestrian detection at 100 frames per second, Rodrigo Benenson, Markus Mathias, Radu Timofte and Luc Van Gool
  * With WFS (width first search) tree from:
@@ -983,6 +983,8 @@ typedef struct {
 } ccv_icf_threshold_t;
 
 typedef struct {
+	// we use depth-2 decision tree
+	uint32_t pass;
 	ccv_icf_feature_t features[3];
 	float weigh[2];
 } ccv_icf_decision_tree_t;
@@ -991,7 +993,7 @@ typedef struct {
 	int count;
 	ccv_size_t size;
 	ccv_icf_threshold_t* thresholds;
-	ccv_icf_decision_tree_t* weak_classifier;
+	ccv_icf_decision_tree_t* weak_classifiers;
 } ccv_icf_classifier_cascade_t;
 
 typedef struct {
@@ -1012,11 +1014,10 @@ typedef struct {
 	int interval;
 	ccv_size_t size;
 	int feature_size;
-	int select_feature_size;
+	int weak_classifier;
 	float deform_angle;
 	float deform_scale;
 	float deform_shift;
-	double C;
 	double weight_trimming;
 	double sample_rate;
 	double acceptance;

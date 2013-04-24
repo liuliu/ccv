@@ -121,9 +121,8 @@ int main(int argc, char** argv)
 	params.deform_shift = 0.01;
 	params.deform_angle = 1;
 	params.deform_scale = 0.1;
-	params.C = 0.002;
-	params.feature_size = 30000;
-	params.select_feature_size = 1500;
+	params.feature_size = 10000;
+	params.weak_classifier = 2000;
 	params.sample_rate = 0.1;
 	params.weight_trimming = 0.95;
 	params.acceptance = acceptance;
