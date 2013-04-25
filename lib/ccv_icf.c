@@ -650,45 +650,6 @@ static inline int _ccv_icf_run_weak_classifier(ccv_icf_decision_tree_t* weak_cla
 	}
 }
 
-static double _ccv_icf_rate_weak_classifier(ccv_icf_decision_tree_t* weak_classifier, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
-{
-	int i;
-	double rate = 0;
-	for (i = 0; i < positives->rnum + negatives->rnum; i++)
-	{
-		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(i < positives->rnum ? positives : negatives, i < positives->rnum ? i : i - positives->rnum);
-		a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
-		ccv_dense_matrix_t* icf = 0;
-		// we have 1px padding around the image
-		ccv_icf(a, &icf, 0);
-		ccv_dense_matrix_t* sat = 0;
-		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
-		ccv_matrix_free(icf);
-		float* ptr = sat->data.f32;
-		int ch = CCV_GET_CHANNEL(sat->type);
-		if (i < positives->rnum)
-		{
-			if (_ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, 1, 1))
-			{
-				assert(example_state[i].correct);
-				rate += example_state[i].weight;
-			} else {
-				assert(!example_state[i].correct);
-			}
-		} else {
-			if (!_ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, 1, 1))
-			{
-				assert(example_state[i].correct);
-				rate += example_state[i].weight;
-			} else {
-				assert(!example_state[i].correct);
-			}
-		}
-		ccv_matrix_free(sat);
-	}
-	return rate;
-}
-
 static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, ccv_array_t* posfiles, int posnum, float deform_angle, float deform_scale, float deform_shift)
 {
 	ccv_array_t* positives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | CCV_C1), posnum, 0);
@@ -822,8 +783,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 			printf(" - boost weak classifier %d of %d\n", z.j + 1, params.weak_classifier);
 			ccv_icf_decision_tree_t weak_classifier;
 			double rate = _ccv_icf_find_best_weak_classifier(z.features, params.feature_size, z.positives, z.negatives, z.precomputed, z.example_state, &weak_classifier);
-			double confirm_rate = _ccv_icf_rate_weak_classifier(&weak_classifier, z.positives, z.negatives, z.example_state);
-			printf(" - %lf %lf\n", rate, confirm_rate);
 			assert(rate > 0.5); // it has to be better than random chance
 			double alpha = sqrt((1 - rate) / rate);
 			double beta = 1.0 / alpha;
