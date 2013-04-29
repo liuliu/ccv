@@ -1015,6 +1015,8 @@ typedef struct {
 	ccv_size_t size;
 	int feature_size;
 	int weak_classifier;
+	int bootstrap;
+	double bootstrap_criteria;
 	float deform_angle;
 	float deform_scale;
 	float deform_shift;

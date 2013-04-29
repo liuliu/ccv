@@ -5,6 +5,7 @@ tags
 gh-pages
 site
 *.tests
+*.pyc
 lib/.CC
 lib/.DEF
 lib/.LN
