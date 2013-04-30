@@ -232,6 +232,7 @@ static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_s
 		w = fopen(filename, "wb+");
 		fwrite(state->precomputed, 1, step * state->params.feature_size, w);
 		fclose(w);
+		state->x.precomputed = 1;
 	}
 	if (!state->x.classifier)
 	{
@@ -721,6 +722,8 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 		for (j = 0; j < bgfiles->rnum && i < negnum; j++)
 		{
 			FLUSH(" - bootstrap negatives %d%% (%d / %d)", (i + 1) * 100 / negnum, i + 1, negnum);
+			if (ratio < 1 && gsl_rng_uniform(rng) > ratio)
+				continue;
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
@@ -783,7 +786,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 					{
 						gsl_ran_shuffle(rng, ccv_array_get(seq, 0), seq->rnum, seq->rsize);
 						// sat is one pixel wider (higher) than image (for the padding zeros)
-						double per_scale_ratio = ratio * (double)((sat->rows - cascade->size.height - 3) * (sat->cols - cascade->size.width - 3)) / scan_perimeter;
+						double per_scale_ratio = ccv_max(1.0, ratio) /* so that we at least collect one from this image */ * (double)((sat->rows - cascade->size.height - 3) * (sat->cols - cascade->size.width - 3)) / scan_perimeter;
 						for (p = 0; p < ccv_min(per_scale_ratio, seq->rnum); p++) // collect enough negatives from this scale
 							if (p < (int)per_scale_ratio || gsl_rng_uniform(rng) <= per_scale_ratio - (int)per_scale_ratio)
 							{
@@ -974,6 +977,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 					z.example_state = 0;
 					ccfree(z.precomputed);
 					z.precomputed = 0;
+					z.x.negatives = 0;
 					break; // another round of training
 				}
 				z.x.example_state = 0;

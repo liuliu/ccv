@@ -127,7 +127,7 @@ int main(int argc, char** argv)
 	params.weight_trimming = 0.95;
 	params.acceptance = acceptance;
 	params.bootstrap_criteria = 0.05;
-	params.bootstrap = 2;
+	params.bootstrap = 4;
 	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	ccv_icf_write_classifier_cascade(classifier, working_dir);
 	for (i = 0; i < posfiles->rnum; i++)
