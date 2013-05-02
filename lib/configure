@@ -187,6 +187,14 @@ else
 			;;
 	*	  ) ;;
 	esac
+	echo -ne "  Use \033[4mlibdispatch\033[m [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D USE_DISPATCH -fblocks "
+			LDFLAGS="$LDFLAGS-ldispatch -lBlocksRuntime "
+			;;
+	*	  ) ;;
+	esac
 	echo -ne "  With \033[4mavcodec\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in

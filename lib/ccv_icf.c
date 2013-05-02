@@ -1,7 +1,12 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
+#endif
+#ifdef USE_DISPATCH
+#include <dispatch/dispatch.h>
+#endif
 
 const ccv_icf_param_t ccv_icf_default_params = {
 	.min_neighbors = 2,
@@ -418,14 +423,22 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		if (i % 37 == 0 || i == feature_size - 1) // don't flush too fast
 			FLUSH(" - precompute %d examples through %d%% (%d / %d) features", positives->rnum + negatives->rnum, (i + 1) * 100 / feature_size, i + 1, feature_size);
 		ccv_icf_feature_t* feature = features + i;
+#ifdef USE_DISPATCH
+		dispatch_apply(positives->rnum + negatives->rnum, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t j) {
+#else
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
+#endif
 			ccv_dense_matrix_t* sat = sats[j];
 			float* ptr = sat->data.f32;
 			int ch = CCV_GET_CHANNEL(sat->type);
 			sortkv[j].value = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
 			sortkv[j].index = j;
+#ifdef USE_DISPATCH
+		});
+#else
 		}
+#endif
 		_ccv_icf_precomputed_ordering(sortkv, positives->rnum + negatives->rnum, 0);
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 			_ccv_icf_1_uint32_to_3_uint8(sortkv[j].index, computed + j * 3);
@@ -473,121 +486,151 @@ static inline void _ccv_icf_example_correct(ccv_icf_example_state_t* example_sta
 	}
 }
 
+typedef struct {
+	double error_index;
+	double error_rate;
+	double weigh[2];
+	int count[2];
+} ccv_icf_first_feature_find_t;
+
 static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, uint8_t* precomputed, ccv_icf_example_state_t* example_state, ccv_icf_feature_t* feature)
 {
+	int i;
 	assert(feature != 0);
 	ccv_icf_decision_tree_cache_t intermediate_cache;
-	int i, j;
-	double aweigh[2] = {0};
+	double aweigh0 = 0, aweigh1 = 0;
 	for (i = 0; i < positives->rnum; i++)
-		aweigh[1] += example_state[i].weight, example_state[i].correct = 0; // assuming positive examples we get wrong
+		aweigh1 += example_state[i].weight, example_state[i].correct = 0; // assuming positive examples we get wrong
 	for (i = positives->rnum; i < positives->rnum + negatives->rnum; i++)
-		aweigh[0] += example_state[i].weight, example_state[i].correct = 1; // assuming negative examples we get right
+		aweigh0 += example_state[i].weight, example_state[i].correct = 1; // assuming negative examples we get right
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
-	uint8_t* computed = precomputed;
-	double best_error_rate = 1.0;
-	double best_weigh[2] = {0};
-	int best_count[2] = {0};
-	int feature_index = 0, best_error_index = -1;
+	ccv_icf_first_feature_find_t* feature_find = (ccv_icf_first_feature_find_t*)ccmalloc(sizeof(ccv_icf_first_feature_find_t) * feature_size);
+#ifdef USE_DISPATCH
+	dispatch_apply(feature_size, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i) {
+#else
 	for (i = 0; i < feature_size; i++)
 	{
+#endif
+		ccv_icf_first_feature_find_t min_find = {
+			.error_rate = 1.0,
+			.error_index = 0,
+			.weigh = {0},
+			.count = {0},
+		};
 		double weigh[2] = {0};
-		double min_weigh[2] = {0};
 		int count[2] = {0};
-		int min_count[2] = {0};
-		double min_error_rate = 1.0;
-		int min_error_index = 0;
+		int j;
+		uint8_t* computed = precomputed + step * i;
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
 			uint32_t index = _ccv_icf_3_uint8_to_1_uint32(computed + j * 3);
 			assert(index >= 0 && index < positives->rnum + negatives->rnum);
 			weigh[index < positives->rnum] += example_state[index].weight;
 			assert(example_state[index].weight > 0);
-			assert(weigh[0] <= aweigh[0] + 1e-10 && weigh[1] <= aweigh[1] + 1e-10);
+			assert(weigh[0] <= aweigh0 + 1e-10 && weigh[1] <= aweigh1 + 1e-10);
 			++count[index < positives->rnum];
-			double error_rate = ccv_min(weigh[0] + aweigh[1] - weigh[1], weigh[1] + aweigh[0] - weigh[0]);
+			double error_rate = ccv_min(weigh[0] + aweigh1 - weigh[1], weigh[1] + aweigh0 - weigh[0]);
 			assert(error_rate > 0);
-			if (error_rate < min_error_rate)
+			if (error_rate < min_find.error_rate)
 			{
-				min_error_index = j;
-				min_error_rate = error_rate;
-				min_weigh[0] = weigh[0];
-				min_weigh[1] = weigh[1];
-				min_count[0] = count[0];
-				min_count[1] = count[1];
+				min_find.error_index = j;
+				min_find.error_rate = error_rate;
+				min_find.weigh[0] = weigh[0];
+				min_find.weigh[1] = weigh[1];
+				min_find.count[0] = count[0];
+				min_find.count[1] = count[1];
 			}
 		}
-		if (min_error_rate < best_error_rate)
+		feature_find[i] = min_find;
+#ifdef USE_DISPATCH
+	});
+#else
+	}
+#endif
+	ccv_icf_first_feature_find_t best = {
+		.error_rate = 1.0,
+		.error_index = -1,
+		.weigh = {0},
+		.count = {0},
+	};
+	int feature_index = 0;
+	for (i = 0; i < feature_size; i++)
+		if (feature_find[i].error_rate < best.error_rate)
 		{
-			best_error_rate = min_error_rate;
-			best_error_index = min_error_index;
-			best_weigh[0] = min_weigh[0];
-			best_weigh[1] = min_weigh[1];
-			best_count[0] = min_count[0];
-			best_count[1] = min_count[1];
+			best = feature_find[i];
 			feature_index = i;
 		}
-		computed += step;
-	}
+	ccfree(feature_find);
 	*feature = features[feature_index];
-	computed = precomputed + step * feature_index;
+	uint8_t* computed = precomputed + step * feature_index;
 	intermediate_cache.lut = (uint8_t*)ccmalloc(positives->rnum + negatives->rnum);
-	assert(best_error_index < positives->rnum + negatives->rnum - 1 && best_error_index >= 0);
-	if (best_weigh[0] + aweigh[1] - best_weigh[1] < best_weigh[1] + aweigh[0] - best_weigh[0])
+	assert(best.error_index < positives->rnum + negatives->rnum - 1 && best.error_index >= 0);
+	if (best.weigh[0] + aweigh1 - best.weigh[1] < best.weigh[1] + aweigh0 - best.weigh[0])
 	{
 		for (i = 0; i < positives->rnum + negatives->rnum; i++)
-			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i <= best_error_index);
-		feature->beta = _ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best_error_index, best_error_index + 1);
+			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i <= best.error_index);
+		feature->beta = _ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
 		// revert the sign of alpha, after threshold is computed
 		for (i = 0; i < feature->count; i++)
 			feature->alpha[i] = -feature->alpha[i];
-		intermediate_cache.weigh[0] = aweigh[0] - best_weigh[0];
-		intermediate_cache.weigh[1] = aweigh[1] - best_weigh[1];
-		intermediate_cache.weigh[2] = best_weigh[0];
-		intermediate_cache.weigh[3] = best_weigh[1];
+		intermediate_cache.weigh[0] = aweigh0 - best.weigh[0];
+		intermediate_cache.weigh[1] = aweigh1 - best.weigh[1];
+		intermediate_cache.weigh[2] = best.weigh[0];
+		intermediate_cache.weigh[3] = best.weigh[1];
 		intermediate_cache.pass = 3;
-		if (best_count[0] == 0)
+		if (best.count[0] == 0)
 			intermediate_cache.pass &= 2; // only positive examples in the right, no need to build right leaf
-		if (best_count[1] == positives->rnum)
+		if (best.count[1] == positives->rnum)
 			intermediate_cache.pass &= 1; // no positive examples in the left, no need to build left leaf
 		if (!(intermediate_cache.pass & 1)) // mark positives in the right as correct, if we don't have right leaf
-			_ccv_icf_example_correct(example_state, computed, 0, 0, positives, negatives, 0, best_error_index);
+			_ccv_icf_example_correct(example_state, computed, 0, 0, positives, negatives, 0, best.error_index);
 	} else {
 		for (i = 0; i < positives->rnum + negatives->rnum; i++)
-			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i > best_error_index);
-		feature->beta = -_ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best_error_index, best_error_index + 1);
-		intermediate_cache.weigh[0] = best_weigh[0];
-		intermediate_cache.weigh[1] = best_weigh[1];
-		intermediate_cache.weigh[2] = aweigh[0] - best_weigh[0];
-		intermediate_cache.weigh[3] = aweigh[1] - best_weigh[1];
+			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i > best.error_index);
+		feature->beta = -_ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
+		intermediate_cache.weigh[0] = best.weigh[0];
+		intermediate_cache.weigh[1] = best.weigh[1];
+		intermediate_cache.weigh[2] = aweigh0 - best.weigh[0];
+		intermediate_cache.weigh[3] = aweigh1 - best.weigh[1];
 		intermediate_cache.pass = 3;
-		if (best_count[0] == negatives->rnum)
+		if (best.count[0] == negatives->rnum)
 			intermediate_cache.pass &= 2; // only positive examples in the right, no need to build right leaf
-		if (best_count[1] == 0)
+		if (best.count[1] == 0)
 			intermediate_cache.pass &= 1; // no positive examples in the left, no need to build left leaf
 		if (!(intermediate_cache.pass & 1)) // mark positives in the right as correct if we don't have right leaf
-			_ccv_icf_example_correct(example_state, computed, 0, 0, positives, negatives, best_error_index + 1, positives->rnum + negatives->rnum - 1);
+			_ccv_icf_example_correct(example_state, computed, 0, 0, positives, negatives, best.error_index + 1, positives->rnum + negatives->rnum - 1);
 	}
 	intermediate_cache.first_feature = feature_index;
 	return intermediate_cache;
 }
 
+typedef struct {
+	double error_index;
+	double error_rate;
+	double weigh[2];
+} ccv_icf_second_feature_find_t;
+
 static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t intermediate_cache, int leaf, ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, uint8_t* precomputed, ccv_icf_example_state_t* example_state, ccv_icf_feature_t* feature)
 {
-	int i, j;
+	int i;
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
-	uint8_t* computed = precomputed;
 	uint8_t* lut = intermediate_cache.lut;
 	double* aweigh = intermediate_cache.weigh + leaf * 2;
-	double best_error_rate = 1.0;
-	double best_weigh[2] = {0};
-	int feature_index = 0, best_error_index = -1;
+	ccv_icf_second_feature_find_t* feature_find = (ccv_icf_second_feature_find_t*)ccmalloc(sizeof(ccv_icf_second_feature_find_t) * feature_size);
+#ifdef USE_DISPATCH
+	dispatch_apply(feature_size, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i) {
+#else
 	for (i = 0; i < feature_size; i++)
 	{
+#endif
+		ccv_icf_second_feature_find_t min_find = {
+			.error_rate = 1.0,
+			.error_index = 0,
+			.weigh = {0},
+		};
 		double weigh[2] = {0};
-		double min_weigh[2] = {0};
-		double min_error_rate = 1.0;
-		int min_error_index = 0;
+		uint8_t* computed = precomputed + step * i;
+		int j;
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
 			uint32_t index = _ccv_icf_3_uint8_to_1_uint32(computed + j * 3);
@@ -599,42 +642,51 @@ static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t interme
 				assert(example_state[index].weight > 0);
 				assert(weigh[0] <= aweigh[0] + 1e-10 && weigh[1] <= aweigh[1] + 1e-10);
 				double error_rate = ccv_min(weigh[0] + aweigh[1] - weigh[1], weigh[1] + aweigh[0] - weigh[0]);
-				if (error_rate < min_error_rate)
+				if (error_rate < min_find.error_rate)
 				{
-					min_error_index = j;
-					min_error_rate = error_rate;
-					min_weigh[0] = weigh[0];
-					min_weigh[1] = weigh[1];
+					min_find.error_index = j;
+					min_find.error_rate = error_rate;
+					min_find.weigh[0] = weigh[0];
+					min_find.weigh[1] = weigh[1];
 				}
 			}
 		}
-		if (min_error_rate < best_error_rate)
+		feature_find[i] = min_find;
+#ifdef USE_DISPATCH
+	});
+#else
+	}
+#endif
+	ccv_icf_second_feature_find_t best = {
+		.error_rate = 1.0,
+		.error_index = -1,
+		.weigh = {0},
+	};
+	int feature_index = 0;
+	for (i = 0; i < feature_size; i++)
+		if (feature_find[i].error_rate < best.error_rate)
 		{
-			best_error_rate = min_error_rate;
-			best_error_index = min_error_index;
-			best_weigh[0] = min_weigh[0];
-			best_weigh[1] = min_weigh[1];
+			best = feature_find[i];
 			feature_index = i;
 		}
-		computed += step;
-	}
+	ccfree(feature_find);
 	*feature = features[feature_index];
-	computed = precomputed + step * feature_index;
-	assert(best_error_index < positives->rnum + negatives->rnum - 1 && best_error_index >= 0);
-	if (best_weigh[0] + aweigh[1] - best_weigh[1] < best_weigh[1] + aweigh[0] - best_weigh[0])
+	uint8_t* computed = precomputed + step * feature_index;
+	assert(best.error_index < positives->rnum + negatives->rnum - 1 && best.error_index >= 0);
+	if (best.weigh[0] + aweigh[1] - best.weigh[1] < best.weigh[1] + aweigh[0] - best.weigh[0])
 	{
-		feature->beta = _ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best_error_index, best_error_index + 1);
+		feature->beta = _ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
 		// revert the sign of alpha, after threshold is computed
 		for (i = 0; i < feature->count; i++)
 			feature->alpha[i] = -feature->alpha[i];
 		// mark everything on the right properly
-		_ccv_icf_example_correct(example_state, computed, lut, leaf, positives, negatives, 0, best_error_index);
-		return best_weigh[1] + aweigh[0] - best_weigh[0];
+		_ccv_icf_example_correct(example_state, computed, lut, leaf, positives, negatives, 0, best.error_index);
+		return best.weigh[1] + aweigh[0] - best.weigh[0];
 	} else {
-		feature->beta = -_ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best_error_index, best_error_index + 1);
+		feature->beta = -_ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
 		// mark everything on the right properly
-		_ccv_icf_example_correct(example_state, computed, lut, leaf, positives, negatives, best_error_index + 1, positives->rnum + negatives->rnum - 1);
-		return best_weigh[0] + aweigh[1] - best_weigh[1];
+		_ccv_icf_example_correct(example_state, computed, lut, leaf, positives, negatives, best.error_index + 1, positives->rnum + negatives->rnum - 1);
+		return best.weigh[0] + aweigh[1] - best.weigh[1];
 	}
 }
 
@@ -896,7 +948,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		z.x.negatives = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.classifier->cascade[z.i].weak_classifiers = (ccv_icf_decision_tree_t*)ccmalloc(sizeof(ccv_icf_decision_tree_t) * params.weak_classifier);
-		for (z.bootstrap = 0; z.bootstrap <= params.bootstrap;)
+		for (z.bootstrap = 0; z.bootstrap <= params.bootstrap; z.bootstrap++)
 		{
 			z.example_state = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * (z.negatives->rnum + z.positives->rnum));
 			for (z.j = 0; z.j < z.positives->rnum + z.negatives->rnum; z.j++)
@@ -970,7 +1022,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				if (false_positives < z.negatives->rnum * params.bootstrap_criteria && z.bootstrap < params.bootstrap)
 				{
 					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum);
-					++z.bootstrap;
 					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap, z.positives->rnum, z.negatives->rnum);
 					z.classifier->cascade[z.i].count = 0; // reset everything
 					ccfree(z.example_state);
@@ -1233,6 +1284,76 @@ void ccv_icf_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* cl
 
 ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params)
 {
+	int hr = a->rows / multiscale_cascade[0]->cascade[0].size.height;
+	int wr = a->cols / multiscale_cascade[0]->cascade[0].size.width;
+	double scale = pow(2., 1. / (multiscale_cascade[0]->interval + 1.));
+	int next = multiscale_cascade[0]->interval + 1;
+	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale));
+	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)ccmalloc(scale_upto * sizeof(ccv_dense_matrix_t*));
+	memset(pyr, 0, scale_upto * sizeof(ccv_dense_matrix_t*));
+	pyr[0] = a;
+	int i, x, y, q;
+	for (i = 1; i <= multiscale_cascade[0]->interval; i++)
+		ccv_resample(pyr[0], &pyr[i], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
+	for (i = next; i < scale_upto; i++)
+		ccv_sample_down(pyr[i - next], &pyr[i], 0, 0, 0);
+	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	ccv_icf_classifier_cascade_t* cascade = multiscale_cascade[0]->cascade;
+	double scale_x = 1, scale_y = 1;
+	for (i = 0; i < scale_upto; i++)
+	{
+		ccv_dense_matrix_t* icf = 0;
+		ccv_icf(pyr[i], &icf, 0);
+		if (i > 0)
+			ccv_matrix_free(pyr[i]);
+		ccv_dense_matrix_t* sat = 0;
+		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+		ccv_matrix_free(icf);
+		int ch = CCV_GET_CHANNEL(sat->type);
+		float* ptr = sat->data.f32 + sat->cols * ch;
+		for (y = 0; y < sat->rows - cascade->size.height - 1; y++)
+		{
+			for (x = 0; x < sat->cols - cascade->size.width - 1; x++)
+			{
+				int pass = 1;
+				float sum = 0;
+				ccv_icf_threshold_t* thresholds = cascade->thresholds;
+				for (q = 0; q < cascade->count; q++)
+				{
+					ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + q;
+					int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, x, 0);
+					sum += weak_classifier->weigh[c];
+					if (q == thresholds->index)
+					{
+						if (sum < thresholds->threshold)
+						{
+							pass = 0;
+							break;
+						}
+						++thresholds;
+					}
+				}
+				if (pass)
+				{
+					ccv_comp_t comp;
+					comp.rect = ccv_rect((int)(x * scale_x + 0.5), (int)(y * scale_y + 0.5), (int)(cascade->size.width * scale_x + 0.5), (int)(cascade->size.height * scale_y + 0.5));
+					comp.id = 0;
+					comp.neighbors = 1;
+					comp.confidence = sum;
+					ccv_array_push(seq, &comp);
+				}
+			}
+			ptr += sat->cols * ch;
+		}
+		scale_x *= scale;
+		scale_y *= scale;
+		ccv_matrix_free(sat);
+	}
+	return seq;
+}
+/*
+ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params)
+{
 	assert(count > 0);
 	int i, j, k, q, x, y;
 	for (i = 0; i < count - 1; i++)
@@ -1305,3 +1426,4 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 		ccv_matrix_free(pyr[i]);
 	return seq;
 }
+*/
