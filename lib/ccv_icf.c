@@ -767,7 +767,7 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, int interval, float threshold, ccv_array_t* negatives, gsl_rng* rng, ccv_array_t* bgfiles, int negnum)
 {
 	int i, j, x, y, q, p;
-	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)alloca(ccv_compute_dense_matrix_size(cascade->size.height + 2, cascade->size.width + 2, CCV_C1 | CCV_8U));
+	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccmalloc(ccv_compute_dense_matrix_size(cascade->size.height + 2, cascade->size.width + 2, CCV_C1 | CCV_8U));
 	for (i = 0; i < negnum;)
 	{
 		double ratio = (double)(negnum - i) / bgfiles->rnum;
@@ -859,6 +859,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 			ccfree(pyr);
 		}
 	}
+	ccfree(a);
 	printf("\n");
 }
 
@@ -1021,13 +1022,14 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				z.classifier->cascade[z.i].thresholds = 0;
 				if (false_positives < z.negatives->rnum * params.bootstrap_criteria && z.bootstrap < params.bootstrap)
 				{
-					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum);
-					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap, z.positives->rnum, z.negatives->rnum);
-					z.classifier->cascade[z.i].count = 0; // reset everything
+					// free expensive memory
 					ccfree(z.example_state);
 					z.example_state = 0;
 					ccfree(z.precomputed);
 					z.precomputed = 0;
+					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum);
+					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap, z.positives->rnum, z.negatives->rnum);
+					z.classifier->cascade[z.i].count = 0; // reset everything
 					z.x.negatives = 0;
 					break; // another round of training
 				}
