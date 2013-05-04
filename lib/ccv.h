@@ -22,6 +22,7 @@
 
 #define CCV_PI (3.141592653589793)
 #define ccmalloc malloc
+#define cccalloc calloc
 #define ccrealloc realloc
 #define ccfree free
 
@@ -978,21 +979,16 @@ typedef struct {
 } ccv_icf_feature_t;
 
 typedef struct {
-	int index;
-	float threshold;
-} ccv_icf_threshold_t;
-
-typedef struct {
 	// we use depth-2 decision tree
 	uint32_t pass;
 	ccv_icf_feature_t features[3];
 	float weigh[2];
+	float threshold;
 } ccv_icf_decision_tree_t;
 
 typedef struct {
 	int count;
 	ccv_size_t size;
-	ccv_icf_threshold_t* thresholds;
 	ccv_icf_decision_tree_t* weak_classifiers;
 } ccv_icf_classifier_cascade_t;
 
@@ -1027,7 +1023,7 @@ typedef struct {
 
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
-void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
+void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, const char* dir, ccv_icf_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params);
 ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* directory);
 void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);

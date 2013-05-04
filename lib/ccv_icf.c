@@ -934,7 +934,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	{
 		z.size = ccv_size((int)(params.size.width * z.scale + 0.5), (int)(params.size.height * z.scale + 0.5));
 		z.classifier->cascade[z.i].size = z.size;
-		z.classifier->cascade[z.i].thresholds = 0;
 		printf(" - learn icf classifier cascade at size %dx%d\n", z.size.width, z.size.height);
 		z.features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.feature_size);
 		// generate random features
@@ -974,6 +973,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				double c = log(rate / (1 - rate));
 				weak_classifier.weigh[0] = -c;
 				weak_classifier.weigh[1] = c;
+				weak_classifier.threshold = 0;
 				double reweigh = 0;
 				for (k = 0; k < z.positives->rnum + z.negatives->rnum; k++)
 				{
@@ -1019,7 +1019,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 				}
 				z.classifier->interval = z.i + 1; // update interval
 				z.classifier->cascade[z.i].size = z.size;
-				z.classifier->cascade[z.i].thresholds = 0;
 				if (false_positives < z.negatives->rnum * params.bootstrap_criteria && z.bootstrap < params.bootstrap)
 				{
 					// free expensive memory
@@ -1028,7 +1027,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 					ccfree(z.precomputed);
 					z.precomputed = 0;
 					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum);
-					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap, z.positives->rnum, z.negatives->rnum);
+					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
 					z.classifier->cascade[z.i].count = 0; // reset everything
 					z.x.negatives = 0;
 					break; // another round of training
@@ -1050,15 +1049,15 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	return z.classifier;
 }
 
-static uint64_t* _ccv_icf_precompute_classifier_cascade(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* positives, ccv_array_t* negatives)
+static uint64_t* _ccv_icf_precompute_classifier_cascade(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* positives)
 {
 	int step = ((cascade->count - 1) >> 6) + 1;
-	uint64_t* precomputed = (uint64_t*)ccmalloc(sizeof(uint64_t) * (positives->rnum + negatives->rnum) * step);
+	uint64_t* precomputed = (uint64_t*)ccmalloc(sizeof(uint64_t) * positives->rnum * step);
 	uint64_t* result = precomputed;
 	int i, j;
-	for (i = 0; i < positives->rnum + negatives->rnum; i++)
+	for (i = 0; i < positives->rnum; i++)
 	{
-		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)((i < positives->rnum) ? ccv_array_get(positives, i) : ccv_array_get(negatives, i - positives->rnum));
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(ccv_array_get(positives, i));
 		a->data.u8 = (uint8_t*)(a + 1);
 		ccv_dense_matrix_t* icf = 0;
 		ccv_icf(a, &icf, 0);
@@ -1078,7 +1077,7 @@ static uint64_t* _ccv_icf_precompute_classifier_cascade(ccv_icf_classifier_casca
 	return result;
 }
 
-void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params)
+void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, const char* dir, ccv_icf_new_param_t params)
 {
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -1087,28 +1086,27 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* mu
 	{
 		ccv_icf_classifier_cascade_t* cascade = multiscale_cascade->cascade + i;
 		ccv_array_t* positives = _ccv_icf_collect_positives(rng, cascade->size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift);
-		ccv_array_t* negatives = _ccv_icf_collect_negatives(rng, cascade->size, bgfiles, negnum, params.deform_angle, params.deform_scale, params.deform_shift);
 		int step = ((cascade->count - 1) >> 6) + 1;
-		uint64_t* precomputed = _ccv_icf_precompute_classifier_cascade(cascade, positives, negatives);
-		float* rate = (float*)ccmalloc(sizeof(float) * positives->rnum);
+		uint64_t* precomputed = _ccv_icf_precompute_classifier_cascade(cascade, positives);
+		float* positive_rate = (float*)ccmalloc(sizeof(float) * positives->rnum);
 		uint64_t* computed = precomputed;
 		for (j = 0; j < positives->rnum; j++)
 		{
-			rate[j] = 0;
+			positive_rate[j] = 0;
 			for (k = 0; k < cascade->count; k++)
 			{
 				uint64_t accept = computed[k >> 6] & (1UL << (k & 63));
-				rate[j] += cascade->weak_classifiers[k].weigh[!!accept];
+				positive_rate[j] += cascade->weak_classifiers[k].weigh[!!accept];
 			}
 			computed += step;
 		}
-		_ccv_icf_threshold_rating(rate, positives->rnum, 0);
-		float threshold = rate[ccv_min((int)(params.acceptance * (positives->rnum + 0.5) - 0.5), positives->rnum)];
-		ccfree(rate);
+		_ccv_icf_threshold_rating(positive_rate, positives->rnum, 0);
+		float threshold = positive_rate[ccv_min((int)(params.acceptance * (positives->rnum + 0.5) - 0.5), positives->rnum - 1)];
+		ccfree(positive_rate);
 		computed = precomputed;
 		// compute the final acceptance per positives / negatives with final threshold
-		uint64_t* acceptance = (uint64_t*)ccmalloc(sizeof(uint64_t) * (((positives->rnum + negatives->rnum - 1) >> 6) + 1));
-		int true_positives = 0, false_positives = 0;
+		uint64_t* acceptance = (uint64_t*)cccalloc(((positives->rnum - 1) >> 6) + 1, sizeof(uint64_t));
+		int true_positives = 0;
 		for (j = 0; j < positives->rnum; j++)
 		{
 			float rate = 0;
@@ -1125,29 +1123,12 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* mu
 				acceptance[j >> 6] &= ~(1UL << (j & 63));
 			computed += step;
 		}
-		for (j = 0; j < negatives->rnum; j++)
-		{
-			float rate = 0;
-			for (k = 0; k < cascade->count; k++)
-			{
-				uint64_t accept = computed[k >> 6] & (1UL << (k & 63));
-				rate += cascade->weak_classifiers[k].weigh[!!accept];
-			}
-			if (rate >= threshold)
-			{
-				acceptance[(j + positives->rnum) >> 6] |= (1UL << ((j + positives->rnum) & 63));
-				++false_positives;
-			} else
-				acceptance[(j + positives->rnum) >> 6] &= ~(1UL << ((j + positives->rnum) & 63));
-			computed += step;
-		}
-		printf(" - at threshold %f, true positive rate: %f%%, false positive rate: %f%% (%d)\n", threshold, (float)true_positives * 100 / positives->rnum, (float)false_positives * 100 / negatives->rnum, false_positives);
-		rate = (float*)ccmalloc(sizeof(float) * (positives->rnum + negatives->rnum));
-		memset(rate, 0, sizeof(float) * (positives->rnum + negatives->rnum));
+		printf(" - at threshold %f, true positive rate: %f%%\n", threshold, (float)true_positives * 100 / positives->rnum);
+		float* rate = (float*)cccalloc(positives->rnum, sizeof(float));
 		for (k = 0; k < cascade->count; k++)
 		{
 			computed = precomputed;
-			for (j = 0; j < positives->rnum + negatives->rnum; j++)
+			for (j = 0; j < positives->rnum; j++)
 			{
 				uint64_t correct = computed[k >> 6] & (1UL << (k & 63));
 				rate[j] += cascade->weak_classifiers[k].weigh[!!correct];
@@ -1161,10 +1142,7 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* mu
 				if (correct && rate[j] < threshold)
 					threshold = rate[j];
 			}
-			// compute how many negatives we prune with this threshold
-			for (j = 0; j < negatives->rnum; j++)
-			{
-			}
+			cascade->weak_classifiers[k].threshold = threshold + 1e-10;
 		}
 		ccfree(rate);
 		ccfree(acceptance);
@@ -1198,7 +1176,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_read_classifier_cascade(const c
 				for (j = 0; j < cascade->count; j++)
 				{
 					ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + j;
-					fscanf(r, "%u %a %a", &weak_classifier->pass, &weak_classifier->weigh[0], &weak_classifier->weigh[1]);
+					fscanf(r, "%u %a %a %a", &weak_classifier->pass, &weak_classifier->weigh[0], &weak_classifier->weigh[1], &weak_classifier->threshold);
 					fscanf(r, "%d %a", &weak_classifier->features[0].count, &weak_classifier->features[0].beta);
 					for (q = 0; q < weak_classifier->features[0].count; q++)
 						fscanf(r, "%d %a %d %d %d %d", &weak_classifier->features[0].channel[q], &weak_classifier->features[0].alpha[q], &weak_classifier->features[0].sat[q * 2].x, &weak_classifier->features[0].sat[q * 2].y, &weak_classifier->features[0].sat[q * 2 + 1].x, &weak_classifier->features[0].sat[q * 2 + 1].y);
@@ -1215,15 +1193,6 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_read_classifier_cascade(const c
 							fscanf(r, "%d %a %d %d %d %d", &weak_classifier->features[2].channel[q], &weak_classifier->features[2].alpha[q], &weak_classifier->features[2].sat[q * 2].x, &weak_classifier->features[2].sat[q * 2].y, &weak_classifier->features[2].sat[q * 2 + 1].x, &weak_classifier->features[2].sat[q * 2 + 1].y);
 					}
 				}
-				int thresholds = 0;
-				fscanf(r, "%d", &thresholds);
-				if (thresholds > 0)
-				{
-					cascade->thresholds = (ccv_icf_threshold_t*)ccmalloc(sizeof(ccv_icf_threshold_t) * thresholds);
-					for (j = 0; j < thresholds; j++)
-						fscanf(r, "%d %a", &cascade->thresholds[j].index, &cascade->thresholds[j].threshold);
-				} else
-					cascade->thresholds = 0;
 				fclose(r);
 			}
 		}
@@ -1248,7 +1217,7 @@ void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* c
 		for (j = 0; j < classifier->cascade[i].count; j++)
 		{
 			ccv_icf_decision_tree_t* weak_classifier = classifier->cascade[i].weak_classifiers + j;
-			fprintf(w, "%u %a %a\n", weak_classifier->pass, weak_classifier->weigh[0], weak_classifier->weigh[1]);
+			fprintf(w, "%u %a %a %a\n", weak_classifier->pass, weak_classifier->weigh[0], weak_classifier->weigh[1], weak_classifier->threshold);
 			fprintf(w, "%d %a\n", weak_classifier->features[0].count, weak_classifier->features[0].beta);
 			for (q = 0; q < weak_classifier->features[0].count; q++)
 				fprintf(w, "%d %a\n%d %d %d %d\n", weak_classifier->features[0].channel[q], weak_classifier->features[0].alpha[q], weak_classifier->features[0].sat[q * 2].x, weak_classifier->features[0].sat[q * 2].y, weak_classifier->features[0].sat[q * 2 + 1].x, weak_classifier->features[0].sat[q * 2 + 1].y);
@@ -1264,17 +1233,6 @@ void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* c
 				for (q = 0; q < weak_classifier->features[2].count; q++)
 					fprintf(w, "%d %a\n%d %d %d %d\n", weak_classifier->features[2].channel[q], weak_classifier->features[2].alpha[q], weak_classifier->features[2].sat[q * 2].x, weak_classifier->features[2].sat[q * 2].y, weak_classifier->features[2].sat[q * 2 + 1].x, weak_classifier->features[2].sat[q * 2 + 1].y);
 			}
-		}
-		if (classifier->cascade[i].thresholds)
-		{
-			q = 0;
-			for (j = 0; classifier->cascade[i].thresholds[j].index < classifier->cascade[i].count; j++)
-				++q;
-			fprintf(w, "%d\n", q);
-			for (j = 0; j < q; j++)
-				fprintf(w, "%d %a\n", classifier->cascade[i].thresholds[j].index, classifier->cascade[i].thresholds[j].threshold);
-		} else {
-			fprintf(w, "0\n");
 		}
 		fclose(w);
 	}
@@ -1319,20 +1277,15 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 			{
 				int pass = 1;
 				float sum = 0;
-				ccv_icf_threshold_t* thresholds = cascade->thresholds;
 				for (q = 0; q < cascade->count; q++)
 				{
 					ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + q;
 					int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, x, 0);
 					sum += weak_classifier->weigh[c];
-					if (q == thresholds->index)
+					if (sum < weak_classifier->threshold)
 					{
-						if (sum < thresholds->threshold)
-						{
-							pass = 0;
-							break;
-						}
-						++thresholds;
+						pass = 0;
+						break;
 					}
 				}
 				if (pass)
