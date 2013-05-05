@@ -84,7 +84,7 @@ static void _ccv_icf_check_params(ccv_icf_new_param_t params)
 	assert(params.size.width > 0 && params.size.height > 0);
 	assert(params.deform_shift > 0);
 	assert(params.deform_angle > 0);
-	assert(params.deform_scale > 0);
+	assert(params.deform_scale > 0 && params.deform_scale < 1);
 	assert(params.feature_size > 0);
 	assert(params.weight_trimming > 0.5 && params.weight_trimming <= 1.0);
 	assert(params.sample_rate > 0 && params.sample_rate <= 1.0);
@@ -96,7 +96,7 @@ static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matr
 	float rotate_x = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180;
 	float rotate_y = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180;
 	float rotate_z = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.roll;
-	float scale = 1 + deform_scale  - deform_scale * 2 * gsl_rng_uniform(rng);
+	float scale = 1 + deform_scale  - (deform_scale + (1.0 - 1.0 / (1.0 + deform_scale))) * gsl_rng_uniform(rng);
 	float m00 = cosf(rotate_z) * scale;
 	float m01 = cosf(rotate_y) * sinf(rotate_z);
 	float m02 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * pose.a + pose.x - image->cols * 0.5;
@@ -792,7 +792,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 			ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)ccmalloc(scale_upto * sizeof(ccv_dense_matrix_t*));
 			memset(pyr, 0, scale_upto * sizeof(ccv_dense_matrix_t*));
 			pyr[0] = image;
-			for (q = 1; q <= interval; q++)
+			for (q = 1; q < ccv_min(interval + 1, scale_upto); q++)
 				ccv_resample(pyr[0], &pyr[q], 0, (int)(pyr[0]->rows / pow(scale, q)), (int)(pyr[0]->cols / pow(scale, q)), CCV_INTER_AREA);
 			for (q = next; q < scale_upto; q++)
 				ccv_sample_down(pyr[q - next], &pyr[q], 0, 0, 0);

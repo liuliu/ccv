@@ -120,7 +120,7 @@ int main(int argc, char** argv)
 	params.size.height = 60;
 	params.deform_shift = 0.01;
 	params.deform_angle = 1;
-	params.deform_scale = 0.1;
+	params.deform_scale = 0.07;
 	params.feature_size = 30000;
 	params.weak_classifier = 2000;
 	params.sample_rate = 0.1;

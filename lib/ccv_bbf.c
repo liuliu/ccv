@@ -1201,7 +1201,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	else
 		pyr[0] = a;
 	int i, j, k, t, x, y, q;
-	for (i = 1; i <= params.interval; i++)
+	for (i = 1; i < ccv_min(params.interval + 1, scale_upto + next * 2); i++)
 		ccv_resample(pyr[0], &pyr[i * 4], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
 	for (i = next; i < scale_upto + next * 2; i++)
 		ccv_sample_down(pyr[i * 4 - next * 4], &pyr[i * 4], 0, 0, 0);
