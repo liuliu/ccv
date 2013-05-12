@@ -63,12 +63,10 @@ static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, ccv_icf_fe
 	for (i = 0; i < feature->count; i++)
 	{
 		int x0, y0, x1, y1;
-		do {
-			x0 = gsl_rng_uniform_int(rng, size.width);
-			x1 = gsl_rng_uniform_int(rng, size.width);
-			y0 = gsl_rng_uniform_int(rng, size.height);
-			y1 = gsl_rng_uniform_int(rng, size.height);
-		} while (!(abs(x1 - x0) > 0 && abs(y1 - y0) > 0 && abs(x1 - x0) < size.width / 2 && abs(y1 - y0) < size.height / 2));
+		x0 = gsl_rng_uniform_int(rng, size.width);
+		x1 = gsl_rng_uniform_int(rng, size.width);
+		y0 = gsl_rng_uniform_int(rng, size.height);
+		y1 = gsl_rng_uniform_int(rng, size.height);
 		feature->sat[i * 2].x = ccv_min(x0, x1);
 		feature->sat[i * 2].y = ccv_min(y0, y1);
 		feature->sat[i * 2 + 1].x = ccv_max(x0, x1);
@@ -102,7 +100,7 @@ static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matr
 	float m02 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * pose.a + pose.x - image->cols * 0.5;
 	float m10 = sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z);
 	float m11 = (sinf(rotate_y) * sinf(rotate_z) + cosf(rotate_x) * cosf(rotate_z)) * scale;
-	float m12 = (deform_shift * gsl_rng_uniform(rng) - deform_shift) * pose.b + pose.y - image->rows * 0.5;
+	float m12 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * pose.b + pose.y - image->rows * 0.5;
 	float m20 = sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z);
 	float m21 = sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z);
 	float m22 = cosf(rotate_x) * cosf(rotate_y);
@@ -123,7 +121,6 @@ static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matr
 		ccv_resample(resize, &b, 0, size.height + 2, size.width + 2, CCV_INTER_CUBIC);
 	else
 		ccv_resample(resize, &b, 0, size.height + 2, size.width + 2, CCV_INTER_AREA);
-	ccv_matrix_free(resize);
 	return b;
 }
 
@@ -402,8 +399,8 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	uint8_t* precomputed = (uint8_t*)ccmalloc(sizeof(uint8_t) * feature_size * step);
 	uint8_t* computed = precomputed;
 	ccv_icf_value_index_t* sortkv = (ccv_icf_value_index_t*)ccmalloc(sizeof(ccv_icf_value_index_t) * (positives->rnum + negatives->rnum));
-	ccv_dense_matrix_t** sats = (ccv_dense_matrix_t**)ccmalloc(sizeof(ccv_dense_matrix_t*) * (positives->rnum + negatives->rnum));
-	for (i = 0; i < positives->rnum + negatives->rnum; i++)
+	ccv_dense_matrix_t** sats = (ccv_dense_matrix_t**)cccalloc(positives->rnum + negatives->rnum, sizeof(ccv_dense_matrix_t*));
+	for (i = 0; i < positives->rnum + negatives->rnum - 20000; i++)
 	{
 		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(i < positives->rnum ? positives : negatives, i < positives->rnum ? i : i - positives->rnum);
 		a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
@@ -412,12 +409,12 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		ccv_icf(a, &icf, 0);
 		ccv_dense_matrix_t* sat = 0;
 		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+		ccv_matrix_free(icf);
 		if (i == 0)
 			printf(" - precompute features using %luM memory temporarily\n", (uint64_t)ccv_compute_dense_matrix_size(sat->rows, sat->cols, sat->type) * (positives->rnum + negatives->rnum) / (1024 * 1024));
-		ccv_matrix_free(icf);
 		sats[i] = sat;
 	}
-	ccv_drain_cache(); // clean up cache so we have enough space to run it
+	ccv_disable_cache(); // clean up cache so we have enough space to run it
 	for (i = 0; i < feature_size; i++)
 	{
 		if (i % 37 == 0 || i == feature_size - 1) // don't flush too fast
@@ -430,10 +427,23 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		{
 #endif
 			ccv_dense_matrix_t* sat = sats[j];
+			int cache_miss = !sat;
+			if (cache_miss) // if we don't cache the value
+			{
+				ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(j < positives->rnum ? positives : negatives, j < positives->rnum ? j : j - positives->rnum);
+				a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
+				ccv_dense_matrix_t* icf = 0;
+				// we have 1px padding around the image
+				ccv_icf(a, &icf, 0);
+				ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+				ccv_matrix_free(icf);
+			}
 			float* ptr = sat->data.f32;
 			int ch = CCV_GET_CHANNEL(sat->type);
 			sortkv[j].value = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
 			sortkv[j].index = j;
+			if (cache_miss)
+				ccv_matrix_free(sat);
 #ifdef USE_DISPATCH
 		});
 #else
@@ -445,7 +455,9 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		computed += step;
 	}
 	for (i = 0; i < positives->rnum + negatives->rnum; i++)
-		ccv_matrix_free(sats[i]);
+		if (sats[i])
+			ccv_matrix_free(sats[i]);
+	ccv_enable_default_cache();
 	ccfree(sats);
 	ccfree(sortkv);
 	printf("\n - features are precomputed on examples and will occupy %luM memory\n", (uint64_t)(feature_size * step) / (1024 * 1024));
