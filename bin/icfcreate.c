@@ -116,15 +116,14 @@ int main(int argc, char** argv)
 	fclose(r1);
 	free(file);
 	params.interval = 5;
+	params.grayscale = 0;
 	params.size.width = 20;
 	params.size.height = 60;
 	params.deform_shift = 0.01;
-	params.deform_angle = 1;
+	params.deform_angle = 0;
 	params.deform_scale = 0.07;
 	params.feature_size = 30000;
-	params.weak_classifier = 2000;
-	params.sample_rate = 0.1;
-	params.weight_trimming = 0.95;
+	params.weak_classifier = 1500;
 	params.acceptance = acceptance;
 	params.bootstrap_criteria = 0.005;
 	params.bootstrap = 4;

@@ -11,7 +11,7 @@ STDIN.each_line do |line|
 	y = args[1].to_i
 	width = args[2].to_i
 	height = args[3].to_i
-	rect += sprintf("-draw \"ellipse %d,%d %d,%d 0,360\" ", x + width / 2, y + height / 2, width / 2, height / 2)
+	rect += sprintf("-draw \"rectangle %d,%d %d,%d\" ", x, y, x + width, y + height)
 end
 
-%x[#{sprintf("convert %s -fill none -stroke green -strokewidth 2 %s%s", ARGV[0], rect, ARGV[1])}]
+%x[#{sprintf("convert %s -fill none -stroke red -strokewidth 2 %s%s", ARGV[0], rect, ARGV[1])}]

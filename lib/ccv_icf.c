@@ -11,14 +11,18 @@
 const ccv_icf_param_t ccv_icf_default_params = {
 	.min_neighbors = 2,
 	.threshold = 0,
+	.step_through = 2,
 	.flags = 0,
 };
 
-// generating the integrate channels features (which combines the grayscale, gradient magnitude, and 6-direction HOG
+// generating the integrate channels features (which combines the grayscale, gradient magnitude, and 6-direction HOG)
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
+	int ch = CCV_GET_CHANNEL(a->type);
+	assert(ch == 1 || ch == 3);
+	int nchr = (ch == 1) ? 8 : 10;
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_literal("ccv_icf"), a->sig, CCV_EOF_SIGN);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | 8, CCV_32F | 8, sig);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | nchr, CCV_32F | nchr, sig);
 	ccv_object_return_if_cached(, db);
 	ccv_dense_matrix_t* ag = 0;
 	ccv_dense_matrix_t* mg = 0;
@@ -27,34 +31,72 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	float* mgp = mg->data.f32;
 	float* dbp = db->data.f32;
 	ccv_zero(db);
-	int i, j;
+	int i, j, k;
 	unsigned char* a_ptr = a->data.u8;
+	if (ch == 1)
+	{
 #define for_block(_, _for_get) \
-	for (i = 0; i < a->rows; i++) \
-	{ \
-		for (j = 0; j < a->cols; j++) \
+		for (i = 0; i < a->rows; i++) \
 		{ \
-			dbp[0] = _for_get(a_ptr, j, 0); \
-			dbp[1] = mgp[j]; \
-			float agr = (ccv_clamp(agp[j], 0, 359.99) / 360.0) * 6; \
-			int ag0 = (int)agr; \
-			int ag1 = ag0 < 5 ? ag0 + 1 : 0; \
-			agr = agr - ag0; \
-			dbp[2 + ag0] = dbp[1] * (1 - agr); \
-			dbp[2 + ag1] = dbp[1] * agr; \
-			dbp += 8; \
-		} \
-		a_ptr += a->step; \
-		agp += a->cols; \
-		mgp += a->cols; \
-	}
-	ccv_matrix_getter(a->type, for_block);
+			for (j = 0; j < a->cols; j++) \
+			{ \
+				dbp[0] = _for_get(a_ptr, j, 0); \
+				dbp[1] = mgp[j]; \
+				float agr = (ccv_clamp(agp[j], 0, 359.99) / 360.0) * 6; \
+				int ag0 = (int)agr; \
+				int ag1 = ag0 < 5 ? ag0 + 1 : 0; \
+				agr = agr - ag0; \
+				dbp[2 + ag0] = dbp[1] * (1 - agr); \
+				dbp[2 + ag1] = dbp[1] * agr; \
+				dbp += 8; \
+			} \
+			a_ptr += a->step; \
+			agp += a->cols; \
+			mgp += a->cols; \
+		}
+		ccv_matrix_getter(a->type, for_block);
 #undef for_block
+	} else {
+		// color one, luv, gradient magnitude, and 6-direction HOG
+#define for_block(_, _for_get) \
+		for (i = 0; i < a->rows; i++) \
+		{ \
+			for (j = 0; j < a->cols; j++) \
+			{ \
+				dbp[0] = _for_get(a_ptr, j * ch, 0); \
+				dbp[1] = _for_get(a_ptr, j * ch + 1, 0); \
+				dbp[2] = _for_get(a_ptr, j * ch + 2, 0); \
+				float agv = agp[j * ch]; \
+				float mgv = mgp[j * ch]; \
+				for (k = 1; k < ch; k++) \
+				{ \
+					if (mgp[j * ch + k] > mgv) \
+					{ \
+						mgv = mgp[j * ch + k]; \
+						agv = agp[j * ch + k]; \
+					} \
+				} \
+				dbp[3] = mgv; \
+				float agr = (ccv_clamp(agv, 0, 359.99) / 360.0) * 6; \
+				int ag0 = (int)agr; \
+				int ag1 = ag0 < 5 ? ag0 + 1 : 0; \
+				agr = agr - ag0; \
+				dbp[3 + ag0] = mgv * (1 - agr); \
+				dbp[3 + ag1] = mgv * agr; \
+				dbp += 10; \
+			} \
+			a_ptr += a->step; \
+			agp += a->cols; \
+			mgp += a->cols; \
+		}
+		ccv_matrix_getter(a->type, for_block);
+#undef for_block
+	}
 	ccv_matrix_free(ag);
 	ccv_matrix_free(mg);
 }
 
-static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, ccv_icf_feature_t* feature)
+static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, ccv_icf_feature_t* feature, int grayscale)
 {
 	feature->count = gsl_rng_uniform_int(rng, CCV_ICF_SAT_MAX - 2) + 2;
 	assert(feature->count <= CCV_ICF_SAT_MAX);
@@ -71,7 +113,7 @@ static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, ccv_icf_fe
 		feature->sat[i * 2].y = ccv_min(y0, y1);
 		feature->sat[i * 2 + 1].x = ccv_max(x0, x1);
 		feature->sat[i * 2 + 1].y = ccv_max(y0, y1);
-		feature->channel[i] = gsl_rng_uniform_int(rng, 7); // 8-channels
+		feature->channel[i] = gsl_rng_uniform_int(rng, grayscale ? 7 : 9); // 8-channels for grayscale, and 10-channels for rgb
 		feature->alpha[i] = gsl_rng_uniform(rng) / (float)((feature->sat[i * 2 + 1].x - feature->sat[i * 2].x + 1) * (feature->sat[i * 2 + 1].y - feature->sat[i * 2].y + 1));
 	}
 }
@@ -80,21 +122,21 @@ static void _ccv_icf_check_params(ccv_icf_new_param_t params)
 {
 	assert(params.interval >= 0);
 	assert(params.size.width > 0 && params.size.height > 0);
-	assert(params.deform_shift > 0);
-	assert(params.deform_angle > 0);
-	assert(params.deform_scale > 0 && params.deform_scale < 1);
+	assert(params.deform_shift >= 0);
+	assert(params.deform_angle >= 0);
+	assert(params.deform_scale >= 0 && params.deform_scale < 1);
 	assert(params.feature_size > 0);
-	assert(params.weight_trimming > 0.5 && params.weight_trimming <= 1.0);
-	assert(params.sample_rate > 0 && params.sample_rate <= 1.0);
 	assert(params.acceptance > 0 && params.acceptance < 1.0);
 }
 
 static ccv_dense_matrix_t* _ccv_icf_capture_feature(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, float deform_angle, float deform_scale, float deform_shift)
 {
-	float rotate_x = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180;
-	float rotate_y = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180;
+	float rotate_x = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.pitch;
+	float rotate_y = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.yaw;
 	float rotate_z = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.roll;
-	float scale = 1 + deform_scale  - (deform_scale + (1.0 - 1.0 / (1.0 + deform_scale))) * gsl_rng_uniform(rng);
+	float scale = gsl_rng_uniform(rng);
+	// to make the scale evenly distributed, for example, when deforming of 1/2 ~ 2, we want it to distribute around 1, rather than any average of 1/2 ~ 2
+	scale = (1 + deform_scale * scale) / (1 + deform_scale * (1 - scale));
 	float m00 = cosf(rotate_z) * scale;
 	float m01 = cosf(rotate_y) * sinf(rotate_z);
 	float m02 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * pose.a + pose.x - image->cols * 0.5;
@@ -400,7 +442,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	uint8_t* computed = precomputed;
 	ccv_icf_value_index_t* sortkv = (ccv_icf_value_index_t*)ccmalloc(sizeof(ccv_icf_value_index_t) * (positives->rnum + negatives->rnum));
 	ccv_dense_matrix_t** sats = (ccv_dense_matrix_t**)cccalloc(positives->rnum + negatives->rnum, sizeof(ccv_dense_matrix_t*));
-	for (i = 0; i < positives->rnum + negatives->rnum - 20000; i++)
+	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
 		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(i < positives->rnum ? positives : negatives, i < positives->rnum ? i : i - positives->rnum);
 		a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
@@ -738,9 +780,9 @@ static inline int _ccv_icf_run_weak_classifier(ccv_icf_decision_tree_t* weak_cla
 	}
 }
 
-static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, ccv_array_t* posfiles, int posnum, float deform_angle, float deform_scale, float deform_shift)
+static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, ccv_array_t* posfiles, int posnum, float deform_angle, float deform_scale, float deform_shift, int grayscale)
 {
-	ccv_array_t* positives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | CCV_C1), posnum, 0);
+	ccv_array_t* positives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), posnum, 0);
 	int i, j, q;
 	// collect positives (with random deformation)
 	for (i = 0; i < posnum;)
@@ -751,7 +793,7 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 		{
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -776,10 +818,10 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 	return positives;
 }
 
-static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, int interval, float threshold, ccv_array_t* negatives, gsl_rng* rng, ccv_array_t* bgfiles, int negnum)
+static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, int interval, float threshold, ccv_array_t* negatives, gsl_rng* rng, ccv_array_t* bgfiles, int negnum, int grayscale)
 {
 	int i, j, x, y, q, p;
-	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccmalloc(ccv_compute_dense_matrix_size(cascade->size.height + 2, cascade->size.width + 2, CCV_C1 | CCV_8U));
+	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccmalloc(ccv_compute_dense_matrix_size(cascade->size.height + 2, cascade->size.width + 2, (grayscale ? CCV_C1 : CCV_C3) | CCV_8U));
 	for (i = 0; i < negnum;)
 	{
 		double ratio = (double)(negnum - i) / bgfiles->rnum;
@@ -790,7 +832,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 				continue;
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -854,7 +896,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 						for (p = 0; p < ccv_min(per_scale_ratio, seq->rnum); p++) // collect enough negatives from this scale
 							if (p < (int)per_scale_ratio || gsl_rng_uniform(rng) <= per_scale_ratio - (int)per_scale_ratio)
 							{
-								a = ccv_dense_matrix_new(cascade->size.height + 2, cascade->size.width + 2, CCV_C1 | CCV_8U, a, 0);
+								a = ccv_dense_matrix_new(cascade->size.height + 2, cascade->size.width + 2, (grayscale ? CCV_C1 : CCV_C3) | CCV_8U, a, 0);
 								ccv_point_t* point = (ccv_point_t*)ccv_array_get(seq, p);
 								ccv_slice(pyr[q], (ccv_matrix_t**)&a, 0, point->y, point->x, a->rows, a->cols);
 								a->sig = 0;
@@ -875,9 +917,9 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 	printf("\n");
 }
 
-static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* bgfiles, int negnum, float deform_angle, float deform_scale, float deform_shift)
+static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* bgfiles, int negnum, float deform_angle, float deform_scale, float deform_shift, int grayscale)
 {
-	ccv_array_t* negatives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | CCV_C1), negnum, 0);
+	ccv_array_t* negatives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), negnum, 0);
 	int i, j, q;
 	// randomly collect negatives (with random deformation)
 	for (i = 0; i < negnum;)
@@ -888,7 +930,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 		{
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -950,13 +992,13 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 		z.features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.feature_size);
 		// generate random features
 		for (z.j = 0; z.j < params.feature_size; z.j++)
-			_ccv_icf_randomize_feature(rng, z.size, z.features + z.j);
+			_ccv_icf_randomize_feature(rng, z.size, z.features + z.j, params.grayscale);
 		z.x.features = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
-		z.positives = _ccv_icf_collect_positives(rng, z.size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift);
+		z.positives = _ccv_icf_collect_positives(rng, z.size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift, params.grayscale);
 		z.x.positives = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
-		z.negatives = _ccv_icf_collect_negatives(rng, z.size, bgfiles, negnum, params.deform_angle, params.deform_scale, params.deform_shift);
+		z.negatives = _ccv_icf_collect_negatives(rng, z.size, bgfiles, negnum, params.deform_angle, params.deform_scale, params.deform_shift, params.grayscale);
 		z.x.negatives = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.classifier->cascade[z.i].weak_classifiers = (ccv_icf_decision_tree_t*)ccmalloc(sizeof(ccv_icf_decision_tree_t) * params.weak_classifier);
@@ -1038,7 +1080,7 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 					z.example_state = 0;
 					ccfree(z.precomputed);
 					z.precomputed = 0;
-					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum);
+					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum, params.grayscale);
 					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
 					z.classifier->cascade[z.i].count = 0; // reset everything
 					z.x.negatives = 0;
@@ -1097,7 +1139,7 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* mu
 	for (i = 0; i < multiscale_cascade->interval; i++)
 	{
 		ccv_icf_classifier_cascade_t* cascade = multiscale_cascade->cascade + i;
-		ccv_array_t* positives = _ccv_icf_collect_positives(rng, cascade->size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift);
+		ccv_array_t* positives = _ccv_icf_collect_positives(rng, cascade->size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift, params.grayscale);
 		int step = ((cascade->count - 1) >> 6) + 1;
 		uint64_t* precomputed = _ccv_icf_precompute_classifier_cascade(cascade, positives);
 		float* positive_rate = (float*)ccmalloc(sizeof(float) * positives->rnum);
@@ -1158,6 +1200,8 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* mu
 		}
 		ccfree(rate);
 		ccfree(acceptance);
+		ccfree(precomputed);
+		ccv_array_free(positives);
 	}
 	gsl_rng_free(rng);
 }
@@ -1169,11 +1213,12 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_read_classifier_cascade(const c
 	FILE* r = fopen(filename, "r");
 	if (r)
 	{
-		int interval = 0;
-		fscanf(r, "%d", &interval);
+		int interval = 0, grayscale = 0;
+		fscanf(r, "%d %d", &interval, &grayscale);
 		fclose(r);
 		ccv_icf_multiscale_classifier_cascade_t* classifier = (ccv_icf_multiscale_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_multiscale_classifier_cascade_t) + sizeof(ccv_icf_classifier_cascade_t) * interval);
 		classifier->interval = interval;
+		classifier->grayscale = grayscale;
 		classifier->cascade = (ccv_icf_classifier_cascade_t*)(classifier + 1);
 		int i, j, q;
 		for (i = 0; i < interval; i++)
@@ -1218,7 +1263,7 @@ void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* c
 	char filename[1024];
 	snprintf(filename, 1024, "%s/multiscale", directory);
 	FILE* w = fopen(filename, "w+");
-	fprintf(w, "%d\n", classifier->interval);
+	fprintf(w, "%d %d\n", classifier->interval, classifier->grayscale);
 	fclose(w);
 	int i, j, q;
 	for (i = 0; i < classifier->interval; i++)
@@ -1252,83 +1297,41 @@ void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* c
 
 void ccv_icf_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier)
 {
+	int i;
+	for (i = 0; i < classifier->interval; i++)
+		ccfree(classifier->cascade[i].weak_classifiers);
+	ccfree(classifier);
+}
+
+static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
+{
+	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
+	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
+	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
+
+	return r2->id == r1->id &&
+		r2->rect.x <= r1->rect.x + distance &&
+		r2->rect.x >= r1->rect.x - distance &&
+		r2->rect.y <= r1->rect.y + distance &&
+		r2->rect.y >= r1->rect.y - distance &&
+		r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
+		(int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width &&
+		r2->rect.height <= (int)(r1->rect.height * 1.5 + 0.5) &&
+		(int)(r2->rect.height * 1.5 + 0.5) >= r1->rect.height;
 }
 
 ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params)
 {
-	int hr = a->rows / multiscale_cascade[0]->cascade[0].size.height;
-	int wr = a->cols / multiscale_cascade[0]->cascade[0].size.width;
-	double scale = pow(2., 1. / (multiscale_cascade[0]->interval + 1.));
-	int next = multiscale_cascade[0]->interval + 1;
-	int scale_upto = (int)(log((double)ccv_min(hr, wr)) / log(scale));
-	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)ccmalloc(scale_upto * sizeof(ccv_dense_matrix_t*));
-	memset(pyr, 0, scale_upto * sizeof(ccv_dense_matrix_t*));
-	pyr[0] = a;
-	int i, x, y, q;
-	for (i = 1; i <= multiscale_cascade[0]->interval; i++)
-		ccv_resample(pyr[0], &pyr[i], 0, (int)(pyr[0]->rows / pow(scale, i)), (int)(pyr[0]->cols / pow(scale, i)), CCV_INTER_AREA);
-	for (i = next; i < scale_upto; i++)
-		ccv_sample_down(pyr[i - next], &pyr[i], 0, 0, 0);
-	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
-	ccv_icf_classifier_cascade_t* cascade = multiscale_cascade[0]->cascade;
-	double scale_x = 1, scale_y = 1;
-	for (i = 0; i < scale_upto; i++)
-	{
-		ccv_dense_matrix_t* icf = 0;
-		ccv_icf(pyr[i], &icf, 0);
-		if (i > 0)
-			ccv_matrix_free(pyr[i]);
-		ccv_dense_matrix_t* sat = 0;
-		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
-		ccv_matrix_free(icf);
-		int ch = CCV_GET_CHANNEL(sat->type);
-		float* ptr = sat->data.f32 + sat->cols * ch;
-		for (y = 0; y < sat->rows - cascade->size.height - 1; y++)
-		{
-			for (x = 0; x < sat->cols - cascade->size.width - 1; x++)
-			{
-				int pass = 1;
-				float sum = 0;
-				for (q = 0; q < cascade->count; q++)
-				{
-					ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + q;
-					int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, x, 0);
-					sum += weak_classifier->weigh[c];
-					if (sum < weak_classifier->threshold)
-					{
-						pass = 0;
-						break;
-					}
-				}
-				if (pass)
-				{
-					ccv_comp_t comp;
-					comp.rect = ccv_rect((int)(x * scale_x + 0.5), (int)(y * scale_y + 0.5), (int)(cascade->size.width * scale_x + 0.5), (int)(cascade->size.height * scale_y + 0.5));
-					comp.id = 0;
-					comp.neighbors = 1;
-					comp.confidence = sum;
-					ccv_array_push(seq, &comp);
-				}
-			}
-			ptr += sat->cols * ch;
-		}
-		scale_x *= scale;
-		scale_y *= scale;
-		ccv_matrix_free(sat);
-	}
-	return seq;
-}
-/*
-ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params)
-{
 	assert(count > 0);
-	int i, j, k, q, x, y;
+	int i, j, k, q, x, y, ix, iy, py;
 	for (i = 0; i < count - 1; i++)
+	{
+		assert(multiscale_cascade[i]->grayscale == multiscale_cascade[i + 1]->grayscale);
 		assert(multiscale_cascade[i]->interval == multiscale_cascade[i + 1]->interval);
-	int min_win = 0x7FFFFFFF;
+	}
+	int scale_upto = 1;
 	for (i = 0; i < count; i++)
-		min_win = ccv_min(min_win, ccv_min(multiscale_cascade[i]->cascade[0].size.width, multiscale_cascade[i]->cascade[0].size.height));
-	int scale_upto = (int)(log((double)ccv_min(a->rows, a->cols) / min_win) / log(2.));
+		scale_upto = ccv_max(scale_upto, (int)(log(ccv_min((double)a->rows / multiscale_cascade[i]->cascade[0].size.height, (double)a->cols / multiscale_cascade[i]->cascade[0].size.width)) / log(2.)));
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * scale_upto);
 	pyr[0] = a;
 	for (i = 1; i < scale_upto; i++)
@@ -1336,61 +1339,168 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 		pyr[i] = 0;
 		ccv_sample_down(pyr[i - 1], &pyr[i], 0, 0, 0);
 	}
-	ccv_array_t* seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	ccv_array_t** seq = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * count);
+	for (i = 0; i < count; i++)
+		seq[i] = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
 	for (i = 0; i < scale_upto; i++)
 	{
 		ccv_dense_matrix_t* icf = 0;
 		ccv_icf(pyr[i], &icf, 0);
 		ccv_dense_matrix_t* sat = 0;
 		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+		ccv_matrix_free(icf);
 		// run it
 		int ch = CCV_GET_CHANNEL(sat->type);
 		assert(CCV_GET_DATA_TYPE(sat->type) == CCV_32F);
 		for (j = 0; j < count; j++)
+		{
+			double scale_ratio = pow(2., 1. / (multiscale_cascade[j]->interval + 1.));
+			double scale = 1;
 			for (k = 0; k < multiscale_cascade[j]->interval; k++)
 			{
 				ccv_icf_classifier_cascade_t* cascade = multiscale_cascade[j]->cascade + k;
+				if (sat->rows - 1 < cascade->size.height || sat->cols - 1 < cascade->size.width)
+					break;
 				float* ptr = sat->data.f32;
-				for (y = 0; y < sat->rows - cascade->size.height - 1; y++)
+				int rows = (int)((sat->rows - 1) / scale + 0.5);
+				int cols = (int)((sat->cols - 1) / scale + 0.5);
+				for (y = iy = py = 0; y < rows; y += params.step_through)
 				{
-					for (x = 0; x < sat->cols - cascade->size.width - 1; x++)
+					iy = (int)((y + 0.5) * scale - 0.5);
+					if (iy >= sat->rows - cascade->size.height - 1)
+						break;
+					if (iy > py)
 					{
+						ptr += sat->cols * ch * (iy - py);
+						py = iy;
+					}
+					for (x = 0; x < cols; x += params.step_through)
+					{
+						ix = (int)((x + 0.5) * scale - 0.5);
+						if (ix >= sat->cols - cascade->size.width - 1)
+							break;
 						int pass = 1;
 						float sum = 0;
-						ccv_icf_threshold_t* thresholds = cascade->thresholds;
 						for (q = 0; q < cascade->count; q++)
 						{
 							ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + q;
-							int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, x, 0);
+							int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, ix, 0);
 							sum += weak_classifier->weigh[c];
-							if (q == thresholds->index)
+							if (sum < weak_classifier->threshold)
 							{
-								if (sum < thresholds->threshold)
-								{
-									pass = 0;
-									break;
-								}
-								++thresholds;
+								pass = 0;
+								break;
 							}
 						}
 						if (pass)
 						{
 							ccv_comp_t comp;
-							comp.rect = ccv_rect(x << i, y << i, cascade->size.width << i, cascade->size.height << i);
+							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i) - 0.5), (int)((y + 0.5) * scale * (1 << i) - 0.5), cascade->size.width << i, cascade->size.height << i);
 							comp.id = j;
 							comp.neighbors = 1;
 							comp.confidence = sum;
-							ccv_array_push(seq, &comp);
+							ccv_array_push(seq[j], &comp);
 						}
 					}
-					ptr += sat->cols * ch;
 				}
+				scale *= scale_ratio;
 			}
-		ccv_matrix_free(icf);
+		}
 		ccv_matrix_free(sat);
 	}
+
+	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
+	for (k = 0; k < count; k++)
+	{
+		/* the following code from OpenCV's haar feature implementation */
+		if(params.min_neighbors == 0)
+		{
+			for (i = 0; i < seq[k]->rnum; i++)
+			{
+				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq[k], i);
+				ccv_array_push(result_seq, comp);
+			}
+		} else {
+			ccv_array_t* idx_seq = 0;
+			ccv_array_clear(seq2);
+			// group retrieved rectangles in order to filter out noise
+			int ncomp = ccv_array_group(seq[k], &idx_seq, _ccv_is_equal_same_class, 0);
+			ccv_comp_t* comps = (ccv_comp_t*)cccalloc(sizeof(ccv_comp_t), ncomp + 1);
+
+			// count number of neighbors
+			for(i = 0; i < seq[k]->rnum; i++)
+			{
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq[k], i);
+				int idx = *(int*)ccv_array_get(idx_seq, i);
+
+				if (comps[idx].neighbors == 0)
+					comps[idx].confidence = r1.confidence;
+
+				++comps[idx].neighbors;
+
+				comps[idx].rect.x += r1.rect.x;
+				comps[idx].rect.y += r1.rect.y;
+				comps[idx].rect.width += r1.rect.width;
+				comps[idx].rect.height += r1.rect.height;
+				comps[idx].id = r1.id;
+				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
+			}
+
+			// calculate average bounding box
+			for(i = 0; i < ncomp; i++)
+			{
+				int n = comps[i].neighbors;
+				if(n >= params.min_neighbors)
+				{
+					ccv_comp_t comp;
+					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
+					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
+					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
+					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
+					comp.neighbors = comps[i].neighbors;
+					comp.id = comps[i].id;
+					comp.confidence = comps[i].confidence;
+					ccv_array_push(seq2, &comp);
+				}
+			}
+
+			// filter out small face rectangles inside large face rectangles
+			for(i = 0; i < seq2->rnum; i++)
+			{
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
+				int flag = 1;
+
+				for(j = 0; j < seq2->rnum; j++)
+				{
+					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
+					int distance = (int)(r2.rect.width * 0.25 + 0.5);
+
+					if(i != j &&
+					   r1.id == r2.id &&
+					   r1.rect.x >= r2.rect.x - distance &&
+					   r1.rect.y >= r2.rect.y - distance &&
+					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+					   (r2.neighbors > ccv_max(3, r1.neighbors) || r1.neighbors < 3))
+					{
+						flag = 0;
+						break;
+					}
+				}
+
+				if(flag)
+					ccv_array_push(result_seq, &r1);
+			}
+			ccv_array_free(idx_seq);
+			ccfree(comps);
+		}
+		ccv_array_free(seq[k]);
+	}
+	ccv_array_free(seq2);
+
 	for (i = 1; i < scale_upto; i++)
 		ccv_matrix_free(pyr[i]);
-	return seq;
+
+	return result_seq;
 }
-*/

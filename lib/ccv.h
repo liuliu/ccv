@@ -994,12 +994,14 @@ typedef struct {
 
 typedef struct {
 	int interval;
+	int grayscale;
 	ccv_icf_classifier_cascade_t* cascade;
 } ccv_icf_multiscale_classifier_cascade_t;
 
 typedef struct {
 	int min_neighbors;
 	int flags;
+	int step_through;
 	float threshold;
 } ccv_icf_param_t;
 
@@ -1007,6 +1009,7 @@ extern const ccv_icf_param_t ccv_icf_default_params;
 
 typedef struct {
 	ccv_icf_param_t detector;
+	int grayscale;
 	int interval;
 	ccv_size_t size;
 	int feature_size;
@@ -1016,8 +1019,6 @@ typedef struct {
 	float deform_angle;
 	float deform_scale;
 	float deform_shift;
-	double weight_trimming;
-	double sample_rate;
 	double acceptance;
 } ccv_icf_new_param_t;
 
