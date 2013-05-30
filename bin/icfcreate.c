@@ -115,17 +115,17 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
-	params.interval = 5;
+	params.interval = 8;
 	params.grayscale = 0;
 	params.size.width = 20;
 	params.size.height = 60;
 	params.deform_shift = 0.01;
 	params.deform_angle = 0;
-	params.deform_scale = 0.07;
+	params.deform_scale = 0.05;
 	params.feature_size = 30000;
-	params.weak_classifier = 1500;
+	params.weak_classifier = 2000;
 	params.acceptance = acceptance;
-	params.bootstrap_criteria = 0.005;
+	params.bootstrap_criteria = 0.0005;
 	params.bootstrap = 4;
 	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	ccv_icf_write_classifier_cascade(classifier, working_dir);

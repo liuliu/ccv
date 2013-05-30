@@ -86,8 +86,8 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 				dbp += 10; \
 			} \
 			a_ptr += a->step; \
-			agp += a->cols; \
-			mgp += a->cols; \
+			agp += a->cols * ch; \
+			mgp += a->cols * ch; \
 		}
 		ccv_matrix_getter(a->type, for_block);
 #undef for_block
@@ -793,7 +793,7 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 		{
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -818,7 +818,105 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 	return positives;
 }
 
-static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, int interval, float threshold, ccv_array_t* negatives, gsl_rng* rng, ccv_array_t* bgfiles, int negnum, int grayscale)
+static uint64_t* _ccv_icf_precompute_classifier_cascade(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* positives)
+{
+	int step = ((cascade->count - 1) >> 6) + 1;
+	uint64_t* precomputed = (uint64_t*)ccmalloc(sizeof(uint64_t) * positives->rnum * step);
+	uint64_t* result = precomputed;
+	int i, j;
+	for (i = 0; i < positives->rnum; i++)
+	{
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(ccv_array_get(positives, i));
+		a->data.u8 = (uint8_t*)(a + 1);
+		ccv_dense_matrix_t* icf = 0;
+		ccv_icf(a, &icf, 0);
+		ccv_dense_matrix_t* sat = 0;
+		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+		ccv_matrix_free(icf);
+		float* ptr = sat->data.f32;
+		int ch = CCV_GET_CHANNEL(sat->type);
+		for (j = 0; j < cascade->count; j++)
+			if (_ccv_icf_run_weak_classifier(cascade->weak_classifiers + j,  ptr, sat->cols, ch, 1, 1))
+				precomputed[j >> 6] |= (1UL << (j & 63));
+			else
+				precomputed[j >> 6] &= ~(1UL << (j & 63));
+		ccv_matrix_free(sat);
+		precomputed += step;
+	}
+	return result;
+}
+
+#define less_than(s1, s2, aux) ((s1) > (s2))
+static CCV_IMPLEMENT_QSORT(_ccv_icf_threshold_rating, float, less_than)
+#undef less_than
+
+static void _ccv_icf_classifier_cascade_soft_with_positives(ccv_array_t* positives, ccv_icf_classifier_cascade_t* cascade, double min_accept)
+{
+	int i, j;
+	int step = ((cascade->count - 1) >> 6) + 1;
+	uint64_t* precomputed = _ccv_icf_precompute_classifier_cascade(cascade, positives);
+	float* positive_rate = (float*)ccmalloc(sizeof(float) * positives->rnum);
+	uint64_t* computed = precomputed;
+	for (i = 0; i < positives->rnum; i++)
+	{
+		positive_rate[i] = 0;
+		for (j = 0; j < cascade->count; j++)
+		{
+			uint64_t accept = computed[j >> 6] & (1UL << (j & 63));
+			positive_rate[i] += cascade->weak_classifiers[j].weigh[!!accept];
+		}
+		computed += step;
+	}
+	_ccv_icf_threshold_rating(positive_rate, positives->rnum, 0);
+	float threshold = positive_rate[ccv_min((int)(min_accept * (positives->rnum + 0.5) - 0.5), positives->rnum - 1)];
+	ccfree(positive_rate);
+	computed = precomputed;
+	// compute the final acceptance per positives / negatives with final threshold
+	uint64_t* acceptance = (uint64_t*)cccalloc(((positives->rnum - 1) >> 6) + 1, sizeof(uint64_t));
+	int true_positives = 0;
+	for (i = 0; i < positives->rnum; i++)
+	{
+		float rate = 0;
+		for (j = 0; j < cascade->count; j++)
+		{
+			uint64_t accept = computed[j >> 6] & (1UL << (j & 63));
+			rate += cascade->weak_classifiers[j].weigh[!!accept];
+		}
+		if (rate >= threshold)
+		{
+			acceptance[i >> 6] |= (1UL << (i & 63));
+			++true_positives;
+		} else
+			acceptance[i >> 6] &= ~(1UL << (i & 63));
+		computed += step;
+	}
+	printf(" - at threshold %f, true positive rate: %f%%\n", threshold, (float)true_positives * 100 / positives->rnum);
+	float* rate = (float*)cccalloc(positives->rnum, sizeof(float));
+	for (j = 0; j < cascade->count; j++)
+	{
+		computed = precomputed;
+		for (i = 0; i < positives->rnum; i++)
+		{
+			uint64_t correct = computed[j >> 6] & (1UL << (j & 63));
+			rate[i] += cascade->weak_classifiers[j].weigh[!!correct];
+			computed += step;
+		}
+		float threshold = FLT_MAX;
+		// find a threshold that keeps all accepted positives still acceptable
+		for (i = 0; i < positives->rnum; i++)
+		{
+			uint64_t correct = acceptance[i >> 6] & (1UL << (i & 63));
+			if (correct && rate[i] < threshold)
+				threshold = rate[i];
+		}
+		cascade->weak_classifiers[j].threshold = threshold + 1e-10;
+	}
+	ccfree(rate);
+	ccfree(acceptance);
+	ccfree(precomputed);
+}
+
+static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, int interval, ccv_array_t* negatives, gsl_rng* rng, ccv_array_t* bgfiles, int negnum, int grayscale)
 {
 	int i, j, x, y, q, p;
 	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccmalloc(ccv_compute_dense_matrix_size(cascade->size.height + 2, cascade->size.width + 2, (grayscale ? CCV_C1 : CCV_C3) | CCV_8U));
@@ -832,7 +930,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 				continue;
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -870,15 +968,20 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 					{
 						for (x = 1; x < sat->cols - cascade->size.width - 2; x++)
 						{
+							int pass = 1;
 							float sum = 0;
 							for (p = 0; p < cascade->count; p++)
 							{
 								ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + p;
 								int c = _ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, x, 0);
 								sum += weak_classifier->weigh[c];
+								if (sum < weak_classifier->threshold)
+								{
+									pass = 0;
+									break;
+								}
 							}
-							// bigger than the threshold, we want to collect it
-							if (sum > threshold)
+							if (pass)
 							{
 								ccv_point_t point = ccv_point(x - 1, y - 1);
 								ccv_array_push(seq, &point);
@@ -930,7 +1033,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 		{
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(bgfiles, j);
 			ccv_dense_matrix_t* image = 0;
-			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : 0));
+			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
 				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
@@ -964,10 +1067,6 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 	printf("\n");
 	return negatives;
 }
-
-#define less_than(s1, s2, aux) ((s1) > (s2))
-static CCV_IMPLEMENT_QSORT(_ccv_icf_threshold_rating, float, less_than)
-#undef less_than
 
 ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params)
 {
@@ -1080,7 +1179,8 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 					z.example_state = 0;
 					ccfree(z.precomputed);
 					z.precomputed = 0;
-					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, threshold, z.negatives, rng, bgfiles, negnum, params.grayscale);
+					_ccv_icf_classifier_cascade_soft_with_positives(z.positives, z.classifier->cascade + z.i, params.acceptance);
+					_ccv_icf_bootstrap_negatives(z.classifier->cascade + z.i, params.interval, z.negatives, rng, bgfiles, negnum, params.grayscale);
 					printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
 					z.classifier->cascade[z.i].count = 0; // reset everything
 					z.x.negatives = 0;
@@ -1103,104 +1203,16 @@ ccv_icf_multiscale_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_arra
 	return z.classifier;
 }
 
-static uint64_t* _ccv_icf_precompute_classifier_cascade(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* positives)
-{
-	int step = ((cascade->count - 1) >> 6) + 1;
-	uint64_t* precomputed = (uint64_t*)ccmalloc(sizeof(uint64_t) * positives->rnum * step);
-	uint64_t* result = precomputed;
-	int i, j;
-	for (i = 0; i < positives->rnum; i++)
-	{
-		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(ccv_array_get(positives, i));
-		a->data.u8 = (uint8_t*)(a + 1);
-		ccv_dense_matrix_t* icf = 0;
-		ccv_icf(a, &icf, 0);
-		ccv_dense_matrix_t* sat = 0;
-		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
-		ccv_matrix_free(icf);
-		float* ptr = sat->data.f32;
-		int ch = CCV_GET_CHANNEL(sat->type);
-		for (j = 0; j < cascade->count; j++)
-			if (_ccv_icf_run_weak_classifier(cascade->weak_classifiers + j,  ptr, sat->cols, ch, 1, 1))
-				precomputed[j >> 6] |= (1UL << (j & 63));
-			else
-				precomputed[j >> 6] &= ~(1UL << (j & 63));
-		ccv_matrix_free(sat);
-		precomputed += step;
-	}
-	return result;
-}
-
 void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, const char* dir, ccv_icf_new_param_t params)
 {
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	int i, j, k;
+	int i;
 	for (i = 0; i < multiscale_cascade->interval; i++)
 	{
 		ccv_icf_classifier_cascade_t* cascade = multiscale_cascade->cascade + i;
 		ccv_array_t* positives = _ccv_icf_collect_positives(rng, cascade->size, posfiles, posnum, params.deform_angle, params.deform_scale, params.deform_shift, params.grayscale);
-		int step = ((cascade->count - 1) >> 6) + 1;
-		uint64_t* precomputed = _ccv_icf_precompute_classifier_cascade(cascade, positives);
-		float* positive_rate = (float*)ccmalloc(sizeof(float) * positives->rnum);
-		uint64_t* computed = precomputed;
-		for (j = 0; j < positives->rnum; j++)
-		{
-			positive_rate[j] = 0;
-			for (k = 0; k < cascade->count; k++)
-			{
-				uint64_t accept = computed[k >> 6] & (1UL << (k & 63));
-				positive_rate[j] += cascade->weak_classifiers[k].weigh[!!accept];
-			}
-			computed += step;
-		}
-		_ccv_icf_threshold_rating(positive_rate, positives->rnum, 0);
-		float threshold = positive_rate[ccv_min((int)(params.acceptance * (positives->rnum + 0.5) - 0.5), positives->rnum - 1)];
-		ccfree(positive_rate);
-		computed = precomputed;
-		// compute the final acceptance per positives / negatives with final threshold
-		uint64_t* acceptance = (uint64_t*)cccalloc(((positives->rnum - 1) >> 6) + 1, sizeof(uint64_t));
-		int true_positives = 0;
-		for (j = 0; j < positives->rnum; j++)
-		{
-			float rate = 0;
-			for (k = 0; k < cascade->count; k++)
-			{
-				uint64_t accept = computed[k >> 6] & (1UL << (k & 63));
-				rate += cascade->weak_classifiers[k].weigh[!!accept];
-			}
-			if (rate >= threshold)
-			{
-				acceptance[j >> 6] |= (1UL << (j & 63));
-				++true_positives;
-			} else
-				acceptance[j >> 6] &= ~(1UL << (j & 63));
-			computed += step;
-		}
-		printf(" - at threshold %f, true positive rate: %f%%\n", threshold, (float)true_positives * 100 / positives->rnum);
-		float* rate = (float*)cccalloc(positives->rnum, sizeof(float));
-		for (k = 0; k < cascade->count; k++)
-		{
-			computed = precomputed;
-			for (j = 0; j < positives->rnum; j++)
-			{
-				uint64_t correct = computed[k >> 6] & (1UL << (k & 63));
-				rate[j] += cascade->weak_classifiers[k].weigh[!!correct];
-				computed += step;
-			}
-			float threshold = FLT_MAX;
-			// find a threshold that keeps all accepted positives still acceptable
-			for (j = 0; j < positives->rnum; j++)
-			{
-				uint64_t correct = acceptance[j >> 6] & (1UL << (j & 63));
-				if (correct && rate[j] < threshold)
-					threshold = rate[j];
-			}
-			cascade->weak_classifiers[k].threshold = threshold + 1e-10;
-		}
-		ccfree(rate);
-		ccfree(acceptance);
-		ccfree(precomputed);
+		_ccv_icf_classifier_cascade_soft_with_positives(positives, cascade, params.acceptance);
 		ccv_array_free(positives);
 	}
 	gsl_rng_free(rng);
@@ -1431,20 +1443,17 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 			// count number of neighbors
 			for(i = 0; i < seq[k]->rnum; i++)
 			{
-				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq[k], i);
+				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq[k], i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
-				if (comps[idx].neighbors == 0)
+				comps[idx].id = r1.id;
+				if (r1.confidence > comps[idx].confidence || comps[idx].neighbors == 0)
+				{
+					comps[idx].rect = r1.rect;
 					comps[idx].confidence = r1.confidence;
+				}
 
 				++comps[idx].neighbors;
-
-				comps[idx].rect.x += r1.rect.x;
-				comps[idx].rect.y += r1.rect.y;
-				comps[idx].rect.width += r1.rect.width;
-				comps[idx].rect.height += r1.rect.height;
-				comps[idx].id = r1.id;
-				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
 			}
 
 			// calculate average bounding box
@@ -1452,37 +1461,27 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_cl
 			{
 				int n = comps[i].neighbors;
 				if(n >= params.min_neighbors)
-				{
-					ccv_comp_t comp;
-					comp.rect.x = (comps[i].rect.x * 2 + n) / (2 * n);
-					comp.rect.y = (comps[i].rect.y * 2 + n) / (2 * n);
-					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
-					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
-					comp.neighbors = comps[i].neighbors;
-					comp.id = comps[i].id;
-					comp.confidence = comps[i].confidence;
-					ccv_array_push(seq2, &comp);
-				}
+					ccv_array_push(seq2, comps + i);
 			}
 
-			// filter out small face rectangles inside large face rectangles
+			// filter out small object rectangles inside large object rectangles
 			for(i = 0; i < seq2->rnum; i++)
 			{
-				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
+				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, i);
 				int flag = 1;
 
 				for(j = 0; j < seq2->rnum; j++)
 				{
-					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
-					int distance = (int)(r2.rect.width * 0.25 + 0.5);
+					ccv_root_comp_t r2 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
+					int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
-					if(i != j &&
-					   r1.id == r2.id &&
-					   r1.rect.x >= r2.rect.x - distance &&
-					   r1.rect.y >= r2.rect.y - distance &&
-					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
-					   r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-					   (r2.neighbors > ccv_max(3, r1.neighbors) || r1.neighbors < 3))
+					if (i != j &&
+						r1.id == r2.id &&
+						r1.rect.x >= r2.rect.x - distance &&
+						r1.rect.y >= r2.rect.y - distance &&
+						r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+						r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+						(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
 					{
 						flag = 0;
 						break;
