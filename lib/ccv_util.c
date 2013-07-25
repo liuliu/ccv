@@ -19,7 +19,7 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
 	return 0;
 }
 
-void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type)
+void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
 	ccv_declare_derived_signature(sig, da->sig != 0, ccv_sign_with_literal("ccv_visualize"), da->sig, CCV_EOF_SIGN);
@@ -114,6 +114,44 @@ void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
 	}
 	ccv_matrix_getter(da->type, ccv_matrix_typeof_setter, db->type, for_block);
 #undef for_block
+}
+
+void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, int type, ccv_margin_t margin)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	ccv_declare_derived_signature(sig, da->sig != 0, ccv_sign_with_format(64, "ccv_border(%d,%d,%d,%d)", margin.left, margin.top, margin.right, margin.bottom), da->sig, CCV_EOF_SIGN);
+	int ch = CCV_GET_CHANNEL(da->type);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | ch : CCV_GET_DATA_TYPE(type) | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows + margin.top + margin.bottom, da->cols + margin.left + margin.right, CCV_ALL_DATA_TYPE | ch, type, sig);
+	ccv_object_return_if_cached(, db);
+	ccv_zero(db);
+	int i, j;
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8 + margin.top * db->step + margin.left * ch * CCV_GET_DATA_TYPE_SIZE(db->type);
+	if (CCV_GET_DATA_TYPE(da->type) == CCV_GET_DATA_TYPE(db->type))
+	{
+		// use memcpy to speedup
+		size_t scan = da->cols * ch * CCV_GET_DATA_TYPE_SIZE(da->type);
+		for (i = 0; i < da->rows; i++)
+		{
+			memcpy(bptr, aptr, scan);
+			aptr += da->step;
+			bptr += db->step;
+		}
+	} else {
+#define for_block(_for_get, _for_type, _for_set) \
+		for (i = 0; i < da->rows; i++) \
+		{ \
+			for (j = 0; j < da->cols * ch; j++) \
+			{ \
+				_for_set(bptr, j, _for_get(aptr, j, 0), 0); \
+			} \
+			aptr += da->step; \
+			bptr += db->step; \
+		}
+		ccv_matrix_getter(da->type, ccv_matrix_typeof_setter, db->type, for_block);
+#undef for_block
+	}
 }
 
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)

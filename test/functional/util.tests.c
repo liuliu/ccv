@@ -181,8 +181,30 @@ TEST_CASE("matrix flatten")
 	ccv_flatten(dmt, (ccv_matrix_t**)&result, 0, 0);
 	ccv_matrix_free(dmt);
 	int rf[4] = {300, 200, 45, 450};
-	REQUIRE_EQ(CCV_GET_CHANNEL(result->type), CCV_C1, "flatten matrix should has only one channel");
-	REQUIRE_ARRAY_EQ(int, result->data.i32, rf, 4, "matrix flatten should has same value as reference array");
+	REQUIRE_EQ(CCV_GET_CHANNEL(result->type), CCV_C1, "flatten matrix should have only one channel");
+	REQUIRE_ARRAY_EQ(int, result->data.i32, rf, 4, "matrix flatten should have same value as reference array");
+	ccv_matrix_free(result);
+}
+
+TEST_CASE("matrix border")
+{
+	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32F | CCV_C1, 0, 0);
+	dmt->data.f32[0] = 2.0;
+	ccv_dense_matrix_t* result = 0;
+	ccv_margin_t margin = ccv_margin(2, 3, 1, 2);
+	ccv_border(dmt, (ccv_matrix_t**)&result, 0, margin);
+	ccv_matrix_free(dmt);
+	float rf[24] = {
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+		0, 0, 2, 0,
+		0, 0, 0, 0,
+		0, 0, 0, 0,
+	};
+	REQUIRE_EQ(margin.top + margin.bottom + 1, result->rows, "bordered matrix should have margin.top + margin.bottom + 1 rows");
+	REQUIRE_EQ(margin.left + margin.right + 1, result->cols, "bordered matrix should have margin.left + margin.right + 1 cols");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, result->data.f32, rf, 24, 1e-5, "matrix border should have same value as reference array");
 	ccv_matrix_free(result);
 }
 

@@ -402,13 +402,13 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 		float rotate_z = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
 		float scale = 1 + deform_scale  - deform_scale * 2 * dsfmt_genrand_close_open(dsfmt);
 		float m00 = cosf(rotate_z) * scale;
-		float m01 = cosf(rotate_y) * sinf(rotate_z);
+		float m01 = cosf(rotate_y) * sinf(rotate_z) * scale;
 		float m02 = (deform_shift * 2 * dsfmt_genrand_close_open(dsfmt) - deform_shift) * box.rect.width;
-		float m10 = sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z);
+		float m10 = (sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z)) * scale;
 		float m11 = (sinf(rotate_y) * sinf(rotate_z) + cosf(rotate_x) * cosf(rotate_z)) * scale;
 		float m12 = (deform_shift * dsfmt_genrand_close_open(dsfmt) - deform_shift) * box.rect.height;
-		float m20 = sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z);
-		float m21 = sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z);
+		float m20 = (sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z)) * scale;
+		float m21 = (sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z)) * scale;
 		float m22 = cosf(rotate_x) * cosf(rotate_y);
 		ccv_decimal_point_t p00 = ccv_perspective_transform_apply(ccv_decimal_point(0, 0), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);
 		ccv_decimal_point_t p01 = ccv_perspective_transform_apply(ccv_decimal_point(box.rect.width, 0), ccv_size(box.rect.width, box.rect.height), m00, m01, m02, m10, m11, m12, m20, m21, m22);

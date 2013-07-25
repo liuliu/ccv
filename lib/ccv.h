@@ -353,6 +353,23 @@ enum {
 
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type);
 
+typedef struct {
+	int left;
+	int top;
+	int right;
+	int bottom;
+} ccv_margin_t;
+
+inline static ccv_margin_t ccv_margin(int left, int top, int right, int bottom)
+{
+	ccv_margin_t margin;
+	margin.left = left;
+	margin.top = top;
+	margin.right = right;
+	margin.bottom = bottom;
+	return margin;
+}
+
 /* matrix build blocks / utility functions ccv_util.c */
 
 ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat);
@@ -365,8 +382,9 @@ void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_spars
 
 void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x);
 int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b);
-void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int type, int y, int x, int rows, int cols);
-void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type);
+void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int rows, int cols);
+void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, int type, ccv_margin_t margin);
+void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag);
 void ccv_zero(ccv_matrix_t* mat);
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
@@ -968,7 +986,7 @@ void ccv_tld_free(ccv_tld_t* tld);
  * With WFS (width first search) tree from:
  * High-Performance Rotation Invariant Multiview Face Detection, Chang Huang, Haizhou Ai, Yuan Li and Shihong Lao */
 
-#define CCV_ICF_SAT_MAX (8)
+#define CCV_ICF_SAT_MAX (2)
 
 typedef struct {
 	int count;
@@ -988,12 +1006,14 @@ typedef struct {
 
 typedef struct {
 	int count;
-	ccv_size_t size;
+	ccv_margin_t margin;
+	ccv_size_t size; // this is the size includes the margin
 	ccv_icf_decision_tree_t* weak_classifiers;
 } ccv_icf_classifier_cascade_t;
 
 typedef struct {
-	int interval;
+	int count;
+	int octave;
 	int grayscale;
 	ccv_icf_classifier_cascade_t* cascade;
 } ccv_icf_multiscale_classifier_cascade_t;
@@ -1009,9 +1029,11 @@ extern const ccv_icf_param_t ccv_icf_default_params;
 
 typedef struct {
 	ccv_icf_param_t detector;
-	int grayscale;
 	int interval;
-	ccv_size_t size;
+	int octave;
+	int grayscale;
+	ccv_margin_t margin;
+	ccv_size_t size; // this is the size excludes the margin
 	int feature_size;
 	int weak_classifier;
 	int bootstrap;

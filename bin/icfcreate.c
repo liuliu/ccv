@@ -91,9 +91,7 @@ int main(int argc, char** argv)
 			file_info.filename[dirlen - 1] = '/';
 		}
 		strncpy(file_info.filename + dirlen, file, 1024 - dirlen);
-		pose.a = (int)(pose.a * 1.1 * 2 + 0.5) * 0.5;
-		pose.b = (int)(pose.b * 1.1 * 2 + 0.5) * 0.5;
-		// blow up pose a little bit for INRIA data
+		// blow up pose a little bit for INRIA data (16px on four strides)
 		file_info.pose = pose;
 		ccv_array_push(posfiles, &file_info);
 	}
@@ -119,17 +117,19 @@ int main(int argc, char** argv)
 	fclose(r1);
 	free(file);
 	params.interval = 8;
+	params.octave = 3;
 	params.grayscale = 0;
-	params.size.width = 50;
-	params.size.height = 120;
-	params.deform_shift = 0.04;
+	params.margin = ccv_margin(5, 5, 5, 5);
+	params.size = ccv_size(20, 60);
+	params.deform_shift = 2;
 	params.deform_angle = 0;
 	params.deform_scale = 0.075;
-	params.feature_size = 30000;
+	params.feature_size = 50000;
 	params.weak_classifier = 2000;
 	params.acceptance = acceptance;
 	params.bootstrap_criteria = 0;
 	params.bootstrap = 3;
+	params.detector = ccv_icf_default_params;
 	ccv_icf_multiscale_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, working_dir, params);
 	ccv_icf_write_classifier_cascade(classifier, working_dir);
 	for (i = 0; i < posfiles->rnum; i++)
