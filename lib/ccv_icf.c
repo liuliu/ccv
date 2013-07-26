@@ -538,7 +538,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		for (j = 0; j < feature_size; j++)
 		{
 			ccv_icf_feature_t* feature = features + j;
-			featval[j * (positives->rnum + negatives->rnum) + i] = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
+			featval[(size_t)j * (positives->rnum + negatives->rnum) + i] = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
 		}
 		ccv_matrix_free(sat);
 #ifdef USE_DISPATCH
