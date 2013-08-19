@@ -1004,24 +1004,34 @@ typedef struct {
 	float threshold;
 } ccv_icf_decision_tree_t;
 
-typedef struct {
-	int count;
-	ccv_margin_t margin;
-	ccv_size_t size; // this is the size includes the margin
-	ccv_icf_decision_tree_t* weak_classifiers;
-} ccv_icf_classifier_cascade_t;
+enum {
+	CCV_ICF_CLASSIFIER_TYPE_A = 0x1,
+	CCV_ICF_CLASSIFIER_TYPE_B = 0x2,
+};
 
 typedef struct {
+	int type;
+	int count;
+	int grayscale;
+	ccv_margin_t margin;
+	double a, b; // scale the result, with a * (confidence + b)
+	ccv_size_t size; // this is the size includes the margin
+	ccv_icf_decision_tree_t* weak_classifiers;
+} ccv_icf_classifier_cascade_t; // Type A, scale image
+
+typedef struct {
+	int type;
 	int count;
 	int octave;
 	int grayscale;
 	ccv_icf_classifier_cascade_t* cascade;
-} ccv_icf_multiscale_classifier_cascade_t;
+} ccv_icf_multiscale_classifier_cascade_t; // Type B, scale the classifier
 
 typedef struct {
 	int min_neighbors;
 	int flags;
 	int step_through;
+	int interval;
 	float threshold;
 } ccv_icf_param_t;
 
@@ -1029,15 +1039,13 @@ extern const ccv_icf_param_t ccv_icf_default_params;
 
 typedef struct {
 	ccv_icf_param_t detector;
-	int interval;
-	int octave;
 	int grayscale;
+	int min_dimension;
 	ccv_margin_t margin;
 	ccv_size_t size; // this is the size excludes the margin
 	int feature_size;
 	int weak_classifier;
 	int bootstrap;
-	double bootstrap_criteria;
 	float deform_angle;
 	float deform_scale;
 	float deform_shift;
@@ -1045,11 +1053,21 @@ typedef struct {
 } ccv_icf_new_param_t;
 
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, const char* dir, ccv_icf_new_param_t params);
-void ccv_icf_classifier_cascade_soft(ccv_icf_multiscale_classifier_cascade_t* multiscale_cascade, ccv_array_t* posfiles, int posnum, const char* dir, ccv_icf_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_icf_multiscale_classifier_cascade_t** multiscale_cascade, int count, ccv_icf_param_t params);
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* directory);
-void ccv_icf_write_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
-void ccv_icf_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier);
+
+/* ICF for single scale */
+ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
+void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, ccv_icf_new_param_t params);
+ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* filename);
+void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, const char* filename);
+void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier);
+
+/* ICF for multiple scale */
+ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
+ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_multiscale_classifier_cascade(const char* directory);
+void ccv_icf_write_multiscale_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
+void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier);
+
+/* polymorph function to run ICF based detector */
+ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
 #endif
