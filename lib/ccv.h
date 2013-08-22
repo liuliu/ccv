@@ -1014,7 +1014,6 @@ typedef struct {
 	int count;
 	int grayscale;
 	ccv_margin_t margin;
-	double a, b; // scale the result, with a * (confidence + b)
 	ccv_size_t size; // this is the size includes the margin
 	ccv_icf_decision_tree_t* weak_classifiers;
 } ccv_icf_classifier_cascade_t; // Type A, scale image

@@ -141,20 +141,23 @@ int main(int argc, char** argv)
 	}
 	fclose(r2);
 	free(file);
-	params.grayscale = 0;
+	params.grayscale = 1;
 	params.margin = ccv_margin(5, 5, 5, 5);
 	params.size = ccv_size(20, 60);
+	params.min_dimension = 2;
 	params.deform_shift = 1;
 	params.deform_angle = 0;
 	params.deform_scale = 0.075;
 	params.feature_size = 50000;
 	params.weak_classifier = 2000;
 	params.acceptance = acceptance;
-	params.bootstrap = 3;
+	params.bootstrap = 4;
 	params.detector = ccv_icf_default_params;
 	params.detector.step_through = 4; // for faster negatives bootstrap time
 	ccv_icf_classifier_cascade_t* classifier = ccv_icf_classifier_cascade_new(posfiles, positive_count, bgfiles, negative_count, validatefiles, working_dir, params);
-	ccv_icf_write_classifier_cascade(classifier, working_dir);
+	char filename[1024];
+	snprintf(filename, 1024, "%s/final-cascade", working_dir);
+	ccv_icf_write_classifier_cascade(classifier, filename);
 	for (i = 0; i < posfiles->rnum; i++)
 	{
 		ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, i);

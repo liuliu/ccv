@@ -176,6 +176,7 @@ static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, int minimu
 		feature->sat[i * 2 + 1].x = ccv_max(x0, x1);
 		feature->sat[i * 2 + 1].y = ccv_max(y0, y1);
 		feature->channel[i] = gsl_rng_uniform_int(rng, grayscale ? 8 : 10); // 8-channels for grayscale, and 10-channels for rgb
+		assert(feature->channel[i] >= 0 && feature->channel[i] < (grayscale ? 8 : 10));
 		feature->alpha[i] = gsl_rng_uniform(rng) / (float)((feature->sat[i * 2 + 1].x - feature->sat[i * 2].x + 1) * (feature->sat[i * 2 + 1].y - feature->sat[i * 2].y + 1));
 	}
 }
@@ -339,7 +340,8 @@ static void _ccv_icf_write_classifier_cascade_state(ccv_icf_classifier_cascade_s
 	}
 	if (!state->x.classifier)
 	{
-		ccv_icf_write_classifier_cascade(state->classifier, directory);
+		snprintf(filename, 1024, "%s/cascade", directory);
+		ccv_icf_write_classifier_cascade(state->classifier, filename);
 		state->x.classifier = 1;
 	}
 }
@@ -436,12 +438,14 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 		fread(state->precomputed, 1, step * state->params.feature_size, r);
 		fclose(r);
 	}
-	state->classifier = ccv_icf_read_classifier_cascade(directory);
+	snprintf(filename, 1024, "%s/cascade", directory);
+	state->classifier = ccv_icf_read_classifier_cascade(filename);
 	if (!state->classifier)
 	{
 		state->classifier = (ccv_icf_classifier_cascade_t*)ccmalloc(sizeof(ccv_icf_classifier_cascade_t));
 		state->classifier->count = 0;
 		state->classifier->grayscale = state->params.grayscale;
+		state->classifier->weak_classifiers = (ccv_icf_decision_tree_t*)ccmalloc(sizeof(ccv_icf_decision_tree_t) * state->params.weak_classifier);
 	} else {
 		if (state->classifier->count < state->params.weak_classifier)
 			state->classifier->weak_classifiers = (ccv_icf_decision_tree_t*)ccrealloc(state->classifier->weak_classifiers, sizeof(ccv_icf_decision_tree_t) * state->params.weak_classifier);
@@ -461,16 +465,22 @@ static inline float _ccv_icf_run_feature(ccv_icf_feature_t* feature, float* ptr,
 	return c;
 }
 
-static inline uint32_t _ccv_icf_3_uint8_to_1_uint32(uint8_t* u8)
+static inline void _ccv_icf_3_uint8_to_1_uint1_1_uint23(uint8_t* u8, uint8_t* u1, uint32_t* uint23)
 {
-	return (((uint32_t)u8[0]) << 16) | ((uint32_t)(u8[1]) << 8) | u8[2];
+	*u1 = (u8[0] >> 7);
+	*uint23 = (((uint32_t)(u8[0] & 0x7f)) << 16) | ((uint32_t)(u8[1]) << 8) | u8[2];
 }
 
-static inline void _ccv_icf_1_uint32_to_3_uint8(uint32_t u32, uint8_t* u8)
+static inline uint32_t _ccv_icf_3_uint8_to_1_uint23(uint8_t* u8)
 {
-	u8[0] = (u32 >> 16) & 0xff;
-	u8[1] = (u32 >> 8) & 0xff;
-	u8[2] = u32 & 0xff;
+	return (((uint32_t)(u8[0] & 0x7f)) << 16) | ((uint32_t)(u8[1]) << 8) | u8[2];
+}
+
+static inline void _ccv_icf_1_uint1_1_uint23_to_3_uint8(uint8_t u1, uint32_t u23, uint8_t* u8)
+{
+	u8[0] = ((u1 << 7) | (u23 >> 16)) & 0xff;
+	u8[1] = (u23 >> 8) & 0xff;
+	u8[2] = u23 & 0xff;
 }
 
 static float _ccv_icf_run_feature_on_example(ccv_icf_feature_t* feature, ccv_dense_matrix_t* a)
@@ -527,7 +537,9 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		for (j = 0; j < feature_size; j++)
 		{
 			ccv_icf_feature_t* feature = features + j;
-			featval[(size_t)j * (positives->rnum + negatives->rnum) + i] = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
+			float c = _ccv_icf_run_feature(feature, ptr, sat->cols, ch, 1, 1);
+			assert(isfinite(c));
+			featval[(size_t)j * (positives->rnum + negatives->rnum) + i] = c;
 		}
 		ccv_matrix_free(sat);
 #ifdef USE_DISPATCH
@@ -546,8 +558,11 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 			sortkv[j].value = pfeatval[j], sortkv[j].index = j;
 		_ccv_icf_precomputed_ordering(sortkv, positives->rnum + negatives->rnum, 0);
-		for (j = 0; j < positives->rnum + negatives->rnum; j++)
-			_ccv_icf_1_uint32_to_3_uint8(sortkv[j].index, computed + j * 3);
+		// the first flag denotes if the subsequent one are equal to the previous one (if so, we have to skip both of them)
+		for (j = 0; j < positives->rnum + negatives->rnum - 1; j++)
+			_ccv_icf_1_uint1_1_uint23_to_3_uint8(sortkv[j].value == sortkv[j + 1].value, sortkv[j].index, computed + j * 3);
+		j = positives->rnum + negatives->rnum - 1;
+		_ccv_icf_1_uint1_1_uint23_to_3_uint8(0, sortkv[j].index, computed + j * 3);
 		computed += step;
 		pfeatval += positives->rnum + negatives->rnum;
 	}
@@ -568,8 +583,8 @@ static inline float _ccv_icf_compute_threshold_between(ccv_icf_feature_t* featur
 {
 	float c[2];
 	uint32_t b[2] = {
-		_ccv_icf_3_uint8_to_1_uint32(computed + index0 * 3),
-		_ccv_icf_3_uint8_to_1_uint32(computed + index1 * 3),
+		_ccv_icf_3_uint8_to_1_uint23(computed + index0 * 3),
+		_ccv_icf_3_uint8_to_1_uint23(computed + index1 * 3),
 	};
 	ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(b[0] < positives->rnum ? positives : negatives, b[0] < positives->rnum ? b[0] : b[0] - positives->rnum);
 	a->data.u8 = (unsigned char*)(a + 1); // re-host the pointer to the right place
@@ -585,14 +600,14 @@ static inline void _ccv_icf_example_correct(ccv_icf_example_state_t* example_sta
 	int i;
 	for (i = start; i <= end; i++)
 	{
-		uint32_t index = _ccv_icf_3_uint8_to_1_uint32(computed + i * 3);
+		uint32_t index = _ccv_icf_3_uint8_to_1_uint23(computed + i * 3);
 		if (!lut || lut[index] == leaf)
 			example_state[index].correct = (index < positives->rnum);
 	}
 }
 
 typedef struct {
-	double error_index;
+	int error_index;
 	double error_rate;
 	double weigh[2];
 	int count[2];
@@ -619,21 +634,26 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 		ccv_icf_first_feature_find_t min_find = {
 			.error_rate = 1.0,
 			.error_index = 0,
-			.weigh = {0},
-			.count = {0},
+			.weigh = {0, 0},
+			.count = {0, 0},
 		};
-		double weigh[2] = {0};
-		int count[2] = {0};
+		double weigh[2] = {0, 0};
+		int count[2] = {0, 0};
 		int j;
 		uint8_t* computed = precomputed + step * i;
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
-			uint32_t index = _ccv_icf_3_uint8_to_1_uint32(computed + j * 3);
+			uint8_t skip;
+			uint32_t index;
+			_ccv_icf_3_uint8_to_1_uint1_1_uint23(computed + j * 3, &skip, &index);
+			conditional_assert(j == positives->rnum + negatives->rnum - 1, !skip);
 			assert(index >= 0 && index < positives->rnum + negatives->rnum);
 			weigh[index < positives->rnum] += example_state[index].weight;
 			assert(example_state[index].weight > 0);
 			assert(weigh[0] <= aweigh0 + 1e-10 && weigh[1] <= aweigh1 + 1e-10);
 			++count[index < positives->rnum];
+			if (skip) // the current index is equal to the next one, we cannot differentiate, therefore, skip
+				continue;
 			double error_rate = ccv_min(weigh[0] + aweigh1 - weigh[1], weigh[1] + aweigh0 - weigh[0]);
 			assert(error_rate > 0);
 			if (error_rate < min_find.error_rate)
@@ -655,8 +675,8 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 	ccv_icf_first_feature_find_t best = {
 		.error_rate = 1.0,
 		.error_index = -1,
-		.weigh = {0},
-		.count = {0},
+		.weigh = {0, 0},
+		.count = {0, 0},
 	};
 	int feature_index = 0;
 	for (i = 0; i < feature_size; i++)
@@ -673,7 +693,7 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 	if (best.weigh[0] + aweigh1 - best.weigh[1] < best.weigh[1] + aweigh0 - best.weigh[0])
 	{
 		for (i = 0; i < positives->rnum + negatives->rnum; i++)
-			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i <= best.error_index);
+			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint23(computed + i * 3)] = (i <= best.error_index);
 		feature->beta = _ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
 		// revert the sign of alpha, after threshold is computed
 		for (i = 0; i < feature->count; i++)
@@ -691,7 +711,7 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 			_ccv_icf_example_correct(example_state, computed, 0, 0, positives, negatives, 0, best.error_index);
 	} else {
 		for (i = 0; i < positives->rnum + negatives->rnum; i++)
-			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint32(computed + i * 3)] = (i > best.error_index);
+			intermediate_cache.lut[_ccv_icf_3_uint8_to_1_uint23(computed + i * 3)] = (i > best.error_index);
 		feature->beta = -_ccv_icf_compute_threshold_between(feature, computed, positives, negatives, best.error_index, best.error_index + 1);
 		intermediate_cache.weigh[0] = best.weigh[0];
 		intermediate_cache.weigh[1] = best.weigh[1];
@@ -710,7 +730,7 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 }
 
 typedef struct {
-	double error_index;
+	int error_index;
 	double error_rate;
 	double weigh[2];
 } ccv_icf_second_feature_find_t;
@@ -731,19 +751,34 @@ static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t interme
 		ccv_icf_second_feature_find_t min_find = {
 			.error_rate = 1.0,
 			.error_index = 0,
-			.weigh = {0},
+			.weigh = {0, 0},
 		};
-		double weigh[2] = {0};
+		double weigh[2] = {0, 0};
 		uint8_t* computed = precomputed + step * i;
-		int j;
+		int j, k;
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 		{
-			uint32_t index = _ccv_icf_3_uint8_to_1_uint32(computed + j * 3);
+			uint8_t skip;
+			uint32_t index;
+			_ccv_icf_3_uint8_to_1_uint1_1_uint23(computed + j * 3, &skip, &index);
+			conditional_assert(j == positives->rnum + negatives->rnum - 1, !skip);
 			assert(index >= 0 && index < positives->rnum + negatives->rnum);
 			// only care about part of the data
 			if (lut[index] == leaf)
 			{
+				uint8_t leaf_skip = 0;
+				for (k = j + 1; skip; k++)
+				{
+					uint32_t new_index;
+					_ccv_icf_3_uint8_to_1_uint1_1_uint23(computed + j * 3, &skip, &new_index);
+					// if the next equal one is the same leaf, we cannot distinguish them, skip
+					if ((leaf_skip = (lut[new_index] == leaf)))
+						break;
+					conditional_assert(k == positives->rnum + negatives->rnum - 1, !skip);
+				}
 				weigh[index < positives->rnum] += example_state[index].weight;
+				if (leaf_skip)
+					continue;
 				assert(example_state[index].weight > 0);
 				assert(weigh[0] <= aweigh[0] + 1e-10 && weigh[1] <= aweigh[1] + 1e-10);
 				double error_rate = ccv_min(weigh[0] + aweigh[1] - weigh[1], weigh[1] + aweigh[0] - weigh[0]);
@@ -765,7 +800,7 @@ static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t interme
 	ccv_icf_second_feature_find_t best = {
 		.error_rate = 1.0,
 		.error_index = -1,
-		.weigh = {0},
+		.weigh = {0, 0},
 	};
 	int feature_index = 0;
 	for (i = 0; i < feature_size; i++)
@@ -984,7 +1019,7 @@ static void _ccv_icf_classifier_cascade_soft_with_validates(ccv_array_t* validat
 			if (correct && rate[i] < threshold)
 				threshold = rate[i];
 		}
-		cascade->weak_classifiers[j].threshold = threshold + 1e-10;
+		cascade->weak_classifiers[j].threshold = threshold - 1e-10;
 	}
 	ccfree(rate);
 	ccfree(acceptance);
@@ -1285,15 +1320,48 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 	printf("\n");
 	return negatives;
 }
-/*
-	for (z.i = 0; z.i < (params.interval + 1) * params.octave; z.i++)
+
+#ifdef USE_SANITY_ASSERTION
+static double _ccv_icf_rate_weak_classifier(ccv_icf_decision_tree_t* weak_classifier, ccv_array_t* positives, ccv_array_t* negatives, ccv_icf_example_state_t* example_state)
+{
+	int i;
+	double rate = 0;
+	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
-		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
-		z.scale = pow(scale_factor, z.i);
-		z.size = ccv_size((int)(params.size.width * z.scale + 0.5), (int)(params.size.height * z.scale + 0.5));
-		z.margin = ccv_margin((int)(params.margin.left * z.scale + 0.5), (int)(params.margin.top * z.scale + 0.5), (int)(params.margin.right * z.scale + 0.5), (int)(params.margin.bottom * z.scale + 0.5));
-(int)(2 * z.scale + 0.5)
-*/
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(i < positives->rnum ? positives : negatives, i < positives->rnum ? i : i - positives->rnum);
+		a->data.u8 = (uint8_t*)(a + 1); // re-host the pointer to the right place
+		ccv_dense_matrix_t* icf = 0;
+		// we have 1px padding around the image
+		ccv_icf(a, &icf, 0);
+		ccv_dense_matrix_t* sat = 0;
+		ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
+		ccv_matrix_free(icf);
+		float* ptr = sat->data.f32;
+		int ch = CCV_GET_CHANNEL(sat->type);
+		if (i < positives->rnum)
+		{
+			if (_ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, 1, 1))
+			{
+				assert(example_state[i].correct);
+				rate += example_state[i].weight;
+			} else {
+				assert(!example_state[i].correct);
+			}
+		} else {
+			if (!_ccv_icf_run_weak_classifier(weak_classifier, ptr, sat->cols, ch, 1, 1))
+			{
+				assert(example_state[i].correct);
+				rate += example_state[i].weight;
+			} else {
+				assert(!example_state[i].correct);
+			}
+		}
+		ccv_matrix_free(sat);
+	}
+	return rate;
+}
+#endif
+
 ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* validatefiles, const char* dir, ccv_icf_new_param_t params)
 {
 	_ccv_icf_check_params(params);
@@ -1324,7 +1392,6 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	z.negatives = _ccv_icf_collect_negatives(rng, z.size, z.margin, bgfiles, negnum, params.deform_angle, params.deform_scale, params.deform_shift, params.grayscale);
 	z.x.negatives = 0;
 	ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
-	z.classifier->weak_classifiers = (ccv_icf_decision_tree_t*)ccmalloc(sizeof(ccv_icf_decision_tree_t) * params.weak_classifier);
 	for (z.bootstrap = 0; z.bootstrap <= params.bootstrap; z.bootstrap++)
 	{
 		z.example_state = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * (z.negatives->rnum + z.positives->rnum));
@@ -1346,6 +1413,9 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 			ccv_icf_decision_tree_t weak_classifier;
 			double rate = _ccv_icf_find_best_weak_classifier(z.features, params.feature_size, z.positives, z.negatives, z.precomputed, z.example_state, &weak_classifier);
 			assert(rate > 0.5); // it has to be better than random chance
+#ifdef USE_SANITY_ASSERTION
+			double confirm_rate = _ccv_icf_rate_weak_classifier(&weak_classifier, z.positives, z.negatives, z.example_state);
+#endif
 			double alpha = sqrt((1 - rate) / rate);
 			double beta = 1.0 / alpha;
 			double c = log(rate / (1 - rate));
@@ -1360,13 +1430,17 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 				reweigh += z.example_state[j].weight;
 			}
 			reweigh = 1.0 / reweigh;
+#ifdef USE_SANITY_ASSERTION
+			printf(" - on all examples, best feature at rate %lf, confirm rate %lf\n", rate, confirm_rate);
+#else
 			printf(" - on all examples, best feature at rate %lf\n", rate);
+#endif
 			// balancing the weight to sum 1.0
 			for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				z.example_state[j].weight *= reweigh;
 			z.classifier->weak_classifiers[z.i] = weak_classifier;
 			// compute the threshold at given acceptance
-			float threshold = z.example_state[0].rate;;
+			float threshold = z.example_state[0].rate;
 			for (j = 1; j < z.positives->rnum; j++)
 				if (z.example_state[j].rate < threshold)
 					threshold = z.example_state[j].rate;
@@ -1410,10 +1484,20 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 			z.example_state = 0;
 			ccfree(z.precomputed);
 			z.precomputed = 0;
-			ccv_array_t* validates = _ccv_icf_collect_validates(rng, z.size, z.margin, validatefiles, params.grayscale);
-			_ccv_icf_classifier_cascade_soft_with_validates(validates, z.classifier, params.acceptance);
-			ccv_array_free(validates);
-			_ccv_icf_bootstrap_negatives(z.classifier, z.negatives, rng, bgfiles, negnum, params.grayscale, z.bootstrap < 2 /* we don't spread bootstrapping anymore after the first two bootstrappings */, params.detector);
+			_ccv_icf_classifier_cascade_soft_with_validates(z.positives, z.classifier, 1); // assuming perfect score, what's the soft cascading will be
+			int exists = z.negatives->rnum;
+			int spread_policy = z.bootstrap < 2; // we don't spread bootstrapping anymore after the first two bootstrappings
+			// try to boostrap half negatives from perfect scoring
+			_ccv_icf_bootstrap_negatives(z.classifier, z.negatives, rng, bgfiles, (negnum + 1) / 2, params.grayscale, spread_policy, params.detector);
+			int leftover = negnum - (z.negatives->rnum - exists);
+			if (leftover > 0)
+			{
+				// if we cannot get enough negative examples, now will use the validates data set to extract more
+				ccv_array_t* validates = _ccv_icf_collect_validates(rng, z.size, z.margin, validatefiles, params.grayscale);
+				_ccv_icf_classifier_cascade_soft_with_validates(validates, z.classifier, params.acceptance);
+				ccv_array_free(validates);
+				_ccv_icf_bootstrap_negatives(z.classifier, z.negatives, rng, bgfiles, leftover, params.grayscale, spread_policy, params.detector);
+			}
 			printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
 			z.classifier->count = 0; // reset everything
 			z.x.negatives = 0;
@@ -1439,6 +1523,23 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	ccv_size_t size = ccv_size(cascade->size.width - cascade->margin.left - cascade->margin.right, cascade->size.height - cascade->margin.top - cascade->margin.bottom);
 	/* collect positives */
+	double weigh[2] = {
+		0, 0
+	};
+	int i;
+	for (i = 0; i < cascade->count; i++)
+	{
+		ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + i;
+		weigh[0] += weak_classifier->weigh[0];
+		weigh[1] += weak_classifier->weigh[1];
+	}
+	weigh[0] = 1 / fabs(weigh[0]), weigh[1] = 1 / fabs(weigh[1]);
+	for (i = 0; i < cascade->count; i++)
+	{
+		ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + i;
+		weak_classifier->weigh[0] = weak_classifier->weigh[0] * weigh[0];
+		weak_classifier->weigh[1] = weak_classifier->weigh[1] * weigh[1];
+	}
 	ccv_array_t* validates = _ccv_icf_collect_validates(rng, size, cascade->margin, posfiles, params.grayscale);
 	/* compute soft cascading thresholds */
 	_ccv_icf_classifier_cascade_soft_with_validates(validates, cascade, params.acceptance);
@@ -1452,15 +1553,11 @@ static void _ccv_icf_read_classifier_cascade_with_fd(FILE* r, ccv_icf_classifier
 	fscanf(r, "%d %d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height, &cascade->grayscale);
 	fscanf(r, "%d %d %d %d", &cascade->margin.left, &cascade->margin.top, &cascade->margin.right, &cascade->margin.bottom);
 	cascade->weak_classifiers = (ccv_icf_decision_tree_t*)ccmalloc(sizeof(ccv_icf_decision_tree_t) * cascade->count);
-	double weigh[2] = {
-		0, 0
-	};
 	int i, q;
 	for (i = 0; i < cascade->count; i++)
 	{
 		ccv_icf_decision_tree_t* weak_classifier = cascade->weak_classifiers + i;
 		fscanf(r, "%u %a %a %a", &weak_classifier->pass, &weak_classifier->weigh[0], &weak_classifier->weigh[1], &weak_classifier->threshold);
-		weigh[0] += weak_classifier->weigh[0], weigh[1] += weak_classifier->weigh[1];
 		fscanf(r, "%d %a", &weak_classifier->features[0].count, &weak_classifier->features[0].beta);
 		for (q = 0; q < weak_classifier->features[0].count; q++)
 			fscanf(r, "%d %a %d %d %d %d", &weak_classifier->features[0].channel[q], &weak_classifier->features[0].alpha[q], &weak_classifier->features[0].sat[q * 2].x, &weak_classifier->features[0].sat[q * 2].y, &weak_classifier->features[0].sat[q * 2 + 1].x, &weak_classifier->features[0].sat[q * 2 + 1].y);
@@ -1477,8 +1574,6 @@ static void _ccv_icf_read_classifier_cascade_with_fd(FILE* r, ccv_icf_classifier
 				fscanf(r, "%d %a %d %d %d %d", &weak_classifier->features[2].channel[q], &weak_classifier->features[2].alpha[q], &weak_classifier->features[2].sat[q * 2].x, &weak_classifier->features[2].sat[q * 2].y, &weak_classifier->features[2].sat[q * 2 + 1].x, &weak_classifier->features[2].sat[q * 2 + 1].y);
 		}
 	}
-	cascade->a = 1. / (weigh[1] - weigh[0]);
-	cascade->b = -weigh[0];
 }
 
 static void _ccv_icf_write_classifier_cascade_with_fd(ccv_icf_classifier_cascade_t* cascade, FILE* w)
@@ -1683,7 +1778,7 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i) - 0.5), (int)((y + 0.5) * scale * (1 << i) - 0.5), (cascade->size.width - cascade->margin.left - cascade->margin.right) * scale * (1 << i), (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * scale * (1 << i));
 							comp.id = j;
 							comp.neighbors = 1;
-							comp.confidence = cascade->a * (sum + cascade->b);
+							comp.confidence = sum;
 							ccv_array_push(seq[j], &comp);
 						}
 					}
@@ -1790,7 +1885,7 @@ static void _ccv_icf_detect_objects_with_multiscale_classifier_cascade(ccv_dense
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i)), (int)((y + 0.5) * scale * (1 << i)), (cascade->size.width - cascade->margin.left - cascade->margin.right) << i, (cascade->size.height - cascade->margin.top - cascade->margin.bottom) << i);
 							comp.id = j;
 							comp.neighbors = 1;
-							comp.confidence = cascade->a * (sum + cascade->b);
+							comp.confidence = sum;
 							ccv_array_push(seq[j], &comp);
 						}
 					}

@@ -12,6 +12,7 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 /* simple utility functions */
 
 #define ccv_descale(x, n) (((x) + (1 << ((n) - 1))) >> (n))
+#define conditional_assert(x, expr) if ((x)) { assert(expr); }
 
 /* macro printf utilities */
 
