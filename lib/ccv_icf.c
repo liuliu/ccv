@@ -1368,6 +1368,22 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	assert(posfiles->rnum > 0);
 	assert(bgfiles->rnum > 0);
 	assert(posnum > 0 && negnum > 0);
+	printf("with %d positive examples and %d negative examples\n"
+		   "positive examples are going to be collected from %d positive images\n"
+		   "negative examples are are going to be collected from %d background images\n",
+		   posnum, negnum, posfiles->rnum, bgfiles->rnum);
+	printf("use color? %s\n", params.grayscale ? "no" : "yes");
+	printf("feature pool size : %d\n"
+		   "weak classifier count : %d\n"
+		   "soft cascade acceptance : %lf\n"
+		   "minimum dimension of ICF feature : %d\n"
+		   "number of bootstrap : %d\n"
+		   "distortion on translation : %f\n"
+		   "distortion on rotation : %f\n"
+		   "distortion on scale : %f\n"
+	       "learn ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
+		   "------------------------\n",
+		   params.feature_size, params.weak_classifier, params.acceptance, params.min_dimension, params.bootstrap, params.deform_shift, params.deform_angle, params.deform_scale, params.size.width, params.size.height, params.margin.left, params.margin.top, params.margin.right, params.margin.bottom);
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	// we will keep all states inside this structure for easier save / resume across process
@@ -1379,7 +1395,6 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	z.size = params.size;
 	z.margin = params.margin;
 	z.classifier->size = ccv_size(z.size.width + z.margin.left + z.margin.right, z.size.height + z.margin.top + z.margin.bottom);
-	printf(" - learn icf classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n", z.size.width, z.size.height, z.margin.left, z.margin.top, z.margin.right, z.margin.bottom);
 	z.features = (ccv_icf_feature_t*)ccmalloc(sizeof(ccv_icf_feature_t) * params.feature_size);
 	// generate random features
 	for (z.i = 0; z.i < params.feature_size; z.i++)

@@ -1578,7 +1578,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	_ccv_dpm_check_params(params);
 	assert(params.negative_cache_size <= negnum && params.negative_cache_size > REGQ && params.negative_cache_size > MINI_BATCH);
 	printf("with %d positive examples and %d negative examples\n"
-		   "negative examples are collected from %d background images\n",
+		   "negative examples are are going to be collected from %d background images\n",
 		   posnum, negnum, bgnum);
 	printf("use symmetric property? %s\n", params.symmetric ? "yes" : "no");
 	printf("use color? %s\n", params.grayscale ? "no" : "yes");
