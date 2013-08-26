@@ -4,7 +4,7 @@
 void write_c(ccv_bbf_classifier_cascade_t* cascade)
 {
 
-	printf("ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade()\n"
+	printf("ccv_bbf_classifier_cascade_t* ccv_bbf_read_classifier_cascade()\n"
 		   "{\n"
 		   "	ccv_bbf_classifier_cascade_t* cascade = (ccv_bbf_classifier_cascade_t*)malloc(sizeof(ccv_bbf_classifier_cascade_t));\n"
 		   "	cascade->count = %d;\n"
@@ -98,7 +98,7 @@ void write_json(ccv_bbf_classifier_cascade_t* cascade)
 int main(int argc, char** argv)
 {
 	assert(argc >= 3);
-	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[1]);
+	ccv_bbf_classifier_cascade_t* cascade = ccv_bbf_read_classifier_cascade(argv[1]);
 	if (strcmp(argv[2], "bin") == 0)
 	{
 		assert(argc >= 4);

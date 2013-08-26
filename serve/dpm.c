@@ -101,8 +101,8 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, int resour
 void* uri_dpm_detect_objects_init(void)
 {
 	dpm_context_t* context = (dpm_context_t*)malloc(sizeof(dpm_context_t));
-	context->pedestrian = ccv_load_dpm_mixture_model("../samples/pedestrian.m");
-	context->car = ccv_load_dpm_mixture_model("../samples/car.m");
+	context->pedestrian = ccv_dpm_read_mixture_model("../samples/pedestrian.m");
+	context->car = ccv_dpm_read_mixture_model("../samples/car.m");
 	assert(context->pedestrian && context->car);
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),

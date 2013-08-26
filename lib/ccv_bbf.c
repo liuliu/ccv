@@ -1418,7 +1418,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 	return result_seq2;
 }
 
-ccv_bbf_classifier_cascade_t* ccv_load_bbf_classifier_cascade(const char* directory)
+ccv_bbf_classifier_cascade_t* ccv_bbf_read_classifier_cascade(const char* directory)
 {
 	char buf[1024];
 	sprintf(buf, "%s/cascade.txt", directory);

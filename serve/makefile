@@ -10,8 +10,8 @@ all: libccv.a $(TARGETS)
 clean:
 	${MAKE} clean -C ../lib ; rm -f *.o $(TARGETS) -f
 
-$(TARGETS): serve.o uri.o parsers.o bbf.o dpm.o sift.o swt.o tld.o async.o ebb.o ebb_request_parser.o libccv.a
-	$(CC) -o $@ serve.o uri.o parsers.o bbf.o dpm.o sift.o swt.o tld.o async.o ebb.o ebb_request_parser.o $(LDFLAGS)
+$(TARGETS): serve.o uri.o parsers.o bbf.o dpm.o icf.o sift.o swt.o tld.o async.o ebb.o ebb_request_parser.o libccv.a
+	$(CC) -o $@ serve.o uri.o parsers.o bbf.o dpm.o icf.o sift.o swt.o tld.o async.o ebb.o ebb_request_parser.o $(LDFLAGS)
 
 libccv.a:
 	${MAKE} -C ../lib

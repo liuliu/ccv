@@ -2250,7 +2250,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	return result_seq2;
 }
 
-ccv_dpm_mixture_model_t* ccv_load_dpm_mixture_model(const char* directory)
+ccv_dpm_mixture_model_t* ccv_dpm_read_mixture_model(const char* directory)
 {
 	FILE* r = fopen(directory, "r");
 	if (r == 0)

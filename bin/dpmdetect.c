@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
-	ccv_dpm_mixture_model_t* model = ccv_load_dpm_mixture_model(argv[2]);
+	ccv_dpm_mixture_model_t* model = ccv_dpm_read_mixture_model(argv[2]);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();

@@ -43,6 +43,15 @@ static uri_dispatch_t uri_map[] = {
 		.destroy = uri_dpm_detect_objects_destroy,
 	},
 	{
+		.uri = "/icf/detect.objects",
+		.init = uri_icf_detect_objects_init,
+		.parse = uri_icf_detect_objects_parse,
+		.get = uri_icf_detect_objects_intro,
+		.post = uri_icf_detect_objects,
+		.delete = 0,
+		.destroy = uri_icf_detect_objects_destroy,
+	},
+	{
 		.uri = "/sift",
 		.init = uri_sift_init,
 		.parse = uri_sift_parse,

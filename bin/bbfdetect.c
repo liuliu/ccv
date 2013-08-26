@@ -15,7 +15,7 @@ int main(int argc, char** argv)
 	int i;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
-	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
+	ccv_bbf_classifier_cascade_t* cascade = ccv_bbf_read_classifier_cascade(argv[2]);
 	ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 	if (image != 0)
 	{

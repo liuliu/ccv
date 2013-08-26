@@ -807,7 +807,7 @@ extern const ccv_dpm_param_t ccv_dpm_default_params;
 
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
-ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_load_dpm_mixture_model(const char* directory);
+ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_dpm_read_mixture_model(const char* directory);
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
@@ -872,10 +872,10 @@ extern const ccv_bbf_param_t ccv_bbf_default_params;
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
-ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_load_bbf_classifier_cascade(const char* directory);
+ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_read_classifier_cascade(const char* directory);
+void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classifier_cascade_read_binary(char* s);
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
-void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
 
 /* Ferns classifier: this is a fern implementation that specifically used for TLD
  * see: http://cvlab.epfl.ch/alumni/oezuysal/ferns.html for more about ferns */

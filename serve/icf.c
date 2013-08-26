@@ -4,87 +4,77 @@
 #include <stdio.h>
 #include <ctype.h>
 
-static void uri_bbf_on_model_string(void* context, char* string);
-static void uri_bbf_on_source_blob(void* context, ebb_buf data);
+static void uri_icf_on_model_string(void* context, char* string);
+static void uri_icf_on_source_blob(void* context, ebb_buf data);
 
 static const param_dispatch_t param_map[] = {
 	{
-		.property = "accurate",
-		.type = PARAM_TYPE_BOOL,
-		.offset = offsetof(ccv_bbf_param_t, accurate),
-	},
-	{
 		.property = "interval",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, interval),
+		.offset = offsetof(ccv_icf_param_t, interval),
 	},
 	{
 		.property = "min_neighbors",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
+		.offset = offsetof(ccv_icf_param_t, min_neighbors),
 	},
 	{
 		.property = "model",
 		.type = PARAM_TYPE_STRING,
-		.on_string = uri_bbf_on_model_string,
+		.on_string = uri_icf_on_model_string,
 		.offset = 0,
-	},
-	{
-		.property = "size",
-		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
 	},
 	{
 		.property = "source",
 		.type = PARAM_TYPE_BODY,
-		.on_blob = uri_bbf_on_source_blob,
+		.on_blob = uri_icf_on_source_blob,
 		.offset = 0,
 	},
 };
 
 typedef struct {
 	ebb_buf desc;
-	ccv_bbf_classifier_cascade_t* face;
-} bbf_context_t;
+	ccv_icf_classifier_cascade_t* pedestrian;
+} icf_context_t;
 
 typedef struct {
 	param_parser_t param_parser;
-	bbf_context_t* context;
-	ccv_bbf_param_t params;
-	ccv_bbf_classifier_cascade_t* cascade;
+	icf_context_t* context;
+	ccv_icf_param_t params;
+	ccv_icf_classifier_cascade_t* cascade;
 	ebb_buf source;
-} bbf_param_parser_t;
+} icf_param_parser_t;
 
-static void uri_bbf_param_parser_init(bbf_param_parser_t* parser)
+static void uri_icf_param_parser_init(icf_param_parser_t* parser)
 {
 	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->params, parser);
-	parser->params = ccv_bbf_default_params;
+	parser->params = ccv_icf_default_params;
 	parser->cascade = 0;
 	parser->source.data = 0;
 }
 
-static void uri_bbf_on_model_string(void* context, char* string)
+static void uri_icf_on_model_string(void* context, char* string)
 {
-	bbf_param_parser_t* parser = (bbf_param_parser_t*)context;
-	if (strcmp(string, "face") == 0)
-		parser->cascade = parser->context->face;
+	icf_param_parser_t* parser = (icf_param_parser_t*)context;
+	if (strcmp(string, "pedestrian") == 0)
+		parser->cascade = parser->context->pedestrian;
 }
 
-static void uri_bbf_on_source_blob(void* context, ebb_buf data)
+static void uri_icf_on_source_blob(void* context, ebb_buf data)
 {
-	bbf_param_parser_t* parser = (bbf_param_parser_t*)context;
+	icf_param_parser_t* parser = (icf_param_parser_t*)context;
 	parser->source = data;
 }
 
-void* uri_bbf_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
+void* uri_icf_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index)
 {
-	bbf_param_parser_t* parser;
+	icf_param_parser_t* parser;
 	if (parsed)
-		parser = (bbf_param_parser_t*)parsed;
+		parser = (icf_param_parser_t*)parsed;
 	else {
-		parser = (bbf_param_parser_t*)malloc(sizeof(bbf_param_parser_t));
-		uri_bbf_param_parser_init(parser);
-		parser->context = (bbf_context_t*)context;
+		parser = (icf_param_parser_t*)malloc(sizeof(icf_param_parser_t));
+		uri_icf_param_parser_init(parser);
+		parser->context = (icf_context_t*)context;
 	}
 	switch (state)
 	{
@@ -100,11 +90,11 @@ void* uri_bbf_detect_objects_parse(const void* context, void* parsed, int resour
 	return parser;
 }
 
-void* uri_bbf_detect_objects_init(void)
+void* uri_icf_detect_objects_init(void)
 {
-	bbf_context_t* context = (bbf_context_t*)malloc(sizeof(bbf_context_t));
-	context->face = ccv_bbf_read_classifier_cascade("../samples/face");
-	assert(context->face);
+	icf_context_t* context = (icf_context_t*)malloc(sizeof(icf_context_t));
+	context->pedestrian = ccv_icf_read_classifier_cascade("../samples/pedestrian.icf");
+	assert(context->pedestrian);
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
@@ -117,27 +107,27 @@ void* uri_bbf_detect_objects_init(void)
 	return context;
 }
 
-void uri_bbf_detect_objects_destroy(void* context)
+void uri_icf_detect_objects_destroy(void* context)
 {
-	bbf_context_t* bbf_context = (bbf_context_t*)context;
-	ccv_bbf_classifier_cascade_free(bbf_context->face);
-	free(bbf_context->desc.data);
-	free(bbf_context);
+	icf_context_t* icf_context = (icf_context_t*)context;
+	ccv_icf_classifier_cascade_free(icf_context->pedestrian);
+	free(icf_context->desc.data);
+	free(icf_context);
 }
 
-int uri_bbf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
+int uri_icf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf)
 {
-	bbf_context_t* bbf_context = (bbf_context_t*)context;
-	buf->data = bbf_context->desc.data;
-	buf->len = bbf_context->desc.len;
+	icf_context_t* icf_context = (icf_context_t*)context;
+	buf->data = icf_context->desc.data;
+	buf->len = icf_context->desc.len;
 	return 0;
 }
 
-int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf)
+int uri_icf_detect_objects(const void* context, const void* parsed, ebb_buf* buf)
 {
 	if (!parsed)
 		return -1;
-	bbf_param_parser_t* parser = (bbf_param_parser_t*)parsed;
+	icf_param_parser_t* parser = (icf_param_parser_t*)parsed;
 	param_parser_terminate(&parser->param_parser);
 	if (parser->source.data == 0)
 	{
@@ -151,14 +141,14 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		return -1;
 	}
 	ccv_dense_matrix_t* image = 0;
-	ccv_read(parser->source.data, &image, CCV_IO_ANY_STREAM | CCV_IO_GRAY, parser->source.written);
+	ccv_read(parser->source.data, &image, CCV_IO_ANY_STREAM | CCV_IO_RGB_COLOR, parser->source.written);
 	free(parser->source.data);
 	if (image == 0)
 	{
 		free(parser);
 		return -1;
 	}
-	ccv_array_t* seq = ccv_bbf_detect_objects(image, &parser->cascade, 1, parser->params);
+	ccv_array_t* seq = ccv_icf_detect_objects(image, &parser->cascade, 1, parser->params);
 	ccv_matrix_free(image);
 	if (seq == 0)
 	{

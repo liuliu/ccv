@@ -222,6 +222,12 @@ void* uri_dpm_detect_objects_parse(const void* context, void* parsed, int resour
 int uri_dpm_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
 int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
 
+void* uri_icf_detect_objects_init(void);
+void uri_icf_detect_objects_destroy(void* context);
+void* uri_icf_detect_objects_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_icf_detect_objects_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_icf_detect_objects(const void* context, const void* parsed, ebb_buf* buf);
+
 void* uri_sift_init(void);
 void uri_sift_destroy(void* context);
 void* uri_sift_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
