@@ -30,6 +30,11 @@ static const param_dispatch_t param_map[] = {
 		.on_blob = uri_icf_on_source_blob,
 		.offset = 0,
 	},
+	{
+		.property = "step_through",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_icf_param_t, step_through),
+	},
 };
 
 typedef struct {
