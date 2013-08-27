@@ -93,4 +93,10 @@ The classifier cascade will be bootstrapping 3 times, pooling from 50,000 featur
 and the final boosted classifier will have 2,000 weak classifier. On the PC that I
 am running (with SSD / hard-drive hybrid (through flashcache), 32GiB memory and Core
 i7 3770K), it takes a day to finish training one classifier. At minimal, you should
-have about 16GB memory to get the program running.
+have about 16GB available memory to get the program finish running.
+
+The final-cascade file in your working directory is the classifier model file that
+you can use. Using ./bin/icfoptimize, you should be able to set proper soft cascading
+thresholds for the classifier to speed up detection:
+
+	./icfoptimize --positive-list pedestrian.icf_test --classifier-cascade icf-data/final-cascade --acceptance 0.7 --base-dir ../data/INRIAPerson/Test/pos/
