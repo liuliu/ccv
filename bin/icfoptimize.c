@@ -6,6 +6,13 @@ void exit_with_help()
 {
 	printf(
 	"\n  \033[1mUSAGE\033[0m\n\n    icfoptimize [OPTION...]\n\n"
+	"  \033[1mREQUIRED OPTIONS\033[0m\n\n"
+	"    --positive-list : text file contains a list of positive files in format:\n"
+	"                      <file name> center-x center-y horizontal-axis-length vertical-axis-length object-roll object-pitch object-yaw \\newline\n"
+	"    --acceptance : what percentage of positive examples that we should accept for soft cascading\n"
+	"    --classifier-cascade : the model file that we will compute soft cascading thresholds on\n\n"
+	"  \033[1mOTHER OPTIONS\033[0m\n\n"
+	"    --base-dir : change the base directory so that the program can read images from there\n\n"
 	);
 	exit(-1);
 }
@@ -17,20 +24,16 @@ int main(int argc, char** argv)
 		{"help", 0, 0, 0},
 		/* required parameters */
 		{"positive-list", 1, 0, 0},
-		{"working-dir", 1, 0, 0},
+		{"classifier-cascade", 1, 0, 0},
 		{"acceptance", 1, 0, 0},
 		/* optional parameters */
 		{"base-dir", 1, 0, 0},
 		{0, 0, 0, 0}
 	};
 	char* positive_list = 0;
-	char* working_dir = 0;
+	char* classifier_cascade = 0;
 	char* base_dir = 0;
 	double acceptance = 0;
-	ccv_icf_param_t detector = { .min_neighbors = 0, .flags = 0, .threshold = 0.0 };
-	ccv_icf_new_param_t params = {
-		.detector = detector,
-	};
 	int i, k;
 	while (getopt_long_only(argc, argv, "", icf_options, &k) != -1)
 	{
@@ -42,7 +45,7 @@ int main(int argc, char** argv)
 				positive_list = optarg;
 				break;
 			case 2:
-				working_dir = optarg;
+				classifier_cascade = optarg;
 				break;
 			case 3:
 				acceptance = atof(optarg);
@@ -53,7 +56,7 @@ int main(int argc, char** argv)
 		}
 	}
 	assert(positive_list != 0);
-	assert(working_dir != 0);
+	assert(classifier_cascade != 0);
 	ccv_enable_cache(512 * 1024 * 1024);
 	FILE* r0 = fopen(positive_list, "r");
 	assert(r0 && "positive-list doesn't exists");
@@ -78,18 +81,10 @@ int main(int argc, char** argv)
 	}
 	fclose(r0);
 	free(file);
-	params.grayscale = 0;
-	params.margin = ccv_margin(5, 5, 5, 5);
-	params.size = ccv_size(20, 60);
-	params.deform_shift = 0;
-	params.deform_angle = 0;
-	params.deform_scale = 0;
-	params.feature_size = 50000;
-	params.weak_classifier = 2000;
-	params.acceptance = acceptance;
-	ccv_icf_classifier_cascade_t* cascade = ccv_icf_read_classifier_cascade(working_dir);
-	ccv_icf_classifier_cascade_soft(cascade, posfiles, working_dir, params);
-	ccv_icf_write_classifier_cascade(cascade, working_dir);
+	ccv_icf_classifier_cascade_t* cascade = ccv_icf_read_classifier_cascade(classifier_cascade);
+	assert(cascade && "classifier cascade doesn't exists");
+	ccv_icf_classifier_cascade_soft(cascade, posfiles, classifier_cascade, acceptance);
+	ccv_icf_write_classifier_cascade(cascade, classifier_cascade);
 	for (i = 0; i < posfiles->rnum; i++)
 	{
 		ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(posfiles, i);

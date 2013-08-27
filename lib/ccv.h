@@ -1055,7 +1055,7 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 /* ICF for single scale */
 ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
-void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, ccv_icf_new_param_t params);
+void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, double acceptance);
 ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* filename);
 void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, const char* filename);
 void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier);

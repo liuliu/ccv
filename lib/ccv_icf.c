@@ -1532,11 +1532,18 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	return z.classifier;
 }
 
-void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, ccv_icf_new_param_t params)
+void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, double acceptance)
 {
+	printf("with %d positive examples\n"
+		   "going to accept %.2lf%% positive examples\n",
+		   posfiles->rnum, acceptance * 100);
+	ccv_size_t size = ccv_size(cascade->size.width - cascade->margin.left - cascade->margin.right, cascade->size.height - cascade->margin.top - cascade->margin.bottom);
+	printf("use color? %s\n", cascade->grayscale ? "no" : "yes");
+	printf("compute soft cascading thresholds for ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
+		   "------------------------\n",
+		   size.width, size.height, cascade->margin.left, cascade->margin.top, cascade->margin.right, cascade->margin.bottom);
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	ccv_size_t size = ccv_size(cascade->size.width - cascade->margin.left - cascade->margin.right, cascade->size.height - cascade->margin.top - cascade->margin.bottom);
 	/* collect positives */
 	double weigh[2] = {
 		0, 0
@@ -1555,9 +1562,9 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_
 		weak_classifier->weigh[0] = weak_classifier->weigh[0] * weigh[0];
 		weak_classifier->weigh[1] = weak_classifier->weigh[1] * weigh[1];
 	}
-	ccv_array_t* validates = _ccv_icf_collect_validates(rng, size, cascade->margin, posfiles, params.grayscale);
+	ccv_array_t* validates = _ccv_icf_collect_validates(rng, size, cascade->margin, posfiles, cascade->grayscale);
 	/* compute soft cascading thresholds */
-	_ccv_icf_classifier_cascade_soft_with_validates(validates, cascade, params.acceptance);
+	_ccv_icf_classifier_cascade_soft_with_validates(validates, cascade, acceptance);
 	ccv_array_free(validates);
 	gsl_rng_free(rng);
 }

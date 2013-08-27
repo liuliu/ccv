@@ -63,3 +63,10 @@ How to train my own detector?
 
 ccv provides utilities to train your own object models. Specifically, for ICF, these
 utilities are available at ./bin/icfcreate and ./bin/icfoptimize.
+
+	./icfcreate --help
+
+Will show you the parameters that ccv supports when training an object model.
+
+If you have libdispatch installed and properly enabled on your machine, ccv will utilize
+all your CPU cores to speed up the training process.
