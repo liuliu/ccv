@@ -70,3 +70,27 @@ Will show you the parameters that ccv supports when training an object model.
 
 If you have libdispatch installed and properly enabled on your machine, ccv will utilize
 all your CPU cores to speed up the training process.
+
+The INRIA pedestrian dataset can be downloaded from:
+
+	http://pascal.inrialpes.fr/data/human/
+
+The annotation format is substantially different from what ccv requires, I use this
+simple script to extract annotations from INRIA dataset:
+
+	https://gist.github.com/liuliu/6349801
+
+You also want to have a collection of background (none pedestrian) files, I combined
+data from both INRIA and VOC2011 to generates that list:
+
+	find ../data/negs/*.jpg > no-pedestrian.txt
+
+After all these ready, and have a PC with enough computational power:
+
+	./icfcreate --positive-list pedestrian.icf_samples --background-list no-pedestrian.txt --validate-list pedestrian.icf_test --negative-count 10000 --positive-count 10000 --feature-size 50000 --weak-classifier-count 2000 --size 30x90 --margin 10,10,10,10 --working-dir icf-data --acceptance 0.7 --base-dir ../data/INRIAPerson/Train/pos/
+
+The classifier cascade will be bootstrapping 3 times, pooling from 50,000 features,
+and the final boosted classifier will have 2,000 weak classifier. On the PC that I
+am running (with SSD / hard-drive hybrid (through flashcache), 32GiB memory and Core
+i7 3770K), it takes a day to finish training one classifier. At minimal, you should
+have about 16GB memory to get the program running.
