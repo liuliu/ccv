@@ -5,10 +5,13 @@ What's ICF?
 -----------
 
 The original paper refers to:
+
 Integral Channel Features, P. Dollar, Z. Tu, P. Perona, and S. Belongie, BMVC 2009
 
 The improved version refers to:
+
 Pedestrian Detection at 100 Frames per Second, R. Benenson, M. Mathias, R. Timofte, and L. Van Gool, CVPR 2012
+
 Seeking the Strongest Rigid Detector, R. Benenson, M. Mathias, R. Timofte, and L. Van Gool, CVPR 2013
 
 How it works?
@@ -46,7 +49,7 @@ It is still slower than HOG, but faster than DPM implementation in libccv.
 Accuracy-wise:
 
 The pedestrian.icf model provided in ./samples are trained with INRIA 2008 training
-dataset, but with additional 7542 negative samples collected from Flickr. The model is
+dataset, but with additional 7542 negative samples collected from VOC2011. The model is
 trained at size 31x74, with 6px margins on each side.
 
 The provided model is then tested with INRIA 2008 test dataset, if bounding boxes
