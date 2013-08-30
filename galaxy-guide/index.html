@@ -43,46 +43,40 @@ _gaq.push(['_trackPageview']);
 <h2 id="read-a-photo">Read a Photo</h2>
 <p>Let’s start with something small.</p>
 
-<div><div class="CodeRay">
-  <div class="code"><pre><span class="line-numbers"><a href="#n1" name="n1">1</a></span><span style="color:#579">#include</span> <span style="color:#B44;font-weight:bold">&lt;ccv.h&gt;</span>
-<span class="line-numbers"><a href="#n2" name="n2">2</a></span><span style="color:#0a5;font-weight:bold">int</span> main(<span style="color:#0a5;font-weight:bold">int</span> argc, <span style="color:#0a5;font-weight:bold">char</span>** argv)
-<span class="line-numbers"><a href="#n3" name="n3">3</a></span>{
-<span class="line-numbers"><a href="#n4" name="n4">4</a></span>    ccv_dense_matrix_t* image = <span style="color:#00D">0</span>;
-<span class="line-numbers"><a href="#n5" name="n5">5</a></span>    ccv_read(argv[<span style="color:#00D">1</span>], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-<span class="line-numbers"><a href="#n6" name="n6">6</a></span>    ccv_write(image, argv[<span style="color:#00D">2</span>], <span style="color:#00D">0</span>, CCV_IO_PNG_FILE, <span style="color:#00D">0</span>);
-<span class="line-numbers"><a href="#n7" name="n7">7</a></span>    <span style="color:#080;font-weight:bold">return</span> <span style="color:#00D">0</span>;
-<span class="line-numbers"><a href="#n8" name="n8">8</a></span>}
-</pre></div>
-</div>
-</div>
+<pre lang="c"><code>#include &lt;ccv.h&gt;
+int main(int argc, char** argv)
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_read(argv[1], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_write(image, argv[2], 0, CCV_IO_PNG_FILE, 0);
+	return 0;
+}
+</code></pre>
 
 <p>If your ccv build has dependency on libjpeg or libpng, the code above is sufficient to load any JPEG or PNG file into memory and save a grayscale version to the disk.</p>
 
 <h2 id="detect-a-face">Detect a Face</h2>
 <p>Yes, knowing how to read a photo is sufficient to write an application that can do, for example, face detection.</p>
 
-<div><div class="CodeRay">
-  <div class="code"><pre><span class="line-numbers"> <a href="#n1" name="n1">1</a></span><span style="color:#579">#include</span> <span style="color:#B44;font-weight:bold">&lt;ccv.h&gt;</span>
-<span class="line-numbers"> <a href="#n2" name="n2">2</a></span><span style="color:#0a5;font-weight:bold">int</span> main(<span style="color:#0a5;font-weight:bold">int</span> argc, <span style="color:#0a5;font-weight:bold">char</span>** argv)
-<span class="line-numbers"> <a href="#n3" name="n3">3</a></span>{
-<span class="line-numbers"> <a href="#n4" name="n4">4</a></span>    ccv_dense_matrix_t* image = <span style="color:#00D">0</span>;
-<span class="line-numbers"> <a href="#n5" name="n5">5</a></span>    ccv_read(argv[<span style="color:#00D">1</span>], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-<span class="line-numbers"> <a href="#n6" name="n6">6</a></span>    ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[<span style="color:#00D">2</span>]);
-<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>    ccv_array_t* faces = ccv_bbf_detect_objects(image, &amp;cascade, <span style="color:#00D">1</span>, ccv_bbf_default_params);
-<span class="line-numbers"> <a href="#n8" name="n8">8</a></span>    <span style="color:#0a5;font-weight:bold">int</span> i;
-<span class="line-numbers"> <a href="#n9" name="n9">9</a></span>    <span style="color:#080;font-weight:bold">for</span> (i = <span style="color:#00D">0</span>; i &lt; faces-&gt;rnum; i++)
-<span class="line-numbers"><strong><a href="#n10" name="n10">10</a></strong></span>    {
-<span class="line-numbers"><a href="#n11" name="n11">11</a></span>        ccv_comp_t* face = (ccv_comp_t*)ccv_array_get(faces, i);
-<span class="line-numbers"><a href="#n12" name="n12">12</a></span>        printf(<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">%d %d %d %d</span><span style="color:#b0b">\n</span><span style="color:#710">&quot;</span></span>, face-&gt;rect.x, face-&gt;rect.y, face-&gt;rect.width, face-&gt;rect.height);
-<span class="line-numbers"><a href="#n13" name="n13">13</a></span>    }
-<span class="line-numbers"><a href="#n14" name="n14">14</a></span>    ccv_array_free(faces);
-<span class="line-numbers"><a href="#n15" name="n15">15</a></span>    ccv_bbf_classifier_cascade_free(cascade);
-<span class="line-numbers"><a href="#n16" name="n16">16</a></span>    ccv_matrix_free(image);
-<span class="line-numbers"><a href="#n17" name="n17">17</a></span>    <span style="color:#080;font-weight:bold">return</span> <span style="color:#00D">0</span>;
-<span class="line-numbers"><a href="#n18" name="n18">18</a></span>}
-</pre></div>
-</div>
-</div>
+<pre lang="c"><code>#include &lt;ccv.h&gt;
+int main(int argc, char** argv)
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_read(argv[1], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
+	ccv_array_t* faces = ccv_bbf_detect_objects(image, &amp;cascade, 1, ccv_bbf_default_params);
+	int i;
+	for (i = 0; i &lt; faces-&gt;rnum; i++)
+	{
+		ccv_comp_t* face = (ccv_comp_t*)ccv_array_get(faces, i);
+		printf("%d %d %d %d\n", face-&gt;rect.x, face-&gt;rect.y, face-&gt;rect.width, face-&gt;rect.height);
+	}
+	ccv_array_free(faces);
+	ccv_bbf_classifier_cascade_free(cascade);
+	ccv_matrix_free(image);
+	return 0;
+}
+</code></pre>
 
 <p>That’s it.</p>
 

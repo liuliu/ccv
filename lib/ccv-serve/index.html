@@ -56,6 +56,19 @@ _gaq.push(['_trackPageview']);
 
 <p>Supported methods: GET, POST</p>
 
+<h2 id="icfdetectobjects">/icf/detect.objects</h2>
+
+<p>Using <a href="/doc/doc-icf">ICF</a> classifier cascade to detect objects in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what object, for now, it only supports ‘pedestrian’.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-icf/#ccvicfparamt">ccv_icf.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
 <h2 id="swtdetectwords">/swt/detect.words</h2>
 
 <p>Using <a href="/doc/doc-swt">SWT</a> to detect words / texts in a given image.</p>

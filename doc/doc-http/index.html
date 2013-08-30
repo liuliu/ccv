@@ -69,37 +69,34 @@ _gaq.push(['_trackPageview']);
 
 <p>It returns:</p>
 
-<div><div class="CodeRay">
-  <div class="code"><pre><span class="line-numbers"> <a href="#n1" name="n1">1</a></span>{
-<span class="line-numbers"> <a href="#n2" name="n2">2</a></span>   <span style="color:#606"><span style="color:#404">&quot;</span><span>request</span><span style="color:#404">&quot;</span></span>:{
-<span class="line-numbers"> <a href="#n3" name="n3">3</a></span>      <span style="color:#606"><span style="color:#404">&quot;</span><span>interval</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"> <a href="#n4" name="n4">4</a></span>      <span style="color:#606"><span style="color:#404">&quot;</span><span>min_neighbors</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"> <a href="#n5" name="n5">5</a></span>      <span style="color:#606"><span style="color:#404">&quot;</span><span>model</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">string</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"> <a href="#n6" name="n6">6</a></span>      <span style="color:#606"><span style="color:#404">&quot;</span><span>source</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">blob</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>      <span style="color:#606"><span style="color:#404">&quot;</span><span>threshold</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">number</span><span style="color:#710">&quot;</span></span>
-<span class="line-numbers"> <a href="#n8" name="n8">8</a></span>   },
-<span class="line-numbers"> <a href="#n9" name="n9">9</a></span>   <span style="color:#606"><span style="color:#404">&quot;</span><span>response</span><span style="color:#404">&quot;</span></span>:[
-<span class="line-numbers"><strong><a href="#n10" name="n10">10</a></strong></span>      {
-<span class="line-numbers"><a href="#n11" name="n11">11</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>x</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n12" name="n12">12</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>y</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n13" name="n13">13</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>width</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n14" name="n14">14</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>height</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n15" name="n15">15</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>confidence</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">number</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n16" name="n16">16</a></span>         <span style="color:#606"><span style="color:#404">&quot;</span><span>parts</span><span style="color:#404">&quot;</span></span>:[
-<span class="line-numbers"><a href="#n17" name="n17">17</a></span>            {
-<span class="line-numbers"><a href="#n18" name="n18">18</a></span>               <span style="color:#606"><span style="color:#404">&quot;</span><span>x</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n19" name="n19">19</a></span>               <span style="color:#606"><span style="color:#404">&quot;</span><span>y</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><strong><a href="#n20" name="n20">20</a></strong></span>               <span style="color:#606"><span style="color:#404">&quot;</span><span>width</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n21" name="n21">21</a></span>               <span style="color:#606"><span style="color:#404">&quot;</span><span>height</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">integer</span><span style="color:#710">&quot;</span></span>,
-<span class="line-numbers"><a href="#n22" name="n22">22</a></span>               <span style="color:#606"><span style="color:#404">&quot;</span><span>confidence</span><span style="color:#404">&quot;</span></span>:<span style="background-color:hsla(0,100%,50%,0.05)"><span style="color:#710">&quot;</span><span style="color:#D20">number</span><span style="color:#710">&quot;</span></span>
-<span class="line-numbers"><a href="#n23" name="n23">23</a></span>            }
-<span class="line-numbers"><a href="#n24" name="n24">24</a></span>         ]
-<span class="line-numbers"><a href="#n25" name="n25">25</a></span>      }
-<span class="line-numbers"><a href="#n26" name="n26">26</a></span>   ]
-<span class="line-numbers"><a href="#n27" name="n27">27</a></span>}
-</pre></div>
-</div>
-</div>
+<pre lang="json"><code>{
+   "request":{
+      "interval":"integer",
+      "min_neighbors":"integer",
+      "model":"string",
+      "source":"blob",
+      "threshold":"number"
+   },
+   "response":[
+      {
+         "x":"integer",
+         "y":"integer",
+         "width":"integer",
+         "height":"integer",
+         "confidence":"number",
+         "parts":[
+            {
+               "x":"integer",
+               "y":"integer",
+               "width":"integer",
+               "height":"integer",
+               "confidence":"number"
+            }
+         ]
+      }
+   ]
+}
+</code></pre>
 
 <p>All responses from ccv are JSON encoded, like the example above. Particularly, the above JSON encodes what a POST request should look like, and what kind of JSON data structure you can expect as return. From the description, we knew that we should encode file into source field, and specify what model you want to use:</p>
 

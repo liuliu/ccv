@@ -54,7 +54,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvvisualize">ccv_visualize</h2>
 
-<pre><code>void ccv_visualize(ccv_matrix_t* a, ccv_dense_matrix_t** b, int type)
+<pre><code>void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 </code></pre>
 
 <p>Convert a input matrix into a matrix within visual range, so that one can output it into PNG file for inspection.</p>
@@ -206,6 +206,19 @@ _gaq.push(['_trackPageview']);
   <li><strong>x</strong>: x coordinate.</li>
   <li><strong>rows</strong>: row size of targeted matrix.</li>
   <li><strong>cols</strong>: column size of targeted matrix.</li>
+</ul>
+
+<h2 id="ccvborder">ccv_border</h2>
+
+<pre><code>void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, ccv_margin_t margin)
+</code></pre>
+
+<p>Add border to the input matrix.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>margin</strong>: left, top, right, bottom width for the border.</li>
 </ul>
 
 <h2 id="ccvmove">ccv_move</h2>
