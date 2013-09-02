@@ -1532,7 +1532,7 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	return z.classifier;
 }
 
-void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, const char* dir, double acceptance)
+void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance)
 {
 	printf("with %d positive examples\n"
 		   "going to accept %.2lf%% positive examples\n",
@@ -1798,7 +1798,7 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 						{
 							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i) - 0.5), (int)((y + 0.5) * scale * (1 << i) - 0.5), (cascade->size.width - cascade->margin.left - cascade->margin.right) * scale * (1 << i), (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * scale * (1 << i));
-							comp.id = j;
+							comp.id = j + 1;
 							comp.neighbors = 1;
 							comp.confidence = sum;
 							ccv_array_push(seq[j], &comp);
@@ -1905,7 +1905,7 @@ static void _ccv_icf_detect_objects_with_multiscale_classifier_cascade(ccv_dense
 						{
 							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i)), (int)((y + 0.5) * scale * (1 << i)), (cascade->size.width - cascade->margin.left - cascade->margin.right) << i, (cascade->size.height - cascade->margin.top - cascade->margin.bottom) << i);
-							comp.id = j;
+							comp.id = j + 1;
 							comp.neighbors = 1;
 							comp.confidence = sum;
 							ccv_array_push(seq[j], &comp);
@@ -1987,23 +1987,47 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 					ccv_array_push(seq2, comps + i);
 			}
 
+			// filter out large object rectangles contains small object rectangles
+			for(i = 0; i < seq2->rnum; i++)
+			{
+				ccv_comp_t* r2 = (ccv_comp_t*)ccv_array_get(seq2, i);
+				int distance = (int)(ccv_min(r2->rect.width, r2->rect.height) * 0.25 + 0.5);
+				for(j = 0; j < seq2->rnum; j++)
+				{
+					ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, j);
+					if (i != j &&
+						abs(r1.id) == r2->id &&
+						r1.rect.x >= r2->rect.x - distance &&
+						r1.rect.y >= r2->rect.y - distance &&
+						r1.rect.x + r1.rect.width <= r2->rect.x + r2->rect.width + distance &&
+						r1.rect.y + r1.rect.height <= r2->rect.y + r2->rect.height + distance &&
+						// if r1 (the smaller one) is better, mute r2
+						(r2->confidence <= r1.confidence && r2->neighbors < r1.neighbors))
+					{
+						r2->id = -r2->id;
+						break;
+					}
+				}
+			}
+
 			// filter out small object rectangles inside large object rectangles
 			for(i = 0; i < seq2->rnum; i++)
 			{
-				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, i);
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
 				int flag = 1;
 
 				for(j = 0; j < seq2->rnum; j++)
 				{
-					ccv_root_comp_t r2 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
+					ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
 					int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
 					if (i != j &&
-						r1.id == r2.id &&
+						abs(r1.id) == abs(r2.id) &&
 						r1.rect.x >= r2.rect.x - distance &&
 						r1.rect.y >= r2.rect.y - distance &&
 						r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
 						r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+						// if r2 is better, we mute r1
 						(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
 					{
 						flag = 0;
@@ -2011,7 +2035,7 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 					}
 				}
 
-				if(flag)
+				if(flag && r1->id > 0)
 					ccv_array_push(result_seq, &r1);
 			}
 			ccv_array_free(idx_seq);

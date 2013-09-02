@@ -17,7 +17,7 @@ const ccv_dpm_param_t ccv_dpm_default_params = {
 	.interval = 8,
 	.min_neighbors = 1,
 	.flags = 0,
-	.threshold = 0.6,
+	.threshold = 0.6, // 0.8
 };
 
 #define CCV_DPM_WINDOW_SIZE (8)
@@ -2085,7 +2085,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
 							ccv_root_comp_t comp;
-							comp.id = c;
+							comp.id = c + 1;
 							comp.neighbors = 1;
 							comp.confidence = f_ptr[x] + root->beta;
 							comp.pnum = root->count;
@@ -2170,6 +2170,29 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					ccv_array_push(seq2, comps + i);
 			}
 
+			// filter out large object rectangles contains small object rectangles
+			for(i = 0; i < seq2->rnum; i++)
+			{
+				ccv_root_comp_t* r2 = (ccv_root_comp_t*)ccv_array_get(seq2, i);
+				int distance = (int)(ccv_min(r2->rect.width, r2->rect.height) * 0.25 + 0.5);
+				for(j = 0; j < seq2->rnum; j++)
+				{
+					ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
+					if (i != j &&
+						abs(r1.id) == r2->id &&
+						r1.rect.x >= r2->rect.x - distance &&
+						r1.rect.y >= r2->rect.y - distance &&
+						r1.rect.x + r1.rect.width <= r2->rect.x + r2->rect.width + distance &&
+						r1.rect.y + r1.rect.height <= r2->rect.y + r2->rect.height + distance &&
+						// if r1 (the smaller one) is better, mute r2
+						(r2->confidence <= r1.confidence && r2->neighbors < r1.neighbors))
+					{
+						r2->id = -r2->id;
+						break;
+					}
+				}
+			}
+
 			// filter out small object rectangles inside large object rectangles
 			for(i = 0; i < seq2->rnum; i++)
 			{
@@ -2182,7 +2205,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
 					if (i != j &&
-						r1.id == r2.id &&
+						abs(r1.id) == abs(r2.id) &&
 						r1.rect.x >= r2.rect.x - distance &&
 						r1.rect.y >= r2.rect.y - distance &&
 						r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
@@ -2194,7 +2217,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 					}
 				}
 
-				if(flag)
+				if(flag && r1->id > 0)
 					ccv_array_push(result_seq, &r1);
 			}
 			ccv_array_free(idx_seq);

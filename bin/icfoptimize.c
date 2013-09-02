@@ -83,7 +83,7 @@ int main(int argc, char** argv)
 	free(file);
 	ccv_icf_classifier_cascade_t* cascade = ccv_icf_read_classifier_cascade(classifier_cascade);
 	assert(cascade && "classifier cascade doesn't exists");
-	ccv_icf_classifier_cascade_soft(cascade, posfiles, classifier_cascade, acceptance);
+	ccv_icf_classifier_cascade_soft(cascade, posfiles, acceptance);
 	ccv_icf_write_classifier_cascade(cascade, classifier_cascade);
 	for (i = 0; i < posfiles->rnum; i++)
 	{

@@ -56,7 +56,7 @@ The provided model is then tested with INRIA 2008 test dataset, if bounding boxe
 overlap is greater than 0.5 of the bigger bounding boxes, it is a true positive.
 The validation script is available at ./bin/icfvldtr.rb.
 
-	77.25% (66)
+	76.23% (52)
 
 Which has slightly higher recall than DPM implementation provided in ccv, with higher
 false alarms too.

@@ -47,9 +47,10 @@ area among the two), it will be counted as a true positive. Otherwise, it will b
 counted as a false positive (false alarm).
 
 Another implementation is from the DPM inventor, it is a Matlab implementation,
-and the author has a specially trained detector for INRIA 2008 dataset.
+and the author has a specially trained detector for INRIA 2008 dataset (at -0.3
+threshold).
 
-	75.21% (74)
+	75.38% (55)
 
 The DPM implementation in ccv was trained for three days using the default parameters
 with INRIA training data. Let's see how it performs.
@@ -57,9 +58,9 @@ with INRIA training data. Let's see how it performs.
 	./dpmdetect filelist.txt ../samples/pedestrian.m > result.txt
 	./dpmvldtr.rb <INRIA dataset>/Test/annotations result.txt
 
-The result is:
+The result is (at 0.8 threshold):
 
-	76.4% (68)
+	76.74% (49)
 
 Speed-wise:
 
