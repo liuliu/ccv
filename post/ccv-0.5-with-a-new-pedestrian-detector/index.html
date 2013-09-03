@@ -1,6 +1,6 @@
 <!doctype html>
 <html><head><meta charset="utf-8">
-<title>In 0.4, ccv talks HTTP</title>
+<title>ccv 0.5 with a new pedestrian detector</title>
 <link rel="stylesheet" href="/stylesheets/styles.css">
 <link rel="stylesheet" href="/stylesheets/coderay.css">
 <script src="/javascripts/scale.fix.js"></script>
@@ -29,17 +29,17 @@ _gaq.push(['_trackPageview']);
 <li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
 </ul>
 </header>
-<section><h1>In 0.4, ccv talks HTTP</h1>
-<p>November 30th, 2012</p>
-<p>For even number of ccv release, it often comes with bug fixes and API renovation. In the next two days, I am going to cut ccv 0.4 release, which brings you a major API renovation: an API over HTTP.</p>
+<section><h1>ccv 0.5 with a new pedestrian detector</h1>
+<p>September 2nd, 2013</p>
+<p>It has been half a year since the last release of ccv. I haven’t kept up my words of releasing a new version of ccv every four weeks. The colorful spring and energetic summer are playful. Hopefully during the depressing fall and bitter winter, I could keep up the pace.</p>
 
-<p>From the beginning, ccv strives to be an easy-to-use computer vision library, and is inspired with two use cases: 1). a server-side library that can be integrated into core infrastructure; 2). a client-side library for embedded devices, that can be portable and run reasonable fast on majority platforms.</p>
+<p>The odd number release of ccv will include new features. In this version, ccv shipped with a preliminary version of <a href="/doc/doc-icf">ICF (Integral Channel Features) implementation</a>. ICF has been advertised as the strongest rigid object detector. In practice, ccv-trained ICF-based pedestrian detector can achieve similar accuracy as DPM while being 3 times faster.</p>
 
-<p>There are conflicts between the two use cases, but surprisingly, there are more commons. For example, both environments require a library that is easy to drop in (with less dependencies), and easy to compile with (happily being statically linked). There are differences: for example, on server-side, functionalities in ccv may mainly be invoked remotely with another language, such as Python, Ruby or JavaScript (with Node.js).</p>
+<p>Because this is the first release of ccv after the implementation of its <a href="/doc/doc-http">HTTP interface</a>. I should mention that the HTTP interface will be kept up to date with newest features in ccv core library. In this particular case, HTTP interface supports ICF out of box.</p>
 
-<p>It is important for ccv being easily invokable, however, it is impossible to maintain a few high quality language bindings. The compromise in ccv is to expose its functionalities through a universally supported protocol: HTTP. Although it is chatty and often inefficient, the most functionalities in ccv is CPU intensive anyway, thus, the particular choice of protocol is unlikely to be the bottleneck. Besides, it maps well with ccv’s function-driven interface.</p>
+<p>Thanks to Rodrigo Benenson for being patient and timely on replying several questions I have on ICF implementation.</p>
 
-<p><a href="/doc/doc-http">Read more about how to use ccv over HTTP ›</a></p>
+<p><img src="/photo/2013-09-02-hack-square.png" alt="hack-square" /></p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 <div id="disqus_thread"></div>
