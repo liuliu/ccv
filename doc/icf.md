@@ -58,8 +58,8 @@ The validation script is available at ./bin/icfvldtr.rb.
 
 	76.23% (52)
 
-Which has slightly higher recall than DPM implementation provided in ccv, with higher
-false alarms too.
+Which has roughly the same recall as DPM implementation provided in ccv, with roughly 
+the same false alarms too.
 
 How to train my own detector?
 -----------------------------

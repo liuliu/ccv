@@ -154,6 +154,31 @@ void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	ccv_matrix_free(mg);
 }
 
+static inline float _ccv_icf_run_feature(ccv_icf_feature_t* feature, float* ptr, int cols, int ch, int x, int y)
+{
+	float c = feature->beta;
+	int q;
+	for (q = 0; q < feature->count; q++)
+		c += (ptr[(feature->sat[q * 2 + 1].x + x + 1 + (feature->sat[q * 2 + 1].y + y + 1) * cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + x + (feature->sat[q * 2 + 1].y + y + 1) * cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + x + (feature->sat[q * 2].y + y) * cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + x + 1 + (feature->sat[q * 2].y + y) * cols) * ch + feature->channel[q]]) * feature->alpha[q];
+	return c;
+}
+
+static inline int _ccv_icf_run_weak_classifier(ccv_icf_decision_tree_t* weak_classifier, float* ptr, int cols, int ch, int x, int y)
+{
+	float c = _ccv_icf_run_feature(weak_classifier->features, ptr, cols, ch, x, y);
+	if (c > 0)
+	{
+		if (!(weak_classifier->pass & 0x1))
+			return 1;
+		return _ccv_icf_run_feature(weak_classifier->features + 2, ptr, cols, ch, x, y) > 0;
+	} else {
+		if (!(weak_classifier->pass & 0x2))
+			return 0;
+		return _ccv_icf_run_feature(weak_classifier->features + 1, ptr, cols, ch, x, y) > 0;
+	}
+}
+
+#ifdef HAVE_GSL
 static void _ccv_icf_randomize_feature(gsl_rng* rng, ccv_size_t size, int minimum, ccv_icf_feature_t* feature, int grayscale)
 {
 	feature->count = gsl_rng_uniform_int(rng, CCV_ICF_SAT_MAX) + 1;
@@ -455,15 +480,6 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 #define less_than(s1, s2, aux) ((s1).value < (s2).value)
 static CCV_IMPLEMENT_QSORT(_ccv_icf_precomputed_ordering, ccv_icf_value_index_t, less_than)
 #undef less_than
-
-static inline float _ccv_icf_run_feature(ccv_icf_feature_t* feature, float* ptr, int cols, int ch, int x, int y)
-{
-	float c = feature->beta;
-	int q;
-	for (q = 0; q < feature->count; q++)
-		c += (ptr[(feature->sat[q * 2 + 1].x + x + 1 + (feature->sat[q * 2 + 1].y + y + 1) * cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2].x + x + (feature->sat[q * 2 + 1].y + y + 1) * cols) * ch + feature->channel[q]] + ptr[(feature->sat[q * 2].x + x + (feature->sat[q * 2].y + y) * cols) * ch + feature->channel[q]] - ptr[(feature->sat[q * 2 + 1].x + x + 1 + (feature->sat[q * 2].y + y) * cols) * ch + feature->channel[q]]) * feature->alpha[q];
-	return c;
-}
 
 static inline void _ccv_icf_3_uint8_to_1_uint1_1_uint23(uint8_t* u8, uint8_t* u1, uint32_t* uint23)
 {
@@ -849,21 +865,6 @@ static double _ccv_icf_find_best_weak_classifier(ccv_icf_feature_t* features, in
 		rate += intermediate_cache.weigh[3]; // the positive weights covered by first feature
 	ccfree(intermediate_cache.lut);
 	return rate;
-}
-
-static inline int _ccv_icf_run_weak_classifier(ccv_icf_decision_tree_t* weak_classifier, float* ptr, int cols, int ch, int x, int y)
-{
-	float c = _ccv_icf_run_feature(weak_classifier->features, ptr, cols, ch, x, y);
-	if (c > 0)
-	{
-		if (!(weak_classifier->pass & 0x1))
-			return 1;
-		return _ccv_icf_run_feature(weak_classifier->features + 2, ptr, cols, ch, x, y) > 0;
-	} else {
-		if (!(weak_classifier->pass & 0x2))
-			return 0;
-		return _ccv_icf_run_feature(weak_classifier->features + 1, ptr, cols, ch, x, y) > 0;
-	}
 }
 
 static ccv_array_t* _ccv_icf_collect_validates(gsl_rng* rng, ccv_size_t size, ccv_margin_t margin, ccv_array_t* validatefiles, int grayscale)
@@ -1361,9 +1362,11 @@ static double _ccv_icf_rate_weak_classifier(ccv_icf_decision_tree_t* weak_classi
 	return rate;
 }
 #endif
+#endif
 
 ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* validatefiles, const char* dir, ccv_icf_new_param_t params)
 {
+#ifdef HAVE_GSL
 	_ccv_icf_check_params(params);
 	assert(posfiles->rnum > 0);
 	assert(bgfiles->rnum > 0);
@@ -1530,10 +1533,15 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	gsl_rng_free(rng);
 	ccv_function_state_finish();
 	return z.classifier;
+#else
+	assert(0 && "ccv_icf_classifier_cascade_new requires GSL library support");
+	return 0;
+#endif
 }
 
 void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance)
 {
+#ifdef HAVE_GSL
 	printf("with %d positive examples\n"
 		   "going to accept %.2lf%% positive examples\n",
 		   posfiles->rnum, acceptance * 100);
@@ -1567,6 +1575,9 @@ void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_
 	_ccv_icf_classifier_cascade_soft_with_validates(validates, cascade, acceptance);
 	ccv_array_free(validates);
 	gsl_rng_free(rng);
+#else
+	assert(0 && "ccv_icf_classifier_cascade_soft requires GSL library support");
+#endif
 }
 
 static void _ccv_icf_read_classifier_cascade_with_fd(FILE* r, ccv_icf_classifier_cascade_t* cascade)
@@ -1754,6 +1765,8 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 			{
 				int rows = (int)(pyr[i]->rows / scale + 0.5);
 				int cols = (int)(pyr[i]->cols / scale + 0.5);
+				if (rows < cascade->size.height || cols < cascade->size.width)
+					break;
 				ccv_dense_matrix_t* image = k == 0 ? pyr[i] : 0;
 				if (k > 0)
 					ccv_resample(pyr[i], &image, 0, rows, cols, CCV_INTER_AREA);
@@ -1769,8 +1782,6 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 				ccv_dense_matrix_t* sat = 0;
 				ccv_sat(icf, &sat, 0, CCV_PADDING_ZERO);
 				ccv_matrix_free(icf);
-				if (rows < cascade->size.height || cols < cascade->size.width)
-					break;
 				int ch = CCV_GET_CHANNEL(sat->type);
 				float* ptr = sat->data.f32;
 				for (y = 0; y < rows; y += params.step_through)
@@ -1966,7 +1977,7 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 			// count number of neighbors
 			for(i = 0; i < seq[k]->rnum; i++)
 			{
-				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq[k], i);
+				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq[k], i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
 				comps[idx].id = r1.id;

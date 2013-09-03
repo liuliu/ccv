@@ -195,6 +195,13 @@ else
 			;;
 	*	  ) ;;
 	esac
+	echo -ne "  Run \033[4msanity assertion\033[m along side [y/N] ? "
+	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
+	case $yn in
+	[yY]* ) CFLAGS="$CFLAGS-D USE_SANITY_ASSERTION "
+			;;
+	*	  ) ;;
+	esac
 	echo -ne "  With \033[4mavcodec\033[m [y/N] ? "
 	read -n 1 yn ; if [ ! -z $yn ] ; then echo ; fi
 	case $yn in

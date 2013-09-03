@@ -217,20 +217,24 @@ int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf
 	}
 	switch (type)
 	{
-#ifdef HAVE_LIBJPEG
 		case CCV_IO_JPEG_FILE:
+#ifdef HAVE_LIBJPEG
 			_ccv_write_jpeg_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
-			break;
+#else
+			assert(0 && "ccv_write requires libjpeg support for JPEG format");
 #endif
-#ifdef HAVE_LIBPNG
+			break;
 		case CCV_IO_PNG_FILE:
+#ifdef HAVE_LIBPNG
 			_ccv_write_png_fd(mat, fd, conf);
 			if (len != 0)
 				*len = 0;
-			break;
+#else
+			assert(0 && "ccv_write requires libpng support for PNG format");
 #endif
+			break;
 		case CCV_IO_BINARY_FILE:
 			_ccv_write_binary_fd(mat, fd, conf);
 			if (len != 0)
