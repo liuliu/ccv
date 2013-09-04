@@ -2145,7 +2145,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			memset(comps, 0, (ncomp + 1) * sizeof(ccv_root_comp_t));
 
 			// count number of neighbors
-			for(i = 0; i < seq->rnum; i++)
+			for (i = 0; i < seq->rnum; i++)
 			{
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
@@ -2163,19 +2163,19 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			}
 
 			// calculate average bounding box
-			for(i = 0; i < ncomp; i++)
+			for (i = 0; i < ncomp; i++)
 			{
 				int n = comps[i].neighbors;
-				if(n >= params.min_neighbors)
+				if (n >= params.min_neighbors)
 					ccv_array_push(seq2, comps + i);
 			}
 
 			// filter out large object rectangles contains small object rectangles
-			for(i = 0; i < seq2->rnum; i++)
+			for (i = 0; i < seq2->rnum; i++)
 			{
 				ccv_root_comp_t* r2 = (ccv_root_comp_t*)ccv_array_get(seq2, i);
 				int distance = (int)(ccv_min(r2->rect.width, r2->rect.height) * 0.25 + 0.5);
-				for(j = 0; j < seq2->rnum; j++)
+				for (j = 0; j < seq2->rnum; j++)
 				{
 					ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
 					if (i != j &&
@@ -2194,31 +2194,34 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			}
 
 			// filter out small object rectangles inside large object rectangles
-			for(i = 0; i < seq2->rnum; i++)
+			for (i = 0; i < seq2->rnum; i++)
 			{
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, i);
-				int flag = 1;
-
-				for(j = 0; j < seq2->rnum; j++)
+				if (r1.id > 0)
 				{
-					ccv_root_comp_t r2 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
-					int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
+					int flag = 1;
 
-					if (i != j &&
-						abs(r1.id) == abs(r2.id) &&
-						r1.rect.x >= r2.rect.x - distance &&
-						r1.rect.y >= r2.rect.y - distance &&
-						r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
-						r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-						(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
+					for (j = 0; j < seq2->rnum; j++)
 					{
-						flag = 0;
-						break;
-					}
-				}
+						ccv_root_comp_t r2 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
+						int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
-				if(flag && r1->id > 0)
-					ccv_array_push(result_seq, &r1);
+						if (i != j &&
+							r1.id == abs(r2.id) &&
+							r1.rect.x >= r2.rect.x - distance &&
+							r1.rect.y >= r2.rect.y - distance &&
+							r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
+							r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
+							(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
+						{
+							flag = 0;
+							break;
+						}
+					}
+
+					if (flag)
+						ccv_array_push(result_seq, &r1);
+				}
 			}
 			ccv_array_free(idx_seq);
 			ccfree(comps);
