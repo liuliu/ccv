@@ -175,7 +175,7 @@ else
 		case $yn in
 		[nN]* ) ;;
 		*	  ) CFLAGS="$CFLAGS-D HAVE_CBLAS "
-				LDFLAGS="$LDFLAGS-lblas "
+				LDFLAGS="$LDFLAGS-lcblas "
 				;;
 		esac
 	fi
