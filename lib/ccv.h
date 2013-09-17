@@ -27,33 +27,33 @@
 #define ccfree free
 
 enum {
-	CCV_8U  = 0x0100,
-	CCV_32S = 0x0200,
-	CCV_32F = 0x0400,
-	CCV_64S = 0x0800,
-	CCV_64F = 0x1000,
+	CCV_8U  = 0x01000,
+	CCV_32S = 0x02000,
+	CCV_32F = 0x04000,
+	CCV_64S = 0x08000,
+	CCV_64F = 0x10000,
 };
 
 enum {
-	CCV_C1 = 0x01,
-	CCV_C2 = 0x02,
-	CCV_C3 = 0x03,
-	CCV_C4 = 0x04,
+	CCV_C1 = 0x001,
+	CCV_C2 = 0x002,
+	CCV_C3 = 0x003,
+	CCV_C4 = 0x004,
 };
 
 static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8, -1, -1, -1, -1, -1, -1, -1, 8 };
 
-#define CCV_GET_DATA_TYPE(x) ((x) & 0xFF00)
-#define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 8]
-#define CCV_MAX_CHANNEL (0xFF)
-#define CCV_GET_CHANNEL(x) ((x) & 0xFF)
+#define CCV_GET_DATA_TYPE(x) ((x) & 0xFF000)
+#define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 12]
+#define CCV_MAX_CHANNEL (0xFFF)
+#define CCV_GET_CHANNEL(x) ((x) & 0xFFF)
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F)
 
 enum {
-	CCV_MATRIX_DENSE  = 0x010000,
-	CCV_MATRIX_SPARSE = 0x020000,
-	CCV_MATRIX_CSR    = 0x040000,
-	CCV_MATRIX_CSC    = 0x080000,
+	CCV_MATRIX_DENSE  = 0x0100000,
+	CCV_MATRIX_SPARSE = 0x0200000,
+	CCV_MATRIX_CSR    = 0x0400000,
+	CCV_MATRIX_CSC    = 0x0800000,
 };
 
 enum {
@@ -90,8 +90,8 @@ typedef struct {
 } ccv_dense_matrix_t;
 
 enum {
-	CCV_SPARSE_VECTOR = 0x00100000,
-	CCV_DENSE_VECTOR  = 0x00200000,
+	CCV_SPARSE_VECTOR = 0x01000000,
+	CCV_DENSE_VECTOR  = 0x02000000,
 };
 
 typedef struct ccv_dense_vector_t {
@@ -1068,5 +1068,85 @@ void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_ca
 
 /* polymorph function to run ICF based detector */
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
+
+enum {
+	CCV_CONVNET_CONVOLUTIONAL = 0x01,
+	CCV_CONVNET_FULL_CONNECT = 0x02,
+	CCV_CONVNET_SOFTMAX = 0x03,
+	CCV_CONVNET_MAX_POOL = 0x04,
+	CCV_CONVNET_AVERAGE_POOL = 0x05,
+};
+
+typedef union {
+	struct {
+		// how many kernels
+		int count;
+		// strides
+		int strides;
+		// padding for input
+		int border;
+		// rows, cols, channels for the kernel
+		int rows;
+		int cols;
+		int channels;
+	} convolutional;
+	struct {
+		// strides
+		int strides;
+		// window size
+		int size;
+	} pool;
+	struct {
+		int count;
+	} full_connect;
+	struct {
+		int count;
+	} softmax;
+} ccv_convnet_type_t;
+
+typedef struct {
+	int type;
+	union {
+		struct {
+			int rows;
+			int cols;
+			int channels;
+		} matrix;
+		struct {
+			int count;
+		} node;
+	} input;
+	ccv_convnet_type_t output;
+} ccv_convnet_param_t;
+
+typedef struct {
+	int type;
+	float* w; // weight
+	float* b; // bias
+	ccv_convnet_type_t net; // network configuration
+} ccv_convnet_layer_t;
+
+typedef struct {
+	// this is redundant, but good to enforcing what the input should look like
+	int rows;
+	int cols;
+	int channels;
+	// count and layer of the convnet
+	int count;
+	ccv_convnet_layer_t* layers;
+} ccv_convnet_t;
+
+typedef struct {
+	int c; // class / category label
+	union {
+		ccv_dense_matrix_t* matrix;
+		ccv_file_info_t file;
+	};
+} ccv_train_supervised_item_t;
+
+ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(ccv_convnet_param_t params[], int count);
+void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* supervised_items);
+int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a);
+void ccv_convnet_free(ccv_convnet_t* convnet);
 
 #endif
