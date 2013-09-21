@@ -3,7 +3,7 @@ include ../../lib/config.mk
 #CC +=# -fprofile-arcs -ftest-coverage
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
-TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests io.tests transform.tests
+TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests io.tests transform.tests convnet.tests
 
 test: all
 	@for test in $(TARGETS) ; do ./"$$test" ; done

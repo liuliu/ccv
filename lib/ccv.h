@@ -1122,7 +1122,7 @@ typedef struct {
 typedef struct {
 	int type;
 	float* w; // weight
-	float* b; // bias
+	float b; // bias
 	ccv_convnet_type_t net; // network configuration
 } ccv_convnet_layer_t;
 
@@ -1134,6 +1134,7 @@ typedef struct {
 	// count and layer of the convnet
 	int count;
 	ccv_convnet_layer_t* layers;
+	ccv_dense_matrix_t** neurons;
 } ccv_convnet_t;
 
 typedef struct {
@@ -1142,10 +1143,11 @@ typedef struct {
 		ccv_dense_matrix_t* matrix;
 		ccv_file_info_t file;
 	};
-} ccv_train_supervised_item_t;
+} ccv_categorized_t;
 
 ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(ccv_convnet_param_t params[], int count);
-void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* supervised_items);
+void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds);
+void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a);
 void ccv_convnet_free(ccv_convnet_t* convnet);
 
