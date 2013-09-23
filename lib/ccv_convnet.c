@@ -97,7 +97,7 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 				bp[j * count] = v;
 			}
 			bp += db->cols * count;
-			ap += a->cols * ch * (((i + 1) * strides - border) - ccv_max(i * strides - border, 0));
+			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
 		}
 	}
 }
