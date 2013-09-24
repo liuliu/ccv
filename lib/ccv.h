@@ -1106,7 +1106,7 @@ typedef union {
 
 typedef struct {
 	int type;
-	union {
+	struct {
 		struct {
 			int rows;
 			int cols;

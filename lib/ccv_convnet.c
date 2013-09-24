@@ -102,6 +102,25 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	}
 }
 
+static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
+{
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, 1, layer->net.full_connect.count, CCV_32F | CCV_C1, CCV_32F | CCV_C1, 0);
+	int i, j;
+	int ch = CCV_GET_CHANNEL(a->type);
+	float* bp = db->data.f32;
+	float* ap = a->data.f32;
+	float* w = layer->w;
+	for (i = 0; i < db->cols; i++)
+	{
+		float v = 0;
+		for (j = 0; j < a->rows * a->cols * ch; j++)
+			v += ap[j] * w[j];
+		bp[i] = v;
+		w += a->rows * a->cols * ch;
+	}
+}
+
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
 	assert(CCV_GET_CHANNEL(a->type) == convnet->channels);
@@ -116,6 +135,9 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 		case CCV_CONVNET_CONVOLUTIONAL:
 			_ccv_convnet_convolutional_forward_propagate(convnet->layers, a, convnet->neurons);
 			break;
+		case CCV_CONVNET_FULL_CONNECT:
+			_ccv_convnet_full_connect_forward_propagate(convnet->layers, a, convnet->neurons);
+			break;
 	}
 	assert(type == 0 || CCV_GET_DATA_TYPE(type) == CCV_32F);
 	for (i = 1; i < convnet->count; i++)
@@ -125,6 +147,9 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
 				_ccv_convnet_convolutional_forward_propagate(layer, convnet->neurons[i - 1], convnet->neurons + i);
+				break;
+			case CCV_CONVNET_FULL_CONNECT:
+				_ccv_convnet_full_connect_forward_propagate(layer, convnet->neurons[i - 1], convnet->neurons + i);
 				break;
 		}
 	}

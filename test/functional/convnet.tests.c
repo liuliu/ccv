@@ -99,6 +99,106 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 	ccv_convnet_free(convnet);
 }
 
+TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.input = {
+			.matrix = {
+				.rows = 225,
+				.cols = 225,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.convolutional = {
+				.count = 1,
+				.strides = 4,
+				.border = 1,
+				.rows = 11,
+				.cols = 11,
+				.channels = 1,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	int i, x, y;
+	for (i = 0; i < 11 * 11; i++)
+		convnet->layers[0].w[i] = i + 1;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(225, 225, CCV_32F | CCV_C1, 0, 0);
+	for (i = 0; i < 225 * 225; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	REQUIRE(b->rows == 55 && b->cols == 55, "11x11 convolves on 225x255 with strides 4 should produce 55x55 matrix");
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
+	float sum = 0;
+	// first column
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 10; x++)
+			sum += ((y + 1) * 11 + x + 2) * (y * 225 + x + 1);
+	c->data.f32[0] = sum;
+	sum = 0;
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 11; x++)
+			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 3) + 1);
+	for (x = 1; x < 54; x++)
+		c->data.f32[x] = sum + (x - 1) * 4 * (11 * 11 + 12) * 11 * 10 / 2;
+	sum = 0;
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 10; x++)
+			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 215) + 1);
+	c->data.f32[54] = sum;
+	// last column
+	sum = 0;
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 10; x++)
+			sum += (y * 11 + x + 2) * ((y + 215) * 225 + x + 1);
+	c->data.f32[55 * 54] = sum;
+	sum = 0;
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 11; x++)
+			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 3) + 1);
+	for (x = 1; x < 54; x++)
+		c->data.f32[55 * 54 + x] = sum + (x - 1) * 4 * (10 * 11 + 1) * 11 * 10 / 2;
+	sum = 0;
+	for (y = 0; y < 10; y++)
+		for (x = 0; x < 10; x++)
+			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 215) + 1);
+	c->data.f32[55 * 54 + 54] = sum;
+	float border[] = {
+		0, 0
+	};
+	for (y = 0; y < 11; y++)
+		for (x = 0; x < 10; x++)
+			border[0] += (y * 11 + x + 2) * ((y + 3) * 225 + x + 1);
+	for (y = 0; y < 11; y++)
+		for (x = 0; x < 10; x++)
+			border[1] += (y * 11 + x + 1) * ((y + 3) * 225 + (x + 215) + 1);
+	sum = 0;
+	for (y = 0; y < 11; y++)
+		for (x = 0; x < 11; x++)
+			sum += (y * 11 + x + 1) * ((y + 3) * 225 + (x + 3) + 1);
+	for (y = 1; y < 54; y++)
+	{
+		c->data.f32[y * 55] = border[0];
+		for (x = 1; x < 54; x++)
+			c->data.f32[y * 55 + x] = sum + (x - 1) * 4 * (11 * 11 + 1) * 11 * 11 / 2;
+		c->data.f32[y * 55 + 54] = border[1];
+		sum += 225 * 4 * (11 * 11 + 1) * 11 * 11 / 2;
+		border[0] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (10 * 11 + 1 + 1) * 11 / 2);
+		border[1] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (11 * 11 + 11) * 11 / 2);
+	}
+	// regularize the output so it is within the tolerance
+	for (i = 0; i < 55 * 55; i++)
+		c->data.f32[i] = c->data.f32[i] * 1e-7, b->data.f32[i] = b->data.f32[i] * 1e-7;
+	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
 TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 {
 	ccv_convnet_param_t params = {
@@ -275,101 +375,40 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 	ccv_convnet_free(convnet);
 }
 
-TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
+TEST_CASE("full connect network from 13x13x128 to 2048")
 {
 	ccv_convnet_param_t params = {
-		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.type = CCV_CONVNET_FULL_CONNECT,
 		.input = {
 			.matrix = {
-				.rows = 225,
-				.cols = 225,
-				.channels = 1,
+				.rows = 13,
+				.cols = 13,
+				.channels = 128,
+			},
+			.node = {
+				.count = 13 * 13 * 128,
 			},
 		},
 		.output = {
-			.convolutional = {
-				.count = 1,
-				.strides = 4,
-				.border = 1,
-				.rows = 11,
-				.cols = 11,
-				.channels = 1,
+			.full_connect = {
+				.count = 2048,
 			},
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
-	int i, x, y;
-	for (i = 0; i < 11 * 11; i++)
-		convnet->layers[0].w[i] = i + 1;
-	ccv_dense_matrix_t* a = ccv_dense_matrix_new(225, 225, CCV_32F | CCV_C1, 0, 0);
-	for (i = 0; i < 225 * 225; i++)
-		a->data.f32[i] = i + 1;
+	int i;
+	for (i = 0; i < 13 * 13 * 128 * 2048; i++)
+		convnet->layers->w[i] = 1;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(13, 13, CCV_32F | 128, 0, 0);
+	for (i = 0; i < 13 * 13 * 128; i++)
+		a->data.f32[i] = 1;
 	ccv_dense_matrix_t* b = 0;
 	ccv_convnet_encode(convnet, a, &b, 0);
-	ccv_matrix_free(a);
-	REQUIRE(b->rows == 55 && b->cols == 55, "11x11 convolves on 225x255 with strides 4 should produce 55x55 matrix");
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
-	float sum = 0;
-	// first column
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 10; x++)
-			sum += ((y + 1) * 11 + x + 2) * (y * 225 + x + 1);
-	c->data.f32[0] = sum;
-	sum = 0;
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 11; x++)
-			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 3) + 1);
-	for (x = 1; x < 54; x++)
-		c->data.f32[x] = sum + (x - 1) * 4 * (11 * 11 + 12) * 11 * 10 / 2;
-	sum = 0;
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 10; x++)
-			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 215) + 1);
-	c->data.f32[54] = sum;
-	// last column
-	sum = 0;
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 10; x++)
-			sum += (y * 11 + x + 2) * ((y + 215) * 225 + x + 1);
-	c->data.f32[55 * 54] = sum;
-	sum = 0;
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 11; x++)
-			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 3) + 1);
-	for (x = 1; x < 54; x++)
-		c->data.f32[55 * 54 + x] = sum + (x - 1) * 4 * (10 * 11 + 1) * 11 * 10 / 2;
-	sum = 0;
-	for (y = 0; y < 10; y++)
-		for (x = 0; x < 10; x++)
-			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 215) + 1);
-	c->data.f32[55 * 54 + 54] = sum;
-	float border[] = {
-		0, 0
-	};
-	for (y = 0; y < 11; y++)
-		for (x = 0; x < 10; x++)
-			border[0] += (y * 11 + x + 2) * ((y + 3) * 225 + x + 1);
-	for (y = 0; y < 11; y++)
-		for (x = 0; x < 10; x++)
-			border[1] += (y * 11 + x + 1) * ((y + 3) * 225 + (x + 215) + 1);
-	sum = 0;
-	for (y = 0; y < 11; y++)
-		for (x = 0; x < 11; x++)
-			sum += (y * 11 + x + 1) * ((y + 3) * 225 + (x + 3) + 1);
-	for (y = 1; y < 54; y++)
-	{
-		c->data.f32[y * 55] = border[0];
-		for (x = 1; x < 54; x++)
-			c->data.f32[y * 55 + x] = sum + (x - 1) * 4 * (11 * 11 + 1) * 11 * 11 / 2;
-		c->data.f32[y * 55 + 54] = border[1];
-		sum += 225 * 4 * (11 * 11 + 1) * 11 * 11 / 2;
-		border[0] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (10 * 11 + 1 + 1) * 11 / 2);
-		border[1] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (11 * 11 + 11) * 11 / 2);
-	}
-	// regularize the output so it is within the tolerance
-	for (i = 0; i < 55 * 55; i++)
-		c->data.f32[i] = c->data.f32[i] * 1e-7, b->data.f32[i] = b->data.f32[i] * 1e-7;
-	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly the same");
+	REQUIRE(b->rows == 1 && b->cols == 2048, "full connect network output should be 2048 neurons");
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(1, 2048, CCV_32F | CCV_C1, 0, 0);
+	for (i = 0; i < 2048; i++)
+		c->data.f32[i] = 13 * 13 * 128;
+	REQUIRE_MATRIX_EQ(b, c, "full connect network output should be exactly 13 * 13 * 128");
 	ccv_matrix_free(b);
 	ccv_matrix_free(c);
 	ccv_convnet_free(convnet);
