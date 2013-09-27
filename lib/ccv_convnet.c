@@ -105,19 +105,86 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, 1, layer->net.full_connect.count, CCV_32F | CCV_C1, CCV_32F | CCV_C1, 0);
-	int i, j;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, layer->net.full_connect.count, 1, CCV_32F | CCV_C1, CCV_32F | CCV_C1, 0);
 	int ch = CCV_GET_CHANNEL(a->type);
-	float* bp = db->data.f32;
+	int rows = a->rows;
+	int cols = a->cols;
+	// reshape a for gemm
+	assert(a->step == a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * ch);
+	a->rows = rows * cols * ch;
+	a->cols = 1;
+	a->type = (a->type - ch) | CCV_C1;
+	ccv_dense_matrix_t dw = ccv_dense_matrix(db->rows, a->rows, CCV_32F | CCV_C1, layer->w, 0);
+	ccv_gemm(&dw, a, 1, 0, 0, 0, (ccv_matrix_t**)&db, 0);
+	a->type = (a->type - CCV_GET_CHANNEL(a->type)) | ch;
+	a->rows = rows;
+	a->cols = cols;
+}
+
+static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
+{
+	int size = layer->net.pool.size;
+	int strides = layer->net.pool.strides;
+	assert((a->rows - size) % strides == 0);
+	assert((a->cols - size) % strides == 0);
+	int rows = (a->rows - size) / strides + 1;
+	int cols = (a->cols - size) / strides + 1;
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int type = CCV_32F | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
+	int i, j, k, x, y;
 	float* ap = a->data.f32;
-	float* w = layer->w;
-	for (i = 0; i < db->cols; i++)
+	float* bp = db->data.f32;
+	for (i = 0; i < db->rows; i++)
 	{
-		float v = 0;
-		for (j = 0; j < a->rows * a->cols * ch; j++)
-			v += ap[j] * w[j];
-		bp[i] = v;
-		w += a->rows * a->cols * ch;
+		for (j = 0; j < db->cols; j++)
+			for (k = 0; k < ch; k++)
+			{
+				float v = ap[j* strides * ch + k];
+				for (x = 1; x < size; x++)
+					if (ap[(j * strides + x) * ch + k] > v)
+						v = ap[(j * strides + x) * ch + k];
+				for (y = 1; y < size; y++)
+					for (x = 0; x < size; x++)
+						if (ap[(j * strides + x + y * a->cols) * ch + k] > v)
+							v = ap[(j * strides + x + y * a->cols) * ch + k];
+				bp[j * ch + k] = v;
+			}
+		ap += a->cols * ch * strides;
+		bp += db->cols * ch;
+	}
+}
+
+static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
+{
+	int size = layer->net.pool.size;
+	int strides = layer->net.pool.strides;
+	assert((a->rows - size) % strides == 0);
+	assert((a->cols - size) % strides == 0);
+	int rows = (a->rows - size) / strides + 1;
+	int cols = (a->cols - size) / strides + 1;
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int type = CCV_32F | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
+	int i, j, k, x, y;
+	float* ap = a->data.f32;
+	float* bp = db->data.f32;
+	float inv_size = 1.0 / (size * size);
+	for (i = 0; i < db->rows; i++)
+	{
+		for (j = 0; j < db->cols; j++)
+			for (k = 0; k < ch; k++)
+			{
+				float v = 0;
+				for (y = 0; y < size; y++)
+					for (x = 0; x < size; x++)
+						v += ap[(j * strides + x + y * a->cols) * ch + k];
+				bp[j * ch + k] = v * inv_size;
+			}
+		ap += a->cols * ch * strides;
+		bp += db->cols * ch;
 	}
 }
 
@@ -138,6 +205,12 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 		case CCV_CONVNET_FULL_CONNECT:
 			_ccv_convnet_full_connect_forward_propagate(convnet->layers, a, convnet->neurons);
 			break;
+		case CCV_CONVNET_MAX_POOL:
+			_ccv_convnet_max_pool_forward_propagate(convnet->layers, a, convnet->neurons);
+			break;
+		case CCV_CONVNET_AVERAGE_POOL:
+			_ccv_convnet_average_pool_forward_propagate(convnet->layers, a, convnet->neurons);
+			break;
 	}
 	assert(type == 0 || CCV_GET_DATA_TYPE(type) == CCV_32F);
 	for (i = 1; i < convnet->count; i++)
@@ -150,6 +223,12 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				_ccv_convnet_full_connect_forward_propagate(layer, convnet->neurons[i - 1], convnet->neurons + i);
+				break;
+			case CCV_CONVNET_MAX_POOL:
+				_ccv_convnet_max_pool_forward_propagate(layer, convnet->neurons[i - 1], convnet->neurons + i);
+				break;
+			case CCV_CONVNET_AVERAGE_POOL:
+				_ccv_convnet_average_pool_forward_propagate(layer, convnet->neurons[i - 1], convnet->neurons + i);
 				break;
 		}
 	}

@@ -404,11 +404,227 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 		a->data.f32[i] = 1;
 	ccv_dense_matrix_t* b = 0;
 	ccv_convnet_encode(convnet, a, &b, 0);
-	REQUIRE(b->rows == 1 && b->cols == 2048, "full connect network output should be 2048 neurons");
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(1, 2048, CCV_32F | CCV_C1, 0, 0);
+	REQUIRE(b->rows == 2048 && b->cols == 1, "full connect network output should be 2048 neurons");
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(2048, 1, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 2048; i++)
 		c->data.f32[i] = 13 * 13 * 128;
 	REQUIRE_MATRIX_EQ(b, c, "full connect network output should be exactly 13 * 13 * 128");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_MAX_POOL,
+		.input = {
+			.matrix = {
+				.rows = 55,
+				.cols = 55,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 3,
+				.strides = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 55 * 55; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 27; y++)
+		for (x = 0; x < 27; x++)
+			c->data.f32[y * 27 + x] = 113 + y * 110 + x * 2;
+	REQUIRE_MATRIX_EQ(b, c, "max pool network output should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_MAX_POOL,
+		.input = {
+			.matrix = {
+				.rows = 57,
+				.cols = 57,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 3,
+				.strides = 3,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(57, 57, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 57 * 57; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(19, 19, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 19; y++)
+		for (x = 0; x < 19; x++)
+			c->data.f32[y * 19 + x] = 117 + y * 171 + x * 3;
+	REQUIRE_MATRIX_EQ(b, c, "max pool network output should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_MAX_POOL,
+		.input = {
+			.matrix = {
+				.rows = 54,
+				.cols = 54,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 2,
+				.strides = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(54, 54, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 54 * 54; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 27; y++)
+		for (x = 0; x < 27; x++)
+			c->data.f32[y * 27 + x] = 56 + y * 108 + x * 2;
+	REQUIRE_MATRIX_EQ(b, c, "max pool network output should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_AVERAGE_POOL,
+		.input = {
+			.matrix = {
+				.rows = 55,
+				.cols = 55,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 3,
+				.strides = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 55 * 55; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 27; y++)
+		for (x = 0; x < 27; x++)
+			c->data.f32[y * 27 + x] = 57 + y * 110 + x * 2;
+	REQUIRE_MATRIX_EQ(b, c, "average pool network output should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_AVERAGE_POOL,
+		.input = {
+			.matrix = {
+				.rows = 57,
+				.cols = 57,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 3,
+				.strides = 3,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(57, 57, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 57 * 57; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(19, 19, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 19; y++)
+		for (x = 0; x < 19; x++)
+			c->data.f32[y * 19 + x] = 59 + y * 171 + x * 3;
+	REQUIRE_MATRIX_EQ(b, c, "average pool network output should be exactly the same");
+	ccv_matrix_free(b);
+	ccv_matrix_free(c);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
+{
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_AVERAGE_POOL,
+		.input = {
+			.matrix = {
+				.rows = 54,
+				.cols = 54,
+				.channels = 1,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 2,
+				.strides = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(54, 54, CCV_32F | CCV_C1, 0, 0);
+	int i, x, y;
+	for (i = 0; i < 54 * 54; i++)
+		a->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, a, &b, 0);
+	ccv_matrix_free(a);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	for (y = 0; y < 27; y++)
+		for (x = 0; x < 27; x++)
+			c->data.f32[y * 27 + x] = 28.5 + y * 108 + x * 2;
+	REQUIRE_MATRIX_EQ(b, c, "average pool network output should be exactly the same");
 	ccv_matrix_free(b);
 	ccv_matrix_free(c);
 	ccv_convnet_free(convnet);
