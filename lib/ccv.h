@@ -343,6 +343,7 @@ double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat, int flag);
 double ccv_variance(ccv_matrix_t* mat);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+void ccv_add(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 
 enum {
@@ -1072,9 +1073,8 @@ ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dens
 enum {
 	CCV_CONVNET_CONVOLUTIONAL = 0x01,
 	CCV_CONVNET_FULL_CONNECT = 0x02,
-	CCV_CONVNET_SOFTMAX = 0x03,
-	CCV_CONVNET_MAX_POOL = 0x04,
-	CCV_CONVNET_AVERAGE_POOL = 0x05,
+	CCV_CONVNET_MAX_POOL = 0x03,
+	CCV_CONVNET_AVERAGE_POOL = 0x04,
 };
 
 typedef union {
@@ -1099,13 +1099,13 @@ typedef union {
 	struct {
 		int count;
 	} full_connect;
-	struct {
-		int count;
-	} softmax;
 } ccv_convnet_type_t;
 
 typedef struct {
 	int type;
+	float dropout_rate;
+	float bias; // bias initialization
+	float sigma; // weight initialization with deviation from Gaussian distribution
 	struct {
 		struct {
 			int rows;
@@ -1121,8 +1121,10 @@ typedef struct {
 
 typedef struct {
 	int type;
+	float dropout_rate;
 	float* w; // weight
-	float b; // bias
+	float* bias; // bias
+	size_t wnum; // the number of weights
 	ccv_convnet_type_t net; // network configuration
 } ccv_convnet_layer_t;
 
@@ -1133,9 +1135,15 @@ typedef struct {
 	int channels;
 	// count and layer of the convnet
 	int count;
-	ccv_convnet_layer_t* layers;
-	ccv_dense_matrix_t** neurons;
+	ccv_convnet_layer_t* layers; // the layer configuration
+	ccv_dense_matrix_t** acts; // hidden layers and output layers
+	ccv_dense_matrix_t** dropouts; // the dropout for hidden layers
 } ccv_convnet_t;
+
+typedef struct {
+	int max_epoch;
+	int mini_batch;
+} ccv_convnet_train_param_t;
 
 typedef struct {
 	int c; // class / category label
@@ -1146,7 +1154,7 @@ typedef struct {
 } ccv_categorized_t;
 
 ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(ccv_convnet_param_t params[], int count);
-void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds);
+void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a);
 void ccv_convnet_free(ccv_convnet_t* convnet);

@@ -26,6 +26,31 @@ TEST_CASE("matrix multiplication")
 	ccv_matrix_free(y);
 }
 
+TEST_CASE("matrix addition")
+{
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(3, 2, CCV_64F | CCV_C1, 0, 0);
+	a->data.f64[0] = 0.11;
+	a->data.f64[1] = 0.12;
+	a->data.f64[2] = 0.13;
+	a->data.f64[3] = 0.21;
+	a->data.f64[4] = 0.22;
+	a->data.f64[5] = 0.23;
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(3, 2, CCV_64F | CCV_C1, 0, 0);
+	b->data.f64[0] = 1011;
+	b->data.f64[1] = 1012;
+	b->data.f64[2] = 1021;
+	b->data.f64[3] = 1022;
+	b->data.f64[4] = 1031;
+	b->data.f64[5] = 1032;
+	ccv_dense_matrix_t* y = 0;
+	ccv_add(a, b, (ccv_matrix_t**)&y, 0);
+	double hy[6] = {1011.11, 1012.12, 1021.13, 1022.21, 1031.22, 1032.23};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, hy, y->data.f64, 4, 1e-6, "3x2, 3x2 matrix addition failure");
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
+	ccv_matrix_free(y);
+}
+
 TEST_CASE("vector sum")
 {
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(3, 2, CCV_64F | CCV_C1, 0, 0);
