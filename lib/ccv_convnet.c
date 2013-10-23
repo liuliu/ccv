@@ -12,6 +12,7 @@ ccv_convnet_t* ccv_convnet_new(ccv_convnet_param_t params[], int count)
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	gsl_rng_set(rng, 28304);
 	convnet->layers = (ccv_convnet_layer_t*)(convnet + 1);
 	convnet->acts = (ccv_dense_matrix_t**)(convnet->layers + count);
 	memset(convnet->acts, 0, sizeof(ccv_dense_matrix_t*) * count);
@@ -37,11 +38,12 @@ ccv_convnet_t* ccv_convnet_new(ccv_convnet_param_t params[], int count)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
 				layers[i].wnum = params[i].output.convolutional.rows * params[i].output.convolutional.cols * params[i].output.convolutional.channels * params[i].output.convolutional.count;
-				layers[i].w = (float*)ccmalloc(sizeof(float) * (layers[i].wnum + 1));
+				layers[i].w = (float*)ccmalloc(sizeof(float) * (layers[i].wnum + params[i].output.convolutional.count));
 				layers[i].bias = layers[i].w + layers[i].wnum;
 				for (j = 0; j < layers[i].wnum; j++)
 					layers[i].w[j] = gsl_ran_gaussian(rng, params[i].sigma);
-				layers[i].bias[0] = params[i].bias;
+				for (j = 0; j < params[i].output.convolutional.count; j++)
+					layers[i].bias[j] = params[i].bias;
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				layers[i].wnum = params[i].input.node.count * params[i].output.full_connect.count;
@@ -103,7 +105,6 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	int border = layer->net.convolutional.border;
 	int kernel_rows = layer->net.convolutional.rows;
 	int kernel_cols = layer->net.convolutional.cols;
-	float bias = layer->bias[0];
 	int type = CCV_32F | count;
 	assert(CCV_GET_CHANNEL(a->type) == ch);
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
@@ -114,6 +115,8 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	{ \
 		float* ap = a->data.f32; \
 		float* bp = db->data.f32 + k; \
+		float* layer_w = layer->w + k * kernel_rows * kernel_cols * ch; \
+		float bias = layer->bias[k]; \
 		act_block_setup; \
 		for (i = 0; i < db->rows; i++) \
 		{ \
@@ -126,7 +129,7 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 				float v = bias; \
 				int comx = (ccv_max(j * strides - border, 0) - (j * strides - border)) * ch; \
 				int maxx = kernel_cols * ch - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols)) * ch; \
-				float* w = layer->w + comx + comy; \
+				float* w = layer_w + comx + comy; \
 				float* apz = ap + ccv_max(j * strides - border, 0) * ch; \
 				/* when we have border, we simply do zero padding */ \
 				for (y = 0; y < maxy; y++) \
@@ -173,6 +176,7 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 	// reshape a for gemm
 	assert(a->step == a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * ch);
 	a->rows = rows * cols * ch, a->cols = 1, a->type = (a->type - ch) | CCV_C1;
+	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type);
 	int i;
 	float* bptr = db->data.f32;
 	if (d)
@@ -200,6 +204,7 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 		ccv_gemm(&dw, a, 1, db, 1, 0, (ccv_matrix_t**)&db, 0); // supply db as matrix C is allowed
 	}
 	a->rows = rows, a->cols = cols, a->type = (a->type - CCV_GET_CHANNEL(a->type)) | ch;
+	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
 }
 
 static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
@@ -314,9 +319,12 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 				break;
 		}
 	}
-	*b = convnet->acts[convnet->count - 1];
-	// restore the last layer of neuron cache
-	convnet->acts[convnet->count - 1] = out_neuron;
+	if (convnet->acts + convnet->count - 1 != b)
+	{
+		*b = convnet->acts[convnet->count - 1];
+		// restore the last layer of neuron cache
+		convnet->acts[convnet->count - 1] = out_neuron;
+	}
 }
 
 int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a)
@@ -335,36 +343,39 @@ int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a)
 
 static void _ccv_convnet_randomize_dropouts(gsl_rng* rng, int a_rows, int a_cols, ccv_convnet_layer_t* layer, ccv_dense_matrix_t** dropouts)
 {
-	int rows, cols;
-	_ccv_convnet_compute_output_scale(a_rows, a_cols, layer, &rows, &cols);
-	ccv_dense_matrix_t* db = *dropouts = ccv_dense_matrix_renew(*dropouts, rows, cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, 0);
-	int* bptr = db->data.i32;
-	memset(bptr, 0, sizeof(int) * cols * rows);
-	// dropout half of the neurons
-	int i;
-	for (i = 0; i < (int)(rows * cols * (1 - layer->dropout_rate) + 0.5); i++)
-		bptr[i] = 1;
-	// shuffle the dropout
-	gsl_ran_shuffle(rng, bptr, rows * cols, sizeof(int));
+	if (layer->dropout_rate > 0)
+	{
+		int rows, cols;
+		_ccv_convnet_compute_output_scale(a_rows, a_cols, layer, &rows, &cols);
+		ccv_dense_matrix_t* db = *dropouts = ccv_dense_matrix_renew(*dropouts, rows, cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, 0);
+		int* bptr = db->data.i32;
+		memset(bptr, 0, sizeof(int) * cols * rows);
+		// dropout half of the neurons
+		int i;
+		for (i = 0; i < (int)(rows * cols * (1 - layer->dropout_rate) + 0.5); i++)
+			bptr[i] = 1;
+		// shuffle the dropout
+		gsl_ran_shuffle(rng, bptr, rows * cols, sizeof(int));
+	}
 }
 
 static void _ccv_convnet_compute_softmax(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
-	assert(CCV_GET_CHANNEL(a->type) == CCV_C1);
+	int ch = CCV_GET_CHANNEL(a->type);
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | CCV_C1, CCV_32F | CCV_C1, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | ch, CCV_32F | ch, 0);
 	int i;
 	float* aptr = a->data.f32;
 	float* bptr = db->data.f32;
-	float mv = aptr[0];
-	for (i = 1; i < a->rows * a->cols; i++)
-		if (aptr[i] > mv)
-			mv = aptr[i];
+	double max = aptr[0];
+	for (i = 1; i < a->rows * a->cols * ch; i++)
+		if (aptr[i] > max)
+			max = aptr[i];
 	double tt = 0;
-	for (i = 0; i < a->rows * a->cols; i++)
-		tt += (bptr[i] = expf(aptr[i] - mv));
+	for (i = 0; i < a->rows * a->cols * ch; i++)
+		tt += (bptr[i] = expf(aptr[i] - max));
 	tt = 1.0 / tt;
-	for (i = 0; i < a->rows * a->cols; i++)
+	for (i = 0; i < a->rows * a->cols * ch; i++)
 		bptr[i] *= tt;
 }
 
@@ -382,15 +393,14 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	int border = layer->net.convolutional.border;
 	int kernel_rows = layer->net.convolutional.rows;
 	int kernel_cols = layer->net.convolutional.cols;
+	assert(a->rows == rows);
+	assert(a->cols == cols);
+	assert(CCV_GET_CHANNEL(a->type) == count);
 	int a_rows = a->rows, a_cols = a->cols, a_ch = CCV_GET_CHANNEL(a->type);
 	a->rows = rows, a->cols = cols, a->type = (a->type - a_ch) | count;
 	assert(CCV_GET_CHANNEL(m->type) == ch);
 	assert(CCV_GET_DATA_TYPE(m->type) == CCV_32F);
 	int i, j, x, y, k;
-	// update bias gradient
-	float* ap = a->data.f32;
-	for (i = 0; i < a->rows * a->cols * count; i++)
-		update_params->bias[0] += ap[i];
 	// update weight gradient
 #define for_block_w(act_block_setup, act_block_begin, act_block_end) \
 	for (k = 0; k < count; k++) \
@@ -398,6 +408,8 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		float* mp = m->data.f32; \
 		float* ap = a->data.f32 + k; \
 		float* np = n->data.f32 + k; \
+		float* update_w = update_params->w + k * kernel_rows * kernel_cols * ch; \
+		float bias = 0; \
 		act_block_setup; \
 		for (i = 0; i < rows; i++) \
 		{ \
@@ -410,9 +422,10 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 				if (np[j * count] > 0) \
 				{ /* when np is bigger than 0, relu continues to update the weight, otherwise it stops */ \
 					float v = ap[j * count]; \
+					bias += v; \
 					int comx = (ccv_max(j * strides - border, 0) - (j * strides - border)) * ch; \
 					int maxx = kernel_cols * ch - comx - (j * strides + kernel_cols - ccv_min(m->cols + border, j * strides + kernel_cols)) * ch; \
-					float* w = update_params->w + comx + comy; \
+					float* w = update_w + comx + comy; \
 					float* mpz = mp + ccv_max(j * strides - border, 0) * ch; \
 					/* when we have border, we simply do zero padding */ \
 					for (y = 0; y < maxy; y++) \
@@ -429,15 +442,22 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			np += n->cols * count; \
 			mp += m->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0)); \
 		} \
+		update_params->bias[k] = bias; \
 	}
 	ccv_dense_matrix_t* db = 0;
 	if (b)
+	{
 		db = *b = ccv_dense_matrix_renew(*b, m->rows, m->cols, CCV_32F | CCV_GET_CHANNEL(m->type), CCV_32F | CCV_GET_CHANNEL(m->type), 0);
+		// clear it up before propagate result
+		ccv_zero(db);
+	}
 #define for_block_b(act_block_setup, act_block_begin, act_block_end) \
 	for (k = 0; k < count; k++) \
 	{ \
 		float* bp = db->data.f32; \
 		float* ap = a->data.f32 + k; \
+		float* np = n->data.f32 + k; \
+		float* layer_w = layer->w + k * kernel_rows * kernel_cols * ch; \
 		act_block_setup; \
 		for (i = 0; i < rows; i++) \
 		{ \
@@ -447,22 +467,26 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			for (j = 0; j < cols; j++) \
 			{ \
 				act_block_begin; \
-				float v = ap[j * count]; \
-				int comx = (ccv_max(j * strides - border, 0) - (j * strides - border)) * ch; \
-				int maxx = kernel_cols * ch - comx - (j * strides + kernel_cols - ccv_min(db->cols + border, j * strides + kernel_cols)) * ch; \
-				float* w = layer->w + comx + comy; \
-				float* bpz = bp + ccv_max(j * strides - border, 0) * ch; \
-				/* when we have border, we simply do zero padding */ \
-				for (y = 0; y < maxy; y++) \
-				{ \
-					for (x = 0; x < maxx; x++) \
-						bpz[x] += v * w[x]; \
-					w += kernel_cols * ch; \
-					bpz += db->cols * ch; \
+				if (np[j * count] > 0) \
+				{ /* when np is bigger than 0, relu continues to update the weight, otherwise it stops */ \
+					float v = ap[j * count]; \
+					int comx = (ccv_max(j * strides - border, 0) - (j * strides - border)) * ch; \
+					int maxx = kernel_cols * ch - comx - (j * strides + kernel_cols - ccv_min(db->cols + border, j * strides + kernel_cols)) * ch; \
+					float* w = layer_w + comx + comy; \
+					float* bpz = bp + ccv_max(j * strides - border, 0) * ch; \
+					/* when we have border, we simply do zero padding */ \
+					for (y = 0; y < maxy; y++) \
+					{ \
+						for (x = 0; x < maxx; x++) \
+							bpz[x] += v * w[x]; \
+						w += kernel_cols * ch; \
+						bpz += db->cols * ch; \
+					} \
 				} \
 				act_block_end; \
 			} \
 			ap += a->cols * count; \
+			np += n->cols * count; \
 			bp += db->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0)); \
 		} \
 	}
@@ -500,6 +524,9 @@ static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 	ccv_dense_matrix_t* db = 0;
 	if (b)
 		db = *b = ccv_dense_matrix_renew(*b, x->rows, x->cols, CCV_32F | CCV_GET_CHANNEL(x->type), CCV_32F | CCV_GET_CHANNEL(x->type), 0);
+	int x_rows = x->rows, x_cols = x->cols, x_ch = CCV_GET_CHANNEL(x->type);
+	x->rows = x_rows * x_cols * x_ch, x->cols = 1, x->type = (x->type - x_ch) | CCV_C1;
+	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type);
 	ccv_dense_matrix_t w = ccv_dense_matrix(a->rows, x->rows, CCV_32F | CCV_C1, update_params->w, 0);
 	ccv_dense_matrix_t* dw = &w;
 	if (d)
@@ -527,6 +554,7 @@ static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 		// propagate error
 		if (db)
 		{
+			ccv_zero(db);
 			float* wptr = layer->w;
 			for (i = 0; i < a->rows; i++)
 			{
@@ -549,25 +577,91 @@ static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 		w = ccv_dense_matrix(a->rows, x->rows, CCV_32F | CCV_C1, layer->w, 0);
 		// propagate error
 		if (db)
-			ccv_gemm(&w, a, 1, 0, 0, CCV_A_TRANSPOSE | CCV_B_TRANSPOSE, (ccv_matrix_t**)&db, 0);
+		{
+			db->rows = x->rows, db->cols = x->cols, db->type = (db->type - x_ch) | CCV_C1;
+			db->step = db->cols * CCV_GET_DATA_TYPE_SIZE(db->type);
+			ccv_gemm(&w, a, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&db, 0);
+			db->rows = x_rows, db->cols = x_cols, db->type = (db->type - CCV_GET_CHANNEL(db->type)) | x_ch;
+			db->step = db->cols * CCV_GET_DATA_TYPE_SIZE(db->type) * CCV_GET_CHANNEL(db->type);
+		}
+	}
+	x->rows = x_rows, x->cols = x_cols, x->type = (x->type - CCV_GET_CHANNEL(x->type)) | x_ch;
+	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type) * CCV_GET_CHANNEL(x->type);
+}
+
+static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* n, ccv_dense_matrix_t* m, ccv_dense_matrix_t** b)
+{
+	// a is the input gradient (for back prop), y is the output (from forward prop),
+	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
+	// pooling layer doesn't need the dropout
+	if (b)
+	{
+		assert(CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(n->type));
+		assert(CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(m->type));
+		int ch = CCV_GET_CHANNEL(a->type);
+		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, m->rows, m->cols, CCV_32F | ch, CCV_32F | ch, 0);
+		ccv_zero(db);
+		int size = layer->net.pool.size;
+		int strides = layer->net.pool.strides;
+		int i, j, k, x, y;
+		float* ap = a->data.f32;
+		float* bp = db->data.f32;
+		float* np = n->data.f32;
+		float* mp = m->data.f32;
+		for (i = 0; i < a->rows; i++)
+		{
+			for (j = 0; j < a->cols; j++)
+				for (k = 0; k < ch; k++)
+				{
+					float v = np[j * ch + k];
+					float u = ap[j * ch + k];
+					for (y = 0; y < size; y++)
+						for (x = 0; x < size; x++)
+							if (mp[(j * strides + x + y * m->cols) * ch + k] == v) // because we assigned these value earlier, it can do directly comparison
+								bp[(j * strides + x + y * db->cols) * ch + k] += u;
+				}
+			ap += a->cols * ch;
+			np += n->cols * ch;
+			bp += db->cols * ch * strides;
+			mp += m->cols * ch * strides;
+		}
 	}
 }
 
-static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* y, ccv_dense_matrix_t* x, ccv_dense_matrix_t** b, ccv_convnet_layer_t* update_params)
+static void _ccv_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* m, ccv_dense_matrix_t** b)
 {
 	// a is the input gradient (for back prop), y is the output (from forward prop),
 	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
 	// pooling layer doesn't need the dropout
+	if (b)
+	{
+		assert(CCV_GET_CHANNEL(a->type) == CCV_GET_CHANNEL(m->type));
+		int ch = CCV_GET_CHANNEL(a->type);
+		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, m->rows, m->cols, CCV_32F | ch, CCV_32F | ch, 0);
+		ccv_zero(db);
+		int size = layer->net.pool.size;
+		int strides = layer->net.pool.strides;
+		float inv_size = 1.0 / (size * size);
+		int i, j, k, x, y;
+		float* ap = a->data.f32;
+		float* bp = db->data.f32;
+		for (i = 0; i < a->rows; i++)
+		{
+			for (j = 0; j < a->cols; j++)
+				for (k = 0; k < ch; k++)
+				{
+					float u = ap[j * ch + k];
+					for (y = 0; y < size; y++)
+						for (x = 0; x < size; x++)
+							bp[(j * strides + x + y * db->cols) * ch + k] += u * inv_size;
+				}
+			ap += a->cols * ch;
+			bp += db->cols * ch * strides;
+		}
+	}
 }
 
-static void _ccv_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* y, ccv_dense_matrix_t* x, ccv_dense_matrix_t** b, ccv_convnet_layer_t* update_params)
-{
-	// a is the input gradient (for back prop), y is the output (from forward prop),
-	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
-	// pooling layer doesn't need the dropout
-}
-
-static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix_t* dloss, ccv_convnet_t* update_params)
+static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t* dloss, ccv_convnet_t* update_params)
 {
 	int i;
 	ccv_convnet_layer_t* layer = convnet->layers + convnet->count - 1;
@@ -579,22 +673,108 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_ccv_convnet_convolutional_backward_propagate(layer, update_params->acts[i], convnet->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : 0, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_convolutional_backward_propagate(layer, update_params->acts[i], convnet->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
-				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : 0, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_MAX_POOL:
-				_ccv_convnet_max_pool_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : 0, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_max_pool_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0);
 				break;
 			case CCV_CONVNET_AVERAGE_POOL:
-				_ccv_convnet_average_pool_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : 0, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_average_pool_backward_propagate(layer, update_params->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0);
 				break;
 		}
 	}
 }
 
-static ccv_convnet_t* _ccv_convnet_update_params(ccv_convnet_t* convnet)
+static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum, ccv_convnet_t* update_params, double m, double learn_rate, double decay)
+{
+	int i, j;
+	for (i = 0; i < convnet->count; i++)
+		switch (update_params->layers[i].type)
+		{
+			case CCV_CONVNET_CONVOLUTIONAL:
+			{
+				float* w = convnet->layers[i].w;
+				float* vw = momentum->layers[i].w;
+				float* dw = update_params->layers[i].w;
+				for (j = 0; j < convnet->layers[i].wnum; j++)
+				{
+					vw[j] = m * vw[j] - decay * learn_rate * w[j] + learn_rate * dw[j];
+					w[j] += vw[j];
+				}
+				float* bias = convnet->layers[i].bias;
+				float* vbias = momentum->layers[i].bias;
+				float* dbias = update_params->layers[i].bias;
+				for (j = 0; j < convnet->layers[i].net.convolutional.count; j++)
+				{
+					vbias[j] = m * vbias[j] - decay * learn_rate * bias[j] + learn_rate * dbias[j];
+					bias[j] += vbias[j];
+				}
+				break;
+			}
+			case CCV_CONVNET_FULL_CONNECT:
+			{
+				float* w = convnet->layers[i].w;
+				float* vw = momentum->layers[i].w;
+				float* dw = update_params->layers[i].w;
+				/*
+				if (i == convnet->count - 1)
+				{
+					int x;
+					printf("\nw: ");
+					for (x = 0; x < 10; x++)
+						printf("%f-%f ", w[x * 3 * 3 * 64], dw[x * 3 * 3 * 64]);
+					printf("\nb: ");
+				}
+				*/
+				for (j = 0; j < convnet->layers[i].wnum; j++)
+				{
+					vw[j] = m * vw[j] - decay * learn_rate * w[j] + learn_rate * dw[j];
+					w[j] += vw[j];
+				}
+				float* bias = convnet->layers[i].bias;
+				float* vbias = momentum->layers[i].bias;
+				float* dbias = update_params->layers[i].bias;
+				/*
+				if (i == convnet->count - 1)
+				{
+					int x;
+					for (x = 0; x < 10; x++)
+						printf("%f-%f ", bias[x], dbias[x]);
+					printf("\n");
+				}
+				*/
+				for (j = 0; j < convnet->layers[i].net.full_connect.count; j++)
+				{
+					vbias[j] = m * vbias[j] - decay * learn_rate * bias[j] + learn_rate * dbias[j];
+					bias[j] += vbias[j];
+				}
+				break;
+			}
+		}
+}
+
+static void _ccv_convnet_update_zero(ccv_convnet_t* update_params)
+{
+	int i;
+	for (i = 0; i < update_params->count; i++)
+		switch (update_params->layers[i].type)
+		{
+			case CCV_CONVNET_CONVOLUTIONAL:
+				memset(update_params->layers[i].w, 0, sizeof(float) * update_params->layers[i].wnum);
+				memset(update_params->layers[i].bias, 0, sizeof(float) * update_params->layers[i].net.convolutional.count);
+				break;
+			case CCV_CONVNET_FULL_CONNECT:
+				assert(update_params->layers[i].wnum % update_params->layers[i].net.full_connect.count == 0);
+				memset(update_params->layers[i].w, 0, sizeof(float) * update_params->layers[i].wnum);
+				memset(update_params->layers[i].bias, 0, sizeof(float) * update_params->layers[i].net.full_connect.count);
+				break;
+		}
+}
+
+static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 {
 	ccv_convnet_t* update_params = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(ccv_dense_matrix_t*) * (convnet->count - 1));
 	update_params->layers = (ccv_convnet_layer_t*)(update_params + 1);
@@ -616,7 +796,7 @@ static ccv_convnet_t* _ccv_convnet_update_params(ccv_convnet_t* convnet)
 		switch (update_params->layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				update_params->layers[i].w = (float*)cccalloc(sizeof(float), update_params->layers[i].wnum + 1);
+				update_params->layers[i].w = (float*)cccalloc(sizeof(float), update_params->layers[i].wnum + update_params->layers[i].net.convolutional.count);
 				update_params->layers[i].bias = update_params->layers[i].w + update_params->layers[i].wnum;
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
@@ -636,7 +816,7 @@ static ccv_convnet_t* _ccv_convnet_update_params(ccv_convnet_t* convnet)
 
 #ifndef CASE_TESTS
 
-void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
+void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
 {
 	int i, j, t;
 	gsl_rng_env_setup();
@@ -650,13 +830,15 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	// the last layer has to be full connect, thus we can use it as softmax layer
 	assert(convnet->layers[convnet->count - 1].type == CCV_CONVNET_FULL_CONNECT);
 	int category_count = convnet->layers[convnet->count - 1].net.full_connect.count;
-	ccv_convnet_t* update_params = _ccv_convnet_update_params(convnet);
+	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
+	ccv_convnet_t* momentum = _ccv_convnet_update_new(convnet);
 	for (t = 0; t < params.max_epoch; t++)
 	{
 		for (i = 0; i < aligned_rnum; i++)
 		{
 			// dropout the first hidden layer
 			int a_rows = convnet->rows, a_cols = convnet->cols;
+			printf("epoch %d\n", i);
 			for (j = 0; j < convnet->count - 1; j++)
 			{
 				switch (convnet->layers[j].type)
@@ -674,19 +856,58 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx[i]);
 			ccv_convnet_encode(convnet, categorized->matrix, convnet->acts + convnet->count - 1, 0);
 			ccv_dense_matrix_t* softmax = convnet->acts[convnet->count - 1];
+			float* dloss = softmax->data.f32;
+			printf("\n before softmax ");
+			for (j = 0; j < category_count; j++)
+				printf("%e ", dloss[j]);
+			printf("%d\n", categorized->c);
+			/*
+			if (i == 6)
+			{
+				float* a = convnet->acts[0]->data.f32;
+				for (j = 0; j < 31 * 31 * 32; j++)
+					printf("%e ", a[j]);
+				printf("\n");
+			}
+			if (i > 6)
+				exit(0);
+				*/
 			_ccv_convnet_compute_softmax(softmax, &softmax, 0);
 			assert(softmax->rows == category_count && softmax->cols == 1);
-			float* dloss = softmax->data.f32;
+			for (j = 0; j < category_count; j++)
+				if (isnan(dloss[j]))
+					exit(0);
+			for (j = 0; j < category_count; j++)
+				printf("%f ", dloss[j]);
+			printf("%d\n", categorized->c);
 			// this mashes softmax and logistic regression together
 			// also, it gives you D[loss w.r.t. to x_i] (there are some tricky bits in the differentiation,
 			// however, because we do Exp[max{x_i} - x_k] instead of Exp[x_k] directly in softmax layer,
 			// 1 - y_k | y_k is the correct result
 			for (j = 0; j < category_count; j++)
 				dloss[j] = (j == categorized->c) - dloss[j];
-			_ccv_convnet_propagate_loss(convnet, softmax, update_params);
+			for (j = 0; j < 8; j++)
+				printf("%f ", convnet->acts[0]->data.f32[(15 * 31 + 15) * 32 + j]);
+			printf("\n");
+			_ccv_convnet_propagate_loss(convnet, categorized->matrix, softmax, update_params);
 			if ((i + 1) % params.mini_batch == 0)
 			{
 				// update weights
+				_ccv_convnet_update(convnet, momentum, update_params, params.momentum, params.learn_rate, params.decay);
+				_ccv_convnet_update_zero(update_params);
+				if ((i + 1) % 10000 == 0)
+				{
+					int miss = 0;
+					for (j = 0; j < tests->rnum; j++)
+					{
+						ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, j);
+						int c = ccv_convnet_classify(convnet, test->matrix);
+						if (c != test->c)
+							++miss;
+					}
+					printf("\n - miss rate : %.2f%%\n", miss * 100.0f / tests->rnum);
+					exit(0);
+				}
 			}
 		}
 		if (t + 1 < params.max_epoch)
@@ -699,6 +920,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		}
 	}
 	ccfree(idx);
+	ccv_convnet_free(momentum);
 	ccv_convnet_free(update_params);
 	gsl_rng_free(rng);
 }

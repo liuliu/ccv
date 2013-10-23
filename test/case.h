@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <stdint.h>
 
+#define CASE_TESTS
+
 /* the following 9 lines to generate unique name was taken from Catch: https://github.com/philsquared/Catch
  * here is the licence:
  * Boost Software License - Version 1.0 - August 17th, 2003
