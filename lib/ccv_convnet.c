@@ -12,7 +12,7 @@ ccv_convnet_t* ccv_convnet_new(ccv_convnet_param_t params[], int count)
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	gsl_rng_set(rng, 28304);
+	gsl_rng_set(rng, (unsigned long int)convnet);
 	convnet->layers = (ccv_convnet_layer_t*)(convnet + 1);
 	convnet->acts = (ccv_dense_matrix_t**)(convnet->layers + count);
 	memset(convnet->acts, 0, sizeof(ccv_dense_matrix_t*) * count);
@@ -333,7 +333,7 @@ int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a)
 	int i, c = 0;
 	ccv_dense_matrix_t* b = convnet->acts[convnet->count - 1];
 	int maxc = b->data.f32[0];
-	for (i = 1; i < b->cols; i++)
+	for (i = 1; i < b->rows; i++)
 		if (b->data.f32[i] > maxc)
 			maxc = b->data.f32[i], c = i;
 	return c;
@@ -666,7 +666,7 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 	int i;
 	ccv_convnet_layer_t* layer = convnet->layers + convnet->count - 1;
 	assert(layer->type == CCV_CONVNET_FULL_CONNECT); // the last layer has too be a full connect one to generate softmax result
-	_ccv_convnet_full_connect_backward_propagate(layer, dloss, 0, convnet->acts[convnet->count - 2], update_params->acts + convnet->count - 2, update_params->layers + convnet->count - 1);
+	_ccv_convnet_full_connect_backward_propagate(layer, dloss, 0, convnet->acts[convnet->count - 2], convnet->count - 1 > 0 ? update_params->acts + convnet->count - 2 : 0, update_params->layers + convnet->count - 1);
 	for (i = convnet->count - 2; i >= 0; i--)
 	{
 		layer = convnet->layers + i;
@@ -719,16 +719,6 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* w = convnet->layers[i].w;
 				float* vw = momentum->layers[i].w;
 				float* dw = update_params->layers[i].w;
-				/*
-				if (i == convnet->count - 1)
-				{
-					int x;
-					printf("\nw: ");
-					for (x = 0; x < 10; x++)
-						printf("%f-%f ", w[x * 3 * 3 * 64], dw[x * 3 * 3 * 64]);
-					printf("\nb: ");
-				}
-				*/
 				for (j = 0; j < convnet->layers[i].wnum; j++)
 				{
 					vw[j] = m * vw[j] - decay * learn_rate * w[j] + learn_rate * dw[j];
@@ -737,15 +727,6 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* bias = convnet->layers[i].bias;
 				float* vbias = momentum->layers[i].bias;
 				float* dbias = update_params->layers[i].bias;
-				/*
-				if (i == convnet->count - 1)
-				{
-					int x;
-					for (x = 0; x < 10; x++)
-						printf("%f-%f ", bias[x], dbias[x]);
-					printf("\n");
-				}
-				*/
 				for (j = 0; j < convnet->layers[i].net.full_connect.count; j++)
 				{
 					vbias[j] = m * vbias[j] - decay * learn_rate * bias[j] + learn_rate * dbias[j];
@@ -838,7 +819,6 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		{
 			// dropout the first hidden layer
 			int a_rows = convnet->rows, a_cols = convnet->cols;
-			printf("epoch %d\n", i);
 			for (j = 0; j < convnet->count - 1; j++)
 			{
 				switch (convnet->layers[j].type)
@@ -857,41 +837,16 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			ccv_convnet_encode(convnet, categorized->matrix, convnet->acts + convnet->count - 1, 0);
 			ccv_dense_matrix_t* softmax = convnet->acts[convnet->count - 1];
 			float* dloss = softmax->data.f32;
-			printf("\n before softmax ");
-			for (j = 0; j < category_count; j++)
-				printf("%e ", dloss[j]);
-			printf("%d\n", categorized->c);
-			/*
-			if (i == 6)
-			{
-				float* a = convnet->acts[0]->data.f32;
-				for (j = 0; j < 31 * 31 * 32; j++)
-					printf("%e ", a[j]);
-				printf("\n");
-			}
-			if (i > 6)
-				exit(0);
-				*/
 			_ccv_convnet_compute_softmax(softmax, &softmax, 0);
 			assert(softmax->rows == category_count && softmax->cols == 1);
-			for (j = 0; j < category_count; j++)
-				if (isnan(dloss[j]))
-					exit(0);
-			for (j = 0; j < category_count; j++)
-				printf("%f ", dloss[j]);
-			printf("%d\n", categorized->c);
 			// this mashes softmax and logistic regression together
-			// also, it gives you D[loss w.r.t. to x_i] (there are some tricky bits in the differentiation,
-			// however, because we do Exp[max{x_i} - x_k] instead of Exp[x_k] directly in softmax layer,
-			// 1 - y_k | y_k is the correct result
+			// also, it gives you -D[loss w.r.t. to x_i] (note the negative sign)
 			for (j = 0; j < category_count; j++)
 				dloss[j] = (j == categorized->c) - dloss[j];
-			for (j = 0; j < 8; j++)
-				printf("%f ", convnet->acts[0]->data.f32[(15 * 31 + 15) * 32 + j]);
-			printf("\n");
 			_ccv_convnet_propagate_loss(convnet, categorized->matrix, softmax, update_params);
 			if ((i + 1) % params.mini_batch == 0)
 			{
+				printf("epoch %d\n", i);
 				// update weights
 				_ccv_convnet_update(convnet, momentum, update_params, params.momentum, params.learn_rate, params.decay);
 				_ccv_convnet_update_zero(update_params);
@@ -906,7 +861,6 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 							++miss;
 					}
 					printf("\n - miss rate : %.2f%%\n", miss * 100.0f / tests->rnum);
-					exit(0);
 				}
 			}
 		}

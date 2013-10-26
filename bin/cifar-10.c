@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.0001,
+			.sigma = 0.01,
 			.dropout_rate = 0,
 			.input = {
 				.matrix = {
@@ -171,15 +171,15 @@ int main(int argc, char** argv)
 			ccv_dense_matrix_t* a = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3] = bytes[j + i * 32 + 1] / 255.0;
+					a->data.f32[(j + i * 31) * 3] = bytes[j + i * 32 + 1] / 255.0 * 2 - 1;
 			fread(bytes, 32 * 32, 1, r1);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3 + 1] = bytes[j + i * 32] / 255.0;
+					a->data.f32[(j + i * 31) * 3 + 1] = bytes[j + i * 32] / 255.0 * 2 - 1;
 			fread(bytes, 32 * 32, 1, r1);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0;
+					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0 * 2 - 1;
 			categorized.matrix = a;
 			ccv_array_push(categorizeds, &categorized);
 		}
@@ -192,23 +192,23 @@ int main(int argc, char** argv)
 			ccv_dense_matrix_t* a = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3] = bytes[j + i * 32 + 1] / 255.0;
+					a->data.f32[(j + i * 31) * 3] = bytes[j + i * 32 + 1] / 255.0 * 2 - 1;
 			fread(bytes, 32 * 32, 1, r2);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3 + 1] = bytes[j + i * 32] / 255.0;
+					a->data.f32[(j + i * 31) * 3 + 1] = bytes[j + i * 32] / 255.0 * 2 - 1;
 			fread(bytes, 32 * 32, 1, r2);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
-					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0;
+					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0 * 2 - 1;
 			categorized.matrix = a;
 			ccv_array_push(tests, &categorized);
 		}
 		ccv_convnet_train_param_t params = {
 			.max_epoch = 100,
-			.mini_batch = 1,
+			.mini_batch = 100,
 			.decay = 0.005,
-			.learn_rate = 0.001,
+			.learn_rate = 0.0001,
 			.momentum = 0.9,
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, params);

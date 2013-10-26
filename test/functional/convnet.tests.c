@@ -833,7 +833,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	_ccv_convnet_compute_softmax(y, &y, 0);
 	ccv_dense_matrix_t* dloss = ccv_dense_matrix_new(10, 1, CCV_32F | CCV_C1, 0, 0);;
 	for (i = 0; i < 10; i++)
-		dloss->data.f32[i] =  y->data.f32[i] - (i == 2);
+		dloss->data.f32[i] = y->data.f32[i] - (i == 2);
 	float* dw = (float*)ccmalloc(sizeof(float) * 3 * 3 * 8 * 10);
 	static const float eps = 0.0001;
 	for (i = 0; i < 10; i++)
@@ -868,7 +868,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	ccv_matrix_free(b);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 8 * 10, 8 * 1e-2, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 10, 5 * 1e-3, "bias gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 10, 1e-2, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
@@ -948,7 +948,212 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_matrix_free(d);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 3 * 2, 4.0, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 5 * 1e-1, "bias gradient from analytical method doesn't match the one from numerical method");
+	ccfree(dbias);
+	ccv_convnet_free(update_params);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("numerical gradient versus analytical gradient for convolutional network over convolutional network")
+{
+	ccv_convnet_param_t params[] = {
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.001,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 31,
+					.cols = 31,
+					.channels = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.rows = 5,
+					.cols = 5,
+					.channels = 2,
+					.border = 2,
+					.strides = 1,
+					.count = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.001,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 31,
+					.cols = 31,
+					.channels = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.rows = 5,
+					.cols = 5,
+					.channels = 2,
+					.border = 2,
+					.strides = 1,
+					.count = 2,
+				},
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(params, 2);
+	int i;
+	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
+	_ccv_convnet_update_zero(update_params);
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
+	for (i = 0; i < 31 * 31 * 2; i++)
+		x->data.f32[i] = i;
+	ccv_dense_matrix_t* y = 0;
+	ccv_convnet_encode(convnet, x, &y, 0);
+	REQUIRE(y->rows == 31 && y->cols == 31 && CCV_GET_CHANNEL(y->type) == 2, "convnet should return a 31x31x2 matrix");
+	ccv_dense_matrix_t* softmax = 0;
+	_ccv_convnet_compute_softmax(y, &softmax, 0);
+	ccv_dense_matrix_t* dloss = ccv_dense_matrix_new(y->rows, y->cols, CCV_32F | CCV_GET_CHANNEL(y->type), 0, 0);
+	for (i = 0; i < 31 * 31 * 2; i++)
+		dloss->data.f32[i] = softmax->data.f32[i] - (i == 24);
+	ccv_dense_matrix_t* d = 0;
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers + 1, dloss, y, 0, convnet->acts[0], update_params->acts, update_params->layers + 1);
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers, update_params->acts[0], convnet->acts[0], 0, x, &d, update_params->layers);
+	static const float eps = 0.00001;
+	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 2); 
+	for (i = 0; i < 5 * 5 * 2 * 2; i++)
+	{
+		float w = convnet->layers->w[i];
+		convnet->layers->w[i] += eps;
+		ccv_dense_matrix_t* z = 0;
+		ccv_convnet_encode(convnet, x, &z, 0);
+		_ccv_convnet_compute_softmax(z, &z, 0);
+		dw[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
+		ccv_matrix_free(z);
+		convnet->layers->w[i] = w;
+	}
+	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
+	for (i = 0; i < 2; i++)
+	{
+		float bias = convnet->layers->bias[i];
+		convnet->layers->bias[i] += eps;
+		ccv_dense_matrix_t* z = 0;
+		ccv_convnet_encode(convnet, x, &z, 0);
+		_ccv_convnet_compute_softmax(z, &z, 0);
+		dbias[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
+		ccv_matrix_free(z);
+		convnet->layers->bias[i] = bias;
+	}
+	ccv_matrix_free(softmax);
+	ccv_matrix_free(dloss);
+	ccv_matrix_free(y);
+	ccv_matrix_free(x);
+	ccv_matrix_free(d);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 2 * 2, 5 * 1e-1, "weight gradient from analytical method doesn't match the one from numerical method");
+	ccfree(dw);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 5 * 1e-2, "bias gradient from analytical method doesn't match the one from numerical method");
+	ccfree(dbias);
+	ccv_convnet_free(update_params);
+	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("numerical gradient versus analytical gradient for full connect network over convolutional network")
+{
+	ccv_convnet_param_t params[] = {
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.001,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 5,
+					.cols = 5,
+					.channels = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.rows = 3,
+					.cols = 3,
+					.channels = 2,
+					.border = 1,
+					.strides = 1,
+					.count = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 0,
+			.sigma = 0.01,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 5,
+					.cols = 5,
+					.channels = 2,
+				},
+				.node = {
+					.count = 5 * 5 * 2,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.count = 10,
+				},
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(params, 2);
+	int i;
+	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
+	_ccv_convnet_update_zero(update_params);
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(5, 5, CCV_32F | CCV_C2, 0, 0);
+	for (i = 0; i < 5 * 5 * 2; i++)
+		x->data.f32[i] = 1;
+	ccv_dense_matrix_t* y = 0;
+	ccv_convnet_encode(convnet, x, &y, 0);
+	REQUIRE(y->rows == 10 && y->cols == 1 && CCV_GET_CHANNEL(y->type) == 1, "y should be a 10-dimensional vector");
+	_ccv_convnet_compute_softmax(y, &y, 0);
+	ccv_dense_matrix_t* dloss = ccv_dense_matrix_new(10, 1, CCV_32F | CCV_C1, 0, 0);;
+	for (i = 0; i < 10; i++)
+		dloss->data.f32[i] = y->data.f32[i] - (i == 2);
+	_ccv_convnet_propagate_loss(convnet, x, dloss, update_params);
+	ccv_matrix_free(dloss);
+	ccv_matrix_free(y);
+	static const float eps = 0.0001;
+	float* dw = (float*)ccmalloc(sizeof(float) * 3 * 3 * 2 * 2); 
+	for (i = 0; i < 3 * 3 * 2 * 2; i++)
+	{
+		float w = convnet->layers->w[i];
+		convnet->layers->w[i] += eps;
+		ccv_dense_matrix_t* z = 0;
+		ccv_convnet_encode(convnet, x, &z, 0);
+		_ccv_convnet_compute_softmax(z, &z, 0);
+		dw[i] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
+		ccv_matrix_free(z);
+		convnet->layers->w[i] = w;
+	}
+	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
+	for (i = 0; i < 2; i++)
+	{
+		float bias = convnet->layers->bias[i];
+		convnet->layers->bias[i] += eps;
+		ccv_dense_matrix_t* z = 0;
+		ccv_convnet_encode(convnet, x, &z, 0);
+		_ccv_convnet_compute_softmax(z, &z, 0);
+		dbias[i] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
+		ccv_matrix_free(z);
+		convnet->layers->bias[i] = bias;
+	}
+	ccv_matrix_free(x);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 2 * 2, 1e-2, "weight gradient from analytical method doesn't match the one from numerical method");
+	ccfree(dw);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 1e-2, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
@@ -973,11 +1178,79 @@ TEST_CASE("max pool network backward propagate")
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
+	int i, j, k;
+	for (i = 0; i < 31 * 31 * 2; i++)
+		x->data.f32[i] = i;
+	ccv_dense_matrix_t* y = 0;
+	ccv_convnet_encode(convnet, x, &y, 0);
+	ccv_dense_matrix_t* loss = ccv_dense_matrix_new(15, 15, CCV_32F | CCV_C2, 0, 0);
+	for (i = 0; i < 15 * 15 * 2; i++)
+		loss->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	_ccv_convnet_max_pool_backward_propagate(convnet->layers, loss, y, x, &b);
+	ccv_matrix_free(loss);
+	ccv_matrix_free(x);
+	ccv_matrix_free(y);
+	ccv_dense_matrix_t* db = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
+	ccv_zero(db);
+	for (i = 0; i < 15; i++)
+		for (j = 0; j < 15; j++)
+			for (k = 0; k < 2; k++)
+				db->data.f32[(j * 2 + 2 + (i * 2 + 2) * 31) * 2 + k] = (i * 15 + j) * 2 + 1 + k;
+	REQUIRE_MATRIX_EQ(b, db, "propagated error doesn't match the expected value");
+	ccv_matrix_free(db);
+	ccv_matrix_free(b);
 	ccv_convnet_free(convnet);
 }
 
 TEST_CASE("average pool network backward propagate")
 {
+	ccv_convnet_param_t params = {
+		.type = CCV_CONVNET_AVERAGE_POOL,
+		.input = {
+			.matrix = {
+				.rows = 31,
+				.cols = 31,
+				.channels = 2,
+			},
+		},
+		.output = {
+			.pool = {
+				.size = 3,
+				.strides = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(&params, 1);
+	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
+	int i, j, k;
+	for (i = 0; i < 31 * 31 * 2; i++)
+		x->data.f32[i] = i;
+	ccv_dense_matrix_t* loss = ccv_dense_matrix_new(15, 15, CCV_32F | CCV_C2, 0, 0);
+	for (i = 0; i < 15 * 15 * 2; i++)
+		loss->data.f32[i] = i + 1;
+	ccv_dense_matrix_t* b = 0;
+	_ccv_convnet_average_pool_backward_propagate(convnet->layers, loss, x, &b);
+	ccv_matrix_free(x);
+	ccv_matrix_free(loss);
+	ccv_dense_matrix_t* db = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
+	float inv_size = 1.0 / (3 * 3);
+	for (i = 0; i < 31; i++)
+		for (j = 0; j < 31; j++)
+			for (k = 0; k < 2; k++)
+			{
+				int x, y;
+				db->data.f32[(i * 31 + j) * 2 + k] = 0;
+				for (y = (i - 1) / 2; y <= i / 2; y++)
+					for (x = (j - 1) / 2; x <= j / 2; x++)
+						if (x >= 0 && x < 15 && y >= 0 && y < 15)
+							db->data.f32[(i * 31 + j) * 2 + k] += ((y * 15 + x) * 2 + k + 1) * inv_size;
+			}
+	REQUIRE_MATRIX_EQ(b, db, "propagated error doesn't match the expected value");
+	ccv_matrix_free(db);
+	ccv_matrix_free(b);
+	ccv_convnet_free(convnet);
 }
 
 #include "case_main.h"
