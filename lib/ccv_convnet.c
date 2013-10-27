@@ -815,6 +815,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_t* momentum = _ccv_convnet_update_new(convnet);
 	for (t = 0; t < params.max_epoch; t++)
 	{
+		printf(" - at epoch %d / %d\n", t + 1, params.max_epoch);
 		for (i = 0; i < aligned_rnum; i++)
 		{
 			// dropout the first hidden layer
@@ -846,24 +847,23 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			_ccv_convnet_propagate_loss(convnet, categorized->matrix, softmax, update_params);
 			if ((i + 1) % params.mini_batch == 0)
 			{
-				printf("epoch %d\n", i);
+				FLUSH(" - stochastic gradient descent at %d / %d", (i + 1) / params.mini_batch, aligned_rnum / params.mini_batch);
 				// update weights
 				_ccv_convnet_update(convnet, momentum, update_params, params.momentum, params.learn_rate, params.decay);
 				_ccv_convnet_update_zero(update_params);
-				if ((i + 1) % 10000 == 0)
-				{
-					int miss = 0;
-					for (j = 0; j < tests->rnum; j++)
-					{
-						ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, j);
-						int c = ccv_convnet_classify(convnet, test->matrix);
-						if (c != test->c)
-							++miss;
-					}
-					printf("\n - miss rate : %.2f%%\n", miss * 100.0f / tests->rnum);
-				}
 			}
 		}
+		printf("\n");
+		int miss = 0;
+		for (i = 0; i < tests->rnum; i++)
+		{
+			FLUSH(" - going through %d / %d for tests", i + 1, tests->rnum);
+			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i);
+			int c = ccv_convnet_classify(convnet, test->matrix);
+			if (c != test->c)
+				++miss;
+		}
+		FLUSH(" - with miss rate %.2f%%\n", miss * 100.0f / tests->rnum);
 		if (t + 1 < params.max_epoch)
 		{
 			// reshuffle the parts we visited and move the rest to the beginning
