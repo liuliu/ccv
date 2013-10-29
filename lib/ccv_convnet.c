@@ -176,6 +176,7 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 	// reshape a for gemm
 	assert(a->step == a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * ch);
 	a->rows = rows * cols * ch, a->cols = 1, a->type = (a->type - ch) | CCV_C1;
+	assert(a->rows * db->rows == layer->wnum);
 	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type);
 	int i;
 	float* bptr = db->data.f32;
