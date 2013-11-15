@@ -9,6 +9,7 @@ site
 lib/.CC
 lib/.DEF
 lib/.LN
+lib/outdir
 test/*_test
 test/*.jpg
 test/*.png
@@ -31,3 +32,4 @@ data/*
 tool/*
 config.mk
 build
+.DS_Store

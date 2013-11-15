@@ -63,7 +63,7 @@ enum {
 	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
 };
 
-typedef union {
+typedef union ccv_matrix_cell_t {
 	unsigned char* u8;
 	int* i32;
 	float* f32;
@@ -71,7 +71,7 @@ typedef union {
 	double* f64;
 } ccv_matrix_cell_t;
 
-typedef struct {
+typedef struct ccv_dense_matrix_t {
 	int type;
 	uint64_t sig;
 	int refcount;
@@ -110,7 +110,7 @@ enum {
 	CCV_SPARSE_COL_MAJOR = 0x01,
 };
 
-typedef struct {
+typedef struct ccv_sparse_matrix_t {
 	int type;
 	uint64_t sig;
 	int refcount;
@@ -140,7 +140,7 @@ typedef void ccv_matrix_t;
 
 typedef void(*ccv_cache_index_free_f)(void*);
 
-typedef union {
+typedef union ccv_cache_index_t {
 	struct {
 		uint64_t bitmap;
 		uint64_t set;
@@ -153,7 +153,7 @@ typedef union {
 	} terminal;
 } ccv_cache_index_t;
 
-typedef struct {
+typedef struct ccv_cache_t {
 	ccv_cache_index_t origin;
 	uint32_t rnum;
 	uint32_t age;
@@ -175,7 +175,7 @@ void ccv_cache_close(ccv_cache_t* cache);
 /* deprecated methods, often these implemented in another way and no longer suitable for newer computer architecture */
 /* 0 */
 
-typedef struct {
+typedef struct ccv_compressed_sparse_matrix_t {
 	int type;
 	uint64_t sig;
 	int refcount;
@@ -354,7 +354,7 @@ enum {
 
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type);
 
-typedef struct {
+typedef struct ccv_margin_t {
 	int left;
 	int top;
 	int right;
@@ -393,7 +393,7 @@ int ccv_any_nan(ccv_matrix_t *a);
 
 /* basic data structures ccv_util.c */
 
-typedef struct {
+typedef struct ccv_size_t {
 	int width;
 	int height;
 } ccv_size_t;
@@ -411,7 +411,7 @@ inline static int ccv_size_is_zero(ccv_size_t size)
 	return size.width == 0 && size.height == 0;
 }
 
-typedef struct {
+typedef struct ccv_rect_t {
 	int x;
 	int y;
 	int width;
@@ -433,7 +433,7 @@ inline static int ccv_rect_is_zero(ccv_rect_t rect)
 	return rect.x == 0 && rect.y == 0 && rect.width == 0 && rect.height == 0;
 }
 
-typedef struct {
+typedef struct ccv_array_t {
 	int type;
 	uint64_t sig;
 	int refcount;
@@ -456,7 +456,7 @@ void ccv_array_free(ccv_array_t* array);
 
 #define ccv_array_get(a, i) (((char*)((a)->data)) + (size_t)(a)->rsize * (size_t)(i))
 
-typedef struct {
+typedef struct ccv_point_t {
 	int x, y;
 } ccv_point_t;
 
@@ -468,7 +468,7 @@ inline static ccv_point_t ccv_point(int x, int y)
 	return point;
 }
 
-typedef struct {
+typedef struct ccv_decimal_point_t {
 	float x, y;
 } ccv_decimal_point_t;
 
@@ -480,7 +480,7 @@ inline static ccv_decimal_point_t ccv_decimal_point(float x, float y)
 	return point;
 }
 
-typedef struct {
+typedef struct ccv_decimal_pose_t {
 	float x, y, a, b;
 	float roll, pitch, yaw;
 } ccv_decimal_pose_t;
@@ -498,7 +498,7 @@ inline static ccv_decimal_pose_t ccv_decimal_pose(float x, float y, float a, flo
 	return pose;
 }
 
-typedef struct {
+typedef struct ccv_contour_t {
 	ccv_rect_t rect;
 	int size;
 	ccv_array_t* set;
@@ -522,7 +522,7 @@ void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 
-typedef struct {
+typedef struct ccv_minimize_param_t {
 	double interp;
 	double extrap;
 	int max_iter;
@@ -590,7 +590,7 @@ void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
-typedef struct {
+typedef struct ccv_decimal_point_with_status_t {
 	ccv_decimal_point_t point;
 	uint8_t status;
 } ccv_decimal_point_with_status_t;
@@ -601,7 +601,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 /* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */
 
 /* daisy related methods */
-typedef struct {
+typedef struct ccv_daisy_param_t {
 	double radius;
 	int rad_q_no;
 	int th_q_no;
@@ -619,7 +619,7 @@ enum {
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params);
 
 /* sift related methods */
-typedef struct {
+typedef struct ccv_keypoint_t {
 	float x, y;
 	int octave;
 	int level;
@@ -635,7 +635,7 @@ typedef struct {
 	};
 } ccv_keypoint_t;
 
-typedef struct {
+typedef struct ccv_sift_param_t {
 	int up2x;
 	int noctaves;
 	int nlevels;
@@ -650,7 +650,7 @@ void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** keypoints, ccv_dense_matrix_t
 
 /* mser related method */
 
-typedef struct {
+typedef struct ccv_mser_param_t {
 	/* parameters for MSER */
 	int delta;
 	int min_area; /* default: 60 */
@@ -666,7 +666,7 @@ typedef struct {
 	double edge_blur_sigma; /* default: 1.0 */
 } ccv_mser_param_t;
 
-typedef struct {
+typedef struct ccv_mser_keypoint_t {
 	ccv_rect_t rect;
 	int size;
 	long m10, m01, m11, m20, m02;
@@ -681,7 +681,7 @@ enum {
 ccv_array_t* __attribute__((warn_unused_result)) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
-typedef struct {
+typedef struct ccv_swt_param_t {
 	int interval; // for scale invariant option
 	int min_neighbors; // minimal neighbors to make a detection valid, this is for scale-invariant version
 	int scale_invariant; // enable scale invariant swt (to scale to different sizes and then combine the results)
@@ -719,7 +719,7 @@ ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_
 /* it makes sense now to include a simple data structure that encapsulate the common idiom of
  * having file name with a bounding box */
 
-typedef struct {
+typedef struct ccv_file_info_t {
 	char* filename;
 	union {
 		ccv_rect_t box;
@@ -735,14 +735,14 @@ typedef struct {
 
 #define CCV_DPM_PART_MAX (10)
 
-typedef struct {
+typedef struct ccv_comp_t {
 	ccv_rect_t rect;
 	int neighbors;
 	int id;
 	float confidence;
 } ccv_comp_t;
 
-typedef struct {
+typedef struct ccv_root_comp_t {
 	ccv_rect_t rect;
 	int neighbors;
 	int id;
@@ -751,7 +751,7 @@ typedef struct {
 	ccv_comp_t part[CCV_DPM_PART_MAX];
 } ccv_root_comp_t;
 
-typedef struct {
+typedef struct ccv_dpm_part_classifier_t {
 	ccv_dense_matrix_t* w;
 	double dx, dy, dxx, dyy;
 	int x, y, z;
@@ -759,26 +759,26 @@ typedef struct {
 	float alpha[6];
 } ccv_dpm_part_classifier_t;
 
-typedef struct {
+typedef struct ccv_dpm_root_classifier_t {
 	int count;
 	ccv_dpm_part_classifier_t root;
 	ccv_dpm_part_classifier_t* part;
 	float alpha[3], beta;
 } ccv_dpm_root_classifier_t;
 
-typedef struct {
+typedef struct ccv_dpm_mixture_model_t {
 	int count;
 	ccv_dpm_root_classifier_t* root;
 } ccv_dpm_mixture_model_t;
 
-typedef struct {
+typedef struct ccv_dpm_param_t {
 	int interval;
 	int min_neighbors;
 	int flags;
 	float threshold;
 } ccv_dpm_param_t;
 
-typedef struct {
+typedef struct ccv_dpm_new_param_t {
 	int components;
 	int parts;
 	int grayscale;
@@ -819,7 +819,7 @@ void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 #define CCV_BBF_POINT_MAX (8)
 #define CCV_BBF_POINT_MIN (3)
 
-typedef struct {
+typedef struct ccv_bbf_feature_t {
 	int size;
 	int px[CCV_BBF_POINT_MAX];
 	int py[CCV_BBF_POINT_MAX];
@@ -829,14 +829,14 @@ typedef struct {
 	int nz[CCV_BBF_POINT_MAX];
 } ccv_bbf_feature_t;
 
-typedef struct {
+typedef struct ccv_bbf_stage_classifier_t {
 	int count;
 	float threshold;
 	ccv_bbf_feature_t* feature;
 	float* alpha;
 } ccv_bbf_stage_classifier_t;
 
-typedef struct {
+typedef struct ccv_bbf_classifier_cascade_t {
 	int count;
 	ccv_size_t size;
 	ccv_bbf_stage_classifier_t* stage_classifier;
@@ -847,7 +847,7 @@ enum {
 	CCV_BBF_FLOAT_OPT = 0x02
 };
 
-typedef struct {
+typedef struct ccv_bbf_param_t {
 	int interval;
 	int min_neighbors;
 	int flags;
@@ -855,7 +855,7 @@ typedef struct {
 	ccv_size_t size;
 } ccv_bbf_param_t;
 
-typedef struct {
+typedef struct ccv_bbf_new_param_t {
 	double pos_crit;
 	double neg_crit;
 	double balance_k;
@@ -881,7 +881,7 @@ int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascad
 /* Ferns classifier: this is a fern implementation that specifically used for TLD
  * see: http://cvlab.epfl.ch/alumni/oezuysal/ferns.html for more about ferns */
 
-typedef struct {
+typedef struct ccv_ferns_t {
 	int structs;
 	int features;
 	int scales;
@@ -903,7 +903,7 @@ void ccv_ferns_free(ccv_ferns_t* ferns);
 /* TLD: Track-Learn-Detection is a long-term object tracking framework, which achieved very high
  * tracking accuracy, this is the tracking algorithm of choice ccv implements */
 
-typedef struct {
+typedef struct ccv_tld_param_t {
 	/* short-term lucas-kanade tracking parameters */
 	ccv_size_t win_size;
 	int level;
@@ -946,7 +946,7 @@ typedef struct {
 
 extern const ccv_tld_param_t ccv_tld_default_params;
 
-typedef struct {
+typedef struct ccv_tld_t {
 	ccv_tld_param_t params;
 	ccv_comp_t box; // tracking comp
 	ccv_ferns_t* ferns; // ferns classifier
@@ -966,7 +966,7 @@ typedef struct {
 	uint32_t fern_buffer[1]; // fetched ferns from image, this is a buffer
 } ccv_tld_t;
 
-typedef struct {
+typedef struct ccv_tld_info_t {
 	int perform_track;
 	int perform_learn;
 	int track_success;
@@ -989,7 +989,7 @@ void ccv_tld_free(ccv_tld_t* tld);
 
 #define CCV_ICF_SAT_MAX (2)
 
-typedef struct {
+typedef struct ccv_icf_feature_t {
 	int count;
 	int channel[CCV_ICF_SAT_MAX];
 	ccv_point_t sat[CCV_ICF_SAT_MAX * 2];
@@ -997,7 +997,7 @@ typedef struct {
 	float beta;
 } ccv_icf_feature_t;
 
-typedef struct {
+typedef struct ccv_icf_decision_tree_t {
 	// we use depth-2 decision tree
 	uint32_t pass;
 	ccv_icf_feature_t features[3];
@@ -1010,7 +1010,7 @@ enum {
 	CCV_ICF_CLASSIFIER_TYPE_B = 0x2,
 };
 
-typedef struct {
+typedef struct ccv_icf_classifier_cascade_t {
 	int type;
 	int count;
 	int grayscale;
@@ -1019,7 +1019,7 @@ typedef struct {
 	ccv_icf_decision_tree_t* weak_classifiers;
 } ccv_icf_classifier_cascade_t; // Type A, scale image
 
-typedef struct {
+typedef struct ccv_icf_multiscale_classifier_cascade_t {
 	int type;
 	int count;
 	int octave;
@@ -1027,7 +1027,7 @@ typedef struct {
 	ccv_icf_classifier_cascade_t* cascade;
 } ccv_icf_multiscale_classifier_cascade_t; // Type B, scale the classifier
 
-typedef struct {
+typedef struct ccv_icf_param_t {
 	int min_neighbors;
 	int flags;
 	int step_through;
@@ -1037,7 +1037,7 @@ typedef struct {
 
 extern const ccv_icf_param_t ccv_icf_default_params;
 
-typedef struct {
+typedef struct ccv_icf_new_param_t {
 	ccv_icf_param_t detector;
 	int grayscale;
 	int min_dimension;
