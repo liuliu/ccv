@@ -1,4 +1,8 @@
+ifneq ($(MAKECMDGOALS),clean)
+ifeq  "$(and $(CC),$(AR),$(CFLAGS))" ""
 include config.mk
+endif
+endif 
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 CFLAGS := -O3 -ffast-math -Wall $(CFLAGS)# -fprofile-arcs -ftest-coverage
