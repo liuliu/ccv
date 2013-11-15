@@ -9,6 +9,7 @@ site
 lib/.CC
 lib/.DEF
 lib/.LN
+lib/outdir
 test/*_test
 test/*.jpg
 test/*.png
