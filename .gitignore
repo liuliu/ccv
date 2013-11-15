@@ -31,3 +31,4 @@ data/*
 tool/*
 config.mk
 build
+.DS_Store
