@@ -208,7 +208,7 @@ int main(int argc, char** argv)
 			.max_epoch = 100,
 			.mini_batch = 128,
 			.decay = 0.005,
-			.learn_rate = 0.00005,
+			.learn_rate = 0.00008,
 			.momentum = 0.9,
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, params);

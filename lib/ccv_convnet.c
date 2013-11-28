@@ -4,6 +4,9 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
+#ifdef HAVE_CUDA
+#include "cuda/ccv_convnet.h"
+#endif
 
 #ifndef CASE_TESTS
 
@@ -275,11 +278,15 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 
 #ifndef CASE_TESTS
 
-void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
 {
-	assert(CCV_GET_CHANNEL(a->type) == convnet->channels);
-	assert(a->rows == convnet->rows);
-	assert(a->cols == convnet->cols);
+#ifdef HAVE_CUDA
+	ccv_cu_convnet_encode(convnet, a, b, batch);
+#else
+	assert(batch == 1);
+	assert(CCV_GET_CHANNEL((*a)->type) == convnet->channels);
+	assert((*a)->rows == convnet->rows);
+	assert((*a)->cols == convnet->cols);
 	int i;
 	// save the last layer of neuron cache in case that we encode to a different matrix
 	ccv_dense_matrix_t* out_neuron = convnet->acts[convnet->count - 1];
@@ -287,19 +294,18 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 	switch(convnet->layers->type)
 	{
 		case CCV_CONVNET_CONVOLUTIONAL:
-			_ccv_convnet_convolutional_forward_propagate(convnet->layers, a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
+			_ccv_convnet_convolutional_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
 			break;
 		case CCV_CONVNET_FULL_CONNECT:
-			_ccv_convnet_full_connect_forward_propagate(convnet->layers, a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
+			_ccv_convnet_full_connect_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
 			break;
 		case CCV_CONVNET_MAX_POOL:
-			_ccv_convnet_max_pool_forward_propagate(convnet->layers, a, convnet->acts);
+			_ccv_convnet_max_pool_forward_propagate(convnet->layers, *a, convnet->acts);
 			break;
 		case CCV_CONVNET_AVERAGE_POOL:
-			_ccv_convnet_average_pool_forward_propagate(convnet->layers, a, convnet->acts);
+			_ccv_convnet_average_pool_forward_propagate(convnet->layers, *a, convnet->acts);
 			break;
 	}
-	assert(type == 0 || CCV_GET_DATA_TYPE(type) == CCV_32F);
 	for (i = 1; i < convnet->count; i++)
 	{
 		ccv_convnet_layer_t* layer = convnet->layers + i;
@@ -326,18 +332,24 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense
 		// restore the last layer of neuron cache
 		convnet->acts[convnet->count - 1] = out_neuron;
 	}
+#endif
 }
 
-int ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t* a)
+void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
 {
-	ccv_convnet_encode(convnet, a, convnet->acts + convnet->count - 1, 0);
+#ifdef HAVE_CUDA
+	ccv_cu_convnet_classify(convnet, a, labels, batch);
+#else
+	assert(batch == 1);
+	ccv_convnet_encode(convnet, a, convnet->acts + convnet->count - 1, 1);
 	int i, c = 0;
 	ccv_dense_matrix_t* b = convnet->acts[convnet->count - 1];
 	int maxc = b->data.f32[0];
 	for (i = 1; i < b->rows; i++)
 		if (b->data.f32[i] > maxc)
 			maxc = b->data.f32[i], c = i;
-	return c;
+	labels[0] = c;
+#endif
 }
 
 #endif
@@ -800,6 +812,9 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
 {
+#ifdef HAVE_CUDA
+	ccv_cu_convnet_supervised_train(convnet, categorizeds, tests, params);
+#else
 	int i, j, t;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -836,7 +851,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				}
 			}
 			ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx[i]);
-			ccv_convnet_encode(convnet, categorized->matrix, convnet->acts + convnet->count - 1, 0);
+			ccv_convnet_encode(convnet, &categorized->matrix, convnet->acts + convnet->count - 1, 1);
 			ccv_dense_matrix_t* softmax = convnet->acts[convnet->count - 1];
 			float* dloss = softmax->data.f32;
 			_ccv_convnet_compute_softmax(softmax, &softmax, 0);
@@ -860,7 +875,8 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		{
 			FLUSH(" - going through %d / %d for tests", i + 1, tests->rnum);
 			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i);
-			int c = ccv_convnet_classify(convnet, test->matrix);
+			int c = 0;
+			ccv_convnet_classify(convnet, &test->matrix, &c, 1);
 			if (c != test->c)
 				++miss;
 		}
@@ -878,6 +894,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_free(momentum);
 	ccv_convnet_free(update_params);
 	gsl_rng_free(rng);
+#endif
 }
 
 void ccv_convnet_free(ccv_convnet_t* convnet)
