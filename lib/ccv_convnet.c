@@ -5,7 +5,7 @@
 #include <gsl/gsl_randist.h>
 #endif
 #ifdef HAVE_CUDA
-#include "cuda/ccv_convnet.h"
+#include "cuda/cog.h"
 #endif
 
 #ifndef CASE_TESTS
@@ -281,7 +281,7 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
 {
 #ifdef HAVE_CUDA
-	ccv_cu_convnet_encode(convnet, a, b, batch);
+	cog_convnet_encode(convnet, a, b, batch);
 #else
 	assert(batch == 1);
 	assert(CCV_GET_CHANNEL((*a)->type) == convnet->channels);
@@ -338,7 +338,7 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
 {
 #ifdef HAVE_CUDA
-	ccv_cu_convnet_classify(convnet, a, labels, batch);
+	cog_convnet_classify(convnet, a, labels, batch);
 #else
 	assert(batch == 1);
 	ccv_convnet_encode(convnet, a, convnet->acts + convnet->count - 1, 1);
@@ -813,7 +813,7 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
 {
 #ifdef HAVE_CUDA
-	ccv_cu_convnet_supervised_train(convnet, categorizeds, tests, params);
+	cog_convnet_supervised_train(convnet, categorizeds, tests, params);
 #else
 	int i, j, t;
 	gsl_rng_env_setup();

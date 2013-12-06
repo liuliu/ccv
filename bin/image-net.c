@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.convolutional = {
-					.count = 128,
+					.count = 96,
 					.strides = 4,
 					.border = 1,
 					.rows = 11,
