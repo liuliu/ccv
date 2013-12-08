@@ -66,7 +66,7 @@ int main(int argc, char** argv)
 	for (i = 0; i < convnet->layers->wnum; i++)
 		convnet->layers->w[i] = 1;
 	for (i = 0; i < convnet->layers->net.convolutional.count; i++)
-		convnet->layers->bias[i] = 0;
+		convnet->layers->bias[i] = 1;
 	ccv_convnet_supervised_train(convnet, categorizeds, 0, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();
