@@ -16,6 +16,7 @@ ccv_convnet_t* ccv_convnet_new(ccv_convnet_param_t params[], int count)
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)convnet);
+	convnet->reserved = 0;
 	convnet->layers = (ccv_convnet_layer_t*)(convnet + 1);
 	convnet->acts = (ccv_dense_matrix_t**)(convnet->layers + count);
 	memset(convnet->acts, 0, sizeof(ccv_dense_matrix_t*) * count);
@@ -899,7 +900,11 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 
 void ccv_convnet_free(ccv_convnet_t* convnet)
 {
+#ifdef HAVE_CUDA
+	cog_convnet_free(convnet);
+#else
 	ccfree(convnet);
+#endif
 }
 
 #endif

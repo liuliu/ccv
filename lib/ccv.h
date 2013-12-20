@@ -1138,6 +1138,7 @@ typedef struct {
 	ccv_convnet_layer_t* layers; // the layer configuration
 	ccv_dense_matrix_t** acts; // hidden layers and output layers
 	ccv_dense_matrix_t** dropouts; // the dropout for hidden layers
+	void* reserved;
 } ccv_convnet_t;
 
 typedef struct {
