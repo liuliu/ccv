@@ -48,11 +48,11 @@ __global__ void _cog_kern_convolutional_forward_propagate(const int strides, con
 	// gridDim.y == out_cols
 	extern __shared__ float shared[];
 	float* shared_block = &shared[0];
-	assert(batch == input_per_thread * blockDim.x);
 	float* shared_weights = &shared[batch];
-	assert(count == filter_per_thread * blockDim.y);
 	float* shared_bias = &shared[batch + count];
 	float prod[filter_per_thread][input_per_thread];
+	assert(batch == input_per_thread * blockDim.x);
+	assert(count == filter_per_thread * blockDim.y);
 	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
 	const int thcnt = blockDim.x * blockDim.y;
 	const int input_loads = (batch + thcnt - 1) / thcnt;
@@ -194,6 +194,90 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 			delta[(i + channel_idx) * deltacnt + j + filter_idx] = prod[i][j];
 }
 
+template <int input_per_thread, int channel_per_thread>
+__global__ void _cog_kern_convolutional_backward_propagate(const int strides, const int border, const int batch,
+		float* input_grad, const int rows, const int cols, const int channels,
+		float* out, const int out_rows, const int out_cols,
+		float* out_grad,
+		float* filter, const int filter_rows, const int filter_cols, const int count)
+{
+	// gridDim.x = rows
+	// gridDim.y = cols
+	extern __shared__ float shared[];
+	float* shared_out = &shared[0];
+	float* shared_grad = &shared[batch];
+	float* shared_weights = &shared[batch * 2];
+	float prod[input_per_thread][channel_per_thread];
+	assert(batch == input_per_thread * blockDim.x);
+	assert(channels == channel_per_thread * blockDim.y);
+	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
+	const int thcnt = blockDim.x * blockDim.y;
+	const int input_loads = (batch + thcnt - 1) / thcnt;
+	const int channel_loads = (channels + thcnt - 1) / thcnt;
+	int i, j, k, c, x, y;
+	#pragma unroll
+	for (i = 0; i < input_per_thread; i++)
+		#pragma unroll
+		for (j = 0; j < channel_per_thread; j++)
+			prod[i][j] = 0;
+	const int ycnt = (filter_rows - 1 - (blockIdx.x + border) % strides) / strides + 1;
+	const int xcnt = (filter_cols - 1 - (blockIdx.y + border) % strides) / strides + 1;
+	const int filter_y = (ycnt - 1) * strides + (blockIdx.x + border) % strides;
+	assert(filter_y < filter_rows);
+	const int filter_x = (xcnt - 1) * strides + (blockIdx.y + border) % strides;
+	assert(filter_x < filter_cols);
+	const int out_y = (blockIdx.x + border) / strides - ycnt + 1;
+	const int out_x = (blockIdx.y + border) / strides - xcnt + 1;
+	const int out_start_y = max(out_y, 0);
+	const int out_start_x = max(out_x, 0);
+	const int filter_start_y = filter_y - (out_start_y - out_y) * strides;
+	const int filter_start_x = filter_x - (out_start_x - out_x) * strides;
+	out += (out_start_y * out_cols + out_start_x) * batch;
+	out_grad += (out_start_y * out_cols + out_start_x) * batch;
+	const int out_end_y = out_y + ycnt - 1;
+	const int out_end_x = out_x + xcnt - 1;
+	const int filter_end_y = (blockIdx.x + border) % strides + (out_end_y - min(out_end_y, out_rows - 1)) * strides;
+	const int filter_end_x = (blockIdx.y + border) % strides + (out_end_x - min(out_end_x, out_cols - 1)) * strides;
+	const int outcnt = out_rows * out_cols * batch;
+	for (k = 0; k < count; k++)
+	{
+		float* out_per_filter = out + k * outcnt;
+		float* out_grad_per_filter = out_grad + k * outcnt;
+		for (y = filter_start_y; y >= filter_end_y; y -= strides)
+		{
+			for (x = filter_start_x, c = 0; x >= filter_end_x; x -= strides, c++)
+			{
+				#pragma unroll
+				for (i = 0; i < channel_loads; i++)
+					if (i * thcnt + thidx < channels)
+						shared_weights[i * thcnt + thidx] = filter[((i * thcnt + thidx) * filter_rows * filter_cols + y * filter_cols + x) * count + k];
+				#pragma unroll
+				for (i = 0; i < input_loads; i++)
+					if (i * thcnt + thidx < batch)
+						shared_out[i * thcnt + thidx] = out_per_filter[c * batch + i * thcnt + thidx],
+						shared_grad[i * thcnt + thidx] = out_grad_per_filter[c * batch + i * thcnt + thidx];
+				__syncthreads();
+				#pragma unroll
+				for (i = 0; i < input_per_thread; i++)
+					if (shared_out[i + threadIdx.x * input_per_thread] > 0)
+						#pragma unroll
+						for (j = 0; j < channel_per_thread; j++)
+							prod[i][j] += shared_grad[i + threadIdx.x * input_per_thread] * shared_weights[j + threadIdx.y * channel_per_thread];
+				__syncthreads();
+			}
+			out_per_filter += out_cols * batch;
+			out_grad_per_filter += out_cols * batch;
+		}
+	}
+	const int incnt = rows * cols * batch;
+	input_grad += (blockIdx.x * cols + blockIdx.y) * batch;
+	#pragma unroll
+	for (i = 0; i < channel_per_thread; i++)
+		#pragma unroll
+		for (j = 0; j < input_per_thread; j++)
+			input_grad[(i + threadIdx.y * channel_per_thread) * incnt + j + threadIdx.x * input_per_thread] = prod[j][i];
+}
+
 #include <sys/time.h>
 #include <ctype.h>
 
@@ -318,13 +402,13 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	assert(layer->net.convolutional.count % 4 == 0);
 	int out_rows, out_cols;
 	_ccv_convnet_compute_output_scale(rows, cols, layer, &out_rows, &out_cols);
-	dim3 threads_per_block(ch, layer->net.convolutional.count);
+	dim3 threads_per_block_for_delta(ch, layer->net.convolutional.count);
 	assert(batch % 8 == 0);
-	dim3 num_blocks(layer->net.convolutional.rows, layer->net.convolutional.cols, batch / 8);
+	dim3 num_blocks_for_delta(layer->net.convolutional.rows, layer->net.convolutional.cols, batch / 8);
 	int shared_memory_size = sizeof(float) * (8 * (ch + layer->net.convolutional.count * 2));
 	_cog_kern_convolutional_backward_propagate_delta
 	<1, 1, 8>
-	<<<num_blocks, threads_per_block, shared_memory_size>>>
+	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size>>>
 	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 		m, rows, cols, ch,
 		n, out_rows, out_cols,
@@ -336,7 +420,32 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	cudaEventElapsedTime(&elapsed_time, start, stop);
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
-	printf("cuda elapsed time of backward propagate: %.2lf\n", elapsed_time);
+	printf("cuda elapsed time of backward propagate for delta: %.2lf\n", elapsed_time);
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, 0);
+	assert(b);
+	float* db = *b;
+	if (!db)
+		cudaMalloc(&db, sizeof(float) * rows * cols * ch * batch);
+	*b = db;
+	dim3 threads_per_block(batch, 1);
+	dim3 num_blocks(rows, cols);
+	shared_memory_size = sizeof(float) * (batch * 2 + ch);
+	_cog_kern_convolutional_backward_propagate
+	<1, 3>
+	<<<num_blocks, threads_per_block, shared_memory_size>>>
+	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
+	 db, rows, cols, ch,
+	 n, out_rows, out_cols,
+	 a,
+	 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
+	printf("cuda elapsed time of backward propagate for error: %.2lf\n", elapsed_time);
 }
 
 // compute back propagated gradient & weight update delta
@@ -536,16 +645,24 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 				vec[i + (k * rows * cols + j) * batch] = a[i]->data.f32[j * ch + k];
 	float* od_vec = 0;
 	cudaMalloc(&od_vec, sizeof(float) * batch * rows * cols * ch);
+	int out_rows, out_cols;
+	_ccv_convnet_compute_output_scale(rows, cols, convnet->layers, &out_rows, &out_cols);
 	cudaMemcpy(od_vec, vec, sizeof(float) * batch * rows * cols * ch, cudaMemcpyHostToDevice);
 	float* od_out = 0;
 	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, 0, &od_out);
-	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_out, od_out, 0, od_vec, 0, GPU(convnet)->updates);
+	float* out_grad = 0;
+	cudaMalloc(&out_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
+	cudaMemcpy(out_grad, od_out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToDevice);
+	float* input_grad = 0;
+	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_out, out_grad, 0, od_vec, &input_grad, GPU(convnet)->updates);
 	float* out_weights = 0;
 	cudaMallocHost(&out_weights, sizeof(float) * convnet->layers->wnum * 16);
 	assert(out_weights);
 	cudaMemcpy(out_weights, GPU(convnet)->updates->w, sizeof(float) * convnet->layers->wnum * 16, cudaMemcpyDeviceToHost);
-	int out_rows, out_cols;
-	_ccv_convnet_compute_output_scale(rows, cols, convnet->layers, &out_rows, &out_cols);
+	float* out_input_grad = 0;
+	cudaMallocHost(&out_input_grad, sizeof(float) * rows * cols * batch * ch);
+	assert(out_input_grad);
+	cudaMemcpy(out_input_grad, input_grad, sizeof(float) * rows * cols * batch * ch, cudaMemcpyDeviceToHost);
 	ccv_convnet_layer_t updates;
 	updates.w = (float*)ccmalloc(sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
 	memset(updates.w, 0, sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
@@ -558,6 +675,16 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		ccv_dense_matrix_t* out = 0;
 		_ccv_convnet_convolutional_backward_propagate(convnet->layers, b, b, 0, a[i], &out, &updates);
 		ccv_matrix_free(b);
+		for (k = 0; k < ch; k++)
+			for (j = 0; j < rows * cols; j++)
+			{
+				float g = out->data.f32[j * ch + k];
+				float og = out_input_grad[j * batch + i + k * rows * cols * batch];
+				float delta = fabsf(g - og) / ccv_max(ccv_max(g, og), 1);
+				assert(!isnan(delta) && !isinf(delta));
+				if (delta > 0.01)
+					printf("%d %d %f %f %f\n", k, j, delta, out->data.f32[j * ch + k], out_input_grad[j * batch + i + k * rows * cols * batch]);
+			}
 		ccv_matrix_free(out);
 	}
 	elapsed_time = get_current_time() - elapsed_time;
@@ -574,7 +701,7 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 					float ow = out_weights[(i * filter_cols + j) * filter_count + k + c * filter_cols * filter_rows * filter_count];
 					for (z = 1; z < 16; z++)
 						ow += out_weights[z * filter_rows * filter_cols * filter_count * ch + (i * filter_cols + j) * filter_count + k + c * filter_cols * filter_rows * filter_count];
-					float delta = fabsf(ow - w) / w;
+					float delta = fabsf(ow - w) / ccv_max(ccv_max(w, ow), 1);
 					if (delta > 0.0001)
 						printf("%d,%d,%d,%d: %f, %f\n", i, j, k, c, w, ow);
 				}
