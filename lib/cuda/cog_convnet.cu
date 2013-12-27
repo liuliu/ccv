@@ -194,7 +194,7 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 			delta[(i + channel_idx) * deltacnt + j + filter_idx] = prod[i][j];
 }
 
-template <int input_per_thread, int channel_per_thread>
+template <int input_per_thread, int channel_per_thread, int filter_per_iteration>
 __global__ void _cog_kern_convolutional_backward_propagate(const int strides, const int border, const int batch,
 		float* input_grad, const int rows, const int cols, const int channels,
 		float* out, const int out_rows, const int out_cols,
@@ -213,7 +213,7 @@ __global__ void _cog_kern_convolutional_backward_propagate(const int strides, co
 	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
 	const int thcnt = blockDim.x * blockDim.y;
 	const int input_loads = (batch + thcnt - 1) / thcnt;
-	const int channel_loads = (channels + thcnt - 1) / thcnt;
+	const int channel_filter_loads = (channels * filter_per_iteration + thcnt - 1) / thcnt;
 	int i, j, k, c, x, y;
 	#pragma unroll
 	for (i = 0; i < input_per_thread; i++)
@@ -239,35 +239,45 @@ __global__ void _cog_kern_convolutional_backward_propagate(const int strides, co
 	const int filter_end_y = (blockIdx.x + border) % strides + (out_end_y - min(out_end_y, out_rows - 1)) * strides;
 	const int filter_end_x = (blockIdx.y + border) % strides + (out_end_x - min(out_end_x, out_cols - 1)) * strides;
 	const int outcnt = out_rows * out_cols * batch;
-	for (k = 0; k < count; k++)
+	for (y = filter_start_y; y >= filter_end_y; y -= strides)
 	{
-		float* out_per_filter = out + k * outcnt;
-		float* out_grad_per_filter = out_grad + k * outcnt;
-		for (y = filter_start_y; y >= filter_end_y; y -= strides)
+		for (x = filter_start_x, c = 0; x >= filter_end_x; x -= strides, c++)
 		{
-			for (x = filter_start_x, c = 0; x >= filter_end_x; x -= strides, c++)
+			#pragma unroll
+			for (k = 0; k < count; k++)
 			{
-				#pragma unroll
-				for (i = 0; i < channel_loads; i++)
-					if (i * thcnt + thidx < channels)
-						shared_weights[i * thcnt + thidx] = filter[((i * thcnt + thidx) * filter_rows * filter_cols + y * filter_cols + x) * count + k];
+				if (k % filter_per_iteration == 0)
+				{
+					const int min_channel_filter_count = channels * min(filter_per_iteration, count - k);
+					#pragma unroll
+					for (i = 0; i < channel_filter_loads; i++)
+						if (i * thcnt + thidx < min_channel_filter_count)
+						{
+							const int channel_idx = (i * thcnt + thidx) / filter_per_iteration;
+							const int filter_idx = (i * thcnt + thidx) % filter_per_iteration + k;
+							shared_weights[i * thcnt + thidx] = filter[(channel_idx * filter_rows * filter_cols + y * filter_cols + x) * count + filter_idx];
+						}
+				}
+				float* out_per_filter = out + k * outcnt;
+				float* out_grad_per_filter = out_grad + k * outcnt;
 				#pragma unroll
 				for (i = 0; i < input_loads; i++)
 					if (i * thcnt + thidx < batch)
 						shared_out[i * thcnt + thidx] = out_per_filter[c * batch + i * thcnt + thidx],
 						shared_grad[i * thcnt + thidx] = out_grad_per_filter[c * batch + i * thcnt + thidx];
 				__syncthreads();
+				const int k_idx = k % filter_per_iteration;
 				#pragma unroll
 				for (i = 0; i < input_per_thread; i++)
 					if (shared_out[i + threadIdx.x * input_per_thread] > 0)
 						#pragma unroll
 						for (j = 0; j < channel_per_thread; j++)
-							prod[i][j] += shared_grad[i + threadIdx.x * input_per_thread] * shared_weights[j + threadIdx.y * channel_per_thread];
+							prod[i][j] += shared_grad[i + threadIdx.x * input_per_thread] * shared_weights[(j + threadIdx.y * channel_per_thread) * filter_per_iteration + k_idx];
 				__syncthreads();
 			}
-			out_per_filter += out_cols * batch;
-			out_grad_per_filter += out_cols * batch;
 		}
+		out += out_cols * batch;
+		out_grad += out_cols * batch;
 	}
 	const int incnt = rows * cols * batch;
 	input_grad += (blockIdx.x * cols + blockIdx.y) * batch;
@@ -431,9 +441,9 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	*b = db;
 	dim3 threads_per_block(batch, 1);
 	dim3 num_blocks(rows, cols);
-	shared_memory_size = sizeof(float) * (batch * 2 + ch);
+	shared_memory_size = sizeof(float) * (batch * 2 + ch * 48);
 	_cog_kern_convolutional_backward_propagate
-	<1, 3>
+	<1, 3, 48>
 	<<<num_blocks, threads_per_block, shared_memory_size>>>
 	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 	 db, rows, cols, ch,
