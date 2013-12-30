@@ -112,7 +112,68 @@ __global__ void _cog_kern_convolutional_forward_propagate(const int strides, con
 	}
 }
 
-template <int channel_per_thread, int filter_per_thread, int batch_per_thread>
+template <int out_per_thread>
+__global__ void _cog_kern_convolutional_backward_propagate_bias(const int batch,
+		float* out, const int out_rows, const int out_cols,
+		float* out_grad, float* bias, const int count)
+{
+	// gridDim.x == count
+	assert(gridDim.x == count);
+	const int skip_pixels = blockDim.y;
+	extern __shared__ float shared[];
+	float* shared_bias = &shared[0];
+	float* shared_out = &shared[1];
+	float* shared_grad = &shared[1 + batch * skip_pixels];
+	int i, x;
+	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
+	const int thcnt = blockDim.x * blockDim.y;
+	const int out_loads = (batch * skip_pixels + thcnt - 1) / thcnt;
+	assert(thcnt % batch == 0);
+	out += blockIdx.x * out_rows * out_cols * batch + thidx;
+	out_grad += blockIdx.x * out_rows * out_cols * batch + thidx;
+	const int out_load_factor = thcnt;
+	const int out_load_pixels = thcnt / batch;
+	if (thidx == 0)
+		shared_bias[0] = 0;
+	for (x = 0; x < out_rows * out_cols; x += skip_pixels)
+	{
+		for (i = 0; i < out_loads; i++)
+			if (i * thcnt + thidx < batch * skip_pixels && x + i * out_load_pixels < out_rows * out_cols)
+				shared_out[i * thcnt + thidx] = out[x * batch + i * out_load_factor],
+				shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * out_load_factor];
+		__syncthreads();
+		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause
+		if (threadIdx.y + x < out_rows * out_cols)
+		{
+			if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread] <= 0)
+				shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] = 0;
+			#pragma unroll
+			for (i = 1; i < out_per_thread; i++)
+				if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread + i] > 0)
+					shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] += shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread + i];
+		}
+		__syncthreads();
+		// I can do better here, but bias computation is not the bottleneck
+		if (threadIdx.y + x < out_rows * out_cols && threadIdx.x == 0)
+			#pragma unroll
+			for (i = 1; i < blockDim.x; i++)
+				shared_grad[threadIdx.y * batch] += shared_grad[threadIdx.y * batch + i * out_per_thread];
+		__syncthreads();
+		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause, thus, this if clause appeared repeatedly
+		if (threadIdx.y + x < out_rows * out_cols && thidx == 0)
+		{
+			#pragma unroll
+			for (i = 1; i < blockDim.y && i + x < out_rows * out_cols; i++)
+				shared_grad[0] += shared_grad[i * batch];
+			shared_bias[0] += shared_grad[0];
+		}
+		__syncthreads();
+	}
+	if (thidx == 0)
+		bias[blockIdx.x] = shared_bias[0];
+}
+
+template <int channel_per_thread, int filter_per_thread, int batch_per_block>
 __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strides, const int border, const int batch,
 		float* input, const int rows, const int cols, const int channels,
 		float* out, const int out_rows, const int out_cols,
@@ -121,11 +182,11 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 {
 	// gridDim.x == filter_rows
 	// gridDim.y == filter_cols
-	assert(gridDim.z == out_rows * batch / batch_per_thread);
+	assert(gridDim.z == out_rows * batch / batch_per_block);
 	extern __shared__ float shared[];
 	float* shared_block = &shared[0];
-	float* shared_out = &shared[batch_per_thread * channels];
-	float* shared_grad = &shared[batch_per_thread * (channels + count)];
+	float* shared_out = &shared[batch_per_block * channels];
+	float* shared_grad = &shared[batch_per_block * (channels + count)];
 	float prod[channel_per_thread][filter_per_thread];
 	// channel_per_thread * blockDim.x == channels
 	// filter_per_thread * blockDim.y == filter_count
@@ -133,31 +194,33 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 	assert(filter_per_thread * blockDim.y == count);
 	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
 	const int thcnt = blockDim.x * blockDim.y;
-	assert(batch % batch_per_thread == 0);
-	assert(thcnt % batch_per_thread == 0);
+	assert(batch % batch_per_block == 0);
+	assert(thcnt % batch_per_block == 0);
 	int i, j, k, x;
 	#pragma unroll
 	for (i = 0; i < channel_per_thread; i++)
 		#pragma unroll
 		for (j = 0; j < filter_per_thread; j++)
 			prod[i][j] = 0;
-	const int bxidx = thidx % batch_per_thread;
-	const int byidx = thidx / batch_per_thread;
-	const int batch_idx = blockIdx.z % (batch / batch_per_thread);
+	const int bxidx = thidx % batch_per_block;
+	const int byidx = thidx / batch_per_block;
+	const int batch_idx = blockIdx.z % (batch / batch_per_block);
 	const int incnt = rows * cols * batch;
-	input += (blockIdx.x * cols + blockIdx.y) * batch + batch_idx * batch_per_thread + byidx * incnt + bxidx;
+	input += (blockIdx.x * cols + blockIdx.y) * batch + batch_idx * batch_per_block + byidx * incnt + bxidx;
 	const int outcnt = out_rows * out_cols * batch;
-	const int block_loads = (batch_per_thread * channels + thcnt - 1) / thcnt;
-	const int out_loads = (batch_per_thread * count + thcnt - 1) / thcnt;
-	const int block_loads_factor = (thcnt / batch_per_thread) * incnt;
-	const int out_loads_factor = (thcnt / batch_per_thread) * outcnt;
+	const int block_loads = (batch_per_block * channels + thcnt - 1) / thcnt;
+	const int out_loads = (batch_per_block * count + thcnt - 1) / thcnt;
+	const int block_loads_factor = (thcnt / batch_per_block) * incnt;
+	const int out_loads_factor = (thcnt / batch_per_block) * outcnt;
 	const int filter_idx = threadIdx.y * filter_per_thread;
 	const int channel_idx = threadIdx.x * channel_per_thread;
-	const int y = blockIdx.z / (batch / batch_per_thread);
-	out += batch_idx * batch_per_thread + byidx * outcnt + bxidx + y * out_cols * batch;
-	out_grad += batch_idx * batch_per_thread + byidx * outcnt + bxidx + y * out_cols * batch;
+	const int y = blockIdx.z / (batch / batch_per_block);
+	out += batch_idx * batch_per_block + byidx * outcnt + bxidx + y * out_cols * batch;
+	out_grad += batch_idx * batch_per_block + byidx * outcnt + bxidx + y * out_cols * batch;
 	const int iy = blockIdx.x + y * strides - border;
 	if (iy >= 0 && iy < rows)
+	{
+		input += (y * strides - border) * cols * batch;
 		for (x = 0; x < out_cols; x++)
 		{
 			const int ix = blockIdx.y + x * strides - border;
@@ -165,25 +228,26 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 			{
 				#pragma unroll
 				for (i = 0; i < block_loads; i++)
-					if (thidx + i * thcnt < batch_per_thread * channels)
-						shared_block[thidx + i * thcnt] = input[((y * strides - border) * cols + x * strides - border) * batch + i * block_loads_factor];
+					if (thidx + i * thcnt < batch_per_block * channels)
+						shared_block[thidx + i * thcnt] = input[(x * strides - border) * batch + i * block_loads_factor];
 				#pragma unroll
 				for (i = 0; i < out_loads; i++)
-					if (thidx + i * thcnt < batch_per_thread * count)
+					if (thidx + i * thcnt < batch_per_block * count)
 						shared_out[thidx + i * thcnt] = out[x * batch + i * out_loads_factor],
 						shared_grad[thidx + i * thcnt] = out_grad[x * batch + i * out_loads_factor];
 				__syncthreads();
 				#pragma unroll
-				for (k = 0; k < batch_per_thread; k++)
+				for (k = 0; k < batch_per_block; k++)
 					#pragma unroll
 					for (i = 0; i < filter_per_thread; i++)
-						if (shared_out[(i + filter_idx) * batch_per_thread + k] > 0)
+						if (shared_out[(i + filter_idx) * batch_per_block + k] > 0)
 							#pragma unroll
 							for (j = 0; j < channel_per_thread; j++)
-								prod[j][i] += shared_block[(j + channel_idx) * batch_per_thread + k] * shared_grad[(i + filter_idx) * batch_per_thread + k];
+								prod[j][i] += shared_block[(j + channel_idx) * batch_per_block + k] * shared_grad[(i + filter_idx) * batch_per_block + k];
 				__syncthreads();
 			}
 		}
+	}
 	delta += (blockIdx.x * filter_cols + blockIdx.y) * count + blockIdx.z * filter_rows * filter_cols * count * channels;
 	const int deltacnt = filter_rows * filter_cols * count;
 	#pragma unroll
@@ -415,6 +479,7 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	assert(batch % 16 == 0);
 	dim3 num_blocks_for_delta(layer->net.convolutional.rows, layer->net.convolutional.cols, out_rows * batch / 16);
 	int shared_memory_size = sizeof(float) * (16 * (ch + layer->net.convolutional.count * 2));
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16>, cudaFuncCachePreferShared);
 	_cog_kern_convolutional_backward_propagate_delta
 	<1, 1, 16>
 	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size>>>
@@ -430,6 +495,25 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
 	printf("cuda elapsed time of backward propagate for delta: %.2lf\n", elapsed_time);
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, 0);
+	dim3 threads_per_block_for_bias(batch / 8, 8);
+	dim3 num_blocks_for_bias(layer->net.convolutional.count);
+	shared_memory_size = sizeof(float) * (1 + batch * 8 * 2);
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_bias<8>, cudaFuncCachePreferShared);
+	_cog_kern_convolutional_backward_propagate_bias
+	<8>
+	<<<num_blocks_for_bias, threads_per_block_for_bias, shared_memory_size>>>
+	(batch,
+		n, out_rows, out_cols,
+		a, update->bias, layer->net.convolutional.count);
+	cudaEventRecord(stop, 0);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
+	printf("cuda elapsed time of backward propagate for bias: %.2lf\n", elapsed_time);
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start, 0);
@@ -520,7 +604,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			np += n->cols * count; \
 			mp += m->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0)); \
 		} \
-		update_params->bias[k] = bias; \
+		update_params->bias[k] += bias; \
 	}
 	ccv_dense_matrix_t* db = 0;
 	if (b)
@@ -619,7 +703,7 @@ static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
 				updates[i].w = 0;
 				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.convolutional.count));
 				assert(updates[i].w);
-				updates[i].bias = updates[i].w + updates[i].wnum;
+				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(updates[i].type == CCV_CONVNET_FULL_CONNECT);
@@ -630,7 +714,7 @@ static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
 				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count), cudaMemcpyHostToDevice);
 				updates[i].w = 0;
 				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.full_connect.count));
-				updates[i].bias = updates[i].w + updates[i].wnum;
+				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
 				break;
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
@@ -668,6 +752,10 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	cudaMallocHost(&out_weights, sizeof(float) * convnet->layers->wnum * 8 * out_rows);
 	assert(out_weights);
 	cudaMemcpy(out_weights, GPU(convnet)->updates->w, sizeof(float) * convnet->layers->wnum * 8 * out_rows, cudaMemcpyDeviceToHost);
+	float* out_bias = 0;
+	cudaMallocHost(&out_bias, sizeof(float) * convnet->layers->net.convolutional.count);
+	assert(out_bias);
+	cudaMemcpy(out_bias, GPU(convnet)->updates->bias, sizeof(float) * convnet->layers->net.convolutional.count, cudaMemcpyDeviceToHost);
 	float* out_input_grad = 0;
 	cudaMallocHost(&out_input_grad, sizeof(float) * rows * cols * batch * ch);
 	assert(out_input_grad);
@@ -714,6 +802,14 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 					if (delta > 0.0001)
 						printf("%d,%d,%d,%d: %f, %f\n", i, j, k, c, w, ow);
 				}
+	for (i = 0; i < filter_count; i++)
+	{
+		float b = updates.bias[i];
+		float ob = out_bias[i];
+		float delta = fabsf(ob - b) / ccv_max(ccv_max(ob, b), 1);
+		if (delta > 0.0001)
+			printf("%d: %f, %f\n", i, b, ob);
+	}
 }
 
 void cog_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
