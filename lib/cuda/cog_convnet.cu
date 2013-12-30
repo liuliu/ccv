@@ -743,6 +743,10 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	cudaMemcpy(od_vec, vec, sizeof(float) * batch * rows * cols * ch, cudaMemcpyHostToDevice);
 	float* od_out = 0;
 	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, 0, &od_out);
+	float* out = 0;
+	cudaMallocHost(&out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
+	assert(out);
+	cudaMemcpy(out, od_out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToHost);
 	float* out_grad = 0;
 	cudaMalloc(&out_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
 	cudaMemcpy(out_grad, od_out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToDevice);
@@ -769,20 +773,30 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	{
 		ccv_dense_matrix_t* b = 0;
 		_ccv_convnet_convolutional_forward_propagate(convnet->layers, a[i], 0, &b);
-		ccv_dense_matrix_t* out = 0;
-		_ccv_convnet_convolutional_backward_propagate(convnet->layers, b, b, 0, a[i], &out, &updates);
+		for (k = 0; k < convnet->layers->net.convolutional.count; k++)
+			for (j = 0; j < out_rows * out_cols; j++)
+			{
+				float o = b->data.f32[j * convnet->layers->net.convolutional.count + k];
+				float oo = out[j * batch + i + k * out_rows * out_cols * batch];
+				float delta = fabsf(o - oo) / ccv_max(ccv_max(o, oo), 1);
+				assert(!isnan(delta) && !isinf(delta));
+				if (delta > 0.001)
+					printf("forwprop: %d %d %f %f %f\n", k, j, delta, o, oo);
+			}
+		ccv_dense_matrix_t* backprop = 0;
+		_ccv_convnet_convolutional_backward_propagate(convnet->layers, b, b, 0, a[i], &backprop, &updates);
 		ccv_matrix_free(b);
 		for (k = 0; k < ch; k++)
 			for (j = 0; j < rows * cols; j++)
 			{
-				float g = out->data.f32[j * ch + k];
+				float g = backprop->data.f32[j * ch + k];
 				float og = out_input_grad[j * batch + i + k * rows * cols * batch];
 				float delta = fabsf(g - og) / ccv_max(ccv_max(g, og), 1);
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.01)
-					printf("%d %d %f %f %f\n", k, j, delta, out->data.f32[j * ch + k], out_input_grad[j * batch + i + k * rows * cols * batch]);
+					printf("backprop: %d %d %f %f %f\n", k, j, delta, g, og);
 			}
-		ccv_matrix_free(out);
+		ccv_matrix_free(backprop);
 	}
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("cpu elapsed time of backward propagate: %u\n", elapsed_time);
