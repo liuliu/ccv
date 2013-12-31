@@ -53,8 +53,25 @@ int main(int argc, char** argv)
 				},
 			},
 		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 96,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 5,
+					.border = 1,
+				},
+			},
+		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(params, 2);
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,

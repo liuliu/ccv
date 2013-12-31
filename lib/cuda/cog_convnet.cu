@@ -29,13 +29,62 @@ static inline void _ccv_convnet_compute_output_scale(int a_rows, int a_cols, ccv
 			break;
 		case CCV_CONVNET_MAX_POOL:
 		case CCV_CONVNET_AVERAGE_POOL:
-			assert((a_rows - layer->net.pool.size) % layer->net.pool.strides == 0);
-			assert((a_cols - layer->net.pool.size) % layer->net.pool.strides == 0);
-			*rows = (a_rows - layer->net.pool.size) / layer->net.pool.strides + 1;
-			*cols = (a_cols - layer->net.pool.size) / layer->net.pool.strides + 1;
+			assert((a_rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			assert((a_cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			*rows = (a_rows + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
+			*cols = (a_cols + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
 			break;
 	}
 }
+
+static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
+{
+	assert(GPU(convnet) == 0);
+	convnet->reserved = (cog_convnet_t*)ccmalloc(sizeof(cog_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count * 2);
+	GPU(convnet)->layers = (ccv_convnet_layer_t*)(GPU(convnet) + 1);
+	GPU(convnet)->updates = GPU(convnet)->layers + convnet->count;
+	memcpy(GPU(convnet)->layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
+	memcpy(GPU(convnet)->updates, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
+	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
+	ccv_convnet_layer_t* updates = GPU(convnet)->updates;
+	int i;
+	for (i = 0; i < convnet->count; i++)
+		switch (layers[i].type)
+		{
+			case CCV_CONVNET_CONVOLUTIONAL:
+				assert(updates[i].type == CCV_CONVNET_CONVOLUTIONAL);
+				layers[i].w = 0;
+				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
+				assert(layers[i].w);
+				layers[i].bias = layers[i].w + layers[i].wnum;
+				// this is wrong, I need to rewind w
+				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count), cudaMemcpyHostToDevice);
+				updates[i].w = 0;
+				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.convolutional.count));
+				assert(updates[i].w);
+				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
+				break;
+			case CCV_CONVNET_FULL_CONNECT:
+				assert(updates[i].type == CCV_CONVNET_FULL_CONNECT);
+				layers[i].w = 0;
+				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
+				assert(layers[i].w);
+				layers[i].bias = layers[i].w + layers[i].wnum;
+				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count), cudaMemcpyHostToDevice);
+				updates[i].w = 0;
+				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.full_connect.count));
+				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
+				break;
+			case CCV_CONVNET_MAX_POOL:
+			case CCV_CONVNET_AVERAGE_POOL:
+				assert(updates[i].type == layers[i].type);
+				updates[i].w = updates[i].bias = 0;
+				layers[i].w = layers[i].bias = 0;
+				break;
+		}
+}
+
+// =========================================== KERNEL CODE ===================================================
 
 template <int input_per_thread, int filter_per_thread>
 __global__ void _cog_kern_convolutional_forward_propagate(const int strides, const int border, const int batch,
@@ -112,65 +161,26 @@ __global__ void _cog_kern_convolutional_forward_propagate(const int strides, con
 	}
 }
 
-template <int out_per_thread>
-__global__ void _cog_kern_convolutional_backward_propagate_bias(const int batch,
-		float* out, const int out_rows, const int out_cols,
-		float* out_grad, float* bias, const int count)
+static void _cog_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* d, float** b, const cudaStream_t& stream)
 {
-	// gridDim.x == count
-	assert(gridDim.x == count);
-	const int skip_pixels = blockDim.y;
-	extern __shared__ float shared[];
-	float* shared_bias = &shared[0];
-	float* shared_out = &shared[1];
-	float* shared_grad = &shared[1 + batch * skip_pixels];
-	int i, x;
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	const int out_loads = (batch * skip_pixels + thcnt - 1) / thcnt;
-	assert(thcnt % batch == 0);
-	out += blockIdx.x * out_rows * out_cols * batch + thidx;
-	out_grad += blockIdx.x * out_rows * out_cols * batch + thidx;
-	const int out_load_factor = thcnt;
-	const int out_load_pixels = thcnt / batch;
-	if (thidx == 0)
-		shared_bias[0] = 0;
-	for (x = 0; x < out_rows * out_cols; x += skip_pixels)
-	{
-		for (i = 0; i < out_loads; i++)
-			if (i * thcnt + thidx < batch * skip_pixels && x + i * out_load_pixels < out_rows * out_cols)
-				shared_out[i * thcnt + thidx] = out[x * batch + i * out_load_factor],
-				shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * out_load_factor];
-		__syncthreads();
-		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause
-		if (threadIdx.y + x < out_rows * out_cols)
-		{
-			if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread] <= 0)
-				shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] = 0;
-			#pragma unroll
-			for (i = 1; i < out_per_thread; i++)
-				if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread + i] > 0)
-					shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] += shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread + i];
-		}
-		__syncthreads();
-		// I can do better here, but bias computation is not the bottleneck
-		if (threadIdx.y + x < out_rows * out_cols && threadIdx.x == 0)
-			#pragma unroll
-			for (i = 1; i < blockDim.x; i++)
-				shared_grad[threadIdx.y * batch] += shared_grad[threadIdx.y * batch + i * out_per_thread];
-		__syncthreads();
-		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause, thus, this if clause appeared repeatedly
-		if (threadIdx.y + x < out_rows * out_cols && thidx == 0)
-		{
-			#pragma unroll
-			for (i = 1; i < blockDim.y && i + x < out_rows * out_cols; i++)
-				shared_grad[0] += shared_grad[i * batch];
-			shared_bias[0] += shared_grad[0];
-		}
-		__syncthreads();
-	}
-	if (thidx == 0)
-		bias[blockIdx.x] = shared_bias[0];
+	int out_rows, out_cols;
+	_ccv_convnet_compute_output_scale(rows, cols, layer, &out_rows, &out_cols);
+	assert(b);
+	float* db = *b;
+	if (!db)
+		cudaMalloc(&db, sizeof(float) * out_rows * out_cols * layer->net.convolutional.count * batch);
+	*b = db;
+	dim3 threads_per_block(batch / 8, layer->net.convolutional.count / 4);
+	dim3 num_blocks(out_rows, out_cols);
+	int shared_memory_size = sizeof(float) * (batch + layer->net.convolutional.count);
+	_cog_kern_convolutional_forward_propagate
+		<8, 4>
+		<<<num_blocks, threads_per_block, shared_memory_size + /* need extra space for bias */ sizeof(float) * layer->net.convolutional.count, stream>>>
+		(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
+		 a, rows, cols, ch,
+		 db, out_rows, out_cols,
+		 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count,
+		 layer->bias);
 }
 
 template <int channel_per_thread, int filter_per_thread, int batch_per_block>
@@ -255,6 +265,67 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 		#pragma unroll
 		for (j = 0; j < filter_per_thread; j++)
 			delta[(i + channel_idx) * deltacnt + j + filter_idx] = prod[i][j];
+}
+
+template <int out_per_thread>
+__global__ void _cog_kern_convolutional_backward_propagate_bias(const int batch,
+		float* out, const int out_rows, const int out_cols,
+		float* out_grad, float* bias, const int count)
+{
+	// gridDim.x == count
+	assert(gridDim.x == count);
+	const int skip_pixels = blockDim.y;
+	extern __shared__ float shared[];
+	float* shared_bias = &shared[0];
+	float* shared_out = &shared[1];
+	float* shared_grad = &shared[1 + batch * skip_pixels];
+	int i, x;
+	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
+	const int thcnt = blockDim.x * blockDim.y;
+	const int out_loads = (batch * skip_pixels + thcnt - 1) / thcnt;
+	assert(thcnt % batch == 0);
+	out += blockIdx.x * out_rows * out_cols * batch + thidx;
+	out_grad += blockIdx.x * out_rows * out_cols * batch + thidx;
+	const int out_load_factor = thcnt;
+	const int out_load_pixels = thcnt / batch;
+	if (thidx == 0)
+		shared_bias[0] = 0;
+	for (x = 0; x < out_rows * out_cols; x += skip_pixels)
+	{
+		for (i = 0; i < out_loads; i++)
+			if (i * thcnt + thidx < batch * skip_pixels && x + i * out_load_pixels < out_rows * out_cols)
+				shared_out[i * thcnt + thidx] = out[x * batch + i * out_load_factor],
+				shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * out_load_factor];
+		__syncthreads();
+		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause
+		if (threadIdx.y + x < out_rows * out_cols)
+		{
+			if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread] <= 0)
+				shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] = 0;
+			#pragma unroll
+			for (i = 1; i < out_per_thread; i++)
+				if (shared_out[threadIdx.y * batch + threadIdx.x * out_per_thread + i] > 0)
+					shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] += shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread + i];
+		}
+		__syncthreads();
+		// I can do better here, but bias computation is not the bottleneck
+		if (threadIdx.y + x < out_rows * out_cols && threadIdx.x == 0)
+			#pragma unroll
+			for (i = 1; i < blockDim.x; i++)
+				shared_grad[threadIdx.y * batch] += shared_grad[threadIdx.y * batch + i * out_per_thread];
+		__syncthreads();
+		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause, thus, this if clause appeared repeatedly
+		if (threadIdx.y + x < out_rows * out_cols && thidx == 0)
+		{
+			#pragma unroll
+			for (i = 1; i < blockDim.y && i + x < out_rows * out_cols; i++)
+				shared_grad[0] += shared_grad[i * batch];
+			shared_bias[0] += shared_grad[0];
+		}
+		__syncthreads();
+	}
+	if (thidx == 0)
+		bias[blockIdx.x] = shared_bias[0];
 }
 
 template <int input_per_thread, int channel_per_thread, int filter_per_iteration>
@@ -351,48 +422,144 @@ __global__ void _cog_kern_convolutional_backward_propagate(const int strides, co
 			input_grad[(i + threadIdx.y * channel_per_thread) * incnt + j + threadIdx.x * input_per_thread] = prod[j][i];
 }
 
-#include <sys/time.h>
-#include <ctype.h>
-
-static unsigned int get_current_time(void)
+static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* n, float* d, float* m, float** b, ccv_convnet_layer_t* update, const cudaStream_t& stream)
 {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
-
-static void _cog_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* d, float** b)
-{
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, 0);
+	assert(layer->net.convolutional.count % 4 == 0);
 	int out_rows, out_cols;
 	_ccv_convnet_compute_output_scale(rows, cols, layer, &out_rows, &out_cols);
+	dim3 threads_per_block_for_delta(ch, layer->net.convolutional.count);
+	assert(batch % 16 == 0);
+	dim3 num_blocks_for_delta(layer->net.convolutional.rows, layer->net.convolutional.cols, out_rows * batch / 16);
+	int shared_memory_size = sizeof(float) * (16 * (ch + layer->net.convolutional.count * 2));
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16>, cudaFuncCachePreferShared);
+	_cog_kern_convolutional_backward_propagate_delta
+	<1, 1, 16>
+	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size, stream>>>
+	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
+		m, rows, cols, ch,
+		n, out_rows, out_cols,
+		a, update->w,
+		layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
+	dim3 threads_per_block_for_bias(batch / 8, 8);
+	dim3 num_blocks_for_bias(layer->net.convolutional.count);
+	shared_memory_size = sizeof(float) * (1 + batch * 8 * 2);
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_bias<8>, cudaFuncCachePreferShared);
+	_cog_kern_convolutional_backward_propagate_bias
+	<8>
+	<<<num_blocks_for_bias, threads_per_block_for_bias, shared_memory_size, stream>>>
+	(batch,
+		n, out_rows, out_cols,
+		a, update->bias, layer->net.convolutional.count);
 	assert(b);
 	float* db = *b;
 	if (!db)
-		cudaMalloc(&db, sizeof(float) * out_rows * out_cols * layer->net.convolutional.count * batch);
+		cudaMalloc(&db, sizeof(float) * rows * cols * ch * batch);
 	*b = db;
-	dim3 threads_per_block(batch / 8, layer->net.convolutional.count / 4);
-	dim3 num_blocks(out_rows, out_cols);
-	int shared_memory_size = sizeof(float) * (batch + layer->net.convolutional.count);
-	_cog_kern_convolutional_forward_propagate
-		<8, 4>
-		<<<num_blocks, threads_per_block, shared_memory_size + /* need extra space for bias */ sizeof(float) * layer->net.convolutional.count>>>
-		(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
-		 a, rows, cols, ch,
-		 db, out_rows, out_cols,
-		 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count,
-		 layer->bias);
-	cudaEventRecord(stop, 0);
-	cudaEventSynchronize(stop);
-	float elapsed_time;
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-	printf("cuda elapsed time forward propagate: %.2lf\n", elapsed_time);
+	dim3 threads_per_block(batch, 1);
+	dim3 num_blocks(rows, cols);
+	shared_memory_size = sizeof(float) * (batch * 2 + ch * 48);
+	_cog_kern_convolutional_backward_propagate
+	<1, 3, 48>
+	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
+	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
+	 db, rows, cols, ch,
+	 n, out_rows, out_cols,
+	 a,
+	 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
 }
+
+template <int input_per_thread>
+__global__ void _cog_kern_max_pool_forward_propagate(const int strides, const int border, const int size, const int batch,
+		float* input, const int rows, const int cols, const int channels,
+		float* out, const int out_rows, const int out_cols)
+{
+	// gridDim.x == out_rows
+	// gridDim.y == out_cols
+	// gridDim.z == channels
+	assert(gridDim.x == out_rows);
+	assert(gridDim.y == out_cols);
+	assert(gridDim.z == channels);
+	extern __shared__ float shared[];
+	float* shared_input = &shared[0];
+	const int thcnt = blockDim.x;
+	const int thidx = threadIdx.x;
+	const int input_loads = (batch + thcnt - 1) / thcnt;
+	int i, x, y;
+	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
+	float prod[input_per_thread];
+	int first = 1;
+	// this is equal to iterating over 0 to size, and then compute the input origin by blockIdx.x * strides - border + y
+	#pragma unroll
+	for (y = -border; y < size - border; y++)
+	{
+		const int iy = blockIdx.x * strides + y;
+		if (iy >= 0 && iy < rows)
+			#pragma unroll
+			for (x = -border; x < size - border; x++)
+			{
+				const int ix = blockIdx.y * strides + x;
+				if (ix >= 0 && ix < cols)
+				{
+					#pragma unroll
+					for (i = 0; i < input_loads; i++)
+						if (i * thcnt + thidx < batch)
+							shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
+					__syncthreads();
+					if (first)
+					{
+						#pragma unroll
+						for (i = 0; i < input_per_thread; i++)
+							prod[i] = shared_input[i + threadIdx.x * input_per_thread];
+						first = 0;
+					} else
+						#pragma unroll
+						for (i = 0; i < input_per_thread; i++)
+							prod[i] = max(prod[i], shared_input[i + threadIdx.x * input_per_thread]);
+					__syncthreads();
+				}
+			}
+	}
+	out += blockIdx.z * out_rows * out_cols * batch + (blockIdx.x * out_cols + blockIdx.y) * batch;
+	#pragma unroll
+	for (i = 0; i < input_per_thread; i++)
+		out[i + threadIdx.x * input_per_thread] = prod[i];
+}
+
+
+static void _cog_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
+{
+	int out_rows, out_cols;
+	_ccv_convnet_compute_output_scale(rows, cols, layer, &out_rows, &out_cols);
+	float* db = *b;
+	if (!db)
+		cudaMalloc(&db, sizeof(float) * out_rows * out_cols * ch * batch);
+	*b = db;
+	dim3 num_blocks(out_rows, out_cols, ch);
+	dim3 threads_per_block(batch);
+	int shared_memory_size = sizeof(float) * batch;
+	_cog_kern_max_pool_forward_propagate
+	<1>
+	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
+	(layer->net.pool.strides, layer->net.pool.border, layer->net.pool.size, batch,
+	 a, rows, cols, ch,
+	 db, out_rows, out_cols);
+}
+
+/*
+static void _cog_convnet_max_pool_backward_propagate()
+{
+}
+
+static void _cog_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, float* a, int batch, int rows, int cols, int ch, float* a, float* d, float** b, const cudaStream_t& stream)
+{
+}
+
+static void _cog_convnet_average_pool_backward_propagate()
+{
+}
+*/
+
+// ===================================== TEST CODE ==========================================
 
 static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t** b)
 {
@@ -464,81 +631,6 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 		for_block(/* empty act block setup */, /* empty act block begin */, /* empty act block end */);
 	}
 #undef for_block
-}
-
-static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* n, float* d, float* m, float** b, ccv_convnet_layer_t* update)
-{
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, 0);
-	assert(layer->net.convolutional.count % 4 == 0);
-	int out_rows, out_cols;
-	_ccv_convnet_compute_output_scale(rows, cols, layer, &out_rows, &out_cols);
-	dim3 threads_per_block_for_delta(ch, layer->net.convolutional.count);
-	assert(batch % 16 == 0);
-	dim3 num_blocks_for_delta(layer->net.convolutional.rows, layer->net.convolutional.cols, out_rows * batch / 16);
-	int shared_memory_size = sizeof(float) * (16 * (ch + layer->net.convolutional.count * 2));
-	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16>, cudaFuncCachePreferShared);
-	_cog_kern_convolutional_backward_propagate_delta
-	<1, 1, 16>
-	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size>>>
-	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
-		m, rows, cols, ch,
-		n, out_rows, out_cols,
-		a, update->w,
-		layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
-	cudaEventRecord(stop, 0);
-	cudaEventSynchronize(stop);
-	float elapsed_time;
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-	printf("cuda elapsed time of backward propagate for delta: %.2lf\n", elapsed_time);
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, 0);
-	dim3 threads_per_block_for_bias(batch / 8, 8);
-	dim3 num_blocks_for_bias(layer->net.convolutional.count);
-	shared_memory_size = sizeof(float) * (1 + batch * 8 * 2);
-	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_bias<8>, cudaFuncCachePreferShared);
-	_cog_kern_convolutional_backward_propagate_bias
-	<8>
-	<<<num_blocks_for_bias, threads_per_block_for_bias, shared_memory_size>>>
-	(batch,
-		n, out_rows, out_cols,
-		a, update->bias, layer->net.convolutional.count);
-	cudaEventRecord(stop, 0);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-	printf("cuda elapsed time of backward propagate for bias: %.2lf\n", elapsed_time);
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, 0);
-	assert(b);
-	float* db = *b;
-	if (!db)
-		cudaMalloc(&db, sizeof(float) * rows * cols * ch * batch);
-	*b = db;
-	dim3 threads_per_block(batch, 1);
-	dim3 num_blocks(rows, cols);
-	shared_memory_size = sizeof(float) * (batch * 2 + ch * 48);
-	_cog_kern_convolutional_backward_propagate
-	<1, 3, 48>
-	<<<num_blocks, threads_per_block, shared_memory_size>>>
-	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
-	 db, rows, cols, ch,
-	 n, out_rows, out_cols,
-	 a,
-	 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
-	cudaEventRecord(stop, 0);
-	cudaEventSynchronize(stop);
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-	printf("cuda elapsed time of backward propagate for error: %.2lf\n", elapsed_time);
 }
 
 // compute back propagated gradient & weight update delta
@@ -678,51 +770,60 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	a->rows = a_rows, a->cols = a_cols, a->type = (a->type - CCV_GET_CHANNEL(a->type)) | a_ch;
 }
 
-static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
+static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
-	assert(GPU(convnet) == 0);
-	convnet->reserved = (cog_convnet_t*)ccmalloc(sizeof(cog_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count * 2);
-	GPU(convnet)->layers = (ccv_convnet_layer_t*)(GPU(convnet) + 1);
-	GPU(convnet)->updates = GPU(convnet)->layers + convnet->count;
-	memcpy(GPU(convnet)->layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
-	memcpy(GPU(convnet)->updates, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
-	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
-	ccv_convnet_layer_t* updates = GPU(convnet)->updates;
-	int i;
-	for (i = 0; i < convnet->count; i++)
-		switch (layers[i].type)
-		{
-			case CCV_CONVNET_CONVOLUTIONAL:
-				assert(updates[i].type == CCV_CONVNET_CONVOLUTIONAL);
-				layers[i].w = 0;
-				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
-				assert(layers[i].w);
-				layers[i].bias = layers[i].w + layers[i].wnum;
-				// this is wrong, I need to rewind w
-				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count), cudaMemcpyHostToDevice);
-				updates[i].w = 0;
-				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.convolutional.count));
-				assert(updates[i].w);
-				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
-				break;
-			case CCV_CONVNET_FULL_CONNECT:
-				assert(updates[i].type == CCV_CONVNET_FULL_CONNECT);
-				layers[i].w = 0;
-				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
-				assert(layers[i].w);
-				layers[i].bias = layers[i].w + layers[i].wnum;
-				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count), cudaMemcpyHostToDevice);
-				updates[i].w = 0;
-				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.full_connect.count));
-				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
-				break;
-			case CCV_CONVNET_MAX_POOL:
-			case CCV_CONVNET_AVERAGE_POOL:
-				assert(updates[i].type == layers[i].type);
-				updates[i].w = updates[i].bias = 0;
-				layers[i].w = layers[i].bias = 0;
-				break;
-		}
+	int rows, cols;
+	_ccv_convnet_compute_output_scale(a->rows, a->cols, layer, &rows, &cols);
+	int size = layer->net.pool.size;
+	int strides = layer->net.pool.strides;
+	int border = layer->net.pool.border;
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int type = CCV_32F | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
+	int i, j, k, x, y;
+	float* ap = a->data.f32;
+	float* bp = db->data.f32;
+	for (i = 0; i < db->rows; i++)
+	{
+		for (j = 0; j < db->cols; j++)
+			for (k = 0; k < ch; k++)
+			{
+				float v = 0;
+				int first = 1;
+				for (y = 0; y < size; y++)
+				{
+					const int iy = i * strides - border + y;
+					if (iy >= 0 && iy < a->rows)
+						for (x = 0; x < size; x++)
+						{
+							const int ix = j * strides - border + x;
+							if (ix >= 0 && ix < a->cols)
+							{
+								if (first)
+								{
+									v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+									first = 0;
+								} else if (ap[(j * strides - border + x + (y - border) * a->cols) * ch + k] > v)
+									v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+							}
+						}
+				}
+				bp[j * ch + k] = v;
+			}
+		ap += a->cols * ch * strides;
+		bp += db->cols * ch;
+	}
+}
+
+#include <sys/time.h>
+#include <ctype.h>
+
+static unsigned int get_current_time(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
 void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
@@ -742,7 +843,27 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	_ccv_convnet_compute_output_scale(rows, cols, convnet->layers, &out_rows, &out_cols);
 	cudaMemcpy(od_vec, vec, sizeof(float) * batch * rows * cols * ch, cudaMemcpyHostToDevice);
 	float* od_out = 0;
-	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, 0, &od_out);
+	cudaStream_t streams[2];
+	for (i = 0; i < 2; i++)
+		cudaStreamCreate(&streams[i]);
+	unsigned int elapsed_time = get_current_time();
+	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, 0, &od_out, streams[0]);
+	cudaDeviceSynchronize();
+	elapsed_time = get_current_time() - elapsed_time;
+	printf("cuda elapsed time forward propagate: %u\n", elapsed_time);
+	float* od_max = 0;
+	elapsed_time = get_current_time();
+	_cog_convnet_max_pool_forward_propagate(GPU(convnet)->layers + 1, batch, out_rows, out_cols, convnet->layers->net.convolutional.count, od_out, &od_max, streams[0]);
+	cudaDeviceSynchronize();
+	elapsed_time = get_current_time() - elapsed_time;
+	printf("cuda elapsed time max pool forward propagate: %u\n", elapsed_time);
+	assert(od_max);
+	float* max_pooled = 0;
+	int max_rows, max_cols;
+	_ccv_convnet_compute_output_scale(out_rows, out_cols, convnet->layers + 1, &max_rows, &max_cols);
+	cudaMallocHost(&max_pooled, sizeof(float) * max_rows * max_cols * convnet->layers->net.convolutional.count * batch);
+	assert(max_pooled);
+	cudaMemcpy(max_pooled, od_max, sizeof(float) * max_rows * max_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToHost);
 	float* out = 0;
 	cudaMallocHost(&out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
 	assert(out);
@@ -751,7 +872,11 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	cudaMalloc(&out_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
 	cudaMemcpy(out_grad, od_out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToDevice);
 	float* input_grad = 0;
-	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_out, out_grad, 0, od_vec, &input_grad, GPU(convnet)->updates);
+	elapsed_time = get_current_time();
+	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_out, out_grad, 0, od_vec, &input_grad, GPU(convnet)->updates, streams[0]);
+	cudaDeviceSynchronize();
+	elapsed_time = get_current_time() - elapsed_time;
+	printf("cuda elapsed time backward propagate: %u\n", elapsed_time);
 	float* out_weights = 0;
 	cudaMallocHost(&out_weights, sizeof(float) * convnet->layers->wnum * 8 * out_rows);
 	assert(out_weights);
@@ -768,7 +893,7 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	updates.w = (float*)ccmalloc(sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
 	memset(updates.w, 0, sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
 	updates.bias = updates.w + convnet->layers->wnum;
-	unsigned int elapsed_time = get_current_time();
+	elapsed_time = get_current_time();
 	for (i = 0; i < batch; i++)
 	{
 		ccv_dense_matrix_t* b = 0;
@@ -782,6 +907,19 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.001)
 					printf("forwprop: %d %d %f %f %f\n", k, j, delta, o, oo);
+			}
+		ccv_dense_matrix_t* c = 0;
+		_ccv_convnet_max_pool_forward_propagate(convnet->layers + 1, b, &c);
+		assert(CCV_GET_CHANNEL(c->type) == convnet->layers->net.convolutional.count);
+		for (k = 0; k < convnet->layers->net.convolutional.count; k++)
+			for (j = 0; j < max_rows * max_cols; j++)
+			{
+				float m = c->data.f32[j * convnet->layers->net.convolutional.count + k];
+				float om = max_pooled[j * batch + i + k * max_rows * max_cols * batch];
+				float delta = fabsf(m - om) / ccv_max(ccv_max(m, om), 1);
+				assert(!isnan(delta) && !isinf(delta));
+				if (delta > 0.001)
+					printf("maxpool: %d %d %f %f %f\n", k, j, delta, m, om);
 			}
 		ccv_dense_matrix_t* backprop = 0;
 		_ccv_convnet_convolutional_backward_propagate(convnet->layers, b, b, 0, a[i], &backprop, &updates);

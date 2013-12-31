@@ -91,10 +91,10 @@ static inline void _ccv_convnet_compute_output_scale(int a_rows, int a_cols, ccv
 			break;
 		case CCV_CONVNET_MAX_POOL:
 		case CCV_CONVNET_AVERAGE_POOL:
-			assert((a_rows - layer->net.pool.size) % layer->net.pool.strides == 0);
-			assert((a_cols - layer->net.pool.size) % layer->net.pool.strides == 0);
-			*rows = (a_rows - layer->net.pool.size) / layer->net.pool.strides + 1;
-			*cols = (a_cols - layer->net.pool.size) / layer->net.pool.strides + 1;
+			assert((a_rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			assert((a_cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			*rows = (a_rows + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
+			*cols = (a_cols + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
 			break;
 	}
 }

@@ -1095,6 +1095,8 @@ typedef union {
 		int strides;
 		// window size
 		int size;
+		// padding for input
+		int border;
 	} pool;
 	struct {
 		int count;

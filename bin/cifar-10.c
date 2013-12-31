@@ -49,6 +49,7 @@ int main(int argc, char** argv)
 				.pool = {
 					.size = 3,
 					.strides = 2,
+					.border = 0,
 				},
 			},
 		},
@@ -88,6 +89,7 @@ int main(int argc, char** argv)
 				.pool = {
 					.size = 3,
 					.strides = 2,
+					.border = 0,
 				},
 			},
 		},
@@ -127,6 +129,7 @@ int main(int argc, char** argv)
 				.pool = {
 					.size = 3,
 					.strides = 2,
+					.border = 0,
 				},
 			},
 		},
