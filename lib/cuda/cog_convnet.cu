@@ -485,38 +485,37 @@ __global__ void _cog_kern_max_pool_forward_propagate(const int strides, const in
 	int i, x, y;
 	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
 	float prod[input_per_thread];
-	int first = 1;
+	const int input_y = blockIdx.x * strides - border;
+	const int input_x = blockIdx.y * strides - border;
+	const int input_start_y = max(input_y, 0);
+	const int input_start_x = max(input_x, 0);
+	const int input_end_y = min(input_y + size, rows);
+	const int input_end_x = min(input_x + size, cols);
+	const int size_start_y = input_start_y - input_y - border;
+	const int size_start_x = input_start_x - input_x - border;
+	const int size_end_y = size - border + (input_end_y - (input_y + size));
+	const int size_end_x = size - border + (input_end_x - (input_x + size));
 	// this is equal to iterating over 0 to size, and then compute the input origin by blockIdx.x * strides - border + y
 	#pragma unroll
-	for (y = -border; y < size - border; y++)
-	{
-		const int iy = blockIdx.x * strides + y;
-		if (iy >= 0 && iy < rows)
+	for (y = size_start_y; y < size_end_y; y++)
+		#pragma unroll
+		for (x = size_start_x; x < size_end_x; x++)
+		{
 			#pragma unroll
-			for (x = -border; x < size - border; x++)
-			{
-				const int ix = blockIdx.y * strides + x;
-				if (ix >= 0 && ix < cols)
-				{
-					#pragma unroll
-					for (i = 0; i < input_loads; i++)
-						if (i * thcnt + thidx < batch)
-							shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
-					__syncthreads();
-					if (first)
-					{
-						#pragma unroll
-						for (i = 0; i < input_per_thread; i++)
-							prod[i] = shared_input[i + threadIdx.x * input_per_thread];
-						first = 0;
-					} else
-						#pragma unroll
-						for (i = 0; i < input_per_thread; i++)
-							prod[i] = max(prod[i], shared_input[i + threadIdx.x * input_per_thread]);
-					__syncthreads();
-				}
-			}
-	}
+			for (i = 0; i < input_loads; i++)
+				if (i * thcnt + thidx < batch)
+					shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
+			__syncthreads();
+			if (x == size_start_x && y == size_start_y)
+				#pragma unroll
+				for (i = 0; i < input_per_thread; i++)
+					prod[i] = shared_input[i + threadIdx.x * input_per_thread];
+			else
+				#pragma unroll
+				for (i = 0; i < input_per_thread; i++)
+					prod[i] = max(prod[i], shared_input[i + threadIdx.x * input_per_thread]);
+			__syncthreads();
+		}
 	out += blockIdx.z * out_rows * out_cols * batch + (blockIdx.x * out_cols + blockIdx.y) * batch;
 	#pragma unroll
 	for (i = 0; i < input_per_thread; i++)
@@ -648,39 +647,40 @@ __global__ void _cog_kern_average_pool_forward_propagate(const int strides, cons
 	int i, x, y;
 	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
 	float prod[input_per_thread];
-	int count = 0;
 	#pragma unroll
 	for (i = 0; i < input_per_thread; i++)
 		prod[i] = 0;
+	const int input_y = blockIdx.x * strides - border;
+	const int input_x = blockIdx.y * strides - border;
+	const int input_start_y = max(input_y, 0);
+	const int input_start_x = max(input_x, 0);
+	const int input_end_y = min(input_y + size, rows);
+	const int input_end_x = min(input_x + size, cols);
+	const int size_start_y = input_start_y - input_y - border;
+	const int size_start_x = input_start_x - input_x - border;
+	const int size_end_y = size - border + (input_end_y - (input_y + size));
+	const int size_end_x = size - border + (input_end_x - (input_x + size));
 	// this is equal to iterating over 0 to size, and then compute the input origin by blockIdx.x * strides - border + y
 	#pragma unroll
-	for (y = -border; y < size - border; y++)
-	{
-		const int iy = blockIdx.x * strides + y;
-		if (iy >= 0 && iy < rows)
+	for (y = size_start_y; y < size_end_y; y++)
+		#pragma unroll
+		for (x = size_start_x; x < size_end_x; x++)
+		{
 			#pragma unroll
-			for (x = -border; x < size - border; x++)
-			{
-				const int ix = blockIdx.y * strides + x;
-				if (ix >= 0 && ix < cols)
-				{
-					#pragma unroll
-					for (i = 0; i < input_loads; i++)
-						if (i * thcnt + thidx < batch)
-							shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
-					__syncthreads();
-					#pragma unroll
-					for (i = 0; i < input_per_thread; i++)
-						prod[i] += shared_input[i + threadIdx.x * input_per_thread];
-					++count;
-					__syncthreads();
-				}
-			}
-	}
+			for (i = 0; i < input_loads; i++)
+				if (i * thcnt + thidx < batch)
+					shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
+			__syncthreads();
+			#pragma unroll
+			for (i = 0; i < input_per_thread; i++)
+				prod[i] += shared_input[i + threadIdx.x * input_per_thread];
+			__syncthreads();
+		}
+	float inv_size = 1.0 / ((input_end_y - input_start_y) * (input_end_x - input_start_x));
 	out += blockIdx.z * out_rows * out_cols * batch + (blockIdx.x * out_cols + blockIdx.y) * batch;
 	#pragma unroll
 	for (i = 0; i < input_per_thread; i++)
-		out[i + threadIdx.x * input_per_thread] = prod[i] / count;
+		out[i + threadIdx.x * input_per_thread] = prod[i] * inv_size;
 }
 
 static void _cog_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
@@ -701,6 +701,80 @@ static void _cog_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 	 a, rows, cols, ch,
 	 db, out_rows, out_cols);
 }
+
+/*
+template <int input_per_thread>
+__global__ void _cog_kern_average_pool_backward_propagate(const int strides, const int border, const int size, const int batch,
+		float* input_grad, const int rows, const int cols, const int channels,
+		float* out_grad, const int out_rows, int out_cols)
+{
+	// gridDim.x == rows
+	// gridDim.y == cols
+	// gridDim.z == channels
+	assert(gridDim.x == rows);
+	assert(gridDim.y == cols);
+	assert(gridDim.z == channels);
+	extern __shared__ float shared[];
+	float* shared_input = &shared[0];
+	float* shared_out = &shared[batch];
+	float* shared_grad = &shared[batch * 2];
+	const int thcnt = blockDim.x;
+	const int thidx = threadIdx.x;
+	const int input_loads = (batch + thcnt - 1) / thcnt;
+	float prod[input_per_thread];
+	int i, x, y;
+	#pragma unroll
+	for (i = 0; i < input_per_thread; i++)
+		prod[i] = 0;
+	const int ycnt = (size - 1 - (blockIdx.x + border) % strides) / strides + 1;
+	const int xcnt = (size - 1 - (blockIdx.y + border) % strides) / strides + 1;
+	const int out_y = (blockIdx.x + border) / strides - ycnt + 1;
+	const int out_x = (blockIdx.y + border) / strides - xcnt + 1;
+	const int out_start_y = max(out_y, 0);
+	const int out_start_x = max(out_x, 0);
+	out += (blockIdx.z * out_rows * out_cols + out_start_y * out_cols) * batch;
+	out_grad += (blockIdx.z * out_rows * out_cols + out_start_y * out_cols) * batch;
+	const int out_end_y = min(out_y + ycnt, out_rows);
+	const int out_end_x = min(out_x + xcnt, out_cols);
+	input += (blockIdx.z * rows * cols + blockIdx.x * cols + blockIdx.y) * batch;
+	for (i = 0; i < input_loads; i++)
+		if (i * thcnt + thidx < batch)
+			shared_input[i * thcnt + thidx] = input[i * thcnt + thidx];
+	for (y = out_start_y; y < out_end_y; y++)
+	{
+		for (x = out_start_x; x < out_end_x; x++)
+		{
+			#pragma unroll
+			for (i = 0; i < input_loads; i++)
+				if (i * thcnt + thidx < batch)
+					shared_out[i * thcnt + thidx] = out[x * batch + i * thcnt + thidx],
+					shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * thcnt + thidx];
+			__syncthreads();
+			#pragma unroll
+			for (i = 0; i < input_per_thread; i++)
+			{
+				float vi = shared_input[i + threadIdx.x * input_per_thread];
+				float vo = shared_out[i + threadIdx.x * input_per_thread];
+				float delta = fabsf(vi - vo) / max(max(vi, vo), 1e-5);
+				if (delta < 1e-5) // there seems to be a bug that the direct comparison of these two float number will have different result on GPU comparing with CPU result
+				// if (shared_out[i + threadIdx.x * input_per_thread] == shared_input[i + threadIdx.x * input_per_thread]) // if we don't care of accuracy and needs that extra 4ms per batch, we can change to this line
+					prod[i] += shared_grad[i + threadIdx.x * input_per_thread];
+			}
+			__syncthreads();
+		}
+		out += out_cols * batch;
+		out_grad += out_cols * batch;
+	}
+	input_grad += (blockIdx.z * rows * cols + blockIdx.x * cols + blockIdx.y) * batch;
+	#pragma unroll
+	for (i = 0; i < input_per_thread; i++)
+		input_grad[i + threadIdx.x * input_per_thread] = prod[i];
+}
+
+static void _cog_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
+{
+}
+*/
 
 // ===================================== TEST CODE ==========================================
 
