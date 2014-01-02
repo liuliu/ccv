@@ -161,7 +161,7 @@ __global__ void _cog_kern_convolutional_forward_propagate(const int strides, con
 	}
 }
 
-static void _cog_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* d, float** b, const cudaStream_t& stream)
+static void _cog_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
 {
 	int out_rows, out_cols;
 	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
@@ -421,7 +421,7 @@ __global__ void _cog_kern_convolutional_backward_propagate(const int strides, co
 			input_grad[(i + threadIdx.y * channel_per_thread) * incnt + j + threadIdx.x * input_per_thread] = prod[j][i];
 }
 
-static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* n, float* d, float* m, float** b, ccv_convnet_layer_t* update, const cudaStream_t& stream)
+static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* n, float* m, float** b, ccv_convnet_layer_t* update, const cudaStream_t& stream)
 {
 	assert(layer->net.convolutional.count % 4 == 0);
 	int out_rows, out_cols;
@@ -773,6 +773,14 @@ static void _cog_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 	 db, rows, cols, ch,
 	 a, out_rows, out_cols);
 }
+
+static void _cog_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
+{
+	int out_rows, out_cols;
+	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
+}
+
+// static void _cog_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* d, float** b, ccv_convnet_layer_t* update, const cudaStream_t& stream)
 
 // ===================================== TEST CODE ==========================================
 
@@ -1211,7 +1219,7 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 
 	// convolutional forward propagate
 	unsigned int elapsed_time = get_current_time();
-	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, 0, &od_out, streams[0]);
+	_cog_convolutional_forward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, od_vec, &od_out, streams[0]);
 	cudaDeviceSynchronize();
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("cuda elapsed time convolutional forward propagate: %u\n", elapsed_time);
@@ -1256,7 +1264,7 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	cudaMemcpy(out_grad, od_out, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToDevice);
 	float* input_grad = 0;
 	elapsed_time = get_current_time();
-	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, out_grad, od_out, 0, od_vec, &input_grad, GPU(convnet)->updates, streams[0]);
+	_cog_convnet_convolutional_backward_propagate(GPU(convnet)->layers, batch, rows, cols, ch, out_grad, od_out, od_vec, &input_grad, GPU(convnet)->updates, streams[0]);
 	cudaDeviceSynchronize();
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("cuda elapsed time convolutional backward propagate: %u\n", elapsed_time);
