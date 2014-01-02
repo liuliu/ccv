@@ -1146,6 +1146,7 @@ typedef struct {
 typedef struct {
 	int max_epoch;
 	int mini_batch;
+	int use_cog_accel; // use "ccv on GPU" acceleration
 	double decay;
 	double learn_rate;
 	double momentum;

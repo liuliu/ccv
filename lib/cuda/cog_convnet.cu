@@ -1,6 +1,7 @@
 extern "C" {
 #include "cog.h"
 }
+#include "cublas_v2.h"
 
 // this structure holds intermediate on-device memory representation of convnet
 typedef struct {
@@ -72,8 +73,8 @@ static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
 				layers[i].bias = layers[i].w + layers[i].wnum;
 				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count), cudaMemcpyHostToDevice);
 				updates[i].w = 0;
-				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.full_connect.count));
-				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
+				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum + updates[i].net.full_connect.count));
+				updates[i].bias = updates[i].w + updates[i].wnum;
 				break;
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
@@ -774,13 +775,48 @@ static void _cog_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 	 a, out_rows, out_cols);
 }
 
-static void _cog_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, const cudaStream_t& stream)
+static void _cog_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float** b, float* batch_unit /* this is just 1's in device */, const cublasHandle_t& handle)
 {
 	int out_rows, out_cols;
 	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
+	out_cols = batch;
+	rows = rows * cols * ch;
+	cols = batch;
+	ch = 1;
+	float* db = *b;
+	if (!db)
+		cudaMalloc(&db, sizeof(float) * out_rows * batch);
+	*b = db;
+	float alpha = 1;
+	float beta = 0;
+	// make copies of bias into db's columns, note that for cublas, it is row-major matrix
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, 1, &alpha, batch_unit, batch, layer->bias, 1, &beta, db, batch);
+	beta = 1;
+	// and then do the GEMM by adding bias
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, rows, &alpha, a, batch, layer->w, rows, &beta, db, batch);
 }
 
-// static void _cog_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* d, float** b, ccv_convnet_layer_t* update, const cudaStream_t& stream)
+static void _cog_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, int rows, int cols, int ch, float* a, float* m, float** b, float* batch_unit, ccv_convnet_layer_t* update, const cublasHandle_t& handle)
+{
+	int out_rows, out_cols;
+	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
+	out_cols = batch;
+	rows = rows * cols * ch;
+	cols = batch;
+	ch = 1;
+	float* db = *b;
+	if (!db)
+		cudaMalloc(&db, sizeof(float) * rows * batch);
+	*b = db;
+	float alpha = 1;
+	float beta = 0;
+	// propagate bias
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &alpha, batch_unit, 1, a, batch, &beta, update->bias, 1);
+	// propagate error
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, batch, rows, out_rows, &alpha, a, batch, layer->w, rows, &beta, db, batch);
+	// propagate weights
+	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &alpha, m, batch, a, batch, &beta, update->w, rows);
+}
 
 // ===================================== TEST CODE ==========================================
 
@@ -1186,6 +1222,120 @@ static void _ccv_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 	}
 }
 
+static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t** b)
+{
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, layer->net.full_connect.count, 1, CCV_32F | CCV_C1, CCV_32F | CCV_C1, 0);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int rows = a->rows, cols = a->cols;
+	// reshape a for gemm
+	assert(a->step == a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * ch);
+	a->rows = rows * cols * ch, a->cols = 1, a->type = (a->type - ch) | CCV_C1;
+	assert(a->rows * db->rows == layer->wnum);
+	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type);
+	int i;
+	float* bptr = db->data.f32;
+	if (d)
+	{
+		int j;
+		float* aptr = a->data.f32;
+		float* wptr = layer->w;
+		int* dptr = d->data.i32;
+		for (i = 0; i < db->rows; i++)
+		{
+			if (!dptr[i])
+			{
+				float v = layer->bias[i];
+				for (j = 0; j < a->rows; j++)
+					v += aptr[j] * wptr[j];
+				wptr += a->rows;
+				bptr[i] = v;
+			} else
+				bptr[i] = 0;
+		}
+	} else {
+		for (i = 0; i < db->rows; i++)
+			bptr[i] = layer->bias[i];
+		ccv_dense_matrix_t dw = ccv_dense_matrix(db->rows, a->rows, CCV_32F | CCV_C1, layer->w, 0);
+		ccv_gemm(&dw, a, 1, db, 1, 0, (ccv_matrix_t**)&db, 0); // supply db as matrix C is allowed
+	}
+	a->rows = rows, a->cols = cols, a->type = (a->type - CCV_GET_CHANNEL(a->type)) | ch;
+	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
+}
+
+static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t* x, ccv_dense_matrix_t** b, ccv_convnet_layer_t* update_params)
+{
+	// a is the input gradient (for back prop), d is the dropout,
+	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
+	// note that y (the output from forward prop) is not included because the full connect net is simple enough that we don't need it
+	ccv_dense_matrix_t* db = 0;
+	if (b)
+		db = *b = ccv_dense_matrix_renew(*b, x->rows, x->cols, CCV_32F | CCV_GET_CHANNEL(x->type), CCV_32F | CCV_GET_CHANNEL(x->type), 0);
+	int x_rows = x->rows, x_cols = x->cols, x_ch = CCV_GET_CHANNEL(x->type);
+	x->rows = x_rows * x_cols * x_ch, x->cols = 1, x->type = (x->type - x_ch) | CCV_C1;
+	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type);
+	ccv_dense_matrix_t w = ccv_dense_matrix(a->rows, x->rows, CCV_32F | CCV_C1, update_params->w, 0);
+	ccv_dense_matrix_t* dw = &w;
+	if (d)
+	{
+		int* dptr = d->data.i32;
+		float* aptr = a->data.f32;
+		float* bptr = update_params->bias;
+		int i, j;
+		// bias gradient
+		for (i = 0; i < a->rows; i++)
+			if (dptr[i])
+				bptr[i] += aptr[i];
+		// weight gradient
+		float* dwptr = update_params->w;
+		for (i = 0; i < a->rows; i++)
+		{
+			if (dptr[i])
+			{
+				float* xptr = x->data.f32;
+				for (j = 0; j < x->rows; j++)
+					dwptr[j] += aptr[i] * xptr[j];
+			}
+			dwptr += x->rows;
+		}
+		// propagate error
+		if (db)
+		{
+			ccv_zero(db);
+			float* wptr = layer->w;
+			for (i = 0; i < a->rows; i++)
+			{
+				if (dptr[i])
+				{
+					float* bptr = db->data.f32;
+					for (j = 0; j < db->rows; j++)
+						bptr[j] += wptr[j] * aptr[i];
+				}
+				wptr += x->rows;
+			}
+		}
+	} else {
+		// compute bias gradient
+		ccv_dense_matrix_t bias = ccv_dense_matrix(a->rows, 1, CCV_32F | CCV_C1, update_params->bias, 0);
+		ccv_dense_matrix_t* dbias = &bias;
+		ccv_add(a, dbias, (ccv_matrix_t**)&dbias, 0);
+		// compute weight gradient
+		ccv_gemm(a, x, 1, dw, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&dw, 0);
+		w = ccv_dense_matrix(a->rows, x->rows, CCV_32F | CCV_C1, layer->w, 0);
+		// propagate error
+		if (db)
+		{
+			db->rows = x->rows, db->cols = x->cols, db->type = (db->type - x_ch) | CCV_C1;
+			db->step = db->cols * CCV_GET_DATA_TYPE_SIZE(db->type);
+			ccv_gemm(&w, a, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&db, 0);
+			db->rows = x_rows, db->cols = x_cols, db->type = (db->type - CCV_GET_CHANNEL(db->type)) | x_ch;
+			db->step = db->cols * CCV_GET_DATA_TYPE_SIZE(db->type) * CCV_GET_CHANNEL(db->type);
+		}
+	}
+	x->rows = x_rows, x->cols = x_cols, x->type = (x->type - CCV_GET_CHANNEL(x->type)) | x_ch;
+	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type) * CCV_GET_CHANNEL(x->type);
+}
+
 #include <sys/time.h>
 #include <ctype.h>
 
@@ -1258,6 +1408,30 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	assert(average_pooled);
 	cudaMemcpy(average_pooled, od_average, sizeof(float) * average_rows * average_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToHost);
 
+	// full connect forward propagate
+	float* batch_unit = 0;
+	cudaMalloc(&batch_unit, sizeof(float) * batch);
+	float* host_batch_unit = 0;
+	cudaMallocHost(&host_batch_unit, sizeof(float) * batch);
+	for (i = 0; i < batch; i++)
+		host_batch_unit[i] = 1;
+	cudaMemcpy(batch_unit, host_batch_unit, sizeof(float) * batch, cudaMemcpyHostToDevice);
+	cudaFreeHost(host_batch_unit);
+	cublasHandle_t handle;
+	cublasCreate(&handle);
+	cublasSetStream(handle, streams[0]);
+	float* od_full_connect = 0;
+	elapsed_time = get_current_time();
+	_cog_convnet_full_connect_forward_propagate(GPU(convnet)->layers + 3, batch, average_rows, average_cols, 5, od_average, &od_full_connect, batch_unit, handle);
+	cudaDeviceSynchronize();
+	elapsed_time = get_current_time() - elapsed_time;
+	printf("cuda elapsed time full connect forward propagate: %u\n", elapsed_time);
+	assert(od_full_connect);
+	float* full_connected = 0;
+	cudaMallocHost(&full_connected, sizeof(float) * batch * convnet->layers[3].net.full_connect.count);
+	assert(full_connected);
+	cudaMemcpy(full_connected, od_full_connect, sizeof(float) * batch * convnet->layers[3].net.full_connect.count, cudaMemcpyDeviceToHost);
+
 	// convolutional backward propagate
 	float* out_grad = 0;
 	cudaMalloc(&out_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
@@ -1306,10 +1480,32 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	cudaMallocHost(&average_pooled_out_input_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch);
 	cudaMemcpy(average_pooled_out_input_grad, average_pooled_input_grad, sizeof(float) * out_rows * out_cols * convnet->layers->net.convolutional.count * batch, cudaMemcpyDeviceToHost);
 
+	// full connect backward propagate
+	float* full_connect_grad = 0;
+	elapsed_time = get_current_time();
+	_cog_convnet_full_connect_backward_propagate(GPU(convnet)->layers + 3, batch, average_rows, average_cols, 5, od_full_connect, od_average, &full_connect_grad, batch_unit, GPU(convnet)->updates + 3, handle);
+	cudaDeviceSynchronize();
+	elapsed_time = get_current_time() - elapsed_time;
+	printf("cuda elapsed time full connect backward propagate: %u\n", elapsed_time);
+	float* full_connected_grad = 0;
+	cudaMallocHost(&full_connected_grad, sizeof(float) * average_rows * average_cols * 5 * batch);
+	assert(full_connect_grad);
+	cudaMemcpy(full_connected_grad, full_connect_grad, sizeof(float) * average_rows * average_cols * 5 * batch, cudaMemcpyDeviceToHost);
+	float* out_fcbias = 0;
+	cudaMallocHost(&out_fcbias, sizeof(float) * convnet->layers[3].net.full_connect.count);
+	cudaMemcpy(out_fcbias, GPU(convnet)->updates[3].bias, sizeof(float) * convnet->layers[3].net.full_connect.count, cudaMemcpyDeviceToHost);
+	float* out_fcw = 0;
+	cudaMallocHost(&out_fcw, sizeof(float) * average_rows * average_cols * 5 * convnet->layers[3].net.full_connect.count);
+	cudaMemcpy(out_fcw, GPU(convnet)->updates[3].w, sizeof(float) * average_rows * average_cols * 5 * convnet->layers[3].net.full_connect.count, cudaMemcpyDeviceToHost);
+
 	ccv_convnet_layer_t updates;
 	updates.w = (float*)ccmalloc(sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
 	memset(updates.w, 0, sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
 	updates.bias = updates.w + convnet->layers->wnum;
+	ccv_convnet_layer_t fcupdates;
+	fcupdates.w = (float*)ccmalloc(sizeof(float) * (convnet->layers[3].wnum + convnet->layers[3].net.full_connect.count));
+	memset(fcupdates.w, 0, sizeof(float) * (convnet->layers[3].wnum + convnet->layers[3].net.full_connect.count));
+	fcupdates.bias = fcupdates.w + convnet->layers[3].wnum;
 	elapsed_time = get_current_time();
 	for (i = 0; i < batch; i++)
 	{
@@ -1357,6 +1553,23 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 					printf("avgpool: %d %d %f %f %f\n", k, j, delta, a, oa);
 			}
 
+		// check full connect forward propagate
+		ccv_dense_matrix_t* g = ccv_dense_matrix_new(27, 27, CCV_32F | 5, 0, 0);
+		for (k = 0; k < 5; k++)
+			for (j = 0; j < average_rows * average_cols; j++)
+				g->data.f32[k * average_rows * average_cols + j] = d->data.f32[j * convnet->layers->net.convolutional.count + k];
+		ccv_dense_matrix_t* h = 0;
+		_ccv_convnet_full_connect_forward_propagate(convnet->layers + 3, g, 0, &h);
+		for (k = 0; k < convnet->layers[3].net.full_connect.count; k++)
+		{
+			float f = h->data.f32[k];
+			float of = full_connected[k * batch + i];
+			float delta = fabsf(f - of) / ccv_max(ccv_max(f, of), 1);
+			assert(!isnan(delta) && !isinf(delta));
+			if (delta > 0.00001)
+				printf("fc: %d %f %f %f\n", k, delta, f, of);
+		}
+
 		// check convolutional backward propagate
 		ccv_dense_matrix_t* backprop = 0;
 		_ccv_convnet_convolutional_backward_propagate(convnet->layers, b, b, 0, a[i], &backprop, &updates);
@@ -1399,11 +1612,26 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 					printf("avgpool backprop: %d %d %f %f %f\n", k, j, delta, a, oa);
 			}
 
+		// check full connect backward propagate
+		ccv_dense_matrix_t* p = 0;
+		_ccv_convnet_full_connect_backward_propagate(convnet->layers + 3, h, 0, g, &p, &fcupdates);
+		for (j = 0; j < average_rows * average_cols * 5; j++)
+		{
+			float f = p->data.f32[j];
+			float of = full_connected_grad[j * batch + i];
+			float delta = fabsf(f - of) / ccv_max(ccv_max(f, of), 1);
+			if (delta > 0.00001)
+				printf("fc backprop: %d %f %f %f\n", j, delta, f, of);
+		}
+
 		ccv_matrix_free(b);
 		ccv_matrix_free(c);
 		ccv_matrix_free(d);
 		ccv_matrix_free(e);
 		ccv_matrix_free(f);
+		ccv_matrix_free(g);
+		ccv_matrix_free(h);
+		ccv_matrix_free(p);
 		ccv_matrix_free(backprop);
 	}
 	elapsed_time = get_current_time() - elapsed_time;
@@ -1422,7 +1650,7 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 						ow += out_weights[z * filter_rows * filter_cols * filter_count * ch + (i * filter_cols + j) * filter_count + k + c * filter_cols * filter_rows * filter_count];
 					float delta = fabsf(ow - w) / ccv_max(ccv_max(w, ow), 1);
 					if (delta > 0.0001)
-						printf("%d,%d,%d,%d: %f, %f\n", i, j, k, c, w, ow);
+						printf("convw: %d,%d,%d,%d: %f, %f\n", i, j, k, c, w, ow);
 				}
 	for (i = 0; i < filter_count; i++)
 	{
@@ -1430,7 +1658,23 @@ void cog_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		float ob = out_bias[i];
 		float delta = fabsf(ob - b) / ccv_max(ccv_max(ob, b), 1);
 		if (delta > 0.0001)
-			printf("%d: %f, %f\n", i, b, ob);
+			printf("convb: %d: %f, %f\n", i, b, ob);
+	}
+	for (i = 0; i < average_rows * average_cols * 5 * convnet->layers[3].net.full_connect.count; i++)
+	{
+		float w = fcupdates.w[i];
+		float ow = out_fcw[i];
+		float delta = fabsf(ow - w) / ccv_max(ccv_max(w, ow), 1);
+		if (delta > 0.00001)
+			printf("fcw: %d: %f %f,%f\n", i, delta, w, ow);
+	}
+	for (i = 0; i < convnet->layers[3].net.full_connect.count; i++)
+	{
+		float b = fcupdates.bias[i];
+		float ob = out_fcbias[i];
+		float delta = fabsf(ob - b) / ccv_max(ccv_max(b, ob), 1);
+		if (delta > 0.00001)
+			printf("fcb: %d: %f %f,%f\n", i, delta, b, ob);
 	}
 }
 

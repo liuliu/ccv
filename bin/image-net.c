@@ -87,8 +87,26 @@ int main(int argc, char** argv)
 				},
 			},
 		},
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 5,
+				},
+				.node = {
+					.count = 27 * 27 * 5,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.count = 10,
+				},
+			},
+		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(params, 3);
+	ccv_convnet_t* convnet = ccv_convnet_new(params, 4);
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,
@@ -101,6 +119,10 @@ int main(int argc, char** argv)
 		convnet->layers->w[i] = 1;
 	for (i = 0; i < convnet->layers->net.convolutional.count; i++)
 		convnet->layers->bias[i] = 1;
+	for (i = 0; i < convnet->layers[3].wnum; i++)
+		convnet->layers[3].w[i] = 0.0001;
+	for (i = 0; i < convnet->layers[3].net.full_connect.count; i++)
+		convnet->layers[3].bias[i] = 1;
 	ccv_convnet_supervised_train(convnet, categorizeds, 0, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();
