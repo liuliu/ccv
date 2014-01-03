@@ -106,7 +106,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(params, 4);
+	ccv_convnet_t* convnet = ccv_convnet_new(1, params, 4);
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,

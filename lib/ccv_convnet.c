@@ -10,9 +10,10 @@
 
 #ifndef CASE_TESTS
 
-ccv_convnet_t* ccv_convnet_new(ccv_convnet_param_t params[], int count)
+ccv_convnet_t* ccv_convnet_new(int use_cog_accel, ccv_convnet_param_t params[], int count)
 {
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count + sizeof(ccv_dense_matrix_t*) * (count - 1));
+	convnet->use_cog_accel = use_cog_accel;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)convnet);
@@ -282,8 +283,10 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
 {
 #ifdef HAVE_CUDA
-	cog_convnet_encode(convnet, a, b, batch);
-#else
+	if (convnet->use_cog_accel)
+		cog_convnet_encode(convnet, a, b, batch);
+	else {
+#endif
 	assert(batch == 1);
 	assert(CCV_GET_CHANNEL((*a)->type) == convnet->channels);
 	assert((*a)->rows == convnet->rows);
@@ -333,14 +336,18 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		// restore the last layer of neuron cache
 		convnet->acts[convnet->count - 1] = out_neuron;
 	}
+#ifdef HAVE_CUDA
+	}
 #endif
 }
 
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
 {
 #ifdef HAVE_CUDA
-	cog_convnet_classify(convnet, a, labels, batch);
-#else
+	if (convnet->use_cog_accel)
+		cog_convnet_classify(convnet, a, labels, batch);
+	else {
+#endif
 	assert(batch == 1);
 	ccv_convnet_encode(convnet, a, convnet->acts + convnet->count - 1, 1);
 	int i, c = 0;
@@ -350,6 +357,8 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* l
 		if (b->data.f32[i] > maxc)
 			maxc = b->data.f32[i], c = i;
 	labels[0] = c;
+#ifdef HAVE_CUDA
+	}
 #endif
 }
 
@@ -814,8 +823,10 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
 {
 #ifdef HAVE_CUDA
-	cog_convnet_supervised_train(convnet, categorizeds, tests, params);
-#else
+	if (convnet->use_cog_accel)
+		cog_convnet_supervised_train(convnet, categorizeds, tests, params);
+	else {
+#endif
 	int i, j, t;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -895,6 +906,8 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_free(momentum);
 	ccv_convnet_free(update_params);
 	gsl_rng_free(rng);
+#ifdef HAVE_CUDA
+	}
 #endif
 }
 

@@ -155,7 +155,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(params, 7);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 7);
 	assert(argc == 5);
 	int num1 = atoi(argv[2]);
 	int num2 = atoi(argv[4]);

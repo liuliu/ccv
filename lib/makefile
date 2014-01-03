@@ -19,5 +19,5 @@ ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
 %.o: %.c ccv.h ccv_internal.h cuda/*.h
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu cuda/*.h
+%.o: %.cu ccv.h cuda/*.h
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
