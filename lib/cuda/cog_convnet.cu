@@ -58,7 +58,7 @@ static void _cog_convnet_reserve_on_device(ccv_convnet_t* convnet)
 				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
 				assert(layers[i].w);
 				layers[i].bias = layers[i].w + layers[i].wnum;
-				// this is wrong, I need to rewind w
+				// TODO: this is wrong, I need to rewind w
 				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count), cudaMemcpyHostToDevice);
 				updates[i].w = 0;
 				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.convolutional.count));
@@ -184,7 +184,7 @@ static void _cog_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int
 		 layer->bias);
 }
 
-template <int channel_per_thread, int filter_per_thread, int batch_per_block>
+template <int channel_per_thread, int filter_per_thread, int batch_per_block, int filter_strides>
 __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strides, const int border, const int batch,
 		float* input, const int rows, const int cols, const int channels,
 		float* out, float* out_grad, const int out_rows, const int out_cols,
@@ -196,9 +196,9 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 	assert(gridDim.z == out_rows * batch / batch_per_block);
 	extern __shared__ float shared[];
 	float* shared_block = &shared[0];
-	float* shared_out = &shared[batch_per_block * channels];
-	float* shared_grad = &shared[batch_per_block * (channels + count)];
-	float prod[channel_per_thread][filter_per_thread];
+	float* shared_out = &shared[batch_per_block * channels * filter_strides];
+	float* shared_grad = &shared[batch_per_block * (channels * filter_strides + count)];
+	float prod[filter_strides][channel_per_thread][filter_per_thread];
 	// channel_per_thread * blockDim.x == channels
 	// filter_per_thread * blockDim.y == filter_count
 	assert(channel_per_thread * blockDim.x == channels);
@@ -207,17 +207,19 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 	const int thcnt = blockDim.x * blockDim.y;
 	assert(batch % batch_per_block == 0);
 	assert(thcnt % batch_per_block == 0);
-	int i, j, k, x;
+	int i, j, k, q, x;
 	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
+	for (q = 0; q < filter_strides; q++)
 		#pragma unroll
-		for (j = 0; j < filter_per_thread; j++)
-			prod[i][j] = 0;
+		for (i = 0; i < channel_per_thread; i++)
+			#pragma unroll
+			for (j = 0; j < filter_per_thread; j++)
+				prod[q][i][j] = 0;
 	const int bxidx = thidx % batch_per_block;
 	const int byidx = thidx / batch_per_block;
 	const int batch_idx = blockIdx.z % (batch / batch_per_block);
 	const int incnt = rows * cols * batch;
-	input += (blockIdx.x * cols + blockIdx.y) * batch + batch_idx * batch_per_block + byidx * incnt + bxidx;
+	input += (blockIdx.x * cols + blockIdx.y * filter_strides) * batch + batch_idx * batch_per_block + byidx * incnt + bxidx;
 	const int outcnt = out_rows * out_cols * batch;
 	const int block_loads = (batch_per_block * channels + thcnt - 1) / thcnt;
 	const int out_loads = (batch_per_block * count + thcnt - 1) / thcnt;
@@ -226,6 +228,7 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 	const int filter_idx = threadIdx.y * filter_per_thread;
 	const int channel_idx = threadIdx.x * channel_per_thread;
 	const int y = blockIdx.z / (batch / batch_per_block);
+	const int max_q = min(blockIdx.y * filter_strides + filter_strides, filter_cols) - blockIdx.y * filter_strides;
 	out += batch_idx * batch_per_block + byidx * outcnt + bxidx + y * out_cols * batch;
 	out_grad += batch_idx * batch_per_block + byidx * outcnt + bxidx + y * out_cols * batch;
 	const int iy = blockIdx.x + y * strides - border;
@@ -234,13 +237,17 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 		input += (y * strides - border) * cols * batch;
 		for (x = 0; x < out_cols; x++)
 		{
-			const int ix = blockIdx.y + x * strides - border;
-			if (ix >= 0 && ix < cols)
+			const int ix = blockIdx.y * filter_strides + x * strides - border;
+			if (ix + max_q > 0 && ix < cols)
 			{
+				const int start_q = max(ix, 0) - ix;
+				const int end_q = min(ix + max_q, cols) - ix;
 				#pragma unroll
-				for (i = 0; i < block_loads; i++)
-					if (thidx + i * thcnt < batch_per_block * channels)
-						shared_block[thidx + i * thcnt] = input[(x * strides - border) * batch + i * block_loads_factor];
+				for (q = start_q; q < end_q; q++)
+					#pragma unroll
+					for (i = 0; i < block_loads; i++)
+						if (thidx + i * thcnt < batch_per_block * channels)
+							shared_block[q * batch_per_block * channels + thidx + i * thcnt] = input[(q + x * strides - border) * batch + i * block_loads_factor];
 				#pragma unroll
 				for (i = 0; i < out_loads; i++)
 					if (thidx + i * thcnt < batch_per_block * count)
@@ -253,19 +260,23 @@ __global__ void _cog_kern_convolutional_backward_propagate_delta(const int strid
 					for (i = 0; i < filter_per_thread; i++)
 						if (shared_out[(i + filter_idx) * batch_per_block + k] > 0)
 							#pragma unroll
-							for (j = 0; j < channel_per_thread; j++)
-								prod[j][i] += shared_block[(j + channel_idx) * batch_per_block + k] * shared_grad[(i + filter_idx) * batch_per_block + k];
+							for (q = start_q; q < end_q; q++)
+								#pragma unroll
+								for (j = 0; j < channel_per_thread; j++)
+									prod[q][j][i] += shared_block[q * batch_per_block * channels + (j + channel_idx) * batch_per_block + k] * shared_grad[(i + filter_idx) * batch_per_block + k];
 				__syncthreads();
 			}
 		}
 	}
-	delta += (blockIdx.x * filter_cols + blockIdx.y) * count + blockIdx.z * filter_rows * filter_cols * count * channels;
+	delta += (blockIdx.x * filter_cols + blockIdx.y * filter_strides) * count + blockIdx.z * filter_rows * filter_cols * count * channels;
 	const int deltacnt = filter_rows * filter_cols * count;
 	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
+	for (q = 0; q < max_q; q++)
 		#pragma unroll
-		for (j = 0; j < filter_per_thread; j++)
-			delta[(i + channel_idx) * deltacnt + j + filter_idx] = prod[i][j];
+		for (i = 0; i < channel_per_thread; i++)
+			#pragma unroll
+			for (j = 0; j < filter_per_thread; j++)
+				delta[(i + channel_idx) * deltacnt + q * count + j + filter_idx] = prod[q][i][j];
 }
 
 template <int out_per_thread>
@@ -429,11 +440,11 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
 	dim3 threads_per_block_for_delta(ch, layer->net.convolutional.count);
 	assert(batch % 16 == 0);
-	dim3 num_blocks_for_delta(layer->net.convolutional.rows, layer->net.convolutional.cols, out_rows * batch / 16);
-	int shared_memory_size = sizeof(float) * (16 * (ch + layer->net.convolutional.count * 2));
-	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16>, cudaFuncCachePreferShared);
+	dim3 num_blocks_for_delta(layer->net.convolutional.rows, (layer->net.convolutional.cols + 3) / 4, out_rows * batch / 16);
+	int shared_memory_size = sizeof(float) * (16 * (ch * 4 + layer->net.convolutional.count * 2));
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16, 4>, cudaFuncCachePreferShared);
 	_cog_kern_convolutional_backward_propagate_delta
-	<1, 1, 16>
+	<1, 1, 16, 4>
 	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size, stream>>>
 	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 		m, rows, cols, ch,
