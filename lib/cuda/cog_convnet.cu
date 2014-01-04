@@ -440,11 +440,11 @@ static void _cog_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	_ccv_convnet_layer_deduce_output_format(rows, cols, layer, &out_rows, &out_cols);
 	dim3 threads_per_block_for_delta(ch, layer->net.convolutional.count);
 	assert(batch % 16 == 0);
-	dim3 num_blocks_for_delta(layer->net.convolutional.rows, (layer->net.convolutional.cols + 3) / 4, out_rows * batch / 16);
-	int shared_memory_size = sizeof(float) * (16 * (ch * 4 + layer->net.convolutional.count * 2));
-	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16, 4>, cudaFuncCachePreferShared);
+	dim3 num_blocks_for_delta(layer->net.convolutional.rows, (layer->net.convolutional.cols + 5) / 6, out_rows * batch / 16);
+	int shared_memory_size = sizeof(float) * (16 * (ch * 6 + layer->net.convolutional.count * 2));
+	cudaFuncSetCacheConfig(_cog_kern_convolutional_backward_propagate_delta<1, 1, 16, 6>, cudaFuncCachePreferShared);
 	_cog_kern_convolutional_backward_propagate_delta
-	<1, 1, 16, 4>
+	<1, 1, 16, 6>
 	<<<num_blocks_for_delta, threads_per_block_for_delta, shared_memory_size, stream>>>
 	(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 		m, rows, cols, ch,
@@ -1056,31 +1056,24 @@ static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, 
 	float* bp = db->data.f32;
 	for (i = 0; i < db->rows; i++)
 	{
+		const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+		const int end_y = size + ccv_min(i * strides + size - border, a->rows) - (i * strides + size - border);
 		for (j = 0; j < db->cols; j++)
+		{
+			const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+			const int end_x = size + ccv_min(j * strides + size - border, a->cols) - (j * strides + size - border);
 			for (k = 0; k < ch; k++)
 			{
 				float v = 0;
-				int first = 1;
-				for (y = 0; y < size; y++)
-				{
-					const int iy = i * strides - border + y;
-					if (iy >= 0 && iy < a->rows)
-						for (x = 0; x < size; x++)
-						{
-							const int ix = j * strides - border + x;
-							if (ix >= 0 && ix < a->cols)
-							{
-								if (first)
-								{
-									v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
-									first = 0;
-								} else if (ap[(j * strides - border + x + (y - border) * a->cols) * ch + k] > v)
-									v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
-							}
-						}
-				}
+				for (y = start_y; y < end_y; y++)
+					for (x = start_x; x < end_x; x++)
+						if (x == start_x && y == start_y)
+							v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+						else if (ap[(j * strides - border + x + (y - border) * a->cols) * ch + k] > v)
+							v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
 				bp[j * ch + k] = v;
 			}
+		}
 		ap += a->cols * ch * strides;
 		bp += db->cols * ch;
 	}
@@ -1108,28 +1101,26 @@ static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer,
 		float* mp = m->data.f32;
 		for (i = 0; i < a->rows; i++)
 		{
+			const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+			const int end_y = size + ccv_min(i * strides + size - border, db->rows) - (i * strides + size - border);
 			for (j = 0; j < a->cols; j++)
+			{
+				const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+				const int end_x = size + ccv_min(j * strides + size - border, db->cols) - (j * strides + size - border);
 				for (k = 0; k < ch; k++)
 				{
 					float v = np[j * ch + k];
 					float u = ap[j * ch + k];
-					for (y = 0; y < size; y++)
-					{
-						const int iy = i * strides - border + y;
-						if (iy >= 0 && iy < db->rows)
-							for (x = 0; x < size; x++)
-							{
-								const int ix = j * strides - border + x;
-								if (ix >= 0 && ix < db->cols)
-								{
-									float mv = mp[(j * strides - border + x + (y - border) * m->cols) * ch + k];
-									float delta = fabsf(mv - v) / ccv_max(ccv_max(mv, v), 1e-5);
-									if (delta < 1e-5) // we cannot do direct comparison because CPU have different result comparing with GPU
-										bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
-								}
-							}
-					}
+					for (y = start_y; y < end_y; y++)
+						for (x = start_x; x < end_x; x++)
+						{
+							float mv = mp[(j * strides - border + x + (y - border) * m->cols) * ch + k];
+							float delta = fabsf(mv - v) / ccv_max(ccv_max(mv, v), 1e-5);
+							if (delta < 1e-5) // we cannot do direct comparison because CPU have different result comparing with GPU
+								bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
+						}
 				}
+			}
 			ap += a->cols * ch;
 			np += n->cols * ch;
 			bp += db->cols * ch * strides;
@@ -1154,27 +1145,21 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 	float* bp = db->data.f32;
 	for (i = 0; i < db->rows; i++)
 	{
+		const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+		const int end_y = size + ccv_min(i * strides + size - border, a->rows) - (i * strides + size - border);
 		for (j = 0; j < db->cols; j++)
+		{
+			const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+			const int end_x = size + ccv_min(j * strides + size - border, a->cols) - (j * strides + size - border);
 			for (k = 0; k < ch; k++)
 			{
 				float v = 0;
-				int count = 0;
-				for (y = 0; y < size; y++)
-				{
-					const int iy = i * strides - border + y;
-					if (iy >= 0 && iy < a->rows)
-						for (x = 0; x < size; x++)
-						{
-							const int ix = j * strides - border + x;
-							if (ix >= 0 && ix < a->cols)
-							{
-								v += ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
-								++count;
-							}
-						}
-				}
-				bp[j * ch + k] = v / count;
+				for (y = start_y; y < end_y; y++)
+					for (x = start_x; x < end_x; x++)
+						v += ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+				bp[j * ch + k] = v / ((end_x - start_x) * (end_y - start_y));
 			}
+		}
 		ap += a->cols * ch * strides;
 		bp += db->cols * ch;
 	}
@@ -1199,34 +1184,20 @@ static void _ccv_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 		float* bp = db->data.f32;
 		for (i = 0; i < a->rows; i++)
 		{
+			const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+			const int end_y = size + ccv_min(i * strides + size - border, db->rows) - (i * strides + size - border);
 			for (j = 0; j < a->cols; j++)
+			{
+				const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+				const int end_x = size + ccv_min(j * strides + size - border, db->cols) - (j * strides + size - border);
 				for (k = 0; k < ch; k++)
 				{
-					int count = 0;
-					for (y = 0; y < size; y++)
-					{
-						const int iy = i * strides - border + y;
-						if (iy >= 0 && iy < db->rows)
-							for (x = 0; x < size; x++)
-							{
-								const int ix = j * strides - border + x;
-								if (ix >= 0 && ix < db->cols)
-									++count;
-							}
-					}
-					float u = ap[j * ch + k] / count;
-					for (y = 0; y < size; y++)
-					{
-						const int iy = i * strides - border + y;
-						if (iy >= 0 && iy < db->rows)
-							for (x = 0; x < size; x++)
-							{
-								const int ix = j * strides - border + x;
-								if (ix >= 0 && ix < db->cols)
-									bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
-							}
-					}
+					float u = ap[j * ch + k] / ((end_x - start_x) * (end_y - start_y));
+					for (y = start_y; y < end_y; y++)
+						for (x = start_x; x < end_x; x++)
+							bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
 				}
+			}
 			ap += a->cols * ch;
 			bp += db->cols * ch * strides;
 		}
@@ -1727,9 +1698,12 @@ void cog_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 
 void cog_convnet_free(ccv_convnet_t* convnet)
 {
-	int i;
-	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
-	for (i = 0; i < convnet->count; i++)
-		cudaFree(layers[i].w);
+	if (GPU(convnet))
+	{
+		int i;
+		ccv_convnet_layer_t* layers = GPU(convnet)->layers;
+		for (i = 0; i < convnet->count; i++)
+			cudaFree(layers[i].w);
+	}
 	ccfree(convnet);
 }

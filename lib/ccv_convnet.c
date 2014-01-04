@@ -73,7 +73,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cog_accel, ccv_convnet_param_t params[], 
 
 #endif
 
-static inline void _ccv_convnet_compute_output_scale(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
+static inline void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
 	assert(rows != 0 && cols != 0);
 	switch(layer->type)
@@ -103,7 +103,7 @@ static inline void _ccv_convnet_compute_output_scale(int a_rows, int a_cols, ccv
 static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_compute_output_scale(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
 	int ch = layer->net.convolutional.channels;
 	int count = layer->net.convolutional.count;
 	int strides = layer->net.convolutional.strides;
@@ -216,9 +216,10 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_compute_output_scale(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
+	int border = layer->net.pool.border;
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 	int ch = CCV_GET_CHANNEL(a->type);
 	int type = CCV_32F | ch;
@@ -228,19 +229,24 @@ static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, 
 	float* bp = db->data.f32;
 	for (i = 0; i < db->rows; i++)
 	{
+		const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+		const int end_y = size + ccv_min(i * strides + size - border, a->rows) - (i * strides + size - border);
 		for (j = 0; j < db->cols; j++)
+		{
+			const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+			const int end_x = size + ccv_min(j * strides + size - border, a->cols) - (j * strides + size - border);
 			for (k = 0; k < ch; k++)
 			{
-				float v = ap[j* strides * ch + k];
-				for (x = 1; x < size; x++)
-					if (ap[(j * strides + x) * ch + k] > v)
-						v = ap[(j * strides + x) * ch + k];
-				for (y = 1; y < size; y++)
-					for (x = 0; x < size; x++)
-						if (ap[(j * strides + x + y * a->cols) * ch + k] > v)
-							v = ap[(j * strides + x + y * a->cols) * ch + k];
+				float v = 0;
+				for (y = start_y; y < end_y; y++)
+					for (x = start_x; x < end_x; x++)
+						if (x == start_x && y == start_y)
+							v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+						else if (ap[(j * strides - border + x + (y - border) * a->cols) * ch + k] > v)
+							v = ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
 				bp[j * ch + k] = v;
 			}
+		}
 		ap += a->cols * ch * strides;
 		bp += db->cols * ch;
 	}
@@ -248,12 +254,11 @@ static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, 
 
 static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
+	int rows, cols;
+	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
-	assert((a->rows - size) % strides == 0);
-	assert((a->cols - size) % strides == 0);
-	int rows = (a->rows - size) / strides + 1;
-	int cols = (a->cols - size) / strides + 1;
+	int border = layer->net.pool.border;
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 	int ch = CCV_GET_CHANNEL(a->type);
 	int type = CCV_32F | ch;
@@ -261,18 +266,23 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 	int i, j, k, x, y;
 	float* ap = a->data.f32;
 	float* bp = db->data.f32;
-	float inv_size = 1.0 / (size * size);
 	for (i = 0; i < db->rows; i++)
 	{
+		const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+		const int end_y = size + ccv_min(i * strides + size - border, a->rows) - (i * strides + size - border);
 		for (j = 0; j < db->cols; j++)
+		{
+			const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+			const int end_x = size + ccv_min(j * strides + size - border, a->cols) - (j * strides + size - border);
 			for (k = 0; k < ch; k++)
 			{
 				float v = 0;
-				for (y = 0; y < size; y++)
-					for (x = 0; x < size; x++)
-						v += ap[(j * strides + x + y * a->cols) * ch + k];
-				bp[j * ch + k] = v * inv_size;
+				for (y = start_y; y < end_y; y++)
+					for (x = start_x; x < end_x; x++)
+						v += ap[(j * strides - border + x + (y - border) * a->cols) * ch + k];
+				bp[j * ch + k] = v / ((end_x - start_x) * (end_y - start_y));
 			}
+		}
 		ap += a->cols * ch * strides;
 		bp += db->cols * ch;
 	}
@@ -369,7 +379,7 @@ static void _ccv_convnet_randomize_dropouts(gsl_rng* rng, int a_rows, int a_cols
 	if (layer->dropout_rate > 0)
 	{
 		int rows, cols;
-		_ccv_convnet_compute_output_scale(a_rows, a_cols, layer, &rows, &cols);
+		_ccv_convnet_layer_deduce_output_format(a_rows, a_cols, layer, &rows, &cols);
 		ccv_dense_matrix_t* db = *dropouts = ccv_dense_matrix_renew(*dropouts, rows, cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, 0);
 		int* bptr = db->data.i32;
 		memset(bptr, 0, sizeof(int) * cols * rows);
@@ -409,7 +419,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
 	// note that y (the output from forward prop) is not included because the full connect net is simple enough that we don't need it
 	int rows, cols;
-	_ccv_convnet_compute_output_scale(m->rows, m->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(m->rows, m->cols, layer, &rows, &cols);
 	int ch = layer->net.convolutional.channels;
 	int count = layer->net.convolutional.count;
 	int strides = layer->net.convolutional.strides;
@@ -626,6 +636,7 @@ static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer,
 		ccv_zero(db);
 		int size = layer->net.pool.size;
 		int strides = layer->net.pool.strides;
+		int border = layer->net.pool.border;
 		int i, j, k, x, y;
 		float* ap = a->data.f32;
 		float* bp = db->data.f32;
@@ -633,16 +644,26 @@ static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer,
 		float* mp = m->data.f32;
 		for (i = 0; i < a->rows; i++)
 		{
+			const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+			const int end_y = size + ccv_min(i * strides + size - border, db->rows) - (i * strides + size - border);
 			for (j = 0; j < a->cols; j++)
+			{
+				const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+				const int end_x = size + ccv_min(j * strides + size - border, db->cols) - (j * strides + size - border);
 				for (k = 0; k < ch; k++)
 				{
 					float v = np[j * ch + k];
 					float u = ap[j * ch + k];
-					for (y = 0; y < size; y++)
-						for (x = 0; x < size; x++)
-							if (mp[(j * strides + x + y * m->cols) * ch + k] == v) // because we assigned these value earlier, it can do directly comparison
-								bp[(j * strides + x + y * db->cols) * ch + k] += u;
+					for (y = start_y; y < end_y; y++)
+						for (x = start_x; x < end_x; x++)
+						{
+							float mv = mp[(j * strides - border + x + (y - border) * m->cols) * ch + k];
+							float delta = fabsf(mv - v) / ccv_max(ccv_max(mv, v), 1e-5);
+							if (delta < 1e-5) // we cannot do direct comparison because CPU have different result comparing with GPU
+								bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
+						}
 				}
+			}
 			ap += a->cols * ch;
 			np += n->cols * ch;
 			bp += db->cols * ch * strides;
@@ -664,20 +685,26 @@ static void _ccv_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 		ccv_zero(db);
 		int size = layer->net.pool.size;
 		int strides = layer->net.pool.strides;
-		float inv_size = 1.0 / (size * size);
+		int border = layer->net.pool.border;
 		int i, j, k, x, y;
 		float* ap = a->data.f32;
 		float* bp = db->data.f32;
 		for (i = 0; i < a->rows; i++)
 		{
+			const int start_y = ccv_max(i * strides - border, 0) - (i * strides - border);
+			const int end_y = size + ccv_min(i * strides + size - border, db->rows) - (i * strides + size - border);
 			for (j = 0; j < a->cols; j++)
+			{
+				const int start_x = ccv_max(j * strides - border, 0) - (j * strides - border);
+				const int end_x = size + ccv_min(j * strides + size - border, db->cols) - (j * strides + size - border);
 				for (k = 0; k < ch; k++)
 				{
-					float u = ap[j * ch + k];
-					for (y = 0; y < size; y++)
-						for (x = 0; x < size; x++)
-							bp[(j * strides + x + y * db->cols) * ch + k] += u * inv_size;
+					float u = ap[j * ch + k] / ((end_x - start_x) * (end_y - start_y));
+					for (y = start_y; y < end_y; y++)
+						for (x = start_x; x < end_x; x++)
+							bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
 				}
+			}
 			ap += a->cols * ch;
 			bp += db->cols * ch * strides;
 		}
@@ -781,6 +808,7 @@ static void _ccv_convnet_update_zero(ccv_convnet_t* update_params)
 static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 {
 	ccv_convnet_t* update_params = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(ccv_dense_matrix_t*) * (convnet->count - 1));
+	update_params->reserved = 0;
 	update_params->layers = (ccv_convnet_layer_t*)(update_params + 1);
 	update_params->acts = (ccv_dense_matrix_t**)(update_params->layers + convnet->count);
 	// the update params doesn't need the neuron layers (acts) for the input image, and the loss layer, therefore, convnet->count - 1
@@ -858,7 +886,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 						break;
 					case CCV_CONVNET_MAX_POOL:
 					case CCV_CONVNET_AVERAGE_POOL:
-						_ccv_convnet_compute_output_scale(a_rows, a_cols, convnet->layers + j, &a_rows, &a_cols);
+						_ccv_convnet_layer_deduce_output_format(a_rows, a_cols, convnet->layers + j, &a_rows, &a_cols);
 						break;
 				}
 			}
