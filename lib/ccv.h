@@ -844,7 +844,7 @@ typedef struct {
 
 enum {
 	CCV_BBF_GENETIC_OPT = 0x01,
-	CCV_BBF_FLOAT_OPT = 0x02
+	CCV_BBF_FLOAT_OPT = 0x02,
 };
 
 typedef struct {
@@ -1104,20 +1104,22 @@ typedef union {
 } ccv_convnet_type_t;
 
 typedef struct {
+	struct {
+		int rows;
+		int cols;
+		int channels;
+	} matrix;
+	struct {
+		int count;
+	} node;
+} ccv_convnet_input_t;
+
+typedef struct {
 	int type;
 	float dropout_rate;
 	float bias; // bias initialization
 	float sigma; // weight initialization with deviation from Gaussian distribution
-	struct {
-		struct {
-			int rows;
-			int cols;
-			int channels;
-		} matrix;
-		struct {
-			int count;
-		} node;
-	} input;
+	ccv_convnet_input_t input;
 	ccv_convnet_type_t output;
 } ccv_convnet_param_t;
 
@@ -1127,11 +1129,12 @@ typedef struct {
 	float* w; // weight
 	float* bias; // bias
 	size_t wnum; // the number of weights
+	ccv_convnet_input_t input; // the input requirement
 	ccv_convnet_type_t net; // network configuration
 } ccv_convnet_layer_t;
 
 typedef struct {
-	int use_cwc_accel; // use "ccv on GPU" acceleration
+	int use_cwc_accel; // use "ccv with cuda" acceleration
 	// this is redundant, but good to enforcing what the input should look like
 	int rows;
 	int cols;
@@ -1152,13 +1155,31 @@ typedef struct {
 	double momentum;
 } ccv_convnet_train_param_t;
 
+enum {
+	CCV_CATEGORIZED_DENSE_MATRIX = 0x01,
+	CCV_CATEGORIZED_FILE = 0x02,
+};
+
 typedef struct {
 	int c; // class / category label
+	int type;
 	union {
 		ccv_dense_matrix_t* matrix;
 		ccv_file_info_t file;
 	};
 } ccv_categorized_t;
+
+inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matrix, ccv_file_info_t* file)
+{
+	assert((matrix && !file) || (!matrix && file));
+	ccv_categorized_t categorized;
+	categorized.c = c;
+	if (matrix)
+		categorized.type = CCV_CATEGORIZED_DENSE_MATRIX, categorized.matrix = matrix;
+	else
+		categorized.type = CCV_CATEGORIZED_FILE, categorized.file = *file;
+	return categorized;
+}
 
 ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params);

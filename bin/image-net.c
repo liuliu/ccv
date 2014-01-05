@@ -23,9 +23,10 @@ int main(int argc, char** argv)
 		while(read > 1 && isspace(file[read - 1]))
 			read--;
 		file[read] = 0;
-		ccv_categorized_t categorized;
-		categorized.file.filename = (char*)ccmalloc(1024);
-		strncpy(categorized.file.filename, file, 1024);
+		ccv_file_info_t input;
+		input.filename = (char*)ccmalloc(1024);
+		strncpy(input.filename, file, 1024);
+		ccv_categorized_t categorized = ccv_categorized(0, 0, &input);
 		ccv_array_push(categorizeds, &categorized);
 	}
 	fclose(r);
@@ -119,10 +120,6 @@ int main(int argc, char** argv)
 		convnet->layers->w[i] = 1;
 	for (i = 0; i < convnet->layers->net.convolutional.count; i++)
 		convnet->layers->bias[i] = 1;
-	for (i = 0; i < convnet->layers[3].wnum; i++)
-		convnet->layers[3].w[i] = 0.0001;
-	for (i = 0; i < convnet->layers[3].net.full_connect.count; i++)
-		convnet->layers[3].bias[i] = 1;
 	ccv_convnet_supervised_train(convnet, categorizeds, 0, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();

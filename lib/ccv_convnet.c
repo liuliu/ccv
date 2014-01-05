@@ -37,6 +37,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], 
 	for (i = 0; i < count; i++)
 	{
 		layers[i].type = params[i].type;
+		layers[i].input = params[i].input;
 		layers[i].net = params[i].output;
 		layers[i].dropout_rate = params[i].dropout_rate;
 		switch (params[i].type)
@@ -73,7 +74,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], 
 
 #endif
 
-static inline void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
+inline static void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
 	assert(rows != 0 && cols != 0);
 	switch(layer->type)

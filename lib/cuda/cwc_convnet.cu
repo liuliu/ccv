@@ -5,13 +5,14 @@ extern "C" {
 
 // this structure holds intermediate on-device memory representation of convnet
 typedef struct {
+	int batch;
 	ccv_convnet_layer_t* layers;
 	ccv_convnet_layer_t* updates;
 } cwc_convnet_t;
 
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
 
-static inline void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
+inline static void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
 	assert(rows != 0 && cols != 0);
 	switch(layer->type)
@@ -38,17 +39,18 @@ static inline void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_col
 	}
 }
 
-static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet)
+static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet, int batch)
 {
 	assert(GPU(convnet) == 0);
 	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count * 2);
+	GPU(convnet)->batch = batch;
 	GPU(convnet)->layers = (ccv_convnet_layer_t*)(GPU(convnet) + 1);
 	GPU(convnet)->updates = GPU(convnet)->layers + convnet->count;
 	memcpy(GPU(convnet)->layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 	memcpy(GPU(convnet)->updates, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
 	ccv_convnet_layer_t* updates = GPU(convnet)->updates;
-	int i;
+	int i, out_rows, out_cols;
 	for (i = 0; i < convnet->count; i++)
 		switch (layers[i].type)
 		{
@@ -61,9 +63,10 @@ static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet)
 				// TODO: this is wrong, I need to rewind w
 				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count), cudaMemcpyHostToDevice);
 				updates[i].w = 0;
-				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * 55 + updates[i].net.convolutional.count));
+				_ccv_convnet_layer_deduce_output_format(layers[i].input.matrix.rows, layers[i].input.matrix.cols, layers + i, &out_rows, &out_cols);
+				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * out_rows + updates[i].net.convolutional.count));
 				assert(updates[i].w);
-				updates[i].bias = updates[i].w + updates[i].wnum * 8 * 55;
+				updates[i].bias = updates[i].w + updates[i].wnum * 8 * out_rows;
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(updates[i].type == CCV_CONVNET_FULL_CONNECT);
@@ -1668,7 +1671,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 {
 	assert(categorizeds->rnum >= 128);
 	if (!GPU(convnet))
-		_cwc_convnet_reserve_on_device(convnet);
+		_cwc_convnet_reserve_on_device(convnet, 128);
 	int i;
 	ccv_dense_matrix_t* a[128];
 	for (i = 0; i < 128; i++)
