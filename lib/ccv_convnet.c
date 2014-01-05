@@ -5,15 +5,15 @@
 #include <gsl/gsl_randist.h>
 #endif
 #ifdef HAVE_CUDA
-#include "cuda/cog.h"
+#include "cuda/cwc.h"
 #endif
 
 #ifndef CASE_TESTS
 
-ccv_convnet_t* ccv_convnet_new(int use_cog_accel, ccv_convnet_param_t params[], int count)
+ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count)
 {
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count + sizeof(ccv_dense_matrix_t*) * (count - 1));
-	convnet->use_cog_accel = use_cog_accel;
+	convnet->use_cwc_accel = use_cwc_accel;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)convnet);
@@ -293,8 +293,8 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
 {
 #ifdef HAVE_CUDA
-	if (convnet->use_cog_accel)
-		cog_convnet_encode(convnet, a, b, batch);
+	if (convnet->use_cwc_accel)
+		cwc_convnet_encode(convnet, a, b, batch);
 	else {
 #endif
 	assert(batch == 1);
@@ -354,8 +354,8 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
 {
 #ifdef HAVE_CUDA
-	if (convnet->use_cog_accel)
-		cog_convnet_classify(convnet, a, labels, batch);
+	if (convnet->use_cwc_accel)
+		cwc_convnet_classify(convnet, a, labels, batch);
 	else {
 #endif
 	assert(batch == 1);
@@ -851,8 +851,8 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
 {
 #ifdef HAVE_CUDA
-	if (convnet->use_cog_accel)
-		cog_convnet_supervised_train(convnet, categorizeds, tests, params);
+	if (convnet->use_cwc_accel)
+		cwc_convnet_supervised_train(convnet, categorizeds, tests, params);
 	else {
 #endif
 	int i, j, t;
@@ -942,7 +942,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 void ccv_convnet_free(ccv_convnet_t* convnet)
 {
 #ifdef HAVE_CUDA
-	cog_convnet_free(convnet);
+	cwc_convnet_free(convnet);
 #else
 	ccfree(convnet);
 #endif

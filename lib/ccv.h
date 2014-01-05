@@ -1131,7 +1131,7 @@ typedef struct {
 } ccv_convnet_layer_t;
 
 typedef struct {
-	int use_cog_accel; // use "ccv on GPU" acceleration
+	int use_cwc_accel; // use "ccv on GPU" acceleration
 	// this is redundant, but good to enforcing what the input should look like
 	int rows;
 	int cols;
@@ -1160,7 +1160,7 @@ typedef struct {
 	};
 } ccv_categorized_t;
 
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cog_accel, ccv_convnet_param_t params[], int count);
+ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch);
