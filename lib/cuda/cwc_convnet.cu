@@ -39,7 +39,35 @@ inline static void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_col
 	}
 }
 
-static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet, int batch)
+static void _cwc_convnet_rewind_convolutional_weights_onto_device(float* w, float* ow, int wnum, int filters, int channels)
+{
+	assert(wnum % (filters * channels) == 0);
+	float* iw = (float*)ccmalloc(sizeof(float) * wnum);
+	int count = wnum / (filters * channels);
+	int i, j, k;
+	for (i = 0; i < channels; i++)
+		for (j = 0; j < count; j++)
+			for (k = 0; k < filters; k++)
+				iw[i * count * filters + j * filters + k] = w[k * count * channels + j * channels + i];
+	cudaMemcpy(ow, iw, sizeof(float) * wnum, cudaMemcpyHostToDevice);
+	ccfree(iw);
+}
+
+static void _cwc_convnet_rewind_full_connect_weights_onto_device(float* w, float* ow, int wnum, int count, int channels)
+{
+	assert(wnum % (count * channels) == 0);
+	float* iw = (float*)ccmalloc(sizeof(float) * wnum);
+	int rows = wnum / (count * channels);
+	int i, j, k;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < channels; j++)
+			for (k = 0; k < count; k++)
+				iw[i * channels * count + j * count + k] = w[i * channels * count + k * channels + j];
+	cudaMemcpy(ow, iw, sizeof(float) * wnum, cudaMemcpyHostToDevice);
+	ccfree(iw);
+}
+
+static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch)
 {
 	assert(GPU(convnet) == 0);
 	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count * 2);
@@ -51,6 +79,7 @@ static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet, int batch)
 	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
 	ccv_convnet_layer_t* updates = GPU(convnet)->updates;
 	int i, out_rows, out_cols;
+	int batch_per_block = batch / 16;
 	for (i = 0; i < convnet->count; i++)
 		switch (layers[i].type)
 		{
@@ -60,13 +89,13 @@ static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet, int batch)
 				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
 				assert(layers[i].w);
 				layers[i].bias = layers[i].w + layers[i].wnum;
-				// TODO: this is wrong, I need to rewind w
-				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count), cudaMemcpyHostToDevice);
+				_cwc_convnet_rewind_convolutional_weights_onto_device(convnet->layers[i].w, layers[i].w, layers[i].wnum, layers[i].net.convolutional.count, layers[i].net.convolutional.channels);
+				cudaMemcpy(layers[i].bias, convnet->layers[i].bias, sizeof(float) * layers[i].net.convolutional.count, cudaMemcpyHostToDevice);
 				updates[i].w = 0;
 				_ccv_convnet_layer_deduce_output_format(layers[i].input.matrix.rows, layers[i].input.matrix.cols, layers + i, &out_rows, &out_cols);
-				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * 8 * out_rows + updates[i].net.convolutional.count));
+				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum * batch_per_block * out_rows + updates[i].net.convolutional.count));
 				assert(updates[i].w);
-				updates[i].bias = updates[i].w + updates[i].wnum * 8 * out_rows;
+				updates[i].bias = updates[i].w + updates[i].wnum * batch_per_block * out_rows;
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(updates[i].type == CCV_CONVNET_FULL_CONNECT);
@@ -74,7 +103,8 @@ static void _cwc_convnet_reserve_on_device(ccv_convnet_t* convnet, int batch)
 				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
 				assert(layers[i].w);
 				layers[i].bias = layers[i].w + layers[i].wnum;
-				cudaMemcpy(layers[i].w, convnet->layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count), cudaMemcpyHostToDevice);
+				_cwc_convnet_rewind_full_connect_weights_onto_device(convnet->layers[i].w, layers[i].w, layers[i].wnum, layers[i].input.matrix.rows * layers[i].input.matrix.cols, layers[i].input.matrix.channels);
+				cudaMemcpy(layers[i].bias, convnet->layers[i].bias, sizeof(float) * layers[i].net.full_connect.count, cudaMemcpyHostToDevice);
 				updates[i].w = 0;
 				cudaMalloc(&updates[i].w, sizeof(float) * (updates[i].wnum + updates[i].net.full_connect.count));
 				updates[i].bias = updates[i].w + updates[i].wnum;
@@ -606,8 +636,8 @@ __global__ void _cwc_kern_max_pool_backward_propagate(const int strides, const i
 			#pragma unroll
 			for (i = 0; i < input_per_thread; i++)
 			{
-				float vi = shared_input[i + threadIdx.x * input_per_thread];
-				float vo = shared_out[i + threadIdx.x * input_per_thread];
+				float vi = fabsf(shared_input[i + threadIdx.x * input_per_thread]);
+				float vo = fabsf(shared_out[i + threadIdx.x * input_per_thread]);
 				float delta = fabsf(vi - vo) / max(max(vi, vo), 1e-5);
 				if (delta < 1e-5) // there seems to be a bug that the direct comparison of these two float number will have different result on GPU comparing with CPU result
 				// if (shared_out[i + threadIdx.x * input_per_thread] == shared_input[i + threadIdx.x * input_per_thread]) // if we don't care of accuracy and needs that extra 4ms per batch, we can change to this line
@@ -1118,7 +1148,7 @@ static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer,
 						for (x = start_x; x < end_x; x++)
 						{
 							float mv = mp[(j * strides - border + x + (y - border) * m->cols) * ch + k];
-							float delta = fabsf(mv - v) / ccv_max(ccv_max(mv, v), 1e-5);
+							float delta = fabsf(mv - v) / ccv_max(ccv_max(fabsf(mv), fabsf(v)), 1e-5);
 							if (delta < 1e-5) // we cannot do direct comparison because CPU have different result comparing with GPU
 								bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
 						}
@@ -1331,6 +1361,11 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+inline static float _ccv_relative_delta(float a, float b)
+{
+	return fabsf(a - b) / ccv_max(ccv_max(fabsf(a), fabsf(b)), 1);
+}
+
 void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
 {
 	int ch = CCV_GET_CHANNEL(a[0]->type);
@@ -1502,7 +1537,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float o = b->data.f32[j * convnet->layers->net.convolutional.count + k];
 				float oo = out[j * batch + i + k * out_rows * out_cols * batch];
-				float delta = fabsf(o - oo) / ccv_max(ccv_max(o, oo), 1);
+				float delta = _ccv_relative_delta(o, oo);
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.001)
 					printf("forwprop: %d %d %f %f %f\n", k, j, delta, o, oo);
@@ -1517,7 +1552,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float m = c->data.f32[j * convnet->layers->net.convolutional.count + k];
 				float om = max_pooled[j * batch + i + k * max_rows * max_cols * batch];
-				float delta = fabsf(m - om) / ccv_max(ccv_max(m, om), 1);
+				float delta = _ccv_relative_delta(m, om);
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.001)
 					printf("maxpool: %d %d %f %f %f\n", k, j, delta, m, om);
@@ -1532,7 +1567,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float a = d->data.f32[j * convnet->layers->net.convolutional.count + k];
 				float oa = average_pooled[j * batch + i + k * max_rows * max_cols * batch];
-				float delta = fabsf(a - oa) / ccv_max(ccv_max(a, oa), 1);
+				float delta = _ccv_relative_delta(a, oa);
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.001)
 					printf("avgpool: %d %d %f %f %f\n", k, j, delta, a, oa);
@@ -1542,16 +1577,16 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		ccv_dense_matrix_t* g = ccv_dense_matrix_new(27, 27, CCV_32F | 5, 0, 0);
 		for (k = 0; k < 5; k++)
 			for (j = 0; j < average_rows * average_cols; j++)
-				g->data.f32[k * average_rows * average_cols + j] = d->data.f32[j * convnet->layers->net.convolutional.count + k];
+				g->data.f32[j * 5 + k] = d->data.f32[j * convnet->layers->net.convolutional.count + k];
 		ccv_dense_matrix_t* h = 0;
 		_ccv_convnet_full_connect_forward_propagate(convnet->layers + 3, g, 0, &h);
 		for (k = 0; k < convnet->layers[3].net.full_connect.count; k++)
 		{
 			float f = h->data.f32[k];
 			float of = full_connected[k * batch + i];
-			float delta = fabsf(f - of) / ccv_max(ccv_max(f, of), 1);
+			float delta = _ccv_relative_delta(f, of);
 			assert(!isnan(delta) && !isinf(delta));
-			if (delta > 0.00001)
+			if (delta > 0.001)
 				printf("fc: %d %f %f %f\n", k, delta, f, of);
 		}
 
@@ -1563,7 +1598,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float g = backprop->data.f32[j * ch + k];
 				float og = out_input_grad[j * batch + i + k * rows * cols * batch];
-				float delta = fabsf(g - og) / ccv_max(ccv_max(g, og), 1);
+				float delta = _ccv_relative_delta(g, og);
 				assert(!isnan(delta) && !isinf(delta));
 				if (delta > 0.01)
 					printf("backprop: %d %d %f %f %f\n", k, j, delta, g, og);
@@ -1578,7 +1613,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float m = e->data.f32[j * convnet->layers->net.convolutional.count + k];
 				float om = max_pooled_out_input_grad[j * batch + i + k * out_rows * out_cols * batch];
-				float delta = fabsf(m - om) / ccv_max(ccv_max(m, om), 1);
+				float delta = _ccv_relative_delta(m, om);
 				if (delta > 0.001)
 					printf("maxpool backprop: %d %d %f %f %f\n", k, j, delta, m, om);
 			}
@@ -1592,7 +1627,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 			{
 				float a = f->data.f32[j * convnet->layers->net.convolutional.count + k];
 				float oa = average_pooled_out_input_grad[j * batch + i + k * out_rows * out_cols * batch];
-				float delta = fabsf(a - oa) / ccv_max(ccv_max(a, oa), 1);
+				float delta = _ccv_relative_delta(a, oa);
 				if (delta > 0.001)
 					printf("avgpool backprop: %d %d %f %f %f\n", k, j, delta, a, oa);
 			}
@@ -1600,14 +1635,15 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		// check full connect backward propagate
 		ccv_dense_matrix_t* p = 0;
 		_ccv_convnet_full_connect_backward_propagate(convnet->layers + 3, h, 0, g, &p, &fcupdates);
-		for (j = 0; j < average_rows * average_cols * 5; j++)
-		{
-			float f = p->data.f32[j];
-			float of = full_connected_grad[j * batch + i];
-			float delta = fabsf(f - of) / ccv_max(ccv_max(f, of), 1);
-			if (delta > 0.00001)
-				printf("fc backprop: %d %f %f %f\n", j, delta, f, of);
-		}
+		for (k = 0; k < 5; k++)
+			for (j = 0; j < average_rows * average_cols; j++)
+			{
+				float f = p->data.f32[j * 5 + k];
+				float of = full_connected_grad[(k * average_rows * average_cols + j) * batch + i];
+				float delta = _ccv_relative_delta(f, of);
+				if (delta > 0.0001)
+					printf("fc backprop: %d %f %f %f\n", j, delta, f, of);
+			}
 
 		ccv_matrix_free(b);
 		ccv_matrix_free(c);
@@ -1633,7 +1669,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 					float ow = out_weights[(i * filter_cols + j) * filter_count + k + c * filter_cols * filter_rows * filter_count];
 					for (z = 1; z < 8 * out_rows; z++)
 						ow += out_weights[z * filter_rows * filter_cols * filter_count * ch + (i * filter_cols + j) * filter_count + k + c * filter_cols * filter_rows * filter_count];
-					float delta = fabsf(ow - w) / ccv_max(ccv_max(w, ow), 1);
+					float delta = _ccv_relative_delta(w, ow);
 					if (delta > 0.0001)
 						printf("convw: %d,%d,%d,%d: %f, %f\n", i, j, k, c, w, ow);
 				}
@@ -1641,24 +1677,26 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	{
 		float b = updates.bias[i];
 		float ob = out_bias[i];
-		float delta = fabsf(ob - b) / ccv_max(ccv_max(ob, b), 1);
+		float delta = _ccv_relative_delta(b, ob);
 		if (delta > 0.0001)
 			printf("convb: %d: %f, %f\n", i, b, ob);
 	}
-	for (i = 0; i < average_rows * average_cols * 5 * convnet->layers[3].net.full_connect.count; i++)
-	{
-		float w = fcupdates.w[i];
-		float ow = out_fcw[i];
-		float delta = fabsf(ow - w) / ccv_max(ccv_max(w, ow), 1);
-		if (delta > 0.00001)
-			printf("fcw: %d: %f %f,%f\n", i, delta, w, ow);
-	}
+	for (i = 0; i < convnet->layers[3].net.full_connect.count; i++)
+		for (j = 0; j < average_rows * average_cols; j++)
+			for (k = 0; k < 5; k++)
+			{
+				float w = fcupdates.w[i * average_rows * average_cols * 5 + j * 5 + k];
+				float ow = out_fcw[i * average_rows * average_cols * 5 + k * average_rows * average_cols + j];
+				float delta = _ccv_relative_delta(w, ow);
+				if (delta > 0.01)
+					printf("fcw: %d: %f %f,%f\n", i, delta, w, ow);
+			}
 	for (i = 0; i < convnet->layers[3].net.full_connect.count; i++)
 	{
 		float b = fcupdates.bias[i];
 		float ob = out_fcbias[i];
-		float delta = fabsf(ob - b) / ccv_max(ccv_max(b, ob), 1);
-		if (delta > 0.00001)
+		float delta = _ccv_relative_delta(b, ob);
+		if (delta > 0.0001)
 			printf("fcb: %d: %f %f,%f\n", i, delta, b, ob);
 	}
 }
@@ -1671,7 +1709,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 {
 	assert(categorizeds->rnum >= 128);
 	if (!GPU(convnet))
-		_cwc_convnet_reserve_on_device(convnet, 128);
+		_cwc_convnet_reserve_onto_device(convnet, 128);
 	int i;
 	ccv_dense_matrix_t* a[128];
 	for (i = 0; i < 128; i++)

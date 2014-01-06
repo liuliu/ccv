@@ -90,6 +90,8 @@ int main(int argc, char** argv)
 		},
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 0,
+			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 27,
