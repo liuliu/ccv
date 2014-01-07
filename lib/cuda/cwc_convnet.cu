@@ -891,6 +891,44 @@ static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &alpha, m, batch, a, batch, &beta, configuration->w, rows);
 }
 
+template <int input_per_thread>
+__global__ void _cwc_kern_convnet_softmax_with_logistic_loss(const int batch, const int count, float* a, int* c)
+{
+	int i;
+	extern float shared[];
+	const int thidx = threadIdx.x;
+	float max_val = a[thidx];
+	for (i = 0; i < count; i++)
+	{
+		shared[thidx] = a[i * batch + thidx];
+		if (shared[thidx] > max_val)
+			max_val = shared[thidx];
+	}
+	__syncthreads();
+	float val = 0;
+	for (i = 0; i < count; i++)
+	{
+		shared[thidx] = a[i * batch + thidx];
+		val += shared[thidx] = expf(shared[thidx] - max_val);
+		a[i * batch + thidx] = shared[thidx];
+	}
+	__syncthreads();
+	val = 1.0 / val;
+	for (i = 0; i < count; i++)
+		a[i * batch + thidx] = (i == c[thidx]) - (a[i * batch + thidx] * val);
+}
+
+static void _cwc_convnet_softmax_with_logistic_loss(int batch, int count, float* a, int* c, const cudaStream_t& stream)
+{
+	dim3 num_blocks(1);
+	dim3 threads_per_block(batch);
+	int shared_memory_size = sizeof(float) * batch;
+	_cwc_kern_convnet_softmax_with_logistic_loss
+	<1>
+	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
+	(batch, count, a, c);
+}
+
 /* assuming a is in device memory */
 static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch, cwc_convnet_context_t* context)
 {
@@ -920,7 +958,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 	}
 }
 
-static void _cwc_convnet_propagate_loss(ccv_convnet_t* convnet, float* a, int batch, cwc_convnet_context_t* context)
+static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float* a, int batch, cwc_convnet_context_t* context)
 {
 	assert(batch % 16 == 0);
 	int i;
@@ -984,6 +1022,18 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	for (i = 0; i < 2; i++)
 		cudaMalloc(&input_batch_on_device[i], sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch);
 	assert(input_batch_on_device[0] && input_batch_on_device[1]);
+	int* c_on_host[2] = {
+		0, 0
+	};
+	for (i = 0; i < 2; i++)
+		cudaMallocHost(&c_on_host[i], sizeof(int) * params.mini_batch); 
+	assert(c_on_host[0] && c_on_host[1]);
+	int* c_on_device[2] = {
+		0, 0
+	};
+	for (i = 0; i < 2; i++)
+		cudaMalloc(&c_on_device[i], sizeof(int) * params.mini_batch); 
+	assert(c_on_device[0] && c_on_device[1]);
 	for (t = 0; t < params.max_epoch; t++)
 	{
 		printf(" - at epoch %d / %d\n", t + 1, params.max_epoch);
@@ -991,9 +1041,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		{
 			cwc_convnet_context_t* context = GPU(convnet)->contexts + (i % 2);
 			float* current_input_batch = input_batch_on_host[i % 2];
+			int* current_c = c_on_host[i % 2];
 			for (j = 0; j < params.mini_batch; j++)
 			{
 				ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx[i * params.mini_batch + j]);
+				current_c[j] = categorized->c;
 				switch (categorized->type)
 				{
 					case CCV_CATEGORIZED_DENSE_MATRIX:
@@ -1007,9 +1059,12 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				}
 			}
 			cudaMemcpyAsync(input_batch_on_device[i % 2], current_input_batch, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->stream);
+			cudaMemcpyAsync(c_on_device[i % 2], current_c, sizeof(float) * params.mini_batch, cudaMemcpyHostToDevice, context->stream);
 			// sync with the other stream core so that we can compute on the single true layer parameters
 			cudaStreamSynchronize(GPU(convnet)->contexts[(i + 1) % 2].stream);
 			_cwc_convnet_encode_impl(convnet, input_batch_on_device[i % 2], params.mini_batch, context);
+			_cwc_convnet_softmax_with_logistic_loss(params.mini_batch, category_count, context->forwards[convnet->count - 1], c_on_device[i % 2], context->stream);
+			_cwc_convnet_backwards_propagate_error(convnet, context->forwards[convnet->count - 1], params.mini_batch, context);
 		}
 		cudaDeviceSynchronize(); // synchronize at this point
 		if (t + 1 < params.max_epoch)
@@ -1025,6 +1080,10 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaFree(input_batch_on_device[i]);
 	for (i = 0; i < 2; i++)
 		cudaFreeHost(input_batch_on_host[i]);
+	for (i = 0; i < 2; i++)
+		cudaFree(c_on_device[i]);
+	for (i = 0; i < 2; i++)
+		cudaFreeHost(c_on_host[i]);
 	ccfree(idx);
 	gsl_rng_free(rng);
 }
