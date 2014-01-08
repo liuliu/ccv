@@ -555,11 +555,11 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		configuration->bias, layer->net.convolutional.count);
 	if (b)
 	{
-		dim3 threads_per_block(batch, 1);
+		dim3 threads_per_block(batch, layer->input.matrix.channels / 8);
 		dim3 num_blocks(layer->input.matrix.rows, layer->input.matrix.cols);
-		shared_memory_size = sizeof(float) * (batch * 2 + layer->input.matrix.channels * 48);
+		shared_memory_size = sizeof(float) * (batch * 2 + layer->input.matrix.channels * 16);
 		_cwc_kern_convolutional_backward_propagate
-		<1, 3, 48>
+		<1, 8, 16>
 		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
 		(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 		 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels,

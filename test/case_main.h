@@ -1,6 +1,52 @@
 #ifndef _GUARD_case_main_h_
 #define _GUARD_case_main_h_
 
+static void case_run(case_t* test_case, int i, int total, int* pass, int* fail)
+{
+	printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", i + 1, total, test_case->name);
+	fflush(stdout);
+	int result = 0;
+	test_case->func(test_case->name, &result);
+	if (result == 0)
+	{
+		(*pass)++;
+		printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", i + 1, total, test_case->name);
+	} else {
+		(*fail)++;
+		printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", i + 1, total, test_case->name);
+	}
+}
+
+static void case_conclude(int pass, int fail)
+{
+	if (fail == 0)
+		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
+	else
+		printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+}
+
+#ifdef __ELF__
+// in ELF object format, we can simply query custom section rather than scan through the whole binary memory
+// to find function pointer. We do this whenever possible because in this way, we don't have access error
+// when hooking up with memory checkers such as address sanitizer or valgrind
+extern case_t __start_case_data[];
+extern case_t __stop_case_data[];
+
+int main(int argc, char** argv)
+{
+	int total = __stop_case_data - __start_case_data;
+	int i, pass = 0, fail = 0;
+	for (i = 0; i < total; i++)
+	{
+		case_t* test_case = __start_case_data + i;
+		case_run(test_case, i, total, &pass, &fail);
+	}
+	case_conclude(pass, fail);
+	return fail;
+}
+
+#else
+
 #include <stdio.h>
 #include <unistd.h>
 #include <stdlib.h>
@@ -309,36 +355,20 @@ int main(int argc, char** argv)
 	int i;
 	for (i = 0; i < len; i++)
 	{
-		case_t* test_suite = (case_t*)(start_pointer + i);
-		if (test_suite->sig_head == the_sig && test_suite->sig_tail == the_sig)
+		case_t* test_case = (case_t*)(start_pointer + i);
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
 			total++;
 	}
-	int j = 1, pass = 0, fail = 0;
+	int j = 0, pass = 0, fail = 0;
 	for (i = 0; i < len; i++)
 	{
-		case_t* test_suite = (case_t*)(start_pointer + i);
-		if (test_suite->sig_head == the_sig && test_suite->sig_tail == the_sig)
-		{
-			printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", j, total, test_suite->name);
-			fflush(stdout);
-			int result = 0;
-			test_suite->driver(test_suite->name, &result);
-			if (result == 0)
-			{
-				pass++;
-				printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", j, total, test_suite->name);
-			} else {
-				fail++;
-				printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", j, total, test_suite->name);
-			}
-			j++;
-		}
+		case_t* test_case = (case_t*)(start_pointer + i);
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
+			case_run(test_case, j++, total, &pass, &fail);
 	}
-	if (fail == 0)
-		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
-	else
-		printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+	case_conclude(pass, fail);
 	return fail;
 }
 
+#endif
 #endif
