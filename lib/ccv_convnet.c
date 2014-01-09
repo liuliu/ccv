@@ -657,12 +657,10 @@ static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer,
 					float u = ap[j * ch + k];
 					for (y = start_y; y < end_y; y++)
 						for (x = start_x; x < end_x; x++)
-						{
-							float mv = mp[(j * strides - border + x + (y - border) * m->cols) * ch + k];
-							float delta = fabsf(mv - v) / ccv_max(ccv_max(mv, v), 1e-5);
-							if (delta < 1e-5) // we cannot do direct comparison because CPU have different result comparing with GPU
+							// we have to do direct comparison otherwise it will contribute to too many cells
+							// and the propagation won't work. But CPU will have different result comparing with GPU
+							if (mp[(j * strides - border + x + (y - border) * m->cols) * ch + k] == v)
 								bp[(j * strides - border + x + (y - border) * db->cols) * ch + k] += u;
-						}
 				}
 			}
 			ap += a->cols * ch;

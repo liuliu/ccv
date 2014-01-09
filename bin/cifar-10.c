@@ -169,6 +169,7 @@ int main(int argc, char** argv)
 		for (k = 0; k < num1; k++)
 		{
 			fread(bytes, 32 * 32 + 1, 1, r1);
+			int c = bytes[0];
 			ccv_dense_matrix_t* a = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
@@ -181,13 +182,14 @@ int main(int argc, char** argv)
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
 					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0 * 2 - 1;
-			ccv_categorized_t categorized = ccv_categorized(bytes[0] /* the class */, a, 0);
+			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(categorizeds, &categorized);
 		}
 		ccv_array_t* tests = ccv_array_new(sizeof(ccv_categorized_t), num2, 0);
 		for (k = 0; k < num2; k++)
 		{
 			fread(bytes, 32 * 32 + 1, 1, r2);
+			int c = bytes[0];
 			ccv_dense_matrix_t* a = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
@@ -200,7 +202,7 @@ int main(int argc, char** argv)
 			for (i = 0; i < 31; i++)
 				for (j = 0; j < 31; j++)
 					a->data.f32[(j + i * 31) * 3 + 2] = bytes[j + i * 32] / 255.0 * 2 - 1;
-			ccv_categorized_t categorized = ccv_categorized(bytes[0] /* the class */, a, 0);
+			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(tests, &categorized);
 		}
 		ccv_convnet_train_param_t params = {
