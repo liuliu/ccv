@@ -283,6 +283,7 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	dim3 threads_per_block(batch / 8, layer->net.convolutional.count / 4);
 	dim3 num_blocks(out_rows, out_cols);
 	int shared_memory_size = sizeof(float) * (batch + layer->net.convolutional.count);
+	cudaFuncSetCacheConfig(_cwc_kern_convolutional_forward_propagate<8, 4>, cudaFuncCachePreferShared);
 	_cwc_kern_convolutional_forward_propagate
 		<8, 4>
 		<<<num_blocks, threads_per_block, shared_memory_size + /* need extra space for bias */ sizeof(float) * layer->net.convolutional.count, stream>>>
@@ -558,6 +559,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		{
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 4) / 5, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 5 + layer->net.convolutional.count));
+			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff<1, 1, CWC_COEFF_SPREAD, 5>, cudaFuncCachePreferShared);
 			_cwc_kern_convolutional_backward_propagate_coeff
 			<1, 1, CWC_COEFF_SPREAD, 5>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
@@ -569,6 +571,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		} else {
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 5) / 6, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 6 + layer->net.convolutional.count));
+			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff<1, 1, CWC_COEFF_SPREAD, 6>, cudaFuncCachePreferShared);
 			_cwc_kern_convolutional_backward_propagate_coeff
 			<1, 1, CWC_COEFF_SPREAD, 6>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
@@ -584,6 +587,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		{
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 4) / 5, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 5 + layer->net.convolutional.count));
+			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff<2, 4, CWC_COEFF_SPREAD, 5>, cudaFuncCachePreferShared);
 			_cwc_kern_convolutional_backward_propagate_coeff
 			<2, 4, CWC_COEFF_SPREAD, 5>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
@@ -595,6 +599,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		} else {
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 5) / 6, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 6 + layer->net.convolutional.count));
+			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff<2, 4, CWC_COEFF_SPREAD, 6>, cudaFuncCachePreferShared);
 			_cwc_kern_convolutional_backward_propagate_coeff
 			<2, 4, CWC_COEFF_SPREAD, 6>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
@@ -608,7 +613,6 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	dim3 threads_per_block_for_bias(batch / 8, 8);
 	dim3 num_blocks_for_bias(layer->net.convolutional.count);
 	shared_memory_size = sizeof(float) * (1 + batch * 8);
-	cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_bias<8>, cudaFuncCachePreferShared);
 	_cwc_kern_convolutional_backward_propagate_bias
 	<8>
 	<<<num_blocks_for_bias, threads_per_block_for_bias, shared_memory_size, stream>>>
@@ -621,6 +625,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		dim3 threads_per_block(batch / 8, layer->input.matrix.channels / 2);
 		dim3 num_blocks(layer->input.matrix.rows, layer->input.matrix.cols);
 		shared_memory_size = sizeof(float) * (batch + layer->input.matrix.channels * 16);
+		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate<8, 2, 16>, cudaFuncCachePreferShared);
 		_cwc_kern_convolutional_backward_propagate
 		<8, 2, 16>
 		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>

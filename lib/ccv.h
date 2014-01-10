@@ -1075,6 +1075,7 @@ enum {
 	CCV_CONVNET_FULL_CONNECT = 0x02,
 	CCV_CONVNET_MAX_POOL = 0x03,
 	CCV_CONVNET_AVERAGE_POOL = 0x04,
+	CCV_CONVNET_LOCAL_RESPONSE_NORM = 0x05,
 };
 
 typedef union {
@@ -1098,6 +1099,14 @@ typedef union {
 		// padding for input
 		int border;
 	} pool;
+	struct {
+		// cross map size
+		int size;
+		// coeffs for a[i] / (kappa + alpha * sum(a, i - size / 2, i + size / 2))^beta
+		float kappa;
+		float alpha;
+		float beta;
+	} rnorm;
 	struct {
 		int count;
 	} full_connect;
@@ -1143,6 +1152,7 @@ typedef struct {
 	int count;
 	ccv_convnet_layer_t* layers; // the layer configuration
 	ccv_dense_matrix_t** acts; // hidden layers and output layers
+	ccv_dense_matrix_t** denoms; // denominators
 	ccv_dense_matrix_t** dropouts; // the dropout for hidden layers
 	void* reserved;
 } ccv_convnet_t;

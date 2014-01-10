@@ -12,7 +12,7 @@
 
 ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count)
 {
-	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count + sizeof(ccv_dense_matrix_t*) * (count - 1));
+	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count * 2 + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	convnet->use_cwc_accel = use_cwc_accel;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
@@ -21,9 +21,11 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], 
 	convnet->layers = (ccv_convnet_layer_t*)(convnet + 1);
 	convnet->acts = (ccv_dense_matrix_t**)(convnet->layers + count);
 	memset(convnet->acts, 0, sizeof(ccv_dense_matrix_t*) * count);
+	convnet->denoms = (ccv_dense_matrix_t**)(convnet->acts + count);
+	memset(convnet->denoms, 0, sizeof(ccv_dense_matrix_t*) * count);
 	if (count > 1) 
 	{
-		convnet->dropouts = (ccv_dense_matrix_t**)(convnet->acts + count);
+		convnet->dropouts = (ccv_dense_matrix_t**)(convnet->acts + count * 2);
 		memset(convnet->dropouts, 0, sizeof(ccv_dense_matrix_t*) * (count - 1));
 	} else {
 		convnet->dropouts = 0;
@@ -90,6 +92,10 @@ inline static void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_col
 		case CCV_CONVNET_FULL_CONNECT:
 			*rows = layer->net.full_connect.count;
 			*cols = 1;
+			break;
+		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+			*rows = a_rows;
+			*cols = a_cols;
 			break;
 		case CCV_CONVNET_MAX_POOL:
 		case CCV_CONVNET_AVERAGE_POOL:
@@ -214,6 +220,43 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
 }
 
+static void _ccv_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_dense_matrix_t** denoms)
+{
+	int rows, cols;
+	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	int size = layer->net.rnorm.size;
+	float kappa = layer->net.rnorm.kappa;
+	float alpha = layer->net.rnorm.alpha;
+	float beta = layer->net.rnorm.beta;
+	int way = size / 2;
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int type = CCV_32F | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
+	ccv_dense_matrix_t* ddenoms = *denoms = ccv_dense_matrix_renew(*denoms, rows, cols, type, type, 0);
+	int i, j, k, x;
+	float* ap = a->data.f32;
+	float* dp = ddenoms->data.f32;
+	float* bp = db->data.f32;
+	for (i = 0; i < db->rows; i++)
+	{
+		for (j = 0; j < db->cols; j++)
+			for (k = 0; k < ch; k++)
+			{
+				float v = ap[j * ch + k];
+				float denom = 0;
+				for (x = ccv_max(k - way, 0); x <= ccv_min(k + way, ch - 1); x++)
+					denom += ap[j * ch + x] * ap[j * ch + x];
+				denom = kappa + alpha * denom;
+				dp[j * ch + k] = denom;
+				bp[j * ch + k] = v * powf(denom, -beta);
+			}
+		ap += a->cols * ch;
+		dp += ddenoms->cols * ch;
+		bp += db->cols * ch;
+	}
+}
+
 static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
@@ -314,6 +357,9 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 		case CCV_CONVNET_FULL_CONNECT:
 			_ccv_convnet_full_connect_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
 			break;
+		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+			_ccv_convnet_rnorm_forward_propagate(convnet->layers, *a, convnet->acts, convnet->denoms);
+			break;
 		case CCV_CONVNET_MAX_POOL:
 			_ccv_convnet_max_pool_forward_propagate(convnet->layers, *a, convnet->acts);
 			break;
@@ -332,6 +378,9 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				_ccv_convnet_full_connect_forward_propagate(layer, convnet->acts[i - 1], d, convnet->acts + i);
+				break;
+			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+				_ccv_convnet_rnorm_forward_propagate(layer, convnet->acts[i - 1], convnet->acts + i, convnet->denoms + i);
 				break;
 			case CCV_CONVNET_MAX_POOL:
 				_ccv_convnet_max_pool_forward_propagate(layer, convnet->acts[i - 1], convnet->acts + i);
@@ -623,6 +672,42 @@ static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type) * CCV_GET_CHANNEL(x->type);
 }
 
+static void _ccv_convnet_rnorm_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* n, ccv_dense_matrix_t* m, ccv_dense_matrix_t* denoms, ccv_dense_matrix_t** b)
+{
+	int rows, cols;
+	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	int size = layer->net.rnorm.size;
+	float alpha = layer->net.rnorm.alpha;
+	float beta = layer->net.rnorm.beta;
+	int way = size / 2;
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int ch = CCV_GET_CHANNEL(a->type);
+	int type = CCV_32F | ch;
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
+	int i, j, k, x;
+	float* ap = a->data.f32;
+	float* np = n->data.f32;
+	float* mp = m->data.f32;
+	float* dp = denoms->data.f32;
+	float* bp = db->data.f32;
+	for (i = 0; i < db->rows; i++)
+	{
+		for (j = 0; j < db->cols; j++)
+			for (k = 0; k < ch; k++)
+			{
+				float nom = 0;
+				for (x = ccv_max(k - way, 0); x <= ccv_min(k + way, ch - 1); x++)
+					nom += -2 * alpha * beta * ap[j * ch + x] * np[j * ch + x] / dp[j * ch + x];
+				bp[j * ch + k] = mp[j * ch + k] * nom + ap[j * ch + k] * powf(dp[j * ch + k], -beta);
+			}
+		ap += a->cols * ch;
+		np += n->cols * ch;
+		mp += m->cols * ch;
+		dp += denoms->cols * ch;
+		bp += db->cols * ch;
+	}
+}
+
 static void _ccv_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* n, ccv_dense_matrix_t* m, ccv_dense_matrix_t** b)
 {
 	// a is the input gradient (for back prop), y is the output (from forward prop),
@@ -726,6 +811,9 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				break;
+			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+				_ccv_convnet_rnorm_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, convnet->denoms[i], i > 0 ? update_params->acts + i - 1 : 0);
 				break;
 			case CCV_CONVNET_MAX_POOL:
 				_ccv_convnet_max_pool_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0);

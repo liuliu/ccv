@@ -54,6 +54,25 @@ int main(int argc, char** argv)
 			},
 		},
 		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 15,
+					.cols = 15,
+					.channels = 32,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 3,
+					.kappa = 2,
+					.alpha = 0.00005,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.01,
@@ -90,6 +109,25 @@ int main(int argc, char** argv)
 					.size = 3,
 					.strides = 2,
 					.border = 0,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.dropout_rate = 0,
+			.input = {
+				.matrix = {
+					.rows = 7,
+					.cols = 7,
+					.channels = 32,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 3,
+					.kappa = 2,
+					.alpha = 0.00005,
+					.beta = 0.75,
 				},
 			},
 		},
@@ -155,7 +193,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(1, params, 7);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 9);
 	assert(argc == 5);
 	int num1 = atoi(argv[2]);
 	int num2 = atoi(argv[4]);
