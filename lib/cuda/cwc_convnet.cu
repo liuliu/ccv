@@ -910,7 +910,7 @@ static void _cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 	_ccv_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
 	dim3 num_blocks(layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels);
 	dim3 threads_per_block(batch);
-	int shared_memory_size = sizeof(float) * batch * 3;
+	int shared_memory_size = sizeof(float) * batch;
 	_cwc_kern_average_pool_backward_propagate
 	<1>
 	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
