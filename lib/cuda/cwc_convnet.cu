@@ -502,7 +502,8 @@ __global__ void _cwc_kern_convolutional_backward_propagate(const int strides, co
 			#pragma unroll
 			for (k = 0; k < count; k++)
 			{
-				if (k % filter_per_iteration == 0)
+				const int k_idx = k % filter_per_iteration;
+				if (k_idx == 0)
 				{
 					const int min_channel_filter_count = channels * min(filter_per_iteration, count - k);
 					#pragma unroll
@@ -520,7 +521,6 @@ __global__ void _cwc_kern_convolutional_backward_propagate(const int strides, co
 					if (i * thcnt + thidx < batch)
 						shared_grad[i * thcnt + thidx] = out_grad_per_filter[c * batch + i * thcnt + thidx];
 				__syncthreads();
-				const int k_idx = k % filter_per_iteration;
 				#pragma unroll
 				for (i = 0; i < input_per_thread; i++)
 					#pragma unroll
@@ -546,11 +546,11 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	assert(batch % 16 == 0);
 	int out_rows, out_cols, shared_memory_size;
 	_ccv_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
+	// it turns out that first apply relu would save us a lot of computation because no need to low both out and out_grad any more
 	_cwc_kern_convolutional_relu_backward_propagate
 	<<<dim3(out_rows, out_cols, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
-	dim3 threads_per_block_for_bias(batch / 8, 8);
 	if (layer->input.matrix.channels == 3)
 	{
 		dim3 threads_per_block_for_coeff(layer->input.matrix.channels, layer->net.convolutional.count);
@@ -578,14 +578,14 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 				configuration->w,
 				layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
 		}
-	} else if (layer->net.convolutional.count * layer->input.matrix.channels <= 1024 * 2) {
-		dim3 threads_per_block_for_coeff(layer->input.matrix.channels, layer->net.convolutional.count / 2);
+	} else if (layer->net.convolutional.count * layer->input.matrix.channels <= 1024 * 8) {
+		dim3 threads_per_block_for_coeff(layer->input.matrix.channels / 2, layer->net.convolutional.count / 4);
 		if (layer->net.convolutional.cols <= 5)
 		{
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 4) / 5, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 5 + layer->net.convolutional.count));
 			_cwc_kern_convolutional_backward_propagate_coeff
-			<1, 2, CWC_COEFF_SPREAD, 5>
+			<2, 4, CWC_COEFF_SPREAD, 5>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
 			(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 				m, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels,
@@ -596,7 +596,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			dim3 num_blocks_for_coeff(layer->net.convolutional.rows, (layer->net.convolutional.cols + 5) / 6, out_rows * batch / CWC_COEFF_SPREAD);
 			shared_memory_size = sizeof(float) * (CWC_COEFF_SPREAD * (layer->input.matrix.channels * 6 + layer->net.convolutional.count));
 			_cwc_kern_convolutional_backward_propagate_coeff
-			<1, 2, CWC_COEFF_SPREAD, 6>
+			<2, 4, CWC_COEFF_SPREAD, 6>
 			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>>
 			(layer->net.convolutional.strides, layer->net.convolutional.border, batch,
 				m, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels,
@@ -605,6 +605,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 				layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count);
 		}
 	}
+	dim3 threads_per_block_for_bias(batch / 8, 8);
 	dim3 num_blocks_for_bias(layer->net.convolutional.count);
 	shared_memory_size = sizeof(float) * (1 + batch * 8);
 	cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_bias<8>, cudaFuncCachePreferShared);
