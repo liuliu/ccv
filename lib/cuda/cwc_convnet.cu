@@ -1265,7 +1265,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			float* current_input_batch = input_batch_on_host[i % 2];
 			int* current_c = c_on_host[i % 2];
 			_cwc_convnet_batch_formation(categorizeds, idx, convnet->rows, convnet->cols, convnet->channels, params.mini_batch, i * params.mini_batch, params.mini_batch, current_input_batch, current_c);
-			FLUSH(" - at epoch %d / %d - stochastic gradient descent at %d / %d", t + 1, params.max_epoch, i + 1, aligned_batches);
+			FLUSH(" - at epoch %03d / %d => stochastic gradient descent at %d / %d", t + 1, params.max_epoch, i + 1, aligned_batches);
 			cudaMemcpyAsync(input_batch_on_device[i % 2], current_input_batch, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->stream);
 			assert(cudaGetLastError() == cudaSuccess);
 			cudaMemcpyAsync(c_on_device[i % 2], current_c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->stream);
@@ -1311,7 +1311,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaEventSynchronize(stop);
 		float elapsed_time = 0;
 		cudaEventElapsedTime(&elapsed_time, start, stop);
-		FLUSH(" - at epoch %d / %d - with miss rate %.2f%% (%.3f sec)\n", t + 1, params.max_epoch, miss * 100.0f / tests->rnum, elapsed_time / 1000);
+		FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% (%.3f sec)\n", t + 1, params.max_epoch, miss * 100.0f / tests->rnum, elapsed_time / 1000);
 		if (t + 1 < params.max_epoch)
 		{
 			// reshuffle the parts we visited and move the rest to the beginning
