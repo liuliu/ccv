@@ -55,7 +55,7 @@ int main(int argc, char** argv)
 			},
 		},
 		{
-			.type = CCV_CONVNET_MAX_POOL,
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM, // CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
 					.rows = 55,
@@ -64,10 +64,11 @@ int main(int argc, char** argv)
 				},
 			},
 			.output = {
-				.pool = {
-					.strides = 2,
+				.rnorm = {
 					.size = 5,
-					.border = 1,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
 				},
 			},
 		},

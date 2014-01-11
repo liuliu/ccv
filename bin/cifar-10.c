@@ -66,7 +66,7 @@ int main(int argc, char** argv)
 			.output = {
 				.rnorm = {
 					.size = 3,
-					.kappa = 2,
+					.kappa = 1,
 					.alpha = 0.00005,
 					.beta = 0.75,
 				},
@@ -125,7 +125,7 @@ int main(int argc, char** argv)
 			.output = {
 				.rnorm = {
 					.size = 3,
-					.kappa = 2,
+					.kappa = 1,
 					.alpha = 0.00005,
 					.beta = 0.75,
 				},
@@ -193,7 +193,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 9);
+	ccv_convnet_t* convnet = ccv_convnet_new(1, params, 9);
 	assert(argc == 5);
 	int num1 = atoi(argv[2]);
 	int num2 = atoi(argv[4]);
@@ -244,10 +244,10 @@ int main(int argc, char** argv)
 			ccv_array_push(tests, &categorized);
 		}
 		ccv_convnet_train_param_t params = {
-			.max_epoch = 100,
+			.max_epoch = 999,
 			.mini_batch = 128,
 			.decay = 0.005,
-			.learn_rate = 0.00008,
+			.learn_rate = 0.00005,
 			.momentum = 0.9,
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, params);
