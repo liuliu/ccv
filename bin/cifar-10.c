@@ -12,12 +12,11 @@ unsigned int get_current_time()
 int main(int argc, char** argv)
 {
 	ccv_enable_default_cache();
-	ccv_convnet_param_t params[] = {
+	ccv_convnet_layer_param_t params[] = {
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.01,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -55,7 +54,6 @@ int main(int argc, char** argv)
 		},
 		{
 			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 15,
@@ -76,7 +74,6 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.01,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 15,
@@ -114,7 +111,6 @@ int main(int argc, char** argv)
 		},
 		{
 			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 7,
@@ -135,7 +131,6 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.01,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 7,
@@ -175,7 +170,6 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 0,
 			.sigma = 0.01,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 3,
@@ -243,12 +237,42 @@ int main(int argc, char** argv)
 			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(tests, &categorized);
 		}
+		ccv_convnet_layer_train_param_t layer_params[9];
+		memset(layer_params, 0, sizeof(layer_params));
+		
+		layer_params[0].w.decay = 0.005;
+		layer_params[0].w.learn_rate = 0.00005;
+		layer_params[0].w.momentum = 0.9;
+		layer_params[0].bias.decay = 0;
+		layer_params[0].bias.learn_rate = 0.0001;
+		layer_params[0].bias.momentum = 0.9;
+
+		layer_params[3].w.decay = 0.005;
+		layer_params[3].w.learn_rate = 0.00005;
+		layer_params[3].w.momentum = 0.9;
+		layer_params[3].bias.decay = 0;
+		layer_params[3].bias.learn_rate = 0.0001;
+		layer_params[3].bias.momentum = 0.9;
+
+		layer_params[6].w.decay = 0.005;
+		layer_params[6].w.learn_rate = 0.00005;
+		layer_params[6].w.momentum = 0.9;
+		layer_params[6].bias.decay = 0;
+		layer_params[6].bias.learn_rate = 0.0001;
+		layer_params[6].bias.momentum = 0.9;
+
+		// layer_params[8].dor = 0.5; 
+		layer_params[8].w.decay = 1;
+		layer_params[8].w.learn_rate = 0.00005;
+		layer_params[8].w.momentum = 0.9;
+		layer_params[8].bias.decay = 0;
+		layer_params[8].bias.learn_rate = 0.0001;
+		layer_params[8].bias.momentum = 0.9;
+
 		ccv_convnet_train_param_t params = {
 			.max_epoch = 999,
 			.mini_batch = 128,
-			.decay = 0.005,
-			.learn_rate = 0.00005,
-			.momentum = 0.9,
+			.layer_params = layer_params,
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, params);
 	}

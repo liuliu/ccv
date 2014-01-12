@@ -1125,16 +1125,14 @@ typedef struct {
 
 typedef struct {
 	int type;
-	float dropout_rate;
 	float bias; // bias initialization
 	float sigma; // weight initialization with deviation from Gaussian distribution
 	ccv_convnet_input_t input;
 	ccv_convnet_type_t output;
-} ccv_convnet_param_t;
+} ccv_convnet_layer_param_t;
 
 typedef struct {
 	int type;
-	float dropout_rate;
 	float* w; // weight
 	float* bias; // bias
 	size_t wnum; // the number of weights
@@ -1158,11 +1156,25 @@ typedef struct {
 } ccv_convnet_t;
 
 typedef struct {
+	float decay;
+	float learn_rate;
+	float momentum;
+} ccv_convnet_layer_sgd_param_t;
+
+typedef struct {
+	// the dropout rate, I find that dor is better looking than dropout_rate,
+	// and drop out is happened on the input neuron (so that when the network
+	// is used in real-world, I simply need to multiply its weights and bias
+	// to the dor to get the real one
+	float dor;
+	ccv_convnet_layer_sgd_param_t w;
+	ccv_convnet_layer_sgd_param_t bias;
+} ccv_convnet_layer_train_param_t;
+
+typedef struct {
 	int max_epoch;
 	int mini_batch;
-	double decay;
-	double learn_rate;
-	double momentum;
+	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
 
 enum {
@@ -1191,7 +1203,7 @@ inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matri
 	return categorized;
 }
 
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count);
+ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t params[], int count);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch);

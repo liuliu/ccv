@@ -10,7 +10,7 @@
 
 #ifndef CASE_TESTS
 
-ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], int count)
+ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t params[], int count)
 {
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count * 2 + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	convnet->use_cwc_accel = use_cwc_accel;
@@ -41,7 +41,6 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_param_t params[], 
 		layers[i].type = params[i].type;
 		layers[i].input = params[i].input;
 		layers[i].net = params[i].output;
-		layers[i].dropout_rate = params[i].dropout_rate;
 		switch (params[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
@@ -423,24 +422,6 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* l
 }
 
 #endif
-
-static void _ccv_convnet_randomize_dropouts(gsl_rng* rng, int a_rows, int a_cols, ccv_convnet_layer_t* layer, ccv_dense_matrix_t** dropouts)
-{
-	if (layer->dropout_rate > 0)
-	{
-		int rows, cols;
-		_ccv_convnet_layer_deduce_output_format(a_rows, a_cols, layer, &rows, &cols);
-		ccv_dense_matrix_t* db = *dropouts = ccv_dense_matrix_renew(*dropouts, rows, cols, CCV_32S | CCV_C1, CCV_32S | CCV_C1, 0);
-		int* bptr = db->data.i32;
-		memset(bptr, 0, sizeof(int) * cols * rows);
-		// dropout half of the neurons
-		int i;
-		for (i = 0; i < (int)(rows * cols * (1 - layer->dropout_rate) + 0.5); i++)
-			bptr[i] = 1;
-		// shuffle the dropout
-		gsl_ran_shuffle(rng, bptr, rows * cols, sizeof(int));
-	}
-}
 
 static void _ccv_convnet_compute_softmax(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
@@ -825,7 +806,7 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 	}
 }
 
-static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum, ccv_convnet_t* update_params, double m, double learn_rate, double decay)
+static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum, ccv_convnet_t* update_params, ccv_convnet_layer_train_param_t* layer_params)
 {
 	int i, j;
 	for (i = 0; i < convnet->count; i++)
@@ -838,7 +819,7 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* dw = update_params->layers[i].w;
 				for (j = 0; j < convnet->layers[i].wnum; j++)
 				{
-					vw[j] = m * vw[j] - decay * learn_rate * w[j] + learn_rate * dw[j];
+					vw[j] = layer_params[i].w.momentum * vw[j] - layer_params[i].w.decay * layer_params[i].w.learn_rate * w[j] + layer_params[i].w.learn_rate * dw[j];
 					w[j] += vw[j];
 				}
 				float* bias = convnet->layers[i].bias;
@@ -846,7 +827,7 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* dbias = update_params->layers[i].bias;
 				for (j = 0; j < convnet->layers[i].net.convolutional.count; j++)
 				{
-					vbias[j] = m * vbias[j] - decay * learn_rate * bias[j] + learn_rate * dbias[j];
+					vbias[j] = layer_params[i].bias.momentum * vbias[j] - layer_params[i].bias.decay * layer_params[i].bias.learn_rate * bias[j] + layer_params[i].bias.learn_rate * dbias[j];
 					bias[j] += vbias[j];
 				}
 				break;
@@ -858,7 +839,7 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* dw = update_params->layers[i].w;
 				for (j = 0; j < convnet->layers[i].wnum; j++)
 				{
-					vw[j] = m * vw[j] - decay * learn_rate * w[j] + learn_rate * dw[j];
+					vw[j] = layer_params[i].w.momentum * vw[j] - layer_params[i].w.decay * layer_params[i].w.learn_rate * w[j] + layer_params[i].w.learn_rate * dw[j];
 					w[j] += vw[j];
 				}
 				float* bias = convnet->layers[i].bias;
@@ -866,7 +847,7 @@ static void _ccv_convnet_update(ccv_convnet_t* convnet, ccv_convnet_t* momentum,
 				float* dbias = update_params->layers[i].bias;
 				for (j = 0; j < convnet->layers[i].net.full_connect.count; j++)
 				{
-					vbias[j] = m * vbias[j] - decay * learn_rate * bias[j] + learn_rate * dbias[j];
+					vbias[j] = layer_params[i].bias.momentum * vbias[j] - layer_params[i].bias.decay * layer_params[i].bias.learn_rate * bias[j] + layer_params[i].bias.learn_rate * dbias[j];
 					bias[j] += vbias[j];
 				}
 				break;
@@ -908,7 +889,6 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 	int i;
 	for (i = 0; i < convnet->count; i++)
 	{
-		update_params->layers[i].dropout_rate = convnet->layers[i].dropout_rate;
 		update_params->layers[i].type = convnet->layers[i].type;
 		update_params->layers[i].net = convnet->layers[i].net;
 		update_params->layers[i].wnum = convnet->layers[i].wnum;
@@ -961,21 +941,6 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		for (i = 0; i < aligned_rnum; i++)
 		{
 			// dropout the first hidden layer
-			int a_rows = convnet->rows, a_cols = convnet->cols;
-			for (j = 0; j < convnet->count - 1; j++)
-			{
-				switch (convnet->layers[j].type)
-				{
-					case CCV_CONVNET_CONVOLUTIONAL:
-					case CCV_CONVNET_FULL_CONNECT:
-						_ccv_convnet_randomize_dropouts(rng, a_rows, a_cols, convnet->layers + j, convnet->dropouts + j);
-						break;
-					case CCV_CONVNET_MAX_POOL:
-					case CCV_CONVNET_AVERAGE_POOL:
-						_ccv_convnet_layer_deduce_output_format(a_rows, a_cols, convnet->layers + j, &a_rows, &a_cols);
-						break;
-				}
-			}
 			ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx[i]);
 			ccv_convnet_encode(convnet, &categorized->matrix, convnet->acts + convnet->count - 1, 1);
 			ccv_dense_matrix_t* softmax = convnet->acts[convnet->count - 1];
@@ -991,7 +956,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			{
 				FLUSH(" - at epoch %03d / %d => stochastic gradient descent at %d / %d", t + 1, params.max_epoch, (i + 1) / params.mini_batch, aligned_rnum / params.mini_batch);
 				// update weights
-				_ccv_convnet_update(convnet, momentum, update_params, params.momentum, params.learn_rate, params.decay);
+				_ccv_convnet_update(convnet, momentum, update_params, params.layer_params);
 				_ccv_convnet_update_zero(update_params);
 			}
 		}

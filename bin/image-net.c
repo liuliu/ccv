@@ -31,7 +31,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r);
 	free(file);
-	ccv_convnet_param_t params[] = {
+	ccv_convnet_layer_param_t params[] = {
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
@@ -111,12 +111,11 @@ int main(int argc, char** argv)
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(1, params, 4);
+	ccv_convnet_layer_train_param_t layer_params[4];
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,
-		.decay = 0.005,
-		.learn_rate = 0.00008,
-		.momentum = 0.9,
+		.layer_params = layer_params,
 	};
 	int i;
 	for (i = 0; i < convnet->layers->wnum; i++)
