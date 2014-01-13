@@ -1164,8 +1164,8 @@ typedef struct {
 typedef struct {
 	// the dropout rate, I find that dor is better looking than dropout_rate,
 	// and drop out is happened on the input neuron (so that when the network
-	// is used in real-world, I simply need to multiply its weights and bias
-	// to the dor to get the real one
+	// is used in real-world, I simply need to multiply its weights to 1 - dor
+	// to get the real one)
 	float dor;
 	ccv_convnet_layer_sgd_param_t w;
 	ccv_convnet_layer_sgd_param_t bias;

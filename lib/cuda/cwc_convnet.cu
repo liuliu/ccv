@@ -1443,6 +1443,47 @@ static void _cwc_convnet_batch_formation(ccv_array_t* categorizeds, int* idx, in
 	}
 }
 
+static void _cwc_convnet_dor_mean_net(ccv_convnet_t* convnet, ccv_convnet_layer_train_param_t* layer_params, const cublasHandle_t& handle)
+{
+	int i;
+	for (i = 0; i < convnet->count; i++)
+		if (layer_params[i].dor > 0)
+		{
+			ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
+			float dor = 1.0 - layer_params[i].dor;
+			cublasSscal(handle, layer->wnum, &dor, layer->w, 1);
+		}
+}
+
+static void _cwc_convnet_dor_mean_net_undo(ccv_convnet_t* convnet, ccv_convnet_layer_train_param_t* layer_params, const cublasHandle_t& handle)
+{
+	int i;
+	for (i = 0; i < convnet->count; i++)
+		if (layer_params[i].dor > 0)
+		{
+			ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
+			float inv_dor = 1.0 / (1.0 - layer_params[i].dor);
+			cublasSscal(handle, layer->wnum, &inv_dor, layer->w, 1);
+		}
+}
+
+static void _cwc_convnet_dor_formation(ccv_convnet_t* convnet, int batch, gsl_rng* rng, ccv_convnet_layer_train_param_t* layer_params, cwc_convnet_context_t* context)
+{
+	int i, j;
+	for (i = 0; i < convnet->count; i++)
+		if (context->host.dor[i])
+		{
+			assert(context->device.dor[i]);
+			assert(layer_params[i].dor > 0);
+			ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
+			int count = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
+			for (j = 0; j < batch * count; j++)
+				context->host.dor[i][j] = (gsl_rng_uniform(rng) >= layer_params[i].dor) ? 1.0 : 0.0;
+			cudaMemcpyAsync(context->device.dor[i], context->host.dor[i], sizeof(float) * count * batch, cudaMemcpyHostToDevice, context->device.stream);
+			assert(cudaGetLastError() == cudaSuccess);
+		}
+}
+
 __global__ void _cwc_kern_mute_neuron(float* a, float* d)
 {
 	a += blockIdx.x * blockDim.x;
@@ -1572,6 +1613,9 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	for (t = 0; t < params.max_epoch; t++)
 	{
 		cudaEventRecord(start, 0);
+		// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
+		if (t > 0) // undo the mean network for further training
+			_cwc_convnet_dor_mean_net_undo(convnet, params.layer_params, GPU(convnet)->contexts[1].device.cublas);
 		// run updates
 		for (i = 0; i < aligned_batches; i++)
 		{
@@ -1581,6 +1625,8 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 			assert(cudaGetLastError() == cudaSuccess);
 			cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
+			assert(cudaGetLastError() == cudaSuccess);
+			_cwc_convnet_dor_formation(convnet, params.mini_batch, rng, params.layer_params, context);
 			assert(cudaGetLastError() == cudaSuccess);
 			// sync with the other stream core so that we can compute on the single true layer parameters
 			cudaStreamSynchronize(GPU(convnet)->contexts[(i + 1) % 2].device.stream);
@@ -1595,6 +1641,8 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			assert(cudaGetLastError() == cudaSuccess);
 		}
 		cudaDeviceSynchronize(); // synchronize at this point
+		// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in testing
+		_cwc_convnet_dor_mean_net(convnet, params.layer_params, GPU(convnet)->contexts[1].device.cublas);
 		// run tests
 		for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 		{
