@@ -8,6 +8,37 @@
 #include "cuda/cwc.h"
 #endif
 
+inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* layer, int* rows, int* cols)
+{
+	assert(rows != 0 && cols != 0);
+	switch(layer->type)
+	{
+		case CCV_CONVNET_CONVOLUTIONAL:
+			assert(layer->net.convolutional.rows % 2); // as of now, don't support even number of kernel size
+			assert(layer->net.convolutional.cols % 2);
+			// assert((layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
+			// assert((layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
+			*rows = (layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
+			*cols = (layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
+			break;
+		case CCV_CONVNET_FULL_CONNECT:
+			*rows = layer->net.full_connect.count;
+			*cols = 1;
+			break;
+		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+			*rows = layer->input.matrix.rows;
+			*cols = layer->input.matrix.cols;
+			break;
+		case CCV_CONVNET_MAX_POOL:
+		case CCV_CONVNET_AVERAGE_POOL:
+			// assert((layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			// assert((layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			*rows = (layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
+			*cols = (layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
+			break;
+	}
+}
+
 #ifndef CASE_TESTS
 
 ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t params[], int count)
@@ -73,43 +104,27 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 	return convnet;
 }
 
-#endif
-
-inline static void _ccv_convnet_layer_deduce_output_format(int a_rows, int a_cols, ccv_convnet_layer_t* layer, int* rows, int* cols)
+int ccv_convnet_verify(ccv_convnet_t* convnet, int output)
 {
-	assert(rows != 0 && cols != 0);
-	switch(layer->type)
+	int i, out_rows, out_cols;
+	for (i = 0; i < convnet->count; i++)
 	{
-		case CCV_CONVNET_CONVOLUTIONAL:
-			assert(layer->net.convolutional.rows % 2); // as of now, don't support even number of kernel size
-			assert(layer->net.convolutional.cols % 2);
-			assert((a_rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
-			assert((a_cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
-			*rows = (a_rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) / layer->net.convolutional.strides + 1;
-			*cols = (a_cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) / layer->net.convolutional.strides + 1;
-			break;
-		case CCV_CONVNET_FULL_CONNECT:
-			*rows = layer->net.full_connect.count;
-			*cols = 1;
-			break;
-		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-			*rows = a_rows;
-			*cols = a_cols;
-			break;
-		case CCV_CONVNET_MAX_POOL:
-		case CCV_CONVNET_AVERAGE_POOL:
-			assert((a_rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			assert((a_cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			*rows = (a_rows + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
-			*cols = (a_cols + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
-			break;
+		ccv_convnet_layer_t* layer = convnet->layers + i;
+		if (i > 0 && (out_rows != layer->input.matrix.rows || out_cols != layer->input.matrix.cols))
+			return -1;
+		_ccv_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
 	}
+	if (out_rows * out_cols != output)
+		return -1;
+	return 0;
 }
+
+#endif
 
 static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* d, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int ch = layer->net.convolutional.channels;
 	int count = layer->net.convolutional.count;
 	int strides = layer->net.convolutional.strides;
@@ -222,7 +237,7 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 static void _ccv_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_dense_matrix_t** denoms)
 {
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int size = layer->net.rnorm.size;
 	float kappa = layer->net.rnorm.kappa;
 	float alpha = layer->net.rnorm.alpha;
@@ -259,7 +274,7 @@ static void _ccv_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, ccv
 static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
 	int border = layer->net.pool.border;
@@ -298,7 +313,7 @@ static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, 
 static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
 	int border = layer->net.pool.border;
@@ -450,7 +465,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
 	// note that y (the output from forward prop) is not included because the full connect net is simple enough that we don't need it
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(m->rows, m->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int ch = layer->net.convolutional.channels;
 	int count = layer->net.convolutional.count;
 	int strides = layer->net.convolutional.strides;
@@ -656,7 +671,7 @@ static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 static void _ccv_convnet_rnorm_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* n, ccv_dense_matrix_t* m, ccv_dense_matrix_t* denoms, ccv_dense_matrix_t** b)
 {
 	int rows, cols;
-	_ccv_convnet_layer_deduce_output_format(a->rows, a->cols, layer, &rows, &cols);
+	_ccv_convnet_layer_deduce_output_format(layer, &rows, &cols);
 	int size = layer->net.rnorm.size;
 	float alpha = layer->net.rnorm.alpha;
 	float beta = layer->net.rnorm.beta;

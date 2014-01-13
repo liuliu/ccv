@@ -51,10 +51,10 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 		case CCV_CONVNET_CONVOLUTIONAL:
 			assert(layer->net.convolutional.rows % 2); // as of now, don't support even number of kernel size
 			assert(layer->net.convolutional.cols % 2);
-			assert((layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
-			assert((layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
-			*rows = (layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) / layer->net.convolutional.strides + 1;
-			*cols = (layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) / layer->net.convolutional.strides + 1;
+			// assert((layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
+			// assert((layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
+			*rows = (layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
+			*cols = (layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
 			break;
 		case CCV_CONVNET_FULL_CONNECT:
 			*rows = layer->net.full_connect.count;
@@ -66,10 +66,10 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 			break;
 		case CCV_CONVNET_MAX_POOL:
 		case CCV_CONVNET_AVERAGE_POOL:
-			assert((layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			assert((layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			*rows = (layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
-			*cols = (layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) / layer->net.pool.strides + 1;
+			// assert((layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			// assert((layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			*rows = (layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
+			*cols = (layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
 			break;
 	}
 }
@@ -1678,6 +1678,12 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			memmove(idx + aligned_padding, idx, sizeof(int) * aligned_rnum);
 			memcpy(idx, idx + categorizeds->rnum, sizeof(int) * aligned_padding);
 			gsl_ran_shuffle(rng, idx + aligned_padding, aligned_rnum, sizeof(int));
+		}
+		if (t == 20 || t == 40 || t == 80 || t == 100)
+		{
+			for (i = 0; i < convnet->count; i++)
+				params.layer_params[i].w.learn_rate *= 0.1,
+				params.layer_params[i].bias.learn_rate *= 0.1;
 		}
 	}
 	cudaEventDestroy(start);

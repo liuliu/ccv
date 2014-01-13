@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.0001,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -65,7 +65,7 @@ int main(int argc, char** argv)
 				.rnorm = {
 					.size = 3,
 					.kappa = 1,
-					.alpha = 0.00005,
+					.alpha = 0.0001,
 					.beta = 0.75,
 				},
 			},
@@ -122,7 +122,7 @@ int main(int argc, char** argv)
 				.rnorm = {
 					.size = 3,
 					.kappa = 1,
-					.alpha = 0.00005,
+					.alpha = 0.0001,
 					.beta = 0.75,
 				},
 			},
@@ -182,32 +182,13 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
-					.count = 3 * 3 * 32,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_FULL_CONNECT,
-			.bias = 0,
-			.sigma = 0.01,
-			.input = {
-				.matrix = {
-					.rows = 3 * 3 * 32,
-					.cols = 1,
-					.channels = 1,
-				},
-				.node = {
-					.count = 3 * 3 * 32,
-				},
-			},
-			.output = {
-				.full_connect = {
 					.count = 10,
 				},
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(1, params, 9);
+	ccv_convnet_t* convnet = ccv_convnet_new(1, params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
+	assert(ccv_convnet_verify(convnet, 10) == 0);
 	assert(argc == 5);
 	int num1 = atoi(argv[2]);
 	int num2 = atoi(argv[4]);
@@ -257,44 +238,36 @@ int main(int argc, char** argv)
 			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(tests, &categorized);
 		}
-		ccv_convnet_layer_train_param_t layer_params[10];
+		ccv_convnet_layer_train_param_t layer_params[9];
 		memset(layer_params, 0, sizeof(layer_params));
 		
 		layer_params[0].w.decay = 0.005;
-		layer_params[0].w.learn_rate = 0.00005;
+		layer_params[0].w.learn_rate = 0.0005;
 		layer_params[0].w.momentum = 0.9;
 		layer_params[0].bias.decay = 0;
-		layer_params[0].bias.learn_rate = 0.0001;
+		layer_params[0].bias.learn_rate = 0.001;
 		layer_params[0].bias.momentum = 0.9;
 
 		layer_params[3].w.decay = 0.005;
-		layer_params[3].w.learn_rate = 0.00005;
+		layer_params[3].w.learn_rate = 0.0005;
 		layer_params[3].w.momentum = 0.9;
 		layer_params[3].bias.decay = 0;
-		layer_params[3].bias.learn_rate = 0.0001;
+		layer_params[3].bias.learn_rate = 0.001;
 		layer_params[3].bias.momentum = 0.9;
 
 		layer_params[6].w.decay = 0.005;
-		layer_params[6].w.learn_rate = 0.00005;
+		layer_params[6].w.learn_rate = 0.0005;
 		layer_params[6].w.momentum = 0.9;
 		layer_params[6].bias.decay = 0;
-		layer_params[6].bias.learn_rate = 0.0001;
+		layer_params[6].bias.learn_rate = 0.001;
 		layer_params[6].bias.momentum = 0.9;
 
-		layer_params[8].w.decay = 1;
-		layer_params[8].w.learn_rate = 0.00005;
+		layer_params[8].w.decay = 0.01;
+		layer_params[8].w.learn_rate = 0.0005;
 		layer_params[8].w.momentum = 0.9;
 		layer_params[8].bias.decay = 0;
-		layer_params[8].bias.learn_rate = 0.0001;
+		layer_params[8].bias.learn_rate = 0.001;
 		layer_params[8].bias.momentum = 0.9;
-
-		layer_params[9].dor = 0.5; 
-		layer_params[9].w.decay = 1;
-		layer_params[9].w.learn_rate = 0.00005;
-		layer_params[9].w.momentum = 0.9;
-		layer_params[9].bias.decay = 0;
-		layer_params[9].bias.learn_rate = 0.0001;
-		layer_params[9].bias.momentum = 0.9;
 
 		ccv_convnet_train_param_t params = {
 			.max_epoch = 999,
