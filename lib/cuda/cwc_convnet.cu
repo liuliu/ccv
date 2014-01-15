@@ -340,8 +340,6 @@ __global__ void _cwc_kern_convolutional_forward_propagate(const int strides, con
 	assert(count == filter_per_block * gridDim.z);
 	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
 	const int thcnt = blockDim.x * blockDim.y;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
-	const int filter_loads = (count + thcnt - 1) / thcnt;
 	int c, i, j, x, y;
 	#pragma unroll
 	for (i = 0; i < filter_per_thread; i++)
@@ -349,10 +347,10 @@ __global__ void _cwc_kern_convolutional_forward_propagate(const int strides, con
 		for (j = 0; j < input_per_thread; j++)
 			prod[i][j] = 0;
 	input += (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
-	#pragma unroll
-	for (i = 0; i < filter_loads; i++)
-		if (i * thcnt + thidx < count)
-			shared_bias[i * thcnt + thidx] = biases[i * thcnt + thidx];
+	assert(thcnt >= batch);
+	assert(thcnt >= filter_per_block);
+	if (thidx < filter_per_block)
+		shared_bias[thidx] = biases[blockIdx.z * filter_per_block + thidx];
 	const int start_y = max(blockIdx.x * strides - border, 0) - (blockIdx.x * strides - border);
 	const int end_y = min(blockIdx.x * strides - border + filter_rows, rows) - (blockIdx.x * strides - border);
 	const int start_x = max(blockIdx.y * strides - border, 0) - (blockIdx.y * strides - border);
@@ -363,14 +361,10 @@ __global__ void _cwc_kern_convolutional_forward_propagate(const int strides, con
 		for (y = start_y; y < end_y; y++)
 			for (x = start_x; x < end_x; x++)
 			{
-				#pragma unroll
-				for (i = 0; i < input_loads; i++)
-					if (i * thcnt + thidx < batch)
-						shared_block[i * thcnt + thidx] = input[((y - border) * cols + x - border) * batch + i * thcnt + thidx];
-				#pragma unroll
-				for (i = 0; i < filter_loads; i++)
-					if (i * thcnt + thidx < filter_per_block)
-						shared_weights[i * thcnt + thidx] = filter[(y * filter_cols + x) * count + i * thcnt + thidx];
+				if (thidx < batch)
+					shared_block[thidx] = input[((y - border) * cols + x - border) * batch + thidx];
+				if (thidx < filter_per_block)
+					shared_weights[thidx] = filter[(y * filter_cols + x) * count + thidx];
 				__syncthreads();
 				#pragma unroll
 				for (i = 0; i < filter_per_thread; i++)
@@ -399,15 +393,11 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	int out_rows, out_cols;
 	_ccv_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
 	assert(b);
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
-	cudaEventRecord(start, stream);
 #define vary_block(_x, _y, _z) do { \
 		dim3 threads_per_block(batch / _x, _z / _y); \
 		assert(threads_per_block.x * threads_per_block.y <= 1024); \
 		dim3 num_blocks(out_rows, out_cols, layer->net.convolutional.count / _z); \
-		int shared_memory_size = sizeof(float) * (batch + layer->net.convolutional.count); \
+		int shared_memory_size = sizeof(float) * (batch + _z * 2); \
 		cudaFuncSetCacheConfig(_cwc_kern_convolutional_forward_propagate<_x, _y, _z>, cudaFuncCachePreferShared); \
 		_cwc_kern_convolutional_forward_propagate \
 			<_x, _y, _z> \
@@ -428,17 +418,6 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 		vary_block(4, 4, 16);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
-	cudaEventRecord(stop, stream);
-	cudaEventSynchronize(stop);
-	float elapsed_time = 0;
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	printf("%d %d %d %d %d %d fprop %fms\n", layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, out_rows, out_cols, layer->net.convolutional.count, elapsed_time);
-	static int count = 0;
-	count++;
-	if (count == 5)
-		exit(-1);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
 }
 
 __global__ void _cwc_kern_convolutional_relu_backward_propagate(const int batch,
@@ -699,6 +678,10 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	<<<dim3(out_rows, out_cols, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, stream);
 #define vary_block(_x, _y, _z) do { \
 		dim3 threads_per_block_for_coeff(layer->input.matrix.channels / _x, layer->net.convolutional.count / _y); \
 		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
@@ -723,6 +706,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		else
 			vary_block(1, 1, 6);
 	} else if (layer->net.convolutional.count * layer->input.matrix.channels / 8 <= 1024) {
+		printf("this config\n");
 		if (layer->net.convolutional.cols <= 3)
 			vary_block(2, 4, 3);
 		else if (layer->net.convolutional.cols <= 5)
@@ -730,6 +714,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		else
 			vary_block(2, 4, 6);
 	} else if (layer->net.convolutional.count * layer->input.matrix.channels / 96 <= 1024) {
+		printf("or here?\n");
 		if (layer->net.convolutional.count % 12 == 0)
 		{
 			if (layer->net.convolutional.cols <= 3)
@@ -747,6 +732,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 				vary_block(12, 8, 6);
 		}
 	} else {
+		printf("hmmm here?\n");
 		if (layer->net.convolutional.cols <= 3)
 			vary_block(12, 12, 3);
 		else if (layer->net.convolutional.cols <= 5)
@@ -756,6 +742,13 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	}
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
+	cudaEventRecord(stop, stream);
+	cudaEventSynchronize(stop);
+	float elapsed_time = 0;
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("bprop coeff: %fms\n", elapsed_time);
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
 	dim3 threads_per_block_for_bias(batch / 8, 8);
 	assert(threads_per_block_for_bias.x * threads_per_block_for_bias.y <= 1024);
 	dim3 num_blocks_for_bias(layer->net.convolutional.count);
@@ -999,7 +992,7 @@ __global__ void _cwc_kern_max_pool_forward_propagate(const int strides, const in
 	float* shared_input = &shared[0];
 	const int thcnt = blockDim.x;
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
+	assert(thcnt >= batch);
 	int i, x, y;
 	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
 	float prod[input_per_thread];
@@ -1019,10 +1012,8 @@ __global__ void _cwc_kern_max_pool_forward_propagate(const int strides, const in
 		#pragma unroll
 		for (x = size_start_x; x < size_end_x; x++)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
+			if (thidx < batch)
+				shared_input[thidx] = input[(y * cols + x) * batch + thidx];
 			__syncthreads();
 			if (x == size_start_x && y == size_start_y)
 				#pragma unroll
@@ -1073,7 +1064,7 @@ __global__ void _cwc_kern_max_pool_backward_propagate(const int strides, const i
 	float* shared_grad = &shared[batch * 2];
 	const int thcnt = blockDim.x;
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
+	assert(thcnt >= batch);
 	float prod[input_per_thread];
 	int i, x, y;
 	#pragma unroll
@@ -1090,18 +1081,15 @@ __global__ void _cwc_kern_max_pool_backward_propagate(const int strides, const i
 	const int out_end_y = min(out_y + ycnt, out_rows);
 	const int out_end_x = min(out_x + xcnt, out_cols);
 	input += (blockIdx.z * rows * cols + blockIdx.x * cols + blockIdx.y) * batch;
-	for (i = 0; i < input_loads; i++)
-		if (i * thcnt + thidx < batch)
-			shared_input[i * thcnt + thidx] = input[i * thcnt + thidx];
+	if (thidx < batch)
+		shared_input[thidx] = input[thidx];
 	for (y = out_start_y; y < out_end_y; y++)
 	{
 		for (x = out_start_x; x < out_end_x; x++)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_out[i * thcnt + thidx] = out[x * batch + i * thcnt + thidx],
-					shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * thcnt + thidx];
+			if (thidx < batch)
+				shared_out[thidx] = out[x * batch + thidx],
+				shared_grad[thidx] = out_grad[x * batch + thidx];
 			__syncthreads();
 			#pragma unroll
 			for (i = 0; i < input_per_thread; i++)
@@ -1150,7 +1138,7 @@ __global__ void _cwc_kern_average_pool_forward_propagate(const int strides, cons
 	float* shared_input = &shared[0];
 	const int thcnt = blockDim.x;
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
+	assert(thcnt >= batch);
 	int i, x, y;
 	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
 	float prod[input_per_thread];
@@ -1173,10 +1161,8 @@ __global__ void _cwc_kern_average_pool_forward_propagate(const int strides, cons
 		#pragma unroll
 		for (x = size_start_x; x < size_end_x; x++)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_input[i * thcnt + thidx] = input[(y * cols + x) * batch + i * thcnt + thidx];
+			if (thidx < batch)
+				shared_input[thidx] = input[(y * cols + x) * batch + thidx];
 			__syncthreads();
 			#pragma unroll
 			for (i = 0; i < input_per_thread; i++)
@@ -1220,7 +1206,7 @@ __global__ void _cwc_kern_average_pool_backward_propagate(const int strides, con
 	float* shared_grad = &shared[0];
 	const int thcnt = blockDim.x;
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
+	assert(thcnt >= batch);
 	float prod[input_per_thread];
 	int i, x, y;
 	#pragma unroll
@@ -1239,10 +1225,8 @@ __global__ void _cwc_kern_average_pool_backward_propagate(const int strides, con
 	{
 		for (x = out_start_x; x < out_end_x; x++)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * thcnt + thidx];
+			if (thidx < batch)
+				shared_grad[thidx] = out_grad[x * batch + thidx];
 			__syncthreads();
 			float inv_size = 1.0 / ((min(y * strides + size - border, rows) - max(y * strides - border, 0)) * (min(x * strides + size - border, cols) - max(x * strides - border, 0)));
 			#pragma unroll
@@ -1627,8 +1611,12 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 {
 	assert(batch % 16 == 0);
 	int i;
+	cudaEvent_t start, stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
 	for (i = convnet->count - 1; i >= 0; i--)
 	{
+		cudaEventRecord(start, context->device.stream);
 		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
 		ccv_convnet_layer_t* configuration = GPU(convnet)->configurations + i;
 		switch (layer->type)
@@ -1662,7 +1650,15 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 		}
+		cudaEventRecord(stop, context->device.stream);
+		cudaEventSynchronize(stop);
+		float elapsed_time = 0;
+		cudaEventElapsedTime(&elapsed_time, start, stop);
+		printf("%d bprop %fms\n", i, elapsed_time);
 	}
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
+	exit(-1);
 }
 
 void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
