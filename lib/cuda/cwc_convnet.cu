@@ -41,6 +41,7 @@ typedef struct {
 	float** backwards; // the backwards output layer
 	float** denoms; // the denominator for rnorm layer, thus, backprop can reuse the value
 	float* batch_unit; // the unit vector for a batch, ease the GEMM on full-connect layer
+	float* scratch; // the scratch space for temporary reuse, it will be max(wnum, input rows * cols * channels + output rows * cols * channels)
 	cwc_convnet_context_t contexts[2];
 	cwc_convnet_stats_t device;
 } cwc_convnet_t;
@@ -173,10 +174,10 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				assert(GPU(convnet)->momentums[i].type == CCV_CONVNET_CONVOLUTIONAL);
 				// allocating for layer
 				layers[i].w = 0;
-				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum * 2 + layers[i].net.convolutional.count));
-				GPU(convnet)->device.memory_usage += sizeof(float) * (layers[i].wnum * 2 + layers[i].net.convolutional.count);
+				cudaMalloc(&layers[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
+				GPU(convnet)->device.memory_usage += sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count);
 				assert(layers[i].w);
-				layers[i].bias = layers[i].w + layers[i].wnum * 2;
+				layers[i].bias = layers[i].w + layers[i].wnum;
 				_cwc_convnet_rewind_convolutional_weights_onto_device(convnet->layers[i].w, layers[i].w, layers[i].wnum, layers[i].net.convolutional.count, layers[i].net.convolutional.channels);
 				cudaMemcpy(layers[i].bias, convnet->layers[i].bias, sizeof(float) * layers[i].net.convolutional.count, cudaMemcpyHostToDevice);
 				_ccv_convnet_layer_deduce_output_format(layers + i, &out_rows, &out_cols);
@@ -195,14 +196,14 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				GPU(convnet)->momentums[i].bias = GPU(convnet)->momentums[i].w + layers[i].wnum;
 				GPU(convnet)->denoms[i] = 0;
 				GPU(convnet)->forwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->forwards[i], sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * batch * 2);
-				GPU(convnet)->device.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * batch * 2;
+				cudaMalloc(&GPU(convnet)->forwards[i], sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * batch);
+				GPU(convnet)->device.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * batch;
 				assert(GPU(convnet)->forwards[i]);
 				GPU(convnet)->backwards[i] = 0;
 				if (i > 0) // if it is the input layer, no need to backprop to outmost one
 				{
-					cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2);
-					GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2;
+					cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
+					GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
 					assert(GPU(convnet)->backwards[i]);
 				}
 				for (j = 0; j < 2; j++)
@@ -251,8 +252,8 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].net.full_connect.count * batch;
 				assert(GPU(convnet)->forwards[i]);
 				GPU(convnet)->backwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2);
-				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2;
+				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
+				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
 				assert(GPU(convnet)->backwards[i]);
 				for (j = 0; j < 2; j++)
 				{
@@ -285,8 +286,8 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				GPU(convnet)->device.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * batch;
 				assert(GPU(convnet)->forwards[i]);
 				GPU(convnet)->backwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2);
-				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2;
+				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
+				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
 				assert(GPU(convnet)->backwards[i]);
 				for (j = 0; j < 2; j++)
 				{
@@ -310,8 +311,8 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				GPU(convnet)->device.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * batch;
 				assert(GPU(convnet)->forwards[i]);
 				GPU(convnet)->backwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2);
-				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * 2;
+				cudaMalloc(&GPU(convnet)->backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
+				GPU(convnet)->device.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
 				assert(GPU(convnet)->backwards[i]);
 				for (j = 0; j < 2; j++)
 				{
@@ -322,6 +323,16 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 				layers[i].w = layers[i].bias = 0;
 				break;
 		}
+	size_t scratch_space = 0;
+	for (i = 0; i < convnet->count; i++)
+	{
+		_ccv_convnet_layer_deduce_output_format(layers + i, &out_rows, &out_cols);
+		scratch_space = ccv_max(scratch_space, layers[i].wnum);
+		scratch_space = ccv_max(scratch_space, out_rows * out_cols * layers[i].net.convolutional.count * batch + layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
+	}
+	GPU(convnet)->scratch = 0;
+	cudaMalloc(&GPU(convnet)->scratch, sizeof(float) * scratch_space);
+	GPU(convnet)->device.memory_usage += sizeof(float) * scratch_space;
 }
 
 // =========================================== KERNEL CODE ===================================================
@@ -707,7 +718,7 @@ __global__ void _cwc_kern_reweave_matrix_major(float* a, float* b, const int cou
 	b[(threadIdx.x * count + blockIdx.x) * channels + blockIdx.y] = a[(blockIdx.y * count + blockIdx.x) * batch + threadIdx.x];
 }
 
-static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, const cudaStream_t& stream)
+static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, const cudaStream_t& stream)
 {
 	assert(layer->net.convolutional.count % 4 == 0);
 	assert(batch % 32 == 0);
@@ -718,11 +729,11 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
-	float* chm = m + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
+	float* chm = scratch;
 	_cwc_kern_reweave_matrix_major
 	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), batch, 0, stream>>>
 	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch);
-	float* cha = m + out_rows * out_cols * layer->net.convolutional.count * batch;
+	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
 	_cwc_kern_reweave_matrix_major
 	<<<dim3(out_rows * out_cols, layer->net.convolutional.count), batch, 0, stream>>>
 	(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch);
@@ -777,7 +788,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	assert(cudaGetLastError() == cudaSuccess);
 	if (b)
 	{
-		float* chw = layer->w + layer->wnum;
+		float* chw = scratch;
 		_cwc_kern_reweave_matrix_major
 		<<<dim3(layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels), layer->net.convolutional.count, 0, stream>>>
 		(layer->w, chw, layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels, layer->net.convolutional.count);
@@ -1633,15 +1644,15 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-	cudaEventRecord(start, context->device.stream);
 	for (i = convnet->count - 1; i >= 0; i--)
 	{
+		cudaEventRecord(start, context->device.stream);
 		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
 		ccv_convnet_layer_t* configuration = GPU(convnet)->configurations + i;
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], GPU(convnet)->forwards[i], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], configuration, context->device.stream);
+				_cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], GPU(convnet)->forwards[i], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], configuration, GPU(convnet)->scratch, context->device.stream);
 				if (context->device.dor[i] && GPU(convnet)->backwards[i])
 					_cwc_kern_mute_neuron
 					<<<layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels, batch, 0, context->device.stream>>>
@@ -1669,12 +1680,12 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 		}
+		cudaEventRecord(stop, context->device.stream);
+		cudaEventSynchronize(stop);
+		float elapsed_time = 0;
+		cudaEventElapsedTime(&elapsed_time, start, stop);
+		printf("%d bprop %fms\n", i, elapsed_time);
 	}
-	cudaEventRecord(stop, context->device.stream);
-	cudaEventSynchronize(stop);
-	float elapsed_time = 0;
-	cudaEventElapsedTime(&elapsed_time, start, stop);
-	printf("%d bprop %fms\n", i, elapsed_time);
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
 	exit(-1);
