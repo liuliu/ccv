@@ -1582,12 +1582,8 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 {
 	assert(batch % 16 == 0);
 	int i;
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
 	for (i = 0; i < convnet->count; i++)
 	{
-		cudaEventRecord(start, context->device.stream);
 		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
 		switch (layer->type)
 		{
@@ -1619,26 +1615,15 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 				_cwc_convnet_average_pool_forward_propagate(layer, batch,  GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], context->device.stream);
 				break;
 		}
-		cudaEventRecord(stop, context->device.stream);
-		cudaEventSynchronize(stop);
-		float elapsed_time = 0;
-		cudaEventElapsedTime(&elapsed_time, start, stop);
-		printf("%d fprop %fms\n", i, elapsed_time);
 	}
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
 }
 
 static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float* a, float* m, int batch, cwc_convnet_context_t* context)
 {
 	assert(batch % 16 == 0);
 	int i;
-	cudaEvent_t start, stop;
-	cudaEventCreate(&start);
-	cudaEventCreate(&stop);
 	for (i = convnet->count - 1; i >= 0; i--)
 	{
-		cudaEventRecord(start, context->device.stream);
 		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
 		ccv_convnet_layer_t* configuration = GPU(convnet)->configurations + i;
 		switch (layer->type)
@@ -1672,15 +1657,7 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 		}
-		cudaEventRecord(stop, context->device.stream);
-		cudaEventSynchronize(stop);
-		float elapsed_time = 0;
-		cudaEventElapsedTime(&elapsed_time, start, stop);
-		printf("%d bprop %fms\n", i, elapsed_time);
 	}
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
-	exit(0);
 }
 
 #ifndef CASE_TESTS
