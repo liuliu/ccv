@@ -1,13 +1,7 @@
 #include "ccv.h"
-#include <sys/time.h>
 #include <ctype.h>
 
-unsigned int get_current_time()
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
+void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
 
 int main(int argc, char** argv)
 {
@@ -35,7 +29,7 @@ int main(int argc, char** argv)
 		// first layer (convolutional => max pool => rnorm)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 0,
+			.bias = 1,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -56,7 +50,7 @@ int main(int argc, char** argv)
 			},
 		},
 		{
-			.type = CCV_CONVNET_MAX_POOL,
+			.type = CCV_CONVNET_AVERAGE_POOL,
 			.input = {
 				.matrix = {
 					.rows = 55,
@@ -69,24 +63,6 @@ int main(int argc, char** argv)
 					.strides = 2,
 					.size = 3,
 					.border = 0,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 27,
-					.cols = 27,
-					.channels = 96,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
 				},
 			},
 		},
@@ -114,7 +90,7 @@ int main(int argc, char** argv)
 			},
 		},
 		{
-			.type = CCV_CONVNET_MAX_POOL,
+			.type = CCV_CONVNET_AVERAGE_POOL,
 			.input = {
 				.matrix = {
 					.rows = 27,
@@ -130,29 +106,9 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 256,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
-				},
-			},
-		},
 		// third layer (convolutional)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 0,
-			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 13,
@@ -174,8 +130,6 @@ int main(int argc, char** argv)
 		// fourth layer (convolutional)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 0,
-			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 13,
@@ -197,8 +151,6 @@ int main(int argc, char** argv)
 		// fifth layer (convolutional => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 0,
-			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 13,
@@ -218,7 +170,7 @@ int main(int argc, char** argv)
 			},
 		},
 		{
-			.type = CCV_CONVNET_MAX_POOL,
+			.type = CCV_CONVNET_AVERAGE_POOL,
 			.input = {
 				.matrix = {
 					.rows = 13,
@@ -312,15 +264,35 @@ int main(int argc, char** argv)
 		layer_params[i].bias.learn_rate = 0.001;
 		layer_params[i].bias.momentum = 0.9;
 	}
-	layer_params[11].dor = 0.5;
-	layer_params[12].dor = 0.5;
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 256,
 		.layer_params = layer_params,
 	};
-	ccv_convnet_supervised_train(convnet, categorizeds, categorizeds, train_params);
-	ccv_convnet_free(convnet);
+	for (i = 0; i < 256; i++)
+	{
+		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
+		ccv_dense_matrix_t* image = 0;
+		ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+		ccv_dense_matrix_t* b = 0;
+		if (image->rows > 251 && image->cols > 251)
+			ccv_resample(image, &b, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_AREA);
+		else if (image->rows < 251 || image->cols < 251)
+			ccv_resample(image, &b, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_CUBIC);
+		else
+			b = image;
+		if (b != image)
+			ccv_matrix_free(image);
+		ccv_dense_matrix_t* c = 0;
+		ccv_slice(b, (ccv_matrix_t**)&c, CCV_32F, 0, 0, 225, 225);
+		int j, ch = CCV_GET_CHANNEL(c->type);
+		for (j = 0; j < c->rows * c->cols * ch; j++)
+			c->data.f32[j] = c->data.f32[j] / 255.0 * 2 - 1;
+		ccv_matrix_free(b);
+		categorized->type = CCV_CATEGORIZED_DENSE_MATRIX;
+		categorized->matrix = c;
+	}
+	cwc_bench_runtime(convnet, categorizeds, train_params);
 	ccv_disable_cache();
 	return 0;
 }
