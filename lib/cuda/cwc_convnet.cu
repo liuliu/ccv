@@ -40,7 +40,7 @@ typedef struct {
 	float** forwards; // the forward output layers
 	float** backwards; // the backwards output layer
 	float** denoms; // the denominator for rnorm layer, thus, backprop can reuse the value
-	float* batch_unit; // the unit vector for a batch, ease the GEMM on full-connect layer
+	float* unit; // the unit vector for a batch, ease the GEMM on full-connect layer
 	float* scratch; // the scratch space for temporary reuse, it will be max(wnum, input rows * cols * channels + output rows * cols * channels)
 	cwc_convnet_context_t contexts[2];
 	cwc_convnet_stats_t device;
@@ -143,15 +143,15 @@ static void _cwc_convnet_reserve_onto_device(ccv_convnet_t* convnet, int batch, 
 	cudaMalloc(&GPU(convnet)->scratch, sizeof(float) * scratch_space);
 	assert(GPU(convnet)->scratch);
 	GPU(convnet)->device.memory_usage += sizeof(float) * scratch_space;
-	float* batch_unit = 0;
-	cudaMallocHost(&batch_unit, sizeof(float) * unit_size);
+	float* unit = 0;
+	cudaMallocHost(&unit, sizeof(float) * unit_size);
 	for (i = 0; i < unit_size; i++)
-		batch_unit[i] = 1;
-	GPU(convnet)->batch_unit = 0;
-	cudaMalloc(&GPU(convnet)->batch_unit, sizeof(float) * unit_size);
+		unit[i] = 1;
+	GPU(convnet)->unit = 0;
+	cudaMalloc(&GPU(convnet)->unit, sizeof(float) * unit_size);
 	GPU(convnet)->device.memory_usage += sizeof(float) * unit_size;
-	cudaMemcpy(GPU(convnet)->batch_unit, batch_unit, sizeof(float) * unit_size, cudaMemcpyHostToDevice);
-	cudaFreeHost(batch_unit);
+	cudaMemcpy(GPU(convnet)->unit, unit, sizeof(float) * unit_size, cudaMemcpyHostToDevice);
+	cudaFreeHost(unit);
 	GPU(convnet)->configurations = GPU(convnet)->layers + convnet->count;
 	memcpy(GPU(convnet)->configurations, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 	GPU(convnet)->momentums = GPU(convnet)->layers + convnet->count * 2;
@@ -1620,7 +1620,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 					_cwc_kern_mute_neuron
 					<<<layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels, batch, 0, context->device.stream>>>
 					(GPU(convnet)->forwards[i - 1], context->device.dor[i]);
-				_cwc_convnet_full_connect_forward_propagate(layer, batch, GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], GPU(convnet)->batch_unit, context->device.cublas);
+				_cwc_convnet_full_connect_forward_propagate(layer, batch, GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], GPU(convnet)->unit, context->device.cublas);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 				assert(i > 0);
@@ -1649,7 +1649,7 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], GPU(convnet)->forwards[i], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], configuration, GPU(convnet)->scratch, GPU(convnet)->batch_unit, context->device.stream, context->device.cublas);
+				_cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], GPU(convnet)->forwards[i], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], configuration, GPU(convnet)->scratch, GPU(convnet)->unit, context->device.stream, context->device.cublas);
 				if (context->device.dor[i] && GPU(convnet)->backwards[i])
 					_cwc_kern_mute_neuron
 					<<<layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels, batch, 0, context->device.stream>>>
@@ -1657,7 +1657,7 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
-				_cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], GPU(convnet)->batch_unit, configuration, context->device.cublas);
+				_cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], GPU(convnet)->unit, configuration, context->device.cublas);
 				if (context->device.dor[i])
 					_cwc_kern_mute_neuron
 					<<<layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels, batch, 0, context->device.stream>>>
