@@ -47,7 +47,7 @@ typedef struct {
 } cwc_convnet_t;
 
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
-#define BATCH_PER_BLOCK (4)
+#define BATCH_PER_BLOCK (8)
 
 inline static void _cwc_convnet_layer_deduce_output_format(ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
