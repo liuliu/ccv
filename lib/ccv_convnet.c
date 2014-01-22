@@ -56,10 +56,10 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 	memset(convnet->denoms, 0, sizeof(ccv_dense_matrix_t*) * count);
 	if (count > 1) 
 	{
-		convnet->dropouts = (ccv_dense_matrix_t**)(convnet->acts + count * 2);
-		memset(convnet->dropouts, 0, sizeof(ccv_dense_matrix_t*) * (count - 1));
+		convnet->dors = (ccv_dense_matrix_t**)(convnet->acts + count * 2);
+		memset(convnet->dors, 0, sizeof(ccv_dense_matrix_t*) * (count - 1));
 	} else {
-		convnet->dropouts = 0;
+		convnet->dors = 0;
 	}
 	convnet->count = count;
 	convnet->rows = params[0].input.matrix.rows;
@@ -366,10 +366,10 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	switch(convnet->layers->type)
 	{
 		case CCV_CONVNET_CONVOLUTIONAL:
-			_ccv_convnet_convolutional_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
+			_ccv_convnet_convolutional_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dors[0] : 0, convnet->acts);
 			break;
 		case CCV_CONVNET_FULL_CONNECT:
-			_ccv_convnet_full_connect_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dropouts[0] : 0, convnet->acts);
+			_ccv_convnet_full_connect_forward_propagate(convnet->layers, *a, convnet->count > 1 ? convnet->dors[0] : 0, convnet->acts);
 			break;
 		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			_ccv_convnet_rnorm_forward_propagate(convnet->layers, *a, convnet->acts, convnet->denoms);
@@ -384,7 +384,7 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	for (i = 1; i < convnet->count; i++)
 	{
 		ccv_convnet_layer_t* layer = convnet->layers + i;
-		ccv_dense_matrix_t* d = i < convnet->count - 1 ? convnet->dropouts[i] : 0;
+		ccv_dense_matrix_t* d = i < convnet->count - 1 ? convnet->dors[i] : 0;
 		switch(layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
@@ -803,10 +803,10 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_ccv_convnet_convolutional_backward_propagate(layer, update_params->acts[i], convnet->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_convolutional_backward_propagate(layer, update_params->acts[i], convnet->acts[i], convnet->dors[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
-				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->dropouts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->dors[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 				_ccv_convnet_rnorm_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, convnet->denoms[i], i > 0 ? update_params->acts + i - 1 : 0);
@@ -896,7 +896,7 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 	update_params->acts = (ccv_dense_matrix_t**)(update_params->layers + convnet->count);
 	// the update params doesn't need the neuron layers (acts) for the input image, and the loss layer, therefore, convnet->count - 1
 	memset(update_params->acts, 0, sizeof(ccv_dense_matrix_t*) * (convnet->count - 1));
-	update_params->dropouts = 0;
+	update_params->dors = 0;
 	update_params->rows = convnet->rows;
 	update_params->cols = convnet->cols;
 	update_params->count = convnet->count;
@@ -1008,8 +1008,20 @@ void ccv_convnet_compact(ccv_convnet_t* convnet)
 {
 #ifdef HAVE_CUDA
 	cwc_convnet_compact(convnet);
-#else
 #endif
+	int i;
+	for (i = 0; i < convnet->count; i++)
+	{
+		if (convnet->acts[i])
+			ccv_matrix_free(convnet->acts[i]);
+		convnet->acts[i] = 0;
+		if (convnet->dors[i])
+			ccv_matrix_free(convnet->dors[i]);
+		convnet->dors[i] = 0;
+		if (convnet->denoms[i])
+			ccv_matrix_free(convnet->denoms[i]);
+		convnet->denoms[i] = 0;
+	}
 }
 
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
@@ -1024,6 +1036,10 @@ ccv_convnet_t* ccv_convnet_read(const char* filename)
 void ccv_convnet_free(ccv_convnet_t* convnet)
 {
 	ccv_convnet_compact(convnet);
+	int i;
+	for (i = 0; i < convnet->count; i++)
+		if (convnet->layers[i].w)
+			ccfree(convnet->layers[i].w);
 	ccfree(convnet);
 }
 

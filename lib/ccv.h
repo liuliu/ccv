@@ -1152,9 +1152,10 @@ typedef struct {
 	// count and layer of the convnet
 	int count;
 	ccv_convnet_layer_t* layers; // the layer configuration
-	ccv_dense_matrix_t** acts; // hidden layers and output layers
+	// these can be reused and we don't need to reallocate memory
 	ccv_dense_matrix_t** denoms; // denominators
-	ccv_dense_matrix_t** dropouts; // the dropout for hidden layers
+	ccv_dense_matrix_t** acts; // hidden layers and output layers
+	ccv_dense_matrix_t** dors; // the dropout for hidden layers
 	void* reserved;
 } ccv_convnet_t;
 

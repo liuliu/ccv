@@ -1842,6 +1842,7 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 			}
 		}
 		ccfree(convnet->reserved);
+		convnet->reserved = 0;
 	}
 }
 
