@@ -1070,6 +1070,9 @@ void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_ca
 /* polymorph function to run ICF based detector */
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
+/* ConvNet: Convolutional Neural Networks
+ */
+
 enum {
 	CCV_CONVNET_CONVOLUTIONAL = 0x01,
 	CCV_CONVNET_FULL_CONNECT = 0x02,
@@ -1208,6 +1211,9 @@ int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch);
+ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(const char* filename);
+void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename);
+void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
 void ccv_convnet_free(ccv_convnet_t* convnet);
 
 #endif

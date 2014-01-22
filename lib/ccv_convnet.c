@@ -16,8 +16,8 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 		case CCV_CONVNET_CONVOLUTIONAL:
 			assert(layer->net.convolutional.rows % 2); // as of now, don't support even number of kernel size
 			assert(layer->net.convolutional.cols % 2);
-			// assert((layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
-			// assert((layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
+			assert((layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
+			assert((layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
 			*rows = (layer->input.matrix.rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
 			*cols = (layer->input.matrix.cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
 			break;
@@ -31,8 +31,8 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 			break;
 		case CCV_CONVNET_MAX_POOL:
 		case CCV_CONVNET_AVERAGE_POOL:
-			// assert((layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			// assert((layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			assert((layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
+			assert((layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
 			*rows = (layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
 			*cols = (layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
 			break;
@@ -1004,13 +1004,27 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 #endif
 }
 
-void ccv_convnet_free(ccv_convnet_t* convnet)
+void ccv_convnet_compact(ccv_convnet_t* convnet)
 {
 #ifdef HAVE_CUDA
-	cwc_convnet_free(convnet);
+	cwc_convnet_compact(convnet);
 #else
-	ccfree(convnet);
 #endif
+}
+
+void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
+{
+}
+
+ccv_convnet_t* ccv_convnet_read(const char* filename)
+{
+	return 0;
+}
+
+void ccv_convnet_free(ccv_convnet_t* convnet)
+{
+	ccv_convnet_compact(convnet);
+	ccfree(convnet);
 }
 
 #endif
