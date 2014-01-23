@@ -7,6 +7,7 @@
 #ifdef HAVE_CUDA
 #include "cuda/cwc.h"
 #endif
+#include "3rdparty/sqlite3/sqlite3.h"
 
 inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
@@ -1026,10 +1027,179 @@ void ccv_convnet_compact(ccv_convnet_t* convnet)
 
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
 {
+	sqlite3* db = 0;
+	if (SQLITE_OK == sqlite3_open(filename, &db))
+	{
+		const char layer_create_table_qs[] =
+			"CREATE TABLE IF NOT EXISTS layer_params "
+			"(layer INTEGER PRIMARY KEY ASC, type INTEGER, "
+			"input_matrix_rows INTEGER, input_matrix_cols INTEGER, input_matrix_channels INTEGER, input_node_count INTEGER, "
+			"output_rows INTEGER, output_cols INTEGER, output_channels INTEGER, output_count INTEGER, output_strides INTEGER, output_border INTEGER, "
+			"output_size INTEGER, output_kappa REAL, output_alpha REAL, output_beta REAL);"
+			"CREATE TABLE IF NOT EXISTS layer_data "
+			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);";
+		assert(SQLITE_OK == sqlite3_exec(db, layer_create_table_qs, 0, 0, 0));
+		const char layer_params_insert_qs[] = 
+			"REPLACE INTO layer_params "
+			"(layer, type, "
+			"input_matrix_rows, input_matrix_cols, input_matrix_channels, input_node_count, "
+			"output_rows, output_cols, output_channels, output_count, output_strides, output_border, "
+			"output_size, output_kappa, output_alpha, output_beta) VALUES "
+			"($layer, $type, " // 1
+			"$input_matrix_rows, $input_matrix_cols, $input_matrix_channels, $input_node_count, " // 5
+			"$output_rows, $output_cols, $output_channels, $output_count, $output_strides, $output_border, " // 11
+			"$output_size, $output_kappa, $output_alpha, $output_beta);"; // 14
+		sqlite3_stmt* layer_params_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare(db, layer_params_insert_qs, sizeof(layer_params_insert_qs), &layer_params_insert_stmt, 0));
+		const char layer_data_insert_qs[] =
+			"REPLACE INTO layer_data "
+			"(layer, weight, bias) VALUES ($layer, $weight, $bias);";
+		sqlite3_stmt* layer_data_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare(db, layer_data_insert_qs, sizeof(layer_data_insert_qs), &layer_data_insert_stmt, 0));
+		int i;
+		for (i = 0; i < convnet->count; i++)
+		{
+			ccv_convnet_layer_t* layer = convnet->layers + i;
+			// insert layer params
+			sqlite3_bind_int(layer_params_insert_stmt, 1, i);
+			sqlite3_bind_int(layer_params_insert_stmt, 2, layer->type);
+			sqlite3_bind_int(layer_params_insert_stmt, 3, layer->input.matrix.rows);
+			sqlite3_bind_int(layer_params_insert_stmt, 4, layer->input.matrix.cols);
+			sqlite3_bind_int(layer_params_insert_stmt, 5, layer->input.matrix.channels);
+			sqlite3_bind_int(layer_params_insert_stmt, 6, layer->input.node.count);
+			switch (layer->type)
+			{
+				case CCV_CONVNET_CONVOLUTIONAL:
+					sqlite3_bind_int(layer_params_insert_stmt, 7, layer->net.convolutional.rows);
+					sqlite3_bind_int(layer_params_insert_stmt, 8, layer->net.convolutional.cols);
+					sqlite3_bind_int(layer_params_insert_stmt, 9, layer->net.convolutional.channels);
+					sqlite3_bind_int(layer_params_insert_stmt, 10, layer->net.convolutional.count);
+					sqlite3_bind_int(layer_params_insert_stmt, 11, layer->net.convolutional.strides);
+					sqlite3_bind_int(layer_params_insert_stmt, 12, layer->net.convolutional.border);
+					break;
+				case CCV_CONVNET_FULL_CONNECT:
+					sqlite3_bind_int(layer_params_insert_stmt, 10, layer->net.full_connect.count);
+					break;
+				case CCV_CONVNET_MAX_POOL:
+				case CCV_CONVNET_AVERAGE_POOL:
+					sqlite3_bind_int(layer_params_insert_stmt, 11, layer->net.pool.strides);
+					sqlite3_bind_int(layer_params_insert_stmt, 12, layer->net.pool.border);
+					sqlite3_bind_int(layer_params_insert_stmt, 13, layer->net.pool.size);
+					break;
+				case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+					sqlite3_bind_int(layer_params_insert_stmt, 13, layer->net.rnorm.size);
+					sqlite3_bind_double(layer_params_insert_stmt, 14, layer->net.rnorm.kappa);
+					sqlite3_bind_double(layer_params_insert_stmt, 15, layer->net.rnorm.alpha);
+					sqlite3_bind_double(layer_params_insert_stmt, 16, layer->net.rnorm.beta);
+					break;
+			}
+			assert(SQLITE_DONE == sqlite3_step(layer_params_insert_stmt));
+			sqlite3_reset(layer_params_insert_stmt);
+			sqlite3_clear_bindings(layer_params_insert_stmt);
+			// insert layer data
+			if (layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT)
+			{
+				sqlite3_bind_int(layer_data_insert_stmt, 1, i);
+				sqlite3_bind_blob(layer_data_insert_stmt, 2, layer->w, sizeof(float) * layer->wnum, SQLITE_STATIC);
+				sqlite3_bind_blob(layer_data_insert_stmt, 3, layer->bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : 1), SQLITE_STATIC);
+				assert(SQLITE_DONE == sqlite3_step(layer_data_insert_stmt));
+				sqlite3_reset(layer_data_insert_stmt);
+				sqlite3_clear_bindings(layer_data_insert_stmt);
+			}
+		}
+		sqlite3_finalize(layer_params_insert_stmt);
+		sqlite3_finalize(layer_data_insert_stmt);
+		sqlite3_close(db);
+	}
 }
 
-ccv_convnet_t* ccv_convnet_read(const char* filename)
+ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 {
+	sqlite3* db = 0;
+	if (SQLITE_OK == sqlite3_open(filename, &db))
+	{
+		sqlite3_stmt* layer_params_stmt = 0;
+		// load layer params
+		const char layer_params_qs[] =
+			"SELECT type, " // 1
+			"input_matrix_rows, input_matrix_cols, input_matrix_channels, input_node_count, " // 5
+			"output_rows, output_cols, output_channels, output_count, output_strides, output_border, " // 11
+			"output_size, output_kappa, output_alpha, output_beta FROM layer_params ORDER BY layer ASC;"; // 14
+		assert(SQLITE_OK == sqlite3_prepare(db, layer_params_qs, sizeof(layer_params_qs), &layer_params_stmt, 0));
+		ccv_array_t* layer_params = ccv_array_new(sizeof(ccv_convnet_layer_param_t), 3, 0);
+		while (sqlite3_step(layer_params_stmt) == SQLITE_ROW)
+		{
+			ccv_convnet_layer_param_t layer_param;
+			layer_param.type = sqlite3_column_int(layer_params_stmt, 0);
+			layer_param.input.matrix.rows = sqlite3_column_int(layer_params_stmt, 1);
+			layer_param.input.matrix.cols = sqlite3_column_int(layer_params_stmt, 2);
+			layer_param.input.matrix.channels = sqlite3_column_int(layer_params_stmt, 3);
+			layer_param.input.node.count = sqlite3_column_int(layer_params_stmt, 4);
+			layer_param.bias = layer_param.sigma = 0; // this is irrelevant to read convnet
+			switch (layer_param.type)
+			{
+				case CCV_CONVNET_CONVOLUTIONAL:
+					layer_param.output.convolutional.rows = sqlite3_column_int(layer_params_stmt, 5);
+					layer_param.output.convolutional.cols = sqlite3_column_int(layer_params_stmt, 6);
+					layer_param.output.convolutional.channels = sqlite3_column_int(layer_params_stmt, 7);
+					layer_param.output.convolutional.count = sqlite3_column_int(layer_params_stmt, 8);
+					layer_param.output.convolutional.strides = sqlite3_column_int(layer_params_stmt, 9);
+					layer_param.output.convolutional.border = sqlite3_column_int(layer_params_stmt, 10);
+					break;
+				case CCV_CONVNET_FULL_CONNECT:
+					layer_param.output.full_connect.count = sqlite3_column_int(layer_params_stmt, 8);
+					break;
+				case CCV_CONVNET_MAX_POOL:
+				case CCV_CONVNET_AVERAGE_POOL:
+					layer_param.output.pool.strides = sqlite3_column_int(layer_params_stmt, 9);
+					layer_param.output.pool.border = sqlite3_column_int(layer_params_stmt, 10);
+					layer_param.output.pool.size = sqlite3_column_int(layer_params_stmt, 11);
+					break;
+				case CCV_CONVNET_LOCAL_RESPONSE_NORM:
+					layer_param.output.rnorm.size = sqlite3_column_int(layer_params_stmt, 11);
+					layer_param.output.rnorm.kappa = sqlite3_column_double(layer_params_stmt, 12);
+					layer_param.output.rnorm.alpha = sqlite3_column_double(layer_params_stmt, 13);
+					layer_param.output.rnorm.beta = sqlite3_column_double(layer_params_stmt, 14);
+					break;
+			}
+			ccv_array_push(layer_params, &layer_param);
+		}
+		sqlite3_finalize(layer_params_stmt);
+		ccv_convnet_t* convnet = ccv_convnet_new(use_cwc_accel, (ccv_convnet_layer_param_t*)ccv_array_get(layer_params, 0), layer_params->rnum);
+		// load layer data
+		sqlite3_stmt* layer_data_stmt = 0;
+		const char layer_data_qs[] =
+			"SELECT layer, weight, bias FROM layer_data;";
+		assert(SQLITE_OK == sqlite3_prepare(db, layer_data_qs, sizeof(layer_data_qs), &layer_data_stmt, 0));
+		while(sqlite3_step(layer_data_stmt) == SQLITE_ROW)
+		{
+			ccv_convnet_layer_t* layer = convnet->layers + sqlite3_column_int(layer_data_stmt, 0);
+			int wnum = sqlite3_column_bytes(layer_data_stmt, 1) / sizeof(float);
+			int bnum = sqlite3_column_bytes(layer_data_stmt, 2) / sizeof(float);
+			if (wnum != layer->wnum)
+				continue;
+			const void* w = sqlite3_column_blob(layer_data_stmt, 1);
+			const void* bias = sqlite3_column_blob(layer_data_stmt, 2);
+			switch (layer->type)
+			{
+				case CCV_CONVNET_CONVOLUTIONAL:
+					if (bnum != layer->net.convolutional.count)
+						continue;
+					memcpy(layer->w, w, sizeof(float) * layer->wnum);
+					memcpy(layer->bias, bias, sizeof(float) * layer->net.convolutional.count);
+					break;
+				case CCV_CONVNET_FULL_CONNECT:
+					if (bnum != 1)
+						continue;
+					memcpy(layer->w, w, sizeof(float) * layer->wnum);
+					memcpy(layer->bias, bias, sizeof(float));
+					break;
+			}
+		}
+		sqlite3_finalize(layer_data_stmt);
+		sqlite3_close(db);
+		return convnet;
+	}
 	return 0;
 }
 
