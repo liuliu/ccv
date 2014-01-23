@@ -1615,7 +1615,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 	mean /= posnum;
 	double variance = 0;
 	for (i = 0; i < posnum; i++)
-		variance = (fn[i].value - mean) * (fn[i].value - mean);
+		variance += (fn[i].value - mean) * (fn[i].value - mean);
 	variance /= posnum;
 	printf("global mean: %lf, & variance: %lf\ninterclass mean(variance):", mean, variance);
 	int* mnum = (int*)alloca(sizeof(int) * params.components);
@@ -1629,7 +1629,7 @@ void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, 
 		mean /= mnum[i];
 		double variance = 0;
 		for (j = innum; j < innum + mnum[i]; j++)
-			variance = (fn[j].value - mean) * (fn[j].value - mean);
+			variance += (fn[j].value - mean) * (fn[j].value - mean);
 		variance /= mnum[i];
 		printf(" %lf(%lf)", mean, variance);
 		outnum -= mnum[i];
