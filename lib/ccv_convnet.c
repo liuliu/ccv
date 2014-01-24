@@ -93,6 +93,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 				for (j = 0; j < params[i].output.full_connect.count; j++)
 					layers[i].bias[j] = params[i].bias;
 				break;
+			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
 				layers[i].wnum = 0;
@@ -1016,12 +1017,15 @@ void ccv_convnet_compact(ccv_convnet_t* convnet)
 		if (convnet->acts[i])
 			ccv_matrix_free(convnet->acts[i]);
 		convnet->acts[i] = 0;
-		if (convnet->dors[i])
-			ccv_matrix_free(convnet->dors[i]);
-		convnet->dors[i] = 0;
 		if (convnet->denoms[i])
 			ccv_matrix_free(convnet->denoms[i]);
 		convnet->denoms[i] = 0;
+	}
+	for (i = 0; i < convnet->count - 1; i++)
+	{
+		if (convnet->dors[i])
+			ccv_matrix_free(convnet->dors[i]);
+		convnet->dors[i] = 0;
 	}
 }
 
@@ -1101,7 +1105,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
 			{
 				sqlite3_bind_int(layer_data_insert_stmt, 1, i);
 				sqlite3_bind_blob(layer_data_insert_stmt, 2, layer->w, sizeof(float) * layer->wnum, SQLITE_STATIC);
-				sqlite3_bind_blob(layer_data_insert_stmt, 3, layer->bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : 1), SQLITE_STATIC);
+				sqlite3_bind_blob(layer_data_insert_stmt, 3, layer->bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count), SQLITE_STATIC);
 				assert(SQLITE_DONE == sqlite3_step(layer_data_insert_stmt));
 				sqlite3_reset(layer_data_insert_stmt);
 				sqlite3_clear_bindings(layer_data_insert_stmt);
@@ -1189,10 +1193,10 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 					memcpy(layer->bias, bias, sizeof(float) * layer->net.convolutional.count);
 					break;
 				case CCV_CONVNET_FULL_CONNECT:
-					if (bnum != 1)
+					if (bnum != layer->net.full_connect.count)
 						continue;
 					memcpy(layer->w, w, sizeof(float) * layer->wnum);
-					memcpy(layer->bias, bias, sizeof(float));
+					memcpy(layer->bias, bias, sizeof(float) * layer->net.full_connect.count);
 					break;
 			}
 		}

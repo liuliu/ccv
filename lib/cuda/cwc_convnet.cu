@@ -342,6 +342,57 @@ static void _cwc_convnet_alloc_reserved(ccv_convnet_t* convnet, int batch, ccv_c
 		}
 }
 
+static void _cwc_convnet_reorder_convolutional_weights_onto_host(float* w, float* hw, int wnum, int filters, int channels)
+{
+	assert(wnum % (filters * channels) == 0);
+	float* iw = (float*)ccmalloc(sizeof(float) * wnum);
+	cudaMemcpy(iw, w, sizeof(float) * wnum, cudaMemcpyDeviceToHost);
+	int count = wnum / (filters * channels);
+	int i, j, k;
+	for (i = 0; i < channels; i++)
+		for (j = 0; j < count; j++)
+			for (k = 0; k < filters; k++)
+				hw[k * count * channels + j * channels + i] = iw[i * count * filters + j * filters + k];
+	ccfree(iw);
+}
+
+static void _cwc_convnet_reorder_full_connect_weights_onto_host(float* w, float* hw, int wnum, int count, int channels)
+{
+	assert(wnum % (count * channels) == 0);
+	float* iw = (float*)ccmalloc(sizeof(float) * wnum);
+	cudaMemcpy(iw, w, sizeof(float) * wnum, cudaMemcpyDeviceToHost);
+	int rows = wnum / (count * channels);
+	int i, j, k;
+	for (i = 0; i < rows; i++)
+		for (j = 0; j < channels; j++)
+			for (k = 0; k < count; k++)
+				hw[i * channels * count + k * channels + j] = iw[i * channels * count + j * count + k];
+	ccfree(iw);
+}
+
+static void _cwc_convnet_host_synchronize(ccv_convnet_t* convnet)
+{
+	int i;
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
+		ccv_convnet_layer_t* host_layer = convnet->layers + i;
+		switch (layer->type)
+		{
+			case CCV_CONVNET_CONVOLUTIONAL:
+				_cwc_convnet_reorder_convolutional_weights_onto_host(layer->w, host_layer->w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels);
+				cudaMemcpy(host_layer->bias, layer->bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyDeviceToHost);
+				assert(cudaGetLastError() == cudaSuccess);
+				break;
+			case CCV_CONVNET_FULL_CONNECT:
+				_cwc_convnet_reorder_full_connect_weights_onto_host(layer->w, host_layer->w, layer->wnum, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels);
+				cudaMemcpy(host_layer->bias, layer->bias, sizeof(float) * layer->net.full_connect.count, cudaMemcpyDeviceToHost);
+				assert(cudaGetLastError() == cudaSuccess);
+				break;
+		}
+	}
+}
+
 // =========================================== KERNEL CODE ===================================================
 
 template <int input_per_thread, int filter_per_thread, int filter_per_block>
@@ -1747,7 +1798,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			assert(cudaGetLastError() == cudaSuccess);
 			_cwc_convnet_backwards_propagate_error(convnet, GPU(convnet)->forwards[convnet->count - 1], context->device.input, params.mini_batch, context);
 			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_net_sgd(convnet, i > 0, params.mini_batch, params.layer_params, context);
+			_cwc_convnet_net_sgd(convnet, t > 0 || i > 0, params.mini_batch, params.layer_params, context);
 			assert(cudaGetLastError() == cudaSuccess);
 		}
 		cudaDeviceSynchronize(); // synchronize at this point
