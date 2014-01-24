@@ -93,9 +93,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 				for (j = 0; j < params[i].output.full_connect.count; j++)
 					layers[i].bias[j] = params[i].bias;
 				break;
-			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-			case CCV_CONVNET_MAX_POOL:
-			case CCV_CONVNET_AVERAGE_POOL:
+			default:
 				layers[i].wnum = 0;
 				layers[i].w = 0;
 				layers[i].bias = 0;
