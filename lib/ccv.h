@@ -1178,6 +1178,7 @@ typedef struct {
 typedef struct {
 	int max_epoch;
 	int mini_batch;
+	int iterations;
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
 

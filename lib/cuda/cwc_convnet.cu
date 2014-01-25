@@ -1745,7 +1745,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 {
 	assert(params.mini_batch % BATCH_PER_BLOCK == 0);
 	_cwc_convnet_alloc_reserved(convnet, params.mini_batch, params.layer_params);
-	int i, j, t;
+	int i, j, k, t;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	int aligned_padding = categorizeds->rnum % params.mini_batch;
@@ -1761,13 +1761,16 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	struct {
 		int* host;
 		int* device;
-	} test_returns = {
-		.host = 0,
-		.device = 0,
-	};
-	cudaMallocHost(&test_returns.host, sizeof(int) * tests->rnum);
-	cudaMalloc(&test_returns.device, sizeof(int) * ((tests->rnum + params.mini_batch - 1) / params.mini_batch * params.mini_batch));
-	assert(test_returns.device);
+	} test_returns[2];
+	test_returns[0].host = test_returns[1].host = 0;
+	test_returns[0].device = test_returns[1].device = 0;
+	for (i = 0; i < 2; i++)
+	{
+		cudaMallocHost(&test_returns[i].host, sizeof(int) * params.mini_batch);
+		assert(test_returns[i].host);
+		cudaMalloc(&test_returns[i].device, sizeof(int) * params.mini_batch);
+		assert(test_returns[i].device);
+	}
 	cudaEvent_t start, stop;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
@@ -1805,6 +1808,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in testing
 		_cwc_convnet_dor_mean_net(convnet, params.layer_params, GPU(convnet)->contexts[1].device.cublas);
 		// run tests
+		int miss = 0;
 		for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 		{
 			cwc_convnet_context_t* context = GPU(convnet)->contexts + (j % 2);
@@ -1813,18 +1817,25 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			assert(cudaGetLastError() == cudaSuccess);
 			// sync with the other stream core so that we can compute on the single true layer parameters
 			cudaStreamSynchronize(GPU(convnet)->contexts[(j + 1) % 2].device.stream);
+			if (j > 0) // we have another result, pull these
+				for (k = 0; k < params.mini_batch; k++)
+				{
+					ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, k + i - params.mini_batch);
+					if (test->c != test_returns[(j + 1) % 2].host[k])
+						++miss;
+					FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d", t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch);
+				}
 			assert(cudaGetLastError() == cudaSuccess);
 			_cwc_convnet_encode_impl(convnet, context->device.input, params.mini_batch, context);
 			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(convnet)->forwards[convnet->count - 1], test_returns.device + i, context->device.stream);
+			_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(convnet)->forwards[convnet->count - 1], test_returns[j % 2].device, context->device.stream);
+			cudaMemcpyAsync(test_returns[j % 2].host, test_returns[j % 2].device, sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device.stream);
 		}
 		cudaDeviceSynchronize(); // synchronize at this point
-		cudaMemcpy(test_returns.host, test_returns.device, sizeof(int) * tests->rnum, cudaMemcpyDeviceToHost);
-		int miss = 0;
-		for (i = 0; i < tests->rnum; i++)
+		for (i = 0; i <= (tests->rnum - 1) % params.mini_batch; i++)
 		{
-			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i);
-			if (test->c != test_returns.host[i])
+			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i + (tests->rnum - 1) / params.mini_batch * params.mini_batch);
+			if (test->c != test_returns[(j + 1) % 2].host[i])
 				++miss;
 		}
 		cudaEventRecord(stop, 0);
@@ -1843,8 +1854,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	}
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
-	cudaFree(test_returns.device);
-	cudaFreeHost(test_returns.host);
+	for (i = 0; i < 2; i++)
+	{
+		cudaFree(test_returns[i].device);
+		cudaFreeHost(test_returns[i].host);
+	}
 	ccfree(idx);
 	gsl_rng_free(rng);
 }

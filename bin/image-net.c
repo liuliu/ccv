@@ -1,35 +1,118 @@
 #include "ccv.h"
-#include <sys/time.h>
 #include <ctype.h>
+#include <getopt.h>
 
-unsigned int get_current_time()
+void exit_with_help(void)
 {
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+	printf(
+	"\n  \033[1mUSAGE\033[0m\n\n    image-net [OPTION...]\n\n"
+	"  \033[1mREQUIRED OPTIONS\033[0m\n\n"
+	"    --train-list : text file contains a list of image files in format:\n"
+	"                      class-label <file name>\\newline\n"
+	"    --test-list : text file contains a list of image files in format:\n"
+	"                      class-label <file name>\\newline\n"
+	"    --working-dir : the directory to save progress and produce result model\n\n"
+	"  \033[1mOTHER OPTIONS\033[0m\n\n"
+	"    --base-dir : change the base directory so that the program can read images from there\n"
+	"    --max-epoch : how many epoch are needed for stochastic gradient descent (an epoch corresponds to go through the full train list) [DEFAULT TO 100]\n"
+	"    --iterations : how many iterations are needed for stochastic gradient descent (an iteration corresponds to go through a mini batch) [DEFAULT TO 1000]\n\n"
+	);
+	exit(-1);
 }
 
 int main(int argc, char** argv)
 {
-	ccv_enable_default_cache();
-	assert(argc == 2);
-	FILE *r = fopen(argv[1], "r");
-	char* file = (char*)malloc(1024);
-	ccv_array_t* categorizeds = ccv_array_new(sizeof(ccv_categorized_t), 64, 0);
-	size_t len = 1024;
-	ssize_t read;
-	while ((read = getline(&file, &len, r)) != -1)
+	static struct option image_net_options[] = {
+		/* help */
+		{"help", 0, 0, 0},
+		/* required parameters */
+		{"train-list", 1, 0, 0},
+		{"test-list", 1, 0, 0},
+		{"working-dir", 1, 0, 0},
+		/* optional parameters */
+		{"base-dir", 1, 0, 0},
+		{"max-epoch", 1, 0, 0},
+		{"iterations", 1, 0, 0},
+		{0, 0, 0, 0}
+	};
+	char* train_list = 0;
+	char* test_list = 0;
+	char* working_dir = 0;
+	char* base_dir = 0;
+	ccv_convnet_train_param_t train_params = {
+		.max_epoch = 100,
+		.mini_batch = 256,
+	};
+	int i, c;
+	while (getopt_long_only(argc, argv, "", image_net_options, &c) != -1)
 	{
-		while(read > 1 && isspace(file[read - 1]))
-			read--;
-		file[read] = 0;
-		ccv_file_info_t input;
-		input.filename = (char*)ccmalloc(1024);
-		strncpy(input.filename, file, 1024);
-		ccv_categorized_t categorized = ccv_categorized(0, 0, &input);
+		switch (c)
+		{
+			case 0:
+				exit_with_help();
+			case 1:
+				train_list = optarg;
+				break;
+			case 2:
+				test_list = optarg;
+				break;
+			case 3:
+				working_dir = optarg;
+				break;
+			case 4:
+				base_dir = optarg;
+				break;
+			case 5:
+				train_params.max_epoch = atoi(optarg);
+				break;
+			case 6:
+				train_params.iterations = atoi(optarg);
+				break;
+		}
+	}
+	if (!train_list || !test_list || !working_dir)
+		exit_with_help();
+	ccv_enable_default_cache();
+	FILE *r0 = fopen(train_list, "r");
+	assert(r0 && "train-list doesn't exists");
+	FILE* r1 = fopen(test_list, "r");
+	assert(r1 && "test-list doesn't exists");
+	char* file = (char*)malloc(1024);
+	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
+	ccv_array_t* categorizeds = ccv_array_new(sizeof(ccv_categorized_t), 64, 0);
+	while (fscanf(r0, "%d %s", &c, file) != EOF)
+	{
+		char* filename = (char*)ccmalloc(1024);
+		if (base_dir != 0)
+		{
+			strncpy(filename, base_dir, 1024);
+			filename[dirlen - 1] = '/';
+		}
+		strncpy(filename + dirlen, file, 1024 - dirlen);
+		ccv_file_info_t file_info = {
+			.filename = filename,
+		};
+		ccv_categorized_t categorized = ccv_categorized(c, 0, &file_info);
 		ccv_array_push(categorizeds, &categorized);
 	}
-	fclose(r);
+	fclose(r0);
+	ccv_array_t* tests = ccv_array_new(sizeof(ccv_categorized_t), 64, 0);
+	while (fscanf(r1, "%d %s", &c, file) != EOF)
+	{
+		char* filename = (char*)ccmalloc(1024);
+		if (base_dir != 0)
+		{
+			strncpy(filename, base_dir, 1024);
+			filename[dirlen - 1] = '/';
+		}
+		strncpy(filename + dirlen, file, 1024 - dirlen);
+		ccv_file_info_t file_info = {
+			.filename = filename,
+		};
+		ccv_categorized_t categorized = ccv_categorized(c, 0, &file_info);
+		ccv_array_push(tests, &categorized);
+	}
+	fclose(r1);
 	free(file);
 	ccv_convnet_layer_param_t params[] = {
 		// first layer (convolutional => max pool => rnorm)
@@ -302,7 +385,6 @@ int main(int argc, char** argv)
 	ccv_convnet_verify(convnet, 1000);
 	ccv_convnet_layer_train_param_t layer_params[13];
 	memset(layer_params, 0, sizeof(layer_params));
-	int i;
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.005;
@@ -314,12 +396,8 @@ int main(int argc, char** argv)
 	}
 	layer_params[11].dor = 0.5;
 	layer_params[12].dor = 0.5;
-	ccv_convnet_train_param_t train_params = {
-		.max_epoch = 100,
-		.mini_batch = 256,
-		.layer_params = layer_params,
-	};
-	ccv_convnet_supervised_train(convnet, categorizeds, categorizeds, train_params);
+	train_params.layer_params = layer_params,
+	ccv_convnet_supervised_train(convnet, categorizeds, tests, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();
 	return 0;
