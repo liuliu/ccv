@@ -8,6 +8,7 @@ extern "C" {
 }
 #include <cuda.h>
 #include <cublas_v2.h>
+#include "../3rdparty/sqlite3/sqlite3.h"
 
 // this structure holds intermediate on-device memory representation of convnet
 
@@ -1555,7 +1556,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 	}
 }
 
-static void _cwc_convnet_batch_formation(ccv_array_t* categorizeds, int* idx, int rows, int cols, int channels, int batch, int offset, int size, float* b, int* c)
+static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, int* idx, ccv_size_t dim, int rows, int cols, int channels, int batch, int offset, int size, float* b, int* c)
 {
 	int i, k, x;
 	assert(size <= batch);
@@ -1576,23 +1577,40 @@ static void _cwc_convnet_batch_formation(ccv_array_t* categorizeds, int* idx, in
 			{
 				ccv_dense_matrix_t* image = 0;
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-				ccv_dense_matrix_t* norm = 0;
-				if (image->rows > 251 && image->cols > 251)
-					ccv_resample(image, &norm, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_AREA);
-				else if (image->rows < 251 || image->cols < 251)
-					ccv_resample(image, &norm, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_CUBIC);
-				else
-					norm = image;
-				if (norm != image)
-					ccv_matrix_free(image);
-				ccv_dense_matrix_t* patch = 0;
-				ccv_slice(norm, (ccv_matrix_t**)&patch, CCV_32F, 0, 0, 225, 225);
-				ccv_matrix_free(norm);
-				assert(channels == CCV_GET_CHANNEL(patch->type));
-				for (k = 0; k < channels; k++)
-					for (x = 0; x < rows * cols; x++)
-						b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] / 255.0 * 2 - 1;
-				ccv_matrix_free(patch);
+				if (image)
+				{
+					ccv_dense_matrix_t* norm = 0;
+					if (image->rows > dim.height && image->cols > dim.width)
+						ccv_resample(image, &norm, 0, ccv_max(dim.height, (int)(image->rows * (float)dim.height / image->cols + 0.5)), ccv_max(dim.width, (int)(image->cols * (float)dim.width / image->rows + 0.5)), CCV_INTER_AREA);
+					else if (image->rows < dim.height || image->cols < dim.width)
+						ccv_resample(image, &norm, 0, ccv_max(dim.height, (int)(image->rows * (float)dim.height / image->cols + 0.5)), ccv_max(dim.width, (int)(image->cols * (float)dim.width / image->rows + 0.5)), CCV_INTER_CUBIC);
+					else
+						norm = image;
+					if (norm != image)
+					{
+						printf("%s is not properly formatted at %dx%d, and ccv resampled it to required size. But you may want to preprocess it to save time.\n", categorized->file.filename, image->rows, image->cols);
+						ccv_matrix_free(image);
+					}
+					ccv_dense_matrix_t* patch = 0;
+					if (norm->cols != cols || norm->rows != rows)
+					{
+						int x = gsl_rng_uniform_int(rng, norm->cols - cols + 1);
+						int y = gsl_rng_uniform_int(rng, norm->rows - rows + 1);
+						ccv_slice(norm, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+					} else
+						patch = norm;
+					// random horizontal reflection
+					if (gsl_rng_uniform_int(rng, 2) == 0)
+						ccv_flip(patch, &patch, 0, CCV_FLIP_X);
+					if (norm != patch)
+						ccv_matrix_free(norm);
+					assert(channels == CCV_GET_CHANNEL(patch->type));
+					for (k = 0; k < channels; k++)
+						for (x = 0; x < rows * cols; x++)
+							b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] / 255.0 * 2 - 1;
+					ccv_matrix_free(patch);
+				} else
+					printf("cannot load %s.\n", categorized->file.filename);
 				break;
 			}
 		}
@@ -1731,6 +1749,75 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 	}
 }
 
+typedef struct {
+	int t, i;
+	int inum;
+	int* idx;
+	ccv_convnet_t* convnet;
+	ccv_function_state_reserve_field
+} cwc_convnet_supervised_train_function_state_t;
+
+static void _cwc_convnet_supervised_train_function_state_read(const char* filename, cwc_convnet_supervised_train_function_state_t* z)
+{
+	ccv_convnet_t* convnet = ccv_convnet_read(1, filename);
+	if (!convnet)
+		return;
+	if (z->convnet)
+		ccv_convnet_free(z->convnet);
+	z->convnet = convnet;
+	sqlite3* db = 0;
+	if (SQLITE_OK == sqlite3_open(filename, &db))
+	{
+		z->line_no = 0;
+		const char function_state_qs[] =
+			"SELECT t, i, inum, line_no, idx FROM function_state WHERE fsid = 0;";
+		sqlite3_stmt* function_state_stmt = 0;
+		if (SQLITE_OK == sqlite3_prepare_v2(db, function_state_qs, sizeof(function_state_qs), &function_state_stmt, 0))
+		{
+			if (SQLITE_ROW == sqlite3_step(function_state_stmt))
+			{
+				z->t = sqlite3_column_int(function_state_stmt, 0);
+				z->i = sqlite3_column_int(function_state_stmt, 1);
+				int inum = sqlite3_column_int(function_state_stmt, 2);
+				assert(inum == z->inum);
+				z->line_no = sqlite3_column_int(function_state_stmt, 3);
+				const void* idx = sqlite3_column_blob(function_state_stmt, 4);
+				memcpy(z->idx, idx, sizeof(int) * z->inum);
+			}
+			sqlite3_finalize(function_state_stmt);
+		}
+		sqlite3_close(db);
+	}
+}
+
+static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_supervised_train_function_state_t* z, const char* filename)
+{
+	_cwc_convnet_host_synchronize(z->convnet);
+	ccv_convnet_write(z->convnet, filename);
+	sqlite3* db = 0;
+	if (SQLITE_OK == sqlite3_open(filename, &db))
+	{
+		const char function_state_create_table_qs[] =
+			"CREATE TABLE IF NOT EXISTS function_state "
+			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB);";
+		assert(SQLITE_OK == sqlite3_exec(db, function_state_create_table_qs, 0, 0, 0));
+		const char function_state_insert_qs[] =
+			"REPLACE INTO function_state "
+			"(fsid, t, i, inum, line_no, idx) VALUES "
+			"(0, $t, $i, $inum, $line_no, $idx);";
+		sqlite3_stmt* function_state_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare_v2(db, function_state_insert_qs, sizeof(function_state_insert_qs), &function_state_insert_stmt, 0));
+		sqlite3_bind_int(function_state_insert_stmt, 1, z->t);
+		sqlite3_bind_int(function_state_insert_stmt, 2, z->i);
+		sqlite3_bind_int(function_state_insert_stmt, 3, z->inum);
+		sqlite3_bind_int(function_state_insert_stmt, 4, z->line_no);
+		sqlite3_bind_blob(function_state_insert_stmt, 5, z->idx, sizeof(int) * z->inum, SQLITE_STATIC);
+		assert(SQLITE_DONE == sqlite3_step(function_state_insert_stmt));
+		sqlite3_finalize(function_state_insert_stmt);
+		sqlite3_close(db);
+	}
+}
+
 #ifndef CASE_TESTS
 
 void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch)
@@ -1741,11 +1828,11 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* l
 {
 }
 
-void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, ccv_convnet_train_param_t params)
+void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params)
 {
 	assert(params.mini_batch % BATCH_PER_BLOCK == 0);
 	_cwc_convnet_alloc_reserved(convnet, params.mini_batch, params.layer_params);
-	int i, j, k, t;
+	int i, j, k;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	int aligned_padding = categorizeds->rnum % params.mini_batch;
@@ -1754,6 +1841,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	int* idx = (int*)ccmalloc(sizeof(int) * (categorizeds->rnum + aligned_padding));
 	for (i = 0; i < categorizeds->rnum; i++)
 		idx[i] = i;
+	params.iterations = ccv_min(params.iterations, aligned_batches);
 	gsl_ran_shuffle(rng, idx, categorizeds->rnum, sizeof(int));
 	// the last layer has to be full connect, thus we can use it as softmax layer
 	assert(convnet->layers[convnet->count - 1].type == CCV_CONVNET_FULL_CONNECT);
@@ -1771,95 +1859,133 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaMalloc(&test_returns[i].device, sizeof(int) * params.mini_batch);
 		assert(test_returns[i].device);
 	}
-	cudaEvent_t start, stop;
+	cudaEvent_t start, stop, iteration;
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
-	for (t = 0; t < params.max_epoch; t++)
+	cudaEventCreate(&iteration);
+	cwc_convnet_supervised_train_function_state_t z;
+	z.idx = idx;
+	z.convnet = convnet;
+	z.line_no = 0;
+	int miss;
+	float elapsed_time;
+	ccv_function_state_begin(_cwc_convnet_supervised_train_function_state_read, z, filename);
+	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
-		cudaEventRecord(start, 0);
-		// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
-		if (t > 0) // undo the mean network for further training
-			_cwc_convnet_dor_mean_net_undo(convnet, params.layer_params, GPU(convnet)->contexts[1].device.cublas);
-		// run updates
-		for (i = 0; i < aligned_batches; i++)
+		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
 		{
-			cwc_convnet_context_t* context = GPU(convnet)->contexts + (i % 2);
-			_cwc_convnet_batch_formation(categorizeds, idx, convnet->rows, convnet->cols, convnet->channels, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
-			FLUSH(" - at epoch %03d / %d => stochastic gradient descent at %d / %d", t + 1, params.max_epoch, i + 1, aligned_batches);
-			cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
-			assert(cudaGetLastError() == cudaSuccess);
-			cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_dor_formation(convnet, params.mini_batch, rng, params.layer_params, context);
-			assert(cudaGetLastError() == cudaSuccess);
-			// sync with the other stream core so that we can compute on the single true layer parameters
-			cudaStreamSynchronize(GPU(convnet)->contexts[(i + 1) % 2].device.stream);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_encode_impl(convnet, context->device.input, params.mini_batch, context);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_softmax_with_logistic_loss(params.mini_batch, category_count, GPU(convnet)->forwards[convnet->count - 1], context->device.c, context->device.stream);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_backwards_propagate_error(convnet, GPU(convnet)->forwards[convnet->count - 1], context->device.input, params.mini_batch, context);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_net_sgd(convnet, t > 0 || i > 0, params.mini_batch, params.layer_params, context);
-			assert(cudaGetLastError() == cudaSuccess);
-		}
-		cudaDeviceSynchronize(); // synchronize at this point
-		// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in testing
-		_cwc_convnet_dor_mean_net(convnet, params.layer_params, GPU(convnet)->contexts[1].device.cublas);
-		// run tests
-		int miss = 0;
-		for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
-		{
-			cwc_convnet_context_t* context = GPU(convnet)->contexts + (j % 2);
-			_cwc_convnet_batch_formation(tests, 0, convnet->rows, convnet->cols, convnet->channels, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
-			cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
-			assert(cudaGetLastError() == cudaSuccess);
-			// sync with the other stream core so that we can compute on the single true layer parameters
-			cudaStreamSynchronize(GPU(convnet)->contexts[(j + 1) % 2].device.stream);
-			if (j > 0) // we have another result, pull these
-				for (k = 0; k < params.mini_batch; k++)
+			cudaEventRecord(start, 0);
+			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
+			if (z.t > 0) // undo the mean network for further training
+				_cwc_convnet_dor_mean_net_undo(z.convnet, params.layer_params, GPU(z.convnet)->contexts[1].device.cublas);
+			miss = 0;
+			// run updates
+			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
+			{
+				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (i % 2);
+				cudaEventRecord(start, context->device.stream);
+				_cwc_convnet_batch_formation(rng, categorizeds, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
+				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				_cwc_convnet_dor_formation(z.convnet, params.mini_batch, rng, params.layer_params, context);
+				assert(cudaGetLastError() == cudaSuccess);
+				// sync with the other stream core so that we can compute on the single true layer parameters
+				if (i > z.i)
+					cudaEventRecord(stop, GPU(z.convnet)->contexts[(i + 1) % 2].device.stream);
+				cudaStreamSynchronize(GPU(z.convnet)->contexts[(i + 1) % 2].device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				if (i > z.i) // we have another result, pull these
 				{
-					ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, k + i - params.mini_batch);
-					if (test->c != test_returns[(j + 1) % 2].host[k])
-						++miss;
-					FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d", t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch);
+					int* c = GPU(z.convnet)->contexts[(i + 1) % 2].host.c;
+					for (k = 0; k < params.mini_batch; k++)
+						if (c[k] != test_returns[(i + 1) % 2].host[k])
+							++miss;
+					cudaEventElapsedTime(&elapsed_time, iteration, stop);
+					FLUSH(" - at epoch %03d / %d => stochastic gradient descent with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f / (i * params.mini_batch), i + 1, aligned_batches, elapsed_time / 1000);
 				}
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_encode_impl(convnet, context->device.input, params.mini_batch, context);
-			assert(cudaGetLastError() == cudaSuccess);
-			_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(convnet)->forwards[convnet->count - 1], test_returns[j % 2].device, context->device.stream);
-			cudaMemcpyAsync(test_returns[j % 2].host, test_returns[j % 2].device, sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device.stream);
+				cudaEventRecord(iteration, context->device.stream);
+				_cwc_convnet_encode_impl(z.convnet, context->device.input, params.mini_batch, context);
+				assert(cudaGetLastError() == cudaSuccess);
+				// compute miss rate on training data
+				_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(z.convnet)->forwards[z.convnet->count - 1], test_returns[i % 2].device, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				cudaMemcpyAsync(test_returns[i % 2].host, test_returns[i % 2].device, sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				// do the logistic loss and backward propagate
+				_cwc_convnet_softmax_with_logistic_loss(params.mini_batch, category_count, GPU(z.convnet)->forwards[z.convnet->count - 1], context->device.c, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				_cwc_convnet_backwards_propagate_error(z.convnet, GPU(z.convnet)->forwards[z.convnet->count - 1], context->device.input, params.mini_batch, context);
+				assert(cudaGetLastError() == cudaSuccess);
+				_cwc_convnet_net_sgd(z.convnet, z.t > 0 || i > 0, params.mini_batch, params.layer_params, context);
+				assert(cudaGetLastError() == cudaSuccess);
+			}
+			cudaDeviceSynchronize(); // synchronize at this point
+			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in testing
+			_cwc_convnet_dor_mean_net(z.convnet, params.layer_params, GPU(z.convnet)->contexts[1].device.cublas);
+			// run tests
+			miss = 0;
+			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
+			{
+				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
+				_cwc_convnet_batch_formation(rng, tests, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
+				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				// sync with the other stream core so that we can compute on the single true layer parameters
+				cudaStreamSynchronize(GPU(z.convnet)->contexts[(j + 1) % 2].device.stream);
+				if (j > 0) // we have another result, pull these
+				{
+					for (k = 0; k < params.mini_batch; k++)
+					{
+						ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, k + i - params.mini_batch);
+						if (test->c != test_returns[(j + 1) % 2].host[k])
+							++miss;
+					}
+					FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d", z.t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch);
+				}
+				assert(cudaGetLastError() == cudaSuccess);
+				_cwc_convnet_encode_impl(z.convnet, context->device.input, params.mini_batch, context);
+				assert(cudaGetLastError() == cudaSuccess);
+				_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(z.convnet)->forwards[z.convnet->count - 1], test_returns[j % 2].device, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+				cudaMemcpyAsync(test_returns[j % 2].host, test_returns[j % 2].device, sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device.stream);
+				assert(cudaGetLastError() == cudaSuccess);
+			}
+			cudaDeviceSynchronize(); // synchronize at this point
+			for (i = 0; i <= (tests->rnum - 1) % params.mini_batch; i++)
+			{
+				ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i + (tests->rnum - 1) / params.mini_batch * params.mini_batch);
+				if (test->c != test_returns[(j + 1) % 2].host[i])
+					++miss;
+			}
+			FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d", z.t + 1, params.max_epoch, miss * 100.0f / tests->rnum, (tests->rnum + params.mini_batch - 1) / params.mini_batch, (tests->rnum + params.mini_batch - 1) / params.mini_batch);
+			cudaEventRecord(stop, 0);
+			cudaEventSynchronize(stop);
+			elapsed_time = 0;
+			cudaEventElapsedTime(&elapsed_time, start, stop);
+			FLUSH(" - at epoch %03d / %d (%03d - %d) => with miss rate %.2f%% (%.3f sec)\n", z.t + 1, params.max_epoch, z.i + 1, ccv_min(z.i + params.iterations, aligned_batches), miss * 100.0f / tests->rnum, elapsed_time / 1000);
+			ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 		}
-		cudaDeviceSynchronize(); // synchronize at this point
-		for (i = 0; i <= (tests->rnum - 1) % params.mini_batch; i++)
-		{
-			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i + (tests->rnum - 1) / params.mini_batch * params.mini_batch);
-			if (test->c != test_returns[(j + 1) % 2].host[i])
-				++miss;
-		}
-		cudaEventRecord(stop, 0);
-		cudaEventSynchronize(stop);
-		float elapsed_time = 0;
-		cudaEventElapsedTime(&elapsed_time, start, stop);
-		FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% (%.3f sec)\n", t + 1, params.max_epoch, miss * 100.0f / tests->rnum, elapsed_time / 1000);
-		if (t + 1 < params.max_epoch)
+		if (z.t + 1 < params.max_epoch)
 		{
 			// reshuffle the parts we visited and move the rest to the beginning
-			memcpy(idx + categorizeds->rnum, idx + aligned_rnum, sizeof(int) * aligned_padding);
-			memmove(idx + aligned_padding, idx, sizeof(int) * aligned_rnum);
-			memcpy(idx, idx + categorizeds->rnum, sizeof(int) * aligned_padding);
-			gsl_ran_shuffle(rng, idx + aligned_padding, aligned_rnum, sizeof(int));
+			memcpy(z.idx + categorizeds->rnum, z.idx + aligned_rnum, sizeof(int) * aligned_padding);
+			memmove(z.idx + aligned_padding, z.idx, sizeof(int) * aligned_rnum);
+			memcpy(z.idx, z.idx + categorizeds->rnum, sizeof(int) * aligned_padding);
+			gsl_ran_shuffle(rng, z.idx + aligned_padding, aligned_rnum, sizeof(int));
 		}
 	}
+	ccv_function_state_finish();
 	cudaEventDestroy(start);
+	cudaEventDestroy(iteration);
 	cudaEventDestroy(stop);
 	for (i = 0; i < 2; i++)
 	{
 		cudaFree(test_returns[i].device);
 		cudaFreeHost(test_returns[i].host);
 	}
-	ccfree(idx);
+	ccfree(z.idx);
 	gsl_rng_free(rng);
 }
 

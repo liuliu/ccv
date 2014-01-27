@@ -1,13 +1,5 @@
 #include "ccv.h"
-#include <sys/time.h>
 #include <ctype.h>
-
-unsigned int get_current_time()
-{
-	struct timeval tv;
-	gettimeofday(&tv, NULL);
-	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
-}
 
 int main(int argc, char** argv)
 {
@@ -272,9 +264,10 @@ int main(int argc, char** argv)
 		ccv_convnet_train_param_t params = {
 			.max_epoch = 999,
 			.mini_batch = 128,
+			.iterations = 500,
 			.layer_params = layer_params,
 		};
-		ccv_convnet_supervised_train(convnet, categorizeds, tests, params);
+		ccv_convnet_supervised_train(convnet, categorizeds, tests, "cifar-10.sqlite3", params);
 	}
 	if (r1)
 		fclose(r1);
