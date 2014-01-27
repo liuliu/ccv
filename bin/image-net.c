@@ -388,11 +388,11 @@ int main(int argc, char** argv)
 	memset(layer_params, 0, sizeof(layer_params));
 	for (i = 0; i < 13; i++)
 	{
-		layer_params[i].w.decay = 0.005;
-		layer_params[i].w.learn_rate = 0.01;
+		layer_params[i].w.decay = 0.0005;
+		layer_params[i].w.learn_rate = 0.00005;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.01;
+		layer_params[i].bias.learn_rate = 0.00005;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[11].dor = 0.5;
