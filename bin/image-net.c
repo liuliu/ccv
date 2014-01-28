@@ -115,7 +115,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
-	ccv_convnet_layer_param_t params[] = {
+	ccv_convnet_layer_param_t params[13] = {
 		// first layer (convolutional => max pool => rnorm)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
@@ -363,7 +363,7 @@ int main(int argc, char** argv)
 		// eighth layer (full connect)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -389,14 +389,14 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.00005;
+		layer_params[i].w.learn_rate = 0.00001;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.00005;
+		layer_params[i].bias.learn_rate = 0.00001;
 		layer_params[i].bias.momentum = 0.9;
 	}
+	layer_params[10].dor = 0.5;
 	layer_params[11].dor = 0.5;
-	layer_params[12].dor = 0.5;
 	train_params.layer_params = layer_params;
 	train_params.size = ccv_size(251, 251);
 	/*
