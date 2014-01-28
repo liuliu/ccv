@@ -117,7 +117,7 @@ static void _cwc_convnet_reorder_full_connect_weights_onto_device(float* w, floa
 
 static void _cwc_convnet_alloc_reserved(ccv_convnet_t* convnet, int batch, ccv_convnet_layer_train_param_t* layer_params)
 {
-	if (GPU(convnet) && GPU(convnet)->batch != batch || GPU(convnet)->layer_params != layer_params)
+	if (GPU(convnet) && (GPU(convnet)->batch != batch || GPU(convnet)->layer_params != layer_params))
 		ccv_convnet_compact(convnet);
 	else if (GPU(convnet))
 		return; // it is allocated properly, no-op
