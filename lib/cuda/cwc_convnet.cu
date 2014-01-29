@@ -1795,11 +1795,29 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 	ccv_convnet_t* convnet = ccv_convnet_read(1, filename);
 	if (!convnet)
 		return;
-	// TODO: it is not a good idea to get rid of the old one, instead I need to sync the new convnet to the old one, and get rid of the new one
-	_cwc_convnet_alloc_reserved(convnet, GPU(z->convnet)->batch, GPU(z->convnet)->layer_params);
-	assert(z->convnet);
-	ccv_convnet_free(z->convnet);
-	z->convnet = convnet;
+	int i;
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = GPU(z->convnet)->layers + i;
+		ccv_convnet_layer_t* z_layer = z->convnet->layers + i;
+		ccv_convnet_layer_t* host_layer = convnet->layers + i;
+		switch (layer->type)
+		{
+			case CCV_CONVNET_CONVOLUTIONAL:
+				_cwc_convnet_reorder_convolutional_weights_onto_device(host_layer->w, layer->w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels);
+				cudaMemcpy(layer->bias, host_layer->bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyHostToDevice);
+				memcpy(z_layer->w, host_layer->w, sizeof(float) * (layer->wnum + layer->net.convolutional.count));
+				assert(cudaGetLastError() == cudaSuccess);
+				break;
+			case CCV_CONVNET_FULL_CONNECT:
+				_cwc_convnet_reorder_full_connect_weights_onto_device(host_layer->w, layer->w, layer->wnum, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels);
+				cudaMemcpy(layer->bias, host_layer->bias, sizeof(float) * layer->net.full_connect.count, cudaMemcpyHostToDevice);
+				memcpy(z_layer->w, host_layer->w, sizeof(float) * (layer->wnum + layer->net.full_connect.count));
+				assert(cudaGetLastError() == cudaSuccess);
+				break;
+		}
+	}
+	ccv_convnet_free(convnet);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
 	{
@@ -1821,6 +1839,39 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 			}
 			sqlite3_finalize(function_state_stmt);
 		}
+		sqlite3_stmt* momentum_data_stmt = 0;
+		const char momentum_data_qs[] =
+			"SELECT layer, weight, bias FROM momentum_data;";
+		if (SQLITE_OK == sqlite3_prepare_v2(db, momentum_data_qs, sizeof(momentum_data_qs), &momentum_data_stmt, 0))
+		{
+			while(sqlite3_step(momentum_data_stmt) == SQLITE_ROW)
+			{
+				ccv_convnet_layer_t* layer = GPU(z->convnet)->layers + sqlite3_column_int(momentum_data_stmt, 0);
+				ccv_convnet_layer_t* momentum = GPU(z->convnet)->momentums + sqlite3_column_int(momentum_data_stmt, 0);
+				int wnum = sqlite3_column_bytes(momentum_data_stmt, 1) / sizeof(float);
+				int bnum = sqlite3_column_bytes(momentum_data_stmt, 2) / sizeof(float);
+				if (wnum != layer->wnum)
+					continue;
+				const void* w = sqlite3_column_blob(momentum_data_stmt, 1);
+				const void* bias = sqlite3_column_blob(momentum_data_stmt, 2);
+				switch (layer->type)
+				{
+					case CCV_CONVNET_CONVOLUTIONAL:
+						if (bnum != layer->net.convolutional.count)
+							continue;
+						_cwc_convnet_reorder_convolutional_weights_onto_device((float*)w, momentum->w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels);
+						cudaMemcpy(momentum->bias, bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyHostToDevice);
+						break;
+					case CCV_CONVNET_FULL_CONNECT:
+						if (bnum != layer->net.full_connect.count)
+							continue;
+						_cwc_convnet_reorder_full_connect_weights_onto_device((float*)w, momentum->w, layer->wnum, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels);
+						cudaMemcpy(momentum->bias, bias, sizeof(float) * layer->net.full_connect.count, cudaMemcpyHostToDevice);
+						break;
+				}
+			}
+			sqlite3_finalize(momentum_data_stmt);
+		}
 		sqlite3_close(db);
 	}
 }
@@ -1834,7 +1885,9 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 	{
 		const char function_state_create_table_qs[] =
 			"CREATE TABLE IF NOT EXISTS function_state "
-			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB);";
+			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB);"
+			"CREATE TABLE IF NOT EXISTS momentum_data "
+			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);";
 		assert(SQLITE_OK == sqlite3_exec(db, function_state_create_table_qs, 0, 0, 0));
 		const char function_state_insert_qs[] =
 			"REPLACE INTO function_state "
@@ -1849,6 +1902,44 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 		sqlite3_bind_blob(function_state_insert_stmt, 5, z->idx, sizeof(int) * z->inum, SQLITE_STATIC);
 		assert(SQLITE_DONE == sqlite3_step(function_state_insert_stmt));
 		sqlite3_finalize(function_state_insert_stmt);
+		const char momentum_data_insert_qs[] =
+			"REPLACE INTO momentum_data "
+			"(layer, weight, bias) VALUES ($layer, $weight, $bias);";
+		sqlite3_stmt* momentum_data_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare_v2(db, momentum_data_insert_qs, sizeof(momentum_data_insert_qs), &momentum_data_insert_stmt, 0));
+		int i;
+		for (i = 0; i < z->convnet->count; i++)
+		{
+			ccv_convnet_layer_t* layer = GPU(z->convnet)->layers + i;
+			ccv_convnet_layer_t* momentum = GPU(z->convnet)->momentums + i;
+			// insert momentum data
+			if (layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT)
+			{
+				sqlite3_bind_int(momentum_data_insert_stmt, 1, i);
+				float* w = (float*)ccmalloc(sizeof(float) * (layer->wnum + (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count)));
+				float* bias = w + layer->wnum;
+				switch (layer->type)
+				{
+					case CCV_CONVNET_CONVOLUTIONAL:
+						_cwc_convnet_reorder_convolutional_weights_onto_host(momentum->w, w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels);
+						cudaMemcpy(bias, momentum->bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyDeviceToHost);
+						assert(cudaGetLastError() == cudaSuccess);
+						break;
+					case CCV_CONVNET_FULL_CONNECT:
+						_cwc_convnet_reorder_full_connect_weights_onto_host(momentum->w, w, layer->wnum, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels);
+						cudaMemcpy(bias, momentum->bias, sizeof(float) * layer->net.full_connect.count, cudaMemcpyDeviceToHost);
+						assert(cudaGetLastError() == cudaSuccess);
+						break;
+				}
+				sqlite3_bind_blob(momentum_data_insert_stmt, 2, w, sizeof(float) * layer->wnum, SQLITE_STATIC);
+				sqlite3_bind_blob(momentum_data_insert_stmt, 3, bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count), SQLITE_STATIC);
+				assert(SQLITE_DONE == sqlite3_step(momentum_data_insert_stmt));
+				sqlite3_reset(momentum_data_insert_stmt);
+				sqlite3_clear_bindings(momentum_data_insert_stmt);
+				ccfree(w);
+			}
+		}
+		sqlite3_finalize(momentum_data_insert_stmt);
 		sqlite3_close(db);
 	}
 }
@@ -1902,6 +1993,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaEventCreate(&iteration);
 	cwc_convnet_supervised_train_function_state_t z;
 	z.idx = idx;
+	z.inum = categorizeds->rnum;
 	z.convnet = convnet;
 	z.line_no = 0;
 	int miss;
@@ -1920,7 +2012,6 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (i % 2);
-				cudaEventRecord(start, context->device.stream);
 				_cwc_convnet_batch_formation(rng, categorizeds, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
