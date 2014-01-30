@@ -1141,6 +1141,7 @@ typedef struct {
 	size_t wnum; // the number of weights
 	ccv_convnet_input_t input; // the input requirement
 	ccv_convnet_type_t net; // network configuration
+	void* reserved;
 } ccv_convnet_layer_t;
 
 typedef struct {

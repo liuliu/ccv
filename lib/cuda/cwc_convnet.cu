@@ -48,8 +48,23 @@ typedef struct {
 	cwc_convnet_stats_t device;
 } cwc_convnet_t;
 
+typedef struct {
+	struct {
+		int x, y, z;
+	} forward_propagate;
+	struct {
+		int x, y, z;
+	} backward_propagate_coeff;
+	struct {
+		int x, y, z;
+	} backward_propagate_error;
+} cwc_convnet_layer_vary_t;
+
+
+#define VARY(x) ((cwc_convnet_layer_vary_t*)((x)->reserved))
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
 #define BATCH_PER_BLOCK (8)
+#define BENCH_ITERATION (2)
 
 inline static void _cwc_convnet_layer_deduce_output_format(ccv_convnet_layer_t* layer, int* rows, int* cols)
 {
@@ -121,11 +136,13 @@ static void _cwc_convnet_alloc_reserved(ccv_convnet_t* convnet, int batch, ccv_c
 		ccv_convnet_compact(convnet);
 	else if (GPU(convnet))
 		return; // it is allocated properly, no-op
-	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10);
+	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(cwc_convnet_layer_vary_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10);
 	GPU(convnet)->batch = batch;
 	GPU(convnet)->layer_params = layer_params;
 	GPU(convnet)->device.memory_usage = 0;
-	GPU(convnet)->layers = (ccv_convnet_layer_t*)(GPU(convnet) + 1);
+	cwc_convnet_layer_vary_t* layer_vary = (cwc_convnet_layer_vary_t*)(GPU(convnet) + 1);
+	memset(layer_vary, 0, sizeof(cwc_convnet_layer_vary_t) * convnet->count);
+	GPU(convnet)->layers = (ccv_convnet_layer_t*)(layer_vary + convnet->count);
 	int i, j, out_rows, out_cols;
 	memcpy(GPU(convnet)->layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 	ccv_convnet_layer_t* layers = GPU(convnet)->layers;
@@ -136,6 +153,7 @@ static void _cwc_convnet_alloc_reserved(ccv_convnet_t* convnet, int batch, ccv_c
 		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
 		{
 			int use_multi_way = _cwc_convnet_layer_use_multi_way(layers + i);
+			layers[i].reserved = layer_vary + i;
 			_cwc_convnet_layer_deduce_output_format(layers + i, &out_rows, &out_cols);
 			scratch_space = ccv_max(scratch_space, layers[i].wnum);
 			scratch_space = ccv_max(scratch_space,
@@ -467,8 +485,15 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 	}
 }
 
-static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream)
+static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream,
+		int x, int y, int z) // these are the dynamic configurations
 {
+	// first do configuration validation
+	if (!(batch % x == 0 && z % y == 0 && layer->net.convolutional.count % z == 0 &&
+				batch / x * z / y <= 1024 && /* thread number constraint */
+				batch / x * z / y >= batch && batch / x * z / y >= z && /* kernel internal loading constraint */
+				sizeof(float) * ((batch + z * 2) + layer->net.convolutional.count) <= 48 * 1024 /* shared memory size constraint */))
+		return -1;
 	int out_rows, out_cols;
 	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
 	assert(b);
@@ -487,16 +512,59 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 			 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count, \
 			 layer->bias); \
 	} while (0)
-	if (layer->net.convolutional.count % 72 == 0)
-		vary_block(4, 8, 72);
-	else if (layer->net.convolutional.count % 36 == 0)
-		vary_block(4, 8, 36);
-	else if (layer->net.convolutional.count % 32 == 0)
-		vary_block(4, 8, 32);
-	else
-		vary_block(4, 4, 16);
+	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
+	return 0;
+}
+
+static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream)
+{
+	if (VARY(layer)->forward_propagate.x == 0 && VARY(layer)->forward_propagate.y == 0 && VARY(layer)->forward_propagate.z == 0)
+	{
+		static int vary_x[] = { 1, 2, 4, 8 };
+		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
+		int i, j, k, t;
+		int x = 0, y = 0, z = 0;
+		float best_elapsed_time = FLT_MAX;
+		cudaEvent_t start;
+		cudaEvent_t stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		for (i = 0; i < 4; i++)
+			for (j = 0; j < 4; j++)
+				for (k = 0; k < 6; k++)
+				{
+					float elapsed_time_vary = 0;
+					cudaEventRecord(start, stream);
+					int success = _cwc_convnet_convolutional_forward_propagate_vary(layer, batch, a, b, stream, vary_x[i], vary_y[j], vary_z[k]);
+					cudaEventRecord(stop, stream);
+					cudaEventSynchronize(stop);
+					if (success != 0)
+						continue;
+					cudaEventElapsedTime(&elapsed_time_vary, start, stop);
+					for (t = 1; t < BENCH_ITERATION; t++) // we do 3 runs and pick the best one
+					{
+						cudaEventRecord(start, stream);
+						_cwc_convnet_convolutional_forward_propagate_vary(layer, batch, a, b, stream, vary_x[i], vary_y[j], vary_z[k]);
+						cudaEventRecord(stop, stream);
+						cudaEventSynchronize(stop);
+						float elapsed_time = 0;
+						cudaEventElapsedTime(&elapsed_time, start, stop);
+						if (elapsed_time < elapsed_time_vary)
+							elapsed_time_vary = elapsed_time;
+					}
+					if (elapsed_time_vary < best_elapsed_time)
+						best_elapsed_time = elapsed_time_vary, x = vary_x[i], y = vary_y[j], z = vary_z[k];
+				}
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		VARY(layer)->forward_propagate.x = x;
+		VARY(layer)->forward_propagate.y = y;
+		VARY(layer)->forward_propagate.z = z;
+	} else // we already have configuration, run it
+		_cwc_convnet_convolutional_forward_propagate_vary(layer, batch, a, b, stream, VARY(layer)->forward_propagate.x, VARY(layer)->forward_propagate.y, VARY(layer)->forward_propagate.z);
 }
 
 __global__ static void _cwc_kern_convolutional_relu_backward_propagate(const int batch,
@@ -790,6 +858,273 @@ __global__ static void _cwc_kern_reorder_matrix_major_per_block(float* a, float*
 	b[(threadIdx.y * count + blockIdx.x) * channels * batch_per_block + threadIdx.x * channels + blockIdx.y] = a[(blockIdx.y * count + blockIdx.x) * batch + thidx];
 }
 
+static int _cwc_convnet_convolutional_backward_propagate_coeff_multi_way_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
+		int x, int y)
+{
+	if (!(layer->net.convolutional.count % y == 0 && layer->input.matrix.channels % x == 0 &&
+				layer->net.convolutional.count / y * layer->input.matrix.channels / x <= 1024 && /* thread per block constraint */
+				layer->net.convolutional.count / y * layer->input.matrix.channels / x >= layer->input.matrix.channels * BATCH_PER_BLOCK &&
+				layer->net.convolutional.count / y * layer->input.matrix.channels / x >= layer->net.convolutional.count && /* shared loading constraint */
+				sizeof(float) * BATCH_PER_BLOCK * (layer->input.matrix.channels + layer->net.convolutional.count) <= 48 * 1024 /* shared memory size constraint */))
+		return -1;
+	int out_rows, out_cols;
+	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
+	float* chm = scratch;
+	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
+	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
+	float alpha = 1, beta = 0;
+	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
+	const int batch_group_count = batch / BATCH_PER_BLOCK;
+	_cwc_kern_reorder_matrix_major_per_block
+	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
+	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch, BATCH_PER_BLOCK);
+	_cwc_kern_reorder_matrix_major_per_block
+	<<<dim3(out_rows * out_cols, layer->net.convolutional.count), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
+	(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch, BATCH_PER_BLOCK);
+#define vary_block(_x, _y) do { \
+		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, layer->input.matrix.channels / _x); \
+		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
+		int batch_group_count = batch / BATCH_PER_BLOCK; \
+		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, out_rows * batch_group_count); \
+		int shared_memory_size = sizeof(float) * BATCH_PER_BLOCK * (layer->input.matrix.channels + layer->net.convolutional.count); \
+		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff_multi_way<_x, _y, BATCH_PER_BLOCK>, cudaFuncCachePreferShared); \
+		_cwc_kern_convolutional_backward_propagate_coeff_multi_way \
+		<_x, _y, BATCH_PER_BLOCK> \
+		<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
+		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
+			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
+			cha, out_rows, out_cols, \
+			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
+		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, out_rows * batch_group_count, &alpha, cbw, count, unit, out_rows * batch_group_count, &beta, configuration->w, count); \
+	} while (0)
+	// special casing for image
+	ccv_vary_4_a(x, 1, 2, 3, 4, ccv_vary_2_c, y, 1, 2, vary_block);
+#undef vary_block
+	assert(cudaGetLastError() == cudaSuccess);
+	return 0;
+}
+
+static void _cwc_convnet_convolutional_backward_propagate_coeff_multi_way(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
+{
+	if (VARY(layer)->backward_propagate_coeff.x == 0 && VARY(layer)->backward_propagate_coeff.y == 0)
+	{
+		static int vary_x[] = { 1, 2, 3, 4 };
+		static int vary_y[] = { 1, 2 };
+		int i, j, t;
+		int x = 0, y = 0;
+		float best_elapsed_time = FLT_MAX;
+		cudaEvent_t start;
+		cudaEvent_t stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		for (i = 0; i < 4; i++)
+			for (j = 0; j < 2; j++)
+			{
+				float elapsed_time_vary = 0;
+				cudaEventRecord(start, stream);
+				int success = _cwc_convnet_convolutional_backward_propagate_coeff_multi_way_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j]);
+				cudaEventRecord(stop, stream);
+				cudaEventSynchronize(stop);
+				if (success != 0)
+					continue;
+				cudaEventElapsedTime(&elapsed_time_vary, start, stop);
+				for (t = 1; t < BENCH_ITERATION; t++) // we do 3 runs and pick the best one
+				{
+					cudaEventRecord(start, stream);
+					_cwc_convnet_convolutional_backward_propagate_coeff_multi_way_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j]);
+					cudaEventRecord(stop, stream);
+					cudaEventSynchronize(stop);
+					float elapsed_time = 0;
+					cudaEventElapsedTime(&elapsed_time, start, stop);
+					if (elapsed_time < elapsed_time_vary)
+						elapsed_time_vary = elapsed_time;
+				}
+				if (elapsed_time_vary < best_elapsed_time)
+					best_elapsed_time = elapsed_time_vary, x = vary_x[i], y = vary_y[j];
+			}
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		VARY(layer)->backward_propagate_coeff.x = x;
+		VARY(layer)->backward_propagate_coeff.y = y;
+	} else // we already have configuration, run it
+		_cwc_convnet_convolutional_backward_propagate_coeff_multi_way_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, VARY(layer)->backward_propagate_coeff.x, VARY(layer)->backward_propagate_coeff.y);
+}
+
+static int _cwc_convnet_convolutional_backward_propagate_coeff_default_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
+		int x, int y, int z)
+{
+	if (!(layer->net.convolutional.count % y == 0 && z % x == 0 && layer->net.convolutional.channels % z == 0 &&
+				layer->net.convolutional.count / y * z / x <= 1024 && /* thread per block constraint */
+				layer->net.convolutional.count / y * z / x >= z && layer->net.convolutional.count / y * z / x >= layer->net.convolutional.count && /* shared loading constraint */
+				sizeof(float) * (z + layer->net.convolutional.count) <= 32 * 1024 /* shared memory size constraint */))
+		return -1;
+	int out_rows, out_cols;
+	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
+	float* chm = scratch;
+	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
+	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
+	float alpha = 1, beta = 0;
+	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
+	_cwc_kern_reorder_matrix_major
+	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), batch, 0, stream>>>
+	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch);
+	_cwc_kern_reorder_matrix_major
+	<<<dim3(out_rows * out_cols, layer->net.convolutional.count), batch, 0, stream>>>
+	(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch);
+#define vary_block(_x, _y, _z) do { \
+		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, _z / _x); \
+		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
+		int batch_group_count = batch / BATCH_PER_BLOCK; \
+		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.channels / _z * batch_group_count); \
+		int shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count); \
+		_cwc_kern_convolutional_backward_propagate_coeff_default \
+		<_x, _y, _z, BATCH_PER_BLOCK> \
+		<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
+		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
+			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
+			cha, out_rows, out_cols, \
+			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
+		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, batch_group_count, &alpha, cbw, count, unit, batch_group_count, &beta, configuration->w, count); \
+	} while (0)
+	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_4_c, z, 16, 24, 32, 36, vary_block);
+#undef vary_block
+	assert(cudaGetLastError() == cudaSuccess);
+	return 0;
+}
+
+static void _cwc_convnet_convolutional_backward_propagate_coeff_default(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
+{
+	if (VARY(layer)->backward_propagate_coeff.x == 0 && VARY(layer)->backward_propagate_coeff.y == 0 && VARY(layer)->backward_propagate_coeff.z == 0)
+	{
+		static int vary_x[] = { 1, 2, 4, 8 };
+		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_z[] = { 16, 24, 32, 36 };
+		int i, j, k, t;
+		int x = 0, y = 0, z = 0;
+		float best_elapsed_time = FLT_MAX;
+		cudaEvent_t start;
+		cudaEvent_t stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		for (i = 0; i < 4; i++)
+			for (j = 0; j < 4; j++)
+				for (k = 0; k < 4; k++)
+				{
+					float elapsed_time_vary = 0;
+					cudaEventRecord(start, stream);
+					int success = _cwc_convnet_convolutional_backward_propagate_coeff_default_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j], vary_z[k]);
+					cudaEventRecord(stop, stream);
+					cudaEventSynchronize(stop);
+					if (success != 0)
+						continue;
+					cudaEventElapsedTime(&elapsed_time_vary, start, stop);
+					for (t = 1; t < BENCH_ITERATION; t++) // we do 3 runs and pick the best one
+					{
+						cudaEventRecord(start, stream);
+						_cwc_convnet_convolutional_backward_propagate_coeff_default_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j], vary_z[k]);
+						cudaEventRecord(stop, stream);
+						cudaEventSynchronize(stop);
+						float elapsed_time = 0;
+						cudaEventElapsedTime(&elapsed_time, start, stop);
+						if (elapsed_time < elapsed_time_vary)
+							elapsed_time_vary = elapsed_time;
+					}
+					if (elapsed_time_vary < best_elapsed_time)
+						best_elapsed_time = elapsed_time_vary, x = vary_x[i], y = vary_y[j], z = vary_z[k];
+				}
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		VARY(layer)->backward_propagate_coeff.x = x;
+		VARY(layer)->backward_propagate_coeff.y = y;
+		VARY(layer)->backward_propagate_coeff.z = z;
+	} else // we already have configuration, run it
+		_cwc_convnet_convolutional_backward_propagate_coeff_default_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, VARY(layer)->backward_propagate_coeff.x, VARY(layer)->backward_propagate_coeff.y, VARY(layer)->backward_propagate_coeff.z);
+}
+
+static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
+		int x, int y, int z)
+{
+	if (!(batch % x == 0 && z % y == 0 &&
+				layer->input.matrix.channels % z == 0 &&
+				batch / x * z / y <= 1024 && /* thread per block constraint */
+				batch / x * z / y >= batch && batch / x * z / y >= z && /* shared memory loading constraint */
+				sizeof(float) * (batch + z) <= 48 * 1024 /* shared memory size constraint */))
+		return -1;
+	int out_rows, out_cols;
+	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols);
+	float* chw = scratch;
+	_cwc_kern_reorder_matrix_major
+	<<<dim3(layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels), layer->net.convolutional.count, 0, stream>>>
+	(layer->w, chw, layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels, layer->net.convolutional.count);
+#define vary_block(_x, _y, _z) do { \
+		dim3 threads_per_block(batch / _x, _z / _y); \
+		assert(threads_per_block.x * threads_per_block.y <= 1024); \
+		dim3 num_blocks(layer->input.matrix.cols * layer->input.matrix.channels / _z, layer->input.matrix.rows); \
+		int shared_memory_size = sizeof(float) * (batch + _z); \
+		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate<_x, _y, _z>, cudaFuncCachePreferShared); \
+		_cwc_kern_convolutional_backward_propagate \
+		<_x, _y, _z> \
+		<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
+		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
+		 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
+		 a, out_rows, out_cols, \
+		 chw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
+	} while (0)
+	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
+#undef vary_block
+	assert(cudaGetLastError() == cudaSuccess);
+	return 0;
+}
+
+static void _cwc_convnet_convolutional_backward_propagate_error(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
+{
+	if (VARY(layer)->backward_propagate_error.x == 0 && VARY(layer)->backward_propagate_error.y == 0 && VARY(layer)->backward_propagate_error.z == 0)
+	{
+		static int vary_x[] = { 1, 2, 4, 8 };
+		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
+		int i, j, k, t;
+		int x = 0, y = 0, z = 0;
+		float best_elapsed_time = FLT_MAX;
+		cudaEvent_t start;
+		cudaEvent_t stop;
+		cudaEventCreate(&start);
+		cudaEventCreate(&stop);
+		for (i = 0; i < 4; i++)
+			for (j = 0; j < 4; j++)
+				for (k = 0; k < 6; k++)
+				{
+					float elapsed_time_vary = 0;
+					cudaEventRecord(start, stream);
+					int success = _cwc_convnet_convolutional_backward_propagate_error_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j], vary_z[k]);
+					cudaEventRecord(stop, stream);
+					cudaEventSynchronize(stop);
+					if (success != 0)
+						continue;
+					cudaEventElapsedTime(&elapsed_time_vary, start, stop);
+					for (t = 1; t < BENCH_ITERATION; t++) // we do 3 runs and pick the best one
+					{
+						cudaEventRecord(start, stream);
+						_cwc_convnet_convolutional_backward_propagate_error_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, vary_x[i], vary_y[j], vary_z[k]);
+						cudaEventRecord(stop, stream);
+						cudaEventSynchronize(stop);
+						float elapsed_time = 0;
+						cudaEventElapsedTime(&elapsed_time, start, stop);
+						if (elapsed_time < elapsed_time_vary)
+							elapsed_time_vary = elapsed_time;
+					}
+					if (elapsed_time_vary < best_elapsed_time)
+						best_elapsed_time = elapsed_time_vary, x = vary_x[i], y = vary_y[j], z = vary_z[k];
+				}
+		cudaEventDestroy(start);
+		cudaEventDestroy(stop);
+		VARY(layer)->backward_propagate_error.x = x;
+		VARY(layer)->backward_propagate_error.y = y;
+		VARY(layer)->backward_propagate_error.z = z;
+	} else // we already have configuration, run it
+		_cwc_convnet_convolutional_backward_propagate_error_vary(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle, VARY(layer)->backward_propagate_error.x, VARY(layer)->backward_propagate_error.y, VARY(layer)->backward_propagate_error.z);
+}
+
 static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	assert(layer->net.convolutional.count % 4 == 0);
@@ -801,71 +1136,10 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
-	float* chm = scratch;
-	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
-	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
-	float alpha = 1, beta = 0;
-	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
 	if (_cwc_convnet_layer_use_multi_way(layer))
-	{
-		const int batch_group_count = batch / BATCH_PER_BLOCK;
-		_cwc_kern_reorder_matrix_major_per_block
-		<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
-		(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch, BATCH_PER_BLOCK);
-		_cwc_kern_reorder_matrix_major_per_block
-		<<<dim3(out_rows * out_cols, layer->net.convolutional.count), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
-		(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch, BATCH_PER_BLOCK);
-#define vary_block(_x, _y) do { \
-			dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, layer->input.matrix.channels / _x); \
-			assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y < 1024); \
-			int batch_group_count = batch / BATCH_PER_BLOCK; \
-			dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, out_rows * batch_group_count); \
-			shared_memory_size = sizeof(float) * BATCH_PER_BLOCK * (layer->input.matrix.channels + layer->net.convolutional.count); \
-			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coeff_multi_way<_x, _y, BATCH_PER_BLOCK>, cudaFuncCachePreferShared); \
-			_cwc_kern_convolutional_backward_propagate_coeff_multi_way \
-			<_x, _y, BATCH_PER_BLOCK> \
-			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
-			(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
-				chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
-				cha, out_rows, out_cols, \
-				cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-			cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, out_rows * batch_group_count, &alpha, cbw, count, unit, out_rows * batch_group_count, &beta, configuration->w, count); \
-		} while (0)
-		// special casing for image
-		if (layer->input.matrix.channels == 3)
-			vary_block(3, 1);
-		else if (layer->net.convolutional.count % 2 == 0)
-			vary_block(1, 2);
-#undef vary_block
-	} else {
-		_cwc_kern_reorder_matrix_major
-		<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), batch, 0, stream>>>
-		(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch);
-		_cwc_kern_reorder_matrix_major
-		<<<dim3(out_rows * out_cols, layer->net.convolutional.count), batch, 0, stream>>>
-		(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch);
-#define vary_block(_x, _y, _z) do { \
-			dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, _z / _x); \
-			assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y < 1024); \
-			int batch_group_count = batch / BATCH_PER_BLOCK; \
-			dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.channels / _z * batch_group_count); \
-			shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count); \
-			_cwc_kern_convolutional_backward_propagate_coeff_default \
-			<_x, _y, _z, BATCH_PER_BLOCK> \
-			<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
-			(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
-				chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
-				cha, out_rows, out_cols, \
-				cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-			cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, batch_group_count, &alpha, cbw, count, unit, batch_group_count, &beta, configuration->w, count); \
-		} while (0)
-		if (layer->input.matrix.channels % 36 == 0)
-			vary_block(4, 8, 36);
-		else if (layer->input.matrix.channels % 32 == 0)
-			vary_block(4, 8, 32);
-#undef vary_block
-	}
-	assert(cudaGetLastError() == cudaSuccess);
+		_cwc_convnet_convolutional_backward_propagate_coeff_multi_way(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	else
+		_cwc_convnet_convolutional_backward_propagate_coeff_default(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 	dim3 threads_per_block_for_bias(batch / 16, 16);
 	assert(threads_per_block_for_bias.x * threads_per_block_for_bias.y <= 1024);
 	dim3 num_blocks_for_bias(layer->net.convolutional.count);
@@ -878,34 +1152,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 		configuration->bias, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
 	if (b)
-	{
-		float* chw = scratch;
-		_cwc_kern_reorder_matrix_major
-		<<<dim3(layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels), layer->net.convolutional.count, 0, stream>>>
-		(layer->w, chw, layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels, layer->net.convolutional.count);
-#define vary_block(_x, _y, _z) do { \
-			dim3 threads_per_block(batch / _x, _z / _y); \
-			assert(threads_per_block.x * threads_per_block.y <= 1024); \
-			dim3 num_blocks(layer->input.matrix.cols * layer->input.matrix.channels / _z, layer->input.matrix.rows); \
-			shared_memory_size = sizeof(float) * (batch + _z); \
-			cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate<_x, _y, _z>, cudaFuncCachePreferShared); \
-			_cwc_kern_convolutional_backward_propagate \
-			<_x, _y, _z> \
-			<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-			(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
-			 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
-			 a, out_rows, out_cols, \
-			 chw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-		} while (0)
-		if (layer->input.matrix.channels % 72 == 0)
-			vary_block(4, 8, 72);
-		else if (layer->input.matrix.channels % 36 == 0)
-			vary_block(4, 8, 36);
-		else if (layer->input.matrix.channels % 32 == 0)
-			vary_block(4, 8, 32);
-#undef vary_block
-		assert(cudaGetLastError() == cudaSuccess);
-	}
+		_cwc_convnet_convolutional_backward_propagate_error(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 }
 
 template <int input_per_thread, int size>
