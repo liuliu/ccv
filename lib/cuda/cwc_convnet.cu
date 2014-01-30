@@ -512,7 +512,7 @@ static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t
 			 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count, \
 			 layer->bias); \
 	} while (0)
-	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
+	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_5_b, y, 1, 2, 4, 6, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
 	return 0;
@@ -523,7 +523,7 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	if (VARY(layer)->forward_propagate.x == 0 && VARY(layer)->forward_propagate.y == 0 && VARY(layer)->forward_propagate.z == 0)
 	{
 		static int vary_x[] = { 1, 2, 4, 8 };
-		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_y[] = { 1, 2, 4, 6, 8 };
 		static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
 		int i, j, k, t;
 		int x = 0, y = 0, z = 0;
@@ -533,7 +533,7 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 		cudaEventCreate(&start);
 		cudaEventCreate(&stop);
 		for (i = 0; i < 4; i++)
-			for (j = 0; j < 4; j++)
+			for (j = 0; j < 5; j++)
 				for (k = 0; k < 6; k++)
 				{
 					float elapsed_time_vary = 0;
@@ -986,7 +986,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coeff_default_vary(ccv_
 			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
 		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, batch_group_count, &alpha, cbw, count, unit, batch_group_count, &beta, configuration->w, count); \
 	} while (0)
-	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_4_c, z, 16, 24, 32, 36, vary_block);
+	ccv_vary_6_a(x, 1, 2, 3, 4, 6, 8, ccv_vary_6_b, y, 1, 2, 3, 4, 6, 8, ccv_vary_4_c, z, 16, 24, 32, 36, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
 	return 0;
@@ -996,8 +996,8 @@ static void _cwc_convnet_convolutional_backward_propagate_coeff_default(ccv_conv
 {
 	if (VARY(layer)->backward_propagate_coeff.x == 0 && VARY(layer)->backward_propagate_coeff.y == 0 && VARY(layer)->backward_propagate_coeff.z == 0)
 	{
-		static int vary_x[] = { 1, 2, 4, 8 };
-		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_x[] = { 1, 2, 3, 4, 6, 8 };
+		static int vary_y[] = { 1, 2, 3, 4, 6, 8 };
 		static int vary_z[] = { 16, 24, 32, 36 };
 		int i, j, k, t;
 		int x = 0, y = 0, z = 0;
@@ -1006,8 +1006,8 @@ static void _cwc_convnet_convolutional_backward_propagate_coeff_default(ccv_conv
 		cudaEvent_t stop;
 		cudaEventCreate(&start);
 		cudaEventCreate(&stop);
-		for (i = 0; i < 4; i++)
-			for (j = 0; j < 4; j++)
+		for (i = 0; i < 6; i++)
+			for (j = 0; j < 6; j++)
 				for (k = 0; k < 4; k++)
 				{
 					float elapsed_time_vary = 0;
@@ -1070,7 +1070,7 @@ static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_
 		 a, out_rows, out_cols, \
 		 chw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
 	} while (0)
-	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_4_b, y, 1, 2, 4, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
+	ccv_vary_4_a(x, 1, 2, 4, 8, ccv_vary_5_b, y, 1, 2, 4, 6, 8, ccv_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
 	return 0;
@@ -1081,7 +1081,7 @@ static void _cwc_convnet_convolutional_backward_propagate_error(ccv_convnet_laye
 	if (VARY(layer)->backward_propagate_error.x == 0 && VARY(layer)->backward_propagate_error.y == 0 && VARY(layer)->backward_propagate_error.z == 0)
 	{
 		static int vary_x[] = { 1, 2, 4, 8 };
-		static int vary_y[] = { 1, 2, 4, 8 };
+		static int vary_y[] = { 1, 2, 4, 6, 8 };
 		static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
 		int i, j, k, t;
 		int x = 0, y = 0, z = 0;
@@ -1091,7 +1091,7 @@ static void _cwc_convnet_convolutional_backward_propagate_error(ccv_convnet_laye
 		cudaEventCreate(&start);
 		cudaEventCreate(&stop);
 		for (i = 0; i < 4; i++)
-			for (j = 0; j < 4; j++)
+			for (j = 0; j < 5; j++)
 				for (k = 0; k < 6; k++)
 				{
 					float elapsed_time_vary = 0;
