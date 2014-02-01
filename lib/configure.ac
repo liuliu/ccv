@@ -1,7 +1,7 @@
 AC_INIT([libccv], [0.6])
 
-AC_SUBST(DEFINE_MACROS, [])
-AC_SUBST(MKCFLAGS, [])
+AC_SUBST(DEFINE_MACROS, [""])
+AC_SUBST(MKCFLAGS, [""])
 AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_OBJS, [cuda/cwc_convnet.o])
 

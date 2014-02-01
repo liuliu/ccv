@@ -46,9 +46,11 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 {
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count * 2 + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	convnet->use_cwc_accel = use_cwc_accel;
+#ifdef HAVE_GSL
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	gsl_rng_set(rng, (unsigned long int)convnet);
+#endif
 	convnet->reserved = 0;
 	convnet->layers = (ccv_convnet_layer_t*)(convnet + 1);
 	convnet->acts = (ccv_dense_matrix_t**)(convnet->layers + count);
@@ -79,8 +81,13 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 				layers[i].wnum = params[i].output.convolutional.rows * params[i].output.convolutional.cols * params[i].output.convolutional.channels * params[i].output.convolutional.count;
 				layers[i].w = (float*)ccmalloc(sizeof(float) * (layers[i].wnum + params[i].output.convolutional.count));
 				layers[i].bias = layers[i].w + layers[i].wnum;
+#ifdef HAVE_GSL
 				for (j = 0; j < layers[i].wnum; j++)
 					layers[i].w[j] = gsl_ran_gaussian(rng, params[i].sigma);
+#else
+				for (j = 0; j < layers[i].wnum; j++)
+					layers[i].w[j] = 0;
+#endif
 				for (j = 0; j < params[i].output.convolutional.count; j++)
 					layers[i].bias[j] = params[i].bias;
 				break;
@@ -88,8 +95,13 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 				layers[i].wnum = params[i].input.node.count * params[i].output.full_connect.count;
 				layers[i].w = (float*)ccmalloc(sizeof(float) * (layers[i].wnum + params[i].output.full_connect.count));
 				layers[i].bias = layers[i].w + layers[i].wnum;
+#ifdef HAVE_GSL
 				for (j = 0; j < layers[i].wnum; j++)
 					layers[i].w[j] = gsl_ran_gaussian(rng, params[i].sigma);
+#else
+				for (j = 0; j < layers[i].wnum; j++)
+					layers[i].w[j] = 0;
+#endif
 				for (j = 0; j < params[i].output.full_connect.count; j++)
 					layers[i].bias[j] = params[i].bias;
 				break;
@@ -100,7 +112,9 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 				break;
 		}
 	}
+#ifdef HAVE_GSL
 	gsl_rng_free(rng);
+#endif
 	return convnet;
 }
 
@@ -437,6 +451,8 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* l
 }
 
 #endif
+
+#ifdef HAVE_GSL
 
 static void _ccv_convnet_compute_softmax(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
@@ -928,10 +944,13 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 	return update_params;
 }
 
+#endif
+
 #ifndef CASE_TESTS
 
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params)
 {
+#ifdef HAVE_GSL
 #ifdef HAVE_CUDA
 	if (convnet->use_cwc_accel)
 		cwc_convnet_supervised_train(convnet, categorizeds, tests, filename, params);
@@ -1001,6 +1020,9 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	gsl_rng_free(rng);
 #ifdef HAVE_CUDA
 	}
+#endif
+#else
+	assert(0 && "ccv_convnet_supervised_train requires GSL library support");
 #endif
 }
 

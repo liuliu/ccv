@@ -2021,7 +2021,9 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
+DEFINE_MACROS=""
 
+MKCFLAGS=""
 
 MKLDFLAGS="-lm "
 

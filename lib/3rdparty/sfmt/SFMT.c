@@ -41,8 +41,10 @@ extern "C" {
 /**
  * parameters used by sse2.
  */
+#ifdef HAVE_SSE2
 static const w128_t sse2_param_mask = {{SFMT_MSK1, SFMT_MSK2,
 					SFMT_MSK3, SFMT_MSK4}};
+#endif
 /*----------------
   STATIC FUNCTIONS
   ----------------*/
