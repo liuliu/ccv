@@ -208,4 +208,32 @@ TEST_CASE("matrix border")
 	ccv_matrix_free(result);
 }
 
+TEST_CASE("half precision and float-point conversion")
+{
+	uint16_t* h = (uint16_t*)ccmalloc(sizeof(uint16_t) * 0x10000);
+	float* f = (float*)ccmalloc(sizeof(float) * 0x10000);
+	uint16_t* b = (uint16_t*)ccmalloc(sizeof(uint16_t) * 0x10000);
+	float* c = (float*)ccmalloc(sizeof(float) * 0x10000);
+	int i;
+	for (i = 0; i < 0x10000; i++)
+		h[i] = i;
+	ccv_half_precision_to_float(h, f, 0x10000);
+	ccv_float_to_half_precision(f, b, 0x10000);
+	REQUIRE_ARRAY_EQ(uint16_t, h, b, 0x10000, "half precision convert to float and then convert back should match exactly");
+	for (i = 0; i <= 2048; i++)
+		f[i] = i;
+	ccv_float_to_half_precision(f, h, 2049);
+	ccv_half_precision_to_float(h, c, 2049);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, f, c, 2049, 1e-5, "0-2048 integer to half precision and convert back should match exactly");
+	for (i = 4097; i <= 8192; i++)
+		f[i - 4097] = i;
+	ccv_float_to_half_precision(f, h, 8192 - 4097 + 1);
+	ccv_half_precision_to_float(h, c, 8192 - 4097 + 1);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, f, c, 8192 - 4097 + 1, 4 + 1e-5, "4097-8192 integer to half precision and convert back should round to multiple of 4");
+	ccfree(h);
+	ccfree(f);
+	ccfree(b);
+	ccfree(c);
+}
+
 #include "case_main.h"

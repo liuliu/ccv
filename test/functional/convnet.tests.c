@@ -4,7 +4,7 @@
 
 TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -49,7 +49,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 
 TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -105,7 +105,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 
 TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -207,7 +207,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 
 TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -385,7 +385,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 
 TEST_CASE("full connect network from 13x13x128 to 2048")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_FULL_CONNECT,
 		.bias = 0,
 		.sigma = 0.01,
@@ -426,7 +426,7 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 
 TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_MAX_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -465,7 +465,7 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 
 TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_MAX_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -504,7 +504,7 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 
 TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_MAX_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -543,7 +543,7 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 
 TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_AVERAGE_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -582,7 +582,7 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 
 TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_AVERAGE_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -621,7 +621,7 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 
 TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_AVERAGE_POOL,
 		.bias = 0,
 		.sigma = 0.01,
@@ -665,11 +665,10 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 
 TEST_CASE("full connect network backward propagate")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_FULL_CONNECT,
 		.bias = 0,
 		.sigma = 0.0001,
-		.dropout_rate = 0,
 		.input = {
 			.matrix = {
 				.rows = 3,
@@ -733,11 +732,10 @@ TEST_CASE("full connect network backward propagate")
 
 TEST_CASE("convolutional network backward propagate")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.0001,
-		.dropout_rate = 0,
 		.input = {
 			.matrix = {
 				.rows = 31,
@@ -805,11 +803,10 @@ TEST_CASE("convolutional network backward propagate")
 
 TEST_CASE("numerical gradient versus analytical gradient for full connect network")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_FULL_CONNECT,
 		.bias = 0,
 		.sigma = 0.01,
-		.dropout_rate = 0,
 		.input = {
 			.matrix = {
 				.rows = 3,
@@ -882,11 +879,10 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_CONVOLUTIONAL,
 		.bias = 0,
 		.sigma = 0.0001,
-		.dropout_rate = 0,
 		.input = {
 			.matrix = {
 				.rows = 31,
@@ -962,12 +958,11 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network over convolutional network")
 {
-	ccv_convnet_param_t params[] = {
+	ccv_convnet_layer_param_t params[] = {
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.001,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -990,7 +985,6 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.001,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -1068,12 +1062,11 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 
 TEST_CASE("numerical gradient versus analytical gradient for full connect network over convolutional network")
 {
-	ccv_convnet_param_t params[] = {
+	ccv_convnet_layer_param_t params[] = {
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.001,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 5,
@@ -1096,7 +1089,6 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 0,
 			.sigma = 0.01,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 5,
@@ -1167,12 +1159,11 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 
 TEST_CASE("numerical gradient versus analytical gradient for local response normalization over convolutional network")
 {
-	ccv_convnet_param_t params[] = {
+	ccv_convnet_layer_param_t params[] = {
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.001,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -1193,7 +1184,6 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		},
 		{
 			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.dropout_rate = 0,
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -1270,7 +1260,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 
 TEST_CASE("max pool network backward propagate")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_MAX_POOL,
 		.input = {
 			.matrix = {
@@ -1316,7 +1306,7 @@ TEST_CASE("max pool network backward propagate")
 
 TEST_CASE("average pool network backward propagate")
 {
-	ccv_convnet_param_t params = {
+	ccv_convnet_layer_param_t params = {
 		.type = CCV_CONVNET_AVERAGE_POOL,
 		.input = {
 			.matrix = {

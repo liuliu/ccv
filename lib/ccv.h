@@ -391,6 +391,10 @@ void ccv_zero(ccv_matrix_t* mat);
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
 int ccv_any_nan(ccv_matrix_t *a);
 
+// 32-bit float to 16-bit float
+void ccv_float_to_half_precision(float* f, uint16_t* h, size_t len);
+void ccv_half_precision_to_float(uint16_t* h, float* f, size_t len);
+
 /* basic data structures ccv_util.c */
 
 typedef struct {

@@ -906,12 +906,12 @@ static void _ccv_convnet_update_zero(ccv_convnet_t* update_params)
 
 static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 {
-	ccv_convnet_t* update_params = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(ccv_dense_matrix_t*) * (convnet->count - 1));
+	ccv_convnet_t* update_params = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(ccv_dense_matrix_t*) * convnet->count);
 	update_params->reserved = 0;
 	update_params->layers = (ccv_convnet_layer_t*)(update_params + 1);
 	update_params->acts = (ccv_dense_matrix_t**)(update_params->layers + convnet->count);
-	// the update params doesn't need the neuron layers (acts) for the input image, and the loss layer, therefore, convnet->count - 1
-	memset(update_params->acts, 0, sizeof(ccv_dense_matrix_t*) * (convnet->count - 1));
+	memset(update_params->acts, 0, sizeof(ccv_dense_matrix_t*) * convnet->count);
+	update_params->denoms = 0;
 	update_params->dors = 0;
 	update_params->rows = convnet->rows;
 	update_params->cols = convnet->cols;
@@ -934,6 +934,7 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 				update_params->layers[i].w = (float*)cccalloc(sizeof(float), update_params->layers[i].wnum + update_params->layers[i].net.full_connect.count);
 				update_params->layers[i].bias = update_params->layers[i].w + update_params->layers[i].wnum;
 				break;
+			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
 				update_params->layers[i].w = 0;
@@ -1037,16 +1038,20 @@ void ccv_convnet_compact(ccv_convnet_t* convnet)
 		if (convnet->acts[i])
 			ccv_matrix_free(convnet->acts[i]);
 		convnet->acts[i] = 0;
-		if (convnet->denoms[i])
-			ccv_matrix_free(convnet->denoms[i]);
-		convnet->denoms[i] = 0;
+		if (convnet->denoms)
+		{
+			if (convnet->denoms[i])
+				ccv_matrix_free(convnet->denoms[i]);
+			convnet->denoms[i] = 0;
+		}
 	}
-	for (i = 0; i < convnet->count - 1; i++)
-	{
-		if (convnet->dors[i])
-			ccv_matrix_free(convnet->dors[i]);
-		convnet->dors[i] = 0;
-	}
+	if (convnet->dors)
+		for (i = 0; i < convnet->count - 1; i++)
+		{
+			if (convnet->dors[i])
+				ccv_matrix_free(convnet->dors[i]);
+			convnet->dors[i] = 0;
+		}
 }
 
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
