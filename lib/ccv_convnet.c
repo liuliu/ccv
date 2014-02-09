@@ -1054,7 +1054,7 @@ void ccv_convnet_compact(ccv_convnet_t* convnet)
 		}
 }
 
-void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
+void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params)
 {
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
@@ -1066,7 +1066,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
 			"output_rows INTEGER, output_cols INTEGER, output_channels INTEGER, output_count INTEGER, output_strides INTEGER, output_border INTEGER, "
 			"output_size INTEGER, output_kappa REAL, output_alpha REAL, output_beta REAL);"
 			"CREATE TABLE IF NOT EXISTS layer_data "
-			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);";
+			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB, half_precision INTEGER);";
 		assert(SQLITE_OK == sqlite3_exec(db, layer_create_table_qs, 0, 0, 0));
 		const char layer_params_insert_qs[] = 
 			"REPLACE INTO layer_params "
@@ -1082,7 +1082,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, layer_params_insert_qs, sizeof(layer_params_insert_qs), &layer_params_insert_stmt, 0));
 		const char layer_data_insert_qs[] =
 			"REPLACE INTO layer_data "
-			"(layer, weight, bias) VALUES ($layer, $weight, $bias);";
+			"(layer, weight, bias, half_precision) VALUES ($layer, $weight, $bias, $half_precision);";
 		sqlite3_stmt* layer_data_insert_stmt = 0;
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, layer_data_insert_qs, sizeof(layer_data_insert_qs), &layer_data_insert_stmt, 0));
 		int i;
@@ -1129,8 +1129,19 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename)
 			if (layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT)
 			{
 				sqlite3_bind_int(layer_data_insert_stmt, 1, i);
-				sqlite3_bind_blob(layer_data_insert_stmt, 2, layer->w, sizeof(float) * layer->wnum, SQLITE_STATIC);
-				sqlite3_bind_blob(layer_data_insert_stmt, 3, layer->bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count), SQLITE_STATIC);
+				if (params.half_precision)
+				{
+					uint16_t* w = (uint16_t*)ccmalloc(sizeof(uint16_t) * layer->wnum);
+					ccv_float_to_half_precision(layer->w, w, layer->wnum);
+					uint16_t* bias = (uint16_t*)ccmalloc(sizeof(uint16_t) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count));
+					ccv_float_to_half_precision(layer->bias, bias, layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count);
+					sqlite3_bind_blob(layer_data_insert_stmt, 2, w, sizeof(uint16_t) * layer->wnum, ccfree);
+					sqlite3_bind_blob(layer_data_insert_stmt, 3, bias, sizeof(uint16_t) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count), ccfree);
+				} else {
+					sqlite3_bind_blob(layer_data_insert_stmt, 2, layer->w, sizeof(float) * layer->wnum, SQLITE_STATIC);
+					sqlite3_bind_blob(layer_data_insert_stmt, 3, layer->bias, sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count), SQLITE_STATIC);
+				}
+				sqlite3_bind_int(layer_data_insert_stmt, 4, params.half_precision);
 				assert(SQLITE_DONE == sqlite3_step(layer_data_insert_stmt));
 				sqlite3_reset(layer_data_insert_stmt);
 				sqlite3_clear_bindings(layer_data_insert_stmt);
@@ -1200,18 +1211,27 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 			// load layer data
 			sqlite3_stmt* layer_data_stmt = 0;
 			const char layer_data_qs[] =
-				"SELECT layer, weight, bias FROM layer_data;";
+				"SELECT layer, weight, bias, half_precision FROM layer_data;";
 			if (SQLITE_OK == sqlite3_prepare_v2(db, layer_data_qs, sizeof(layer_data_qs), &layer_data_stmt, 0))
 			{
 				while(sqlite3_step(layer_data_stmt) == SQLITE_ROW)
 				{
 					ccv_convnet_layer_t* layer = convnet->layers + sqlite3_column_int(layer_data_stmt, 0);
-					int wnum = sqlite3_column_bytes(layer_data_stmt, 1) / sizeof(float);
-					int bnum = sqlite3_column_bytes(layer_data_stmt, 2) / sizeof(float);
+					int half_precision = sqlite3_column_int(layer_data_stmt, 3);
+					int wnum = sqlite3_column_bytes(layer_data_stmt, 1) / (half_precision ? sizeof(uint16_t) : sizeof(float));
+					int bnum = sqlite3_column_bytes(layer_data_stmt, 2) / (half_precision ? sizeof(uint16_t) : sizeof(float));
 					if (wnum != layer->wnum)
 						continue;
 					const void* w = sqlite3_column_blob(layer_data_stmt, 1);
 					const void* bias = sqlite3_column_blob(layer_data_stmt, 2);
+					if (half_precision)
+					{
+						float* f = (float*)ccmalloc(sizeof(float) * (layer->wnum + (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count)));
+						ccv_half_precision_to_float((uint16_t*)w, f, layer->wnum);
+						ccv_half_precision_to_float((uint16_t*)bias, f + layer->wnum, layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count);
+						w = f;
+						bias = f + layer->wnum;
+					}
 					switch (layer->type)
 					{
 						case CCV_CONVNET_CONVOLUTIONAL:
@@ -1227,6 +1247,8 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 							memcpy(layer->bias, bias, sizeof(float) * layer->net.full_connect.count);
 							break;
 					}
+					if (half_precision)
+						ccfree((void*)w);
 				}
 				sqlite3_finalize(layer_data_stmt);
 			}

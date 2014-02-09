@@ -398,11 +398,10 @@ int main(int argc, char** argv)
 	layer_params[10].dor = 0.5;
 	layer_params[11].dor = 0.5;
 	train_params.layer_params = layer_params;
-	train_params.size = ccv_size(251, 251);
+	train_params.size = ccv_size(257, 257);
 	/*
-	ccv_size_t size = ccv_size(251, 251);
-	ccv_dense_matrix_t* mean = ccv_dense_matrix_new(251, 251, CCV_64F | CCV_C3, 0, 0);
-	for (i = 203228; i < categorizeds->rnum; i++)
+	ccv_size_t size = ccv_size(257, 257);
+	for (i = 0; i < categorizeds->rnum; i++)
 	{
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
 		ccv_dense_matrix_t* image = 0;
@@ -426,17 +425,13 @@ int main(int argc, char** argv)
 			int y = (norm->rows - size.height) / 2;
 			ccv_slice(norm, (ccv_matrix_t**)&patch, CCV_64F, y, x, size.width, size.height);
 			ccv_matrix_free(norm);
-			int j = 0;
-			for (j = 0; j < patch->rows * patch->cols * 3; j++)
-				mean->data.f64[j] += patch->data.f64[j];
 			ccv_matrix_free(patch);
-			printf("done %s, %d / %d\n", filename, i + 1, categorizeds->rnum);
+			FLUSH("done %s, %d / %d", filename, i + 1, categorizeds->rnum);
+		} else {
+			printf("\ncannot handle %s\n", categorized->file.filename);
 		}
 	}
-	for (i = 0; i < size.width * size.height * 3; i++)
-		mean->data.f64[i] /= categorizeds->rnum;
-	ccv_write(mean, "mean.bin", 0, CCV_IO_BINARY_FILE, 0);
-	ccv_matrix_free(mean);
+	printf("\n");
 	for (i = 0; i < tests->rnum; i++)
 	{
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(tests, i);
@@ -457,9 +452,12 @@ int main(int argc, char** argv)
 			snprintf(filename, 1024, "%s.resize.png", categorized->file.filename);
 			ccv_write(norm, filename, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(norm);
-			printf("done %s, %d / %d\n", filename, i + 1, tests->rnum);
+			FLUSH("done %s, %d / %d", filename, i + 1, tests->rnum);
+		} else {
+			printf("\ncannot handle %s\n", categorized->file.filename);
 		}
 	}
+	printf("\n");
 	*/
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);

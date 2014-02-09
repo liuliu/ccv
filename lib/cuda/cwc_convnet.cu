@@ -1967,7 +1967,9 @@ static void _cwc_convnet_host_synchronize(ccv_convnet_t* convnet)
 static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_supervised_train_function_state_t* z, const char* filename)
 {
 	_cwc_convnet_host_synchronize(z->convnet);
-	ccv_convnet_write(z->convnet, filename);
+	ccv_convnet_write_param_t params;
+	params.half_precision = 0;
+	ccv_convnet_write(z->convnet, filename, params);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
 	{
