@@ -524,7 +524,7 @@ void ccv_contour_free(ccv_contour_t* contour);
 
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type);
 void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
+void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_matrix_t** lambda, int type, double epsilon);
 
 typedef struct {
 	double interp;
@@ -1156,6 +1156,7 @@ typedef struct {
 	int channels;
 	// count and layer of the convnet
 	int count;
+	ccv_dense_matrix_t* mean_activity; // mean activity to subtract from
 	ccv_convnet_layer_t* layers; // the layer configuration
 	// these can be reused and we don't need to reallocate memory
 	ccv_dense_matrix_t** denoms; // denominators
@@ -1184,7 +1185,9 @@ typedef struct {
 	int max_epoch;
 	int mini_batch;
 	int iterations;
+	int symmetric;
 	ccv_size_t size;
+	float color_gain; // the gaussian value for color variations
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
 

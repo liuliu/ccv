@@ -16,8 +16,95 @@ void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
 {
 }
 
-void ccv_eigen(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type)
+void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_matrix_t** lambda, int type, double epsilon)
 {
+	ccv_declare_derived_signature(vsig, a->sig != 0, ccv_sign_with_literal("ccv_eigen(vector)"), a->sig, CCV_EOF_SIGN);
+	ccv_declare_derived_signature(lsig, a->sig != 0, ccv_sign_with_literal("ccv_eigen(lambda)"), a->sig, CCV_EOF_SIGN);
+	assert(CCV_GET_CHANNEL(a->type) == 1);
+	assert(a->rows == a->cols);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
+	// as of now, this function only support real symmetric matrix
+	ccv_dense_matrix_t* dvector = *vector = ccv_dense_matrix_renew(*vector, a->rows, a->cols, CCV_32F | CCV_64F | CCV_C1, type, vsig);
+	ccv_dense_matrix_t* dlambda = *lambda = ccv_dense_matrix_renew(*lambda, 1, a->cols, CCV_32F | CCV_64F | CCV_C1, type, lsig);
+	assert(CCV_GET_DATA_TYPE(dvector->type) == CCV_GET_DATA_TYPE(dlambda->type));
+	ccv_object_return_if_cached(, dvector, dlambda);
+	double* ja = (double*)ccmalloc(sizeof(double) * a->rows * a->cols);
+	int i;
+	unsigned char* aptr = a->data.u8;
+#define for_block(_, _for_get) \
+	for (i = 0; i < a->rows * a->cols; i++) \
+		ja[i] = _for_get(aptr, i, 0);
+	ccv_matrix_getter(a->type, for_block);
+#undef for_block
+	ccv_zero(dvector);
+	ccv_zero(dlambda);
+	unsigned char* dvptr = dvector->data.u8;
+#define for_block(_, _for_set) \
+	for (i = 0; i < a->rows; i++) \
+		_for_set(dvptr + dvector->step * i, i, 1, 0);
+	ccv_matrix_setter(dvector->type, for_block);
+#undef for_block
+	double accuracy = 0;
+	for (i = 0; i < a->rows * a->cols; i++) \
+		accuracy += ja[i];
+	accuracy = sqrt(2 * accuracy);
+	int p, q;
+	unsigned char* dlptr = dlambda->data.u8;
+	int flag = 1;
+#define for_block(_, _for_set, _for_get) \
+	do { \
+		if (!flag) \
+			accuracy = accuracy * 0.5; \
+		flag = 0; \
+		for (p = 0; p < a->rows; p++) \
+		{ \
+			for (q = p + 1; q < a->cols; q++) \
+				if (fabs(ja[p * a->cols + q]) > accuracy) \
+				{ \
+					double x = -ja[p * a->cols + q]; \
+					double y = (ja[q * a->cols + q] - ja[p * a->cols + p]) * 0.5; \
+					double omega = (x == 0 && y == 0) ? 1 : x / sqrt(x * x + y * y); \
+					if (y < 0) \
+						omega = -omega; \
+					double sn = 1.0 + sqrt(1.0 - omega * omega); \
+					sn = omega / sqrt(2 * sn); \
+					double cn = sqrt(1.0 - sn * sn); \
+					double fm = ja[p * a->cols + p]; \
+					ja[p * a->cols + p] = fm * cn * cn + ja[q * a->cols + q] * sn * sn + ja[p * a->cols + q] * omega; \
+					ja[q * a->cols + q] = fm * sn * sn + ja[q * a->cols + q] * cn * cn - ja[p * a->cols + q] * omega; \
+					ja[p * a->cols + q] = ja[q * a->cols + p] = 0; \
+					for (i = 0; i < a->cols; i++) \
+						if (i != q && i != p) \
+						{ \
+							fm = ja[p * a->cols + i]; \
+							ja[p * a->cols + i] = fm * cn + ja[q * a->cols + i] * sn; \
+							ja[q * a->cols + i] = -fm * sn + ja[q * a->cols + i] * cn; \
+						} \
+					for (i = 0; i < a->rows; i++) \
+						if (i != q && i != p) \
+						{ \
+							fm = ja[i * a->cols + p]; \
+							ja[i * a->cols + p] = fm * cn + ja[i * a->cols + q] * sn; \
+							ja[i * a->cols + q] = -fm * sn + ja[i * a->cols + q] * cn; \
+						} \
+					for (i = 0; i < a->cols; i++) \
+					{ \
+						fm = _for_get(dvptr + p * dvector->step, i, 0); \
+						_for_set(dvptr + p * dvector->step, i, fm * cn + _for_get(dvptr + q * dvector->step, i, 0) * sn, 0); \
+						_for_set(dvptr + q * dvector->step, i, -fm * sn + _for_get(dvptr + q * dvector->step, i, 0) * cn, 0); \
+					} \
+					for (i = 0; i < a->cols; i++) \
+						_for_set(dlptr, i, ja[i * a->cols + i], 0); \
+					flag = 1; \
+					break; \
+				} \
+			if (flag) \
+				break; \
+		} \
+	} while (accuracy > epsilon);
+	ccv_matrix_setter_getter(dvector->type, for_block);
+#undef for_block
+	ccfree(ja);
 }
 
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data)

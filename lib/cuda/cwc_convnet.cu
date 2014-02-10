@@ -1648,7 +1648,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 	}
 }
 
-static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, int* idx, ccv_size_t dim, int rows, int cols, int channels, int batch, int offset, int size, float* b, int* c)
+static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, int* idx, ccv_size_t dim, int rows, int cols, int channels, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
 	int i, k, x;
 	assert(size <= batch);
@@ -1657,55 +1657,170 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx ? idx[offset + i] : offset + i);
 		if (c)
 			c[i] = categorized->c;
+		ccv_dense_matrix_t* image;
 		switch (categorized->type)
 		{
 			case CCV_CATEGORIZED_DENSE_MATRIX:
-				assert(rows == categorized->matrix->rows && cols == categorized->matrix->cols && channels == CCV_GET_CHANNEL(categorized->matrix->type));
-				for (k = 0; k < channels; k++)
-					for (x = 0; x < rows * cols; x++)
-						b[(k * rows * cols + x) * batch + i] = categorized->matrix->data.f32[x * channels + k];
+				image = categorized->matrix;
 				break;
 			case CCV_CATEGORIZED_FILE:
-			{
-				ccv_dense_matrix_t* image = 0;
+				image = 0;
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-				if (image)
+				if (!image)
 				{
-					ccv_dense_matrix_t* norm = 0;
-					if (image->rows > dim.height && image->cols > dim.width)
-						ccv_resample(image, &norm, 0, ccv_max(dim.height, (int)(image->rows * (float)dim.height / image->cols + 0.5)), ccv_max(dim.width, (int)(image->cols * (float)dim.width / image->rows + 0.5)), CCV_INTER_AREA);
-					else if (image->rows < dim.height || image->cols < dim.width)
-						ccv_resample(image, &norm, 0, ccv_max(dim.height, (int)(image->rows * (float)dim.height / image->cols + 0.5)), ccv_max(dim.width, (int)(image->cols * (float)dim.width / image->rows + 0.5)), CCV_INTER_CUBIC);
-					else
-						norm = image;
-					if (norm != image)
-					{
-						printf("%s is not properly formatted at %dx%d, and ccv resampled it to required size. But you may want to preprocess it to save time.\n", categorized->file.filename, image->rows, image->cols);
-						ccv_matrix_free(image);
-					}
-					ccv_dense_matrix_t* patch = 0;
-					if (norm->cols != cols || norm->rows != rows)
-					{
-						int x = gsl_rng_uniform_int(rng, norm->cols - cols + 1);
-						int y = gsl_rng_uniform_int(rng, norm->rows - rows + 1);
-						ccv_slice(norm, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
-					} else
-						patch = norm;
-					// random horizontal reflection
-					if (gsl_rng_uniform_int(rng, 2) == 0)
-						ccv_flip(patch, &patch, 0, CCV_FLIP_X);
-					if (norm != patch)
-						ccv_matrix_free(norm);
-					assert(channels == CCV_GET_CHANNEL(patch->type));
-					for (k = 0; k < channels; k++)
-						for (x = 0; x < rows * cols; x++)
-							b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] - 128.0;
-					ccv_matrix_free(patch);
-				} else
 					printf("cannot load %s.\n", categorized->file.filename);
+					continue;
+				}
 				break;
-			}
 		}
+		assert(image->rows == dim.height || image->cols == dim.width);
+		ccv_dense_matrix_t* patch = 0;
+		if (image->cols != cols || image->rows != rows)
+		{
+			int x = gsl_rng_uniform_int(rng, image->cols - cols + 1);
+			int y = gsl_rng_uniform_int(rng, image->rows - rows + 1);
+			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+		} else
+			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
+		// random horizontal reflection
+		if (symmetric && gsl_rng_uniform_int(rng, 2) == 0)
+			ccv_flip(patch, &patch, 0, CCV_FLIP_X);
+		// we loaded it in, deallocate it now
+		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
+			ccv_matrix_free(image);
+		assert(channels == CCV_GET_CHANNEL(patch->type));
+		for (k = 0; k < channels; k++)
+			for (x = 0; x < rows * cols; x++)
+				b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] - mean_activity->data.f32[x * channels + k];
+		ccv_matrix_free(patch);
+	}
+}
+
+static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t dim, int rows, int cols, int channels, int symmetric, ccv_dense_matrix_t** b)
+{
+	int i, count = 0;
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(rows, cols, channels | CCV_64F, 0, 0);
+	ccv_zero(c);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, channels | CCV_32F, channels | CCV_32F, 0);
+	for (i = 0; i < categorizeds->rnum; i++)
+	{
+		FLUSH(" - compute mean activity %d / %d", i + 1, categorizeds->rnum);
+		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
+		ccv_dense_matrix_t* image;
+		switch (categorized->type)
+		{
+			case CCV_CATEGORIZED_DENSE_MATRIX:
+				image = categorized->matrix;
+				break;
+			case CCV_CATEGORIZED_FILE:
+				image = 0;
+				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+				if (!image)
+				{
+					printf("cannot load %s.\n", categorized->file.filename);
+					continue;
+				}
+				break;
+		}
+		ccv_dense_matrix_t* patch = 0;
+		if (image->cols != cols || image->rows != rows)
+		{
+			int x = (image->cols - cols + 1) / 2;
+			int y = (image->rows - rows + 1) / 2;
+			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+		} else
+			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
+		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
+			ccv_matrix_free(image);
+		ccv_add(patch, c, (ccv_matrix_t**)&c, CCV_64F);
+		++count;
+		ccv_matrix_free(patch);
+	}
+	if (symmetric)
+	{
+		int j, k;
+		double p = 0.5 / count;
+		double* cptr = c->data.f64;
+		float* dbptr = db->data.f32;
+		for (i = 0; i < db->rows; i++)
+		{
+			for (j = 0; j < db->cols; j++)
+				for (k = 0; k < channels; k++)
+					dbptr[j * channels + k] = p * (cptr[j * channels + k] + cptr[(c->cols - j - 1) * channels + k]);
+			dbptr += db->cols * channels;
+			cptr += c->cols * channels;
+		}
+	} else {
+		double p = 1.0 / count;
+		for (i = 0; i < rows * cols * channels; i++)
+			db->data.f32[i] = p * c->data.f64[i];
+	}
+	printf("\n");
+}
+
+static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int rows, int cols, int channels, float* vec, float* eigen)
+{
+	assert(channels == 3); // this function cannot handle anything other than 3x3 covariance matrix
+	double* mean_value = (double*)alloca(sizeof(double) * channels);
+	memset(mean_value, 0, sizeof(double) * channels);
+	assert(CCV_GET_CHANNEL(mean_activity->type) == channels);
+	assert(mean_activity->rows == rows);
+	assert(mean_activity->cols == cols);
+	int i, j, k, c;
+	for (i = 0; i < rows * cols; i++)
+		for (k = 0; k < channels; k++)
+			mean_value[k] += mean_activity->data.f32[i * channels + k];
+	for (i = 0; i < channels; i++)
+		mean_value[i] = mean_value[i] / (rows * cols);
+	double* covariance = (double*)alloca(sizeof(double) * channels * channels);
+	memset(covariance, 0, sizeof(double) * channels * channels);
+	for (c = 0; c < categorizeds->rnum; c++)
+	{
+		if (c % 23 == 0 || c == categorizeds->rnum - 1)
+			FLUSH(" - compute covariance matrix for data augmentation (color gain) %d / %d", c + 1, categorizeds->rnum);
+		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, c);
+		ccv_dense_matrix_t* image;
+		switch (categorized->type)
+		{
+			case CCV_CATEGORIZED_DENSE_MATRIX:
+				image = categorized->matrix;
+				break;
+			case CCV_CATEGORIZED_FILE:
+				image = 0;
+				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+				if (!image)
+				{
+					printf("cannot load %s.\n", categorized->file.filename);
+					continue;
+				}
+				break;
+		}
+		ccv_dense_matrix_t* patch = 0;
+		if (image->cols != cols || image->rows != rows)
+		{
+			int x = (image->cols - cols + 1) / 2;
+			int y = (image->rows - rows + 1) / 2;
+			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+		} else
+			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
+		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
+			ccv_matrix_free(image);
+		for (i = 0; i < rows * cols; i++)
+			for (j = 0; j < channels; j++)
+				for (k = j; k < channels; k++)
+					covariance[j * channels + k] += (patch->data.f32[i * channels + j] - mean_value[j]) * (patch->data.f32[i * channels + k] - mean_value[k]);
+		ccv_matrix_free(patch);
+	}
+	// TODO: compute eigenvectors / eigenvalues
+	printf("\n");
+	for (j = 0; j < channels; j++)
+		for (k = 0; k < j; k++)
+			covariance[j * channels + k] = covariance[k * channels + j];
+	for (j = 0; j < channels; j++)
+	{
+		for (k = 0; k < channels; k++)
+			printf("%lf ", covariance[j * channels + k]);
+		printf("\n");
 	}
 }
 
@@ -1854,6 +1969,10 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 				break;
 		}
 	}
+	assert(convnet->rows == z->convnet->rows);
+	assert(convnet->cols == z->convnet->cols);
+	assert(convnet->channels == z->convnet->channels);
+	memcpy(z->convnet->mean_activity->data.f32, convnet->mean_activity->data.f32, sizeof(float) * z->convnet->rows * z->convnet->cols * z->convnet->channels);
 	ccv_convnet_free(convnet);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
@@ -2093,6 +2212,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	int miss;
 	float elapsed_time;
 	ccv_function_state_begin(_cwc_convnet_supervised_train_function_state_read, z, filename);
+	_cwc_convnet_mean_formation(categorizeds, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
+	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
+	if (z.convnet->channels == 3 && params.color_gain > 0) // do this if we want color gain type of data augmentation, and it is RGB color
+		_cwc_convnet_channel_eigen(categorizeds, z.convnet->mean_activity, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, 0, 0);
+	exit(0);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
 		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
@@ -2106,7 +2230,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (i % 2);
-				_cwc_convnet_batch_formation(rng, categorizeds, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
+				_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
@@ -2151,7 +2275,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
-				_cwc_convnet_batch_formation(rng, tests, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
+				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				if (j > 0)

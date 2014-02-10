@@ -9,9 +9,12 @@ extern "C" {
 extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
 {
 	int batch = params.mini_batch;
+	int i, x, y, k, c;
 	_cwc_convnet_alloc_reserved(convnet, batch, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
-	_cwc_convnet_batch_formation(0, categorizeds, 0, ccv_size(251, 251), convnet->rows, convnet->cols, convnet->channels, batch, 0, batch, context->host.input, context->host.c);
+	for (i = 0; i < convnet->rows * convnet->cols * convnet->channels; i++)
+		convnet->mean_activity->data.f32[i] = 128;
+	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, ccv_size(251, 251), convnet->rows, convnet->cols, convnet->channels, 0, batch, 0, batch, context->host.input, context->host.c);
 	cudaMemcpy(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * batch, cudaMemcpyHostToDevice);
 
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
@@ -85,7 +88,6 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMemcpy(first_grad, first_gpu_configuration->w, sizeof(float) * first_gpu_layer->wnum, cudaMemcpyDeviceToHost);
 	printf("finished backward propagate first convolutional layer on GPU\n");
 
-	int i, x, y, k, c;
 	for (i = 0; i < batch; i++)
 	{
 		printf("doing batch %d of %d\n", i + 1, batch);
