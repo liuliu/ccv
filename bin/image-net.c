@@ -43,6 +43,8 @@ int main(int argc, char** argv)
 		.max_epoch = 100,
 		.mini_batch = 256,
 		.iterations = 5000,
+		.symmetric = 1,
+		.color_gain = 0.1,
 	};
 	int i, c;
 	while (getopt_long_only(argc, argv, "", image_net_options, &c) != -1)
@@ -399,66 +401,6 @@ int main(int argc, char** argv)
 	layer_params[11].dor = 0.5;
 	train_params.layer_params = layer_params;
 	train_params.size = ccv_size(257, 257);
-	/*
-	ccv_size_t size = ccv_size(257, 257);
-	for (i = 0; i < categorizeds->rnum; i++)
-	{
-		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
-		ccv_dense_matrix_t* image = 0;
-		ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-		if (image)
-		{
-			ccv_dense_matrix_t* norm = 0;
-			if (image->rows > size.height && image->cols > size.width)
-				ccv_resample(image, &norm, 0, ccv_max(size.height, (int)(image->rows * (float)size.height / image->cols + 0.5)), ccv_max(size.width, (int)(image->cols * (float)size.width / image->rows + 0.5)), CCV_INTER_AREA);
-			else if (image->rows < size.height || image->cols < size.width)
-				ccv_resample(image, &norm, 0, ccv_max(size.height, (int)(image->rows * (float)size.height / image->cols + 0.5)), ccv_max(size.width, (int)(image->cols * (float)size.width / image->rows + 0.5)), CCV_INTER_CUBIC);
-			else
-				norm = image;
-			if (norm != image)
-				ccv_matrix_free(image);
-			char filename[1024];
-			snprintf(filename, 1024, "%s.resize.png", categorized->file.filename);
-			ccv_write(norm, filename, 0, CCV_IO_PNG_FILE, 0);
-			ccv_dense_matrix_t* patch = 0;
-			int x = (norm->cols - size.width) / 2;
-			int y = (norm->rows - size.height) / 2;
-			ccv_slice(norm, (ccv_matrix_t**)&patch, CCV_64F, y, x, size.width, size.height);
-			ccv_matrix_free(norm);
-			ccv_matrix_free(patch);
-			FLUSH("done %s, %d / %d", filename, i + 1, categorizeds->rnum);
-		} else {
-			printf("\ncannot handle %s\n", categorized->file.filename);
-		}
-	}
-	printf("\n");
-	for (i = 0; i < tests->rnum; i++)
-	{
-		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(tests, i);
-		ccv_dense_matrix_t* image = 0;
-		ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-		if (image)
-		{
-			ccv_dense_matrix_t* norm = 0;
-			if (image->rows > size.height && image->cols > size.width)
-				ccv_resample(image, &norm, 0, ccv_max(size.height, (int)(image->rows * (float)size.height / image->cols + 0.5)), ccv_max(size.width, (int)(image->cols * (float)size.width / image->rows + 0.5)), CCV_INTER_AREA);
-			else if (image->rows < size.height || image->cols < size.width)
-				ccv_resample(image, &norm, 0, ccv_max(size.height, (int)(image->rows * (float)size.height / image->cols + 0.5)), ccv_max(size.width, (int)(image->cols * (float)size.width / image->rows + 0.5)), CCV_INTER_CUBIC);
-			else
-				norm = image;
-			if (norm != image)
-				ccv_matrix_free(image);
-			char filename[1024];
-			snprintf(filename, 1024, "%s.resize.png", categorized->file.filename);
-			ccv_write(norm, filename, 0, CCV_IO_PNG_FILE, 0);
-			ccv_matrix_free(norm);
-			FLUSH("done %s, %d / %d", filename, i + 1, tests->rnum);
-		} else {
-			printf("\ncannot handle %s\n", categorized->file.filename);
-		}
-	}
-	printf("\n");
-	*/
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();

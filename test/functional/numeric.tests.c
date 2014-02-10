@@ -1,12 +1,48 @@
 #include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
+#include "3rdparty/dsfmt/dSFMT.h"
 
 /* numeric tests are more like functional tests rather than unit tests:
  * the following tests contain:
- * 1. minimization of the famous rosenbrock function;
- * 2. compute ssd with ccv_filter, and compare the result with naive method
- * 3. compare the result from ccv_distance_transform (linear time) with reference implementation from voc-release4 (O(nlog(n))) */
+ * 1. compute eigenvectors / eigenvalues on a random symmetric matrix and verify these are eigenvectors / eigenvalues;
+ * 2. minimization of the famous rosenbrock function;
+ * 3. compute ssd with ccv_filter, and compare the result with naive method
+ * 4. compare the result from ccv_distance_transform (linear time) with reference implementation from voc-release4 (O(nlog(n))) */
+
+TEST_CASE("compute eigenvectors and eigenvalues of a symmetric matrix")
+{
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, (uint32_t)&dsfmt);
+	dsfmt_genrand_close_open(&dsfmt);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(4, 4, CCV_64F | CCV_C1, 0, 0);
+	int i, j, k;
+	for (i = 0; i < 4; i++)
+		for (j = i; j < 4; j++)
+			a->data.f64[i * 4 + j] = dsfmt_genrand_close_open(&dsfmt) * 10;
+	for (i = 0; i < 4; i++)
+		for (j = 0; j < i; j++)
+			a->data.f64[i * 4 + j] = a->data.f64[j * 4 + i];
+	ccv_dense_matrix_t* evec = 0;
+	ccv_dense_matrix_t* eval = 0;
+	ccv_eigen(a, &evec, &eval, 0, 1e-6);
+	for (k = 0; k < 4; k++)
+	{
+		double veca[4] = {
+			0, 0, 0, 0,
+		};
+		for (i = 0; i < 4; i++)
+			for (j = 0; j < 4; j++)
+				veca[i] += a->data.f64[i * 4 + j] * evec->data.f64[k * 4 + j];
+		double vece[4];
+		for (i = 0; i < 4; i++)
+			vece[i] = eval->data.f64[k] * evec->data.f64[k * 4 + i];
+		REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, veca, vece, 4, 1e-6, "verify %d(th) eigenvectors and eigenvalues with Ax = rx", k + 1);
+	}
+	ccv_matrix_free(a);
+	ccv_matrix_free(evec);
+	ccv_matrix_free(eval);
+}
 
 int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
