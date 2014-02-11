@@ -3339,7 +3339,7 @@ fi
 ac_fn_c_check_header_mongrel "$LINENO" "cblas.h" "ac_cv_header_cblas_h" "$ac_includes_default"
 if test "x$ac_cv_header_cblas_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CBLAS "
- MKLDFLAGS="$MKLDFLAGS-lcblas "
+ MKLDFLAGS="$MKLDFLAGS-lblas "
 
 fi
 
