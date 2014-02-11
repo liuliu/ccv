@@ -1,0 +1,3 @@
+language: c
+compiler: clang
+script: cd lib && ./configure && make && cd ../test && make
