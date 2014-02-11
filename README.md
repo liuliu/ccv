@@ -1,3 +1,5 @@
+[![Build Status](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
+
 Intro
 =====
 
