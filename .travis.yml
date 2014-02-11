@@ -1,4 +1,4 @@
 language: c
 compiler: clang
-install: sudo apt-get install libpng-dev libjpeg-dev libblas-dev libgsl0-dev libblocksruntime-dev
+install: sudo apt-get install libpng-dev libjpeg-dev libatlas-dev libgsl0-dev libblocksruntime-dev
 script: cd lib && ./configure && make && cd ../test && make
