@@ -5,7 +5,7 @@ CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = defects.l0.1.tests
 
 test: all
-	@for test in $(TARGETS) ; do ./"$$test" ; done
+	@for test in $(TARGETS) ; do ./"$$test" || exit ; done
 
 all: $(TARGETS)
 
