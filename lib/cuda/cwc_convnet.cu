@@ -1648,10 +1648,12 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 	}
 }
 
-static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, int* idx, ccv_size_t dim, int rows, int cols, int channels, int symmetric, int batch, int offset, int size, float* b, int* c)
+static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
 	int i, k, x;
 	assert(size <= batch);
+	float* channel_gains = (float*)alloca(sizeof(float) * channels);
+	memset(channel_gains, 0, sizeof(float) * channels);
 	for (i = 0; i < size; i++)
 	{
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx ? idx[offset + i] : offset + i);
@@ -1689,9 +1691,20 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
 			ccv_matrix_free(image);
 		assert(channels == CCV_GET_CHANNEL(patch->type));
+		if (color_gain > 0 && eigenvectors && eigenvalues)
+		{
+			assert(channels == 3); // only support RGB color gain
+			memset(channel_gains, 0, sizeof(float) * channels);
+			for (k = 0; k < channels; k++)
+			{
+				float alpha = gsl_ran_gaussian(rng, color_gain) * eigenvalues->data.f64[k];
+				for (x = 0; x < channels; x++)
+					channel_gains[x] += eigenvectors->data.f64[k * channels + x] * alpha;
+			}
+		}
 		for (k = 0; k < channels; k++)
 			for (x = 0; x < rows * cols; x++)
-				b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] - mean_activity->data.f32[x * channels + k];
+				b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] - mean_activity->data.f32[x * channels + k] + channel_gains[k];
 		ccv_matrix_free(patch);
 	}
 }
@@ -1704,7 +1717,8 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, channels | CCV_32F, channels | CCV_32F, 0);
 	for (i = 0; i < categorizeds->rnum; i++)
 	{
-		FLUSH(" - compute mean activity %d / %d", i + 1, categorizeds->rnum);
+		if (i % 23 == 0 || i == categorizeds->rnum - 1)
+			FLUSH(" - compute mean activity %d / %d", i + 1, categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
 		ccv_dense_matrix_t* image;
 		switch (categorized->type)
@@ -1758,7 +1772,7 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 	printf("\n");
 }
 
-static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int rows, int cols, int channels, float* vec, float* eigen)
+static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int rows, int cols, int channels, ccv_dense_matrix_t** eigenvectors, ccv_dense_matrix_t** eigenvalues)
 {
 	assert(channels == 3); // this function cannot handle anything other than 3x3 covariance matrix
 	double* mean_value = (double*)alloca(sizeof(double) * channels);
@@ -1766,7 +1780,7 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 	assert(CCV_GET_CHANNEL(mean_activity->type) == channels);
 	assert(mean_activity->rows == rows);
 	assert(mean_activity->cols == cols);
-	int i, j, k, c;
+	int i, j, k, c, count = 0;
 	for (i = 0; i < rows * cols; i++)
 		for (k = 0; k < channels; k++)
 			mean_value[k] += mean_activity->data.f32[i * channels + k];
@@ -1809,19 +1823,18 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 			for (j = 0; j < channels; j++)
 				for (k = j; k < channels; k++)
 					covariance[j * channels + k] += (patch->data.f32[i * channels + j] - mean_value[j]) * (patch->data.f32[i * channels + k] - mean_value[k]);
+		++count;
 		ccv_matrix_free(patch);
 	}
-	// TODO: compute eigenvectors / eigenvalues
-	printf("\n");
-	for (j = 0; j < channels; j++)
-		for (k = 0; k < j; k++)
-			covariance[j * channels + k] = covariance[k * channels + j];
-	for (j = 0; j < channels; j++)
-	{
-		for (k = 0; k < channels; k++)
-			printf("%lf ", covariance[j * channels + k]);
-		printf("\n");
-	}
+	for (i = 0; i < channels; i++)
+		for (j = 0; j < i; j++)
+			covariance[i * channels + j] = covariance[j * channels + i];
+	double p = 1.0 / ((double)count * rows * cols);
+	for (i = 0; i < channels; i++)
+		for (j = 0; j < channels; j++)
+			covariance[i * channels + j] *= p; // scale down
+	ccv_dense_matrix_t covm = ccv_dense_matrix(3, 3, CCV_64F | CCV_C1, covariance, 0);
+	ccv_eigen(&covm, eigenvectors, eigenvalues, CCV_64F, 1e-8);
 }
 
 static void _cwc_convnet_dor_mean_net(ccv_convnet_t* convnet, ccv_convnet_layer_train_param_t* layer_params, const cublasHandle_t& handle)
@@ -1939,6 +1952,9 @@ typedef struct {
 	int inum;
 	int* idx;
 	ccv_convnet_t* convnet;
+	// these are eigenvectors / values for color covariance matrix
+	ccv_dense_matrix_t* eigenvectors;
+	ccv_dense_matrix_t* eigenvalues;
 	ccv_function_state_reserve_field
 } cwc_convnet_supervised_train_function_state_t;
 
@@ -1979,7 +1995,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 	{
 		z->line_no = 0;
 		const char function_state_qs[] =
-			"SELECT t, i, inum, line_no, idx FROM function_state WHERE fsid = 0;";
+			"SELECT t, i, inum, line_no, idx, eigenvectors, eigenvalues FROM function_state WHERE fsid = 0;";
 		sqlite3_stmt* function_state_stmt = 0;
 		if (SQLITE_OK == sqlite3_prepare_v2(db, function_state_qs, sizeof(function_state_qs), &function_state_stmt, 0))
 		{
@@ -1992,6 +2008,18 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 				z->line_no = sqlite3_column_int(function_state_stmt, 3);
 				const void* idx = sqlite3_column_blob(function_state_stmt, 4);
 				memcpy(z->idx, idx, sizeof(int) * z->inum);
+				if (sqlite3_column_bytes(function_state_stmt, 5) == sizeof(double) * 3 * 3 &&
+					sqlite3_column_bytes(function_state_stmt, 6) == sizeof(double) * 3)
+				{
+					const void* eigenvectors = sqlite3_column_blob(function_state_stmt, 5);
+					const void* eigenvalues = sqlite3_column_blob(function_state_stmt, 6);
+					if (!z->eigenvectors)
+						z->eigenvectors = ccv_dense_matrix_new(3, 3, CCV_64F | CCV_C1, 0, 0);
+					if (!z->eigenvalues)
+						z->eigenvalues = ccv_dense_matrix_new(1, 3, CCV_64F | CCV_C1, 0, 0);
+					memcpy(z->eigenvectors->data.u8, eigenvectors, sizeof(double) * 3 * 3);
+					memcpy(z->eigenvalues->data.u8, eigenvalues, sizeof(double) * 3);
+				}
 			}
 			sqlite3_finalize(function_state_stmt);
 		}
@@ -2094,14 +2122,14 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 	{
 		const char function_state_create_table_qs[] =
 			"CREATE TABLE IF NOT EXISTS function_state "
-			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB);"
+			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB, eigenvectors BLOB, eigenvalues BLOB);"
 			"CREATE TABLE IF NOT EXISTS momentum_data "
 			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);";
 		assert(SQLITE_OK == sqlite3_exec(db, function_state_create_table_qs, 0, 0, 0));
 		const char function_state_insert_qs[] =
 			"REPLACE INTO function_state "
-			"(fsid, t, i, inum, line_no, idx) VALUES "
-			"(0, $t, $i, $inum, $line_no, $idx);";
+			"(fsid, t, i, inum, line_no, idx, eigenvectors, eigenvalues) VALUES "
+			"(0, $t, $i, $inum, $line_no, $idx, $eigenvectors, $eigenvalues);";
 		sqlite3_stmt* function_state_insert_stmt = 0;
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, function_state_insert_qs, sizeof(function_state_insert_qs), &function_state_insert_stmt, 0));
 		sqlite3_bind_int(function_state_insert_stmt, 1, z->t);
@@ -2109,6 +2137,10 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 		sqlite3_bind_int(function_state_insert_stmt, 3, z->inum);
 		sqlite3_bind_int(function_state_insert_stmt, 4, z->line_no);
 		sqlite3_bind_blob(function_state_insert_stmt, 5, z->idx, sizeof(int) * z->inum, SQLITE_STATIC);
+		if (z->eigenvectors)
+			sqlite3_bind_blob(function_state_insert_stmt, 6, z->eigenvectors->data.u8, sizeof(double) * 3 * 3, SQLITE_STATIC);
+		if (z->eigenvalues)
+			sqlite3_bind_blob(function_state_insert_stmt, 7, z->eigenvalues->data.u8, sizeof(double) * 3, SQLITE_STATIC);
 		assert(SQLITE_DONE == sqlite3_step(function_state_insert_stmt));
 		sqlite3_finalize(function_state_insert_stmt);
 		const char momentum_data_insert_qs[] =
@@ -2208,6 +2240,8 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	z.idx = idx;
 	z.inum = categorizeds->rnum;
 	z.convnet = convnet;
+	z.eigenvectors = 0;
+	z.eigenvalues = 0;
 	z.line_no = 0;
 	int miss;
 	float elapsed_time;
@@ -2215,8 +2249,8 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	_cwc_convnet_mean_formation(categorizeds, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	if (z.convnet->channels == 3 && params.color_gain > 0) // do this if we want color gain type of data augmentation, and it is RGB color
-		_cwc_convnet_channel_eigen(categorizeds, z.convnet->mean_activity, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, 0, 0);
-	exit(0);
+		_cwc_convnet_channel_eigen(categorizeds, z.convnet->mean_activity, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, &z.eigenvectors, &z.eigenvalues);
+	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
 		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
@@ -2230,7 +2264,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (i % 2);
-				_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
+				_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
@@ -2275,7 +2309,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
-				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
+				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, 0, 0, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				if (j > 0)
