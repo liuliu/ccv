@@ -4,7 +4,7 @@
 
 TEST_CASE("type size macro")
 {
-	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_8U), 1, "CCV_8U should have size 1");
+	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_8U), 2, "CCV_8U should have size 1");
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_32S), 4, "CCV_32S should have size 4");
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_32F), 4, "CCV_32F should have size 4");
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_64S), 8, "CCV_64S should have size 8");
