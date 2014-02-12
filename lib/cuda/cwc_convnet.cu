@@ -1615,7 +1615,8 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				// assume coeff and bias in the same continuous memory region
-				num_blocks_for_coeff = (layer->wnum + layer->net.full_connect.count + 127) / 128;
+				num_blocks_for_coeff = (layer->wnum + 127) / 128;
+				num_blocks_for_bias = (layer->net.full_connect.count + 127) / 128;
 				if (momentum_read)
 				{
 					_cwc_kern_net_sgd
@@ -1625,7 +1626,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
 					_cwc_kern_net_sgd
 					<1>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
+					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
 					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
 				} else {
@@ -1636,7 +1637,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
 					_cwc_kern_net_sgd
 					<0>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
+					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
 					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
 				}
