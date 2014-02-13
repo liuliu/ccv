@@ -5,10 +5,10 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = algebra.tests util.tests numeric.tests basic.tests memory.tests io.tests transform.tests convnet.tests
 
+all: $(TARGETS)
+
 test: all
 	@for test in $(TARGETS) ; do ./"$$test" || exit ; done
-
-all: $(TARGETS)
 
 clean:
 	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
