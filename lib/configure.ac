@@ -35,7 +35,7 @@ AC_CHECK_HEADER([libswscale/swscale.h],
 # only check dispatch if compiled with clang
 if test $CC = clang; then
 	AC_CHECK_HEADER([dispatch/dispatch.h],
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch "])])
+					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
 fi
 
 # check for gsl, and I need to first check these two before I can check gsl
@@ -61,9 +61,6 @@ else
 	AC_SUBST(CUDA_OBJS, [""])
 	AC_MSG_RESULT(no)
 fi
-
-# check for block support, only enable dispatch when this is presented
-AS_IF([test $CC = clang], [AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lBlocksRuntime "])])
 
 # for display only, concatenate CFLAGS and DEFINE_MACROS
 AC_SUBST(DISCFLAGS, ["$MKCFLAGS$DEFINE_MACROS"])

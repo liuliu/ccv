@@ -3381,7 +3381,8 @@ if test $CC = clang; then
 	ac_fn_c_check_header_mongrel "$LINENO" "dispatch/dispatch.h" "ac_cv_header_dispatch_dispatch_h" "$ac_includes_default"
 if test "x$ac_cv_header_dispatch_dispatch_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D USE_DISPATCH "
- MKLDFLAGS="$MKLDFLAGS-ldispatch "
+ MKCFLAGS="$MKCFLAGS-fblocks "
+ MKLDFLAGS="$MKLDFLAGS-ldispatch -lBlocksRuntime "
 
 fi
 
@@ -3554,13 +3555,6 @@ else
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
-fi
-
-# check for block support, only enable dispatch when this is presented
-if test $CC = clang; then :
-  MKCFLAGS="$MKCFLAGS-fblocks "
- MKLDFLAGS="$MKLDFLAGS-lBlocksRuntime "
-
 fi
 
 # for display only, concatenate CFLAGS and DEFINE_MACROS
