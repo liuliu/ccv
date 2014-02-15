@@ -1149,7 +1149,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	}
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 2 * 2, 1e-2, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 2 * 2, 2e-2, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 1e-2, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
@@ -1250,7 +1250,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(d);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 2 * 2, 2, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 2 * 2, 2.5, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 0.1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
