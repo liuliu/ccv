@@ -40,8 +40,8 @@ void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_mat
 	ccv_zero(dlambda);
 	unsigned char* dvptr = dvector->data.u8;
 #define for_block(_, _for_set) \
-	for (i = 0; i < a->rows; i++) \
-		_for_set(dvptr + dvector->step * i, i, 1, 0);
+	for (i = 0; i < a->cols; i++) \
+		_for_set(dvptr, i * a->cols + i, 1, 0);
 	ccv_matrix_setter(dvector->type, for_block);
 #undef for_block
 	double accuracy = 0;
@@ -69,29 +69,34 @@ void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_mat
 					double sn = 1.0 + sqrt(1.0 - omega * omega); \
 					sn = omega / sqrt(2 * sn); \
 					double cn = sqrt(1.0 - sn * sn); \
-					double fm = ja[p * a->cols + p]; \
-					ja[p * a->cols + p] = fm * cn * cn + ja[q * a->cols + q] * sn * sn + ja[p * a->cols + q] * omega; \
-					ja[q * a->cols + q] = fm * sn * sn + ja[q * a->cols + q] * cn * cn - ja[p * a->cols + q] * omega; \
+					double fpp = ja[p * a->cols + p]; \
+					double fpq = ja[p * a->cols + q]; \
+					double fqq = ja[q * a->cols + q]; \
+					ja[p * a->cols + p] = fpp * cn * cn + fqq * sn * sn + fpq * omega; \
+					ja[q * a->cols + q] = fpp * sn * sn + fqq * cn * cn - fpq * omega; \
 					ja[p * a->cols + q] = ja[q * a->cols + p] = 0; \
 					for (i = 0; i < a->cols; i++) \
 						if (i != q && i != p) \
 						{ \
-							fm = ja[p * a->cols + i]; \
-							ja[p * a->cols + i] = fm * cn + ja[q * a->cols + i] * sn; \
-							ja[q * a->cols + i] = -fm * sn + ja[q * a->cols + i] * cn; \
+							fpp = ja[p * a->cols + i]; \
+							fqq = ja[q * a->cols + i]; \
+							ja[p * a->cols + i] = fpp * cn + fqq * sn; \
+							ja[q * a->cols + i] = -fpp * sn + fqq * cn; \
 						} \
 					for (i = 0; i < a->rows; i++) \
 						if (i != q && i != p) \
 						{ \
-							fm = ja[i * a->cols + p]; \
-							ja[i * a->cols + p] = fm * cn + ja[i * a->cols + q] * sn; \
-							ja[i * a->cols + q] = -fm * sn + ja[i * a->cols + q] * cn; \
+							fpp = ja[i * a->cols + p]; \
+							fqq = ja[i * a->cols + q]; \
+							ja[i * a->cols + p] = fpp * cn + fqq * sn; \
+							ja[i * a->cols + q] = -fpp * sn + fqq * cn; \
 						} \
 					for (i = 0; i < a->cols; i++) \
 					{ \
-						fm = _for_get(dvptr + p * dvector->step, i, 0); \
-						_for_set(dvptr + p * dvector->step, i, fm * cn + _for_get(dvptr + q * dvector->step, i, 0) * sn, 0); \
-						_for_set(dvptr + q * dvector->step, i, -fm * sn + _for_get(dvptr + q * dvector->step, i, 0) * cn, 0); \
+						fpp = _for_get(dvptr, p * a->cols + i, 0); \
+						fqq = _for_get(dvptr, q * a->cols + i, 0); \
+						_for_set(dvptr, p * a->cols + i, fpp * cn + fqq * sn, 0); \
+						_for_set(dvptr, q * a->cols + i, -fpp * sn + fqq * cn, 0); \
 					} \
 					for (i = 0; i < a->cols; i++) \
 						_for_set(dlptr, i, ja[i * a->cols + i], 0); \
