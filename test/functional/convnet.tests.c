@@ -948,7 +948,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(d);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 3 * 2, 4.0, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 5 * 5 * 3 * 2, 5.0, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 2, 5 * 1e-1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
