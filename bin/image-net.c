@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 		.mini_batch = 256,
 		.iterations = 5000,
 		.symmetric = 1,
-		.color_gain = 0.01,
+		.color_gain = 0.001,
 	};
 	int i, c;
 	while (getopt_long_only(argc, argv, "", image_net_options, &c) != -1)
@@ -384,23 +384,22 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(1, params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
+	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
 	ccv_convnet_layer_train_param_t layer_params[13];
 	memset(layer_params, 0, sizeof(layer_params));
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.00001;
+		layer_params[i].w.learn_rate = 0.00005;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.00001;
+		layer_params[i].bias.learn_rate = 0.00005;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;
 	layer_params[11].dor = 0.5;
 	train_params.layer_params = layer_params;
-	train_params.size = ccv_size(257, 257);
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();

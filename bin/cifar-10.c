@@ -179,7 +179,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(1, params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
+	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(31, 31), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	assert(ccv_convnet_verify(convnet, 10) == 0);
 	assert(argc == 5);
 	int num1 = atoi(argv[2]);

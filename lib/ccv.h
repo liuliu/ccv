@@ -1151,6 +1151,7 @@ typedef struct {
 typedef struct {
 	int use_cwc_accel; // use "ccv with cuda" acceleration
 	// this is redundant, but good to enforcing what the input should look like
+	ccv_size_t input;
 	int rows;
 	int cols;
 	int channels;
@@ -1186,7 +1187,6 @@ typedef struct {
 	int mini_batch;
 	int iterations;
 	int symmetric;
-	ccv_size_t size;
 	float color_gain; // the gaussian value for color variations
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
@@ -1221,7 +1221,7 @@ typedef struct {
 	int half_precision;
 } ccv_convnet_write_param_t;
 
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t params[], int count);
+ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
