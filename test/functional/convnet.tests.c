@@ -26,7 +26,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(225, 225), &params, 1);
 	int i, x, y;
 	for (i = 0; i < 11 * 11 * 3; i++)
 		convnet->layers[0].w[i] = 1;
@@ -71,7 +71,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
 	int i, x, y;
 	for (i = 0; i < 5 * 5; i++)
 		convnet->layers->w[i] = 1;
@@ -127,7 +127,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(225, 225), &params, 1);
 	int i, x, y;
 	for (i = 0; i < 11 * 11; i++)
 		convnet->layers[0].w[i] = i + 1;
@@ -229,7 +229,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
 	int i, x, y;
 	for (i = 0; i < 5 * 5; i++)
 		convnet->layers->w[i] = i + 1;
@@ -405,7 +405,7 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(13, 13), &params, 1);
 	int i;
 	for (i = 0; i < 13 * 13 * 128 * 2048; i++)
 		convnet->layers->w[i] = 1;
@@ -445,7 +445,7 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(55, 55), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 55 * 55; i++)
@@ -484,7 +484,7 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(57, 57), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(57, 57, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 57 * 57; i++)
@@ -523,7 +523,7 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(54, 54), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(54, 54, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 54 * 54; i++)
@@ -562,7 +562,7 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(55, 55), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 55 * 55; i++)
@@ -601,7 +601,7 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(57, 57), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(57, 57, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 57 * 57; i++)
@@ -640,7 +640,7 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(54, 54), &params, 1);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(54, 54, CCV_32F | CCV_C1, 0, 0);
 	int i, x, y;
 	for (i = 0; i < 54 * 54; i++)
@@ -685,7 +685,7 @@ TEST_CASE("full connect network backward propagate")
 			},
 		},
 	};
-	ccv_convnet_t *convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t *convnet = ccv_convnet_new(0, ccv_size(3, 3), &params, 1);
 	int i, j;
 	for (i = 0; i < 3 * 3 * 64 * 10; i++)
 		convnet->layers[0].w[i] = 2;
@@ -754,7 +754,7 @@ TEST_CASE("convolutional network backward propagate")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
 	int i, j, k;
 	for (i = 0; i < 5 * 5 * 3 * 32; i++)
 		convnet->layers[0].w[i] = 2;
@@ -823,7 +823,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			},
 		},
 	};
-	ccv_convnet_t *convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t *convnet = ccv_convnet_new(0, ccv_size(3, 3), &params, 1);
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(3, 3, CCV_32F | 8, 0, 0);
@@ -901,7 +901,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
 	int i;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
@@ -1004,7 +1004,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 2);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), params, 2);
 	int i;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
@@ -1106,7 +1106,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 2);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(5, 5), params, 2);
 	int i;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
@@ -1201,7 +1201,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, params, 2);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), params, 2);
 	int i;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
@@ -1277,7 +1277,7 @@ TEST_CASE("max pool network backward propagate")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
 	int i, j, k;
 	for (i = 0; i < 31 * 31 * 2; i++)
@@ -1323,7 +1323,7 @@ TEST_CASE("average pool network backward propagate")
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(0, &params, 1);
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
 	int i, j, k;
 	for (i = 0; i < 31 * 31 * 2; i++)
