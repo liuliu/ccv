@@ -42,7 +42,7 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 
 #ifndef CASE_TESTS
 
-ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t params[], int count)
+ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count)
 {
 	ccv_convnet_t* convnet = (ccv_convnet_t*)ccmalloc(sizeof(ccv_convnet_t) + sizeof(ccv_convnet_layer_t) * count + sizeof(ccv_dense_matrix_t*) * count * 2 + sizeof(ccv_dense_matrix_t*) * (count - 1));
 	convnet->use_cwc_accel = use_cwc_accel;
@@ -65,10 +65,11 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_convnet_layer_param_t para
 		convnet->dors = 0;
 	}
 	convnet->count = count;
+	convnet->input = input;
 	convnet->rows = params[0].input.matrix.rows;
 	convnet->cols = params[0].input.matrix.cols;
 	convnet->channels = params[0].input.matrix.channels;
-	convnet->mean_activity = ccv_dense_matrix_new(convnet->rows, convnet->cols, convnet->channels | CCV_32F, 0, 0);
+	convnet->mean_activity = ccv_dense_matrix_new(convnet->input.height, convnet->input.width, convnet->channels | CCV_32F, 0, 0);
 	ccv_zero(convnet->mean_activity);
 	ccv_convnet_layer_t* layers = convnet->layers;
 	int i, j;
@@ -915,6 +916,7 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 	memset(update_params->acts, 0, sizeof(ccv_dense_matrix_t*) * convnet->count);
 	update_params->denoms = 0;
 	update_params->dors = 0;
+	update_params->input = convnet->input;
 	update_params->rows = convnet->rows;
 	update_params->cols = convnet->cols;
 	update_params->count = convnet->count;
@@ -1069,7 +1071,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 			"output_rows INTEGER, output_cols INTEGER, output_channels INTEGER, output_count INTEGER, output_strides INTEGER, output_border INTEGER, "
 			"output_size INTEGER, output_kappa REAL, output_alpha REAL, output_beta REAL);"
 			"CREATE TABLE IF NOT EXISTS convnet_params "
-			"(convnet INTEGER PRIMARY KEY ASC, mean_activity BLOB);"
+			"(convnet INTEGER PRIMARY KEY ASC, input_height INTEGER, input_width INTEGER, mean_activity BLOB);"
 			"CREATE TABLE IF NOT EXISTS layer_data "
 			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB, half_precision INTEGER);";
 		assert(SQLITE_OK == sqlite3_exec(db, layer_create_table_qs, 0, 0, 0));
@@ -1155,14 +1157,16 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 		// insert convnet related params
 		const char convnet_params_insert_qs[] =
 			"REPLACE INTO convnet_params "
-			"(convnet, mean_activity) VALUES (0, $mean_activity);";
+			"(convnet, mean_activity, input_height, input_width) VALUES (0, $mean_activity, $input_height, $input_width);";
 		sqlite3_stmt* convnet_params_insert_stmt = 0;
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, convnet_params_insert_qs, sizeof(convnet_params_insert_qs), &convnet_params_insert_stmt, 0));
-		assert(convnet->mean_activity->rows == convnet->rows);
-		assert(convnet->mean_activity->cols == convnet->cols);
+		assert(convnet->mean_activity->rows == convnet->input.height);
+		assert(convnet->mean_activity->cols == convnet->input.width);
 		assert(CCV_GET_CHANNEL(convnet->mean_activity->type) == convnet->channels);
 		assert(CCV_GET_DATA_TYPE(convnet->mean_activity->type) == CCV_32F);
-		sqlite3_bind_blob(convnet_params_insert_stmt, 1, convnet->mean_activity->data.f32, sizeof(float) * convnet->rows * convnet->cols * convnet->channels, SQLITE_STATIC);
+		sqlite3_bind_blob(convnet_params_insert_stmt, 1, convnet->mean_activity->data.f32, sizeof(float) * convnet->input.height * convnet->input.width * convnet->channels, SQLITE_STATIC);
+		sqlite3_bind_int(convnet_params_insert_stmt, 2, convnet->input.height);
+		sqlite3_bind_int(convnet_params_insert_stmt, 3, convnet->input.width);
 		assert(SQLITE_DONE == sqlite3_step(convnet_params_insert_stmt));
 		sqlite3_reset(convnet_params_insert_stmt);
 		sqlite3_clear_bindings(convnet_params_insert_stmt);
@@ -1228,7 +1232,22 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 				ccv_array_push(layer_params, &layer_param);
 			}
 			sqlite3_finalize(layer_params_stmt);
-			convnet = ccv_convnet_new(use_cwc_accel, (ccv_convnet_layer_param_t*)ccv_array_get(layer_params, 0), layer_params->rnum);
+			sqlite3_stmt* convnet_params_input_stmt = 0;
+			// load convnet params for input
+			const char convnet_params_input_qs[] =
+				"SELECT input_height, input_width FROM convnet_params WHERE convnet = 0;";
+			ccv_size_t input;
+			if (SQLITE_OK == sqlite3_prepare_v2(db, convnet_params_input_qs, sizeof(convnet_params_input_qs), &convnet_params_input_stmt, 0))
+			{
+				if (sqlite3_step(convnet_params_input_stmt) == SQLITE_ROW)
+				{
+					input.height = sqlite3_column_int(convnet_params_input_stmt, 0);
+					input.width = sqlite3_column_int(convnet_params_input_stmt, 1);
+				}
+				sqlite3_finalize(convnet_params_input_stmt);
+			}
+			assert(input.height != 0 && input.width != 0);
+			convnet = ccv_convnet_new(use_cwc_accel, input, (ccv_convnet_layer_param_t*)ccv_array_get(layer_params, 0), layer_params->rnum);
 			// load layer data
 			sqlite3_stmt* layer_data_stmt = 0;
 			const char layer_data_qs[] =
@@ -1273,19 +1292,19 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 				}
 				sqlite3_finalize(layer_data_stmt);
 			}
-			sqlite3_stmt* convnet_params_stmt = 0;
-			// load convnet params
-			const char convnet_params_qs[] =
+			sqlite3_stmt* convnet_params_mean_activity_stmt = 0;
+			// load convnet params for mean activity
+			const char convnet_params_mean_activity_qs[] =
 				"SELECT mean_activity FROM convnet_params WHERE convnet = 0;";
-			if (SQLITE_OK == sqlite3_prepare_v2(db, convnet_params_qs, sizeof(convnet_params_qs), &convnet_params_stmt, 0))
+			if (SQLITE_OK == sqlite3_prepare_v2(db, convnet_params_mean_activity_qs, sizeof(convnet_params_mean_activity_qs), &convnet_params_mean_activity_stmt, 0))
 			{
-				if (sqlite3_step(convnet_params_stmt) == SQLITE_ROW)
+				if (sqlite3_step(convnet_params_mean_activity_stmt) == SQLITE_ROW)
 				{
-					int elems = sqlite3_column_bytes(convnet_params_stmt, 0) / sizeof(float);
-					if (elems == convnet->rows * convnet->cols * convnet->channels)
-						memcpy(convnet->mean_activity->data.f32, sqlite3_column_blob(convnet_params_stmt, 0), sizeof(float) * elems);
+					int elems = sqlite3_column_bytes(convnet_params_mean_activity_stmt, 0) / sizeof(float);
+					if (elems == convnet->input.height * convnet->input.width * convnet->channels)
+						memcpy(convnet->mean_activity->data.f32, sqlite3_column_blob(convnet_params_mean_activity_stmt, 0), sizeof(float) * elems);
 				}
-				sqlite3_finalize(convnet_params_stmt);
+				sqlite3_finalize(convnet_params_mean_activity_stmt);
 			}
 		}
 		sqlite3_close(db);

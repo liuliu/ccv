@@ -1678,20 +1678,31 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 				break;
 		}
 		assert(image->rows == dim.height || image->cols == dim.width);
-		ccv_dense_matrix_t* patch = 0;
-		if (image->cols != cols || image->rows != rows)
+		ccv_dense_matrix_t* input = 0;
+		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = gsl_rng_uniform_int(rng, image->cols - cols + 1);
-			int y = gsl_rng_uniform_int(rng, image->rows - rows + 1);
-			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+			int x = (image->cols - dim.width + 1) / 2;
+			int y = (image->rows - dim.height + 1) / 2;
+			assert(x == 0 || y == 0);
+			ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
 		} else
-			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
-		// random horizontal reflection
-		if (symmetric && gsl_rng_uniform_int(rng, 2) == 0)
-			ccv_flip(patch, &patch, 0, CCV_FLIP_X);
+			ccv_shift(image, (ccv_matrix_t**)&input, CCV_32F, 0, 0); // converting to 32f
 		// we loaded it in, deallocate it now
 		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
 			ccv_matrix_free(image);
+		// random horizontal reflection
+		if (symmetric && gsl_rng_uniform_int(rng, 2) == 0)
+			ccv_flip(input, &input, 0, CCV_FLIP_X);
+		ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
+		ccv_dense_matrix_t* patch = 0;
+		if (input->cols != cols || input->rows != rows)
+		{
+			int x = gsl_rng_uniform_int(rng, input->cols - cols + 1);
+			int y = gsl_rng_uniform_int(rng, input->rows - rows + 1);
+			ccv_slice(input, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+			ccv_matrix_free(input);
+		} else
+			patch = input;
 		assert(channels == CCV_GET_CHANNEL(patch->type));
 		if (color_gain > 0 && eigenvectors && eigenvalues)
 		{
@@ -1706,17 +1717,17 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		}
 		for (k = 0; k < channels; k++)
 			for (x = 0; x < rows * cols; x++)
-				b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] - mean_activity->data.f32[x * channels + k] + channel_gains[k];
+				b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] + channel_gains[k];
 		ccv_matrix_free(patch);
 	}
 }
 
-static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t dim, int rows, int cols, int channels, int symmetric, ccv_dense_matrix_t** b)
+static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t dim, int channels, int symmetric, ccv_dense_matrix_t** b)
 {
 	int i, count = 0;
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(rows, cols, channels | CCV_64F, 0, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(dim.height, dim.width, channels | CCV_64F, 0, 0);
 	ccv_zero(c);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, channels | CCV_32F, channels | CCV_32F, 0);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, dim.height, dim.width, channels | CCV_32F, channels | CCV_32F, 0);
 	for (i = 0; i < categorizeds->rnum; i++)
 	{
 		if (i % 23 == 0 || i == categorizeds->rnum - 1)
@@ -1739,11 +1750,12 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 				break;
 		}
 		ccv_dense_matrix_t* patch = 0;
-		if (image->cols != cols || image->rows != rows)
+		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = (image->cols - cols + 1) / 2;
-			int y = (image->rows - rows + 1) / 2;
-			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+			int x = (image->cols - dim.width + 1) / 2;
+			int y = (image->rows - dim.height + 1) / 2;
+			assert(x == 0 || y == 0);
+			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, dim.height, dim.width);
 		} else
 			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
 		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
@@ -1768,26 +1780,26 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 		}
 	} else {
 		double p = 1.0 / count;
-		for (i = 0; i < rows * cols * channels; i++)
+		for (i = 0; i < dim.height * dim.width * channels; i++)
 			db->data.f32[i] = p * c->data.f64[i];
 	}
 	printf("\n");
 }
 
-static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int rows, int cols, int channels, ccv_dense_matrix_t** eigenvectors, ccv_dense_matrix_t** eigenvalues)
+static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int channels, ccv_dense_matrix_t** eigenvectors, ccv_dense_matrix_t** eigenvalues)
 {
 	assert(channels == 3); // this function cannot handle anything other than 3x3 covariance matrix
 	double* mean_value = (double*)alloca(sizeof(double) * channels);
 	memset(mean_value, 0, sizeof(double) * channels);
 	assert(CCV_GET_CHANNEL(mean_activity->type) == channels);
-	assert(mean_activity->rows == rows);
-	assert(mean_activity->cols == cols);
+	assert(mean_activity->rows == dim.height);
+	assert(mean_activity->cols == dim.width);
 	int i, j, k, c, count = 0;
-	for (i = 0; i < rows * cols; i++)
+	for (i = 0; i < dim.height * dim.width; i++)
 		for (k = 0; k < channels; k++)
 			mean_value[k] += mean_activity->data.f32[i * channels + k];
 	for (i = 0; i < channels; i++)
-		mean_value[i] = mean_value[i] / (rows * cols);
+		mean_value[i] = mean_value[i] / (dim.height * dim.width);
 	double* covariance = (double*)alloca(sizeof(double) * channels * channels);
 	memset(covariance, 0, sizeof(double) * channels * channels);
 	for (c = 0; c < categorizeds->rnum; c++)
@@ -1812,16 +1824,17 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 				break;
 		}
 		ccv_dense_matrix_t* patch = 0;
-		if (image->cols != cols || image->rows != rows)
+		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = (image->cols - cols + 1) / 2;
-			int y = (image->rows - rows + 1) / 2;
-			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
+			int x = (image->cols - dim.width + 1) / 2;
+			int y = (image->rows - dim.height + 1) / 2;
+			assert(x == 0 || y == 0);
+			ccv_slice(image, (ccv_matrix_t**)&patch, CCV_32F, y, x, dim.height, dim.width);
 		} else
 			ccv_shift(image, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
 		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
 			ccv_matrix_free(image);
-		for (i = 0; i < rows * cols; i++)
+		for (i = 0; i < dim.width * dim.height; i++)
 			for (j = 0; j < channels; j++)
 				for (k = j; k < channels; k++)
 					covariance[j * channels + k] += (patch->data.f32[i * channels + j] - mean_value[j]) * (patch->data.f32[i * channels + k] - mean_value[k]);
@@ -1831,7 +1844,7 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 	for (i = 0; i < channels; i++)
 		for (j = 0; j < i; j++)
 			covariance[i * channels + j] = covariance[j * channels + i];
-	double p = 1.0 / ((double)count * rows * cols);
+	double p = 1.0 / ((double)count * dim.height * dim.width);
 	for (i = 0; i < channels; i++)
 		for (j = 0; j < channels; j++)
 			covariance[i * channels + j] *= p; // scale down
@@ -1987,10 +2000,12 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 				break;
 		}
 	}
+	assert(convnet->input.height == z->convnet->input.height);
+	assert(convnet->input.width == z->convnet->input.width);
 	assert(convnet->rows == z->convnet->rows);
 	assert(convnet->cols == z->convnet->cols);
 	assert(convnet->channels == z->convnet->channels);
-	memcpy(z->convnet->mean_activity->data.f32, convnet->mean_activity->data.f32, sizeof(float) * z->convnet->rows * z->convnet->cols * z->convnet->channels);
+	memcpy(z->convnet->mean_activity->data.f32, convnet->mean_activity->data.f32, sizeof(float) * z->convnet->input.height * z->convnet->input.width * z->convnet->channels);
 	ccv_convnet_free(convnet);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
@@ -2248,10 +2263,10 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	int miss;
 	float elapsed_time;
 	ccv_function_state_begin(_cwc_convnet_supervised_train_function_state_read, z, filename);
-	_cwc_convnet_mean_formation(categorizeds, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
+	_cwc_convnet_mean_formation(categorizeds, z.convnet->input, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	if (z.convnet->channels == 3 && params.color_gain > 0) // do this if we want color gain type of data augmentation, and it is RGB color
-		_cwc_convnet_channel_eigen(categorizeds, z.convnet->mean_activity, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, &z.eigenvectors, &z.eigenvalues);
+		_cwc_convnet_channel_eigen(categorizeds, z.convnet->mean_activity, z.convnet->input, z.convnet->channels, &z.eigenvectors, &z.eigenvalues);
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
@@ -2266,7 +2281,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (i % 2);
-				_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
+				_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i * params.mini_batch, params.mini_batch, context->host.input, context->host.c);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				cudaMemcpyAsync(context->device.c, context->host.c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
@@ -2311,7 +2326,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
-				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, 0, 0, 0, params.size, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
+				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				if (j > 0)

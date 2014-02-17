@@ -250,7 +250,7 @@ int main(int argc, char** argv)
 			},
 		},
 	};
-	ccv_convnet_t* convnet = ccv_convnet_new(1, params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
+	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(225, 225), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
 	ccv_convnet_layer_train_param_t layer_params[13];
 	memset(layer_params, 0, sizeof(layer_params));
