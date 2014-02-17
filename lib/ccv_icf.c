@@ -521,7 +521,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
 	uint8_t* precomputed = (uint8_t*)ccmalloc(sizeof(uint8_t) * feature_size * step);
 	ccv_icf_value_index_t* sortkv = (ccv_icf_value_index_t*)ccmalloc(sizeof(ccv_icf_value_index_t) * (positives->rnum + negatives->rnum));
-	printf(" - precompute features using %luM memory temporarily\n", (sizeof(float) * (positives->rnum + negatives->rnum) * feature_size + sizeof(uint8_t) * feature_size * step) / (1024 * 1024));
+	printf(" - precompute features using %uM memory temporarily\n", (uint32_t)((sizeof(float) * (positives->rnum + negatives->rnum) * feature_size + sizeof(uint8_t) * feature_size * step) / (1024 * 1024)));
 	float* featval = (float*)ccmalloc(sizeof(float) * feature_size * (positives->rnum + negatives->rnum));
 	ccv_disable_cache(); // clean up cache so we have enough space to run it
 #ifdef USE_DISPATCH
@@ -584,7 +584,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	}
 	ccfree(featval);
 	ccfree(sortkv);
-	printf("\n - features are precomputed on examples and will occupy %luM memory\n", (uint64_t)(feature_size * step) / (1024 * 1024));
+	printf("\n - features are precomputed on examples and will occupy %uM memory\n", (uint32_t)((feature_size * step) / (1024 * 1024)));
 	return precomputed;
 }
 
@@ -1071,7 +1071,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 				continue;
 #endif
 			}
-			FLUSH(" - bootstrap negatives %d%% (%d / %d) [%lu / %d] %s", (i + 1) * 100 / negnum, i + 1, negnum, j + 1, bgfiles->rnum, spread ? "" : "without statistic balancing");
+			FLUSH(" - bootstrap negatives %d%% (%d / %d) [%u / %d] %s", (i + 1) * 100 / negnum, i + 1, negnum, (uint32_t)(j + 1), bgfiles->rnum, spread ? "" : "without statistic balancing");
 #ifdef USE_DISPATCH
 			gsl_rng* crng = gsl_rng_alloc(gsl_rng_default);
 			gsl_rng_set(crng, gsl_rng_get(rng));
