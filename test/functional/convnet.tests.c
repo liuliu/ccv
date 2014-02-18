@@ -801,6 +801,10 @@ TEST_CASE("convolutional network backward propagate")
 	ccv_convnet_free(convnet);
 }
 
+// five-stencil constants
+static float fs[4] = { 1, -8, 8, -1 };
+static float fsh[4] = { -2, -1, 1, 2 };
+
 TEST_CASE("numerical gradient versus analytical gradient for full connect network")
 {
 	ccv_convnet_layer_param_t params = {
@@ -827,7 +831,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(3, 3, CCV_32F | 8, 0, 0);
-	int i, j;
+	int i, j, k;
 	for (i = 0; i < 3 * 3 * 8; i++)
 		x->data.f32[i] = i;
 	ccv_dense_matrix_t* y = 0;
@@ -842,26 +846,36 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	for (i = 0; i < 10; i++)
 		for (j = 0; j < 3 * 3 * 8; j++)
 		{
-			float w = convnet->layers->w[j + i * 3 * 3 * 8];
-			convnet->layers->w[j + i * 3 * 3 * 8] += eps;
-			ccv_dense_matrix_t* z = 0;
-			ccv_convnet_encode(convnet, &x, &z, 1);
-			_ccv_convnet_compute_softmax(z, &z, 0);
-			dw[j + i * 3 * 3 * 8] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
-			ccv_matrix_free(z);
-			convnet->layers->w[j + i * 3 * 3 * 8] = w;
+			dw[j + i * 3 * 3 * 8] = 0;
+			for (k = 0; k < 4; k++)
+			{
+				float w = convnet->layers->w[j + i * 3 * 3 * 8];
+				convnet->layers->w[j + i * 3 * 3 * 8] += fsh[k] * eps;
+				ccv_dense_matrix_t* z = 0;
+				ccv_convnet_encode(convnet, &x, &z, 1);
+				_ccv_convnet_compute_softmax(z, &z, 0);
+				dw[j + i * 3 * 3 * 8] += -logf(z->data.f32[2]) * fs[k];
+				ccv_matrix_free(z);
+				convnet->layers->w[j + i * 3 * 3 * 8] = w;
+			}
+			dw[j + i * 3 * 3 * 8] *= 1.0 / (12 * eps);
 		}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 10);
 	for (i = 0; i < 10; i++)
 	{
-		float bias = convnet->layers->bias[i];
-		convnet->layers->bias[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dbias[i] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->bias[i] = bias;
+		dbias[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float bias = convnet->layers->bias[i];
+			convnet->layers->bias[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dbias[i] += -logf(z->data.f32[2]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->bias[i] = bias;
+		}
+		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_dense_matrix_t* b = 0;
 	_ccv_convnet_full_connect_backward_propagate(convnet->layers, dloss, 0, x, &b, update_params->layers);
@@ -869,7 +883,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	ccv_matrix_free(x);
 	ccv_matrix_free(dloss);
 	ccv_matrix_free(b);
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 8 * 10, 8 * 1e-2, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dw, update_params->layers[0].w, 3 * 3 * 8 * 10, 5 * 1e-2, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dbias, update_params->layers[0].bias, 10, 1e-2, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
@@ -902,7 +916,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
-	int i;
+	int i, k;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
@@ -920,26 +934,36 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 3 * 2); 
 	for (i = 0; i < 5 * 5 * 3 * 2; i++)
 	{
-		float w = convnet->layers->w[i];
-		convnet->layers->w[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dw[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->w[i] = w;
+		dw[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float w = convnet->layers->w[i];
+			convnet->layers->w[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dw[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->w[i] = w;
+		}
+		dw[i] *= 1.0 / (12 * eps);
 	}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
 	for (i = 0; i < 2; i++)
 	{
-		float bias = convnet->layers->bias[i];
-		convnet->layers->bias[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dbias[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->bias[i] = bias;
+		dbias[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float bias = convnet->layers->bias[i];
+			convnet->layers->bias[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dbias[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->bias[i] = bias;
+		}
+		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_dense_matrix_t* d = 0;
 	_ccv_convnet_convolutional_backward_propagate(convnet->layers, dloss, y, 0, x, &d, update_params->layers);
@@ -1005,7 +1029,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), params, 2);
-	int i;
+	int i, k;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
@@ -1026,26 +1050,36 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 2); 
 	for (i = 0; i < 5 * 5 * 2 * 2; i++)
 	{
-		float w = convnet->layers->w[i];
-		convnet->layers->w[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dw[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->w[i] = w;
+		dw[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float w = convnet->layers->w[i];
+			convnet->layers->w[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dw[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->w[i] = w;
+		}
+		dw[i] *= 1.0 / (12 * eps);
 	}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
 	for (i = 0; i < 2; i++)
 	{
-		float bias = convnet->layers->bias[i];
-		convnet->layers->bias[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dbias[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->bias[i] = bias;
+		dbias[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float bias = convnet->layers->bias[i];
+			convnet->layers->bias[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dbias[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->bias[i] = bias;
+		}
+		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_matrix_free(softmax);
 	ccv_matrix_free(dloss);
@@ -1107,7 +1141,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(5, 5), params, 2);
-	int i;
+	int i, k;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(5, 5, CCV_32F | CCV_C2, 0, 0);
@@ -1126,26 +1160,36 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	float* dw = (float*)ccmalloc(sizeof(float) * 3 * 3 * 2 * 2); 
 	for (i = 0; i < 3 * 3 * 2 * 2; i++)
 	{
-		float w = convnet->layers->w[i];
-		convnet->layers->w[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dw[i] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->w[i] = w;
+		dw[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float w = convnet->layers->w[i];
+			convnet->layers->w[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dw[i] += -logf(z->data.f32[2]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->w[i] = w;
+		}
+		dw[i] *= 1.0 / (12 * eps);
 	}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
 	for (i = 0; i < 2; i++)
 	{
-		float bias = convnet->layers->bias[i];
-		convnet->layers->bias[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dbias[i] = ((-logf(z->data.f32[2])) - (-logf(y->data.f32[2]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->bias[i] = bias;
+		dbias[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float bias = convnet->layers->bias[i];
+			convnet->layers->bias[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dbias[i] += -logf(z->data.f32[2]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->bias[i] = bias;
+		}
+		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
@@ -1202,7 +1246,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), params, 2);
-	int i;
+	int i, k;
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
@@ -1223,27 +1267,37 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 2); 
 	for (i = 0; i < 5 * 5 * 2 * 2; i++)
 	{
-		float w = convnet->layers->w[i];
-		convnet->layers->w[i] += eps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dw[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / eps;
-		ccv_matrix_free(z);
-		convnet->layers->w[i] = w;
+		dw[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float w = convnet->layers->w[i];
+			convnet->layers->w[i] += fsh[k] * eps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dw[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->w[i] = w;
+		}
+		dw[i] *= 1.0 / (12 * eps);
 	}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
 	static const float beps = 0.00001;
 	for (i = 0; i < 2; i++)
 	{
-		float bias = convnet->layers->bias[i];
-		convnet->layers->bias[i] += beps;
-		ccv_dense_matrix_t* z = 0;
-		ccv_convnet_encode(convnet, &x, &z, 1);
-		_ccv_convnet_compute_softmax(z, &z, 0);
-		dbias[i] = ((-logf(z->data.f32[24])) - (-logf(softmax->data.f32[24]))) / beps;
-		ccv_matrix_free(z);
-		convnet->layers->bias[i] = bias;
+		dbias[i] = 0;
+		for (k = 0; k < 4; k++)
+		{
+			float bias = convnet->layers->bias[i];
+			convnet->layers->bias[i] += fsh[k] * beps;
+			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_encode(convnet, &x, &z, 1);
+			_ccv_convnet_compute_softmax(z, &z, 0);
+			dbias[i] += -logf(z->data.f32[24]) * fs[k];
+			ccv_matrix_free(z);
+			convnet->layers->bias[i] = bias;
+		}
+		dbias[i] *= 1.0 / (12 * beps);
 	}
 	ccv_matrix_free(softmax);
 	ccv_matrix_free(dloss);
