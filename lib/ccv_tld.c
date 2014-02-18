@@ -287,19 +287,13 @@ static void _ccv_tld_box_percolate_down(ccv_array_t* good, int i)
 		{
 			ccv_comp_t* left_comp = (ccv_comp_t*)ccv_array_get(good, left);
 			if (left_comp->confidence < smallest_comp->confidence)
-			{
 				smallest = left;
-				smallest_comp = left_comp;
-			}
 		}
 		if (right < good->rnum)
 		{
 			ccv_comp_t* right_comp = (ccv_comp_t*)ccv_array_get(good, right);
 			if (right_comp->confidence < smallest_comp->confidence)
-			{
 				smallest = right;
-				smallest_comp = right_comp;
-			}
 		}
 		if (smallest == i)
 			break;
