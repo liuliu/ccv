@@ -510,6 +510,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 			return -1;
 		if (da->cols != db->cols)
 			return -1;
+		float epsilon = (CCV_GET_DATA_TYPE(db->type) == CCV_8U || CCV_GET_DATA_TYPE(db->type) == CCV_32S || CCV_GET_DATA_TYPE(db->type) == CCV_64S) ? 1 : 1e-4;
 		int i, j, ch = CCV_GET_CHANNEL(da->type);
 		unsigned char* a_ptr = da->data.u8;
 		unsigned char* b_ptr = db->data.u8;
@@ -518,7 +519,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 		{ \
 			for (j = 0; j < da->cols * ch; j++) \
 			{ \
-				if (fabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1e-4) \
+				if (fabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > epsilon) \
 					return -1; \
 			} \
 			a_ptr += da->step; \
