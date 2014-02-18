@@ -35,7 +35,8 @@ AC_CHECK_HEADER([libswscale/swscale.h],
 # only check dispatch if compiled with clang
 if test $CC = clang; then
 	AC_CHECK_HEADER([dispatch/dispatch.h],
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
+					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "])])
+	AC_CHECK_LIB(dispatch, dispatch_apply, [AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
 fi
 
 # check for gsl, and I need to first check these two before I can check gsl
