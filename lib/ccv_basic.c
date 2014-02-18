@@ -272,6 +272,7 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	int ch = CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* dtheta = *theta = ccv_dense_matrix_renew(*theta, a->rows, a->cols, CCV_32F | ch, CCV_32F | ch, tsig);
 	ccv_dense_matrix_t* dm = *m = ccv_dense_matrix_renew(*m, a->rows, a->cols, CCV_32F | ch, CCV_32F | ch, msig);
+	assert(dtheta && dm);
 	ccv_object_return_if_cached(, dtheta, dm);
 	ccv_revive_object_if_cached(dtheta, dm);
 	ccv_dense_matrix_t* tx = 0;

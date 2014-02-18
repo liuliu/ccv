@@ -45,7 +45,7 @@ void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_mat
 	ccv_matrix_setter(dvector->type, for_block);
 #undef for_block
 	double accuracy = 0;
-	for (i = 0; i < a->rows * a->cols; i++) \
+	for (i = 0; i < a->rows * a->cols; i++)
 		accuracy += ja[i];
 	accuracy = sqrt(2 * accuracy);
 	int p, q;
@@ -1129,7 +1129,10 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				for (j = 0; j < a->cols; j++) \
 				{ \
 					while (z[k + 1] < j) \
+					{ \
+						assert(k >= 0 && k < ccv_max(db->rows, db->cols)); \
 						++k; \
+					} \
 					_for_set_b(b_ptr, j, _dx * (j - v[k]) + _dxx * (j - v[k]) * (j - v[k]) SGN _for_get_a(a_ptr, v[k], 0), 0); \
 				} \
 			} \
@@ -1195,7 +1198,10 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 				for (i = 0; i < db->rows; i++) \
 				{ \
 					while (z[k + 1] < i) \
+					{ \
+						assert(k >= 0 && k < ccv_max(db->rows, db->cols)); \
 						++k; \
+					} \
 					_for_set_b(b_ptr + i * db->step, j, _dy * (i - v[k]) + _dyy * (i - v[k]) * (i - v[k]) + _for_get_b(c_ptr, v[k], 0), 0); \
 				} \
 			} \

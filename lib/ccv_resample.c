@@ -10,6 +10,7 @@ typedef struct {
 
 static void _ccv_resample_area_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
+	assert(a->cols > 0 && b->cols > 0);
 	ccv_int_alpha* xofs = (ccv_int_alpha*)alloca(sizeof(ccv_int_alpha) * a->cols * 2);
 	int ch = ccv_clamp(CCV_GET_CHANNEL(a->type), 1, 4);
 	double scale_x = (double)a->cols / b->cols;
@@ -101,6 +102,7 @@ typedef struct {
 
 static void _ccv_resample_area(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b)
 {
+	assert(a->cols > 0 && b->cols > 0);
 	ccv_area_alpha_t* xofs = (ccv_area_alpha_t*)alloca(sizeof(ccv_area_alpha_t) * a->cols * 2);
 	int ch = CCV_GET_CHANNEL(a->type);
 	double scale_x = (double)a->cols / b->cols;
@@ -215,6 +217,7 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 {
 	assert(CCV_GET_DATA_TYPE(b->type) == CCV_32F || CCV_GET_DATA_TYPE(b->type) == CCV_64F);
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
+	assert(b->cols > 0 && b->step > 0);
 	ccv_cubic_coeffs_t* xofs = (ccv_cubic_coeffs_t*)alloca(sizeof(ccv_cubic_coeffs_t) * b->cols);
 	float scale_x = (float)a->cols / b->cols;
 	for (i = 0; i < b->cols; i++)
@@ -283,6 +286,7 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 	assert(CCV_GET_DATA_TYPE(b->type) == CCV_8U || CCV_GET_DATA_TYPE(b->type) == CCV_32S || CCV_GET_DATA_TYPE(b->type) == CCV_64S);
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
 	int no_8u_type = (b->type & CCV_8U) ? CCV_32S : b->type;
+	assert(b->cols > 0);
 	ccv_cubic_integer_coeffs_t* xofs = (ccv_cubic_integer_coeffs_t*)alloca(sizeof(ccv_cubic_integer_coeffs_t) * b->cols);
 	float scale_x = (float)a->cols / b->cols;
 	for (i = 0; i < b->cols; i++)
@@ -334,6 +338,7 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type)
 {
+	assert(rows > 0 && cols > 0);
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_resample(%d,%d,%d)", rows, cols, type), a->sig, CCV_EOF_SIGN);
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type) : CCV_GET_DATA_TYPE(btype) | CCV_GET_CHANNEL(a->type);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(a->type), btype, sig);
@@ -441,6 +446,7 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 	ccv_object_return_if_cached(, db);
 	int ch = CCV_GET_CHANNEL(a->type);
 	int cols0 = a->cols - 1 - src_x;
+	assert(a->cols > 0 && cols0 > 0);
 	int y, x, sy = -1 + src_y, sx = src_x * ch, k;
 	int* tab = (int*)alloca((a->cols + src_x + 2) * ch * sizeof(int));
 	for (x = 0; x < a->cols + src_x + 2; x++)

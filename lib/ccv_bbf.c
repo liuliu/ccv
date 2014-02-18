@@ -156,7 +156,7 @@ static int _ccv_prune_positive_data(ccv_bbf_classifier_cascade_t* cascade, unsig
 static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, char** bgfiles, int bgnum, unsigned char** negdata, int negnum)
 {
 	int t, i, j, k, q;
-	int negperbg = negnum / bgnum + 1;
+	int negperbg;
 	int negtotal = 0;
 	int steps[] = { _ccv_width_padding(cascade->size.width),
 					_ccv_width_padding(cascade->size.width >> 1),
@@ -418,6 +418,7 @@ static ccv_bbf_feature_t _ccv_bbf_genetic_optimize(unsigned char** posdata, int 
 	gsl_rng_set(rng, dbli.li);
 	int i, j;
 	int pnum = ftnum * 100;
+	assert(pnum > 0);
 	ccv_bbf_gene_t* gene = (ccv_bbf_gene_t*)ccmalloc(pnum * sizeof(ccv_bbf_gene_t));
 	int rows[] = { size.height, size.height >> 1, size.height >> 2 };
 	int cols[] = { size.width, size.width >> 1, size.width >> 2 };
@@ -1428,6 +1429,7 @@ ccv_bbf_classifier_cascade_t* ccv_bbf_read_classifier_cascade(const char* direct
 		return 0;
 	ccv_bbf_classifier_cascade_t* cascade = (ccv_bbf_classifier_cascade_t*)ccmalloc(sizeof(ccv_bbf_classifier_cascade_t));
 	s = fscanf(r, "%d %d %d", &cascade->count, &cascade->size.width, &cascade->size.height);
+	assert(s > 0);
 	cascade->stage_classifier = (ccv_bbf_stage_classifier_t*)ccmalloc(cascade->count * sizeof(ccv_bbf_stage_classifier_t));
 	for (i = 0; i < cascade->count; i++)
 	{

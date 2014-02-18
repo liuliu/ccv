@@ -550,6 +550,7 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 		if (t->neighbors - 1 > n)
 			n = t->neighbors - 1;
 	}
+	assert(n > 0);
 	int* buffer = (int*)alloca(n * sizeof(int));
 	ccv_array_t* words = ccv_array_new(sizeof(ccv_rect_t), textline->rnum, 0);
 	for (i = 0; i < textline->rnum; i++)
@@ -721,6 +722,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	}
 	if (params.scale_invariant && params.min_neighbors)
 	{
+		assert(all_words);
 		// de-dup logic, similar to what BBF / DPM have
 		ccv_array_t* idx = 0;
 		int ntl = ccv_array_group(all_words, &idx, _ccv_is_same_textline, params.same_word_thresh);

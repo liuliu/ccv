@@ -247,11 +247,14 @@ static void _ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector_
 
 static void _ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 {
+	assert(mat->prime >= 0 && mat->prime < sizeof(_ccv_get_sparse_prime) / sizeof(int));
 	int length = CCV_GET_SPARSE_PRIME(mat->prime);
 	mat->prime++;
+	assert(mat->prime >= 0 && mat->prime < sizeof(_ccv_get_sparse_prime) / sizeof(int));
 	int new_length = CCV_GET_SPARSE_PRIME(mat->prime);
 	ccv_dense_vector_t* new_vector = (ccv_dense_vector_t*)ccmalloc(new_length * sizeof(ccv_dense_vector_t));
 	int i;
+	assert(new_length > 0);
 	for (i = 0; i < new_length; i++)
 	{
 		new_vector[i].index = -1;

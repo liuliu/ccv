@@ -37,6 +37,9 @@ inline static void _ccv_convnet_layer_deduce_output_format(ccv_convnet_layer_t* 
 			*rows = (layer->input.matrix.rows + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
 			*cols = (layer->input.matrix.cols + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
 			break;
+		default:
+			assert(0);
+			break;
 	}
 }
 
@@ -124,6 +127,8 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output)
 {
 	int i, out_rows, out_cols;
+	if (convnet->count < 1)
+		return -1;
 	for (i = 0; i < convnet->count; i++)
 	{
 		ccv_convnet_layer_t* layer = convnet->layers + i;
@@ -1236,7 +1241,7 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 			// load convnet params for input
 			const char convnet_params_input_qs[] =
 				"SELECT input_height, input_width FROM convnet_params WHERE convnet = 0;";
-			ccv_size_t input;
+			ccv_size_t input = ccv_size(0, 0);
 			if (SQLITE_OK == sqlite3_prepare_v2(db, convnet_params_input_qs, sizeof(convnet_params_input_qs), &convnet_params_input_stmt, 0))
 			{
 				if (sqlite3_step(convnet_params_input_stmt) == SQLITE_ROW)
