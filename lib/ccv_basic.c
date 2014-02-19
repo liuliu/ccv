@@ -356,10 +356,12 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	ccv_object_return_if_cached(, db);
 	int fsz = ccv_max(1, (int)(4.0 * sigma + 1.0 - 1e-8)) * 2 + 1;
 	int hfz = fsz / 2;
-	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * ccv_max(fsz + a->rows, (fsz + a->cols) * CCV_GET_CHANNEL(a->type)));
+	assert(hfz > 0);
+	unsigned char* buf = (unsigned char*)alloca(sizeof(double) * ccv_max(hfz * 2 + a->rows, (hfz * 2 + a->cols) * CCV_GET_CHANNEL(a->type)));
 	unsigned char* filter = (unsigned char*)alloca(sizeof(double) * fsz);
 	double tw = 0;
 	int i, j, k, ch = CCV_GET_CHANNEL(a->type);
+	assert(fsz > 0);
 	for (i = 0; i < fsz; i++)
 		tw += ((double*)filter)[i] = exp(-((i - hfz) * (i - hfz)) / (2.0 * sigma * sigma));
 	int no_8u_type = (db->type & CCV_8U) ? CCV_32S : db->type;
@@ -371,11 +373,12 @@ void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double si
 	} else {
 		tw = 1.0 / tw;
 		for (i = 0; i < fsz; i++)
-			ccv_set_value(db->type, filter, i, ((double*)filter)[i] * tw, 0);
+			ccv_set_value(no_8u_type, filter, i, ((double*)filter)[i] * tw, 0);
 	}
 	/* horizontal */
 	unsigned char* a_ptr = a->data.u8;
 	unsigned char* b_ptr = db->data.u8;
+	assert(ch > 0);
 #define for_block(_for_type, _for_set_b, _for_get_b, _for_set_a, _for_get_a) \
 	for (i = 0; i < a->rows; i++) \
 	{ \
