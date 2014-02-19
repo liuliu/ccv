@@ -50,7 +50,7 @@ void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_mat
 #undef for_block
 	double accuracy = 0;
 	for (i = 0; i < a->rows * a->cols; i++)
-		accuracy = accuracy + ja[i];
+		accuracy += ja[i];
 	accuracy = sqrt(2 * accuracy);
 	int p, q;
 	unsigned char* dlptr = dlambda->data.u8;
