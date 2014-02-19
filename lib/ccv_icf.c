@@ -453,7 +453,8 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 			state->example_state[i].rate = rate;
 		}
 		fclose(r);
-	}
+	} else
+		state->example_state = 0;
 	snprintf(filename, 1024, "%s/precomputed", directory);
 	r = fopen(filename, "rb");
 	if (r)
@@ -462,7 +463,8 @@ static void _ccv_icf_read_classifier_cascade_state(const char* directory, ccv_ic
 		state->precomputed = (uint8_t*)ccmalloc(sizeof(uint8_t) * state->params.feature_size * step);
 		fread(state->precomputed, 1, step * state->params.feature_size, r);
 		fclose(r);
-	}
+	} else
+		state->precomputed = 0;
 	snprintf(filename, 1024, "%s/cascade", directory);
 	state->classifier = ccv_icf_read_classifier_cascade(filename);
 	if (!state->classifier)
@@ -1413,11 +1415,9 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	for (z.bootstrap = 0; z.bootstrap <= params.bootstrap; z.bootstrap++)
 	{
 		z.example_state = (ccv_icf_example_state_t*)ccmalloc(sizeof(ccv_icf_example_state_t) * (z.negatives->rnum + z.positives->rnum));
+		memset(z.example_state, 0, sizeof(ccv_icf_example_state_t) * (z.negatives->rnum + z.positives->rnum));
 		for (z.i = 0; z.i < z.positives->rnum + z.negatives->rnum; z.i++)
-		{
 			z.example_state[z.i].weight = (z.i < z.positives->rnum) ? 0.5 / z.positives->rnum : 0.5 / z.negatives->rnum;
-			z.example_state[z.i].rate = 0;
-		}
 		z.x.example_state = 0;
 		ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		z.precomputed = _ccv_icf_precompute_features(z.features, params.feature_size, z.positives, z.negatives);
@@ -1525,8 +1525,10 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 			ccv_function_state_resume(_ccv_icf_write_classifier_cascade_state, z, dir);
 		}
 	}
-	ccfree(z.precomputed);
-	ccfree(z.example_state);
+	if (z.precomputed)
+		ccfree(z.precomputed);
+	if (z.example_state)
+		ccfree(z.example_state);
 	ccfree(z.features);
 	ccv_array_free(z.positives);
 	ccv_array_free(z.negatives);
