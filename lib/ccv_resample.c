@@ -227,6 +227,9 @@ static void _ccv_resample_cubic_float_only(ccv_dense_matrix_t* a, ccv_dense_matr
 	}
 	float scale_y = (float)a->rows / b->rows;
 	unsigned char* buf = (unsigned char*)alloca(b->step * 4);
+#ifdef __clang_analyzer__
+	memset(buf, 0, b->step * 4);
+#endif
 	unsigned char* a_ptr = a->data.u8;
 	unsigned char* b_ptr = b->data.u8;
 	int psi = -1, siy = 0;
@@ -297,6 +300,9 @@ static void _ccv_resample_cubic_integer_only(ccv_dense_matrix_t* a, ccv_dense_ma
 	float scale_y = (float)a->rows / b->rows;
 	int bufstep = b->cols * ch * CCV_GET_DATA_TYPE_SIZE(no_8u_type);
 	unsigned char* buf = (unsigned char*)alloca(bufstep * 4);
+#ifdef __clang_analyzer__
+	memset(buf, 0, bufstep * 4);
+#endif
 	unsigned char* a_ptr = a->data.u8;
 	unsigned char* b_ptr = b->data.u8;
 	int psi = -1, siy = 0;
@@ -389,6 +395,9 @@ void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, in
 			tab[dx * ch + k] = ((dx >= a->cols) ? a->cols * 2 - 1 - dx : dx) * ch + k;
 	unsigned char* buf = (unsigned char*)alloca(5 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
+#ifdef __clang_analyzer__
+	memset(buf, 0, 5 * bufstep);
+#endif
 	unsigned char* b_ptr = db->data.u8;
 	/* why is src_y * 4 in computing the offset of row?
 	 * Essentially, it means sy - src_y but in a manner that doesn't result negative number.
@@ -454,6 +463,9 @@ void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int 
 			tab[x * ch + k] = ((x >= a->cols) ? a->cols * 2 - 1 - x : x) * ch + k;
 	unsigned char* buf = (unsigned char*)alloca(3 * db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int)));
 	int bufstep = db->cols * ch * ccv_max(CCV_GET_DATA_TYPE_SIZE(db->type), sizeof(int));
+#ifdef __clang_analyzer__
+	memset(buf, 0, 3 * bufstep);
+#endif
 	unsigned char* b_ptr = db->data.u8;
 	/* why src_y * 2: the same argument as in ccv_sample_down */
 #define for_block(_for_get_a, _for_set, _for_get, _for_set_b) \
