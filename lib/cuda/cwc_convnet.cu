@@ -1681,8 +1681,8 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		ccv_dense_matrix_t* input = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = (image->cols - dim.width + 1) / 2;
-			int y = (image->rows - dim.height + 1) / 2;
+			int x = rng ? gsl_rng_uniform_int(rng, image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
+			int y = rng ? gsl_rng_uniform_int(rng, image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
 			assert(x == 0 || y == 0);
 			ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
 		} else
@@ -1691,20 +1691,20 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
 			ccv_matrix_free(image);
 		// random horizontal reflection
-		if (symmetric && gsl_rng_uniform_int(rng, 2) == 0)
+		if (symmetric && rng && gsl_rng_uniform_int(rng, 2) == 0)
 			ccv_flip(input, &input, 0, CCV_FLIP_X);
 		ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
 		ccv_dense_matrix_t* patch = 0;
 		if (input->cols != cols || input->rows != rows)
 		{
-			int x = gsl_rng_uniform_int(rng, input->cols - cols + 1);
-			int y = gsl_rng_uniform_int(rng, input->rows - rows + 1);
+			int x = rng ? gsl_rng_uniform_int(rng, input->cols - cols + 1) : (input->cols - cols + 1) / 2;
+			int y = rng ? gsl_rng_uniform_int(rng, input->rows - rows + 1) : (input->rows - rows + 1) / 2;
 			ccv_slice(input, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
 			ccv_matrix_free(input);
 		} else
 			patch = input;
 		assert(channels == CCV_GET_CHANNEL(patch->type));
-		if (color_gain > 0 && eigenvectors && eigenvalues)
+		if (color_gain > 0 && rng && eigenvectors && eigenvalues)
 		{
 			assert(channels == 3); // only support RGB color gain
 			memset(channel_gains, 0, sizeof(float) * channels);
@@ -2326,7 +2326,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
-				_cwc_convnet_batch_formation(rng, tests, z.convnet->mean_activity, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
+				_cwc_convnet_batch_formation(0, tests, z.convnet->mean_activity, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, params.symmetric, params.mini_batch, i, ccv_min(params.mini_batch, tests->rnum - i), context->host.input, 0);
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				if (j > 0)
