@@ -1556,7 +1556,7 @@ static void _cwc_convnet_tests_return(int batch, int count, float* a, int* c, co
 template <int momentum_read>
 __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 		const int count,
-		const float learn_rate, const float momentum_rate, const float decay)
+		const float learn_rate, const float momentum_rate, const float decay_and_learn)
 {
 	if (blockIdx.x * blockDim.x + threadIdx.x < count)
 	{
@@ -1565,7 +1565,7 @@ __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 		momentum += blockIdx.x * blockDim.x;
 		const int thidx = threadIdx.x;
 		float old_a = a[thidx];
-		float velocity = (momentum_read ? momentum_rate * momentum[thidx] : 0) - decay * learn_rate * old_a + learn_rate * grad[thidx];
+		float velocity = (momentum_read ? momentum_rate * momentum[thidx] : 0) - decay_and_learn * old_a + learn_rate * grad[thidx];
 		a[thidx] = velocity + old_a;
 		momentum[thidx] = velocity;
 	}
@@ -1595,23 +1595,23 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 					<1>
 					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
 					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
+					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
 					_cwc_kern_net_sgd
 					<1>
 					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
-					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
+					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				} else {
 					_cwc_kern_net_sgd
 					<0>
 					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
 					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
+					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
 					_cwc_kern_net_sgd
 					<0>
 					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
-					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
+					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				}
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
@@ -1624,25 +1624,26 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 					<1>
 					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
 					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
+					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
 					_cwc_kern_net_sgd
 					<1>
 					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
-					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
+					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				} else {
 					_cwc_kern_net_sgd
 					<0>
 					<<<num_blocks_for_coeff, threads_per_block, 0, context->device.stream>>>
 					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate, layer_params[i].w.momentum, layer_params[i].w.decay);
+					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
 					_cwc_kern_net_sgd
 					<0>
 					<<<num_blocks_for_bias, threads_per_block, 0, context->device.stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
-					 layer_params[i].bias.learn_rate, layer_params[i].bias.momentum, layer_params[i].bias.decay);
+					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				}
 				break;
+			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
 				break;
@@ -1783,6 +1784,7 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 		for (i = 0; i < dim.height * dim.width * channels; i++)
 			db->data.f32[i] = p * c->data.f64[i];
 	}
+	ccv_matrix_free(c);
 	printf("\n");
 }
 

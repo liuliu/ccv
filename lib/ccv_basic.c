@@ -340,7 +340,8 @@ void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type
 		btype = CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type);
 		*b = db = ccv_dense_matrix_renew(*b, a->rows, a->cols, btype, btype, sig);
 		ccv_object_return_if_cached(, db);
-		memcpy(db->data.u8, a->data.u8, a->rows * a->step);
+		if (a->data.u8 != db->data.u8)
+			memcpy(db->data.u8, a->data.u8, a->rows * a->step);
 	}
 	if (type & CCV_FLIP_Y)
 		_ccv_flip_y_self(db);
