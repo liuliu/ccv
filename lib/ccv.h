@@ -1093,10 +1093,11 @@ typedef union {
 		int strides;
 		// padding for input
 		int border;
-		// rows, cols, channels for the kernel
+		// rows, cols, channels and partition for the kernel
 		int rows;
 		int cols;
 		int channels;
+		int partition;
 	} convolutional;
 	struct {
 		// strides
@@ -1124,6 +1125,7 @@ typedef struct {
 		int rows;
 		int cols;
 		int channels;
+		int partition;
 	} matrix;
 	struct {
 		int count;
