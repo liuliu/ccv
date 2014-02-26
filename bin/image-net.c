@@ -128,6 +128,7 @@ int main(int argc, char** argv)
 					.rows = 225,
 					.cols = 225,
 					.channels = 3,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -138,6 +139,7 @@ int main(int argc, char** argv)
 					.rows = 11,
 					.cols = 11,
 					.channels = 3,
+					.partition = 2,
 				},
 			},
 		},
@@ -148,6 +150,7 @@ int main(int argc, char** argv)
 					.rows = 55,
 					.cols = 55,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -165,6 +168,7 @@ int main(int argc, char** argv)
 					.rows = 27,
 					.cols = 27,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -186,6 +190,7 @@ int main(int argc, char** argv)
 					.rows = 27,
 					.cols = 27,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -196,6 +201,7 @@ int main(int argc, char** argv)
 					.rows = 5,
 					.cols = 5,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 		},
@@ -206,6 +212,7 @@ int main(int argc, char** argv)
 					.rows = 27,
 					.cols = 27,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -223,6 +230,7 @@ int main(int argc, char** argv)
 					.rows = 13,
 					.cols = 13,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -244,6 +252,7 @@ int main(int argc, char** argv)
 					.rows = 13,
 					.cols = 13,
 					.channels = 256,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -254,6 +263,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 		},
@@ -267,6 +277,7 @@ int main(int argc, char** argv)
 					.rows = 13,
 					.cols = 13,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -277,6 +288,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 		},
@@ -290,6 +302,7 @@ int main(int argc, char** argv)
 					.rows = 13,
 					.cols = 13,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -300,6 +313,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 		},
@@ -310,6 +324,7 @@ int main(int argc, char** argv)
 					.rows = 13,
 					.cols = 13,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -330,6 +345,7 @@ int main(int argc, char** argv)
 					.rows = 6,
 					.cols = 6,
 					.channels = 256,
+					.partition = 1,
 				},
 				.node = {
 					.count = 6 * 6 * 256,
@@ -351,6 +367,7 @@ int main(int argc, char** argv)
 					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
+					.partition = 1,
 				},
 				.node = {
 					.count = 4096,
@@ -372,6 +389,7 @@ int main(int argc, char** argv)
 					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
+					.partition = 1,
 				},
 				.node = {
 					.count = 4096,
@@ -391,10 +409,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.000001;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.000001;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;
