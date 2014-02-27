@@ -69,7 +69,7 @@ typedef struct {
 
 inline static void _cwc_convnet_layer_deduce_output_format(ccv_convnet_layer_t* layer, int* rows, int* cols, int* partition)
 {
-	assert(rows != 0 && cols != 0);
+	assert(rows != 0 && cols != 0 && partition != 0);
 	switch(layer->type)
 	{
 		case CCV_CONVNET_CONVOLUTIONAL:
@@ -165,7 +165,7 @@ static void _cwc_convnet_alloc_reserved(ccv_convnet_t* convnet, int batch, ccv_c
 			scratch_space = ccv_max(scratch_space,
 					out_rows * out_cols * layers[i].net.convolutional.count * batch + // output layer reorder
 					layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch + // input layer reorder
-					layers[i].net.convolutional.count * layers[i].input.matrix.channels / out_partition * layers[i].net.convolutional.rows * layers[i].net.convolutional.cols * (use_multi_way ? out_rows : 1) * (batch / BATCH_PER_BLOCK)); // unconsolidated weights output
+					layers[i].wnum * (use_multi_way ? out_rows : 1) * (batch / BATCH_PER_BLOCK)); // unconsolidated weights output
 			if (use_multi_way)
 				unit_size = ccv_max(unit_size, out_rows * (batch / BATCH_PER_BLOCK));
 		}
@@ -450,7 +450,7 @@ static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t
 	if (!(batch % x == 0 && z % y == 0 && layer->net.convolutional.count % (z * out_partition) == 0 &&
 				batch / x * z / y <= 1024 && /* thread number constraint */
 				batch / x * z / y >= batch && batch / x * z / y >= z && /* kernel internal loading constraint */
-				sizeof(float) * ((batch + z * 2) + layer->net.convolutional.count) <= 48 * 1024 /* shared memory size constraint */))
+				sizeof(float) * (batch + z * 2) <= 48 * 1024 /* shared memory size constraint */))
 		return -1;
 	assert(b);
 #define vary_block(_x, _y, _z) do { \
@@ -461,7 +461,7 @@ static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t
 		cudaFuncSetCacheConfig(_cwc_kern_convolutional_forward_propagate<_x, _y, _z>, cudaFuncCachePreferShared); \
 		_cwc_kern_convolutional_forward_propagate \
 			<_x, _y, _z> \
-			<<<num_blocks, threads_per_block, shared_memory_size + /* need extra space for bias */ sizeof(float) * layer->net.convolutional.count, stream>>> \
+			<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
 			(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
 			 a, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, \
 			 b, out_rows, out_cols, \
@@ -1139,7 +1139,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 	if (!(layer->net.convolutional.count % (y * out_partition) == 0 && z % x == 0 && layer->net.convolutional.channels % (z * out_partition) == 0 &&
 		  layer->net.convolutional.count / (y * out_partition) * z / x <= 1024 && /* thread per block constraint */
 		  layer->net.convolutional.count / (y * out_partition) * z / x >= z && layer->net.convolutional.count / (y * out_partition) * z / x >= layer->net.convolutional.count / out_partition && /* shared loading constraint */
-				sizeof(float) * (z + layer->net.convolutional.count) <= 32 * 1024 /* shared memory size constraint */))
+				sizeof(float) * (z + layer->net.convolutional.count / out_partition) <= 32 * 1024 /* shared memory size constraint */))
 		return -1;
 	float* chm = scratch;
 	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
@@ -1157,7 +1157,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
 		int batch_group_count = batch / BATCH_PER_BLOCK; \
 		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.channels / _z * batch_group_count); \
-		int shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count); \
+		int shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count / out_partition); \
 		_cwc_kern_convolutional_backward_propagate_coefficient_default \
 		<_x, _y, _z, BATCH_PER_BLOCK> \
 		<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
@@ -1310,7 +1310,7 @@ __global__ static void _cwc_kern_rnorm_backward_propagate(const int batch,
 		}
 		for (i = 0; i < input_loads; i++)
 			if (i * thcnt + thidx < batch)
-				shared_input[i * thcnt + thidx] = input[i * thcnt + thidx],
+				shared_input[i * thcnt + thidx] = input[i * thcnt + thidx];
 		__syncthreads();
 		#pragma unroll
 		for (i = 0; i < input_per_thread; i++)
@@ -1999,7 +1999,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 	ccv_convnet_t* convnet = ccv_convnet_read(1, filename);
 	if (!convnet)
 		return;
-	/*int i;
+	int i;
 	for (i = 0; i < convnet->count; i++)
 	{
 		ccv_convnet_layer_t* layer = GPU(z->convnet)->layers + i;
@@ -2020,7 +2020,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 		}
-	}*/
+	}
 	assert(convnet->input.height == z->convnet->input.height);
 	assert(convnet->input.width == z->convnet->input.width);
 	assert(convnet->rows == z->convnet->rows);
@@ -2297,7 +2297,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			cudaEventRecord(start, 0);
 			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
 			if (z.t > 0) // undo the mean network for further training
-				_cwc_convnet_dor_mean_net_undo(z.convnet, params.layer_params, GPU(z.convnet)->contexts[1].device.cublas);
+				_cwc_convnet_dor_mean_net_undo(z.convnet, params.layer_params, GPU(z.convnet)->contexts[(z.i + 1) % 2].device.cublas);
 			miss = 0;
 			// run updates
 			for (i = z.i; i < ccv_min(z.i + params.iterations, aligned_batches); i++)
@@ -2352,7 +2352,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				cudaMemcpyAsync(context->device.input, context->host.input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device.stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				if (j > 0)
-					cudaEventRecord(stop, GPU(z.convnet)->contexts[(i + 1) % 2].device.stream);
+					cudaEventRecord(stop, GPU(z.convnet)->contexts[(j + 1) % 2].device.stream);
 				// sync with the other stream core so that we can compute on the single true layer parameters
 				cudaStreamSynchronize(GPU(z.convnet)->contexts[(j + 1) % 2].device.stream);
 				assert(cudaGetLastError() == cudaSuccess);

@@ -25,17 +25,18 @@ int main(int argc, char** argv)
 	}
 	fclose(r);
 	free(file);
-	ccv_convnet_layer_param_t params[] = {
+	ccv_convnet_layer_param_t params[13] = {
 		// first layer (convolutional => max pool => rnorm)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 225,
 					.cols = 225,
 					.channels = 3,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -46,6 +47,7 @@ int main(int argc, char** argv)
 					.rows = 11,
 					.cols = 11,
 					.channels = 3,
+					.partition = 2,
 				},
 			},
 		},
@@ -56,6 +58,7 @@ int main(int argc, char** argv)
 					.rows = 55,
 					.cols = 55,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -69,13 +72,14 @@ int main(int argc, char** argv)
 		// second layer (convolutional => max pool => rnorm)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 0,
+			.bias = 1,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 27,
 					.cols = 27,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -86,16 +90,18 @@ int main(int argc, char** argv)
 					.rows = 5,
 					.cols = 5,
 					.channels = 96,
+					.partition = 2,
 				},
 			},
 		},
 		{
-			.type = CCV_CONVNET_AVERAGE_POOL,
+			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
 					.rows = 27,
 					.cols = 27,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -106,14 +112,36 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		// third layer (convolutional)
 		{
-			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
 			.input = {
 				.matrix = {
 					.rows = 13,
 					.cols = 13,
 					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		// third layer (convolutional)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 256,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -124,17 +152,21 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 		},
 		// fourth layer (convolutional)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 13,
 					.cols = 13,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -145,17 +177,21 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 		},
 		// fifth layer (convolutional => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 13,
 					.cols = 13,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -166,16 +202,18 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 384,
+					.partition = 2,
 				},
 			},
 		},
 		{
-			.type = CCV_CONVNET_AVERAGE_POOL,
+			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
 					.rows = 13,
 					.cols = 13,
 					.channels = 256,
+					.partition = 2,
 				},
 			},
 			.output = {
@@ -189,13 +227,14 @@ int main(int argc, char** argv)
 		// sixth layer (full connect)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
-			.bias = 0,
+			.bias = 1,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 6,
 					.cols = 6,
 					.channels = 256,
+					.partition = 1,
 				},
 				.node = {
 					.count = 6 * 6 * 256,
@@ -210,13 +249,14 @@ int main(int argc, char** argv)
 		// seventh layer (full connect)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
-			.bias = 0,
+			.bias = 1,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
 					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
+					.partition = 1,
 				},
 				.node = {
 					.count = 4096,
@@ -238,6 +278,7 @@ int main(int argc, char** argv)
 					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
+					.partition = 1,
 				},
 				.node = {
 					.count = 4096,

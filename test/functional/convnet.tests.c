@@ -13,6 +13,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 				.rows = 225,
 				.cols = 225,
 				.channels = 3,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -23,6 +24,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 				.rows = 11,
 				.cols = 11,
 				.channels = 3,
+				.partition = 1,
 			},
 		},
 	};
@@ -58,6 +60,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 				.rows = 27,
 				.cols = 27,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -68,6 +71,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 				.rows = 5,
 				.cols = 5,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 	};
@@ -114,6 +118,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 				.rows = 225,
 				.cols = 225,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -124,6 +129,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 				.rows = 11,
 				.cols = 11,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 	};
@@ -216,6 +222,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 				.rows = 27,
 				.cols = 27,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -226,6 +233,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 				.rows = 5,
 				.cols = 5,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 	};
@@ -394,6 +402,7 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 				.rows = 13,
 				.cols = 13,
 				.channels = 128,
+				.partition = 1,
 			},
 			.node = {
 				.count = 13 * 13 * 128,
@@ -435,6 +444,7 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 				.rows = 55,
 				.cols = 55,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -474,6 +484,7 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 				.rows = 57,
 				.cols = 57,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -513,6 +524,7 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 				.rows = 54,
 				.cols = 54,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -552,6 +564,7 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 				.rows = 55,
 				.cols = 55,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -591,6 +604,7 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 				.rows = 57,
 				.cols = 57,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -630,6 +644,7 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 				.rows = 54,
 				.cols = 54,
 				.channels = 1,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -674,6 +689,7 @@ TEST_CASE("full connect network backward propagate")
 				.rows = 3,
 				.cols = 3,
 				.channels = 64,
+				.partition = 1,
 			},
 			.node = {
 				.count = 3 * 3 * 64,
@@ -741,6 +757,7 @@ TEST_CASE("convolutional network backward propagate")
 				.rows = 31,
 				.cols = 31,
 				.channels = 3,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -751,6 +768,7 @@ TEST_CASE("convolutional network backward propagate")
 				.border = 2,
 				.strides = 1,
 				.count = 32,
+				.partition = 1,
 			},
 		},
 	};
@@ -816,6 +834,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 				.rows = 3,
 				.cols = 3,
 				.channels = 8,
+				.partition = 1,
 			},
 			.node = {
 				.count = 3 * 3 * 8,
@@ -902,6 +921,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 				.rows = 31,
 				.cols = 31,
 				.channels = 3,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -912,6 +932,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 				.border = 2,
 				.strides = 1,
 				.count = 2,
+				.partition = 1,
 			},
 		},
 	};
@@ -992,6 +1013,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 					.rows = 5,
 					.cols = 5,
 					.channels = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -1002,6 +1024,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 					.border = 1,
 					.strides = 1,
 					.count = 2,
+					.partition = 1,
 				},
 			},
 		},
@@ -1014,6 +1037,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 					.rows = 5,
 					.cols = 5,
 					.channels = 2,
+					.partition = 1,
 				},
 				.node = {
 					.count = 5 * 5 * 2,
@@ -1099,6 +1123,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 					.rows = 31,
 					.cols = 31,
 					.channels = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -1109,6 +1134,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 					.border = 2,
 					.strides = 1,
 					.count = 2,
+					.partition = 1,
 				},
 			},
 		},
@@ -1119,6 +1145,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 					.rows = 31,
 					.cols = 31,
 					.channels = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -1207,6 +1234,7 @@ TEST_CASE("max pool network backward propagate")
 				.rows = 31,
 				.cols = 31,
 				.channels = 2,
+				.partition = 1,
 			},
 		},
 		.output = {
@@ -1253,6 +1281,7 @@ TEST_CASE("average pool network backward propagate")
 				.rows = 31,
 				.cols = 31,
 				.channels = 2,
+				.partition = 1,
 			},
 		},
 		.output = {
