@@ -14,7 +14,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	for (i = 0; i < convnet->rows * convnet->cols * convnet->channels; i++)
 		convnet->mean_activity->data.f32[i] = 128;
-	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, ccv_size(251, 251), convnet->rows, convnet->cols, convnet->channels, 0, batch, 0, batch, context->host.input, context->host.c);
+	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, ccv_size(225, 225), convnet->rows, convnet->cols, convnet->channels, 0, batch, 0, batch, context->host.input, context->host.c);
 	cudaMemcpy(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * batch, cudaMemcpyHostToDevice);
 
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
@@ -24,8 +24,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_layer_t* first_gpu_layer = GPU(convnet)->layers;
 	_cwc_convnet_convolutional_forward_propagate(first_gpu_layer, batch, context->device.input, GPU(convnet)->forwards[0], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
-	int first_out_rows, first_out_cols, first_out_channels = first_gpu_layer->net.convolutional.count;
-	_cwc_convnet_layer_deduce_output_format(first_gpu_layer, &first_out_rows, &first_out_cols);
+	int first_out_rows, first_out_cols, first_out_partition, first_out_channels = first_gpu_layer->net.convolutional.count;
+	_cwc_convnet_layer_deduce_output_format(first_gpu_layer, &first_out_rows, &first_out_cols, &first_out_partition);
 	float* first_out = 0;
 	cudaMallocHost(&first_out, sizeof(float) * first_out_rows * first_out_cols * first_out_channels * batch);
 	cudaMemcpy(first_out, GPU(convnet)->forwards[0], sizeof(float) * first_out_rows * first_out_cols * first_out_channels * batch, cudaMemcpyDeviceToHost);
@@ -35,8 +35,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_layer_t* second_gpu_layer = GPU(convnet)->layers + 1;
 	_cwc_convnet_average_pool_forward_propagate(second_gpu_layer, batch,  GPU(convnet)->forwards[0], GPU(convnet)->forwards[1], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
-	int second_out_rows, second_out_cols, second_out_channels = second_gpu_layer->input.matrix.channels;
-	_cwc_convnet_layer_deduce_output_format(second_gpu_layer, &second_out_rows, &second_out_cols);
+	int second_out_rows, second_out_cols, second_out_partition, second_out_channels = second_gpu_layer->input.matrix.channels;
+	_cwc_convnet_layer_deduce_output_format(second_gpu_layer, &second_out_rows, &second_out_cols, &second_out_partition);
 	float* second_out = 0;
 	cudaMallocHost(&second_out, sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch);
 	cudaMemcpy(second_out, GPU(convnet)->forwards[1], sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch, cudaMemcpyDeviceToHost);
@@ -46,8 +46,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_convnet_layer_t* third_gpu_layer = GPU(convnet)->layers + 2;
 	_cwc_convnet_convolutional_forward_propagate(third_gpu_layer, batch, GPU(convnet)->forwards[1], GPU(convnet)->forwards[2], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
-	int third_out_rows, third_out_cols, third_out_channels = third_gpu_layer->net.convolutional.count;
-	_cwc_convnet_layer_deduce_output_format(third_gpu_layer, &third_out_rows, &third_out_cols);
+	int third_out_rows, third_out_cols, third_out_partition, third_out_channels = third_gpu_layer->net.convolutional.count;
+	_cwc_convnet_layer_deduce_output_format(third_gpu_layer, &third_out_rows, &third_out_cols, &third_out_partition);
 	float* third_out = 0;
 	cudaMallocHost(&third_out, sizeof(float) * third_out_rows * third_out_cols * third_out_channels * batch);
 	cudaMemcpy(third_out, GPU(convnet)->forwards[2], sizeof(float) * third_out_rows * third_out_cols * third_out_channels * batch, cudaMemcpyDeviceToHost);
@@ -92,6 +92,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	{
 		printf("doing batch %d of %d\n", i + 1, batch);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
+		for (x = 0; x < categorized->matrix->rows * categorized->matrix->cols * CCV_GET_CHANNEL(categorized->matrix->type); x++)
+			categorized->matrix->data.f32[x] = categorized->matrix->data.f32[x] - 128;
 
 		// first convolutional layer forward propagate
 		ccv_convnet_layer_t* first_cpu_layer = convnet->layers;
@@ -104,7 +106,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					float p = first_out[k * first_out_rows * first_out_cols * batch + (y * first_out_cols + x) * batch + i];
 					float q = a->data.f32[y * first_out_cols * first_out_channels + x * first_out_channels + k];
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-5)
+					if (delta > 1e-4)
 						printf("conv fprop 1: %d %d %d %d: |%f - %f| = %f\n", i, x, y, k, p, q, delta);
 				}
 
@@ -119,38 +121,93 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					float p = second_out[k * second_out_rows * second_out_cols * batch + (y * second_out_cols + x) * batch + i];
 					float q = b->data.f32[y * second_out_cols * second_out_channels + x * second_out_channels + k];
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-5)
+					if (delta > 1e-4)
 						printf("avgpool fprop 2: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
 				}
 
 		// third convolutional layer forward propagate
+		// we know this layer we have partition == 2, emulate that without partition support in CPU implementation
 		ccv_convnet_layer_t* third_cpu_layer = convnet->layers + 2;
-		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, convnet->acts[1], 0, convnet->acts + 2);
+		third_cpu_layer->input.matrix.channels = third_cpu_layer->input.matrix.channels / 2;
+		third_cpu_layer->net.convolutional.count = third_cpu_layer->net.convolutional.count / 2;
+		third_cpu_layer->net.convolutional.channels = third_cpu_layer->input.matrix.channels;
+		// first halve of third layer
+		ccv_dense_matrix_t* halve = ccv_dense_matrix_new(second_out_rows, second_out_cols, CCV_32F | third_cpu_layer->input.matrix.channels, 0, 0);
+		for (y = 0; y < second_out_rows; y++)
+			for (x = 0; x < second_out_cols; x++)
+				for (k = 0; k < second_out_channels / 2; k++)
+					halve->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k] = b->data.f32[(y * second_out_cols + x) * second_out_channels + k];
+		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, 0, convnet->acts + 2);
 		ccv_dense_matrix_t* c = convnet->acts[2];
 		for (y = 0; y < third_out_rows; y++)
 			for (x = 0; x < third_out_cols; x++)
-				for (k = 0; k < third_out_channels; k++)
+				for (k = 0; k < third_out_channels / 2; k++)
 				{
 					float p = third_out[k * third_out_rows * third_out_cols * batch + (y * third_out_cols + x) * batch + i];
-					float q = c->data.f32[y * third_out_cols * third_out_channels + x * third_out_channels + k];
+					float q = c->data.f32[(y * third_out_cols + x) * third_out_channels / 2 + k];
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-5)
+					if (delta > 1e-4)
 						printf("conv fprop 3: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
 				}
-
 		// third convolutional layer backward propagate
-		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], 0, convnet->acts[1], update_params->acts + 1, update_params->layers + 2);
-		ccv_dense_matrix_t* bc = update_params->acts[1];
+		ccv_dense_matrix_t* bc = 0;
+		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], 0, halve, &bc, update_params->layers + 2);
+		if (update_params->acts[1] == 0)
+			update_params->acts[1] = ccv_dense_matrix_new(second_out_rows, second_out_cols, second_out_channels | CCV_32F, 0, 0);
 		for (y = 0; y < second_out_rows; y++)
 			for (x = 0; x < second_out_cols; x++)
-				for (k = 0; k < second_out_channels; k++)
+				for (k = 0; k < second_out_channels / 2; k++)
 				{
 					float p = third_back[k * second_out_rows * second_out_cols * batch + (y * second_out_cols + x) * batch + i];
-					float q = bc->data.f32[y * second_out_cols * second_out_channels + x * second_out_channels + k];
+					float q = bc->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k];
+					update_params->acts[1]->data.f32[(y * second_out_cols + x) * second_out_channels + k] = q;
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-5)
+					if (delta > 1e-4)
 						printf("conv bprop 3: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
 				}
+		// second halve of third layer
+		third_cpu_layer->w += third_cpu_layer->wnum / 2;
+		third_cpu_layer->bias += third_cpu_layer->net.convolutional.count;
+		for (y = 0; y < second_out_rows; y++)
+			for (x = 0; x < second_out_cols; x++)
+				for (k = 0; k < second_out_channels / 2; k++)
+					halve->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k] = b->data.f32[(y * second_out_cols + x) * second_out_channels  + second_out_channels / 2 + k];
+		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, 0, convnet->acts + 2);
+		c = convnet->acts[2];
+		for (y = 0; y < third_out_rows; y++)
+			for (x = 0; x < third_out_cols; x++)
+				for (k = 0; k < third_out_channels / 2; k++)
+				{
+					float p = third_out[(third_out_channels / 2 + k) * third_out_rows * third_out_cols * batch + (y * third_out_cols + x) * batch + i];
+					float q = c->data.f32[(y * third_out_cols + x) * third_out_channels / 2 + k];
+					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+					if (delta > 1e-4)
+						printf("conv fprop 3: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
+				}
+		// third convolutional layer backward propagate
+		update_params->layers[2].w += third_cpu_layer->wnum / 2;
+		update_params->layers[2].bias += third_cpu_layer->net.convolutional.count;
+		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], 0, halve, &bc, update_params->layers + 2);
+		for (y = 0; y < second_out_rows; y++)
+			for (x = 0; x < second_out_cols; x++)
+				for (k = 0; k < second_out_channels / 2; k++)
+				{
+					float p = third_back[(second_out_channels / 2 + k) * second_out_rows * second_out_cols * batch + (y * second_out_cols + x) * batch + i];
+					float q = bc->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k];
+					update_params->acts[1]->data.f32[(y * second_out_cols + x) * second_out_channels + second_out_channels / 2 + k] = q;
+					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+					if (delta > 1e-4)
+						printf("conv bprop 3: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
+				}
+		// revert changes we made to this layer
+		update_params->layers[2].w -= third_cpu_layer->wnum / 2;
+		update_params->layers[2].bias -= third_cpu_layer->net.convolutional.count;
+		third_cpu_layer->w -= third_cpu_layer->wnum / 2;
+		third_cpu_layer->bias -= third_cpu_layer->net.convolutional.count;
+		third_cpu_layer->input.matrix.channels = third_cpu_layer->input.matrix.channels * 2;
+		third_cpu_layer->net.convolutional.count = third_cpu_layer->net.convolutional.count * 2;
+		third_cpu_layer->net.convolutional.channels = third_cpu_layer->input.matrix.channels;
+		ccv_matrix_free(halve);
 
 		// second average pool layer backward propagate
 		_ccv_convnet_average_pool_backward_propagate(second_cpu_layer, update_params->acts[1], convnet->acts[0], update_params->acts);
@@ -162,18 +219,19 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					float p = second_back[k * first_out_rows * first_out_cols * batch + (y * first_out_cols + x) * batch + i];
 					float q = bb->data.f32[y * first_out_cols * first_out_channels + x * first_out_channels + k];
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-5)
+					if (delta > 1e-4)
 						printf("avgpool bprop 2: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
 				}
 
 		// first convolutional layer backward propagate
 		_ccv_convnet_convolutional_backward_propagate(first_cpu_layer, update_params->acts[0], convnet->acts[0], 0, categorized->matrix, 0, update_params->layers);
 	}
+
 	ccv_convnet_layer_t* third_cpu_configuration = update_params->layers + 2;
 	int third_filter_rows = third_gpu_layer->net.convolutional.rows;
 	int third_filter_cols = third_gpu_layer->net.convolutional.cols;
 	int third_filter_count = third_gpu_layer->net.convolutional.count;
-	int third_filter_channels = third_gpu_layer->net.convolutional.channels;
+	int third_filter_channels = third_gpu_layer->net.convolutional.channels / 2;
 	for (y = 0; y < third_filter_rows; y++)
 		for (x = 0; x < third_filter_cols; x++)
 			for (k = 0; k < third_filter_count; k++)
@@ -199,7 +257,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					float p = first_cpu_configuration->w[(y * first_filter_cols + x) * first_filter_channels + k * first_filter_cols * first_filter_rows * first_filter_channels + c];
 					float q = first_grad[(y * first_filter_cols + x) * first_filter_count + k + c * first_filter_cols * first_filter_rows * first_filter_count];
 					float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-					if (delta > 1e-4)
+					if (delta > 1e-3)
 						printf("conv bprop 1: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
 }
