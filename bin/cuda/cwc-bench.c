@@ -316,19 +316,16 @@ int main(int argc, char** argv)
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 		ccv_dense_matrix_t* b = 0;
-		if (image->rows > 251 && image->cols > 251)
-			ccv_resample(image, &b, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_AREA);
-		else if (image->rows < 251 || image->cols < 251)
-			ccv_resample(image, &b, 0, ccv_max(251, (int)(image->rows * 251.0 / image->cols + 0.5)), ccv_max(251, (int)(image->cols * 251.0 / image->rows + 0.5)), CCV_INTER_CUBIC);
+		if (image->rows > 225 && image->cols > 225)
+			ccv_resample(image, &b, 0, ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)), ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)), CCV_INTER_AREA);
+		else if (image->rows < 225 || image->cols < 225)
+			ccv_resample(image, &b, 0, ccv_max(225, (int)(image->rows * 225.0 / image->cols + 0.5)), ccv_max(225, (int)(image->cols * 225.0 / image->rows + 0.5)), CCV_INTER_CUBIC);
 		else
 			b = image;
 		if (b != image)
 			ccv_matrix_free(image);
 		ccv_dense_matrix_t* c = 0;
 		ccv_slice(b, (ccv_matrix_t**)&c, CCV_32F, 0, 0, 225, 225);
-		int j, ch = CCV_GET_CHANNEL(c->type);
-		for (j = 0; j < c->rows * c->cols * ch; j++)
-			c->data.f32[j] = c->data.f32[j] / 255.0 * 2 - 1;
 		ccv_matrix_free(b);
 		categorized->type = CCV_CATEGORIZED_DENSE_MATRIX;
 		categorized->matrix = c;
