@@ -1,0 +1,97 @@
+---
+layout: page
+lib: ccv
+slug: ccv-serve
+status: publish
+title: serve/*.c
+desc: HTTP server
+categories:
+- lib
+---
+
+/bbf/detect.objects
+-------------------
+
+Using [BBF](/doc/doc-bbf) classifier cascade to detect objects in a given image.
+
+ * **'source' or HTTP body**: the image.
+ * **'model'**: what object, for now, it only supports 'face'.
+
+You can look up the rest of parameters at [ccv_bbf.c](/lib/ccv-bbf/#ccvbbfparamt).
+
+Supported methods: GET, POST
+
+/dpm/detect.objects
+-------------------
+
+Using [DPM](/doc/doc-dpm) mixture model to detect objects in a given image.
+
+ * **'source' or HTTP body**: the image.
+ * **'model'**: what object, it now supports 'pedestrian' and 'car'.
+
+You can look up the rest of parameters at [ccv_dpm.c](/lib/ccv-dpm/#ccvdpmparamt).
+
+Supported methods: GET, POST
+
+/icf/detect.objects
+-------------------
+
+Using [ICF](/doc/doc-icf) classifier cascade to detect objects in a given image.
+
+ * **'source' or HTTP body**: the image.
+ * **'model'**: what object, for now, it only supports 'pedestrian'.
+
+You can look up the rest of parameters at [ccv_icf.c](/lib/ccv-icf/#ccvicfparamt).
+
+Supported methods: GET, POST
+
+/swt/detect.words
+-----------------
+
+Using [SWT](/doc/doc-swt) to detect words / texts in a given image.
+
+ * **'source' or HTTP body**: the image.
+
+You can look up the rest of parameters at [ccv_swt.c](/lib/ccv-swt/#ccvswtparamt).
+
+Supported methods: GET, POST
+
+/tld/track.object
+-----------------
+
+Create a new [TLD](/doc/doc-tld) tracking instance with the initial frame.
+
+ * **'source' or HTTP body**: the initial frame image.
+ * **'x'**: the initial tracking rectangle's top left coordinate.
+ * **'y'**: the initial tracking rectangle's top left coordinate.
+ * **'width'**: the initial tracking rectangle's width.
+ * **'height'**: the initial tracking rectangle's height.
+
+You can look up the rest of parameters at [ccv_tld.c](/lib/ccv-tld/#ccvtldparamt).
+
+Supported methods: GET, POST
+
+On success, it will return the new tracking instance with 'Location' header, you can also find its ID in response['tld'].
+
+/tld/track.object/[\d+]
+-----------------------
+
+Continue a [TLD](/doc/doc-tld) tracking instance with follow up frames.
+
+ * **'source' or HTTP body**: the next frame image.
+ * **'previous'**: the previous frame image, please make sure this is the exact copy of the frame you previous provided, otherwise API will return 'false'.
+
+Supported methods: GET, POST, DELETE
+
+Please make sure that you DELETE the TLD tracking instance once you are done, otherwise the HTTP server cannot reclaim the memory it occupies.
+
+/sift
+-----
+
+Run [SIFT](/doc/doc-sift) feature point extraction on a given image.
+
+ * **'source' or HTTP body**: the image.
+
+You can look up the rest of parameters at [ccv_sift.c](/lib/ccv-sift/#ccvsiftparamt).
+
+Supported methods: GET, POST

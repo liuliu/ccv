@@ -3,7 +3,6 @@
 *.swp
 tags
 gh-pages
-site
 *.tests
 *.pyc
 lib/.CC
@@ -31,3 +30,4 @@ data/*
 tool/*
 config.mk
 build
+site/_site

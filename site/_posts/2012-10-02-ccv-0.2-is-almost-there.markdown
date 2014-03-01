@@ -1,0 +1,28 @@
+---
+date: '2012-10-02 22:17:00'
+layout: post
+slug: ccv-0.2-almost-there
+status: publish
+title: ccv 0.2 is almost there
+categories:
+- post
+---
+
+In the next 2 days, I will cut a new branch from unstable to replace current stable
+branch, and announcing 0.2 release.
+
+0.2 supposes to be a bug-fix release, thus, you won't expect a significant new
+features in it, but whatever, here is what's new:
+
+1). thread-safety by having application-wide cache thread-local;
+
+2). support ccv_read from memory;
+
+3). preliminary MSER implementation;
+
+4). more concise documentation and improvements on SWT;
+
+5). DPM supports real mixture model creation, with new car.m model in ./samples/;
+
+It has been 3 months since the last release, and hopefully, after this release,
+the upcoming schedule will be more regularized.
