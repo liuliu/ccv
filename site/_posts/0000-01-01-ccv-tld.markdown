@@ -1,0 +1,106 @@
+---
+layout: page
+lib: ccv
+slug: ccv-tld
+status: publish
+title: lib/ccv_tld.c
+desc: track learn detect
+categories:
+- lib
+---
+
+ccv_tld_new
+-----------
+
+	ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
+
+Create a new TLD tracking instance from a given first frame image and the tracking rectangle.
+
+ * **a**: the first frame image.
+ * **box**: the initial tracking rectangle.
+ * **params**: a **ccv\_tld\_param\_t** structure that defines various aspects of TLD tracker.
+
+ccv_tld_param_t
+---------------
+
+TLD is complex enough that I will divide its parameters into sections:
+
+Short-term lucas-kanade tracking parameters
+
+ * **win_size**: the window size to compute optical flow
+ * **level**: level of image pyramids
+ * **min_eigen**: the minimal eigenvalue for a valid optical flow computation
+ * **min_forward_backward_error**: the minimal forward backward error
+
+Image pyramid generation parameters (for scale-invariant object detection)
+
+ * **interval**: how many intermediate images in between each image pyramid level (from width => width / 2)
+ * **shift**: how much steps sliding window should move
+
+Samples generation parameters
+
+ * **min_win**: the minimal window size of patches for detection
+ * **include_overlap**: above this threshold, a bounding box will be positively identified as overlapping with target
+ * **exclude_overlap**: below this threshold, a bounding box will be positively identified as not overlapping with target
+
+Ferns classifier parameters
+
+ * **structs**: how many ferns in the classifier
+ * **features**: how many features for each fern
+
+Nearest neighbor classifier parameters
+
+ * **validate_set**: the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be
+ * **nnc_same**: above this threshold, a given patch will be identified as the same
+ * **nnc_thres**: the initial threshold for positively recognize a patch
+ * **nnc_verify**: the threshold for a tracking result from short-term tracker be verified as a positive detection
+ * **nnc_beyond**: the upper bound threshold for adaptive computed threshold
+ * **nnc_collect**: the threshold that a negative patch above this will be collected as negative example
+ * **bad_patches**: how many patches should be evaluated in initialization to collect enough negative examples
+
+Deformation parameters to apply perspective transforms on patches for robustness
+
+ * **new_deform**: number of deformations should be applied at initialization
+ * **new_deform_angle**: the maximal angle for x, y and z axis rotation at initialization
+ * **new_deform_scale**: the maximal scale for the deformation at initialization
+ * **new_deform_shift**: the maximal shift for the deformation at initialization
+ * **track_deform**: number of deformations should be applied at running time
+ * **track_deform_angle**: the maximal angle for x, y and z axis rotation at running time
+ * **track_deform_scale**: the maximal scale for the deformation at running time
+ * **track_deform_shift**: the maximal shift for the deformation at running time
+
+Speed up parameters
+
+ * **top_n**: only keep these much positive detections when applying ferns classifier
+ * **rotation**: when >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.
+
+ccv_tld_track_object
+--------------------
+
+	ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info)
+
+ccv doesn't have retain / release semantics. Thus, a TLD instance cannot retain the most recent frame it tracks for future reference, you have to pass that in by yourself.
+
+ * **tld**: the TLD instance for continuous tracking
+ * **a**: the last frame used for tracking (ccv\_tld\_track\_object will check signature of this against the last frame TLD instance tracked)
+ * **b**: the new frame will be tracked
+ * **info**: a **ccv\_tld\_info\_t** structure that will records several aspects of current tracking
+
+ccv_tld_info_t
+--------------
+
+ * **perform_track**: whether we performed tracking or not this time
+ * **perform_learn**: whether we performed learning or not this time
+ * **track_success**: if we have a successful tracking (thus, short term tracker works)
+ * **ferns_detects**: how many regions passed ferns classifier
+ * **nnc_detects**: how many regions passed nearest neighbor classifier
+ * **clustered_detects**: after cluster, how many regions left
+ * **confident_matches**: how many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking)
+ * **close_matches**: how many matches we have inside the tracking (may cause a new learning event)
+
+ccv_tld_free
+------------
+
+	void ccv_tld_free(ccv_tld_t* tld)
+
+ * **tld**: the TLD instance to be freed.

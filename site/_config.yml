@@ -1,0 +1,33 @@
+# This is the default format. 
+# For more see: https://github.com/mojombo/jekyll/wiki/Permalinks
+permalink: /:categories/:title 
+
+exclude: [".rbenv-version", "README.md", "Rakefile"]
+auto: false
+pygments: false
+markdown: kramdown
+
+kramdown:
+  use_coderay: true
+
+coderay:
+  coderay_css: class
+
+# Themes are encouraged to use these universal variables 
+# so be sure to set them if your theme uses them.
+#
+title : ccv
+subtitle : a modern computer vision library
+author :
+  name : Liu Liu
+  email : i@liuliu.me
+
+# The production_url is only used when full-domain names are needed
+# such as sitemap.txt 
+# Most places will/should use BASE_PATH to make the urls
+#
+# If you have set a CNAME (pages.github.com) set your custom domain here.
+# Else if you are pushing to username.github.com, replace with your username.
+# Finally if you are pushing to a GitHub project page, include the project name at the end.
+#
+production_url : http://libccv.org

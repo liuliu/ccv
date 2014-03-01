@@ -1,0 +1,42 @@
+---
+date: '2012-10-04 23:56:00'
+layout: post
+slug: ccv-cut-the-0.2-stable-and-whats-new
+status: publish
+title: ccv cut the 0.2 stable, and what's new
+categories:
+- post
+---
+
+I've cut the stable branch off unstable yesterday, and a r0.2-rc branch as well.
+This marks the 0.2 version of ccv finally here.
+
+ccv 0.2 expects to be a bug-fix release, and should address several "obvious"
+problems have after the first release. Thus, two important issues get addressed
+in this release:
+
+1). thread-safety. The first release version of ccv is not thread-safe when
+enabled the application-wide cache, because access and mutation on this cache is
+not thread-safe. In this release, the application-wide cache becomes thread
+local, thus, have its thread-safety now.
+
+2). read in-memory data. It is always possible to create a ccv_dense_matrix_t
+yourself and fill it out with in-memory data, but the lacking of canonical way
+to read in-memory data into ccv seems problematic in the community. In this
+release, ccv_read will take more options, and one of them is to read in-memory
+self-describe data (such as in-memory JPEG or PNG), another is to read RGB plain
+formatted bytes directly. [read more](/lib/ccv-io/).
+
+In 0.2, DPM finally can train multi-components model (a.k.a. the "real" mixture
+model), and I've included a car model for you to try out:
+
+![car](/photo/2012-10-04-car.png)
+
+Largely still *work-in-progress*, the SWT included a swtcreate tool for you to
+tune SWT parameters to fit your use-cases, and the text segregation gets better
+too:
+
+![text-break](/photo/2012-10-04-text-break.png)
+
+The last 3 months have been "bumpy" for me, and after the summer school in
+Berkeley, I should be able to release ccv more regularly. Hope you enjoy.

@@ -1,0 +1,19 @@
+---
+date: '2013-09-02 22:35:00'
+layout: post
+slug: ccv-0.5-with-a-new-pedestrian-detector
+status: publish
+title: ccv 0.5 with a new pedestrian detector
+categories:
+- post
+---
+
+It has been half a year since the last release of ccv. I haven't kept up my words of releasing a new version of ccv every four weeks. The colorful spring and energetic summer are playful. Hopefully during the depressing fall and bitter winter, I could keep up the pace.
+
+The odd number release of ccv will include new features. In this version, ccv shipped with a preliminary version of [ICF (Integral Channel Features) implementation](/doc/doc-icf). ICF has been advertised as the strongest rigid object detector. In practice, ccv-trained ICF-based pedestrian detector can achieve similar accuracy as DPM while being 3 times faster.
+
+Because this is the first release of ccv after the implementation of its [HTTP interface](/doc/doc-http). I should mention that the HTTP interface will be kept up to date with newest features in ccv core library. In this particular case, HTTP interface supports ICF out of box.
+
+Thanks to Rodrigo Benenson for being patient and timely on replying several questions I have on ICF implementation.
+
+![hack-square](/photo/2013-09-02-hack-square.png)

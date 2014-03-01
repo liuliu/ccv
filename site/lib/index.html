@@ -1,0 +1,12 @@
+---
+layout: default
+is_index: true
+---
+
+<h1>Library Reference</h1><ul class="main-list">
+{% for post in site.posts %}
+	{% if post.lib %}
+<li><a href="{{ post.url }}">{% if post.desc %}{{ post.desc }}: {% endif %}{{ post.title }}</a></li>
+	{% endif %}
+{% endfor %}
+</ul><h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

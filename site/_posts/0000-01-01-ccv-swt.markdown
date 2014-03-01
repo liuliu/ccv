@@ -1,0 +1,54 @@
+---
+layout: page
+lib: ccv
+slug: ccv-swt
+status: publish
+title: lib/ccv_swt.c
+desc: stroke width transform
+categories:
+- lib
+---
+
+ccv_swt
+-------
+
+	void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+
+Compute the Stroke-Width-Transform image.
+
+ * **a**: the input matrix.
+ * **b**: the output matrix.
+ * **type**: the type of the output matrix, if 0, ccv will default to CCV\_32S \| CCV\_C1.
+ * **params**: a **ccv\_swt\_param\_t** structure that defines various aspect of the SWT function.
+
+ccv_swt_param_t
+---------------
+
+ * **up2x**: upscale the image for better accuracy.
+ * **direction**: SWT direction. (black to white or white to black).
+ * **size**: parameters for [Canny edge detector](/lib/ccv-classic).
+ * **low_thresh**: parameters for [Canny edge detector](/lib/ccv-classic).
+ * **high_thresh**: parameters for [Canny edge detector](/lib/ccv-classic).
+ * **max_height**: the maximum height for a letter.
+ * **min_height**: the minimum height for a letter.
+ * **aspect_ratio**: the maximum aspect ratio for a letter.
+ * **variance_ratio**: the inner-class variance when grouping letters.
+ * **thickness_ratio**: the allowable thickness variance when grouping letters.
+ * **height_ratio**: the allowable height variance when grouping letters.
+ * **intensity_thresh**: the allowable intensity variance when grouping letters.
+ * **distance_ratio**: the allowable distance variance when grouping letters.
+ * **intersect_ratio**: the allowable intersect variance when grouping letters.
+ * **elongate_ratio**: the allowable elongate variance when grouping letters.
+ * **letter_thresh**: the allowable letter threshold.
+ * **breakdown**: if breakdown text line into words.
+ * **breakdown_ratio**: apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words.
+
+ccv_swt_detect_words
+--------------------
+
+	ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
+
+Return array of regions that are potentially text area.
+
+ * **a**: the input matrix.
+ * **params**: a **ccv\_swt\_param\_t** structure that defines various aspect of the SWT function.
