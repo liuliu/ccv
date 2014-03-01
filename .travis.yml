@@ -3,4 +3,4 @@ compiler: clang
 before_install:
   - sudo apt-get update -qq
   - sudo apt-get install -qq libpng-dev libjpeg-dev libblas-dev libgsl0-dev
-script: cd lib && ./configure && make && cd ../test && make test
+script: cd lib && ./configure && make && cd ../bin && make && cd ../test && make test
