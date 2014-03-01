@@ -97,7 +97,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 
 		// first convolutional layer forward propagate
 		ccv_convnet_layer_t* first_cpu_layer = convnet->layers;
-		_ccv_convnet_convolutional_forward_propagate(first_cpu_layer, categorized->matrix, 0, convnet->acts);
+		_ccv_convnet_convolutional_forward_propagate(first_cpu_layer, categorized->matrix, convnet->acts);
 		ccv_dense_matrix_t* a = convnet->acts[0];
 		for (y = 0; y < first_out_rows; y++)
 			for (x = 0; x < first_out_cols; x++)
@@ -137,7 +137,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (x = 0; x < second_out_cols; x++)
 				for (k = 0; k < second_out_channels / 2; k++)
 					halve->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k] = b->data.f32[(y * second_out_cols + x) * second_out_channels + k];
-		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, 0, convnet->acts + 2);
+		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, convnet->acts + 2);
 		ccv_dense_matrix_t* c = convnet->acts[2];
 		for (y = 0; y < third_out_rows; y++)
 			for (x = 0; x < third_out_cols; x++)
@@ -151,7 +151,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				}
 		// third convolutional layer backward propagate
 		ccv_dense_matrix_t* bc = 0;
-		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], 0, halve, &bc, update_params->layers + 2);
+		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], halve, &bc, update_params->layers + 2);
 		if (update_params->acts[1] == 0)
 			update_params->acts[1] = ccv_dense_matrix_new(second_out_rows, second_out_cols, second_out_channels | CCV_32F, 0, 0);
 		for (y = 0; y < second_out_rows; y++)
@@ -172,7 +172,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			for (x = 0; x < second_out_cols; x++)
 				for (k = 0; k < second_out_channels / 2; k++)
 					halve->data.f32[(y * second_out_cols + x) * second_out_channels / 2 + k] = b->data.f32[(y * second_out_cols + x) * second_out_channels  + second_out_channels / 2 + k];
-		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, 0, convnet->acts + 2);
+		_ccv_convnet_convolutional_forward_propagate(third_cpu_layer, halve, convnet->acts + 2);
 		c = convnet->acts[2];
 		for (y = 0; y < third_out_rows; y++)
 			for (x = 0; x < third_out_cols; x++)
@@ -187,7 +187,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		// third convolutional layer backward propagate
 		update_params->layers[2].w += third_cpu_layer->wnum / 2;
 		update_params->layers[2].bias += third_cpu_layer->net.convolutional.count;
-		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], 0, halve, &bc, update_params->layers + 2);
+		_ccv_convnet_convolutional_backward_propagate(third_cpu_layer, convnet->acts[2], convnet->acts[2], halve, &bc, update_params->layers + 2);
 		for (y = 0; y < second_out_rows; y++)
 			for (x = 0; x < second_out_cols; x++)
 				for (k = 0; k < second_out_channels / 2; k++)
@@ -224,7 +224,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				}
 
 		// first convolutional layer backward propagate
-		_ccv_convnet_convolutional_backward_propagate(first_cpu_layer, update_params->acts[0], convnet->acts[0], 0, categorized->matrix, 0, update_params->layers);
+		_ccv_convnet_convolutional_backward_propagate(first_cpu_layer, update_params->acts[0], convnet->acts[0], categorized->matrix, 0, update_params->layers);
 	}
 
 	ccv_convnet_layer_t* third_cpu_configuration = update_params->layers + 2;

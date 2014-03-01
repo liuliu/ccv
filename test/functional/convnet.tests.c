@@ -719,7 +719,7 @@ TEST_CASE("full connect network backward propagate")
 	for (i = 1; i < 10; i++)
 		loss->data.f32[i] = -1;
 	ccv_dense_matrix_t* b = 0;
-	_ccv_convnet_full_connect_backward_propagate(convnet->layers, loss, 0, x, &b, update_params->layers);
+	_ccv_convnet_full_connect_backward_propagate(convnet->layers, loss, x, &b, update_params->layers);
 	ccv_matrix_free(x);
 	ccv_matrix_free(loss);
 	ccv_dense_matrix_t* db = ccv_dense_matrix_new(3, 3, CCV_32F | 64, 0, 0);
@@ -788,7 +788,7 @@ TEST_CASE("convolutional network backward propagate")
 	for (i = 0; i < 31 * 31 * 32; i++)
 		loss->data.f32[i] = 1;
 	ccv_dense_matrix_t* d = 0;
-	_ccv_convnet_convolutional_backward_propagate(convnet->layers, loss, y, 0, x, &d, update_params->layers);
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers, loss, y, x, &d, update_params->layers);
 	ccv_matrix_free(loss);
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
@@ -897,7 +897,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_dense_matrix_t* b = 0;
-	_ccv_convnet_full_connect_backward_propagate(convnet->layers, dloss, 0, x, &b, update_params->layers);
+	_ccv_convnet_full_connect_backward_propagate(convnet->layers, dloss, x, &b, update_params->layers);
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(dloss);
@@ -987,7 +987,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_dense_matrix_t* d = 0;
-	_ccv_convnet_convolutional_backward_propagate(convnet->layers, dloss, y, 0, x, &d, update_params->layers);
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers, dloss, y, x, &d, update_params->layers);
 	ccv_matrix_free(softmax);
 	ccv_matrix_free(dloss);
 	ccv_matrix_free(y);
@@ -1175,7 +1175,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		dloss->data.f32[i] = softmax->data.f32[i] - (i == 24);
 	ccv_dense_matrix_t* d = 0;
 	_ccv_convnet_rnorm_backward_propagate(convnet->layers + 1, dloss, y, convnet->acts[0], convnet->denoms[1], update_params->acts);
-	_ccv_convnet_convolutional_backward_propagate(convnet->layers, update_params->acts[0], convnet->acts[0], 0, x, &d, update_params->layers);
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers, update_params->acts[0], convnet->acts[0], x, &d, update_params->layers);
 	static const float eps = 0.000001;
 	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 2); 
 	for (i = 0; i < 5 * 5 * 2 * 2; i++)
