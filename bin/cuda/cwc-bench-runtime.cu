@@ -4,6 +4,7 @@ extern "C" {
 #include <ctype.h>
 #define CASE_TESTS // so that we don't include public available methods
 #include "../lib/cuda/cwc_convnet.cu"
+#undef USE_DISPATCH // nvcc doesn't support libdispatch
 #include "../lib/ccv_convnet.c"
 
 extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
