@@ -391,6 +391,99 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 	ccv_convnet_free(convnet);
 }
 
+TEST_CASE("convolutional network of 5x5x4 on 27x27x8 partitioned by 2")
+{
+	ccv_convnet_layer_param_t params = {
+		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.bias = 0,
+		.sigma = 0.01,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 4,
+				.partition = 2,
+			},
+		},
+		.output = {
+			.convolutional = {
+				.count = 8,
+				.strides = 1,
+				.border = 2,
+				.rows = 5,
+				.cols = 5,
+				.channels = 4,
+				.partition = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
+	int i, k;
+	for (i = 0; i < convnet->layers->wnum; i++)
+		convnet->layers->w[i] = i;
+	for (i = 0; i < convnet->layers->net.convolutional.count; i++)
+		convnet->layers->bias[i] = i + 1;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(27, 27, CCV_32F | 4, 0, 0);
+	for (i = 0; i < 27 * 27 * 4; i++)
+		a->data.f32[i] = 20 - i;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, &a, &b, 1);
+	ccv_convnet_layer_param_t partitioned_params = {
+		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.bias = 0,
+		.sigma = 0.01,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 2,
+				.partition = 1,
+			},
+		},
+		.output = {
+			.convolutional = {
+				.count = 4,
+				.strides = 1,
+				.border = 2,
+				.rows = 5,
+				.cols = 5,
+				.channels = 2,
+				.partition = 1,
+			},
+		},
+	};
+	ccv_convnet_t* partitioned_convnet = ccv_convnet_new(0, ccv_size(27, 27), &partitioned_params, 1);
+	memcpy(partitioned_convnet->layers->w, convnet->layers->w, sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias, sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	ccv_dense_matrix_t* aa = ccv_dense_matrix_new(27, 27, CCV_32F | 2, 0, 0);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 2; k++)
+			aa->data.f32[i * 2 + k] = a->data.f32[i * 4 + k];
+	ccv_dense_matrix_t* bb = ccv_dense_matrix_new(27, 27, CCV_32F | 8, 0, 0);
+	ccv_dense_matrix_t* cc = 0;
+	ccv_convnet_encode(partitioned_convnet, &aa, &cc, 1);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 4; k++)
+			bb->data.f32[i * 8 + k] = cc->data.f32[i * 4 + k];
+	memcpy(partitioned_convnet->layers->w, convnet->layers->w + (convnet->layers->wnum / 2), sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias + (convnet->layers->net.convolutional.count / 2), sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 2; k++)
+			aa->data.f32[i * 2 + k] = a->data.f32[i * 4 + 2 + k];
+	ccv_convnet_encode(partitioned_convnet, &aa, &cc, 1);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 4; k++)
+			bb->data.f32[i * 8 + 4 + k] = cc->data.f32[i * 4 + k];
+	REQUIRE_MATRIX_EQ(b, bb, "27x27x8 matrix computed from convnet with partition and partitioned convnet should be exactly the same");
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
+	ccv_matrix_free(aa);
+	ccv_matrix_free(bb);
+	ccv_matrix_free(cc);
+	ccv_convnet_free(convnet);
+	ccv_convnet_free(partitioned_convnet);
+}
+
 TEST_CASE("full connect network from 13x13x128 to 2048")
 {
 	ccv_convnet_layer_param_t params = {
@@ -423,6 +516,7 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 		a->data.f32[i] = 1;
 	ccv_dense_matrix_t* b = 0;
 	ccv_convnet_encode(convnet, &a, &b, 1);
+	ccv_matrix_free(a);
 	REQUIRE(b->rows == 2048 && b->cols == 1, "full connect network output should be 2048 neurons");
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(2048, 1, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 2048; i++)
@@ -673,6 +767,81 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_convnet_free(convnet);
 }
 
+TEST_CASE("local response normalization with partitioned by 2")
+{
+	ccv_convnet_layer_param_t params = {
+		.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 10,
+				.partition = 2,
+			},
+		},
+		.output = {
+			.rnorm = {
+				.size = 3,
+				.kappa = 2,
+				.alpha = 1e-4,
+				.beta = 0.75,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
+	int i, k;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(27, 27, CCV_32F | 10, 0, 0);
+	for (i = 0; i < 27 * 27 * 10; i++)
+		a->data.f32[i] = i;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, &a, &b, 1);
+	ccv_convnet_layer_param_t partitioned_params = {
+		.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 5,
+				.partition = 1,
+			},
+		},
+		.output = {
+			.rnorm = {
+				.size = 3,
+				.kappa = 2,
+				.alpha = 1e-4,
+				.beta = 0.75,
+			},
+		},
+	};
+	ccv_convnet_t* partitioned_convnet = ccv_convnet_new(0, ccv_size(27, 27), &partitioned_params, 1);
+	ccv_dense_matrix_t* aa = ccv_dense_matrix_new(27, 27, CCV_32F | 5, 0, 0);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 5; k++)
+			aa->data.f32[i * 5 + k] = a->data.f32[i * 10 + k];
+	ccv_dense_matrix_t* bb = ccv_dense_matrix_new(27, 27, CCV_32F | 10, 0, 0);
+	ccv_dense_matrix_t* cc = 0;
+	ccv_convnet_encode(partitioned_convnet, &aa, &cc, 1);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 5; k++)
+			bb->data.f32[i * 10 + k] = cc->data.f32[i * 5 + k];
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 5; k++)
+			aa->data.f32[i * 5 + k] = a->data.f32[i * 10 + 5 + k];
+	ccv_convnet_encode(partitioned_convnet, &aa, &cc, 1);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 5; k++)
+			bb->data.f32[i * 10 + 5 + k] = cc->data.f32[i * 5 + k];
+	REQUIRE_MATRIX_EQ(b, bb, "27x27x10 matrix computed from convnet with partition and partitioned convnet should be exactly the same");
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
+	ccv_matrix_free(aa);
+	ccv_matrix_free(bb);
+	ccv_matrix_free(cc);
+	ccv_convnet_free(convnet);
+	ccv_convnet_free(partitioned_convnet);
+}
+
 // we probably won't cover all static functions in this test, disable annoying warnings
 #pragma GCC diagnostic ignored "-Wunused-function"
 // so that we can test static functions, note that CASE_TESTS is defined in case.h, which will disable all extern functions
@@ -817,6 +986,224 @@ TEST_CASE("convolutional network backward propagate")
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
+}
+
+TEST_CASE("convolutional network backward propagate with partitioned by 2")
+{
+	ccv_convnet_layer_param_t params = {
+		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.bias = 0,
+		.sigma = 0.0001,
+		.input = {
+			.matrix = {
+				.rows = 31,
+				.cols = 31,
+				.channels = 4,
+				.partition = 2,
+			},
+		},
+		.output = {
+			.convolutional = {
+				.rows = 5,
+				.cols = 5,
+				.channels = 4,
+				.border = 2,
+				.strides = 1,
+				.count = 8,
+				.partition = 2,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
+	int i, k;
+	for (i = 0; i < convnet->layers->wnum; i++)
+		convnet->layers->w[i] = i * 1e-2;
+	for (i = 0; i < convnet->layers->net.convolutional.count; i++)
+		convnet->layers->bias[i] = i;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(31, 31, CCV_32F | 4, 0, 0);
+	for (i = 0; i < 31 * 31 * 4; i++)
+		a->data.f32[i] = 2000 - i;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, &a, &b, 1);
+	ccv_dense_matrix_t* loss = ccv_dense_matrix_new(b->rows, b->cols, CCV_32F | CCV_GET_CHANNEL(b->type), 0, 0);
+	for (i = 0; i < 31 * 31 * 8; i++)
+		loss->data.f32[i] = 1;
+	ccv_dense_matrix_t* d = 0;
+	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
+	_ccv_convnet_update_zero(update_params);
+	_ccv_convnet_convolutional_backward_propagate(convnet->layers, loss, b, a, &d, update_params->layers);
+	ccv_matrix_free(loss);
+	ccv_convnet_layer_param_t partitioned_params = {
+		.type = CCV_CONVNET_CONVOLUTIONAL,
+		.bias = 0,
+		.sigma = 0.0001,
+		.input = {
+			.matrix = {
+				.rows = 31,
+				.cols = 31,
+				.channels = 2,
+				.partition = 1,
+			},
+		},
+		.output = {
+			.convolutional = {
+				.rows = 5,
+				.cols = 5,
+				.channels = 2,
+				.border = 2,
+				.strides = 1,
+				.count = 4,
+				.partition = 1,
+			},
+		},
+	};
+	ccv_convnet_t* partitioned_convnet = ccv_convnet_new(0, ccv_size(31, 31), &partitioned_params, 1);
+	ccv_dense_matrix_t* aa = ccv_dense_matrix_new(31, 31, CCV_32F | 2, 0, 0);
+	// first partition
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 2; k++)
+			aa->data.f32[i * 2 + k] = a->data.f32[i * 4 + k];
+	memcpy(partitioned_convnet->layers->w, convnet->layers->w, sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias, sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	ccv_dense_matrix_t* bb = 0;
+	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	loss = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_GET_CHANNEL(bb->type), 0, 0);
+	for (i = 0; i < 31 * 31 * 4; i++)
+		loss->data.f32[i] = 1;
+	ccv_dense_matrix_t* dd = 0;
+	ccv_convnet_t* partitioned_update_params = _ccv_convnet_update_new(convnet);
+	_ccv_convnet_update_zero(partitioned_update_params);
+	_ccv_convnet_convolutional_backward_propagate(partitioned_convnet->layers, loss, bb, aa, &dd, partitioned_update_params->layers);
+	ccv_dense_matrix_t* ddd = ccv_dense_matrix_new(31, 31, CCV_32F | 4, 0, 0);
+	float* ww = (float*)ccmalloc(sizeof(float) * (convnet->layers->wnum + convnet->layers->net.convolutional.count));
+	float* bbias = ww + convnet->layers->wnum;
+	memcpy(ww, partitioned_update_params->layers->w, sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(bbias, partitioned_update_params->layers->bias, sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 2; k++)
+			ddd->data.f32[i * 4 + k] = dd->data.f32[i * 2 + k];
+	// second partition
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 2; k++)
+			aa->data.f32[i * 2 + k] = a->data.f32[i * 4 + 2 + k];
+	memcpy(partitioned_convnet->layers->w, convnet->layers->w + (convnet->layers->wnum / 2), sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias + (convnet->layers->net.convolutional.count / 2), sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	_ccv_convnet_update_zero(partitioned_update_params);
+	_ccv_convnet_convolutional_backward_propagate(partitioned_convnet->layers, loss, bb, aa, &dd, partitioned_update_params->layers);
+	memcpy(ww + (convnet->layers->wnum / 2), partitioned_update_params->layers->w, sizeof(float) * (convnet->layers->wnum / 2));
+	memcpy(bbias + (convnet->layers->net.convolutional.count / 2), partitioned_update_params->layers->bias, sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 2; k++)
+			ddd->data.f32[i * 4 + 2 + k] = dd->data.f32[i * 2 + k];
+	REQUIRE_MATRIX_EQ(d, ddd, "propagated error doesn't match the expected value");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, ww, update_params->layers[0].w, convnet->layers->wnum, 1e-4, "weight gradient doesn't match the expected value");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, bbias, update_params->layers[0].bias, convnet->layers->net.convolutional.count, 1e-4, "bias gradient doesn't match the expected value");
+	ccfree(ww);
+	ccv_matrix_free(loss);
+	ccv_matrix_free(ddd);
+	ccv_matrix_free(dd);
+	ccv_matrix_free(bb);
+	ccv_matrix_free(aa);
+	ccv_matrix_free(d);
+	ccv_matrix_free(b);
+	ccv_matrix_free(a);
+	ccv_convnet_free(convnet);
+	ccv_convnet_free(update_params);
+	ccv_convnet_free(partitioned_convnet);
+	ccv_convnet_free(partitioned_update_params);
+}
+
+TEST_CASE("local response normalization backward propagate with partitioned by 2")
+{
+	ccv_convnet_layer_param_t params = {
+		.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 6,
+				.partition = 2,
+			},
+		},
+		.output = {
+			.rnorm = {
+				.size = 3,
+				.kappa = 2,
+				.alpha = 1e-4,
+				.beta = 0.75,
+			},
+		},
+	};
+	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
+	int i, k;
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(27, 27, CCV_32F | 6, 0, 0);
+	for (i = 0; i < 27 * 27 * 6; i++)
+		a->data.f32[i] = i;
+	ccv_dense_matrix_t* b = 0;
+	ccv_convnet_encode(convnet, &a, &b, 1);
+	ccv_dense_matrix_t* d = 0;
+	ccv_dense_matrix_t* loss = ccv_dense_matrix_new(27, 27, CCV_32F | 6, 0, 0);
+	for (i = 0; i < 27 * 27 * 6; i++)
+		loss->data.f32[i] = 1;
+	_ccv_convnet_rnorm_backward_propagate(convnet->layers, loss, b, a, convnet->denoms[0], &d);
+	ccv_convnet_layer_param_t partitioned_params = {
+		.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+		.input = {
+			.matrix = {
+				.rows = 27,
+				.cols = 27,
+				.channels = 3,
+				.partition = 1,
+			},
+		},
+		.output = {
+			.rnorm = {
+				.size = 3,
+				.kappa = 2,
+				.alpha = 1e-4,
+				.beta = 0.75,
+			},
+		},
+	};
+	ccv_convnet_t* partitioned_convnet = ccv_convnet_new(0, ccv_size(27, 27), &partitioned_params, 1);
+	ccv_dense_matrix_t* aa = ccv_dense_matrix_new(27, 27, CCV_32F | 3, 0, 0);
+	// first partition
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 3; k++)
+			aa->data.f32[i * 3 + k] = a->data.f32[i * 6 + k];
+	ccv_dense_matrix_t* bb = 0;
+	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	ccv_matrix_free(loss);
+	loss = ccv_dense_matrix_new(27, 27, CCV_32F | 3, 0, 0);
+	for (i = 0; i < 27 * 27 * 3; i++)
+		loss->data.f32[i] = 1;
+	ccv_dense_matrix_t* dd = 0;
+	_ccv_convnet_rnorm_backward_propagate(partitioned_convnet->layers, loss, bb, aa, partitioned_convnet->denoms[0], &dd);
+	ccv_dense_matrix_t* ddd = ccv_dense_matrix_new(27, 27, CCV_32F | 6, 0, 0);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 3; k++)
+			ddd->data.f32[i * 6 + k] = dd->data.f32[i * 3 + k];
+	// second partition
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 3; k++)
+			aa->data.f32[i * 3 + k] = a->data.f32[i * 6 + 3 + k];
+	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	_ccv_convnet_rnorm_backward_propagate(partitioned_convnet->layers, loss, bb, aa, partitioned_convnet->denoms[0], &dd);
+	for (i = 0; i < 27 * 27; i++)
+		for (k = 0; k < 3; k++)
+			ddd->data.f32[i * 6 + 3 + k] = dd->data.f32[i * 3 + k];
+	REQUIRE_MATRIX_EQ(d, ddd, "27x27x6 error local response normalization backward propagated from convnet with partition and partitioned convnet should be exactly the same");
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
+	ccv_matrix_free(d);
+	ccv_matrix_free(aa);
+	ccv_matrix_free(bb);
+	ccv_matrix_free(dd);
+	ccv_matrix_free(ddd);
+	ccv_matrix_free(loss);
+	ccv_convnet_free(convnet);
+	ccv_convnet_free(partitioned_convnet);
 }
 
 // five-stencil constants
