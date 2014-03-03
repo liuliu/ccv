@@ -35,6 +35,7 @@ int main(int argc, char** argv)
 		ccv_slice(norm, (ccv_matrix_t**)&input, CCV_32F, y, x, convnet->input.height, convnet->input.width);
 	} else
 		ccv_shift(norm, (ccv_matrix_t**)&input, CCV_32F, 0, 0); // converting to 32f
+	ccv_matrix_free(norm);
 	unsigned int elapsed_time = get_current_time();
 	ccv_array_t* rank = 0;
 	ccv_convnet_classify(convnet, &input, 1, &rank, 5, 1);
@@ -46,8 +47,9 @@ int main(int argc, char** argv)
 		printf("%d %f\n", classification->id, classification->confidence);
 	}
 	printf("elapsed time %dms\n", elapsed_time);
-	ccv_matrix_free(norm);
+	ccv_array_free(rank);
 	ccv_matrix_free(input);
 	ccv_convnet_free(convnet);
+	ccv_drain_cache();
 	return 0;
 }
