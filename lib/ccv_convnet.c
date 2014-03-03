@@ -493,8 +493,11 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 			}
 			if (multi >= 0)
 				break;
-			ccv_matrix_free(b[j]);
-			b[j] = 0;
+			if (j > 0)
+			{
+				ccv_matrix_free(b[j]);
+				b[j] = 0;
+			}
 		}
 		assert(multi >= 0 && multi < convnet->count);
 		int x, y, c = 0;
@@ -1311,6 +1314,7 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 			}
 			assert(input.height != 0 && input.width != 0);
 			convnet = ccv_convnet_new(use_cwc_accel, input, (ccv_convnet_layer_param_t*)ccv_array_get(layer_params, 0), layer_params->rnum);
+			ccv_array_free(layer_params);
 			// load layer data
 			sqlite3_stmt* layer_data_stmt = 0;
 			const char layer_data_qs[] =
