@@ -2234,7 +2234,7 @@ void cwc_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 	_cwc_convnet_encode_impl(convnet, 0, batch, 0, 0);
 }
 
-void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
+void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch)
 {
 	_cwc_convnet_alloc_reserved(convnet, batch, 0);
 }
