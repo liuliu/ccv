@@ -1731,7 +1731,7 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
 	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
 	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
 
-	return r2->id == r1->id &&
+	return r2->classification.id == r1->classification.id &&
 		r2->rect.x <= r1->rect.x + distance &&
 		r2->rect.x >= r1->rect.x - distance &&
 		r2->rect.y <= r1->rect.y + distance &&
@@ -1811,9 +1811,9 @@ static void _ccv_icf_detect_objects_with_classifier_cascade(ccv_dense_matrix_t* 
 						{
 							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i) - 0.5), (int)((y + 0.5) * scale * (1 << i) - 0.5), (cascade->size.width - cascade->margin.left - cascade->margin.right) * scale * (1 << i), (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * scale * (1 << i));
-							comp.id = j + 1;
 							comp.neighbors = 1;
-							comp.confidence = sum;
+							comp.classification.id = j + 1;
+							comp.classification.confidence = sum;
 							ccv_array_push(seq[j], &comp);
 						}
 					}
@@ -1918,9 +1918,9 @@ static void _ccv_icf_detect_objects_with_multiscale_classifier_cascade(ccv_dense
 						{
 							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i)), (int)((y + 0.5) * scale * (1 << i)), (cascade->size.width - cascade->margin.left - cascade->margin.right) << i, (cascade->size.height - cascade->margin.top - cascade->margin.bottom) << i);
-							comp.id = j + 1;
 							comp.neighbors = 1;
-							comp.confidence = sum;
+							comp.classification.id = j + 1;
+							comp.classification.confidence = sum;
 							ccv_array_push(seq[j], &comp);
 						}
 					}
@@ -1982,11 +1982,11 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq[k], i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
-				comps[idx].id = r1.id;
-				if (r1.confidence > comps[idx].confidence || comps[idx].neighbors == 0)
+				comps[idx].classification.id = r1.classification.id;
+				if (r1.classification.confidence > comps[idx].classification.confidence || comps[idx].neighbors == 0)
 				{
 					comps[idx].rect = r1.rect;
-					comps[idx].confidence = r1.confidence;
+					comps[idx].classification.confidence = r1.classification.confidence;
 				}
 
 				++comps[idx].neighbors;
@@ -2009,15 +2009,15 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 				{
 					ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, j);
 					if (i != j &&
-						abs(r1.id) == r2->id &&
+						abs(r1.classification.id) == r2->classification.id &&
 						r1.rect.x >= r2->rect.x - distance &&
 						r1.rect.y >= r2->rect.y - distance &&
 						r1.rect.x + r1.rect.width <= r2->rect.x + r2->rect.width + distance &&
 						r1.rect.y + r1.rect.height <= r2->rect.y + r2->rect.height + distance &&
 						// if r1 (the smaller one) is better, mute r2
-						(r2->confidence <= r1.confidence && r2->neighbors < r1.neighbors))
+						(r2->classification.confidence <= r1.classification.confidence && r2->neighbors < r1.neighbors))
 					{
-						r2->id = -r2->id;
+						r2->classification.id = -r2->classification.id;
 						break;
 					}
 				}
@@ -2027,7 +2027,7 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 			for (i = 0; i < seq2->rnum; i++)
 			{
 				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
-				if (r1.id > 0)
+				if (r1.classification.id > 0)
 				{
 					int flag = 1;
 
@@ -2037,13 +2037,13 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 						int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
 						if (i != j &&
-							abs(r1.id) == abs(r2.id) &&
+							abs(r1.classification.id) == abs(r2.classification.id) &&
 							r1.rect.x >= r2.rect.x - distance &&
 							r1.rect.y >= r2.rect.y - distance &&
 							r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
 							r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
 							// if r2 is better, we mute r1
-							(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
+							(r2.classification.confidence > r1.classification.confidence || r2.neighbors >= r1.neighbors))
 						{
 							flag = 0;
 							break;

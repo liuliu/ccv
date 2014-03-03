@@ -272,7 +272,7 @@ static inline float _ccv_tld_rect_intersect(const ccv_rect_t r1, const ccv_rect_
 					INTERNAL_CATCH_UNIQUE_NAME(pix) = INTERNAL_CATCH_UNIQUE_NAME(ix); \
 					ccv_comp_t new_comp; \
 					new_comp.rect = ccv_rect(INTERNAL_CATCH_UNIQUE_NAME(ix), INTERNAL_CATCH_UNIQUE_NAME(iy), INTERNAL_CATCH_UNIQUE_NAME(width), INTERNAL_CATCH_UNIQUE_NAME(height)); \
-					new_comp.id = INTERNAL_CATCH_UNIQUE_NAME(s);
+					new_comp.classification.id = INTERNAL_CATCH_UNIQUE_NAME(s);
 #define end_for_each_box } } end_for_each_size }
 
 static void _ccv_tld_box_percolate_down(ccv_array_t* good, int i)
@@ -286,13 +286,13 @@ static void _ccv_tld_box_percolate_down(ccv_array_t* good, int i)
 		if (left < good->rnum)
 		{
 			ccv_comp_t* left_comp = (ccv_comp_t*)ccv_array_get(good, left);
-			if (left_comp->confidence < smallest_comp->confidence)
+			if (left_comp->classification.confidence < smallest_comp->classification.confidence)
 				smallest = left;
 		}
 		if (right < good->rnum)
 		{
 			ccv_comp_t* right_comp = (ccv_comp_t*)ccv_array_get(good, right);
-			if (right_comp->confidence < smallest_comp->confidence)
+			if (right_comp->classification.confidence < smallest_comp->classification.confidence)
 				smallest = right;
 		}
 		if (smallest == i)
@@ -314,7 +314,7 @@ static void _ccv_tld_box_percolate_up(ccv_array_t* good, int smallest)
 			break;
 		ccv_comp_t* parent_comp = (ccv_comp_t*)ccv_array_get(good, parent);
 		ccv_comp_t* smallest_comp = (ccv_comp_t*)ccv_array_get(good, smallest);
-		if (smallest_comp->confidence < parent_comp->confidence)
+		if (smallest_comp->classification.confidence < parent_comp->classification.confidence)
 		{
 			smallest = parent;
 			smallest_comp = parent_comp;
@@ -330,7 +330,7 @@ static void _ccv_tld_box_percolate_up(ccv_array_t* good, int smallest)
 		{
 			ccv_comp_t* other_comp = (ccv_comp_t*)ccv_array_get(good, other);
 			// if current one is no smaller than the other one, stop, and this requires a percolating down
-			if (other_comp->confidence < smallest_comp->confidence)
+			if (other_comp->classification.confidence < smallest_comp->classification.confidence)
 				break;
 		}
 	}
@@ -345,14 +345,16 @@ static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_size_t in
 	ccv_array_t* abad = *bad = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
 	double max_overlap = -DBL_MAX;
 	ccv_comp_t best_box = {
-		.id = 0,
+		.classification = {
+			.id = 0,
+		},
 		.rect = ccv_rect(0, 0, 0, 0),
 	};
 	int i = 0;
 	for_each_box(comp, input_size.width, input_size.height, params.interval, params.shift, image_size.width, image_size.height)
 		double overlap = _ccv_tld_rect_intersect(comp.rect, box);
 		comp.neighbors = i++;
-		comp.confidence = overlap;
+		comp.classification.confidence = overlap;
 		if (overlap > params.include_overlap)
 		{
 			if (overlap > max_overlap)
@@ -366,7 +368,7 @@ static ccv_comp_t _ccv_tld_generate_box_for(ccv_size_t image_size, ccv_size_t in
 				_ccv_tld_box_percolate_up(agood, agood->rnum - 1);
 			} else {
 				ccv_comp_t* p = (ccv_comp_t*)ccv_array_get(agood, 0);
-				if (overlap > p->confidence)
+				if (overlap > p->classification.confidence)
 				{
 					*(ccv_comp_t*)ccv_array_get(agood, 0) = comp;
 					_ccv_tld_box_percolate_down(agood, 0);
@@ -389,7 +391,7 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 	{
 		ccv_dense_matrix_t roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(a->type) | CCV_GET_CHANNEL(a->type), ccv_get_dense_matrix_cell(a, box.rect.y, box.rect.x, 0), 0);
 		roi.step = a->step;
-		ccv_ferns_feature(ferns, &roi, box.id, fern);
+		ccv_ferns_feature(ferns, &roi, box.classification.id, fern);
 	} else {
 		float rotate_x = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
 		float rotate_y = (deform_angle * 2 * dsfmt_genrand_close_open(dsfmt) - deform_angle) * CCV_PI / 180;
@@ -429,7 +431,7 @@ static void _ccv_tld_ferns_feature_for(ccv_ferns_t* ferns, ccv_dense_matrix_t* a
 		ccv_perspective_transform(&roi, &b, 0, m00, m01, m02, m10, m11, m12, m20, m21, m22);
 		roi = ccv_dense_matrix(box.rect.height, box.rect.width, CCV_GET_DATA_TYPE(b->type) | CCV_GET_CHANNEL(b->type), ccv_get_dense_matrix_cell(b, padding_top, padding_left, 0), 0);
 		roi.step = b->step;
-		ccv_ferns_feature(ferns, &roi, box.id, fern);
+		ccv_ferns_feature(ferns, &roi, box.classification.id, fern);
 		ccv_matrix_free(b);
 	}
 }
@@ -834,8 +836,8 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 			_ccv_tld_box_variance(sat, sqsat, box.rect) > tld->var_thres)
 		{
 			_ccv_tld_ferns_feature_for(tld->ferns, ga, box, fern, 0, 0, 0, 0);
-			box.confidence = ccv_ferns_predict(tld->ferns, fern);
-			if (box.confidence > tld->ferns_thres)
+			box.classification.confidence = ccv_ferns_predict(tld->ferns, fern);
+			if (box.classification.confidence > tld->ferns_thres)
 			{
 				if (tld->top->rnum < tld->params.top_n)
 				{
@@ -843,7 +845,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 					_ccv_tld_box_percolate_up(tld->top, tld->top->rnum - 1);
 				} else {
 					ccv_comp_t* top_box = (ccv_comp_t*)ccv_array_get(tld->top, 0);
-					if (top_box->confidence < box.confidence)
+					if (top_box->classification.confidence < box.classification.confidence)
 					{
 						*(ccv_comp_t*)ccv_array_get(tld->top, 0) = box;
 						_ccv_tld_box_percolate_down(tld->top, 0);
@@ -865,7 +867,7 @@ static ccv_array_t* _ccv_tld_long_term_detect(ccv_tld_t* tld, ccv_dense_matrix_t
 		if (c > tld->nnc_thres)
 		{
 			// save only the conservative confidence (50% samples)
-			box->confidence = _ccv_tld_sv_classify(tld, b, ccv_max((int)(tld->sv[1]->rnum * tld->params.validate_set + 0.5), 1), 0, &anyp, &anyn);
+			box->classification.confidence = _ccv_tld_sv_classify(tld, b, ccv_max((int)(tld->sv[1]->rnum * tld->params.validate_set + 0.5), 1), 0, &anyp, &anyn);
 			ccv_array_push(seq, box);
 		}
 		ccv_matrix_free(b);
@@ -908,9 +910,9 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			int anyp = 0, anyn = 0;
 			ccv_dense_matrix_t* c = 0;
 			_ccv_tld_fetch_patch(tld, gb, &c, 0, result.rect);
-			result.confidence = _ccv_tld_sv_classify(tld, c, 0, 0, &anyp, &anyn);
+			result.classification.confidence = _ccv_tld_sv_classify(tld, c, 0, 0, &anyp, &anyn);
 			ccv_matrix_free(c);
-			if (result.confidence > tld->nnc_verify_thres)
+			if (result.classification.confidence > tld->nnc_verify_thres)
 				verified = 1;
 		}
 	}
@@ -947,7 +949,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			comps[idx].rect.y += r1.rect.y;
 			comps[idx].rect.width += r1.rect.width;
 			comps[idx].rect.height += r1.rect.height;
-			comps[idx].confidence += r1.confidence;
+			comps[idx].classification.confidence += r1.classification.confidence;
 		}
 		ccv_array_clear(dd);
 		for(i = 0; i < ncomp; i++)
@@ -959,7 +961,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
 			comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
 			comp.neighbors = comps[i].neighbors;
-			comp.confidence = comps[i].confidence / n;
+			comp.classification.confidence = comps[i].classification.confidence / n;
 			ccv_array_push(dd, &comp);
 		}
 		ccv_array_free(idx_dd);
@@ -979,7 +981,7 @@ ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense
 			for (i = 0; i < dd->rnum; i++)
 			{
 				ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(dd, i);
-				if (_ccv_tld_rect_intersect(result.rect, comp->rect) < 0.5 && comp->confidence > result.confidence)
+				if (_ccv_tld_rect_intersect(result.rect, comp->rect) < 0.5 && comp->classification.confidence > result.classification.confidence)
 				{
 					++confident_matches;
 					ddcomp = comp;

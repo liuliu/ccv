@@ -1179,7 +1179,7 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
 	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
 	int distance = (int)(r1->rect.width * 0.25 + 0.5);
 
-	return r2->id == r1->id &&
+	return r2->classification.id == r1->classification.id &&
 		   r2->rect.x <= r1->rect.x + distance &&
 		   r2->rect.x >= r1->rect.x - distance &&
 		   r2->rect.y <= r1->rect.y + distance &&
@@ -1261,9 +1261,9 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 						{
 							ccv_comp_t comp;
 							comp.rect = ccv_rect((int)((x * 4 + dx[q] * 2) * scale_x + 0.5), (int)((y * 4 + dy[q] * 2) * scale_y + 0.5), (int)(cascade->size.width * scale_x + 0.5), (int)(cascade->size.height * scale_y + 0.5));
-							comp.id = t;
 							comp.neighbors = 1;
-							comp.confidence = sum;
+							comp.classification.id = t;
+							comp.classification.confidence = sum;
 							ccv_array_push(seq, &comp);
 						}
 						u8[0] += 4;
@@ -1302,7 +1302,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
 				if (comps[idx].neighbors == 0)
-					comps[idx].confidence = r1.confidence;
+					comps[idx].classification.confidence = r1.classification.confidence;
 
 				++comps[idx].neighbors;
 
@@ -1310,8 +1310,8 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 				comps[idx].rect.y += r1.rect.y;
 				comps[idx].rect.width += r1.rect.width;
 				comps[idx].rect.height += r1.rect.height;
-				comps[idx].id = r1.id;
-				comps[idx].confidence = ccv_max(comps[idx].confidence, r1.confidence);
+				comps[idx].classification.id = r1.classification.id;
+				comps[idx].classification.confidence = ccv_max(comps[idx].classification.confidence, r1.classification.confidence);
 			}
 
 			// calculate average bounding box
@@ -1326,8 +1326,8 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 					comp.rect.width = (comps[i].rect.width * 2 + n) / (2 * n);
 					comp.rect.height = (comps[i].rect.height * 2 + n) / (2 * n);
 					comp.neighbors = comps[i].neighbors;
-					comp.id = comps[i].id;
-					comp.confidence = comps[i].confidence;
+					comp.classification.id = comps[i].classification.id;
+					comp.classification.confidence = comps[i].classification.confidence;
 					ccv_array_push(seq2, &comp);
 				}
 			}
@@ -1344,7 +1344,7 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 					int distance = (int)(r2.rect.width * 0.25 + 0.5);
 
 					if(i != j &&
-					   r1.id == r2.id &&
+					   r1.classification.id == r2.classification.id &&
 					   r1.rect.x >= r2.rect.x - distance &&
 					   r1.rect.y >= r2.rect.y - distance &&
 					   r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
@@ -1384,12 +1384,12 @@ ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_ca
 			ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(result_seq, i);
 			int idx = *(int*)ccv_array_get(idx_seq, i);
 
-			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
+			if (comps[idx].neighbors == 0 || comps[idx].classification.confidence < r1.classification.confidence)
 			{
-				comps[idx].confidence = r1.confidence;
+				comps[idx].classification.confidence = r1.classification.confidence;
 				comps[idx].neighbors = 1;
 				comps[idx].rect = r1.rect;
-				comps[idx].id = r1.id;
+				comps[idx].classification.id = r1.classification.id;
 			}
 		}
 

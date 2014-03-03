@@ -119,12 +119,12 @@ int main(int argc, char** argv)
 		ccv_write(image, filename, 0, CCV_IO_PNG_FILE, 0);
 		ccv_matrix_free(image);
 		if (tld->found)
-			printf("%d,%d,%d,%d,%f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width + newbox.rect.x - 1, newbox.rect.height + newbox.rect.y - 1, newbox.confidence);
+			printf("%d,%d,%d,%d,%f\n", newbox.rect.x, newbox.rect.y, newbox.rect.width + newbox.rect.x - 1, newbox.rect.height + newbox.rect.y - 1, newbox.classification.confidence);
 		else
 			printf("NaN,NaN,NaN,NaN,NaN\n");
 		*/
 		if (tld->found)
-			printf("%05d: %d %d %d %d %f\n", tld->count, newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.confidence);
+			printf("%05d: %d %d %d %d %f\n", tld->count, newbox.rect.x, newbox.rect.y, newbox.rect.width, newbox.rect.height, newbox.classification.confidence);
 		else
 			printf("%05d: --------------\n", tld->count);
 		x = y;
