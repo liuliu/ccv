@@ -2031,7 +2031,7 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
 	const ccv_root_comp_t* r2 = (const ccv_root_comp_t*)_r2;
 	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
 
-	return r2->id == r1->id &&
+	return r2->classification.id == r1->classification.id &&
 		r2->rect.x <= r1->rect.x + distance &&
 		r2->rect.x >= r1->rect.x - distance &&
 		r2->rect.y <= r1->rect.y + distance &&
@@ -2085,9 +2085,9 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 						if (f_ptr[x] + root->beta > params.threshold)
 						{
 							ccv_root_comp_t comp;
-							comp.id = c + 1;
 							comp.neighbors = 1;
-							comp.confidence = f_ptr[x] + root->beta;
+							comp.classification.id = c + 1;
+							comp.classification.confidence = f_ptr[x] + root->beta;
 							comp.pnum = root->count;
 							float drift_x = root->alpha[0],
 								  drift_y = root->alpha[1],
@@ -2095,8 +2095,8 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 							for (k = 0; k < root->count; k++)
 							{
 								ccv_dpm_part_classifier_t* part = root->part + k;
-								comp.part[k].id = c;
 								comp.part[k].neighbors = 1;
+								comp.part[k].classification.id = c;
 								int pww = (part->w->cols - 1) / 2, pwh = (part->w->rows - 1) / 2;
 								int offy = part->y + pwh - rwh * 2;
 								int offx = part->x + pww - rww * 2;
@@ -2110,7 +2110,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 								ry = iy - ry;
 								rx = ix - rx;
 								comp.part[k].rect = ccv_rect((int)((rx - pww) * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)((ry - pwh) * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5), (int)(part->w->cols * CCV_DPM_WINDOW_SIZE / 2 * scale_x + 0.5), (int)(part->w->rows * CCV_DPM_WINDOW_SIZE / 2 * scale_y + 0.5));
-								comp.part[k].confidence = -ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
+								comp.part[k].classification.confidence = -ccv_get_dense_matrix_cell_value_by(CCV_32F | CCV_C1, part_feature[k], iy, ix, 0);
 							}
 							comp.rect = ccv_rect((int)((x + drift_x) * CCV_DPM_WINDOW_SIZE * scale_x - rww * CCV_DPM_WINDOW_SIZE * scale_x * (1.0 + drift_scale) + 0.5), (int)((y + drift_y) * CCV_DPM_WINDOW_SIZE * scale_y - rwh * CCV_DPM_WINDOW_SIZE * scale_y * (1.0 + drift_scale) + 0.5), (int)(root->root.w->cols * CCV_DPM_WINDOW_SIZE * scale_x * (1.0 + drift_scale) + 0.5), (int)(root->root.w->rows * CCV_DPM_WINDOW_SIZE * scale_y * (1.0 + drift_scale) + 0.5));
 							ccv_array_push(seq, &comp);
@@ -2150,12 +2150,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq, i);
 				int idx = *(int*)ccv_array_get(idx_seq, i);
 
-				comps[idx].id = r1.id;
+				comps[idx].classification.id = r1.classification.id;
 				comps[idx].pnum = r1.pnum;
-				if (r1.confidence > comps[idx].confidence || comps[idx].neighbors == 0)
+				if (r1.classification.confidence > comps[idx].classification.confidence || comps[idx].neighbors == 0)
 				{
 					comps[idx].rect = r1.rect;
-					comps[idx].confidence = r1.confidence;
+					comps[idx].classification.confidence = r1.classification.confidence;
 					memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 				}
 
@@ -2179,15 +2179,15 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				{
 					ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, j);
 					if (i != j &&
-						abs(r1.id) == r2->id &&
+						abs(r1.classification.id) == r2->classification.id &&
 						r1.rect.x >= r2->rect.x - distance &&
 						r1.rect.y >= r2->rect.y - distance &&
 						r1.rect.x + r1.rect.width <= r2->rect.x + r2->rect.width + distance &&
 						r1.rect.y + r1.rect.height <= r2->rect.y + r2->rect.height + distance &&
 						// if r1 (the smaller one) is better, mute r2
-						(r2->confidence <= r1.confidence && r2->neighbors < r1.neighbors))
+						(r2->classification.confidence <= r1.classification.confidence && r2->neighbors < r1.neighbors))
 					{
-						r2->id = -r2->id;
+						r2->classification.id = -r2->classification.id;
 						break;
 					}
 				}
@@ -2197,7 +2197,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			for (i = 0; i < seq2->rnum; i++)
 			{
 				ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(seq2, i);
-				if (r1.id > 0)
+				if (r1.classification.id > 0)
 				{
 					int flag = 1;
 
@@ -2207,12 +2207,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 						int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
 
 						if (i != j &&
-							r1.id == abs(r2.id) &&
+							r1.classification.id == abs(r2.classification.id) &&
 							r1.rect.x >= r2.rect.x - distance &&
 							r1.rect.y >= r2.rect.y - distance &&
 							r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
 							r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-							(r2.confidence > r1.confidence || r2.neighbors >= r1.neighbors))
+							(r2.classification.confidence > r1.classification.confidence || r2.neighbors >= r1.neighbors))
 						{
 							flag = 0;
 							break;
@@ -2251,12 +2251,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			ccv_root_comp_t r1 = *(ccv_root_comp_t*)ccv_array_get(result_seq, i);
 			int idx = *(int*)ccv_array_get(idx_seq, i);
 
-			if (comps[idx].neighbors == 0 || comps[idx].confidence < r1.confidence)
+			if (comps[idx].neighbors == 0 || comps[idx].classification.confidence < r1.classification.confidence)
 			{
-				comps[idx].confidence = r1.confidence;
+				comps[idx].classification.confidence = r1.classification.confidence;
 				comps[idx].neighbors = 1;
 				comps[idx].rect = r1.rect;
-				comps[idx].id = r1.id;
+				comps[idx].classification.id = r1.classification.id;
 				comps[idx].pnum = r1.pnum;
 				memcpy(comps[idx].part, r1.part, sizeof(ccv_comp_t) * CCV_DPM_PART_MAX);
 			}

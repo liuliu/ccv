@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 		for (i = 0; i < seq->rnum; i++)
 		{
 			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-			printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
 		}
 		printf("total : %d in time %dms\n", seq->rnum, elapsed_time);
 		ccv_array_free(seq);
@@ -51,7 +51,7 @@ int main(int argc, char** argv)
 				for (i = 0; i < seq->rnum; i++)
 				{
 					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
 				}
 				ccv_array_free(seq);
 				ccv_matrix_free(image);

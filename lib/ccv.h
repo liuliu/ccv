@@ -740,17 +740,20 @@ typedef struct {
 #define CCV_DPM_PART_MAX (10)
 
 typedef struct {
-	ccv_rect_t rect;
-	int neighbors;
 	int id;
 	float confidence;
+} ccv_classification_t;
+
+typedef struct {
+	ccv_rect_t rect;
+	int neighbors;
+	ccv_classification_t classification;
 } ccv_comp_t;
 
 typedef struct {
 	ccv_rect_t rect;
 	int neighbors;
-	int id;
-	float confidence;
+	ccv_classification_t classification;
 	int pnum;
 	ccv_comp_t part[CCV_DPM_PART_MAX];
 } ccv_root_comp_t;
