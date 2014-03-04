@@ -171,7 +171,7 @@ int uri_icf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		{
 			char cell[128];
 			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
 			size_t len = strnlen(cell, 128);
 			while (buf->written + len + 1 >= buf->len)
 			{
