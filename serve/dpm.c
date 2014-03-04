@@ -183,7 +183,7 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		{
 			char cell[128];
 			ccv_root_comp_t* comp = (ccv_root_comp_t*)ccv_array_get(seq, i);
-			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f,\"parts\":[", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->confidence);
+			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f,\"parts\":[", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
 			size_t len = strnlen(cell, 128);
 			while (buf->written + len >= buf->len)
 			{
@@ -194,7 +194,7 @@ int uri_dpm_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 			buf->written += len;
 			for (j = 0; j < comp->pnum; j++)
 			{
-				snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].confidence);
+				snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->part[j].rect.x, comp->part[j].rect.y, comp->part[j].rect.width, comp->part[j].rect.height, comp->part[j].classification.confidence);
 				len = strnlen(cell, 128);
 				while (buf->written + len + 3 >= buf->len)
 				{

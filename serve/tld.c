@@ -454,7 +454,7 @@ int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf)
 				"\"close_matches\":%d"
 			"}}\n",
 			parser->uri_params.tld,
-			box.rect.x, box.rect.y, box.rect.width, box.rect.height, box.confidence,
+			box.rect.x, box.rect.y, box.rect.width, box.rect.height, box.classification.confidence,
 			info.perform_track ? "true" : "false",
 			info.perform_learn ? "true" : "false",
 			info.track_success ? "true" : "false",
