@@ -247,4 +247,10 @@ int uri_tld_track_object_intro(const void* context, const void* parsed, ebb_buf*
 int uri_tld_track_object(const void* context, const void* parsed, ebb_buf* buf);
 int uri_tld_track_object_free(const void* context, const void* parsed, ebb_buf* buf);
 
+void* uri_convnet_classify_init(void);
+void uri_convnet_classify_destroy(void* context);
+void* uri_convnet_classify_parse(const void* context, void* parsed, int resource_id, const char* buf, size_t len, uri_parse_state_t state, int header_index);
+int uri_convnet_classify_intro(const void* context, const void* parsed, ebb_buf* buf);
+int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf);
+
 #endif

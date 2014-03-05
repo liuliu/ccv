@@ -34,6 +34,15 @@ static uri_dispatch_t uri_map[] = {
 		.destroy = uri_bbf_detect_objects_destroy,
 	},
 	{
+		.uri = "/convnet/classify",
+		.init = uri_convnet_classify_init,
+		.parse = uri_convnet_classify_parse,
+		.get = uri_convnet_classify_intro,
+		.post = uri_convnet_classify,
+		.delete = 0,
+		.destroy = uri_convnet_classify_destroy,
+	},
+	{
 		.uri = "/dpm/detect.objects",
 		.init = uri_dpm_detect_objects_init,
 		.parse = uri_dpm_detect_objects_parse,

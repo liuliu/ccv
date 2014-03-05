@@ -4,11 +4,12 @@ exit unless ARGV.length == 3
 
 words = File.new ARGV[0]
 labels = Hash.new
+i = 1
 
 words.each_line do |line|
-	word = line.split " "
-	first_word = (word[1, word.length - 1].join " ").split ","
-	labels[word[0].to_s] = first_word[0]
+	word = line.split ","
+	labels[i.to_s] = word[0]
+	i = i + 1
 end
 
 draw = ""
