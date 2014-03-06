@@ -18,9 +18,9 @@ How it works?
 -------------
 
 Long story short, with advances in GPGPU programming, we can have very large neural networks
-(with over 10 million parameters) trained on millions of images. It turns once you have both
-and a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve good
-image classification results.
+(with over 10 million parameters) trained on millions of images. It turns out that once you
+have both and a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve
+good image classification results.
 
 	./cnnclassify ../samples/dex.png ../samples/image-net.sqlite3 | ./cnndraw.rb ../samples/image-net.words ../samples/dex.png output.png
 
@@ -31,10 +31,11 @@ What about the performance?
 ---------------------------
 
 ConvNet on the very large scale is not extremely fast. There are a few implementations available
-for ConvNet that focused on performance, such as Caffe from Berkeley, or OverFeat from NYU.
+for ConvNet that focused on speed performance, such as [Caffe from Berkeley](http://caffe.berkeleyvision.org/),
+or [OverFeat from NYU](http://cilvr.nyu.edu/doku.php?id=software:overfeat:start).
 
-The interesting bits related to performance therefore implemented on ImageNet dataset and followed
-the specification detailed in the paper.
+Therefore, the analysis related to performance is implemented on ImageNet dataset and the network
+topology followed the exact specification detailed in the paper.
 
 Accuracy-wise:
 
@@ -42,9 +43,8 @@ TODO:
 
 Speed-wise:
 
-The experiment conducted on a computer with Core i7 3770 with turbo on, Nvidia TITAN Graphic
-Card at stock frequency, and Samsung MZ-7TE500BW 500GiB SSD with clang, libdispatch,
-GNU Scientific Library.
+The experiment conducted on a computer with Core i7 3770, NVIDIA TITAN graphic card at stock
+frequency, and Samsung MZ-7TE500BW 500GiB SSD with clang, libdispatch, GNU Scientific Library.
 
 The CPU version of forward pass (from RGB image input to the classification result) takes about
 350ms per image. This is achieved with multi-threaded convolutional kernel computation.
@@ -53,9 +53,9 @@ The GPU version does forward pass + backward error propagate for batch size of 2
 Thus, training ImageNet convolutional network takes about 9 days with 100 epochs.
 
 As a preliminary implementation, ccv didn't spend enough time to optimize these operations if any
-at all. For example, cuda-convnet implements its functionalities in about 10,000 lines of code, Caffe
-implements with 14,000 lines of code, as of this release, ccv implements with about 3,700 lines of
-code.
+at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
+functionalities in about 10,000 lines of code, Caffe implements with 14,000 lines of code, as of
+this release, ccv implements with about 3,700 lines of code.
 
 How to train my own image classifier?
 -------------------------------------
@@ -64,7 +64,7 @@ First, you need to figure out your network topology. For all intents and purpose
 through how to train with ImageNet LSVRC 2010 data.
 
 You need three things: the actual ImageNet dataset (and metadata), a CUDA GPU with no less than 6GiB
-on-board memory and a sufficient large SSD device to holds ImageNet dataset (otherwise loading data
+on-board memory and a sufficient large SSD device to hold ImageNet dataset (otherwise loading data
 from your rotational disk will take more time than the actual computation).
 
 I downloaded the ImageNet dataset from this torrent:
@@ -78,9 +78,13 @@ The ImageNet metadata for 2010 challenge can be downloaded from
 http://www.image-net.org/challenges/LSVRC/2010/download-public
 
 Unfortunately, the metadata are stored in Matlab proprietary format, there are some conversion work
-to be done. Will demonstrate how to use Octave to do this. Assuming you've downloaded devkit-1.0 from
-the above link, and found meta.mat file somewhere in that tarball, launching Octave interactive
-environment and run:
+to be done. Here will demonstrate how to use Octave to do this. Install Octave on Linux-like system
+is easy, for me on Ubuntu, it is about one line:
+
+	sudo apt-get install octave
+
+Assuming you've downloaded devkit-1.0 from the above link, and found meta.mat file somewhere in that
+tarball, launching Octave interactive environment and run:
 
 	file = fopen('meta.txt', 'w+')
 	for i = 1:1000
@@ -88,11 +92,11 @@ environment and run:
 	endfor
 	fclose(file)
 
-The newly created meta.txt file will give us the class id, the word-net id, and the number of training
+The newly created meta.txt file will give us the class id, the WordNet id, and the number of training
 image available for each class.
 
-The ImageNet data downloaded from the torrent puts the training images into directory named by the word-net
-id.
+The ImageNet data downloaded from the torrent puts the training images into directories named by the
+WordNet ids.
 
 	find <ImageNet dataset>/train/ -name "*.JPEG" > train-file.txt
 
@@ -117,7 +121,7 @@ generate files suffixed with ".resize.png". Compile and run:
 The resize will take about 3 hours, and after that, train.txt and test.txt are generated from
 train-file.txt and test-file.txt by suffixing .resize.png on every line.
 
-Now, everything is ready. Assuming you have TITAN GPU as I do, it takes 9 days. And follows Alex procedure,
+Now, everything is ready. Assuming you have a TITAN GPU as I do, it takes 9 days. And follows Alex procedure,
 the learn_rate will be decreased three times, for the specific image-net.sqlite3 you see in ./samples, I
 started with 0.01 learn_rate, decreased to 0.001 at 30th epoch, and then decreased to 0.0001 at 60th epoch,
 and then decreased to 0.00001 at 80th epoch.
@@ -133,11 +137,11 @@ The file size will shrink to about 200MiB. You can achieve further reduction in 
 half-precision, with ccv_convnet_write and write_param.half_precision = 1. The resulted image-net.sqlite3
 is exactly what I included in ./samples.
 
-Can I use the image-net pre-trained data?
+Can I use the ImageNet pre-trained data?
 -----------------------------------------
 
 ccv is released under FreeBSD 3-clause license, and the pre-trained data ./samples/image-net.sqlite3
-is licensed under Creative Commons Attribution 4.0 International License. You can use it, modify it
+is released under Creative Commons Attribution 4.0 International License. You can use it, modify it
 practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
 data released under commercial-friendly license (Caffe itself is released under FreeBSD license but
 its pre-trained data is "research only" and OverFeat is released under custom research only license).
