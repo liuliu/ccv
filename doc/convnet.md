@@ -67,12 +67,12 @@ You need three things: the actual ImageNet dataset (and metadata), a CUDA GPU wi
 on-board memory and a sufficient large SSD device to holds ImageNet dataset (otherwise loading data
 from your rotational disk will take more time than the actual computation).
 
-Assuming you've bought all these on your computer, get a hot tea, it will take a while to get all
-the puzzles and riddles in place for the training starts.
+I downloaded the ImageNet dataset from this torrent:
+
+Assuming you've downloaded / bought all these and installed on your computer, get a hot tea, it will
+take a while to get all the puzzles and riddles in place for the training starts.
 
 Ready? Continue!
-
-I downloaded the ImageNet dataset from this torrent:
 
 The ImageNet metadata for 2010 challenge can be downloaded from
 http://www.image-net.org/challenges/LSVRC/2010/download-public
@@ -88,10 +88,10 @@ environment and run:
 	endfor
 	fclose(file)
 
-The newly created meta.txt file will gives us the class id, the work-net id, and the number of training
+The newly created meta.txt file will give us the class id, the word-net id, and the number of training
 image available for each class.
 
-The ImageNet data downloaded from the torrent puts the training images into directory named by the work-net
+The ImageNet data downloaded from the torrent puts the training images into directory named by the word-net
 id.
 
 	find <ImageNet dataset>/train/ -name "*.JPEG" > train-file.txt
@@ -109,12 +109,36 @@ for tests.
 
 These images need to be first pre-processed to correct size for training.
 
+I partially replaced ./bin/image-net.c with this snippet: https://gist.github.com/liuliu/8906523 to
+generate files suffixed with ".resize.png". Compile and run:
+
+	./image-net --train-list ~/Fast/imageNet/train-file.txt --test-list ~/Fast/imageNet/test-file.txt --base-dir ~/Fast/imageNet --working-dir image-net.sqlite3
+
+The resize will take about 3 hours, and after that, train.txt and test.txt are generated from
+train-file.txt and test-file.txt by suffixing .resize.png on every line.
+
+Now, everything is ready. Assuming you have TITAN GPU as I do, it takes 9 days. And follows Alex procedure,
+the learn_rate will be decreased three times, for the specific image-net.sqlite3 you see in ./samples, I
+started with 0.01 learn_rate, decreased to 0.001 at 30th epoch, and then decreased to 0.0001 at 60th epoch,
+and then decreased to 0.00001 at 80th epoch.
+
+The generated image-net.sqlite3 file is about 600MiB in size because it contains data needed for training
+and resume. You can either open this file with sqlite command-line tool (it is a vanilla sqlite database
+file), and do:
+
+	drop table function_state, momentum_data;
+	vacuum;
+
+The file size will shrink to about 200MiB. You can achieve further reduction in file size by rewrite it into
+half-precision, with ccv_convnet_write and write_param.half_precision = 1. The resulted image-net.sqlite3
+is exactly what I included in ./samples.
+
 Can I use the image-net pre-trained data?
 -----------------------------------------
 
-ccv is released under FreeBSD 3-clause licence, and the pre-trained data ./samples/image-net.sqlite3
-is released under the same licence. You can use it practically anywhere without any concerns. As
-far as I can tell, this is the first pre-trained data released under commercial-friendly licence (
-Caffe itself is released under FreeBSD licence but its pre-trained data is "research only" and OverFeat
-is released under custom research only licence).
+ccv is released under FreeBSD 3-clause license, and the pre-trained data ./samples/image-net.sqlite3
+is licensed under Creative Commons Attribution 4.0 International License. You can use it, modify it
+practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
+data released under commercial-friendly license (Caffe itself is released under FreeBSD license but
+its pre-trained data is "research only" and OverFeat is released under custom research only license).
 
