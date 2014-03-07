@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 		.mini_batch = 256,
 		.iterations = 5000,
 		.symmetric = 1,
-		.color_gain = 0.01,
+		.color_gain = 0, // 0.001,
 	};
 	int i, c;
 	while (getopt_long_only(argc, argv, "", image_net_options, &c) != -1)
@@ -409,10 +409,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.0001;
+		layer_params[i].w.learn_rate = 0.00001;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.0001;
+		layer_params[i].bias.learn_rate = 0.00001;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;
