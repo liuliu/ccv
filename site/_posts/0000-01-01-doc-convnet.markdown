@@ -1,3 +1,13 @@
+---
+layout: page
+doc: ccv
+slug: dpm
+status: publish
+title: "ConvNet: Deep Convolutional Networks"
+categories:
+- doc
+---
+
 ConvNet: Deep Convolutional Networks
 ====================================
 
@@ -6,7 +16,7 @@ What's ConvNet?
 
 Convolutional neural network is a specific artificial neural network topology that
 is inspired by biological visual cortex and tailored for computer vision tasks by
-Yann LeCun in early 1990s. See http://deeplearning.net/tutorial/lenet.html for
+Yann LeCun in early 1990s. See <http://deeplearning.net/tutorial/lenet.html> for
 introduction.
 
 The convolutional neural network implemented in ccv is based on Alex Krizhevsky's
@@ -48,7 +58,7 @@ The training stopped to improve at around 90 epochs, at that time, the central p
 42.81% of top-1 missing rate (lower is better). In Alex's paper, they reported 37.5% top-1
 missing rate when averaging 10 patches, and 39% top-1 missing rate when using one patch.
 
-By applying this patch: https://gist.github.com/liuliu/9420735
+By applying this patch: <https://gist.github.com/liuliu/9420735>
 
 	git am -3 9420935.patch
 
@@ -103,7 +113,7 @@ take a while to get all the puzzles and riddles in place for the training starts
 Ready? Continue!
 
 The ImageNet metadata for 2010 challenge can be downloaded from
-http://www.image-net.org/challenges/LSVRC/2010/download-public
+<http://www.image-net.org/challenges/LSVRC/2010/download-public>
 
 Unfortunately, the metadata are stored in Matlab proprietary format, there are some conversion work
 to be done. Here will demonstrate how to use Octave to do this. Install Octave on Linux-like system
@@ -128,7 +138,7 @@ WordNet ids.
 
 	find <ImageNet dataset>/train/ -name "*.JPEG" > train-file.txt
 
-I use this script to generate format that ccv understands: https://gist.github.com/liuliu/8393461
+I use this script to generate format that ccv understands: <https://gist.github.com/liuliu/8393461>
 
 The test dataset is ordered numerically, thus,
 
@@ -136,12 +146,12 @@ The test dataset is ordered numerically, thus,
 
 will generate file list corresponding to ILSVRC2010_test_ground_truth.txt for class ids.
 
-This script: https://gist.github.com/liuliu/8393516 will generate the plain text that ccv understands
+This script: <https://gist.github.com/liuliu/8393516> will generate the plain text that ccv understands
 for tests.
 
 These images need to be first pre-processed to correct size for training.
 
-I partially replaced ./bin/image-net.c with this snippet: https://gist.github.com/liuliu/8906523 to
+I partially replaced ./bin/image-net.c with this snippet: <https://gist.github.com/liuliu/8906523> to
 generate files suffixed with ".resize.png". Compile and run:
 
 	./image-net --train-list ~/Fast/imageNet/train-file.txt --test-list ~/Fast/imageNet/test-file.txt --base-dir ~/Fast/imageNet --working-dir image-net.sqlite3
