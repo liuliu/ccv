@@ -188,7 +188,7 @@ int uri_sift(const void* context, const void* parsed, ebb_buf* buf)
 			f32 += 128;
 		}
 		char http_header[192];
-		snprintf(http_header, 192, ebb_http_header, buf->written);
+		snprintf(http_header, 192, ebb_http_header, buf->written + 1);
 		size_t len = strnlen(http_header, 192);
 		if (buf->written + len + 1 >= buf->len)
 		{
