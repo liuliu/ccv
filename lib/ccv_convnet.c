@@ -514,7 +514,7 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		assert(CCV_GET_CHANNEL(a[i]->type) == convnet->channels);
 		assert(a[i]->rows == convnet->input.height);
 		assert(a[i]->cols == convnet->input.width);
-		b[0] = a[i];
+		ccv_subtract(a[i], convnet->mean_activity, (ccv_matrix_t**)b, CCV_32F);
 		// doing the first few layers until the first full connect layer
 		int rows, cols;
 		int previous_rows = convnet->input.height;
@@ -531,11 +531,8 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 			_ccv_convnet_layer_deduce_output_format(layer, &previous_rows, &previous_cols, &partition);
 			layer->input.matrix.rows = rows;
 			layer->input.matrix.cols = cols;
-			if (j > 0)
-			{
-				ccv_matrix_free(b[j]);
-				b[j] = 0;
-			}
+			ccv_matrix_free(b[j]);
+			b[j] = 0;
 		}
 		int c = (!!symmetric + 1) * 5;
 		ccv_convnet_layer_t* start_layer = convnet->layers + last;

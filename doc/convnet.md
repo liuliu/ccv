@@ -32,7 +32,9 @@ What about the performance?
 
 ConvNet on the very large scale is not extremely fast. There are a few implementations available
 for ConvNet that focused on speed performance, such as [Caffe from Berkeley](http://caffe.berkeleyvision.org/),
-or [OverFeat from NYU](http://cilvr.nyu.edu/doku.php?id=software:overfeat:start).
+or [OverFeat from NYU](http://cilvr.nyu.edu/doku.php?id=software:overfeat:start). Although not
+explicitly optimized for speed (ccv chooses correctness over speed in this preliminary implementation),
+the ConvNet implementation presented in ccv speed-wise is inline with other implementations.
 
 Therefore, the analysis related to performance is implemented on ImageNet dataset and the network
 topology followed the exact specification detailed in the paper.
@@ -44,18 +46,30 @@ TODO:
 Speed-wise:
 
 The experiment conducted on a computer with Core i7 3770, NVIDIA TITAN graphic card at stock
-frequency, and Samsung MZ-7TE500BW 500GiB SSD with clang, libdispatch, GNU Scientific Library.
+frequency, and Samsung MZ-7TE500BW 500GiB SSD with clang, libdispatch, libatlas and GNU
+Scientific Library.
 
 The CPU version of forward pass (from RGB image input to the classification result) takes about
-350ms per image. This is achieved with multi-threaded convolutional kernel computation.
+350ms per image. This is achieved with multi-threaded convolutional kernel computation. Decaf (
+the CPU counter-part of Caffe) reported their forward pass at around 0.5s per image with
+unspecified hardware over 10 patches (the same as ccv's cnnclassify implementation). I cannot
+get sensible number off OverFeat on my machine (it reports about 1.4s for forward pass, that
+makes little sense). Their reported number are 1s per image on unspecified configuration with
+unspecified hardware (I suspect that their unspecified configuration does much more than the
+averaging 10 patches ccv or Decaf does).
 
 The GPU version does forward pass + backward error propagate for batch size of 256 in about 1.6s.
-Thus, training ImageNet convolutional network takes about 9 days with 100 epochs.
+Thus, training ImageNet convolutional network takes about 9 days with 100 epochs. Caffe reported
+their forward pass + backward error propagate for batch size of 256 in about 1.8s on Tesla K20 (
+known to be about 30% slower cross the board than TITAN). In the paper, Alex reported 90 epochs
+within 6 days on two GeForce 580, which suggests my time is within line of these implementations.
 
 As a preliminary implementation, ccv didn't spend enough time to optimize these operations if any
 at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
 functionalities in about 10,000 lines of code, Caffe implements with 14,000 lines of code, as of
-this release, ccv implements with about 3,700 lines of code.
+this release, ccv implements with about 3,700 lines of code. For the future, the low-hanging
+optimization opportunities include using SIMD instruction, doing FFT in densely convolved layers
+etc.
 
 How to train my own image classifier?
 -------------------------------------
