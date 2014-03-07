@@ -658,7 +658,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 		ccv_array_t* idx = 0;
 		int ntl = ccv_array_group(textline, &idx, _ccv_is_same_textline, params.same_word_thresh);
 		ccv_array_t* words;
-		if (params.breakdown)
+		if (params.breakdown && ntl > 0)
 		{
 			textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
 			ccv_array_zero(textline2);
