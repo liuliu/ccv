@@ -8,8 +8,7 @@ categories:
 - doc
 ---
 
-ConvNet: Deep Convolutional Networks
-====================================
+[Library Reference: ccv_convnet.c](/lib/ccv-convnet/)
 
 What's ConvNet?
 ---------------
