@@ -5,10 +5,10 @@
 #include <stddef.h>
 
 /* have to be static const char so that can use sizeof */
-static const char ebb_http_404[] = "HTTP/1.1 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
-static const char ebb_http_empty_object[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n{}\n";
-static const char ebb_http_empty_array[] = "HTTP/1.1 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n[]\n";
-static const char ebb_http_ok_true[] = "HTTP/1.1 200 OK\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 5\r\n\r\ntrue\n";
+static const char ebb_http_404[] = "HTTP/1.0 404 Not Found\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 6\r\n\r\nfalse\n";
+static const char ebb_http_empty_object[] = "HTTP/1.0 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n{}\n";
+static const char ebb_http_empty_array[] = "HTTP/1.0 201 Created\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 3\r\n\r\n[]\n";
+static const char ebb_http_ok_true[] = "HTTP/1.0 200 OK\r\nCache-Control: no-cache\r\nContent-Type: application/json; charset=utf-8\r\nContent-Length: 5\r\n\r\ntrue\n";
 /* we should never sizeof ebb_http_header */
 extern const char ebb_http_header[];
 
