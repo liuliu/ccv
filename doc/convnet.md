@@ -41,7 +41,21 @@ topology followed the exact specification detailed in the paper.
 
 Accuracy-wise:
 
-TODO:
+The test is performed on ILSVRC 2010 test dataset, as of time being, I cannot obtain the validation
+dataset for ILSVRC 2012.
+
+The training stopped to improve at around 90 epochs, at that time, the central patch obtained
+42.81% of top-1 missing rate (lower is better). In Alex's paper, they reported 37.5% top-1
+missing rate when averaging 10 patches, and 39% top-1 missing rate when using one patch.
+
+By applying this patch: https://gist.github.com/liuliu/9420735
+
+	git am -3 9420935.patch
+
+For 32-bit float point image-net.sqlite3, the top-1 missing rate is 39.51%, 2% shying from
+Alex's result. For half precision image-net.sqlite3 (the one included in ./samples/), the top-1
+missing rate is 39.8%, 0.3% worse than the 32-bit float point one. You can download the float
+point one with ./samples/download-image-net.sh
 
 Speed-wise:
 
@@ -64,8 +78,8 @@ their forward pass + backward error propagate for batch size of 256 in about 1.8
 known to be about 30% slower cross the board than TITAN). In the paper, Alex reported 90 epochs
 within 6 days on two GeForce 580, which suggests my time is within line of these implementations.
 
-As a preliminary implementation, ccv didn't spend enough time to optimize these operations if any
-at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
+As a preliminary implementation, I didn't spend enough time to optimize these operations in ccv if
+any at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
 functionalities in about 10,000 lines of code, Caffe implements with 14,000 lines of code, as of
 this release, ccv implements with about 3,700 lines of code. For the future, the low-hanging
 optimization opportunities include using SIMD instruction, doing FFT in densely convolved layers

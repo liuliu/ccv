@@ -39,7 +39,7 @@ Yes, knowing how to read a photo is sufficient to write an application that can 
 	{
 		ccv_dense_matrix_t* image = 0;
 		ccv_read(argv[1], &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-		ccv_bbf_classifier_cascade_t* cascade = ccv_load_bbf_classifier_cascade(argv[2]);
+		ccv_bbf_classifier_cascade_t* cascade = ccv_bbf_read_classifier_cascade(argv[2]);
 		ccv_array_t* faces = ccv_bbf_detect_objects(image, &cascade, 1, ccv_bbf_default_params);
 		int i;
 		for (i = 0; i < faces->rnum; i++)
