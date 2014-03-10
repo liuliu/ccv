@@ -349,7 +349,6 @@ enum {
 double ccv_norm(ccv_matrix_t* mat, int type);
 double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
-double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
 double ccv_sum(ccv_matrix_t* mat, int flag);
 double ccv_variance(ccv_matrix_t* mat);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
@@ -556,7 +555,6 @@ void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* da
 
 void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag);
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
-void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
 /* basic computer vision algorithms / or build blocks ccv_basic.c */
 
@@ -1079,7 +1077,6 @@ void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, 
 void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier);
 
 /* ICF for multiple scale */
-ccv_icf_multiscale_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
 ccv_icf_multiscale_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_read_multiscale_classifier_cascade(const char* directory);
 void ccv_icf_write_multiscale_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
 void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier);
