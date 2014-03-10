@@ -26,6 +26,16 @@
 #define ccrealloc realloc
 #define ccfree free
 
+
+#if defined(SWIG)
+#define CCV_MUST_USE_RESULT
+#elif __GNUC__ > 3 || (__GNUC__ == 3 && __GNUC_MINOR__ >= 4)
+#define CCV_MUST_USE_RESULT __attribute__((warn_unused_result))
+#else
+#define CCV_MUST_USE_RESULT
+#endif
+
+
 enum {
 	CCV_8U  = 0x01000,
 	CCV_32S = 0x02000,
@@ -200,12 +210,12 @@ typedef struct {
 
 /* matrix memory operations ccv_memory.c */
 #define ccv_compute_dense_matrix_size(rows, cols, type) (sizeof(ccv_dense_matrix_t) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
-ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
-ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
+ccv_dense_matrix_t* CCV_MUST_USE_RESULT ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
+ccv_dense_matrix_t* CCV_MUST_USE_RESULT ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 void ccv_make_matrix_mutable(ccv_matrix_t* mat);
 void ccv_make_matrix_immutable(ccv_matrix_t* mat);
-ccv_sparse_matrix_t* __attribute__((warn_unused_result)) ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
+ccv_sparse_matrix_t* CCV_MUST_USE_RESULT ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
@@ -447,7 +457,7 @@ typedef struct {
 	void* data;
 } ccv_array_t;
 
-ccv_array_t* __attribute__((warn_unused_result)) ccv_array_new(int rsize, int rnum, uint64_t sig);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_array_new(int rsize, int rnum, uint64_t sig);
 void ccv_array_push(ccv_array_t* array, void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
@@ -682,7 +692,7 @@ enum {
 	CCV_DARK_TO_BRIGHT = 1,
 };
 
-ccv_array_t* __attribute__((warn_unused_result)) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
@@ -718,7 +728,7 @@ typedef struct {
 extern const ccv_swt_param_t ccv_swt_default_params;
 
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
 
 /* it makes sense now to include a simple data structure that encapsulate the common idiom of
  * having file name with a bounding box */
@@ -814,8 +824,8 @@ enum {
 extern const ccv_dpm_param_t ccv_dpm_default_params;
 
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
-ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_dpm_read_mixture_model(const char* directory);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
+ccv_dpm_mixture_model_t* CCV_MUST_USE_RESULT ccv_dpm_read_mixture_model(const char* directory);
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
 
 /* this is open source implementation of object detection algorithm: brightness binary feature
@@ -879,10 +889,10 @@ enum {
 extern const ccv_bbf_param_t ccv_bbf_default_params;
 
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
-ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_read_classifier_cascade(const char* directory);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
+ccv_bbf_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_bbf_read_classifier_cascade(const char* directory);
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
-ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classifier_cascade_read_binary(char* s);
+ccv_bbf_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_bbf_classifier_cascade_read_binary(char* s);
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
 
 /* Ferns classifier: this is a fern implementation that specifically used for TLD
@@ -901,7 +911,7 @@ typedef struct {
 	ccv_point_t fern[1];
 } ccv_ferns_t;
 
-ccv_ferns_t* __attribute__((warn_unused_result)) ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes);
+ccv_ferns_t* CCV_MUST_USE_RESULT ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes);
 void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uint32_t* fern);
 void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat);
 float ccv_ferns_predict(ccv_ferns_t* ferns, uint32_t* fern);
@@ -984,7 +994,7 @@ typedef struct {
 	int close_matches;
 } ccv_tld_info_t;
 
-ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
+ccv_tld_t* CCV_MUST_USE_RESULT ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info);
 void ccv_tld_free(ccv_tld_t* tld);
 
@@ -1062,20 +1072,20 @@ typedef struct {
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 /* ICF for single scale */
-ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
+ccv_icf_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
 void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance);
-ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* filename);
+ccv_icf_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_read_classifier_cascade(const char* filename);
 void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, const char* filename);
 void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier);
 
 /* ICF for multiple scale */
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_multiscale_classifier_cascade(const char* directory);
+ccv_icf_multiscale_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
+ccv_icf_multiscale_classifier_cascade_t* CCV_MUST_USE_RESULT ccv_icf_read_multiscale_classifier_cascade(const char* directory);
 void ccv_icf_write_multiscale_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
 void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier);
 
 /* polymorph function to run ICF based detector */
-ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
+ccv_array_t* CCV_MUST_USE_RESULT ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
 /* ConvNet: Convolutional Neural Networks
  */
@@ -1225,12 +1235,12 @@ typedef struct {
 	int half_precision;
 } ccv_convnet_write_param_t;
 
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
+ccv_convnet_t* CCV_MUST_USE_RESULT ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_accel, const char* filename);
+ccv_convnet_t* CCV_MUST_USE_RESULT ccv_convnet_read(int use_cwc_accel, const char* filename);
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
 void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
 void ccv_convnet_free(ccv_convnet_t* convnet);
