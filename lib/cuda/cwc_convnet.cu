@@ -1701,8 +1701,8 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		ccv_dense_matrix_t* input = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = rng ? gsl_rng_uniform_int(rng, image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
-			int y = rng ? gsl_rng_uniform_int(rng, image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
+			int x = (image->cols - dim.width + 1) / 2;
+			int y = (image->rows - dim.height + 1) / 2;
 			assert(x == 0 || y == 0);
 			ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
 		} else

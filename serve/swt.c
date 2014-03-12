@@ -6,101 +6,111 @@
 
 static void uri_swt_on_source_blob(void* context, ebb_buf data);
 
+typedef struct {
+	ccv_swt_param_t params;
+	int max_dimension;
+} ccv_swt_uri_param_t;
+
 static const param_dispatch_t param_map[] = {
 	{
 		.property = "aspect_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, aspect_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, aspect_ratio),
 	},
 	{
 		.property = "breakdown",
 		.type = PARAM_TYPE_BOOL,
-		.offset = offsetof(ccv_swt_param_t, breakdown),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, breakdown),
 	},
 	{
 		.property = "breakdown_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, breakdown_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, breakdown_ratio),
 	},
 	{
 		.property = "distance_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, distance_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, distance_ratio),
 	},
 	{
 		.property = "elongate_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, elongate_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, elongate_ratio),
 	},
 	{
 		.property = "height_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, height_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, height_ratio),
 	},
 	{
 		.property = "high_thresh",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, high_thresh),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, high_thresh),
 	},
 	{
 		.property = "intensity_thresh",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, intensity_thresh),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, intensity_thresh),
 	},
 	{
 		.property = "intersect_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, intersect_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, intersect_ratio),
 	},
 	{
 		.property = "interval",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, interval),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, interval),
 	},
 	{
 		.property = "letter_occlude_thresh",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, letter_occlude_thresh),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, letter_occlude_thresh),
 	},
 	{
 		.property = "letter_thresh",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, letter_thresh),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, letter_thresh),
 	},
 	{
 		.property = "low_thresh",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, low_thresh),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, low_thresh),
+	},
+	{
+		.property = "max_dimension",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_swt_uri_param_t, max_dimension),
 	},
 	{
 		.property = "max_height",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, max_height),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, max_height),
 	},
 	{
 		.property = "min_area",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, min_area),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, min_area),
 	},
 	{
 		.property = "min_height",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, min_height),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, min_height),
 	},
 	{
 		.property = "min_neighbors",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, min_neighbors),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, min_neighbors),
 	},
 	{
 		.property = "scale_invariant",
 		.type = PARAM_TYPE_BOOL,
-		.offset = offsetof(ccv_swt_param_t, scale_invariant),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, scale_invariant),
 	},
 	{
 		.property = "size",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_swt_param_t, size),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, size),
 	},
 	{
 		.property = "source",
@@ -111,12 +121,12 @@ static const param_dispatch_t param_map[] = {
 	{
 		.property = "std_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, std_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, std_ratio),
 	},
 	{
 		.property = "thickness_ratio",
 		.type = PARAM_TYPE_DOUBLE,
-		.offset = offsetof(ccv_swt_param_t, thickness_ratio),
+		.offset = offsetof(ccv_swt_uri_param_t, params) + offsetof(ccv_swt_param_t, thickness_ratio),
 	},
 };
 
@@ -126,7 +136,7 @@ typedef struct {
 
 typedef struct {
 	param_parser_t param_parser;
-	ccv_swt_param_t params;
+	ccv_swt_uri_param_t params;
 	ebb_buf source;
 } swt_param_parser_t;
 
@@ -136,10 +146,10 @@ void* uri_swt_detect_words_init(void)
 	swt_context_t* context = (swt_context_t*)malloc(sizeof(swt_context_t));
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
-			"\"x\":\"integer\","
-			"\"y\":\"integer\","
-			"\"width\":\"integer\","
-			"\"height\":\"integer\""
+			"\"x\":\"number\","
+			"\"y\":\"number\","
+			"\"width\":\"number\","
+			"\"height\":\"number\""
 		"}]");
 	return context;
 }
@@ -154,7 +164,8 @@ void uri_swt_detect_words_destroy(void* context)
 static void uri_swt_param_parser_init(swt_param_parser_t* parser)
 {
 	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->params, parser);
-	parser->params = ccv_swt_default_params;
+	parser->params.params = ccv_swt_default_params;
+	parser->params.max_dimension = 0;
 	parser->source.data = 0;
 }
 
@@ -214,8 +225,16 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 		free(parser);
 		return -1;
 	}
-	ccv_array_t* seq = ccv_swt_detect_words(image, parser->params);
-	ccv_matrix_free(image);
+	ccv_dense_matrix_t* resize = 0;
+	if (parser->params.max_dimension > 0 && (image->rows > parser->params.max_dimension || image->cols > parser->params.max_dimension))
+	{
+		ccv_resample(image, &resize, 0, ccv_max(parser->params.max_dimension, (int)(image->rows * (float)parser->params.max_dimension / image->cols + 0.5)), ccv_max(parser->params.max_dimension, (int)(image->cols * (float)parser->params.max_dimension / image->rows + 0.5)), CCV_INTER_AREA);
+		ccv_matrix_free(image);
+	} else
+		resize = image;
+	ccv_array_t* seq = ccv_swt_detect_words(resize, parser->params.params);
+	float width = resize->cols, height = resize->rows;
+	ccv_matrix_free(resize);
 	if (seq  == 0)
 	{
 		free(parser);
@@ -232,7 +251,7 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 		{
 			char cell[96];
 			ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(seq, i);
-			snprintf(cell, 96, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d}", rect->x, rect->y, rect->width, rect->height);
+			snprintf(cell, 96, "{\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f}", rect->x / width, rect->y / height, rect->width / width, rect->height / height);
 			size_t len = strnlen(cell, 96);
 			while (buf->written + len + 1 >= buf->len)
 			{
