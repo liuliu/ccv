@@ -7,32 +7,37 @@
 static void uri_bbf_on_model_string(void* context, char* string);
 static void uri_bbf_on_source_blob(void* context, ebb_buf data);
 
+typedef struct {
+	ccv_bbf_param_t params;
+	int max_dimension;
+} ccv_bbf_uri_param_t;
+
 static const param_dispatch_t param_map[] = {
 	{
 		.property = "accurate",
 		.type = PARAM_TYPE_BOOL,
-		.offset = offsetof(ccv_bbf_param_t, accurate),
+		.offset = offsetof(ccv_bbf_uri_param_t, params) + offsetof(ccv_bbf_param_t, accurate),
 	},
 	{
 		.property = "interval",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, interval),
+		.offset = offsetof(ccv_bbf_uri_param_t, params) + offsetof(ccv_bbf_param_t, interval),
+	},
+	{
+		.property = "max_dimension",
+		.type = PARAM_TYPE_INT,
+		.offset = offsetof(ccv_bbf_uri_param_t, max_dimension),
 	},
 	{
 		.property = "min_neighbors",
 		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
+		.offset = offsetof(ccv_bbf_uri_param_t, params) + offsetof(ccv_bbf_param_t, min_neighbors),
 	},
 	{
 		.property = "model",
 		.type = PARAM_TYPE_STRING,
 		.on_string = uri_bbf_on_model_string,
 		.offset = 0,
-	},
-	{
-		.property = "size",
-		.type = PARAM_TYPE_INT,
-		.offset = offsetof(ccv_bbf_param_t, min_neighbors),
 	},
 	{
 		.property = "source",
@@ -50,7 +55,7 @@ typedef struct {
 typedef struct {
 	param_parser_t param_parser;
 	bbf_context_t* context;
-	ccv_bbf_param_t params;
+	ccv_bbf_uri_param_t params;
 	ccv_bbf_classifier_cascade_t* cascade;
 	ebb_buf source;
 } bbf_param_parser_t;
@@ -58,7 +63,8 @@ typedef struct {
 static void uri_bbf_param_parser_init(bbf_param_parser_t* parser)
 {
 	param_parser_init(&parser->param_parser, param_map, sizeof(param_map) / sizeof(param_dispatch_t), &parser->params, parser);
-	parser->params = ccv_bbf_default_params;
+	parser->params.params = ccv_bbf_default_params;
+	parser->params.max_dimension = 0;
 	parser->cascade = 0;
 	parser->source.data = 0;
 }
@@ -108,10 +114,10 @@ void* uri_bbf_detect_objects_init(void)
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
-			"\"x\":\"integer\","
-			"\"y\":\"integer\","
-			"\"width\":\"integer\","
-			"\"height\":\"integer\","
+			"\"x\":\"number\","
+			"\"y\":\"number\","
+			"\"width\":\"number\","
+			"\"height\":\"number\","
 			"\"confidence\":\"number\""
 		"}]");
 	return context;
@@ -158,8 +164,16 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		free(parser);
 		return -1;
 	}
-	ccv_array_t* seq = ccv_bbf_detect_objects(image, &parser->cascade, 1, parser->params);
-	ccv_matrix_free(image);
+	ccv_dense_matrix_t* resize = 0;
+	if (parser->params.max_dimension > 0 && (image->rows > parser->params.max_dimension || image->cols > parser->params.max_dimension))
+	{
+		ccv_resample(image, &resize, 0, ccv_max(parser->params.max_dimension, (int)(image->rows * (float)parser->params.max_dimension / image->cols + 0.5)), ccv_max(parser->params.max_dimension, (int)(image->cols * (float)parser->params.max_dimension / image->rows + 0.5)), CCV_INTER_AREA);
+		ccv_matrix_free(image);
+	} else
+		resize = image;
+	ccv_array_t* seq = ccv_bbf_detect_objects(resize, &parser->cascade, 1, parser->params.params);
+	float width = resize->cols, height = resize->rows;
+	ccv_matrix_free(resize);
 	if (seq == 0)
 	{
 		free(parser);
@@ -176,7 +190,7 @@ int uri_bbf_detect_objects(const void* context, const void* parsed, ebb_buf* buf
 		{
 			char cell[128];
 			ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-			snprintf(cell, 128, "{\"x\":%d,\"y\":%d,\"width\":%d,\"height\":%d,\"confidence\":%f}", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
+			snprintf(cell, 128, "{\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f,\"confidence\":%f}", comp->rect.x / width, comp->rect.y / height, comp->rect.width / width, comp->rect.height / height, comp->classification.confidence);
 			size_t len = strnlen(cell, 128);
 			while (buf->written + len + 1 >= buf->len)
 			{
