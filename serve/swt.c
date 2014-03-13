@@ -270,7 +270,10 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 #ifdef HAVE_TESSERACT
 			if (parser->context->tesseract)
 			{
+				char empty[] = "";
 				char* word = TessBaseAPIRect(parser->context->tesseract, resize->data.u8, 1, resize->step, rect->x, rect->y, rect->width, rect->height);
+				if (!word)
+					word = empty;
 				int wordlen = strlen(word); // trust tesseract to return correct thing
 				int j;
 				for (j = 0; j < wordlen; j++)
