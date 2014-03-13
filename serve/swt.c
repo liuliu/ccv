@@ -277,7 +277,10 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 				int wordlen = strlen(word); // trust tesseract to return correct thing
 				int j;
 				for (j = 0; j < wordlen; j++)
-					if (word[j] == '\n' || word[j] == '\r') // replace line break to whitespace
+					if (!((word[j] >= 'a' && word[j] <= 'z') ||
+							(word[j] >= 'A' && word[j] <= 'Z') ||
+							word[j] == ' ' ||
+							word[j] == '-')) // replace unsupported char to whitespace
 						word[j] = ' ';
 				for (j = wordlen - 1; j >= 0 && word[j] == ' '; j--); // remove trailing whitespace
 				word[j + 1] = 0, wordlen = j + 1;
