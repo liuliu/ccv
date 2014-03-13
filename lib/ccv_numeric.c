@@ -2,6 +2,7 @@
 #include "ccv_internal.h"
 #include <complex.h>
 #ifdef HAVE_FFTW3
+#include <pthread.h>
 #include <fftw3.h>
 #else
 #include "3rdparty/kissfft/kiss_fftndr.h"
@@ -570,6 +571,8 @@ static int _ccv_get_optimal_fft_size(int size)
     return _ccv_optimal_fft_size[b];
 }
 
+static pthread_mutex_t fftw_plan_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
@@ -587,6 +590,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		fftw_a = fftwf_malloc(rows * cols_2c * ch * sizeof(float));
 		fftw_b = fftwf_malloc(rows * cols_2c * ch * sizeof(float));
 		fftw_d = fftwf_malloc(rows * cols_2c * ch * sizeof(float));
+		pthread_mutex_lock(&fftw_plan_mutex);
 		if (ch == 1)
 		{
 			pf = fftwf_plan_dft_r2c_2d(rows, cols, 0, 0, FFTW_ESTIMATE);
@@ -596,10 +600,12 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 			pf = fftwf_plan_many_dft_r2c(2, ndim, ch, 0, 0, ch, 1, 0, 0, ch, 1, FFTW_ESTIMATE);
 			pinvf = fftwf_plan_many_dft_c2r(2, ndim, ch, 0, 0, ch, 1, 0, 0, ch, 1, FFTW_ESTIMATE);
 		}
+		pthread_mutex_unlock(&fftw_plan_mutex);
 	} else {
 		fftw_a = fftw_malloc(rows * cols_2c * ch * sizeof(double));
 		fftw_b = fftw_malloc(rows * cols_2c * ch * sizeof(double));
 		fftw_d = fftw_malloc(rows * cols_2c * ch * sizeof(double));
+		pthread_mutex_lock(&fftw_plan_mutex);
 		if (ch == 1)
 		{
 			p = fftw_plan_dft_r2c_2d(rows, cols, 0, 0, FFTW_ESTIMATE);
@@ -609,6 +615,7 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 			p = fftw_plan_many_dft_r2c(2, ndim, ch, 0, 0, ch, 1, 0, 0, ch, 1, FFTW_ESTIMATE);
 			pinv = fftw_plan_many_dft_c2r(2, ndim, ch, 0, 0, ch, 1, 0, 0, ch, 1, FFTW_ESTIMATE);
 		}
+		pthread_mutex_unlock(&fftw_plan_mutex);
 	}
 	memset(fftw_b, 0, rows * cols_2c * ch * CCV_GET_DATA_TYPE_SIZE(fft_type));
 
@@ -728,8 +735,10 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		ccv_matrix_setter(d->type, ccv_matrix_getter, a->type, for_block, float, fftwf_complex);
 #undef fft_execute_dft_r2c
 #undef fft_execute_dft_c2r
+		pthread_mutex_lock(&fftw_plan_mutex);
 		fftwf_destroy_plan(pf);
 		fftwf_destroy_plan(pinvf);
+		pthread_mutex_unlock(&fftw_plan_mutex);
 		fftwf_free(fftw_a);
 		fftwf_free(fftw_b);
 		fftwf_free(fftw_d);
@@ -739,8 +748,10 @@ static void _ccv_filter_fftw(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_d
 		ccv_matrix_setter(d->type, ccv_matrix_getter, a->type, for_block, double, fftw_complex);
 #undef fft_execute_dft_r2c
 #undef fft_execute_dft_c2r
+		pthread_mutex_lock(&fftw_plan_mutex);
 		fftw_destroy_plan(p);
 		fftw_destroy_plan(pinv);
+		pthread_mutex_unlock(&fftw_plan_mutex);
 		fftw_free(fftw_a);
 		fftw_free(fftw_b);
 		fftw_free(fftw_d);
