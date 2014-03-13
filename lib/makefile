@@ -1,7 +1,7 @@
 include config.mk
 
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
-CFLAGS := -O3 -ffast-math -Wall $(CFLAGS)# -fprofile-arcs -ftest-coverage
+CFLAGS := -O3 -ffast-math -Wall -fPIC $(CFLAGS)# -fprofile-arcs -ftest-coverage
 NVFLAGS := -O3 $(NVFLAGS)
 
 .PHONY: all clean
@@ -18,7 +18,7 @@ ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
 3rdparty/sqlite3/sqlite3.o: 3rdparty/sqlite3/sqlite3.c
-	$(CC) $< -o $@ -c -O3 -D SQLITE_THREADSAFE=0 -D SQLITE_OMIT_LOAD_EXTENSION
+	$(CC) $< -o $@ -c -O3 -fPIC -D SQLITE_THREADSAFE=0 -D SQLITE_OMIT_LOAD_EXTENSION
 
 %.o: %.c ccv.h ccv_internal.h cuda/*.h
 	$(CC) $< -o $@ -c $(CFLAGS)
