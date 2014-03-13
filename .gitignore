@@ -8,6 +8,8 @@ gh-pages
 lib/.CC
 lib/.DEF
 lib/.LN
+lib/config.log
+lib/config.status
 test/*_test
 test/*.jpg
 test/*.png
