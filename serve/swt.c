@@ -3,6 +3,9 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
+#ifdef HAVE_TESSERACT
+#include <tesseract/capi.h>
+#endif
 
 static void uri_swt_on_source_blob(void* context, ebb_buf data);
 
@@ -132,18 +135,27 @@ static const param_dispatch_t param_map[] = {
 
 typedef struct {
 	ebb_buf desc;
+#ifdef HAVE_TESSERACT
+	TessBaseAPI* tesseract;
+#endif
 } swt_context_t;
 
 typedef struct {
 	param_parser_t param_parser;
 	ccv_swt_uri_param_t params;
 	ebb_buf source;
+	swt_context_t* context;
 } swt_param_parser_t;
 
 void* uri_swt_detect_words_init(void)
 {
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	swt_context_t* context = (swt_context_t*)malloc(sizeof(swt_context_t));
+#ifdef HAVE_TESSERACT
+	context->tesseract = TessBaseAPICreate();
+	if (TessBaseAPIInit3(context->tesseract, 0, "eng") != 0)
+		context->tesseract = 0;
+#endif
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
 			"\"x\":\"number\","
@@ -157,6 +169,9 @@ void* uri_swt_detect_words_init(void)
 void uri_swt_detect_words_destroy(void* context)
 {
 	swt_context_t* swt_context = (swt_context_t*)context;
+#ifdef HAVE_TESSERACT
+	TessBaseAPIDelete(swt_context->tesseract);
+#endif
 	free(swt_context->desc.data);
 	free(swt_context);
 }
@@ -182,6 +197,7 @@ void* uri_swt_detect_words_parse(const void* context, void* parsed, int resource
 		parser = (swt_param_parser_t*)parsed;
 	else {
 		parser = (swt_param_parser_t*)malloc(sizeof(swt_param_parser_t));
+		parser->context = (swt_context_t*)context;
 		uri_swt_param_parser_init(parser);
 	}
 	switch (state)
@@ -234,9 +250,9 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 		resize = image;
 	ccv_array_t* seq = ccv_swt_detect_words(resize, parser->params.params);
 	float width = resize->cols, height = resize->rows;
-	ccv_matrix_free(resize);
 	if (seq  == 0)
 	{
+		ccv_matrix_free(resize);
 		free(parser);
 		return -1;
 	}
@@ -249,10 +265,32 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 		buf->written = 1;
 		for (i = 0; i < seq->rnum; i++)
 		{
-			char cell[96];
+			char cell[1024];
 			ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(seq, i);
-			snprintf(cell, 96, "{\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f}", rect->x / width, rect->y / height, rect->width / width, rect->height / height);
-			size_t len = strnlen(cell, 96);
+#ifdef HAVE_TESSERACT
+			if (parser->context->tesseract)
+			{
+				char* word = TessBaseAPIRect(parser->context->tesseract, resize->data.u8, 1, resize->step, rect->x, rect->y, rect->width, rect->height);
+				int wordlen = strlen(word); // trust tesseract to return correct thing
+				int j;
+				for (j = 0; j < wordlen; j++)
+					if (word[j] == '\n' || word[j] == '\r') // replace line break to whitespace
+						word[j] = ' ';
+				for (j = wordlen - 1; j >= 0 && word[j] == ' '; j--); // remove trailing whitespace
+				word[j + 1] = 0, wordlen = j + 1;
+				for (j = 0; j < wordlen && word[j] == ' '; j++); // remove leading whitespace
+				wordlen -= j;
+				memmove(word, word + j, wordlen + 1);
+				if (wordlen > 512) // if the wordlen is greater than 512, trim it
+					word[512] = 0;
+				snprintf(cell, 1024, "{\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f,\"word\":\"%s\"}", rect->x / width, rect->y / height, rect->width / width, rect->height / height, word);
+			} else {
+#endif
+			snprintf(cell, 1024, "{\"x\":%f,\"y\":%f,\"width\":%f,\"height\":%f}", rect->x / width, rect->y / height, rect->width / width, rect->height / height);
+#ifdef HAVE_TESSERACT
+			}
+#endif
+			size_t len = strnlen(cell, 1024);
 			while (buf->written + len + 1 >= buf->len)
 			{
 				buf->len = (buf->len * 3 + 1) / 2;
@@ -282,6 +320,7 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 		buf->len = sizeof(ebb_http_empty_array);
 		buf->on_release = 0;
 	}
+	ccv_matrix_free(resize);
 	ccv_array_free(seq);
 	free(parser);
 	return 0;

@@ -3344,6 +3344,14 @@ if test "x$ac_cv_header_cblas_h" = xyes; then :
 fi
 
 
+ac_fn_c_check_header_mongrel "$LINENO" "tesseract/capi.h" "ac_cv_header_tesseract_capi_h" "$ac_includes_default"
+if test "x$ac_cv_header_tesseract_capi_h" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_TESSERACT "
+ MKLDFLAGS="$MKLDFLAGS-ltesseract "
+
+fi
+
+
 ac_fn_c_check_header_mongrel "$LINENO" "Accelerate/Accelerate.h" "ac_cv_header_Accelerate_Accelerate_h" "$ac_includes_default"
 if test "x$ac_cv_header_Accelerate_Accelerate_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_ACCELERATE_FRAMEWORK "
