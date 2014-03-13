@@ -3323,7 +3323,7 @@ fi
 ac_fn_c_check_header_mongrel "$LINENO" "fftw3.h" "ac_cv_header_fftw3_h" "$ac_includes_default"
 if test "x$ac_cv_header_fftw3_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_FFTW3 "
- MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f "
+ MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "
 
 fi
 
