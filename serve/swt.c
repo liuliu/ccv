@@ -279,6 +279,7 @@ int uri_swt_detect_words(const void* context, const void* parsed, ebb_buf* buf)
 				for (j = 0; j < wordlen; j++)
 					if (!((word[j] >= 'a' && word[j] <= 'z') ||
 							(word[j] >= 'A' && word[j] <= 'Z') ||
+							(word[j] >= '0' && word[j] <= '9') ||
 							word[j] == ' ' ||
 							word[j] == '-')) // replace unsupported char to whitespace
 						word[j] = ' ';
