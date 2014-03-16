@@ -1,0 +1,244 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_convnet.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_convnet.c</h1>
+<h2 id="ccvconvnetnew">ccv_convnet_new</h2>
+
+<pre><code>ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
+</code></pre>
+
+<p>Create a new (deep) convolutional network with specified parameters. ccv only supports convolutional layer (shared weights), max pooling layer, average pooling layer, full connect layer and local response normalization layer.</p>
+
+<ul>
+  <li><strong>use_cwc_accel</strong>: whether use CUDA-enabled GPU to accelerate various computations for convolutional network.</li>
+  <li><strong>input</strong>: the input size of the image, it is not necessarily the input size of the first convolutional layer.</li>
+  <li><strong>params[]</strong>: the C-array of <strong>ccv_convnet_layer_param_t</strong> that specifies the parameters for each layer.</li>
+  <li><strong>count</strong> the size of params[] C-array.</li>
+</ul>
+
+<h2 id="ccvconvnetlayerparamt">ccv_convnet_layer_param_t</h2>
+
+<ul>
+  <li><strong>type</strong>: one of following value to specify the network layer type, <strong>CCV_CONVNET_CONVOLUTIONAL</strong>, <strong>CCV_CONVNET_FULL_CONNECT</strong>, <strong>CCV_CONVNET_MAX_POOL</strong>, <strong>CCV_CONVNET_AVERAGE_POOL</strong>, <strong>CCV_CONVNET_LOCAL_RESPONSE_NORM</strong>.</li>
+  <li><strong>bias</strong>: the initialization value for bias if applicable (for convolutional layer and full connect layer).</li>
+  <li><strong>sigma</strong>: the normal distribution variance for weights if applicable (for convolutional layer and full connect layer).</li>
+  <li><strong>input</strong>: a <strong>ccv_convnet_input_t</strong> specifies the input structure.</li>
+  <li><strong>output</strong>: a <strong>ccv_convnet_type_t</strong> specifies the output parameters and structure.</li>
+</ul>
+
+<h2 id="ccvconvnetinputt">ccv_convnet_input_t</h2>
+
+<ul>
+  <li><strong>matrix.rows</strong>: the number of rows of the input matrix.</li>
+  <li><strong>matrix.cols</strong>: the number of columns of the input matrix.</li>
+  <li><strong>matrix.channels</strong>: the number of channels of the input matrix.</li>
+  <li><strong>matrix.partition</strong>: the number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels).</li>
+  <li><strong>node.count</strong>: the number of nodes. You should either use <strong>node</strong> or <strong>matrix</strong> to specify the input structure.</li>
+</ul>
+
+<h2 id="ccvconvnettypet">ccv_convnet_type_t</h2>
+
+<ul>
+  <li><strong>convolutional.count</strong>: the number of filters for convolutional layer.</li>
+  <li><strong>convolutional.strides</strong>: the strides for convolutional filter.</li>
+  <li><strong>convolutional.border</strong>: the padding border size for the input matrix.</li>
+  <li><strong>convolutional.rows</strong>: the number of rows for convolutional filter.</li>
+  <li><strong>convolutional.cols</strong>: the number of columns for convolutional filter.</li>
+  <li><strong>convolutional.channels</strong>: the number of channels for convolutional filter.</li>
+  <li><strong>convolutional.partition</strong>: the number of partitions for convolutional filter.</li>
+  <li><strong>pool.strides</strong>: the strides for pooling layer.</li>
+  <li><strong>pool.size</strong>: the size for pooling layer.</li>
+  <li><strong>pool.border</strong>: the padding border size for the input matrix.</li>
+  <li><strong>rnorm.size</strong>: the size of local response normalization layer.</li>
+  <li><strong>rnorm.kappa</strong>: as of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta</li>
+  <li><strong>rnorm.alpha</strong>: see <strong>rnorm.kappa</strong>.</li>
+  <li><strong>rnorm.beta</strong>: see <strong>rnorm.kappa</strong>.</li>
+  <li><strong>full_connect.count</strong>: the number of output nodes for full connect layer.</li>
+</ul>
+
+<h2 id="ccvconvnetverify">ccv_convnet_verify</h2>
+
+<pre><code>int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
+</code></pre>
+
+<p>Verify the specified parameters make sense as a deep convolutional network. Return 0 if the given deep convolutional network making sense.</p>
+
+<ul>
+  <li><strong>convnet</strong>: A deep convolutional network to verify.</li>
+  <li><strong>output</strong>: The output number of nodes (for the last full connect layer).</li>
+</ul>
+
+<h2 id="ccvconvnetsupervisedtrain">ccv_convnet_supervised_train</h2>
+
+<pre><code>void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
+</code></pre>
+
+<p>Start to train a deep convolutional network with given parameters and data.</p>
+
+<ul>
+  <li><strong>convnet</strong>: A deep convolutional network that is initialized.</li>
+  <li><strong>categorizeds</strong>: An array of images with its category information for training.</li>
+  <li><strong>tests</strong>: An array of images with its category information for validating.</li>
+  <li><strong>filename</strong>: The working file to save progress and the trained convolutional network.</li>
+  <li><strong>params</strong>: The training parameters.</li>
+</ul>
+
+<h2 id="ccvconvnettrainparamt">ccv_convnet_train_param_t</h2>
+
+<ul>
+  <li><strong>max_epoch</strong>: The number of epoch (an epoch sweeps through all the examples) to go through before end the training.</li>
+  <li><strong>mini_batch</strong>: The number of examples for a batch in stochastic gradient descent.</li>
+  <li><strong>iterations</strong>: The number of iterations (an iteration is for one batch) before save the progress.</li>
+  <li><strong>symmetric</strong>: Whether to exploit the symmetric property of the provided examples.</li>
+  <li><strong>color_gain</strong>: The color variance for data augmentation (0 means no such augmentation).</li>
+  <li><strong>layer_params</strong>: An C-array of <strong>ccv_convnet_layer_train_param_t</strong> training parameters for each layer.</li>
+</ul>
+
+<h2 id="ccvconvnetlayertrainparamt">ccv_convnet_layer_train_param_t</h2>
+
+<ul>
+  <li><strong>dor</strong>: The dropout rate for this layer, it is only applicable for full connect layer.</li>
+  <li><strong>w</strong>: A <strong>ccv_convnet_layer_sgd_param_t</strong> specifies the stochastic gradient descent update rule for weight, it is only applicable for full connect layer and convolutional layer.</li>
+  <li><strong>bias</strong>: A <strong>ccv_convnet_layer_sgd_param_t</strong> specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layerweight.</li>
+</ul>
+
+<h2 id="ccvconvnetlayersgdparamt">ccv_convnet_layer_sgd_param_t</h2>
+
+<ul>
+  <li><strong>learn_rate</strong>: new velocity = <strong>momentum</strong> * old velocity - <strong>decay</strong> * <strong>learn_rate</strong> * old value + <strong>learn_rate</strong> * delta, new value = old value + new velocity</li>
+  <li><strong>decay</strong>: see <strong>learn_rate</strong>.</li>
+  <li><strong>momentum</strong>: see <strong>learn_rate</strong>.</li>
+</ul>
+
+<h2 id="ccvconvnetencode">ccv_convnet_encode</h2>
+
+<pre><code>void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
+</code></pre>
+
+<p>Use a convolutional network to encode an image into a compact representation.</p>
+
+<ul>
+  <li><strong>convnet</strong>: The given convolutional network.</li>
+  <li><strong>a</strong>: A C-array of input images.</li>
+  <li><strong>b</strong>: A C-array of output matrix of compact representation.</li>
+  <li><strong>batch</strong>: The number of input images.</li>
+</ul>
+
+<h2 id="ccvconvnetclassify">ccv_convnet_classify</h2>
+
+<pre><code>void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
+</code></pre>
+
+<p>Use a convolutional network to classify an image into categories.</p>
+
+<ul>
+  <li><strong>convnet</strong>: The given convolutional network.</li>
+  <li><strong>a</strong>: A C-array of input images.</li>
+  <li><strong>symmetric</strong>: Whether the input is symmetric.</li>
+  <li><strong>ranks</strong>: A C-array of <strong>ccv_array_t</strong> contains top categories by the convolutional network.</li>
+  <li><strong>tops</strong>: The number of top categories return for each image.</li>
+  <li><strong>batch</strong>: The number of input images.</li>
+</ul>
+
+<h2 id="ccvconvnetread">ccv_convnet_read</h2>
+
+<pre><code>ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename);
+</code></pre>
+
+<p>Read a convolutional network that persisted on the disk.</p>
+
+<ul>
+  <li><strong>use_cwc_accel</strong>: Use CUDA-enabled GPU acceleration.</li>
+  <li><strong>filename</strong>: The file on the disk.</li>
+</ul>
+
+<h2 id="ccvconvnetwrite">ccv_convnet_write</h2>
+
+<pre><code>void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
+</code></pre>
+
+<p>Write a convolutional network to a disk.</p>
+
+<ul>
+  <li><strong>convnet</strong>: A given convolutional network.</li>
+  <li><strong>filename</strong>: The file on the disk.</li>
+  <li><strong>params</strong>: a <strong>ccv_convnet_write_param_t</strong> to specify the write parameters.</li>
+</ul>
+
+<h2 id="ccvconvnetwriteparamt">ccv_convnet_write_param_t</h2>
+
+<ul>
+  <li><strong>half_precision</strong>: Use half precision float point to represent network parameters.</li>
+</ul>
+
+<h2 id="ccvconvnetcompact">ccv_convnet_compact</h2>
+
+<pre><code>void ccv_convnet_compact(ccv_convnet_t* convnet);
+</code></pre>
+
+<p>Free up temporary resources of a given convolutional network.</p>
+
+<ul>
+  <li><strong>convnet</strong>: A convolutional network.</li>
+</ul>
+
+<h2 id="ccvconvnetfree">ccv_convnet_free</h2>
+
+<pre><code>void ccv_convnet_free(ccv_convnet_t* convnet);
+</code></pre>
+
+<p>Free up the memory of a given convolutional network.</p>
+
+<ul>
+  <li><strong>convnet</strong>: A convolutional network.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>
