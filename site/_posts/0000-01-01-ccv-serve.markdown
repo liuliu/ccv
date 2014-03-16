@@ -21,6 +21,17 @@ You can look up the rest of parameters at [ccv_bbf.c](/lib/ccv-bbf/#ccvbbfparamt
 
 Supported methods: GET, POST
 
+/convnet/classify
+-----------------
+
+Using [ConvNet](/doc/doc-convnet) to categorize a given image.
+
+ * **'source' or HTTP body**: the image.
+ * **'model'**: what category set, for now it only supports 'image-net'.
+ * **'top'**: the number of results returned, order by confidence score.
+
+Supported methods: GET, POST
+
 /dpm/detect.objects
 -------------------
 
