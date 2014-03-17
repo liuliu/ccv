@@ -1119,6 +1119,7 @@ typedef union {
 		float beta;
 	} rnorm;
 	struct {
+		int relu; // apply relu or not
 		int count;
 	} full_connect;
 } ccv_convnet_type_t;
