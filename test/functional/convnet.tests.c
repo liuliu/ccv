@@ -503,6 +503,7 @@ TEST_CASE("full connect network from 13x13x128 to 2048")
 		},
 		.output = {
 			.full_connect = {
+				.relu = 0,
 				.count = 2048,
 			},
 		},
@@ -866,6 +867,7 @@ TEST_CASE("full connect network backward propagate")
 		},
 		.output = {
 			.full_connect = {
+				.relu = 0,
 				.count = 10,
 			},
 		},
@@ -882,13 +884,13 @@ TEST_CASE("full connect network backward propagate")
 	ccv_dense_matrix_t* y = 0;
 	ccv_convnet_encode(convnet, &x, &y, 1);
 	REQUIRE(y->rows == 10 && y->cols == 1 && CCV_GET_CHANNEL(y->type) == 1, "y should be a 10-dimensional vector");
-	ccv_matrix_free(y);
 	ccv_dense_matrix_t* loss = ccv_dense_matrix_new(10, 1, CCV_32F | CCV_C1, 0, 0);
 	loss->data.f32[0] = 18;
 	for (i = 1; i < 10; i++)
 		loss->data.f32[i] = -1;
 	ccv_dense_matrix_t* b = 0;
-	_ccv_convnet_full_connect_backward_propagate(convnet->layers, loss, x, &b, update_params->layers);
+	_ccv_convnet_full_connect_backward_propagate(convnet->layers, loss, y, x, &b, update_params->layers);
+	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(loss);
 	ccv_dense_matrix_t* db = ccv_dense_matrix_new(3, 3, CCV_32F | 64, 0, 0);
@@ -1229,6 +1231,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		},
 		.output = {
 			.full_connect = {
+				.relu = 0,
 				.count = 10,
 			},
 		},
@@ -1284,7 +1287,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		dbias[i] *= 1.0 / (12 * eps);
 	}
 	ccv_dense_matrix_t* b = 0;
-	_ccv_convnet_full_connect_backward_propagate(convnet->layers, dloss, x, &b, update_params->layers);
+	_ccv_convnet_full_connect_backward_propagate(convnet->layers, dloss, y, x, &b, update_params->layers);
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(dloss);
@@ -1432,6 +1435,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			},
 			.output = {
 				.full_connect = {
+					.relu = 0,
 					.count = 10,
 				},
 			},

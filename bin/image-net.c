@@ -144,6 +144,25 @@ int main(int argc, char** argv)
 			},
 		},
 		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 96,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
@@ -158,25 +177,6 @@ int main(int argc, char** argv)
 					.strides = 2,
 					.size = 3,
 					.border = 0,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 27,
-					.cols = 27,
-					.channels = 96,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
 				},
 			},
 		},
@@ -206,6 +206,25 @@ int main(int argc, char** argv)
 			},
 		},
 		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
@@ -220,25 +239,6 @@ int main(int argc, char** argv)
 					.strides = 2,
 					.size = 3,
 					.border = 0,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 256,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
 				},
 			},
 		},
@@ -353,6 +353,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 1,
 					.count = 4096,
 				},
 			},
@@ -375,6 +376,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 1,
 					.count = 4096,
 				},
 			},
@@ -397,6 +399,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 0,
 					.count = 1000,
 				},
 			},
@@ -409,10 +412,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.0001;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.0001;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;

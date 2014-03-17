@@ -705,7 +705,14 @@ static void _cwc_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 	 b, out_rows, out_cols);
 }
 
-static void _cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cublasHandle_t& handle)
+__global__ static void _cwc_kern_relu_forward_propagate(float* a)
+{
+	a += blockIdx.x * blockDim.x;
+	const int thidx = threadIdx.x;
+	a[thidx] = max(0.0, a[thidx]);
+}
+
+static void _cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	int rows, out_rows, out_cols, out_partition;
 	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols, &out_partition);
@@ -718,6 +725,11 @@ static void _cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 	beta = 1;
 	// and then do the GEMM by adding bias
 	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, rows, &alpha, a, batch, layer->w, rows, &beta, b, batch);
+	if (layer->net.full_connect.relu)
+		_cwc_kern_relu_forward_propagate
+		<<<layer->net.full_connect.count, batch, 0, stream>>>
+		(b);
+
 }
 
 __global__ static void _cwc_kern_mute_neuron(float* a, float* d)
@@ -751,7 +763,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(i > 0);
-				_cwc_convnet_full_connect_forward_propagate(layer, batch, GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], GPU(convnet)->unit, context->device.cublas);
+				_cwc_convnet_full_connect_forward_propagate(layer, batch, GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], GPU(convnet)->unit, context->device.stream, context->device.cublas);
 				if (dor && context->device.dor[i])
 					_cwc_kern_mute_neuron
 					<<<layer->net.full_connect.count, batch, 0, context->device.stream>>>
@@ -775,7 +787,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, float* a, int batch
 
 #ifdef HAVE_GSL
 
-__global__ static void _cwc_kern_convolutional_relu_backward_propagate(const int batch,
+__global__ static void _cwc_kern_relu_backward_propagate(const int batch,
 		float* out, float* out_grad, const int out_rows, const int out_cols,
 		const int count)
 {
@@ -1231,7 +1243,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	int out_rows, out_cols, out_partition, shared_memory_size;
 	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols, &out_partition);
 	// it turns out that first apply relu would save us a lot of computation because no need to low both out and out_grad any more
-	_cwc_kern_convolutional_relu_backward_propagate
+	_cwc_kern_relu_backward_propagate
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
@@ -1492,12 +1504,17 @@ static void _cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 	 a, out_rows, out_cols);
 }
 
-static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cublasHandle_t& handle)
+static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	int rows, out_rows, out_cols, out_partition;
 	_cwc_convnet_layer_deduce_output_format(layer, &out_rows, &out_cols, &out_partition);
 	out_cols = batch;
 	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
+	// apply relu for full connect layer
+	if (layer->net.full_connect.relu)
+		_cwc_kern_relu_backward_propagate
+		<<<dim3(1, out_rows, 1), batch, 0, stream>>>
+		(batch, n, a, out_rows, 1, 1);
 	float alpha = 1;
 	float beta = 0;
 	// propagate bias
@@ -1701,8 +1718,8 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		ccv_dense_matrix_t* input = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
 		{
-			int x = (image->cols - dim.width + 1) / 2;
-			int y = (image->rows - dim.height + 1) / 2;
+			int x = rng ? gsl_rng_uniform_int(rng, image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
+			int y = rng ? gsl_rng_uniform_int(rng, image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
 			assert(x == 0 || y == 0);
 			ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
 		} else
@@ -1964,7 +1981,7 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 					_cwc_kern_mute_neuron
 					<<<layer->net.full_connect.count, batch, 0, context->device.stream>>>
 					(i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], context->device.dor[i]);
-				_cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], GPU(convnet)->unit, configuration, context->device.cublas);
+				_cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], GPU(convnet)->forwards[i], i > 0 ? GPU(convnet)->forwards[i - 1] : m, GPU(convnet)->backwards[i], GPU(convnet)->unit, configuration, context->device.stream, context->device.cublas);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:

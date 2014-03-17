@@ -226,6 +226,9 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 		bptr[i] = layer->bias[i];
 	ccv_dense_matrix_t dw = ccv_dense_matrix(db->rows, a->rows, CCV_32F | CCV_C1, layer->w, 0);
 	ccv_gemm(&dw, a, 1, db, 1, 0, (ccv_matrix_t**)&db, 0); // supply db as matrix C is allowed
+	if (layer->net.full_connect.relu)
+		for (i = 0; i < db->rows; i++)
+			bptr[i] = ccv_max(0, bptr[i]); // relu
 	a->rows = rows, a->cols = cols, a->type = (a->type - CCV_GET_CHANNEL(a->type)) | ch;
 	a->step = a->cols * CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
 }
@@ -421,6 +424,14 @@ static void _ccv_convnet_full_connect_forward_propagate_parallel(ccv_convnet_lay
 	}
 	ccv_dense_matrix_t dw = ccv_dense_matrix(db->cols, a->cols, CCV_32F | CCV_C1, layer->w, 0);
 	ccv_gemm(a, &dw, 1, db, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&db, 0); // supply db as matrix C is allowed
+	bptr = db->data.f32;
+	if (layer->net.full_connect.relu)
+		for (i = 0; i < db->rows; i++)
+		{
+			for (j = 0; j < db->cols; j++)
+				bptr[j] = ccv_max(0, bptr[j]); // relu
+			bptr += db->cols;
+		}
 }
 
 static void _ccv_convnet_compute_softmax_parallel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
@@ -752,17 +763,21 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	a->rows = a_rows, a->cols = a_cols, a->type = (a->type - CCV_GET_CHANNEL(a->type)) | a_ch;
 }
 
-static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* x, ccv_dense_matrix_t** b, ccv_convnet_layer_t* update_params)
+static void _ccv_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* y, ccv_dense_matrix_t* x, ccv_dense_matrix_t** b, ccv_convnet_layer_t* update_params)
 {
-	// a is the input gradient (for back prop), d is the dropout,
+	// a is the input gradient (for back prop), y is the output (for forward prop)
 	// x is the input (for forward prop), b is the output gradient (gradient, or known as propagated error)
-	// note that y (the output from forward prop) is not included because the full connect net is simple enough that we don't need it
 	ccv_dense_matrix_t* db = 0;
 	if (b)
 		db = *b = ccv_dense_matrix_renew(*b, x->rows, x->cols, CCV_32F | CCV_GET_CHANNEL(x->type), CCV_32F | CCV_GET_CHANNEL(x->type), 0);
 	int x_rows = x->rows, x_cols = x->cols, x_ch = CCV_GET_CHANNEL(x->type);
 	x->rows = x_rows * x_cols * x_ch, x->cols = 1, x->type = (x->type - x_ch) | CCV_C1;
 	x->step = x->cols * CCV_GET_DATA_TYPE_SIZE(x->type);
+	int i;
+	if (layer->net.full_connect.relu)
+		for (i = 0; i < y->rows; i++)
+			if (y->data.f32[i] <= 0)
+				a->data.f32[i] = 0;
 	ccv_dense_matrix_t w = ccv_dense_matrix(a->rows, x->rows, CCV_32F | CCV_C1, update_params->w, 0);
 	ccv_dense_matrix_t* dw = &w;
 	// compute bias gradient
@@ -915,7 +930,7 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 	int i;
 	ccv_convnet_layer_t* layer = convnet->layers + convnet->count - 1;
 	assert(layer->type == CCV_CONVNET_FULL_CONNECT); // the last layer has too be a full connect one to generate softmax result
-	_ccv_convnet_full_connect_backward_propagate(layer, dloss, convnet->acts[convnet->count - 2], convnet->count - 1 > 0 ? update_params->acts + convnet->count - 2 : 0, update_params->layers + convnet->count - 1);
+	_ccv_convnet_full_connect_backward_propagate(layer, dloss, convnet->acts[convnet->count - 1], convnet->acts[convnet->count - 2], convnet->count - 1 > 0 ? update_params->acts + convnet->count - 2 : 0, update_params->layers + convnet->count - 1);
 	for (i = convnet->count - 2; i >= 0; i--)
 	{
 		layer = convnet->layers + i;
@@ -925,7 +940,7 @@ static void _ccv_convnet_propagate_loss(ccv_convnet_t* convnet, ccv_dense_matrix
 				_ccv_convnet_convolutional_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
-				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
+				_ccv_convnet_full_connect_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, i > 0 ? update_params->acts + i - 1 : 0, update_params->layers + i);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 				_ccv_convnet_rnorm_backward_propagate(layer, update_params->acts[i], convnet->acts[i], i > 0 ? convnet->acts[i - 1] : a, convnet->denoms[i], i > 0 ? update_params->acts + i - 1 : 0);
@@ -1174,7 +1189,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 			"(layer INTEGER PRIMARY KEY ASC, type INTEGER, "
 			"input_matrix_rows INTEGER, input_matrix_cols INTEGER, input_matrix_channels INTEGER, input_matrix_partition INTEGER, input_node_count INTEGER, "
 			"output_rows INTEGER, output_cols INTEGER, output_channels INTEGER, output_partition INTEGER, output_count INTEGER, output_strides INTEGER, output_border INTEGER, "
-			"output_size INTEGER, output_kappa REAL, output_alpha REAL, output_beta REAL);"
+			"output_size INTEGER, output_kappa REAL, output_alpha REAL, output_beta REAL, output_relu INTEGER);"
 			"CREATE TABLE IF NOT EXISTS convnet_params "
 			"(convnet INTEGER PRIMARY KEY ASC, input_height INTEGER, input_width INTEGER, mean_activity BLOB);"
 			"CREATE TABLE IF NOT EXISTS layer_data "
@@ -1185,11 +1200,11 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 			"(layer, type, "
 			"input_matrix_rows, input_matrix_cols, input_matrix_channels, input_matrix_partition, input_node_count, "
 			"output_rows, output_cols, output_channels, output_partition, output_count, output_strides, output_border, "
-			"output_size, output_kappa, output_alpha, output_beta) VALUES "
+			"output_size, output_kappa, output_alpha, output_beta, output_relu) VALUES "
 			"($layer, $type, " // 1
 			"$input_matrix_rows, $input_matrix_cols, $input_matrix_channels, $input_matrix_partition, $input_node_count, " // 6
 			"$output_rows, $output_cols, $output_channels, $output_partition, $output_count, $output_strides, $output_border, " // 13
-			"$output_size, $output_kappa, $output_alpha, $output_beta);"; // 17
+			"$output_size, $output_kappa, $output_alpha, $output_beta, $output_relu);"; // 18
 		sqlite3_stmt* layer_params_insert_stmt = 0;
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, layer_params_insert_qs, sizeof(layer_params_insert_qs), &layer_params_insert_stmt, 0));
 		const char layer_data_insert_qs[] =
@@ -1222,6 +1237,7 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 					break;
 				case CCV_CONVNET_FULL_CONNECT:
 					sqlite3_bind_int(layer_params_insert_stmt, 12, layer->net.full_connect.count);
+					sqlite3_bind_int(layer_params_insert_stmt, 19, layer->net.full_connect.relu);
 					break;
 				case CCV_CONVNET_MAX_POOL:
 				case CCV_CONVNET_AVERAGE_POOL:
@@ -1297,7 +1313,7 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 			"SELECT type, " // 1
 			"input_matrix_rows, input_matrix_cols, input_matrix_channels, input_matrix_partition, input_node_count, " // 6
 			"output_rows, output_cols, output_channels, output_partition, output_count, output_strides, output_border, " // 13
-			"output_size, output_kappa, output_alpha, output_beta FROM layer_params ORDER BY layer ASC;"; // 17
+			"output_size, output_kappa, output_alpha, output_beta, output_relu FROM layer_params ORDER BY layer ASC;"; // 18
 		if (SQLITE_OK == sqlite3_prepare_v2(db, layer_params_qs, sizeof(layer_params_qs), &layer_params_stmt, 0))
 		{
 			ccv_array_t* layer_params = ccv_array_new(sizeof(ccv_convnet_layer_param_t), 3, 0);
@@ -1324,6 +1340,7 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 						break;
 					case CCV_CONVNET_FULL_CONNECT:
 						layer_param.output.full_connect.count = sqlite3_column_int(layer_params_stmt, 10);
+						layer_param.output.full_connect.relu = sqlite3_column_int(layer_params_stmt, 17);
 						break;
 					case CCV_CONVNET_MAX_POOL:
 					case CCV_CONVNET_AVERAGE_POOL:
