@@ -44,15 +44,15 @@ Accuracy-wise:
 The test is performed on ILSVRC 2010 test dataset, as of time being, I cannot obtain the validation
 dataset for ILSVRC 2012.
 
-The training stopped to improve at around 90 epochs, at that time, the central patch obtained
-42.81% of top-1 missing rate (lower is better). In Alex's paper, they reported 37.5% top-1
+The training stopped to improve at around 60 epochs, at that time, the central patch obtained
+39.71% of top-1 missing rate (lower is better). In Alex's paper, they reported 37.5% top-1
 missing rate when averaging 10 patches, and 39% top-1 missing rate when using one patch.
 
 By applying this patch: https://gist.github.com/liuliu/9420735
 
 	git am -3 9420935.patch
 
-For 32-bit float point image-net.sqlite3, the top-1 missing rate is 39.51%, 2% shying from
+For 32-bit float point image-net.sqlite3, the top-1 missing rate is 36.97%, 0.53% better than
 Alex's result. For half precision image-net.sqlite3 (the one included in ./samples/), the top-1
 missing rate is 39.8%, 0.3% worse than the 32-bit float point one. You can download the float
 point one with ./samples/download-image-net.sh
