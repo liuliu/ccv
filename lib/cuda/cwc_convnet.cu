@@ -2543,12 +2543,14 @@ __global__ static void _cwc_kern_neuron_scan(float* a, float* b,
 		const int rows, const int cols,
 		const int out_rows, const int out_cols, const int channels, const int batch)
 {
-	assert(gridDim.x == rows);
-	assert(gridDim.y == cols);
+	assert(gridDim.x == cols);
+	assert(gridDim.y == rows);
 	assert(gridDim.z == channels);
 	assert(blockDim.x == batch);
-	b += (blockIdx.z * rows * cols + blockIdx.x * cols + blockIdx.y) * batch * 5;
-	a += (blockIdx.z * out_rows * out_cols + blockIdx.x * out_cols + blockIdx.y) * batch;
+	assert(out_rows > rows);
+	assert(out_cols > cols);
+	b += (blockIdx.z * rows * cols + blockIdx.y * cols + blockIdx.x) * batch * 5;
+	a += (blockIdx.z * out_rows * out_cols + blockIdx.y * out_cols + blockIdx.x) * batch;
 	const int thidx = threadIdx.x;
 	b[thidx] = a[thidx]; // top left
 	b += batch;
@@ -2589,7 +2591,7 @@ __global__ static void _cwc_kern_softmax(float* a, const int batch, const int co
 }
 
 template <int vary>
-__global__ static void _cwc_kern_select_winners(float* a, int* c, float* b, const int batch, const int count, const int tops)
+__global__ static void _cwc_kern_classify(float* a, int* c, float* b, const int batch, const int count, const int tops)
 {
 	int i, j;
 	assert(blockDim.x == batch);
@@ -2601,18 +2603,18 @@ __global__ static void _cwc_kern_select_winners(float* a, int* c, float* b, cons
 	#pragma unroll
 	for (i = 0; i < tops; i++)
 	{
-		float maxr = -1;
-		int id = -1;
+		float max_val = -1;
+		int max_idx = -1;
 		for (j = 0; j < count; j++)
 		{
 			float v = a[j * batch * vary + thidx];
-			if (v >= 0 && v > maxr)
-				maxr = v, id = j;
+			if (v >= 0 && v > max_val)
+				max_val = v, max_idx = j;
 		}
-		assert(id >= 0);
-		a[id * batch * vary + thidx] = -1;
-		c[thidx] = id;
-		b[thidx] = maxr;
+		assert(max_idx >= 0);
+		a[max_idx * batch * vary + thidx] = -1;
+		c[thidx] = max_idx;
+		b[thidx] = max_val;
 		c += batch;
 		b += batch;
 	}
@@ -2630,6 +2632,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 	for (i = 0; i < batch; i++)
 	{
 		assert(a[i]->rows == rows || a[i]->cols == cols);
+		assert(a[i]->rows >= rows && a[i]->cols >= cols);
 		// top / left
 		ccv_dense_matrix_t* b = 0;
 		ccv_slice(a[i], (ccv_matrix_t**)&b, CCV_32F, 0, 0, rows, cols);
@@ -2644,7 +2647,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		ccv_matrix_free(b);
 		// center
 		b = 0;
-		ccv_slice(a[i], (ccv_matrix_t**)&b, CCV_32F, (rows + 1 - a[i]->rows) / 2, (cols + 1 - a[i]->cols) / 2, rows, cols);
+		ccv_slice(a[i], (ccv_matrix_t**)&b, CCV_32F, (a[i]->rows - rows) / 2, (a[i]->cols - cols) / 2, rows, cols);
 		ccv_subtract(b, convnet->mean_activity, (ccv_matrix_t**)&b, 0);
 		for (k = 0; k < channels; k++)
 			for (j = 0; j < rows * cols; j++)
@@ -2656,7 +2659,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		ccv_matrix_free(b);
 		// bottom / right
 		b = 0;
-		ccv_slice(a[i], (ccv_matrix_t**)&b, CCV_32F, rows - a[i]->rows, cols - a[i]->cols, rows, cols);
+		ccv_slice(a[i], (ccv_matrix_t**)&b, CCV_32F, a[i]->rows - rows, a[i]->cols - cols, rows, cols);
 		ccv_subtract(b, convnet->mean_activity, (ccv_matrix_t**)&b, 0);
 		for (k = 0; k < channels; k++)
 			for (j = 0; j < rows * cols; j++)
@@ -2679,7 +2682,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		rows = out_rows, cols = out_cols;
 	}
 	// copy data to scans
-	dim3 num_blocks = dim3(GPU(convnet)->layers[scan + 1].input.matrix.rows, GPU(convnet)->layers[scan + 1].input.matrix.cols, GPU(convnet)->layers[scan + 1].input.matrix.channels);
+	dim3 num_blocks = dim3(GPU(convnet)->layers[scan + 1].input.matrix.cols, GPU(convnet)->layers[scan + 1].input.matrix.rows, GPU(convnet)->layers[scan + 1].input.matrix.channels);
 	_cwc_kern_neuron_scan
 		<<<num_blocks, batch * 6, 0, default_context->device.stream>>>
 		(GPU(convnet)->forwards[scan], GPU(convnet)->scans[scan], GPU(convnet)->layers[scan + 1].input.matrix.rows, GPU(convnet)->layers[scan + 1].input.matrix.cols, rows, cols, GPU(convnet)->layers[scan + 1].input.matrix.channels, batch * 6);
@@ -2694,7 +2697,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 		<<<1, batch * 30, 0, default_context->device.stream>>>
 		(GPU(convnet)->forwards[convnet->count - 1], batch * 30, category_count);
 	// collect classify results
-	_cwc_kern_select_winners
+	_cwc_kern_classify
 		<30>
 		<<<1, batch, 0, default_context->device.stream>>>
 		(GPU(convnet)->forwards[convnet->count - 1], default_context->device.c, default_context->device.out, batch, category_count, tops);
