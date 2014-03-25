@@ -2911,6 +2911,10 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 				cudaFreeHost(context->host.c);
 			if (context->device.c)
 				cudaFree(context->device.c);
+			if (context->host.out)
+				cudaFreeHost(context->host.out);
+			if (context->device.out)
+				cudaFree(context->device.out);
 			cudaStreamDestroy(context->device.stream);
 			cublasDestroy(context->device.cublas);
 		}
