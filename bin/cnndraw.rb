@@ -18,8 +18,10 @@ STDIN.each_line do |line|
 	print line
 	args = line.split " "
 	break if args[0] == 'elapsed'
-	draw += sprintf("-fill none -strokewidth 1 -stroke DodgerBlue -draw \"rectangle 15,%d,165,%d\" -fill DodgerBlue -draw \"rectangle 15,%d,%d,%d\" -strokewidth 0 -stroke none -fill red -draw 'text 18,%d \"%s\"' ", y, y + 16, y, (args[1].to_f * 150).to_i + 15, y + 16, y + 13, labels[args[0]])
-	y += 31
+	for i in 0..args.length / 2
+		draw += sprintf("-fill none -strokewidth 1 -stroke DodgerBlue -draw \"rectangle 15,%d,165,%d\" -fill DodgerBlue -draw \"rectangle 15,%d,%d,%d\" -strokewidth 0 -stroke none -fill red -draw 'text 18,%d \"%s\"' ", y, y + 16, y, (args[i * 2 + 1].to_f * 150).to_i + 15, y + 16, y + 13, labels[args[i * 2]])
+		y += 31
+	end
 end
 
 %x[#{sprintf("convert %s %s%s", ARGV[1], draw, ARGV[2])}]

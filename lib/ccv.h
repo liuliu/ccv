@@ -1230,6 +1230,7 @@ ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_a
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
+void ccv_convnet_input_formation(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
 ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_accel, const char* filename);
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
