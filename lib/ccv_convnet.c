@@ -1433,6 +1433,27 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 	return 0;
 }
 
+void ccv_convnet_input_formation(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
+{
+	ccv_dense_matrix_t* norm = 0;
+	if (a->rows > convnet->input.height && a->cols > convnet->input.width)
+		ccv_resample(a, &norm, 0, ccv_max(convnet->input.height, (int)(a->rows * (float)convnet->input.height / a->cols + 0.5)), ccv_max(convnet->input.width, (int)(a->cols * (float)convnet->input.width / a->rows + 0.5)), CCV_INTER_AREA);
+	else if (a->rows < convnet->input.height || a->cols < convnet->input.width)
+		ccv_resample(a, &norm, 0, ccv_max(convnet->input.height, (int)(a->rows * (float)convnet->input.height / a->cols + 0.5)), ccv_max(convnet->input.width, (int)(a->cols * (float)convnet->input.width / a->rows + 0.5)), CCV_INTER_CUBIC);
+	else
+		norm = a;
+	if (norm->cols != convnet->input.width || norm->rows != convnet->input.height)
+	{
+		int x = (norm->cols - convnet->input.width + 1) / 2;
+		int y =  (norm->rows - convnet->input.height + 1) / 2;
+		assert(x == 0 || y == 0);
+		ccv_slice(norm, (ccv_matrix_t**)b, CCV_32F, y, x, convnet->input.height, convnet->input.width);
+	} else
+		ccv_shift(norm, (ccv_matrix_t**)b, CCV_32F, 0, 0); // converting to 32f
+	if (norm != a)
+		ccv_matrix_free(norm);
+}
+
 void ccv_convnet_free(ccv_convnet_t* convnet)
 {
 	ccv_convnet_compact(convnet);

@@ -15,41 +15,104 @@ int main(int argc, char** argv)
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-	assert(image != 0);
-	ccv_convnet_t* convnet = ccv_convnet_read(0, argv[2]);
-	ccv_dense_matrix_t* norm = 0;
-	if (image->rows > convnet->input.height && image->cols > convnet->input.width)
-		ccv_resample(image, &norm, 0, ccv_max(convnet->input.height, (int)(image->rows * (float)convnet->input.height / image->cols + 0.5)), ccv_max(convnet->input.width, (int)(image->cols * (float)convnet->input.width / image->rows + 0.5)), CCV_INTER_AREA);
-	else if (image->rows < convnet->input.height || image->cols < convnet->input.width)
-		ccv_resample(image, &norm, 0, ccv_max(convnet->input.height, (int)(image->rows * (float)convnet->input.height / image->cols + 0.5)), ccv_max(convnet->input.width, (int)(image->cols * (float)convnet->input.width / image->rows + 0.5)), CCV_INTER_CUBIC);
-	else
-		norm = image;
-	if (norm != image)
+	if (image != 0)
+	{
+		ccv_convnet_t* convnet = ccv_convnet_read(0, argv[2]);
+		ccv_dense_matrix_t* input = 0;
+		ccv_convnet_input_formation(convnet, image, &input);
 		ccv_matrix_free(image);
-	ccv_dense_matrix_t* input = 0;
-	if (norm->cols != convnet->input.width || norm->rows != convnet->input.height)
-	{
-		int x = (norm->cols - convnet->input.width + 1) / 2;
-		int y =  (norm->rows - convnet->input.height + 1) / 2;
-		assert(x == 0 || y == 0);
-		ccv_slice(norm, (ccv_matrix_t**)&input, CCV_32F, y, x, convnet->input.height, convnet->input.width);
-	} else
-		ccv_shift(norm, (ccv_matrix_t**)&input, CCV_32F, 0, 0); // converting to 32f
-	ccv_matrix_free(norm);
-	unsigned int elapsed_time = get_current_time();
-	ccv_array_t* rank = 0;
-	ccv_convnet_classify(convnet, &input, 1, &rank, 5, 1);
-	elapsed_time = get_current_time() - elapsed_time;
-	int i;
-	for (i = 0; i < rank->rnum; i++)
-	{
-		ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, i);
+		unsigned int elapsed_time = get_current_time();
+		ccv_array_t* rank = 0;
+		ccv_convnet_classify(convnet, &input, 1, &rank, 5, 1);
+		elapsed_time = get_current_time() - elapsed_time;
+		int i;
+		for (i = 0; i < rank->rnum - 1; i++)
+		{
+			ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, i);
+			printf("%d %f ", classification->id, classification->confidence);
+		}
+		ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, rank->rnum - 1);
 		printf("%d %f\n", classification->id, classification->confidence);
+		printf("elapsed time %dms\n", elapsed_time);
+		ccv_array_free(rank);
+		ccv_matrix_free(input);
+		ccv_convnet_free(convnet);
+	} else {
+		FILE* r = fopen(argv[1], "rt");
+		if (argc == 4)
+			chdir(argv[3]);
+		if(r)
+		{
+			ccv_convnet_t* convnet = ccv_convnet_read(1, argv[2]);
+			int i, j, k = 0;
+			ccv_dense_matrix_t* images[32] = {
+				0
+			};
+			size_t len = 1024;
+			char* file = (char*)malloc(len);
+			ssize_t read;
+			while((read = getline(&file, &len, r)) != -1)
+			{
+				while(read > 1 && isspace(file[read - 1]))
+					read--;
+				file[read] = 0;
+				if (images[k % 32] != 0)
+					ccv_matrix_free(images[k % 32]);
+				ccv_dense_matrix_t* image = 0;
+				ccv_read(file, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+				assert(image != 0);
+				images[k % 32] = 0;
+				ccv_convnet_input_formation(convnet, image, images + (k % 32));
+				++k;
+				if (k % 32 == 0)
+				{
+					ccv_array_t* ranks[32] = {
+						0
+					};
+					ccv_convnet_classify(convnet, images, 1, ranks, 5, 32);
+					for (i = 0; i < 32; i++)
+					{
+						for (j = 0; j < ranks[i]->rnum - 1; j++)
+						{
+							ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], j);
+							printf("%d %f ", classification->id, classification->confidence);
+						}
+						ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], ranks[i]->rnum - 1);
+						printf("%d %f\n", classification->id, classification->confidence);
+						ccv_array_free(ranks[i]);
+					}
+				}
+			}
+			if (k % 32 != 0)
+			{
+				if (k < 32) // special casing this
+					for (i = k; i < 32; i++)
+						images[i] = images[0]; // padding to 32 batch size
+				ccv_array_t* ranks[32] = {
+					0
+				};
+				ccv_convnet_classify(convnet, images, 1, ranks, 5, 32);
+				for (i = 0; i < (k % 32); i++)
+				{
+					for (j = 0; j < ranks[i]->rnum - 1; j++)
+					{
+						ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], j);
+						printf("%d %f ", classification->id, classification->confidence);
+					}
+					ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], ranks[i]->rnum - 1);
+					printf("%d %f\n", classification->id, classification->confidence);
+					ccv_array_free(ranks[i]);
+				}
+				for (i = (k % 32); i < 32; i++)
+					ccv_array_free(ranks[i]);
+				for (i = 0; i < ccv_min(32, k); i++)
+					ccv_matrix_free(images[i]);
+			}
+			ccv_convnet_free(convnet);
+			free(file);
+			fclose(r);
+		}
 	}
-	printf("elapsed time %dms\n", elapsed_time);
-	ccv_array_free(rank);
-	ccv_matrix_free(input);
-	ccv_convnet_free(convnet);
 	ccv_drain_cache();
 	return 0;
 }
