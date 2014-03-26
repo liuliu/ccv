@@ -150,7 +150,7 @@ int ccv_convnet_verify(ccv_convnet_t* convnet, int output)
 static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols, partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &rows, &cols, &partition);
+	_ccv_convnet_layer_derive_output(layer, a->rows, a->cols, &rows, &cols, &partition);
 	int ch = layer->net.convolutional.channels;
 	int count = layer->net.convolutional.count;
 	int strides = layer->net.convolutional.strides;
@@ -236,7 +236,7 @@ static void _ccv_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* lay
 static void _ccv_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_dense_matrix_t** denoms)
 {
 	int rows, cols, partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &rows, &cols, &partition);
+	_ccv_convnet_layer_derive_output(layer, a->rows, a->cols, &rows, &cols, &partition);
 	int size = layer->net.rnorm.size;
 	float kappa = layer->net.rnorm.kappa;
 	float alpha = layer->net.rnorm.alpha;
@@ -295,7 +295,7 @@ static void _ccv_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, ccv
 static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols, partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &rows, &cols, &partition);
+	_ccv_convnet_layer_derive_output(layer, a->rows, a->cols, &rows, &cols, &partition);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
 	int border = layer->net.pool.border;
@@ -334,7 +334,7 @@ static void _ccv_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, 
 static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
 	int rows, cols, partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &rows, &cols, &partition);
+	_ccv_convnet_layer_derive_output(layer, a->rows, a->cols, &rows, &cols, &partition);
 	int size = layer->net.pool.size;
 	int strides = layer->net.pool.strides;
 	int border = layer->net.pool.border;
@@ -576,6 +576,7 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 				ccv_convnet_layer_t* layer = convnet->layers + j;
 				_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 				_ccv_convnet_layer_forward_propagate(layer, b[j], b + j + 1, 0);
+				assert(b[j + 1]->rows == out_rows && b[j + 1]->cols == out_cols);
 				if (j > 0)
 					ccv_matrix_free(b[j]);
 				rows = out_rows, cols = out_cols;
