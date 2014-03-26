@@ -20,8 +20,9 @@ const ccv_icf_param_t ccv_icf_default_params = {
 // provides a very crude approximation
 static inline float cbrt_5_f32(float f)
 {
-	unsigned int* p = (unsigned int*)(&f);
-	*p = *p / 3 + 709921077;
+	const uint32_t b1 = 709921077;
+	uint32_t* p = (uint32_t*)(&f);
+	*p = *p / 3 + b1;
 	return f;
 }
 
