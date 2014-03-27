@@ -1,0 +1,81 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>ccv 0.6 open sources near state-of-the-art image classifier under Creative Commons</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>ccv 0.6 open sources near state-of-the-art image classifier under Creative Commons</h1>
+<p>March 27th, 2014</p>
+<p>In previous posts, I mentioned that the even numbered release will be bugfixes. However, 0.6 is a bit different.</p>
+
+<p><img src="/photo/2014-03-27-dex.png" alt="now-go-back-and-play-forza" /></p>
+
+<p>For the past one and half year, deep learning, particularly deep convolutional neural network based image classification made waves in the vision community. For a library aiming at providing state-of-the-art implementations, it would be frustrating to not having a competent image classifier implemented after over a year the ground-breaking work published. In the meantime, there are a few open source libraries provided complete (<a href="http://caffe.berkeleyvision.org/">Caffe</a>) / incomplete (<a href="http://cilvr.nyu.edu/doku.php?id=software:overfeat:start">OverFeat</a>, <a href="http://code.google.com/p/cuda-convnet/">cuda-convnet</a>) implementations of the said image classifier. However, all of them are focusing on research related activities (see their licenses: <a href="http://caffe.berkeleyvision.org/getting_pretrained_models.html">1</a>, <a href="https://github.com/sermanet/OverFeat/blob/master/LICENSE">2</a>). Thus, for the past 5 months, I’ve been working on an image classifier in ccv with deep convolutional neural network.</p>
+
+<p>This version’s ccv distributed a image classifier that is trained with ILSVRC 2010 data set of 1000 classes, with top-1 missing rate at 36.83% and top-5 missing rate at 16.25%, thus, close to the state-of-the-art image classifier (Clarifai in ILSVRC 2013 gets top-5 missing rate at 11.19%: <a href="http://www.image-net.org/challenges/LSVRC/2013/results.php">http://www.image-net.org/challenges/LSVRC/2013/results.php</a>, the 16.25% top-5 missing rate is reproduced with ILSVRC 2010 test data set, which is known to be less challenging). <a href="/doc/doc-convnet">See more about this image classifier</a>.</p>
+
+<p>The license for these data models (the said image classifier, and pedestrian detectors, car detector, face detector) provided in ccv ./samples is changed from <a href="https://raw.github.com/liuliu/ccv/unstable/COPYING">BSD 3-clause license</a> to <a href="http://creativecommons.org/licenses/by/4.0/">Creative Commons Attribution 4.0 International License</a> in hope that this more clarified license will help the adoption of these trained data models.</p>
+
+<p>As always, the new image classifier is available through ccv’s RESTful interface at http://localhost:3350/convnet/classify. You can also play with ccv at <a href="http://docomputersdream.org/">http://docomputersdream.org/</a></p>
+
+<p>Since this version is an anomaly in terms of release cycle, next two versions of ccv will be devoted to bugfixes and performance improvement. There is also a plan to enter ILSVRC 2014 and publish results on FDDB and LFW for the sake of keeping ccv’s implementation fresh and competitive.</p>
+
+<p>Other changes / bugfixes in ccv 0.6:</p>
+
+<p>1). Moved from hand-written configure script to autoconf (which still provides link / flag information);</p>
+
+<p>2). <a href="http://ci.libccv.org/">http://ci.libccv.org/</a> is online to monitor builds for unstable branch and free of static analyzer reports: <a href="http://ci.libccv.org/analyze/">http://ci.libccv.org/analyze/</a>;</p>
+
+<p>3). Fixed a bug in ./serve/ccv that returned HTTP header claims to be 1.1 but never keeps the connection open;</p>
+
+<p>4). RESTful interface for SWT added Tesseract (OCR) support;</p>
+
+<p>5). Fixed ICF implementation problem with non-standard float point representation;</p>
+
+<p>6). Fixed multi-thread bug with fftw3 usage;</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>
