@@ -367,26 +367,6 @@ static void _ccv_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* lay
 	}
 }
 
-static void _ccv_convnet_compute_softmax(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
-{
-	int ch = CCV_GET_CHANNEL(a->type);
-	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
-	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | ch, CCV_32F | ch, 0);
-	int i;
-	float* aptr = a->data.f32;
-	float* bptr = db->data.f32;
-	double max = aptr[0];
-	for (i = 1; i < a->rows * a->cols * ch; i++)
-		if (aptr[i] > max)
-			max = aptr[i];
-	double tt = 0;
-	for (i = 0; i < a->rows * a->cols * ch; i++)
-		tt += (bptr[i] = expf(aptr[i] - max));
-	tt = 1.0 / tt;
-	for (i = 0; i < a->rows * a->cols * ch; i++)
-		bptr[i] *= tt;
-}
-
 static void _ccv_convnet_layer_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, ccv_dense_matrix_t** denoms)
 {
 	switch(layer->type)
@@ -1076,6 +1056,26 @@ static ccv_convnet_t* _ccv_convnet_update_new(ccv_convnet_t* convnet)
 		}
 	}
 	return update_params;
+}
+
+static void _ccv_convnet_compute_softmax(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+{
+	int ch = CCV_GET_CHANNEL(a->type);
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | ch, CCV_32F | ch, 0);
+	int i;
+	float* aptr = a->data.f32;
+	float* bptr = db->data.f32;
+	double max = aptr[0];
+	for (i = 1; i < a->rows * a->cols * ch; i++)
+		if (aptr[i] > max)
+			max = aptr[i];
+	double tt = 0;
+	for (i = 0; i < a->rows * a->cols * ch; i++)
+		tt += (bptr[i] = expf(aptr[i] - max));
+	tt = 1.0 / tt;
+	for (i = 0; i < a->rows * a->cols * ch; i++)
+		bptr[i] *= tt;
 }
 
 static void _ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int* labels, int batch)
