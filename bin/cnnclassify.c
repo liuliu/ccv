@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 			chdir(argv[3]);
 		if(r)
 		{
-			ccv_convnet_t* convnet = ccv_convnet_read(0, argv[2]);
+			ccv_convnet_t* convnet = ccv_convnet_read(1, argv[2]);
 			int i, j, k = 0;
 			ccv_dense_matrix_t* images[32] = {
 				0

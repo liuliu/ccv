@@ -44,18 +44,33 @@ Accuracy-wise:
 The test is performed on ILSVRC 2010 test dataset, as of time being, I cannot obtain the validation
 dataset for ILSVRC 2012.
 
-The training stopped to improve at around 60 epochs, at that time, the central patch obtained
-39.71% of top-1 missing rate (lower is better). In Alex's paper, they reported 37.5% top-1
-missing rate when averaging 10 patches, and 39% top-1 missing rate when using one patch.
+The training stopped to improve at around 60 epochs, at that time, the central patch from test set
+obtained 39.71% of top-1 missing rate (lower is better) and the training set obtained 37.80% of
+top-1 missing rate. In Alex's paper, they reported 37.5% top-1 missing rate when averaging 10 patches,
+and 39% top-1 missing rate when using the central patch in test set.
 
-By applying this patch: https://gist.github.com/liuliu/9420735
+Assuming you have ILSVRC 2010 test set files ordered in image-net-test.txt, run
 
-	git am -3 9420935.patch
+	./cnnclassify image-net-test.txt ../samples/image-net.sqlite3 > image-net-classify.txt
 
-For 32-bit float point image-net.sqlite3, the top-1 missing rate is 36.97%, 0.53% better than
-Alex's result. For half precision image-net.sqlite3 (the one included in ./samples/), the top-1
-missing rate is 39.8%, 0.3% worse than the 32-bit float point one. You can download the float
-point one with ./samples/download-image-net.sh
+For complete test set to finish, this command takes an hour on GPU, and if you don't have GPU
+enabled, it will take about a day to run on CPU.
+
+Assuming you have the ILSVRC 2010 ground truth data in LSVRC2010_test_ground_truth.txt
+
+	./cnnvldtr.rb LSVRC2010_test_ground_truth.txt image-net-classify.txt
+
+will reports the top-1 missing rate as well as top-5 missing rate.
+
+For 32-bit float point image-net.sqlite3 on GPU, the top-1 missing rate is 36.82%, 0.68% better
+than Alex's result, the top-5 missing rate is 16.26%, 0.74% better than Alex's. For half precision
+image-net.sqlite3 (the one included in ./samples/), the top-1 missing rate is 36.83% and the top-5
+missing rate is 16.25%.
+
+For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.34%, and the top-5
+missing rate is 16.62%.
+
+You can download the 32-bit float point one with ./samples/download-image-net.sh
 
 Speed-wise:
 
@@ -64,7 +79,7 @@ frequency, and Samsung MZ-7TE500BW 500GiB SSD with clang, libdispatch, libatlas 
 Scientific Library.
 
 The CPU version of forward pass (from RGB image input to the classification result) takes about
-350ms per image. This is achieved with multi-threaded convolutional kernel computation. Decaf (
+700ms per image. This is achieved with multi-threaded convolutional kernel computation. Decaf (
 the CPU counter-part of Caffe) reported their forward pass at around 0.5s per image with
 unspecified hardware over 10 patches (the same as ccv's cnnclassify implementation). I cannot
 get sensible number off OverFeat on my machine (it reports about 1.4s for forward pass, that
@@ -81,7 +96,7 @@ within 6 days on two GeForce 580, which suggests my time is within line of these
 As a preliminary implementation, I didn't spend enough time to optimize these operations in ccv if
 any at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
 functionalities in about 10,000 lines of code, Caffe implements with 14,000 lines of code, as of
-this release, ccv implements with about 3,700 lines of code. For the future, the low-hanging
+this release, ccv implements with about 4,300 lines of code. For the future, the low-hanging
 optimization opportunities include using SIMD instruction, doing FFT in densely convolved layers
 etc.
 
@@ -99,8 +114,6 @@ I downloaded the ImageNet dataset from this torrent:
 
 Assuming you've downloaded / bought all these and installed on your computer, get a hot tea, it will
 take a while to get all the puzzles and riddles in place for the training starts.
-
-Ready? Continue!
 
 The ImageNet metadata for 2010 challenge can be downloaded from
 http://www.image-net.org/challenges/LSVRC/2010/download-public
@@ -158,7 +171,8 @@ The generated image-net.sqlite3 file is about 600MiB in size because it contains
 and resume. You can either open this file with sqlite command-line tool (it is a vanilla sqlite database
 file), and do:
 
-	drop table function_state, momentum_data;
+	drop table function_state;
+	drop table momentum_data;
 	vacuum;
 
 The file size will shrink to about 200MiB. You can achieve further reduction in file size by rewrite it into
@@ -173,4 +187,62 @@ is released under Creative Commons Attribution 4.0 International License. You ca
 practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
 data released under commercial-friendly license (Caffe itself is released under FreeBSD license but
 its pre-trained data is "research only" and OverFeat is released under custom research only license).
+
+Differences between ccv's implementation, Caffe's and Alex's
+------------------------------------------------------------
+
+Although the network topology of ccv's implementation followed closely to Alex's (as well as Caffe's),
+the reported results diverged significantly enough for me to document the differences in implementation
+details.
+
+Network Topology:
+
+ccv's local response normalization layer followed the convolutional layer, and the pooling layer is after
+the local response normalization. This is briefly mentioned in Alex's paper, but in Caffe, their local
+response normalization layer followed the pooling layer.
+
+The input dimension to ccv's implemented network is 225x225, and in Caffe, it is 227x227. Alex's paper
+mentioned their input size is 224x224. For 225x225, it implies a 1 pixel padding around the input image
+such that with 11x11 filter and 4 stride size, a 55x55 output will be generated.
+
+Data Preparation:
+
+Caffe's implementation resizes image into 256x256 size without retaining aspect ratio. Alex's implementation
+resizes image into sizes such that the minimal dimension is 256 while retains the aspect ratio (at least
+as the paper implied) and cropped the image into 256x256 size. ccv's implementation resizes image into sizes
+such that the minimal dimension is 257 while retains the aspect ratio (downsamples with CCV_INTER_AREA
+interpolation and upsamples with CCV_INTER_CUBIC interpoliation if needed). ccv's implementation obtains
+the mean image from center cropped 257x257 images.
+
+Data Augmentation:
+
+Caffe's implementation randomly crops image from 256x256 to 227x227. Alex's implementation randomly crops
+image from 256x256 to 224x224 and then applied color augmentation with Gaussian random coefficient sampled
+with sigma == 0.1. ccv's implementation randomly crops image from the aspect retained sizes into 257x257,
+subtract the mean image and then randomly crops it into 225x225, color augmentation is applied with Gassian
+random coefficient sampled with sigma == 0.001. All three implementations did horizontal mirroring as a
+data augmentation technique.
+
+Averaged Classification:
+
+Caffe averages the softmax output of 10 patches from the test image by first resize image into 256x256 without
+retaining aspect ratio, and then the first 5 patches of size 227x227 cropped from top left, top right, center,
+bottom left, bottom right of the resized test image, the second 5 patches are the horizontal mirrors of the
+first 5 patches.
+
+Alex's implementation averages the softmax output of 10 patches from the test image by first resize image into
+sizes such that the minimal dimension is 256 while retains the aspect ratio and then center-crops into 256x256.
+The 10 patches of size 224x224 are sampled from the 256x256 crop the same way as Caffe did.
+
+ccv's GPU implementation averages the softmax output of 30 patches from the test image by first resize the image
+into sizes such that the minimal dimension is 257. Then it makes 3 crops from top left, center, and bottom right
+so that the cropped image is 257x257. The cropped images subtract mean image, and then each cropped from
+top left, top right, center, bottom left, bottom right into 225x225. This generates 15 patches, and each one
+of them has its horizontally-mirrored counter-part.
+
+ccv's CPU implementation for efficiency considerations averages the softmax output of 10 patches from the test
+image by first resize the image into sizes such that the minimal dimension is 257. The mean image is upsampled
+into the same size with CCV_INTER_CUBIC and then is subtracted from the resized image. The top left, top right,
+center, bottom left, bottom right patches of 225x225 is extracted and horizontally mirrored to generate the 10
+patches.
 
