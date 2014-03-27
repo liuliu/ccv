@@ -47,7 +47,7 @@ ground-breaking work presented in:</p>
 <h2 id="how-it-works">How it works?</h2>
 
 <p>Long story short, with advances in GPGPU programming, we can have very large neural networks
-(with over 10 million parameters) trained on millions of images. It turns out that once you
+(with over 50 million parameters) trained on millions of images. It turns out that once you
 have both and a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve
 good image classification results.</p>
 
@@ -98,8 +98,8 @@ than Alex’s result, the top-5 missing rate is 16.26%, 0.74% better than Alex�
 image-net.sqlite3 (the one included in ./samples/), the top-1 missing rate is 36.83% and the top-5
 missing rate is 16.25%.</p>
 
-<p>For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.31%, and the top-5
-missing rate is 16.55%.</p>
+<p>For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.32%, and the top-5
+missing rate is 16.48%.</p>
 
 <p>You can download the 32-bit float point one with ./samples/download-image-net.sh</p>
 
@@ -215,13 +215,13 @@ vacuum;
 half-precision, with ccv_convnet_write and write_param.half_precision = 1. The resulted image-net.sqlite3
 is exactly what I included in ./samples.</p>
 
-<h2 id="can-i-use-the-imagenet-pre-trained-data">Can I use the ImageNet pre-trained data?</h2>
+<h2 id="can-i-use-the-imagenet-pre-trained-data-model">Can I use the ImageNet pre-trained data model?</h2>
 
-<p>ccv is released under FreeBSD 3-clause license, and the pre-trained data ./samples/image-net.sqlite3
+<p>ccv is released under FreeBSD 3-clause license, and the pre-trained data model ./samples/image-net.sqlite3
 is released under Creative Commons Attribution 4.0 International License. You can use it, modify it
 practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
-data released under commercial-friendly license (Caffe itself is released under FreeBSD license but
-its pre-trained data is “research only” and OverFeat is released under custom research only license).</p>
+data model released under commercial-friendly license (Caffe itself is released under FreeBSD license but
+its pre-trained data model is “research only” and OverFeat is released under custom research only license).</p>
 
 <h2 id="differences-between-ccvs-implementation-caffes-and-alexs">Differences between ccv’s implementation, Caffe’s and Alex’s</h2>
 
