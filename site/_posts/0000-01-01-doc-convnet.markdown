@@ -76,8 +76,8 @@ than Alex's result, the top-5 missing rate is 16.26%, 0.74% better than Alex's. 
 image-net.sqlite3 (the one included in ./samples/), the top-1 missing rate is 36.83% and the top-5
 missing rate is 16.25%.
 
-For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.34%, and the top-5
-missing rate is 16.62%.
+For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.31%, and the top-5
+missing rate is 16.55%.
 
 You can download the 32-bit float point one with ./samples/download-image-net.sh
 
@@ -105,7 +105,7 @@ within 6 days on two GeForce 580, which suggests my time is within line of these
 As a preliminary implementation, I didn't spend enough time to optimize these operations in ccv if
 any at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
 functionalities in about 10,000 lines of code, Caffe implements with 14,000 lines of code, as of
-this release, ccv implements with about 3,700 lines of code. For the future, the low-hanging
+this release, ccv implements with about 4,300 lines of code. For the future, the low-hanging
 optimization opportunities include using SIMD instruction, doing FFT in densely convolved layers
 etc.
 

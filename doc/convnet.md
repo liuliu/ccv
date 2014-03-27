@@ -67,8 +67,8 @@ than Alex's result, the top-5 missing rate is 16.26%, 0.74% better than Alex's. 
 image-net.sqlite3 (the one included in ./samples/), the top-1 missing rate is 36.83% and the top-5
 missing rate is 16.25%.
 
-For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.34%, and the top-5
-missing rate is 16.62%.
+For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.31%, and the top-5
+missing rate is 16.55%.
 
 You can download the 32-bit float point one with ./samples/download-image-net.sh
 
