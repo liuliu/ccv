@@ -184,26 +184,10 @@ int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf)
 		free(parser);
 		return -1;
 	}
-	ccv_dense_matrix_t* norm = 0;
 	ccv_convnet_t* convnet = parser->convnet_and_words->convnet;
-	if (image->rows > convnet->input.height && image->cols > parser->convnet_and_words->convnet->input.width)
-		ccv_resample(image, &norm, 0, ccv_max(convnet->input.height, (int)(image->rows * (float)convnet->input.height / image->cols + 0.5)), ccv_max(convnet->input.width, (int)(image->cols * (float)convnet->input.width / image->rows + 0.5)), CCV_INTER_AREA);
-	else if (image->rows < convnet->input.height || image->cols < convnet->input.width)
-		ccv_resample(image, &norm, 0, ccv_max(convnet->input.height, (int)(image->rows * (float)convnet->input.height / image->cols + 0.5)), ccv_max(convnet->input.width, (int)(image->cols * (float)convnet->input.width / image->rows + 0.5)), CCV_INTER_CUBIC);
-	else
-		norm = image;
-	if (norm != image)
-		ccv_matrix_free(image);
 	ccv_dense_matrix_t* input = 0;
-	if (norm->cols != convnet->input.width || norm->rows != convnet->input.height)
-	{
-		int x = (norm->cols - convnet->input.width + 1) / 2;
-		int y =  (norm->rows - convnet->input.height + 1) / 2;
-		assert(x == 0 || y == 0);
-		ccv_slice(norm, (ccv_matrix_t**)&input, CCV_32F, y, x, convnet->input.height, convnet->input.width);
-	} else
-		ccv_shift(norm, (ccv_matrix_t**)&input, CCV_32F, 0, 0); // converting to 32f
-	ccv_matrix_free(norm);
+	ccv_convnet_input_formation(convnet, image, &input);
+	ccv_matrix_free(image);
 	ccv_array_t* rank = 0;
 	ccv_convnet_classify(convnet, &input, 1, &rank, parser->top, 1);
 	// print out
