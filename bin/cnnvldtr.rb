@@ -19,4 +19,4 @@ File.new(ARGV[1]).each_line do |line|
 	i += 1
 end
 
-print ((miss1.to_f / i.to_f * 10000).round / 100.0).to_s + "% (1), " + ((miss5.to_f / i.to_f * 10000).round / 100.0).to_s + "%(5)\n"
+print ((miss1.to_f / i.to_f * 10000).round / 100.0).to_s + "% (1), " + ((miss5.to_f / i.to_f * 10000).round / 100.0).to_s + "% (5)\n"

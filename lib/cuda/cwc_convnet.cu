@@ -582,10 +582,17 @@ static void _cwc_convnet_alloc_reserved_for_classify(ccv_convnet_t* convnet, int
 	GPU(convnet)->scans = (float**)(GPU(convnet)->layers + convnet->count) + convnet->count * 2;
 	_cwc_convnet_alloc_scans(convnet, scan, batch * 30);
 	GPU(convnet)->backwards = 0;
+	GPU(convnet)->contexts[0].host.dor = GPU(convnet)->contexts[0].device.dor = 0;
 	_cwc_convnet_alloc_input(convnet, convnet->input.height, convnet->input.width, 0, batch * 6);
 	_cwc_convnet_alloc_c(convnet, 0, batch * tops);
 	_cwc_convnet_alloc_out(convnet, 0, batch * tops);
 	_cwc_convnet_alloc_context(convnet, 0);
+	GPU(convnet)->contexts[1].host.dor = GPU(convnet)->contexts[1].device.dor = 0;
+	GPU(convnet)->contexts[1].host.input = GPU(convnet)->contexts[1].device.input = 0;
+	GPU(convnet)->contexts[1].host.c = GPU(convnet)->contexts[1].device.c = 0;
+	GPU(convnet)->contexts[1].host.out = GPU(convnet)->contexts[1].device.out = 0;
+	GPU(convnet)->contexts[1].device.stream = 0;
+	GPU(convnet)->contexts[1].device.cublas = 0;
 }
 
 // allocate reserved for both forward and backward path
@@ -2908,8 +2915,10 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 		for (i = 0; i < 2; i++)
 		{
 			cwc_convnet_context_t* context = GPU(convnet)->contexts + i;
-			cudaFreeHost(context->host.input);
-			cudaFree(context->device.input);
+			if (context->host.input)
+				cudaFreeHost(context->host.input);
+			if (context->device.input)
+				cudaFree(context->device.input);
 			if (context->host.c)
 				cudaFreeHost(context->host.c);
 			if (context->device.c)
@@ -2918,8 +2927,10 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 				cudaFreeHost(context->host.out);
 			if (context->device.out)
 				cudaFree(context->device.out);
-			cudaStreamDestroy(context->device.stream);
-			cublasDestroy(context->device.cublas);
+			if (context->device.stream)
+				cudaStreamDestroy(context->device.stream);
+			if (context->device.cublas)
+				cublasDestroy(context->device.cublas);
 		}
 		for (i = 0; i < convnet->count; i++)
 		{
