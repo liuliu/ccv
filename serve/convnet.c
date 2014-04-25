@@ -34,7 +34,7 @@ typedef struct {
 
 typedef struct {
 	ebb_buf desc;
-	convnet_and_words_t image_net;
+	convnet_and_words_t image_net[2];
 } convnet_context_t;
 
 typedef struct {
@@ -56,8 +56,10 @@ static void uri_convnet_param_parser_init(convnet_param_parser_t* parser)
 static void uri_convnet_on_model_string(void* context, char* string)
 {
 	convnet_param_parser_t* parser = (convnet_param_parser_t*)context;
-	if (strcmp(string, "image-net") == 0)
-		parser->convnet_and_words = &parser->context->image_net;
+	if (strcmp(string, "image-net-2010") == 0)
+		parser->convnet_and_words = &parser->context->image_net[0];
+	else if (strcmp(string, "image-net-2012") == 0)
+		parser->convnet_and_words = &parser->context->image_net[1];
 }
 
 static void uri_convnet_on_source_blob(void* context, ebb_buf data)
@@ -93,10 +95,14 @@ static ccv_array_t* uri_convnet_words_read(char* filename)
 void* uri_convnet_classify_init(void)
 {
 	convnet_context_t* context = (convnet_context_t*)malloc(sizeof(convnet_context_t));
-	context->image_net.convnet = ccv_convnet_read(0, "../samples/image-net.sqlite3");
-	assert(context->image_net.convnet);
-	context->image_net.words = uri_convnet_words_read("../samples/image-net.words");
-	assert(context->image_net.words);
+	context->image_net[0].convnet = ccv_convnet_read(0, "../samples/image-net-2010.sqlite3");
+	assert(context->image_net[0].convnet);
+	context->image_net[0].words = uri_convnet_words_read("../samples/image-net-2010.words");
+	assert(context->image_net[0].words);
+	context->image_net[1].convnet = ccv_convnet_read(0, "../samples/image-net-2012.sqlite3");
+	assert(context->image_net[1].convnet);
+	context->image_net[1].words = uri_convnet_words_read("../samples/image-net-2012.words");
+	assert(context->image_net[1].words);
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
@@ -109,14 +115,17 @@ void* uri_convnet_classify_init(void)
 void uri_convnet_classify_destroy(void* context)
 {
 	convnet_context_t* convnet_context = (convnet_context_t*)context;
-	ccv_convnet_free(convnet_context->image_net.convnet);
-	int i;
-	for (i = 0; i < convnet_context->image_net.words->rnum; i++)
+	int i, j;
+	for (i = 0; i < 2; i++)
 	{
-		char* word = (char*)ccv_array_get(convnet_context->image_net.words, i);
-		free(word);
+		ccv_convnet_free(convnet_context->image_net[i].convnet);
+		for (j = 0; j < convnet_context->image_net[i].words->rnum; j++)
+		{
+			char* word = (char*)ccv_array_get(convnet_context->image_net[i].words, j);
+			free(word);
+		}
+		ccv_array_free(convnet_context->image_net[i].words);
 	}
-	ccv_array_free(convnet_context->image_net.words);
 	free(convnet_context->desc.data);
 	free(convnet_context);
 }
@@ -200,7 +209,7 @@ int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf)
 	{
 		char cell[1024];
 		ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, i);
-		char* word = *(char**)ccv_array_get(parser->convnet_and_words->words, classification->id - 1);
+		char* word = *(char**)ccv_array_get(parser->convnet_and_words->words, classification->id);
 		snprintf(cell, 1024, "{\"word\":\"%s\",\"confidence\":%f}", word, classification->confidence);
 		size_t len = strnlen(cell, 1024);
 		while (buf->written + len + 1 >= buf->len)

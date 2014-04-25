@@ -14,6 +14,10 @@ ground-breaking work presented in:
 
 ImageNet Classification with Deep Convolutional Neural Networks, Alex Krizhevsky, Ilya Sutskever, and Geoffrey E. Hinton, NIPS 2012
 
+The parameters are modified based on Matthew D. Zeiler's work presented in:
+
+Visualizing and Understanding Convolutional Networkers, Matthew D. Zeiler, and Rob Fergus, Arxiv 1311.2901 (Nov 2013)
+
 How it works?
 -------------
 
@@ -22,7 +26,7 @@ Long story short, with advances in GPGPU programming, we can have very large neu
 have both and a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve
 good image classification results.
 
-	./cnnclassify ../samples/dex.png ../samples/image-net.sqlite3 | ./cnndraw.rb ../samples/image-net.words ../samples/dex.png output.png
+	./cnnclassify ../samples/dex.png ../samples/image-net-2010.sqlite3 | ./cnndraw.rb ../samples/image-net-2010.words ../samples/dex.png output.png
 
 Check output.png, the neural networks suggest a few possible relevant classes in the top
 left chart.
@@ -41,36 +45,49 @@ topology followed the exact specification detailed in the paper.
 
 Accuracy-wise:
 
-The test is performed on ILSVRC 2010 test dataset, as of time being, I cannot obtain the validation
-dataset for ILSVRC 2012.
+The test is performed on ILSVRC 2010 test dataset and ILSVRC 2012 validation dataset.
 
-The training stopped to improve at around 60 epochs, at that time, the central patch from test set
-obtained 39.71% of top-1 missing rate (lower is better) and the training set obtained 37.80% of
-top-1 missing rate. In Alex's paper, they reported 37.5% top-1 missing rate when averaging 10 patches,
-and 39% top-1 missing rate when using the central patch in test set.
+For ILSVRC2010 dataset, The training stopped to improve at around 60 epochs, at that time, the central
+patch from test set obtained 36.56% of top-1 missing rate (lower is better) and the training set
+obtained 32.2% of top-1 missing rate. In Alex's paper, they reported 37.5% top-1 missing rate when
+averaging 10 patches, and 39% top-1 missing rate when using the central patch in test set.
 
-Assuming you have ILSVRC 2010 test set files ordered in image-net-test.txt, run
+For ILSVRC2012 dataset, the training stopped to improve at around 70 epochs, at that time, the central
+patch from test set obtained 41.4% of top-1 missing rate (lower is better) and the training set
+obtained 37.8% of top-1 missing rate. In Alex's paper, they reported 40.5% top-1 missing rate when
+averaging 10 patches. In Matt's paper, they reported 38.4% top-1 missing rate when using 1 convnet as
+configured in Fig.3 and averaging 10 patches.
 
-	./cnnclassify image-net-test.txt ../samples/image-net.sqlite3 > image-net-classify.txt
+Assuming you have ILSVRC 2012 validation set files ordered in image-net-2012-val.txt, run
 
-For complete test set to finish, this command takes an hour on GPU, and if you don't have GPU
+	./cnnclassify image-net-2012-val.txt ../samples/image-net-2012.sqlite3 > image-net-2012-classify.txt
+
+For complete validation set to finish, this command takes half an hour on GPU, and if you don't have GPU
 enabled, it will take about a day to run on CPU.
 
-Assuming you have the ILSVRC 2010 ground truth data in LSVRC2010_test_ground_truth.txt
+Assuming you have the ILSVRC 2012 validation ground truth data in LSVRC2012_val_ground_truth.txt
 
-	./cnnvldtr.rb LSVRC2010_test_ground_truth.txt image-net-classify.txt
+	./cnnvldtr.rb LSVRC2012_test_ground_truth.txt image-net-2012-classify.txt
 
 will reports the top-1 missing rate as well as top-5 missing rate.
 
-For 32-bit float point image-net.sqlite3 on GPU, the top-1 missing rate is 36.82%, 0.68% better
-than Alex's result, the top-5 missing rate is 16.26%, 0.74% better than Alex's. For half precision
-image-net.sqlite3 (the one included in ./samples/), the top-1 missing rate is 36.83% and the top-5
-missing rate is 16.25%.
+For 32-bit float point image-net-2012.sqlite3 on GPU, the top-1 missing rate is 38.17%, 2.33% better
+than Alex's result with 1 convnet, and 0.23% better than Matt's result with 1 convnet and configured
+with Fig.3. The top-5 missing rate is 16.22%, 1.98% better than Alex's and 0.28% better than Matt's.
+For half precision image-net-2012.sqlite3 (the one included in ./samples/), the top-1 missing rate is
+38.18% and the top-5 missing rate is 16.17%.
 
-For 32-bit float point image-net.sqlite3 on CPU, the top-1 missing rate is 37.32%, and the top-5
-missing rate is 16.48%.
+See http://www.image-net.org/challenges/LSVRC/2013/results.php#cls for the current state-of-the-art,
+ccv's implementation is still about 5% behind Clarifai (Matt's commercial implementation, later claimed
+to be 10.7%: http://www.clarifai.com/) and 2% behind OverFeat on top-5 missing rate.
 
-You can download the 32-bit float point one with ./samples/download-image-net.sh
+For 32-bit float point image-net-2012.sqlite3 on CPU, the top-1 missing rate is XX.XX%, and the top-5
+missing rate is XX.XX%.
+
+For 32-bit float point image-net-2010.sqlite3 on GPU, the top-1 missing rate is 33.91%, and the top-5
+missing rate is 14.08%.
+
+You can download the 32-bit float point versions with ./samples/download-image-net.sh
 
 Speed-wise:
 
@@ -87,11 +104,17 @@ makes little sense). Their reported number are 1s per image on unspecified confi
 unspecified hardware (I suspect that their unspecified configuration does much more than the
 averaging 10 patches ccv or Decaf does).
 
-The GPU version does forward pass + backward error propagate for batch size of 256 in about 1.6s.
-Thus, training ImageNet convolutional network takes about 9 days with 100 epochs. Caffe reported
-their forward pass + backward error propagate for batch size of 256 in about 1.8s on Tesla K20 (
-known to be about 30% slower cross the board than TITAN). In the paper, Alex reported 90 epochs
-within 6 days on two GeForce 580, which suggests my time is within line of these implementations.
+For AlexNet, the GPU version does forward pass + backward error propagate for batch size of 256
+in about 1.6s. Thus, training ImageNet convolutional network takes about 9 days with 100 epochs.
+Caffe reported their forward pass + backward error propagate for batch size of 256 in about 1.8s
+on Tesla K20 (known to be about 30% slower cross the board than TITAN). In the paper, Alex
+reported 90 epochs within 6 days on two GeForce 580. In "Multi-GPU Training of ConvNets" (Omry Yadan,
+Keith Adams, Yaniv Taigman, and Marc'Aurelio Ranzato, arXiv:1312.5853), Omry mentioned that they did
+100 epochs of AlexNet in 10.5 days on 1 GPU), which suggests my time is within line of these
+implementations.
+
+For MattNet, the GPU version does forward pass + backward error propagate for batch size of 128
+in about 1.0s.
 
 As a preliminary implementation, I didn't spend enough time to optimize these operations in ccv if
 any at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
@@ -182,18 +205,18 @@ is exactly what I included in ./samples.
 Can I use the ImageNet pre-trained data model?
 ----------------------------------------------
 
-ccv is released under FreeBSD 3-clause license, and the pre-trained data model ./samples/image-net.sqlite3
-is released under Creative Commons Attribution 4.0 International License. You can use it, modify it
-practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
-data model released under commercial-friendly license (Caffe itself is released under FreeBSD license but
-its pre-trained data model is "research only" and OverFeat is released under custom research only license).
+ccv is released under FreeBSD 3-clause license, and the pre-trained data models ./samples/image-net-2010.sqlite3
+and ./samples/image-net-2012.sqlite3 are released under Creative Commons Attribution 4.0 International License.
+You can use it, modify it practically anywhere and anyhow with proper attribution. As far as I can tell, this is
+the first pre-trained data model released under commercial-friendly license (Caffe itself is released under
+FreeBSD license but its pre-trained data model is "research only" and OverFeat is released under custom research
+only license).
 
-Differences between ccv's implementation, Caffe's and Alex's
-------------------------------------------------------------
+Differences between ccv's implementation, Caffe's, Alex's and Matt's
+--------------------------------------------------------------------
 
-Although the network topology of ccv's implementation followed closely to Alex's (as well as Caffe's),
-the reported results diverged significantly enough for me to document the differences in implementation
-details.
+Although the network topology of ccv's implementation followed closely to Matt's, the reported results
+diverged significantly enough for me to document the differences in implementation details.
 
 Network Topology:
 
@@ -202,8 +225,9 @@ the local response normalization. This is briefly mentioned in Alex's paper, but
 response normalization layer followed the pooling layer.
 
 The input dimension to ccv's implemented network is 225x225, and in Caffe, it is 227x227. Alex's paper
-mentioned their input size is 224x224. For 225x225, it implies a 1 pixel padding around the input image
-such that with 11x11 filter and 4 stride size, a 55x55 output will be generated.
+as well as Matt's mentioned their input size is 224x224. For 225x225, it implies a 1 pixel padding around
+the input image such that with 11x11 filter and 2 stride size, a 111x111 output will be generated. However,
+the output of the first convolutional layer in Matt's paper is 110x110.
 
 Data Preparation:
 
