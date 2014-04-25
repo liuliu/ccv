@@ -15,7 +15,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	for (i = 0; i < convnet->rows * convnet->cols * convnet->channels; i++)
 		convnet->mean_activity->data.f32[i] = 128;
-	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, ccv_size(225, 225), convnet->rows, convnet->cols, convnet->channels, 0, batch, 0, batch, context->host.input, context->host.c);
+	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, ccv_size(225, 225), convnet->rows, convnet->cols, convnet->channels, 1000, 0, batch, 0, batch, context->host.input, context->host.c);
 	cudaMemcpy(context->device.input, context->host.input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * batch, cudaMemcpyHostToDevice);
 
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);

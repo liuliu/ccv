@@ -1,4 +1,5 @@
 #include "ccv.h"
+#include "ccv_internal.h"
 #include <ctype.h>
 #include <getopt.h>
 
@@ -41,8 +42,8 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
-		.mini_batch = 256,
-		.iterations = 5000,
+		.mini_batch = 128,
+		.iterations = 20000,
 		.symmetric = 1,
 		.color_gain = 0.001,
 	};
@@ -95,7 +96,8 @@ int main(int argc, char** argv)
 		ccv_file_info_t file_info = {
 			.filename = filename,
 		};
-		ccv_categorized_t categorized = ccv_categorized(c, 0, &file_info);
+		// imageNet's category class starts from 1, thus, minus 1 to get 0-index
+		ccv_categorized_t categorized = ccv_categorized(c - 1, 0, &file_info);
 		ccv_array_push(categorizeds, &categorized);
 	}
 	fclose(r0);
@@ -112,7 +114,8 @@ int main(int argc, char** argv)
 		ccv_file_info_t file_info = {
 			.filename = filename,
 		};
-		ccv_categorized_t categorized = ccv_categorized(c, 0, &file_info);
+		// imageNet's category class starts from 1, thus, minus 1 to get 0-index
+		ccv_categorized_t categorized = ccv_categorized(c - 1, 0, &file_info);
 		ccv_array_push(tests, &categorized);
 	}
 	fclose(r1);
@@ -134,10 +137,10 @@ int main(int argc, char** argv)
 			.output = {
 				.convolutional = {
 					.count = 96,
-					.strides = 4,
+					.strides = 2,
 					.border = 1,
-					.rows = 11,
-					.cols = 11,
+					.rows = 7,
+					.cols = 7,
 					.channels = 3,
 					.partition = 2,
 				},
@@ -147,8 +150,8 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
 			.input = {
 				.matrix = {
-					.rows = 55,
-					.cols = 55,
+					.rows = 111,
+					.cols = 111,
 					.channels = 96,
 					.partition = 2,
 				},
@@ -166,8 +169,8 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
-					.rows = 55,
-					.cols = 55,
+					.rows = 111,
+					.cols = 111,
 					.channels = 96,
 					.partition = 2,
 				},
@@ -187,8 +190,8 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 27,
-					.cols = 27,
+					.rows = 55,
+					.cols = 55,
 					.channels = 96,
 					.partition = 2,
 				},
@@ -196,8 +199,8 @@ int main(int argc, char** argv)
 			.output = {
 				.convolutional = {
 					.count = 256,
-					.strides = 1,
-					.border = 2,
+					.strides = 2,
+					.border = 1,
 					.rows = 5,
 					.cols = 5,
 					.channels = 96,

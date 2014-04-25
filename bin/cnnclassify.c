@@ -29,10 +29,10 @@ int main(int argc, char** argv)
 		for (i = 0; i < rank->rnum - 1; i++)
 		{
 			ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, i);
-			printf("%d %f ", classification->id, classification->confidence);
+			printf("%d %f ", classification->id + 1, classification->confidence);
 		}
 		ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(rank, rank->rnum - 1);
-		printf("%d %f\n", classification->id, classification->confidence);
+		printf("%d %f\n", classification->id + 1, classification->confidence);
 		printf("elapsed time %dms\n", elapsed_time);
 		ccv_array_free(rank);
 		ccv_matrix_free(input);
@@ -76,10 +76,10 @@ int main(int argc, char** argv)
 						for (j = 0; j < ranks[i]->rnum - 1; j++)
 						{
 							ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], j);
-							printf("%d %f ", classification->id, classification->confidence);
+							printf("%d %f ", classification->id + 1, classification->confidence);
 						}
 						ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], ranks[i]->rnum - 1);
-						printf("%d %f\n", classification->id, classification->confidence);
+						printf("%d %f\n", classification->id + 1, classification->confidence);
 						ccv_array_free(ranks[i]);
 					}
 				}
@@ -98,10 +98,10 @@ int main(int argc, char** argv)
 					for (j = 0; j < ranks[i]->rnum - 1; j++)
 					{
 						ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], j);
-						printf("%d %f ", classification->id, classification->confidence);
+						printf("%d %f ", classification->id + 1, classification->confidence);
 					}
 					ccv_classification_t* classification = (ccv_classification_t*)ccv_array_get(ranks[i], ranks[i]->rnum - 1);
-					printf("%d %f\n", classification->id, classification->confidence);
+					printf("%d %f\n", classification->id + 1, classification->confidence);
 					ccv_array_free(ranks[i]);
 				}
 				for (i = (k % 32); i < 32; i++)
