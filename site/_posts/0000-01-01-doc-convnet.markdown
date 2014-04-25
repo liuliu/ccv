@@ -214,11 +214,12 @@ is exactly what I included in ./samples.
 Can I use the ImageNet pre-trained data model?
 ----------------------------------------------
 
-ccv is released under FreeBSD 3-clause license, and the pre-trained data model ./samples/image-net.sqlite3
-is released under Creative Commons Attribution 4.0 International License. You can use it, modify it
-practically anywhere and anyhow with proper attribution. As far as I can tell, this is the first pre-trained
-data model released under commercial-friendly license (Caffe itself is released under FreeBSD license but
-its pre-trained data model is "research only" and OverFeat is released under custom research only license).
+ccv is released under FreeBSD 3-clause license, and the pre-trained data models ./samples/image-net-2010.sqlite3
+and ./samples/image-net-2012.sqlite3 are released under Creative Commons Attribution 4.0 International License.
+You can use it, modify it practically anywhere and anyhow with proper attribution. As far as I can tell, this is
+the first pre-trained data model released under commercial-friendly license (Caffe itself is released under
+FreeBSD license but its pre-trained data model is "research only" and OverFeat is released under custom research
+only license).
 
 Differences between ccv's implementation, Caffe's, Alex's and Matt's
 --------------------------------------------------------------------
@@ -234,7 +235,7 @@ response normalization layer followed the pooling layer.
 
 The input dimension to ccv's implemented network is 225x225, and in Caffe, it is 227x227. Alex's paper
 as well as Matt's mentioned their input size is 224x224. For 225x225, it implies a 1 pixel padding around
-the input image such that with 11x11 filter and 2 stride size, a 111x111 output will be generated. However,
+the input image such that with 7x7 filter and 2 stride size, a 111x111 output will be generated. However,
 the output of the first convolutional layer in Matt's paper is 110x110.
 
 Data Preparation:
