@@ -25,7 +25,7 @@ ImageNet Classification with Deep Convolutional Neural Networks, Alex Krizhevsky
 
 The parameters are modified based on Matthew D. Zeiler's work presented in:
 
-Visualizing and Understanding Convolutional Networkers, Matthew D. Zeiler, and Rob Fergus, Arxiv 1311.2901 (Nov 2013)
+Visualizing and Understanding Convolutional Networks, Matthew D. Zeiler, and Rob Fergus, Arxiv 1311.2901 (Nov 2013)
 
 How it works?
 -------------
@@ -62,7 +62,7 @@ obtained 32.2% of top-1 missing rate. In Alex's paper, they reported 37.5% top-1
 averaging 10 patches, and 39% top-1 missing rate when using the central patch in test set.
 
 For ILSVRC2012 dataset, the training stopped to improve at around 70 epochs, at that time, the central
-patch from test set obtained 41.4% of top-1 missing rate (lower is better) and the training set
+patch from validation set obtained 41.4% of top-1 missing rate (lower is better) and the training set
 obtained 37.8% of top-1 missing rate. In Alex's paper, they reported 40.5% top-1 missing rate when
 averaging 10 patches. In Matt's paper, they reported 38.4% top-1 missing rate when using 1 convnet as
 configured in Fig.3 and averaging 10 patches.
@@ -74,12 +74,9 @@ Assuming you have ILSVRC 2012 validation set files ordered in image-net-2012-val
 For complete validation set to finish, this command takes half an hour on GPU, and if you don't have GPU
 enabled, it will take about a day to run on CPU.
 
-For complete validation set to finish, this command takes half an hour on GPU, and if you don't have GPU
-enabled, it will take about a day to run on CPU.
-
 Assuming you have the ILSVRC 2012 validation ground truth data in LSVRC2012_val_ground_truth.txt
 
-	./cnnvldtr.rb LSVRC2012_test_ground_truth.txt image-net-2012-classify.txt
+	./cnnvldtr.rb LSVRC2012_val_ground_truth.txt image-net-2012-classify.txt
 
 will reports the top-1 missing rate as well as top-5 missing rate.
 
