@@ -63,7 +63,7 @@ Assuming you have ILSVRC 2012 validation set files ordered in image-net-2012-val
 	./cnnclassify image-net-2012-val.txt ../samples/image-net-2012.sqlite3 > image-net-2012-classify.txt
 
 For complete validation set to finish, this command takes half an hour on GPU, and if you don't have GPU
-enabled, it will take about a day to run on CPU.
+enabled, it will take about half a day to run on CPU.
 
 Assuming you have the ILSVRC 2012 validation ground truth data in LSVRC2012_val_ground_truth.txt
 
@@ -81,8 +81,8 @@ See http://www.image-net.org/challenges/LSVRC/2013/results.php#cls for the curre
 ccv's implementation is still about 5% behind Clarifai (Matt's commercial implementation, later claimed
 to be 10.7%: http://www.clarifai.com/) and 2% behind OverFeat on top-5 missing rate.
 
-For 32-bit float point image-net-2012.sqlite3 on CPU, the top-1 missing rate is XX.XX%, and the top-5
-missing rate is XX.XX%.
+For 32-bit float point image-net-2012.sqlite3 on CPU, the top-1 missing rate is 38.51%, and the top-5
+missing rate is 16.57%.
 
 For 32-bit float point image-net-2010.sqlite3 on GPU, the top-1 missing rate is 33.91%, and the top-5
 missing rate is 14.08%.
