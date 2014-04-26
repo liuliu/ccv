@@ -147,7 +147,7 @@ double ccv_sum(ccv_matrix_t* mat, int flag)
 			for (i = 0; i < dmt->rows; i++) \
 			{ \
 				for (j = 0; j < dmt->cols * ch; j++) \
-					sum += fabs(_for_get(m_ptr, j, 0)); \
+					sum += fabs((double)(_for_get(m_ptr, j, 0))); \
 				m_ptr += dmt->step; \
 			} \
 			break; \
