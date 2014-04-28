@@ -10,6 +10,7 @@ extern "C" {
 #include <cuda.h>
 #include <cublas_v2.h>
 #include "../3rdparty/sqlite3/sqlite3.h"
+#include "../inl/ccv_convnet_inl.h"
 
 // this structure holds intermediate on-device memory representation of convnet
 
@@ -70,41 +71,6 @@ typedef struct {
 #define VARY(x) ((cwc_convnet_layer_vary_t*)((x)->reserved))
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
 #define BATCH_PER_BLOCK (8)
-
-inline static void _cwc_convnet_layer_derive_output(ccv_convnet_layer_t* layer, int input_rows, int input_cols, int* rows, int* cols, int* partition)
-{
-	assert(rows != 0 && cols != 0 && partition != 0);
-	switch(layer->type)
-	{
-		case CCV_CONVNET_CONVOLUTIONAL:
-			assert(layer->net.convolutional.rows % 2); // as of now, don't support even number of kernel size
-			assert(layer->net.convolutional.cols % 2);
-			assert((input_rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows) % layer->net.convolutional.strides == 0);
-			assert((input_cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols) % layer->net.convolutional.strides == 0);
-			*rows = (input_rows + layer->net.convolutional.border * 2 - layer->net.convolutional.rows + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
-			*cols = (input_cols + layer->net.convolutional.border * 2 - layer->net.convolutional.cols + layer->net.convolutional.strides - 1) / layer->net.convolutional.strides + 1;
-			*partition = layer->input.matrix.partition;
-			break;
-		case CCV_CONVNET_FULL_CONNECT:
-			*rows = layer->net.full_connect.count;
-			*cols = 1;
-			*partition = 1;
-			break;
-		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-			*rows = input_rows;
-			*cols = input_cols;
-			*partition = layer->input.matrix.partition;
-			break;
-		case CCV_CONVNET_MAX_POOL:
-		case CCV_CONVNET_AVERAGE_POOL:
-			assert((input_rows + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			assert((input_cols + layer->net.pool.border * 2 - layer->net.pool.size) % layer->net.pool.strides == 0);
-			*rows = (input_rows + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
-			*cols = (input_cols + layer->net.pool.border * 2 - layer->net.pool.size + layer->net.pool.strides - 1) / layer->net.pool.strides + 1;
-			*partition = layer->input.matrix.partition;
-			break;
-	}
-}
 
 static int _cwc_convnet_layer_use_multi_way(ccv_convnet_layer_t* layer)
 {
@@ -259,7 +225,7 @@ static void _cwc_convnet_alloc_forwards(ccv_convnet_t* convnet, int start, int l
 	int out_rows, out_cols, out_partition;
 	for (i = start; i < start + length; i++)
 	{
-		_cwc_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
@@ -303,7 +269,7 @@ static void _cwc_convnet_alloc_denoms(ccv_convnet_t* convnet, int start, int len
 	int out_rows, out_cols, out_partition;
 	for (i = start; i < start + length; i++)
 	{
-		_cwc_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
@@ -372,7 +338,7 @@ static void _cwc_convnet_alloc_dor(ccv_convnet_t* convnet, int batch, ccv_convne
 	int out_rows, out_cols, out_partition;
 	for (i = 0; i < convnet->count; i++)
 	{
-		_cwc_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
@@ -475,7 +441,7 @@ static void _cwc_convnet_alloc_scratch(ccv_convnet_t* convnet, int batch)
 		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
 		{
 			int use_multi_way = _cwc_convnet_layer_use_multi_way(layers + i);
-			_cwc_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			_ccv_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			scratch_space = ccv_max(scratch_space, layers[i].wnum);
 			scratch_space = ccv_max(scratch_space,
 					out_rows * out_cols * layers[i].net.convolutional.count * batch + // output layer reorder
@@ -497,7 +463,7 @@ static void _cwc_convnet_make_unit(ccv_convnet_t* convnet, int batch)
 	for (i = 0; i < convnet->count; i++)
 		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
 		{
-			_cwc_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			_ccv_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			if (_cwc_convnet_layer_use_multi_way(layers + i))
 				unit_size = ccv_max(unit_size, out_rows * (batch / BATCH_PER_BLOCK));
 		}
@@ -736,7 +702,7 @@ static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t
 		int x, int y, int z) // these are the dynamic configurations
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 	// first do configuration validation
 	if (!(batch % x == 0 && z % y == 0 && layer->net.convolutional.count % (z * out_partition) == 0 &&
 				batch / x * z / y <= 1024 && /* thread number constraint */
@@ -918,7 +884,7 @@ __global__ static void _cwc_kern_max_pool_forward_propagate(const int strides, c
 static void _cwc_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 	dim3 num_blocks(out_cols, out_rows, layer->input.matrix.channels);
 	dim3 threads_per_block(batch);
 	assert(threads_per_block.x <= 1024);
@@ -984,7 +950,7 @@ __global__ static void _cwc_kern_average_pool_forward_propagate(const int stride
 static void _cwc_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 	dim3 num_blocks(out_rows, out_cols, layer->input.matrix.channels);
 	dim3 threads_per_block(batch);
 	int shared_memory_size = sizeof(float) * batch;
@@ -1006,7 +972,7 @@ __global__ static void _cwc_kern_relu_forward_propagate(float* a)
 static void _cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	int rows, out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	out_cols = batch;
 	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
 	float alpha = 1;
@@ -1040,7 +1006,7 @@ static void _cwc_convnet_layer_forward_propagate(ccv_convnet_layer_t* layer, int
 			if (dor && context->device.dor[k])
 			{
 				int out_rows, out_cols, out_partition;
-				_cwc_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+				_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 				_cwc_kern_mute_neuron
 				<<<out_rows * out_cols * layer->net.convolutional.count, batch, 0, context->device.stream>>>
 				(b, context->device.dor[k]);
@@ -1394,7 +1360,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_multi_way_v
 				sizeof(float) * BATCH_PER_BLOCK * (layer->input.matrix.channels + layer->net.convolutional.count) <= 48 * 1024 /* shared memory size constraint */))
 		return -1;
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	assert(out_partition == 1); // this cannot handle partition
 	float* chm = scratch;
 	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
@@ -1443,7 +1409,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 		int x, int y, int z)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	if (!(layer->net.convolutional.count % (y * out_partition) == 0 && z % x == 0 && layer->net.convolutional.channels % (z * out_partition) == 0 &&
 		  layer->net.convolutional.count / (y * out_partition) * z / x <= 1024 && /* thread per block constraint */
 		  layer->net.convolutional.count / (y * out_partition) * z / x >= z && layer->net.convolutional.count / (y * out_partition) * z / x >= layer->net.convolutional.count / out_partition && /* shared loading constraint */
@@ -1493,7 +1459,7 @@ static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_
 		int x, int y, int z)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	if (!(batch % x == 0 && z % y == 0 &&
 				layer->input.matrix.channels % (z * out_partition) == 0 &&
 				batch / x * z / y <= 1024 && /* thread per block constraint */
@@ -1537,7 +1503,7 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	assert(layer->net.convolutional.count % 4 == 0);
 	assert(batch % BATCH_PER_BLOCK == 0);
 	int out_rows, out_cols, out_partition, shared_memory_size;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	// it turns out that first apply relu would save us a lot of computation because no need to low both out and out_grad any more
 	_cwc_kern_relu_backward_propagate
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
@@ -1724,7 +1690,7 @@ __global__ static void _cwc_kern_max_pool_backward_propagate(const int strides, 
 static void _cwc_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, const cudaStream_t& stream)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	dim3 num_blocks(layer->input.matrix.cols, layer->input.matrix.rows, layer->input.matrix.channels);
 	dim3 threads_per_block(batch);
 	int shared_memory_size = sizeof(float) * batch * 3;
@@ -1787,7 +1753,7 @@ __global__ static void _cwc_kern_average_pool_backward_propagate(const int strid
 static void _cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream)
 {
 	int out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	dim3 num_blocks(layer->input.matrix.cols, layer->input.matrix.rows, layer->input.matrix.channels);
 	dim3 threads_per_block(batch);
 	assert(threads_per_block.x <= 1024);
@@ -1803,7 +1769,7 @@ static void _cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* la
 static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	int rows, out_rows, out_cols, out_partition;
-	_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	out_cols = batch;
 	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
 	// apply relu for full connect layer
@@ -1918,7 +1884,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+				_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 				num_blocks_for_coeff = (layer->wnum + 127) / 128;
 				num_blocks_for_bias = (layer->net.convolutional.count + 127) / 128;
 				if (momentum_read)
@@ -2242,7 +2208,7 @@ static void _cwc_convnet_dor_formation(ccv_convnet_t* convnet, int batch, gsl_rn
 			assert(layer_params[i].dor > 0);
 			ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
 			int out_rows, out_cols, out_partition;
-			_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			assert(layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT);
 			int count = layer->type == CCV_CONVNET_FULL_CONNECT ? layer->net.full_connect.count : out_rows * out_cols * layer->net.convolutional.count;
 			for (j = 0; j < batch * count; j++)
@@ -2266,7 +2232,7 @@ static void _cwc_convnet_backwards_propagate_error(ccv_convnet_t* convnet, float
 				if (context->device.dor[i])
 				{
 					int out_rows, out_cols, out_partition;
-					_cwc_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+					_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 					_cwc_kern_mute_neuron
 					<<<out_rows * out_cols * layer->net.convolutional.count, batch, 0, context->device.stream>>>
 					(i == convnet->count - 1 ? a : GPU(convnet)->backwards[i + 1], context->device.dor[i]);
@@ -2686,7 +2652,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 	for (i = 0; i < scan + 1; i++)
 	{
 		ccv_convnet_layer_t* layer = GPU(convnet)->layers + i;
-		_cwc_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+		_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 		_cwc_convnet_layer_forward_propagate(layer, i, rows, cols, batch * 6, 0, i == 0 ? default_context->device.input : GPU(convnet)->forwards[i - 1], GPU(convnet)->forwards[i], GPU(convnet)->denoms[i], GPU(convnet)->unit, default_context);
 		rows = out_rows, cols = out_cols;
 	}
