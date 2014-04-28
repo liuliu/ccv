@@ -3296,10 +3296,10 @@ fi
 done
 
 
-ac_fn_c_check_header_mongrel "$LINENO" "xmmintrin.h" "ac_cv_header_xmmintrin_h" "$ac_includes_default"
-if test "x$ac_cv_header_xmmintrin_h" = xyes; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_SSE2 "
- MKCFLAGS="$MKCFLAGS-msse2 "
+ac_fn_c_check_header_mongrel "$LINENO" "x86intrin.h" "ac_cv_header_x86intrin_h" "$ac_includes_default"
+if test "x$ac_cv_header_x86intrin_h" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_SSE3 "
+ MKCFLAGS="$MKCFLAGS-msse3 "
 
 fi
 

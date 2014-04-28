@@ -152,14 +152,35 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 				float* w = layer_w + comx * ch_per_partition + comy;
 				float* apz = ap + ccv_max(j * strides - border, 0) * ch;
 				// when we have border, we simply do zero padding
+#if HAVE_SSE3
+				__m128 v4 = _mm_setzero_ps();
+#endif
 				for (y = 0; y < maxy; y++)
 				{
 					for (x = 0; x < maxx; x++)
-						for (c = 0; c < ch_per_partition; c++)
+					{
+						c = 0;
+#if HAVE_SSE3
+						for (; c < ch_per_partition - 4; c += 4)
+						{
+							__m128 w4 = _mm_loadu_ps(w + x * ch_per_partition + c);
+							__m128 apz4 = _mm_loadu_ps(apz + x * ch + c);
+							v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
+						}
+#endif
+						for (; c < ch_per_partition; c++)
 							v += w[x * ch_per_partition + c] * apz[x * ch + c];
+					}
 					w += kernel_cols * ch_per_partition;
 					apz += a->cols * ch;
 				}
+#if HAVE_SSE3
+				v4 = _mm_hadd_ps(v4, v4);
+				v4 = _mm_hadd_ps(v4, v4);
+				float pv;
+				_mm_store_ss(&pv, v4);
+				v += pv;
+#endif
 				bp[j * count] = ccv_max(0, v); // ReLU
 			}
 			bp += db->cols * count;

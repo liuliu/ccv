@@ -12,8 +12,8 @@ AC_CHECK_PROG(CC, clang, clang)
 AC_CHECK_PROG(NVCC, nvcc, nvcc)
 
 # check for sse2 support, libpng, libjpeg, fftw3, liblinear, cblas, Accelerate framework, avformat, avcodec, swscale
-AC_CHECK_HEADER(xmmintrin.h,
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SSE2 "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-msse2 "])])
+AC_CHECK_HEADER(x86intrin.h,
+				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SSE3 "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-msse3 "])])
 AC_CHECK_HEADER(png.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
 AC_CHECK_HEADER(jpeglib.h,
