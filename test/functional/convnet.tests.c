@@ -1,6 +1,7 @@
 #include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
+#include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 {
@@ -1212,6 +1213,14 @@ TEST_CASE("local response normalization backward propagate with partitioned by 2
 static float fs[4] = { 1, -8, 8, -1 };
 static float fsh[4] = { -2, -1, 1, 2 };
 
+static float dsfmt_genrand_gaussian(dsfmt_t* dsfmt, float sigma)
+{
+	double rand1 = dsfmt_genrand_open_close(dsfmt);
+	rand1 = -2 * log(rand1);
+	double rand2 = dsfmt_genrand_open_close(dsfmt) * CCV_PI * 2;
+	return (float)(sqrt(sigma * rand1) * cos(rand2));
+}
+
 TEST_CASE("numerical gradient versus analytical gradient for full connect network")
 {
 	ccv_convnet_layer_param_t params = {
@@ -1237,10 +1246,14 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		},
 	};
 	ccv_convnet_t *convnet = ccv_convnet_new(0, ccv_size(3, 3), &params, 1);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i, j, k;
+	for (i = 0; i < convnet->layers->wnum; i++)
+		convnet->layers->w[i] = dsfmt_genrand_gaussian(&dsfmt, 0.01);
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(3, 3, CCV_32F | 8, 0, 0);
-	int i, j, k;
 	for (i = 0; i < 3 * 3 * 8; i++)
 		x->data.f32[i] = i;
 	ccv_dense_matrix_t* y = 0;
@@ -1327,7 +1340,11 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), &params, 1);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
 	int i, k;
+	for (i = 0; i < convnet->layers->wnum; i++)
+		convnet->layers->w[i] = dsfmt_genrand_gaussian(&dsfmt, 0.0001);
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C3, 0, 0);
@@ -1442,7 +1459,13 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(5, 5), params, 2);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 2);
 	int i, k;
+	for (i = 0; i < convnet->layers[0].wnum; i++)
+		convnet->layers[0].w[i] = dsfmt_genrand_gaussian(&dsfmt, 0.001);
+	for (i = 0; i < convnet->layers[1].wnum; i++)
+		convnet->layers[1].w[i] = dsfmt_genrand_gaussian(&dsfmt, 0.01);
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(5, 5, CCV_32F | CCV_C2, 0, 0);
@@ -1550,7 +1573,11 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		},
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(31, 31), params, 2);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 3);
 	int i, k;
+	for (i = 0; i < convnet->layers->wnum; i++)
+		convnet->layers->w[i] = dsfmt_genrand_gaussian(&dsfmt, 0.001);
 	ccv_convnet_t* update_params = _ccv_convnet_update_new(convnet);
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_C2, 0, 0);
