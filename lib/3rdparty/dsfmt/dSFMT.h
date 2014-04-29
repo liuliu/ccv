@@ -138,7 +138,7 @@ union dW128_T {
     double d[2];
 };
 
-#elif defined(HAVE_SSE3)
+#elif defined(HAVE_SSE2)
 #  include <emmintrin.h>
 
 /** 128-bit data structure */

@@ -41,7 +41,7 @@ extern "C" {
 /**
  * parameters used by sse2.
  */
-#ifdef HAVE_SSE3
+#ifdef HAVE_SSE2
 static const w128_t sse2_param_mask = {{SFMT_MSK1, SFMT_MSK2,
 					SFMT_MSK3, SFMT_MSK4}};
 #endif
@@ -59,7 +59,7 @@ inline static void swap(w128_t *array, int size);
 
 #if defined(HAVE_ALTIVEC)
   #include "SFMT-alti.h"
-#elif defined(HAVE_SSE3)
+#elif defined(HAVE_SSE2)
   #include "SFMT-sse2.h"
 #endif
 
@@ -77,7 +77,7 @@ inline static int idxof(int i) {
 }
 #endif
 
-#if (!defined(HAVE_ALTIVEC)) && (!defined(HAVE_SSE3))
+#if (!defined(HAVE_ALTIVEC)) && (!defined(HAVE_SSE2))
 /**
  * This function fills the user-specified array with pseudorandom
  * integers.
@@ -228,7 +228,7 @@ int sfmt_get_min_array_size64(sfmt_t * sfmt) {
     return SFMT_N64;
 }
 
-#if !defined(HAVE_SSE3) && !defined(HAVE_ALTIVEC)
+#if !defined(HAVE_SSE2) && !defined(HAVE_ALTIVEC)
 /**
  * This function fills the internal state array with pseudorandom
  * integers.

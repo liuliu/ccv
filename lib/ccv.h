@@ -14,10 +14,8 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
-#ifndef __CUDACC__
-#ifdef HAVE_SSE3
-#include <x86intrin.h>
-#endif
+#ifdef HAVE_SSE2
+#include <xmmintrin.h>
 #endif
 #include <assert.h>
 #include <alloca.h>

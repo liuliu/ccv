@@ -43,7 +43,7 @@ inline static int idxof(int i);
 static void initial_mask(dsfmt_t *dsfmt);
 static void period_certification(dsfmt_t *dsfmt);
 
-#if defined(HAVE_SSE3)
+#if defined(HAVE_SSE2)
 /** 1 in 64bit for sse2 */
 static const union X128I_T sse2_int_one = {{1, 1}};
 /** 2.0 double for sse2 */
@@ -66,7 +66,7 @@ inline static int idxof(int i) {
 }
 #endif
 
-#if defined(HAVE_SSE3)
+#if defined(HAVE_SSE2)
 /**
  * This function converts the double precision floating point numbers which
  * distribute uniformly in the range [1, 2) to those which distribute uniformly

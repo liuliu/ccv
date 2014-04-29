@@ -23,7 +23,7 @@
 
 #include "dSFMT.h"
 
-#if defined(HAVE_SSE3)
+#if defined(HAVE_SSE2)
 #  include <emmintrin.h>
 union X128I_T {
     uint64_t u[2];
@@ -66,7 +66,7 @@ inline static void do_recursion(dw128_t *r, dw128_t *a, dw128_t * b,
     r->s = vec_xor(z, x);
     lung->s = w;
 }
-#elif defined(HAVE_SSE3)
+#elif defined(HAVE_SSE2)
 /**
  * This function represents the recursion formula.
  * @param r output 128-bit
