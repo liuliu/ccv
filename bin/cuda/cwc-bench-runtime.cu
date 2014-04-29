@@ -26,7 +26,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	_cwc_convnet_convolutional_forward_propagate(first_gpu_layer, first_gpu_layer->input.matrix.rows, first_gpu_layer->input.matrix.cols, batch, context->device.input, GPU(convnet)->forwards[0], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
 	int first_out_rows, first_out_cols, first_out_partition, first_out_channels = first_gpu_layer->net.convolutional.count;
-	_cwc_convnet_layer_derive_output(first_gpu_layer, first_gpu_layer->input.matrix.rows, first_gpu_layer->input.matrix.cols, &first_out_rows, &first_out_cols, &first_out_partition);
+	_ccv_convnet_layer_derive_output(first_gpu_layer, first_gpu_layer->input.matrix.rows, first_gpu_layer->input.matrix.cols, &first_out_rows, &first_out_cols, &first_out_partition);
 	float* first_out = 0;
 	cudaMallocHost(&first_out, sizeof(float) * first_out_rows * first_out_cols * first_out_channels * batch);
 	cudaMemcpy(first_out, GPU(convnet)->forwards[0], sizeof(float) * first_out_rows * first_out_cols * first_out_channels * batch, cudaMemcpyDeviceToHost);
@@ -37,7 +37,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	_cwc_convnet_average_pool_forward_propagate(second_gpu_layer, second_gpu_layer->input.matrix.rows, second_gpu_layer->input.matrix.cols, batch, GPU(convnet)->forwards[0], GPU(convnet)->forwards[1], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
 	int second_out_rows, second_out_cols, second_out_partition, second_out_channels = second_gpu_layer->input.matrix.channels;
-	_cwc_convnet_layer_derive_output(second_gpu_layer, second_gpu_layer->input.matrix.rows, second_gpu_layer->input.matrix.cols, &second_out_rows, &second_out_cols, &second_out_partition);
+	_ccv_convnet_layer_derive_output(second_gpu_layer, second_gpu_layer->input.matrix.rows, second_gpu_layer->input.matrix.cols, &second_out_rows, &second_out_cols, &second_out_partition);
 	float* second_out = 0;
 	cudaMallocHost(&second_out, sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch);
 	cudaMemcpy(second_out, GPU(convnet)->forwards[1], sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch, cudaMemcpyDeviceToHost);
@@ -48,7 +48,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	_cwc_convnet_convolutional_forward_propagate(third_gpu_layer, third_gpu_layer->input.matrix.rows, third_gpu_layer->input.matrix.cols, batch, GPU(convnet)->forwards[1], GPU(convnet)->forwards[2], context->device.stream);
 	cudaStreamSynchronize(context->device.stream);
 	int third_out_rows, third_out_cols, third_out_partition, third_out_channels = third_gpu_layer->net.convolutional.count;
-	_cwc_convnet_layer_derive_output(third_gpu_layer, third_gpu_layer->input.matrix.rows, third_gpu_layer->input.matrix.cols, &third_out_rows, &third_out_cols, &third_out_partition);
+	_ccv_convnet_layer_derive_output(third_gpu_layer, third_gpu_layer->input.matrix.rows, third_gpu_layer->input.matrix.cols, &third_out_rows, &third_out_cols, &third_out_partition);
 	float* third_out = 0;
 	cudaMallocHost(&third_out, sizeof(float) * third_out_rows * third_out_cols * third_out_channels * batch);
 	cudaMemcpy(third_out, GPU(convnet)->forwards[2], sizeof(float) * third_out_rows * third_out_cols * third_out_channels * batch, cudaMemcpyDeviceToHost);
