@@ -35,7 +35,7 @@
 #define DSFMT_SR	12
 
 /* for sse2 */
-#if defined(HAVE_SSE3)
+#if defined(HAVE_SSE2)
   #define SSE2_SHUFF 0x1b
 #elif defined(HAVE_ALTIVEC)
   #if defined(__APPLE__)  /* For OSX */

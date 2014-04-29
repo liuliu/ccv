@@ -79,7 +79,7 @@ union W128_T {
     uint32_t u[4];
     uint64_t u64[2];
 };
-#elif defined(HAVE_SSE3)
+#elif defined(HAVE_SSE2)
   #include <emmintrin.h>
 
 /** 128-bit data structure */
