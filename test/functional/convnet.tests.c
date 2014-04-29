@@ -19,7 +19,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 		},
 		.output = {
 			.convolutional = {
-				.count = 1,
+				.count = 4,
 				.strides = 4,
 				.border = 1,
 				.rows = 11,
@@ -31,7 +31,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(225, 225), &params, 1);
 	int i, x, y;
-	for (i = 0; i < 11 * 11 * 3; i++)
+	for (i = 0; i < 11 * 11 * 3 * 4; i++)
 		convnet->layers[0].w[i] = 1;
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(225, 225, CCV_32F | CCV_C3, 0, 0);
 	for (i = 0; i < 225 * 225 * 3; i++)
@@ -40,10 +40,11 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 	ccv_convnet_encode(convnet, &a, &b, 1);
 	ccv_matrix_free(a);
 	REQUIRE(b->rows == 55 && b->cols == 55, "11x11 convolves on 225x255 with strides 4 should produce 55x55 matrix");
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | 4, 0, 0);
 	for (y = 0; y < 55; y++)
 		for (x = 0; x < 55; x++)
-			c->data.f32[y * 55 + x] = ((x == 0 && y == 0) || (x == 0 && y == 54) || (x == 54 && y == 0) || (x == 54 && y == 54)) ? 300 : ((x == 0 || y == 0 || x == 54 || y == 54) ? 330 : 363);
+			for (i = 0; i < 4; i++)
+			c->data.f32[(y * 55 + x) * 4 + i] = ((x == 0 && y == 0) || (x == 0 && y == 54) || (x == 54 && y == 0) || (x == 54 && y == 54)) ? 300 : ((x == 0 || y == 0 || x == 54 || y == 54) ? 330 : 363);
 	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly a matrix fill 363, with 300 on the corner and 330 on the border");
 	ccv_matrix_free(b);
 	ccv_matrix_free(c);
@@ -66,7 +67,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 		},
 		.output = {
 			.convolutional = {
-				.count = 1,
+				.count = 4,
 				.strides = 1,
 				.border = 2,
 				.rows = 5,
@@ -78,7 +79,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
 	int i, x, y;
-	for (i = 0; i < 5 * 5; i++)
+	for (i = 0; i < 5 * 5 * 4; i++)
 		convnet->layers->w[i] = 1;
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 27 * 27; i++)
@@ -87,21 +88,24 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with uniform weights")
 	ccv_convnet_encode(convnet, &a, &b, 1);
 	REQUIRE(b->rows == 27 && b->cols == 27, "5x5 convolves on 27x27 with border 2 should produce 27x27 matrix");
 	ccv_matrix_free(a);
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | 4, 0, 0);
 	for (y = 0; y < 27; y++)
 		for (x = 0; x < 27; x++)
-			if ((x == 0 && y == 0) || (x == 0 && y == 26) || (x == 26 && y == 0) || (x == 26 && y == 26))
-				c->data.f32[y * 27 + x] = 9;
-			else if ((x == 0 && y == 1) || (x == 0 && y == 25) || (x == 1 && y == 0) || (x == 1 && y == 26) || (x == 25 && y == 0) || (x == 25 && y == 26) || (x == 26 && y == 1) || (x == 26 && y == 25))
-				c->data.f32[y * 27 + x] = 12;
-			else if (x == 0 || y == 0 || x == 26 || y == 26)
-				c->data.f32[y * 27 + x] = 15;
-			else if ((x == 1 && y == 1) || (x == 1 && y == 25) || (x == 25 && y == 1) || (x == 25 && y == 25))
-				c->data.f32[y * 27 + x] = 16;
-			else if (x == 1 || y == 1 || x == 25 || y == 25)
-				c->data.f32[y * 27 + x] = 20;
-			else
-				c->data.f32[y * 27 + x] = 25;
+			for (i = 0; i < 4; i++)
+			{
+				if ((x == 0 && y == 0) || (x == 0 && y == 26) || (x == 26 && y == 0) || (x == 26 && y == 26))
+					c->data.f32[(y * 27 + x) * 4 + i] = 9;
+				else if ((x == 0 && y == 1) || (x == 0 && y == 25) || (x == 1 && y == 0) || (x == 1 && y == 26) || (x == 25 && y == 0) || (x == 25 && y == 26) || (x == 26 && y == 1) || (x == 26 && y == 25))
+					c->data.f32[(y * 27 + x) * 4 + i] = 12;
+				else if (x == 0 || y == 0 || x == 26 || y == 26)
+					c->data.f32[(y * 27 + x) * 4 + i] = 15;
+				else if ((x == 1 && y == 1) || (x == 1 && y == 25) || (x == 25 && y == 1) || (x == 25 && y == 25))
+					c->data.f32[(y * 27 + x) * 4 + i] = 16;
+				else if (x == 1 || y == 1 || x == 25 || y == 25)
+					c->data.f32[(y * 27 + x) * 4 + i] = 20;
+				else
+					c->data.f32[(y * 27 + x) * 4 + i] = 25;
+			}
 	REQUIRE_MATRIX_EQ(b, c, "27x27 matrix should be exactly a matrix fill 25, with 9, 16 on the corner and 12, 15, 20 on the border");
 	ccv_matrix_free(b);
 	ccv_matrix_free(c);
@@ -124,7 +128,7 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 		},
 		.output = {
 			.convolutional = {
-				.count = 1,
+				.count = 4,
 				.strides = 4,
 				.border = 1,
 				.rows = 11,
@@ -136,8 +140,9 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(225, 225), &params, 1);
 	int i, x, y;
-	for (i = 0; i < 11 * 11; i++)
-		convnet->layers[0].w[i] = i + 1;
+	for (x = 0; x < 4; x++)
+		for (i = 0; i < 11 * 11; i++)
+			convnet->layers[0].w[x * 11 * 11 + i] = i + 1;
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(225, 225, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 225 * 225; i++)
 		a->data.f32[i] = i + 1;
@@ -145,41 +150,47 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 	ccv_convnet_encode(convnet, &a, &b, 1);
 	ccv_matrix_free(a);
 	REQUIRE(b->rows == 55 && b->cols == 55, "11x11 convolves on 225x255 with strides 4 should produce 55x55 matrix");
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | 4, 0, 0);
 	float sum = 0;
 	// first column
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 10; x++)
 			sum += ((y + 1) * 11 + x + 2) * (y * 225 + x + 1);
-	c->data.f32[0] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[i] = sum;
 	sum = 0;
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 11; x++)
 			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 3) + 1);
 	for (x = 1; x < 54; x++)
-		c->data.f32[x] = sum + (x - 1) * 4 * (11 * 11 + 12) * 11 * 10 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[x * 4 + i] = sum + (x - 1) * 4 * (11 * 11 + 12) * 11 * 10 / 2;
 	sum = 0;
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 10; x++)
 			sum += ((y + 1) * 11 + x + 1) * (y * 225 + (x + 215) + 1);
-	c->data.f32[54] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[54 * 4 + i] = sum;
 	// last column
 	sum = 0;
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 10; x++)
 			sum += (y * 11 + x + 2) * ((y + 215) * 225 + x + 1);
-	c->data.f32[55 * 54] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[55 * 54 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 11; x++)
 			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 3) + 1);
 	for (x = 1; x < 54; x++)
-		c->data.f32[55 * 54 + x] = sum + (x - 1) * 4 * (10 * 11 + 1) * 11 * 10 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[(55 * 54 + x) * 4 + i] = sum + (x - 1) * 4 * (10 * 11 + 1) * 11 * 10 / 2;
 	sum = 0;
 	for (y = 0; y < 10; y++)
 		for (x = 0; x < 10; x++)
 			sum += (y * 11 + x + 1) * ((y + 215) * 225 + (x + 215) + 1);
-	c->data.f32[55 * 54 + 54] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(55 * 54 + 54) * 4 + i] = sum;
 	float border[] = {
 		0, 0
 	};
@@ -195,16 +206,19 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with non-uniform weights")
 			sum += (y * 11 + x + 1) * ((y + 3) * 225 + (x + 3) + 1);
 	for (y = 1; y < 54; y++)
 	{
-		c->data.f32[y * 55] = border[0];
+		for (i = 0; i < 4; i++)
+			c->data.f32[y * 55 * 4 + i] = border[0];
 		for (x = 1; x < 54; x++)
-			c->data.f32[y * 55 + x] = sum + (x - 1) * 4 * (11 * 11 + 1) * 11 * 11 / 2;
-		c->data.f32[y * 55 + 54] = border[1];
+			for (i = 0; i < 4; i++)
+				c->data.f32[(y * 55 + x) * 4 + i] = sum + (x - 1) * 4 * (11 * 11 + 1) * 11 * 11 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[(y * 55 + 54) * 4 + i] = border[1];
 		sum += 225 * 4 * (11 * 11 + 1) * 11 * 11 / 2;
 		border[0] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (10 * 11 + 1 + 1) * 11 / 2);
 		border[1] += 225 * 4 * ((11 * 11 + 1) * 11 * 11 / 2 - (11 * 11 + 11) * 11 / 2);
 	}
 	// regularize the output so it is within the tolerance
-	for (i = 0; i < 55 * 55; i++)
+	for (i = 0; i < 55 * 55 * 4; i++)
 		c->data.f32[i] = c->data.f32[i] * 1e-7, b->data.f32[i] = b->data.f32[i] * 1e-7;
 	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly the same");
 	ccv_matrix_free(b);
@@ -228,7 +242,7 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 		},
 		.output = {
 			.convolutional = {
-				.count = 1,
+				.count = 4,
 				.strides = 1,
 				.border = 2,
 				.rows = 5,
@@ -240,8 +254,9 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(0, ccv_size(27, 27), &params, 1);
 	int i, x, y;
-	for (i = 0; i < 5 * 5; i++)
-		convnet->layers->w[i] = i + 1;
+	for (x = 0; x < 4; x++)
+		for (i = 0; i < 5 * 5; i++)
+			convnet->layers->w[x * 5 * 5 + i] = i + 1;
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	for (i = 0; i < 27 * 27; i++)
 		a->data.f32[i] = i + 1;
@@ -249,115 +264,135 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 	ccv_convnet_encode(convnet, &a, &b, 1);
 	REQUIRE(b->rows == 27 && b->cols == 27, "5x5 convolves on 27x27 with border 2 should produce 27x27 matrix");
 	ccv_matrix_free(a);
-	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | 4, 0, 0);
 	// the first column
 	float sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 3; x++)
 			sum += ((y + 2) * 5 + x + 3) * (y * 27 + x + 1);
-	c->data.f32[0] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 4; x++)
 			sum += ((y + 2) * 5 + x + 2) * (y * 27 + x + 1);
-	c->data.f32[1] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 5; x++)
 			sum += ((y + 2) * 5 + x + 1) * (y * 27 + x + 1);
 	for (x = 2; x < 25; x++)
-		c->data.f32[x] = sum + (x - 2) * 36 * 15 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[x * 4 + i] = sum + (x - 2) * 36 * 15 / 2;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 4; x++)
 			sum += ((y + 2) * 5 + x + 1) * (y * 27 + x + 24);
-	c->data.f32[25] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[25 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 3; x++)
 			sum += ((y + 2) * 5 + x + 1) * (y * 27 + x + 25);
-	c->data.f32[26] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[26 * 4 + i] = sum;
 	// the second column
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 3; x++)
 			sum += ((y + 1) * 5 + x + 3) * (y * 27 + x + 1);
-	c->data.f32[27] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[27 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 4; x++)
 			sum += ((y + 1) * 5 + x + 2) * (y * 27 + x + 1);
-	c->data.f32[28] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[28 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 5; x++)
 			sum += ((y + 1) * 5 + x + 1) * (y * 27 + x + 1);
 	for (x = 2; x < 25; x++)
-		c->data.f32[27 + x] = sum + (x - 2) * 31 * 20 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[(27 + x) * 4 + i] = sum + (x - 2) * 31 * 20 / 2;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 4; x++)
 			sum += ((y + 1) * 5 + x + 1) * (y * 27 + x + 24);
-	c->data.f32[52] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[52 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 3; x++)
 			sum += ((y + 1) * 5 + x + 1) * (y * 27 + x + 25);
-	c->data.f32[53] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[53 * 4 + i] = sum;
 	sum = 0;
 	// the last 2nd column
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 3; x++)
 			sum += (y * 5 + x + 3) * ((y + 23) * 27 + x + 1);
-	c->data.f32[27 * 25] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[27 * 25 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 4; x++)
 			sum += (y * 5 + x + 2) * ((y + 23) * 27 + x + 1);
-	c->data.f32[27 * 25 + 1] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 25 + 1) * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 5; x++)
 			sum += (y * 5 + x + 1) * ((y + 23) * 27 + x + 1);
 	for (x = 2; x < 25; x++)
-		c->data.f32[27 * 25 + x] = sum + (x - 2) * 21 * 20 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[(27 * 25 + x) * 4 + i] = sum + (x - 2) * 21 * 20 / 2;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 4; x++)
 			sum += (y * 5 + x + 1) * ((y + 23) * 27 + x + 24);
-	c->data.f32[27 * 25 + 25] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 25 + 25) * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 4; y++)
 		for (x = 0; x < 3; x++)
 			sum += (y * 5 + x + 1) * ((y + 23) * 27 + x + 25);
-	c->data.f32[27 * 25 + 26] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 25 + 26) * 4 + i] = sum;
 	// the last column
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 3; x++)
 			sum += (y * 5 + x + 3) * ((y + 24) * 27 + x + 1);
-	c->data.f32[27 * 26] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[27 * 26 * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 4; x++)
 			sum += (y * 5 + x + 2) * ((y + 24) * 27 + x + 1);
-	c->data.f32[27 * 26 + 1] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 26 + 1) * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 5; x++)
 			sum += (y * 5 + x + 1) * ((y + 24) * 27 + x + 1);
 	for (x = 2; x < 25; x++)
-		c->data.f32[27 * 26 + x] = sum + (x - 2) * 16 * 15 / 2;
+		for (i = 0; i < 4; i++)
+			c->data.f32[(27 * 26 + x) * 4 + i] = sum + (x - 2) * 16 * 15 / 2;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 4; x++)
 			sum += (y * 5 + x + 1) * ((y + 24) * 27 + x + 24);
-	c->data.f32[27 * 26 + 25] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 26 + 25) * 4 + i] = sum;
 	sum = 0;
 	for (y = 0; y < 3; y++)
 		for (x = 0; x < 3; x++)
 			sum += (y * 5 + x + 1) * ((y + 24) * 27 + x + 25);
-	c->data.f32[27 * 26 + 26] = sum;
+	for (i = 0; i < 4; i++)
+		c->data.f32[(27 * 26 + 26) * 4 + i] = sum;
 	float border[] = {
 		0, 0, 0, 0
 	};
@@ -379,12 +414,15 @@ TEST_CASE("convolutional network of 5x5 on 27x27 with non-uniform weights")
 			sum += (y * 5 + x + 1) * (y * 27 + x + 1);
 	for (y = 2; y < 25; y++)
 	{
-		c->data.f32[y * 27] = border[0] + (y - 2) * 27 * (3 + 4 + 5 + 8 + 9 + 10 + 13 + 14 + 15 + 18 + 19 + 20 + 23 + 24 + 25);
-		c->data.f32[y * 27 + 1] = border[1] + (y - 2) * 27 * (2 + 3 + 4 + 5 + 7 + 8 + 9 + 10 + 12 + 13 + 14 + 15 + 17 + 18 + 19 + 20 + 22 + 23 + 24 + 25);
-		for (x = 2; x < 25; x++)
-			c->data.f32[y * 27 + x] = sum + ((y - 2) * 27 + x - 2) * 26 * 25 / 2;
-		c->data.f32[y * 27 + 25] = border[2] + (y - 2) * 27 * (1 + 2 + 3 + 4 + 6 + 7 + 8 + 9 + 11 + 12 + 13 + 14 + 16 + 17 + 18 + 19 + 21 + 22 + 23 + 24);
-		c->data.f32[y * 27 + 26] = border[3] + (y - 2) * 27 * (1 + 2 + 3 + 6 + 7 + 8 + 11 + 12 + 13 + 16 + 17 + 18 + 21 + 22 + 23);
+		for (i = 0; i < 4; i++)
+		{
+			c->data.f32[y * 27 * 4 + i] = border[0] + (y - 2) * 27 * (3 + 4 + 5 + 8 + 9 + 10 + 13 + 14 + 15 + 18 + 19 + 20 + 23 + 24 + 25);
+			c->data.f32[(y * 27 + 1) * 4 + i] = border[1] + (y - 2) * 27 * (2 + 3 + 4 + 5 + 7 + 8 + 9 + 10 + 12 + 13 + 14 + 15 + 17 + 18 + 19 + 20 + 22 + 23 + 24 + 25);
+			for (x = 2; x < 25; x++)
+				c->data.f32[(y * 27 + x) * 4 + i] = sum + ((y - 2) * 27 + x - 2) * 26 * 25 / 2;
+			c->data.f32[(y * 27 + 25) * 4 + i] = border[2] + (y - 2) * 27 * (1 + 2 + 3 + 4 + 6 + 7 + 8 + 9 + 11 + 12 + 13 + 14 + 16 + 17 + 18 + 19 + 21 + 22 + 23 + 24);
+			c->data.f32[(y * 27 + 26) * 4 + i] = border[3] + (y - 2) * 27 * (1 + 2 + 3 + 6 + 7 + 8 + 11 + 12 + 13 + 16 + 17 + 18 + 21 + 22 + 23);
+		}
 	}
 	REQUIRE_MATRIX_EQ(b, c, "27x27 matrix should be exactly the same");
 	ccv_matrix_free(b);
@@ -1070,6 +1108,10 @@ TEST_CASE("convolutional network backward propagate with partitioned by 2")
 	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias, sizeof(float) * (convnet->layers->net.convolutional.count / 2));
 	ccv_dense_matrix_t* bb = 0;
 	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	ccv_dense_matrix_t* bbb = ccv_dense_matrix_new(31, 31, CCV_32F | 8, 0, 0);
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 4; k++)
+			bbb->data.f32[i * 8 + k] = bb->data.f32[i * 4 + k];
 	loss = ccv_dense_matrix_new(31, 31, CCV_32F | CCV_GET_CHANNEL(bb->type), 0, 0);
 	for (i = 0; i < 31 * 31 * 4; i++)
 		loss->data.f32[i] = 1;
@@ -1091,7 +1133,12 @@ TEST_CASE("convolutional network backward propagate with partitioned by 2")
 			aa->data.f32[i * 2 + k] = a->data.f32[i * 4 + 2 + k];
 	memcpy(partitioned_convnet->layers->w, convnet->layers->w + (convnet->layers->wnum / 2), sizeof(float) * (convnet->layers->wnum / 2));
 	memcpy(partitioned_convnet->layers->bias, convnet->layers->bias + (convnet->layers->net.convolutional.count / 2), sizeof(float) * (convnet->layers->net.convolutional.count / 2));
+	ccv_convnet_compact(partitioned_convnet); // because it is reused, we need to clear intermediate data
 	ccv_convnet_encode(partitioned_convnet, &aa, &bb, 1);
+	for (i = 0; i < 31 * 31; i++)
+		for (k = 0; k < 4; k++)
+			bbb->data.f32[i * 8 + 4 + k] = bb->data.f32[i * 4 + k];
+	REQUIRE_MATRIX_EQ(b, bbb, "forward pass doesn't match the expected value");
 	_ccv_convnet_update_zero(partitioned_update_params);
 	_ccv_convnet_convolutional_backward_propagate(partitioned_convnet->layers, loss, bb, aa, &dd, partitioned_update_params->layers);
 	memcpy(ww + (convnet->layers->wnum / 2), partitioned_update_params->layers->w, sizeof(float) * (convnet->layers->wnum / 2));
@@ -1106,6 +1153,7 @@ TEST_CASE("convolutional network backward propagate with partitioned by 2")
 	ccv_matrix_free(loss);
 	ccv_matrix_free(ddd);
 	ccv_matrix_free(dd);
+	ccv_matrix_free(bbb);
 	ccv_matrix_free(bb);
 	ccv_matrix_free(aa);
 	ccv_matrix_free(d);
@@ -1334,7 +1382,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 				.channels = 3,
 				.border = 2,
 				.strides = 1,
-				.count = 2,
+				.count = 4,
 				.partition = 1,
 			},
 		},
@@ -1352,15 +1400,15 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		x->data.f32[i] = i;
 	ccv_dense_matrix_t* y = 0;
 	ccv_convnet_encode(convnet, &x, &y, 1);
-	REQUIRE(y->rows == 31 && y->cols == 31 && CCV_GET_CHANNEL(y->type) == 2, "convnet should return a 31x31x2 matrix");
+	REQUIRE(y->rows == 31 && y->cols == 31 && CCV_GET_CHANNEL(y->type) == 4, "convnet should return a 31x31x4 matrix");
 	ccv_dense_matrix_t* softmax = 0;
 	_ccv_convnet_compute_softmax(y, &softmax, 0);
 	ccv_dense_matrix_t* dloss = ccv_dense_matrix_new(y->rows, y->cols, CCV_32F | CCV_GET_CHANNEL(y->type), 0, 0);
-	for (i = 0; i < 31 * 31 * 2; i++)
+	for (i = 0; i < 31 * 31 * 4; i++)
 		dloss->data.f32[i] = softmax->data.f32[i] - (i == 24);
 	static const float eps = 0.000005;
-	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 3 * 2); 
-	for (i = 0; i < 5 * 5 * 3 * 2; i++)
+	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 3 * 4); 
+	for (i = 0; i < 5 * 5 * 3 * 4; i++)
 	{
 		dw[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1368,6 +1416,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			float w = convnet->layers->w[i];
 			convnet->layers->w[i] += fsh[k] * eps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dw[i] += -logf(z->data.f32[24]) * fs[k];
@@ -1376,8 +1425,8 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		}
 		dw[i] *= 1.0 / (12 * eps);
 	}
-	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
-	for (i = 0; i < 2; i++)
+	float* dbias = (float*)ccmalloc(sizeof(float) * 4);
+	for (i = 0; i < 4; i++)
 	{
 		dbias[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1385,6 +1434,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			float bias = convnet->layers->bias[i];
 			convnet->layers->bias[i] += fsh[k] * eps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dbias[i] += -logf(z->data.f32[24]) * fs[k];
@@ -1400,9 +1450,9 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(d);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 5 * 5 * 3 * 2, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 5 * 5 * 3 * 4, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 2, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 4, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
@@ -1430,7 +1480,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 					.channels = 2,
 					.border = 1,
 					.strides = 1,
-					.count = 2,
+					.count = 4,
 					.partition = 1,
 				},
 			},
@@ -1443,11 +1493,11 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 				.matrix = {
 					.rows = 5,
 					.cols = 5,
-					.channels = 2,
+					.channels = 4,
 					.partition = 1,
 				},
 				.node = {
-					.count = 5 * 5 * 2,
+					.count = 5 * 5 * 4,
 				},
 			},
 			.output = {
@@ -1470,7 +1520,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	_ccv_convnet_update_zero(update_params);
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(5, 5, CCV_32F | CCV_C2, 0, 0);
 	for (i = 0; i < 5 * 5 * 2; i++)
-		x->data.f32[i] = 1;
+		x->data.f32[i] = 0.2;
 	ccv_dense_matrix_t* y = 0;
 	ccv_convnet_encode(convnet, &x, &y, 1);
 	REQUIRE(y->rows == 10 && y->cols == 1 && CCV_GET_CHANNEL(y->type) == 1, "y should be a 10-dimensional vector");
@@ -1481,8 +1531,8 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	_ccv_convnet_propagate_loss(convnet, x, dloss, update_params);
 	ccv_matrix_free(dloss);
 	static const float eps = 0.0001;
-	float* dw = (float*)ccmalloc(sizeof(float) * 3 * 3 * 2 * 2); 
-	for (i = 0; i < 3 * 3 * 2 * 2; i++)
+	float* dw = (float*)ccmalloc(sizeof(float) * 3 * 3 * 2 * 4); 
+	for (i = 0; i < 3 * 3 * 2 * 4; i++)
 	{
 		dw[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1490,6 +1540,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			float w = convnet->layers->w[i];
 			convnet->layers->w[i] += fsh[k] * eps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dw[i] += -logf(z->data.f32[2]) * fs[k];
@@ -1498,8 +1549,8 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 		}
 		dw[i] *= 1.0 / (12 * eps);
 	}
-	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
-	for (i = 0; i < 2; i++)
+	float* dbias = (float*)ccmalloc(sizeof(float) * 4);
+	for (i = 0; i < 4; i++)
 	{
 		dbias[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1507,6 +1558,7 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 			float bias = convnet->layers->bias[i];
 			convnet->layers->bias[i] += fsh[k] * eps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dbias[i] += -logf(z->data.f32[2]) * fs[k];
@@ -1517,9 +1569,9 @@ TEST_CASE("numerical gradient versus analytical gradient for full connect networ
 	}
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 3 * 3 * 2 * 2, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 3 * 3 * 2 * 4, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 2, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 4, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
@@ -1547,7 +1599,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 					.channels = 2,
 					.border = 2,
 					.strides = 1,
-					.count = 2,
+					.count = 4,
 					.partition = 1,
 				},
 			},
@@ -1558,7 +1610,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 				.matrix = {
 					.rows = 31,
 					.cols = 31,
-					.channels = 2,
+					.channels = 4,
 					.partition = 1,
 				},
 			},
@@ -1585,18 +1637,18 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		x->data.f32[i] = i;
 	ccv_dense_matrix_t* y = 0;
 	ccv_convnet_encode(convnet, &x, &y, 1);
-	REQUIRE(y->rows == 31 && y->cols == 31 && CCV_GET_CHANNEL(y->type) == 2, "convnet should return a 31x31x2 matrix");
+	REQUIRE(y->rows == 31 && y->cols == 31 && CCV_GET_CHANNEL(y->type) == 4, "convnet should return a 31x31x4 matrix");
 	ccv_dense_matrix_t* softmax = 0;
 	_ccv_convnet_compute_softmax(y, &softmax, 0);
 	ccv_dense_matrix_t* dloss = ccv_dense_matrix_new(y->rows, y->cols, CCV_32F | CCV_GET_CHANNEL(y->type), 0, 0);
-	for (i = 0; i < 31 * 31 * 2; i++)
+	for (i = 0; i < 31 * 31 * 4; i++)
 		dloss->data.f32[i] = softmax->data.f32[i] - (i == 24);
 	ccv_dense_matrix_t* d = 0;
 	_ccv_convnet_rnorm_backward_propagate(convnet->layers + 1, dloss, y, convnet->acts[0], convnet->denoms[1], update_params->acts);
 	_ccv_convnet_convolutional_backward_propagate(convnet->layers, update_params->acts[0], convnet->acts[0], x, &d, update_params->layers);
 	static const float eps = 0.000001;
-	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 2); 
-	for (i = 0; i < 5 * 5 * 2 * 2; i++)
+	float* dw = (float*)ccmalloc(sizeof(float) * 5 * 5 * 2 * 4); 
+	for (i = 0; i < 5 * 5 * 2 * 4; i++)
 	{
 		dw[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1604,6 +1656,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 			float w = convnet->layers->w[i];
 			convnet->layers->w[i] += fsh[k] * eps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dw[i] += -logf(z->data.f32[24]) * fs[k];
@@ -1612,9 +1665,9 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 		}
 		dw[i] *= 1.0 / (12 * eps);
 	}
-	float* dbias = (float*)ccmalloc(sizeof(float) * 2);
+	float* dbias = (float*)ccmalloc(sizeof(float) * 4);
 	static const float beps = 0.0001;
-	for (i = 0; i < 2; i++)
+	for (i = 0; i < 4; i++)
 	{
 		dbias[i] = 0;
 		for (k = 0; k < 4; k++)
@@ -1622,6 +1675,7 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 			float bias = convnet->layers->bias[i];
 			convnet->layers->bias[i] += fsh[k] * beps;
 			ccv_dense_matrix_t* z = 0;
+			ccv_convnet_compact(convnet);
 			ccv_convnet_encode(convnet, &x, &z, 1);
 			_ccv_convnet_compute_softmax(z, &z, 0);
 			dbias[i] += -logf(z->data.f32[24]) * fs[k];
@@ -1635,9 +1689,9 @@ TEST_CASE("numerical gradient versus analytical gradient for local response norm
 	ccv_matrix_free(y);
 	ccv_matrix_free(x);
 	ccv_matrix_free(d);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 5 * 5 * 2 * 2, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dw, update_params->layers[0].w, 5 * 5 * 2 * 4, 30, 2e-1, "weight gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
-	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 2, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
+	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, update_params->layers[0].bias, 4, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dbias);
 	ccv_convnet_free(update_params);
 	ccv_convnet_free(convnet);
