@@ -211,13 +211,57 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 				for (y = 0; y < maxy; y++)
 				{
 #ifdef HAVE_SSE2
-					for (x = 0; x < maxx; x++)
-						for (c = 0; c < ch_per_partition; c++)
-						{
-							__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
-							__m128 apz4 = _mm_load1_ps(apz + x * ch + c);
-							v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
-						}
+					// special casing for these cases to speed up SIMD computation
+					if (ch_per_partition % 4 == 0)
+					{
+						for (x = 0; x < maxx; x++)
+							for (c = 0; c < ch_per_partition; c += 4)
+							{
+								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
+								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
+								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
+								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
+								__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4);
+								__m128 apz42 = _mm_load1_ps(apz + x * ch + c + 2);
+								__m128 w43 = _mm_loadu_ps(w + (x * ch_per_partition + c + 3) * 4);
+								__m128 apz43 = _mm_load1_ps(apz + x * ch + c + 3);
+								__m128 vs0 = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41));
+								__m128 vs1 = _mm_add_ps(_mm_mul_ps(w42, apz42), _mm_mul_ps(w43, apz43));
+								v4 = _mm_add_ps(_mm_add_ps(vs0, vs1), v4);
+							}
+					} else if (ch_per_partition % 3 == 0) {
+						for (x = 0; x < maxx; x++)
+							for (c = 0; c < ch_per_partition; c += 3)
+							{
+								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
+								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
+								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
+								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
+								__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4);
+								__m128 apz42 = _mm_load1_ps(apz + x * ch + c + 2);
+								__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41));
+								v4 = _mm_add_ps(_mm_mul_ps(w42, apz42), v4);
+								v4 = _mm_add_ps(v4, vs);
+							}
+					} else if (ch_per_partition % 2 == 0) {
+						for (x = 0; x < maxx; x++)
+							for (c = 0; c < ch_per_partition; c += 2)
+							{
+								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
+								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
+								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
+								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
+								v4 = _mm_add_ps(_mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)), v4);
+							}
+					} else {
+						for (x = 0; x < maxx; x++)
+							for (c = 0; c < ch_per_partition; c++)
+							{
+								__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
+								__m128 apz4 = _mm_load1_ps(apz + x * ch + c);
+								v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
+							}
+					}
 					w += kernel_cols * ch_per_partition * 4;
 #else
 					for (x = 0; x < maxx; x++)
