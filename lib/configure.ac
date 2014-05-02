@@ -45,7 +45,7 @@ fi
 AC_CHECK_LIB(m, cos)
 AC_CHECK_LIB(gslcblas, cblas_dgemm)
 AC_CHECK_LIB(gsl, gsl_blas_dgemm,
-			 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_GSL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lgsl "])])
+			 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_GSL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lgsl -lgslcblas "])])
 
 # prepare for cuda
 AC_MSG_CHECKING([cuda])

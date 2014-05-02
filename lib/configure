@@ -3566,7 +3566,7 @@ fi
 $as_echo "$ac_cv_lib_gsl_gsl_blas_dgemm" >&6; }
 if test "x$ac_cv_lib_gsl_gsl_blas_dgemm" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_GSL "
- MKLDFLAGS="$MKLDFLAGS-lgsl "
+ MKLDFLAGS="$MKLDFLAGS-lgsl -lgslcblas "
 
 fi
 
