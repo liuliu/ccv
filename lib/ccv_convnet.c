@@ -134,9 +134,150 @@ static void _ccv_convnet_layer_simd_alloc_reserved(ccv_convnet_layer_t* layer)
 	layer->reserved = simd_w;
 }
 
+#define SIMD(x) ((float*)((x)->reserved))
+
 #endif
 
-#define SIMD(x) ((float*)((x)->reserved))
+#if defined(HAVE_SSE2)
+static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
+{
+	assert(SIMD(layer));
+#define main_for(block) \
+	parallel_for(k, (count >> 2)) { \
+		int i, j, x, y, c; \
+		int p = k * 4 / count_per_partition; \
+		float* ap = a->data.f32 + p * ch_per_partition; \
+		float* bp = db->data.f32 + k * 4; \
+		float* layer_w = SIMD(layer) + k * 4 * kernel_rows * kernel_cols * ch_per_partition; \
+		float bias[4] __attribute__ ((__aligned__(16))); \
+		memcpy(bias, layer->bias + k * 4, sizeof(float) * 4); \
+		__m128 z4 = _mm_setzero_ps(); \
+		for (i = 0; i < db->rows; i++) \
+		{ \
+			int comy = ccv_max(i * strides - border, 0) - (i * strides - border); \
+			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows)); \
+			comy *= ch_per_partition * kernel_cols; \
+			for (j = 0; j < db->cols; j++) \
+			{ \
+				__m128 v4 = _mm_load_ps(bias); \
+				int comx = ccv_max(j * strides - border, 0) - (j * strides - border); \
+				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols)); \
+				float* w = layer_w + (comx * ch_per_partition + comy) * 4; \
+				float* apz = ap + ccv_max(j * strides - border, 0) * ch; \
+				/* when we have border, we simply do zero padding */ \
+				for (y = 0; y < maxy; y++) \
+				{ \
+					/* special casing for these cases to speed up SIMD computation */ \
+					for (x = 0; x < maxx; x++) \
+					{ \
+						c = 0; \
+						for (; c < ch_per_partition - 3; c += 4) \
+						{ \
+							__m128 apz4 = _mm_loadu_ps(apz + x * ch + c); \
+							__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
+							__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4); \
+							__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4); \
+							__m128 w43 = _mm_loadu_ps(w + (x * ch_per_partition + c + 3) * 4); \
+							__m128 apz40 = _mm_shuffle_ps(apz4, apz4, 0x00); \
+							__m128 apz41 = _mm_shuffle_ps(apz4, apz4, 0x55); \
+							__m128 apz42 = _mm_shuffle_ps(apz4, apz4, 0xAA); \
+							__m128 apz43 = _mm_shuffle_ps(apz4, apz4, 0xFF); \
+							__m128 vs0 = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
+							__m128 vs1 = _mm_add_ps(_mm_mul_ps(w42, apz42), _mm_mul_ps(w43, apz43)); \
+							v4 = _mm_add_ps(_mm_add_ps(vs0, vs1), v4); \
+						} \
+						block /* insert executions for tail partition */ \
+					} \
+					w += kernel_cols * ch_per_partition * 4; \
+					apz += a->cols * ch; \
+				} \
+				v4 = _mm_max_ps(z4, v4); \
+				_mm_storeu_ps(bp + j * count, v4); /* ReLU */ \
+			} \
+			bp += db->cols * count; \
+			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0)); \
+		} \
+	} parallel_endfor
+	if (ch_per_partition % 4 == 0)
+	{
+		main_for();
+	} else if (ch_per_partition % 4 == 3) { // unroll the last for-loops
+#define block \
+		__m128 apz40 = _mm_load1_ps(apz + x * ch + c); \
+		__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1); \
+		__m128 apz42 = _mm_load1_ps(apz + x * ch + c + 2); \
+		__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
+		__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4); \
+		__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4); \
+		__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
+		v4 = _mm_add_ps(_mm_mul_ps(w42, apz42), v4); \
+		v4 = _mm_add_ps(v4, vs);
+		main_for(block);
+#undef block
+	} else if (ch_per_partition % 4 == 2) { // unroll the last for-loops
+#define block \
+		__m128 apz40 = _mm_load1_ps(apz + x * ch + c); \
+		__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1); \
+		__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
+		__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4); \
+		__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
+		v4 = _mm_add_ps(v4, vs);
+		main_for(block);
+#undef block
+	} else {
+#define block \
+		__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
+		__m128 apz4 = _mm_load1_ps(apz + x * ch + c); \
+		v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
+		main_for(block);
+#undef block
+	}
+#undef main_for
+}
+#elif defined(HAVE_NEON)
+static inline void _ccv_convnet_convolutional_forward_propagate_neon(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
+{
+	assert(SIMD(layer));
+}
+#else
+static inline void _ccv_convnet_convolutional_forward_propagate_fallback(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
+{
+	parallel_for(k, count) {
+		int i, j, x, y, c;
+		int p = k / count_per_partition;
+		float* ap = a->data.f32 + p * ch_per_partition;
+		float* bp = db->data.f32 + k;
+		float* layer_w = layer->w + k * kernel_rows * kernel_cols * ch_per_partition;
+		float bias = layer->bias[k];
+		for (i = 0; i < db->rows; i++)
+		{
+			int comy = ccv_max(i * strides - border, 0) - (i * strides - border);
+			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows));
+			comy *= ch_per_partition * kernel_cols;
+			for (j = 0; j < db->cols; j++)
+			{
+				float v = bias;
+				int comx = ccv_max(j * strides - border, 0) - (j * strides - border);
+				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols));
+				float* w = layer_w + comx * ch_per_partition + comy;
+				float* apz = ap + ccv_max(j * strides - border, 0) * ch;
+				// when we have border, we simply do zero padding
+				for (y = 0; y < maxy; y++)
+				{
+					for (x = 0; x < maxx; x++)
+						for (c = 0; c < ch_per_partition; c++)
+							v += w[x * ch_per_partition + c] * apz[x * ch + c];
+					w += kernel_cols * ch_per_partition;
+					apz += a->cols * ch;
+				}
+				bp[j * count] = ccv_max(0, v); // ReLU
+			}
+			bp += db->cols * count;
+			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
+		}
+	} parallel_endfor
+}
+#endif
 
 static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b)
 {
@@ -152,142 +293,18 @@ static void _ccv_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	assert(CCV_GET_CHANNEL(a->type) == ch);
 	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, rows, cols, type, type, 0);
-	int count_per_partition = count / partition;
 	int ch_per_partition = ch / partition;
+	int count_per_partition = count / partition;
 	assert(count_per_partition % 4 == 0);
-#ifdef HAVE_SSE2
+#if defined(HAVE_SSE2) || defined(HAVE_NEON)
 	_ccv_convnet_layer_simd_alloc_reserved(layer);
 #endif
-// this is a bit convoluted, but this meant to use both dispatch and SSE2 to optimize the performance
-#ifdef USE_DISPATCH
-	dispatch_apply(count, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t k) {
-#ifdef HAVE_SSE2
-	if (k % 4 == 0)
-	{
-#endif
+#if defined(HAVE_SSE2)
+	_ccv_convnet_convolutional_forward_propagate_sse2(layer, a, db, rows, cols, ch, count, strides, border, kernel_rows, kernel_cols, ch_per_partition, count_per_partition);
+#elif defined(HAVE_NEON)
+	_ccv_convnet_convolutional_forward_propagate_neon(layer, a, db, rows, cols, ch, count, strides, border, kernel_rows, kernel_cols, ch_per_partition, count_per_partition);
 #else
-	int k = 0;
-#ifdef HAVE_SSE2
-	for (; k < count - 3; k += 4)
-#else
-	for (; k < count; k++)
-#endif
-	{
-#endif
-		int i, j, x, y, c;
-		int p = k / count_per_partition;
-		float* ap = a->data.f32 + p * ch_per_partition;
-		float* bp = db->data.f32 + k;
-#ifdef HAVE_SSE2
-		float* layer_w = SIMD(layer) + k * kernel_rows * kernel_cols * ch_per_partition;
-		float bias[4] __attribute__ ((__aligned__(16)));
-		memcpy(bias, layer->bias + k, sizeof(float) * 4);
-		__m128 z4 = _mm_setzero_ps();
-#else
-		float* layer_w = layer->w + k * kernel_rows * kernel_cols * ch_per_partition;
-		float bias = layer->bias[k];
-#endif
-		for (i = 0; i < db->rows; i++)
-		{
-			int comy = ccv_max(i * strides - border, 0) - (i * strides - border);
-			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows));
-			comy *= ch_per_partition * kernel_cols;
-			for (j = 0; j < db->cols; j++)
-			{
-#ifdef HAVE_SSE2
-				__m128 v4 = _mm_load_ps(bias);
-#else
-				float v = bias;
-#endif
-				int comx = ccv_max(j * strides - border, 0) - (j * strides - border);
-				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols));
-#ifdef HAVE_SSE2
-				float* w = layer_w + (comx * ch_per_partition + comy) * 4;
-#else
-				float* w = layer_w + comx * ch_per_partition + comy;
-#endif
-				float* apz = ap + ccv_max(j * strides - border, 0) * ch;
-				// when we have border, we simply do zero padding
-				for (y = 0; y < maxy; y++)
-				{
-#ifdef HAVE_SSE2
-					// special casing for these cases to speed up SIMD computation
-					if (ch_per_partition % 4 == 0)
-					{
-						for (x = 0; x < maxx; x++)
-							for (c = 0; c < ch_per_partition; c += 4)
-							{
-								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
-								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
-								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
-								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
-								__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4);
-								__m128 apz42 = _mm_load1_ps(apz + x * ch + c + 2);
-								__m128 w43 = _mm_loadu_ps(w + (x * ch_per_partition + c + 3) * 4);
-								__m128 apz43 = _mm_load1_ps(apz + x * ch + c + 3);
-								__m128 vs0 = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41));
-								__m128 vs1 = _mm_add_ps(_mm_mul_ps(w42, apz42), _mm_mul_ps(w43, apz43));
-								v4 = _mm_add_ps(_mm_add_ps(vs0, vs1), v4);
-							}
-					} else if (ch_per_partition % 3 == 0) {
-						for (x = 0; x < maxx; x++)
-							for (c = 0; c < ch_per_partition; c += 3)
-							{
-								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
-								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
-								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
-								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
-								__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4);
-								__m128 apz42 = _mm_load1_ps(apz + x * ch + c + 2);
-								__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41));
-								v4 = _mm_add_ps(_mm_mul_ps(w42, apz42), v4);
-								v4 = _mm_add_ps(v4, vs);
-							}
-					} else if (ch_per_partition % 2 == 0) {
-						for (x = 0; x < maxx; x++)
-							for (c = 0; c < ch_per_partition; c += 2)
-							{
-								__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
-								__m128 apz40 = _mm_load1_ps(apz + x * ch + c);
-								__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4);
-								__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1);
-								v4 = _mm_add_ps(_mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)), v4);
-							}
-					} else {
-						for (x = 0; x < maxx; x++)
-							for (c = 0; c < ch_per_partition; c++)
-							{
-								__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4);
-								__m128 apz4 = _mm_load1_ps(apz + x * ch + c);
-								v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
-							}
-					}
-					w += kernel_cols * ch_per_partition * 4;
-#else
-					for (x = 0; x < maxx; x++)
-						for (c = 0; c < ch_per_partition; c++)
-							v += w[x * ch_per_partition + c] * apz[x * ch + c];
-					w += kernel_cols * ch_per_partition;
-#endif
-					apz += a->cols * ch;
-				}
-#ifdef HAVE_SSE2
-				v4 = _mm_max_ps(z4, v4);
-				_mm_storeu_ps(bp + j * count, v4); // ReLU
-#else
-				bp[j * count] = ccv_max(0, v); // ReLU
-#endif
-			}
-			bp += db->cols * count;
-			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
-		}
-#ifdef USE_DISPATCH
-#ifdef HAVE_SSE2
-	}
-#endif
-	});
-#else
-	}
+	_ccv_convnet_convolutional_forward_propagate_fallback(layer, a, db, rows, cols, ch, count, strides, border, kernel_rows, kernel_cols, ch_per_partition, count_per_partition);
 #endif
 }
 
@@ -741,13 +758,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 	int count_per_partition = count / partition;
 	int ch_per_partition = ch / partition;
 	// update weight gradient
-#ifdef USE_DISPATCH
-	dispatch_apply(count, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t k) {
-#else
-	int k;
-	for (k = 0; k < count; k++)
-	{
-#endif
+	parallel_for(k, count) {
 		int i, j, x, y, c;
 		int p = k / count_per_partition;
 		float* mp = m->data.f32 + p * ch_per_partition;
@@ -786,11 +797,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			mp += m->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
 		}
 		update_params->bias[k] = bias;
-#ifdef USE_DISPATCH
-	});
-#else
-	}
-#endif
+	} parallel_endfor
 	if (b)
 	{
 		ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, m->rows, m->cols, CCV_32F | CCV_GET_CHANNEL(m->type), CCV_32F | CCV_GET_CHANNEL(m->type), 0);
