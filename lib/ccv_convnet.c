@@ -111,7 +111,7 @@ int ccv_convnet_verify(ccv_convnet_t* convnet, int output)
 
 #endif
 
-#ifdef HAVE_SSE2
+#if defined(HAVE_SSE2) || defined(HAVE_NEON)
 
 static void _ccv_convnet_layer_simd_alloc_reserved(ccv_convnet_layer_t* layer)
 {
@@ -238,6 +238,47 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 static inline void _ccv_convnet_convolutional_forward_propagate_neon(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
 {
 	assert(SIMD(layer));
+	parallel_for(k, (count >> 2)) {
+		int i, j, x, y, c;
+		int p = k * 4 / count_per_partition;
+		float* ap = a->data.f32 + p * ch_per_partition;
+		float* bp = db->data.f32 + k * 4;
+		float* layer_w = SIMD(layer) + k * 4 * kernel_rows * kernel_cols * ch_per_partition;
+		float bias[4] __attribute__ ((__aligned__(16)));
+		memcpy(bias, layer->bias + k * 4, sizeof(float) * 4);
+		float32x4_t z4 = vmovq_n_f32(0);
+		for (i = 0; i < db->rows; i++)
+		{
+			int comy = ccv_max(i * strides - border, 0) - (i * strides - border);
+			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows));
+			comy *= ch_per_partition * kernel_cols;
+			for (j = 0; j < db->cols; j++)
+			{
+				float32x4_t v4 = vld1q_f32(bias);
+				int comx = ccv_max(j * strides - border, 0) - (j * strides - border);
+				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols));
+				float* w = layer_w + (comx * ch_per_partition + comy) * 4;
+				float* apz = ap + ccv_max(j * strides - border, 0) * ch;
+				// when we have border, we simply do zero padding
+				for (y = 0; y < maxy; y++)
+				{
+					for (x = 0; x < maxx; x++)
+						for (c = 0; c < ch_per_partition; c++)
+						{
+							float32x4_t w4 = vld1q_f32(w + (x * ch_per_partition + c) * 4);
+							float32x4_t apz4 = vmovq_n_f32(apz[x * ch + c]);
+							v4 = vmlaq_f32(v4, w4, apz4);
+						}
+					w += kernel_cols * ch_per_partition * 4;
+					apz += a->cols * ch;
+				}
+				v4 = vmaxq_f32(z4, v4);
+				vst1q_f32(bp + j * count, v4); // ReLU
+			}
+			bp += db->cols * count;
+			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
+		}
+	} parallel_endfor
 }
 #else
 static inline void _ccv_convnet_convolutional_forward_propagate_fallback(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
