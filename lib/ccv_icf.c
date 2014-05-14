@@ -881,12 +881,7 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 		aweigh0 += example_state[i].weight, example_state[i].correct = 1; // assuming negative examples we get right
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
 	ccv_icf_first_feature_find_t* feature_find = (ccv_icf_first_feature_find_t*)ccmalloc(sizeof(ccv_icf_first_feature_find_t) * feature_size);
-#ifdef USE_DISPATCH
-	dispatch_apply(feature_size, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i) {
-#else
-	for (i = 0; i < feature_size; i++)
-	{
-#endif
+	parallel_for(i, feature_size) {
 		ccv_icf_first_feature_find_t min_find = {
 			.error_rate = 1.0,
 			.error_index = 0,
@@ -923,11 +918,7 @@ static ccv_icf_decision_tree_cache_t _ccv_icf_find_first_feature(ccv_icf_feature
 			}
 		}
 		feature_find[i] = min_find;
-#ifdef USE_DISPATCH
-	});
-#else
-	}
-#endif
+	} parallel_endfor
 	ccv_icf_first_feature_find_t best = {
 		.error_rate = 1.0,
 		.error_index = -1,
@@ -993,17 +984,11 @@ typedef struct {
 
 static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t intermediate_cache, int leaf, ccv_icf_feature_t* features, int feature_size, ccv_array_t* positives, ccv_array_t* negatives, uint8_t* precomputed, ccv_icf_example_state_t* example_state, ccv_icf_feature_t* feature)
 {
-	int i;
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
 	uint8_t* lut = intermediate_cache.lut;
 	double* aweigh = intermediate_cache.weigh + leaf * 2;
 	ccv_icf_second_feature_find_t* feature_find = (ccv_icf_second_feature_find_t*)ccmalloc(sizeof(ccv_icf_second_feature_find_t) * feature_size);
-#ifdef USE_DISPATCH
-	dispatch_apply(feature_size, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t i) {
-#else
-	for (i = 0; i < feature_size; i++)
-	{
-#endif
+	parallel_for(i, feature_size) {
 		ccv_icf_second_feature_find_t min_find = {
 			.error_rate = 1.0,
 			.error_index = 0,
@@ -1048,16 +1033,13 @@ static double _ccv_icf_find_second_feature(ccv_icf_decision_tree_cache_t interme
 			}
 		}
 		feature_find[i] = min_find;
-#ifdef USE_DISPATCH
-	});
-#else
-	}
-#endif
+	} parallel_endfor
 	ccv_icf_second_feature_find_t best = {
 		.error_rate = 1.0,
 		.error_index = -1,
 		.weigh = {0, 0},
 	};
+	int i;
 	int feature_index = 0;
 	for (i = 0; i < feature_size; i++)
 		if (feature_find[i].error_rate < best.error_rate)
