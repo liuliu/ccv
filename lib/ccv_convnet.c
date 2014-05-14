@@ -134,9 +134,9 @@ static void _ccv_convnet_layer_simd_alloc_reserved(ccv_convnet_layer_t* layer)
 	layer->reserved = simd_w;
 }
 
-#define SIMD(x) ((float*)((x)->reserved))
-
 #endif
+
+#define SIMD(x) ((float*)((x)->reserved))
 
 #if defined(HAVE_SSE2)
 static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
