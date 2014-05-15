@@ -231,8 +231,8 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 #undef block
 	} else {
 #define block \
-		__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
 		__m128 apz4 = _mm_load1_ps(apz + x * ch + c); \
+		__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
 		v40 = _mm_add_ps(_mm_mul_ps(w4, apz4), v40);
 		main_for(block);
 #undef block
@@ -243,47 +243,69 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 static inline void _ccv_convnet_convolutional_forward_propagate_neon(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
 {
 	assert(SIMD(layer));
-	parallel_for(k, (count >> 2)) {
-		int i, j, x, y, c;
-		int p = k * 4 / count_per_partition;
-		float* ap = a->data.f32 + p * ch_per_partition;
-		float* bp = db->data.f32 + k * 4;
-		float* layer_w = SIMD(layer) + k * 4 * kernel_rows * kernel_cols * ch_per_partition;
-		float bias[4] __attribute__ ((__aligned__(16)));
-		memcpy(bias, layer->bias + k * 4, sizeof(float) * 4);
-		float32x4_t z4 = vmovq_n_f32(0);
-		for (i = 0; i < db->rows; i++)
-		{
-			int comy = ccv_max(i * strides - border, 0) - (i * strides - border);
-			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows));
-			comy *= ch_per_partition * kernel_cols;
-			for (j = 0; j < db->cols; j++)
-			{
-				float32x4_t v4 = vld1q_f32(bias);
-				int comx = ccv_max(j * strides - border, 0) - (j * strides - border);
-				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols));
-				float* w = layer_w + (comx * ch_per_partition + comy) * 4;
-				float* apz = ap + ccv_max(j * strides - border, 0) * ch;
-				// when we have border, we simply do zero padding
-				for (y = 0; y < maxy; y++)
-				{
-					for (x = 0; x < maxx; x++)
-						for (c = 0; c < ch_per_partition; c++)
-						{
-							float32x4_t w4 = vld1q_f32(w + (x * ch_per_partition + c) * 4);
-							float32x4_t apz4 = vmovq_n_f32(apz[x * ch + c]);
-							v4 = vmlaq_f32(v4, w4, apz4);
-						}
-					w += kernel_cols * ch_per_partition * 4;
-					apz += a->cols * ch;
-				}
-				v4 = vmaxq_f32(z4, v4);
-				vst1q_f32(bp + j * count, v4); // ReLU
-			}
-			bp += db->cols * count;
-			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
-		}
+#define main_for(block) \
+	parallel_for(k, (count >> 2)) { \
+		int i, j, x, y, c; \
+		int p = k * 4 / count_per_partition; \
+		float* ap = a->data.f32 + p * ch_per_partition; \
+		float* bp = db->data.f32 + k * 4; \
+		float* layer_w = SIMD(layer) + k * 4 * kernel_rows * kernel_cols * ch_per_partition; \
+		float bias[4] __attribute__ ((__aligned__(16))); \
+		memcpy(bias, layer->bias + k * 4, sizeof(float) * 4); \
+		float32x4_t z4 = vmovq_n_f32(0); \
+		for (i = 0; i < db->rows; i++) \
+		{ \
+			int comy = ccv_max(i * strides - border, 0) - (i * strides - border); \
+			int maxy = kernel_rows - comy - (i * strides + kernel_rows - ccv_min(a->rows + border, i * strides + kernel_rows)); \
+			comy *= ch_per_partition * kernel_cols; \
+			for (j = 0; j < db->cols; j++) \
+			{ \
+				float32x4_t v40 = vld1q_f32(bias); \
+				float32x4_t v41 = vmovq_n_f32(0); \
+				int comx = ccv_max(j * strides - border, 0) - (j * strides - border); \
+				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols)); \
+				float* w = layer_w + (comx * ch_per_partition + comy) * 4; \
+				float* apz = ap + ccv_max(j * strides - border, 0) * ch; \
+				/* when we have border, we simply do zero padding */ \
+				for (y = 0; y < maxy; y++) \
+				{ \
+					for (x = 0; x < maxx; x++) \
+					{ \
+						c = 0; \
+						for (; c < ch_per_partition - 1; c += 2) \
+						{ \
+							float32x2_t apz4 = vld1_f32(apz + x * ch + c); \
+							float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
+							float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
+							float32x4_t w40 = vld1q_f32(w + (x * ch_per_partition + c) * 4); \
+							float32x4_t w41 = vld1q_f32(w + (x * ch_per_partition + c + 1) * 4); \
+							v40 = vmlaq_f32(v40, w40, apz40); \
+							v41 = vmlaq_f32(v41, w41, apz41); \
+						} \
+						block /* insert executions for tail partition */ \
+					} \
+					w += kernel_cols * ch_per_partition * 4; \
+					apz += a->cols * ch; \
+				} \
+				float32x4_t v4 = vmaxq_f32(z4, vaddq_f32(v40, v41)); \
+				vst1q_f32(bp + j * count, v4); /* ReLU */ \
+			} \
+			bp += db->cols * count; \
+			ap += a->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0)); \
+		} \
 	} parallel_endfor
+	if (ch_per_partition % 2 == 0)
+	{
+		main_for();
+	} else { // unroll the last for-loops
+#define block \
+		float32x4_t apz4 = vmovq_n_f32(apz[x * ch + c]); \
+		float32x4_t w4 = vld1q_f32(w + (x * ch_per_partition + c) * 4); \
+		v40 = vmlaq_f32(v40, w4, apz4);
+		main_for(block);
+#undef block
+	}
+#undef main_for
 }
 #else
 static inline void _ccv_convnet_convolutional_forward_propagate_fallback(ccv_convnet_layer_t* layer, ccv_dense_matrix_t* a, ccv_dense_matrix_t* db, int rows, int cols, int ch, int count, int strides, int border, int kernel_rows, int kernel_cols, int ch_per_partition, int count_per_partition)
