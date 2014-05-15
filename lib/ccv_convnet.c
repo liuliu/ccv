@@ -151,6 +151,7 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 		float* layer_w = SIMD(layer) + k * 4 * kernel_rows * kernel_cols * ch_per_partition; \
 		float bias[4] __attribute__ ((__aligned__(16))); \
 		memcpy(bias, layer->bias + k * 4, sizeof(float) * 4); \
+		/* 4 accumulators */ \
 		__m128 z4 = _mm_setzero_ps(); \
 		for (i = 0; i < db->rows; i++) \
 		{ \
@@ -159,7 +160,10 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 			comy *= ch_per_partition * kernel_cols; \
 			for (j = 0; j < db->cols; j++) \
 			{ \
-				__m128 v4 = _mm_load_ps(bias); \
+				__m128 v40 = _mm_load_ps(bias); \
+				__m128 v41 = _mm_setzero_ps(); \
+				__m128 v42 = _mm_setzero_ps(); \
+				__m128 v43 = _mm_setzero_ps(); \
 				int comx = ccv_max(j * strides - border, 0) - (j * strides - border); \
 				int maxx = kernel_cols - comx - (j * strides + kernel_cols - ccv_min(a->cols + border, j * strides + kernel_cols)); \
 				float* w = layer_w + (comx * ch_per_partition + comy) * 4; \
@@ -182,16 +186,17 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 							__m128 apz41 = _mm_shuffle_ps(apz4, apz4, 0x55); \
 							__m128 apz42 = _mm_shuffle_ps(apz4, apz4, 0xAA); \
 							__m128 apz43 = _mm_shuffle_ps(apz4, apz4, 0xFF); \
-							__m128 vs0 = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
-							__m128 vs1 = _mm_add_ps(_mm_mul_ps(w42, apz42), _mm_mul_ps(w43, apz43)); \
-							v4 = _mm_add_ps(_mm_add_ps(vs0, vs1), v4); \
+							v40 =_mm_add_ps(_mm_mul_ps(w40, apz40), v40); \
+							v41 =_mm_add_ps(_mm_mul_ps(w41, apz41), v41); \
+							v42 =_mm_add_ps(_mm_mul_ps(w42, apz42), v42); \
+							v43 =_mm_add_ps(_mm_mul_ps(w43, apz43), v43); \
 						} \
 						block /* insert executions for tail partition */ \
 					} \
 					w += kernel_cols * ch_per_partition * 4; \
 					apz += a->cols * ch; \
 				} \
-				v4 = _mm_max_ps(z4, v4); \
+				__m128 v4 = _mm_max_ps(z4, _mm_add_ps(_mm_add_ps(v40, v41), _mm_add_ps(v42, v43))); \
 				_mm_storeu_ps(bp + j * count, v4); /* ReLU */ \
 			} \
 			bp += db->cols * count; \
@@ -209,9 +214,9 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 		__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
 		__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4); \
 		__m128 w42 = _mm_loadu_ps(w + (x * ch_per_partition + c + 2) * 4); \
-		__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
-		v4 = _mm_add_ps(_mm_mul_ps(w42, apz42), v4); \
-		v4 = _mm_add_ps(v4, vs);
+		v40 = _mm_add_ps(_mm_mul_ps(w40, apz40), v40); \
+		v41 = _mm_add_ps(_mm_mul_ps(w41, apz41), v41); \
+		v42 = _mm_add_ps(_mm_mul_ps(w42, apz42), v42);
 		main_for(block);
 #undef block
 	} else if (ch_per_partition % 4 == 2) { // unroll the last for-loops
@@ -220,15 +225,15 @@ static inline void _ccv_convnet_convolutional_forward_propagate_sse2(ccv_convnet
 		__m128 apz41 = _mm_load1_ps(apz + x * ch + c + 1); \
 		__m128 w40 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
 		__m128 w41 = _mm_loadu_ps(w + (x * ch_per_partition + c + 1) * 4); \
-		__m128 vs = _mm_add_ps(_mm_mul_ps(w40, apz40), _mm_mul_ps(w41, apz41)); \
-		v4 = _mm_add_ps(v4, vs);
+		v40 = _mm_add_ps(_mm_mul_ps(w40, apz40), v40); \
+		v41 = _mm_add_ps(_mm_mul_ps(w41, apz41), v41);
 		main_for(block);
 #undef block
 	} else {
 #define block \
 		__m128 w4 = _mm_loadu_ps(w + (x * ch_per_partition + c) * 4); \
 		__m128 apz4 = _mm_load1_ps(apz + x * ch + c); \
-		v4 = _mm_add_ps(_mm_mul_ps(w4, apz4), v4);
+		v40 = _mm_add_ps(_mm_mul_ps(w4, apz4), v40);
 		main_for(block);
 #undef block
 	}
