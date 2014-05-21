@@ -666,6 +666,8 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 	const int start_y = max(origin_y * strides - border, 0) - (origin_y * strides - border);
 	const int end_y = min(origin_y * strides - border + filter_rows, rows) - (origin_y * strides - border);
 	filter += filter_group_idx * filter_per_block;
+	float* read_block = shared_block + threadIdx.x * input_per_thread;
+	float* read_weights = shared_weights + threadIdx.y * filter_per_thread;
 	for (c = 0; c < channels_per_partition; c++)
 	{
 		for (y = start_y; y < end_y; y++)
@@ -680,21 +682,22 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 				for (i = 0; i < filter_per_thread; i++)
 					#pragma unroll
 					for (j = 0; j < input_per_thread; j++)
-						prod[i][j] += shared_block[j + threadIdx.x * input_per_thread] * shared_weights[i + threadIdx.y * filter_per_thread];
+						prod[i][j] += read_block[j] * read_weights[i];
 				__syncthreads();
 			}
 		input += rows * cols * batch;
 		filter += filter_rows * filter_cols * count;
 	}
 	const int outcnt = out_rows * out_cols * batch;
-	out += filter_group_idx * filter_per_block * outcnt + (origin_y * out_cols + origin_x) * batch;
+	out += (filter_group_idx * filter_per_block + threadIdx.y * filter_per_thread) * outcnt + (origin_y * out_cols + origin_x) * batch + threadIdx.x * input_per_thread;
 	#pragma unroll
 	for (i = 0; i < filter_per_thread; i++)
 	{
 		const float bias = shared_bias[i + threadIdx.y * filter_per_thread];
 		#pragma unroll
 		for (j = 0; j < input_per_thread; j++)
-			out[(i + threadIdx.y * filter_per_thread) * outcnt + j + threadIdx.x * input_per_thread] = max(0.0, prod[i][j] + bias);
+			out[j] = max(0.0, prod[i][j] + bias);
+		out += outcnt;
 	}
 }
 

@@ -38,7 +38,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	float elapsed_time = 0;
 	cudaEventElapsedTime(&elapsed_time, start, stop);
 	cudaStreamSynchronize(context->device.stream);
-	printf("%d %d %d, elapsed time for first convolutional layer: %f milliseconds\n", VARY(first_gpu_layer)->convolutional.forward.x, VARY(first_gpu_layer)->convolutional.forward.y, VARY(first_gpu_layer)->convolutional.forward.z, elapsed_time);
+	printf("%d %d %d, elapsed time for first convolutional layer fprop: %f milliseconds\n", VARY(first_gpu_layer)->convolutional.forward.x, VARY(first_gpu_layer)->convolutional.forward.y, VARY(first_gpu_layer)->convolutional.forward.z, elapsed_time);
 	int first_out_rows, first_out_cols, first_out_partition, first_out_channels = first_gpu_layer->net.convolutional.count;
 	_ccv_convnet_layer_derive_output(first_gpu_layer, first_gpu_layer->input.matrix.rows, first_gpu_layer->input.matrix.cols, &first_out_rows, &first_out_cols, &first_out_partition);
 	float* first_out = 0;
@@ -68,10 +68,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaEventRecord(stop, context->device.stream);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsed_time, start, stop);
-	printf("elapsed time for third convolutional layer: %f milliseconds\n", elapsed_time);
+	printf("%d %d %d, elapsed time for third convolutional layer fprop: %f milliseconds\n", VARY(third_gpu_layer)->convolutional.forward.x, VARY(third_gpu_layer)->convolutional.forward.y, VARY(third_gpu_layer)->convolutional.forward.z, elapsed_time);
 	cudaStreamSynchronize(context->device.stream);
-	cudaEventDestroy(start);
-	cudaEventDestroy(stop);
 	int third_out_rows, third_out_cols, third_out_partition, third_out_channels = third_gpu_layer->net.convolutional.count;
 	_ccv_convnet_layer_derive_output(third_gpu_layer, third_gpu_layer->input.matrix.rows, third_gpu_layer->input.matrix.cols, &third_out_rows, &third_out_cols, &third_out_partition);
 	float* third_out = 0;
@@ -82,7 +80,18 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	// third convolutonal layer backward propagate
 	cudaMemcpy(GPU(convnet)->backwards[3], GPU(convnet)->forwards[2], sizeof(float) * third_out_rows * third_out_cols * third_out_channels * batch, cudaMemcpyDeviceToDevice);
 	ccv_convnet_layer_t* third_gpu_configuration = GPU(convnet)->configurations + 2;
+	VARY(third_gpu_layer)->convolutional.backward.coefficient.x = 4;
+	VARY(third_gpu_layer)->convolutional.backward.coefficient.y = 4;
+	VARY(third_gpu_layer)->convolutional.backward.coefficient.z = 16;
+	VARY(third_gpu_layer)->convolutional.backward.gradient.x = 4;
+	VARY(third_gpu_layer)->convolutional.backward.gradient.y = 6;
+	VARY(third_gpu_layer)->convolutional.backward.gradient.z = 24;
+	cudaEventRecord(start, context->device.stream);
 	_cwc_convnet_convolutional_backward_propagate(third_gpu_layer, batch, GPU(convnet)->backwards[3], GPU(convnet)->forwards[2], GPU(convnet)->forwards[1], GPU(convnet)->backwards[2], third_gpu_configuration, GPU(convnet)->scratch, GPU(convnet)->unit, context->device.stream, context->device.cublas);
+	cudaEventRecord(stop, context->device.stream);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("%d %d %d, %d %d %d, elapsed time for third convolutional layer bprop: %f milliseconds\n", VARY(third_gpu_layer)->convolutional.backward.coefficient.x, VARY(third_gpu_layer)->convolutional.backward.coefficient.y, VARY(third_gpu_layer)->convolutional.backward.coefficient.z, VARY(third_gpu_layer)->convolutional.backward.gradient.x, VARY(third_gpu_layer)->convolutional.backward.gradient.y, VARY(third_gpu_layer)->convolutional.backward.gradient.z, elapsed_time);
 	cudaStreamSynchronize(context->device.stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	float* third_back = 0;
@@ -105,7 +114,15 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 
 	// first convolutional layer backward propagate
 	ccv_convnet_layer_t* first_gpu_configuration = GPU(convnet)->configurations;
+	VARY(first_gpu_layer)->convolutional.backward.coefficient.x = 3;
+	VARY(first_gpu_layer)->convolutional.backward.coefficient.y = 1;
+	VARY(first_gpu_layer)->convolutional.backward.coefficient.z = 1;
+	cudaEventRecord(start, context->device.stream);
 	_cwc_convnet_convolutional_backward_propagate(first_gpu_layer, batch, GPU(convnet)->backwards[1], GPU(convnet)->forwards[0], context->device.input, GPU(convnet)->backwards[0], first_gpu_configuration, GPU(convnet)->scratch, GPU(convnet)->unit, context->device.stream, context->device.cublas);
+	cudaEventRecord(stop, context->device.stream);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("%d %d %d, elapsed time for first convolutional layer bprop: %f milliseconds\n", VARY(first_gpu_layer)->convolutional.backward.coefficient.x, VARY(first_gpu_layer)->convolutional.backward.coefficient.y, VARY(first_gpu_layer)->convolutional.backward.coefficient.z, elapsed_time);
 	cudaStreamSynchronize(context->device.stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	float* first_grad = 0;
@@ -113,6 +130,8 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	assert(first_grad);
 	cudaMemcpy(first_grad, first_gpu_configuration->w, sizeof(float) * first_gpu_layer->wnum, cudaMemcpyDeviceToHost);
 	printf("finished backward propagate first convolutional layer on GPU\n");
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
 
 	for (i = 0; i < batch; i++)
 	{
