@@ -25,7 +25,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r);
 	free(file);
-	ccv_convnet_layer_param_t params[13] = {
+	ccv_convnet_layer_param_t params[12] = {
 		// first layer (convolutional => max pool => rnorm)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
@@ -42,10 +42,10 @@ int main(int argc, char** argv)
 			.output = {
 				.convolutional = {
 					.count = 96,
-					.strides = 4,
+					.strides = 2,
 					.border = 1,
-					.rows = 11,
-					.cols = 11,
+					.rows = 7,
+					.cols = 7,
 					.channels = 3,
 					.partition = 2,
 				},
@@ -55,8 +55,8 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_AVERAGE_POOL,
 			.input = {
 				.matrix = {
-					.rows = 55,
-					.cols = 55,
+					.rows = 111,
+					.cols = 111,
 					.channels = 96,
 					.partition = 2,
 				},
@@ -76,8 +76,8 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 27,
-					.cols = 27,
+					.rows = 55,
+					.cols = 55,
 					.channels = 96,
 					.partition = 2,
 				},
@@ -85,12 +85,31 @@ int main(int argc, char** argv)
 			.output = {
 				.convolutional = {
 					.count = 256,
-					.strides = 1,
-					.border = 2,
+					.strides = 2,
+					.border = 1,
 					.rows = 5,
 					.cols = 5,
 					.channels = 96,
 					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
 				},
 			},
 		},
@@ -109,25 +128,6 @@ int main(int argc, char** argv)
 					.strides = 2,
 					.size = 3,
 					.border = 0,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 256,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
 				},
 			},
 		},
@@ -242,6 +242,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 1,
 					.count = 4096,
 				},
 			},
@@ -264,6 +265,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 1,
 					.count = 4096,
 				},
 			},
@@ -286,6 +288,7 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.full_connect = {
+					.relu = 0,
 					.count = 1000,
 				},
 			},
@@ -293,10 +296,10 @@ int main(int argc, char** argv)
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(225, 225), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
-	ccv_convnet_layer_train_param_t layer_params[13];
+	ccv_convnet_layer_train_param_t layer_params[12];
 	memset(layer_params, 0, sizeof(layer_params));
 	int i;
-	for (i = 0; i < 13; i++)
+	for (i = 0; i < 12; i++)
 	{
 		layer_params[i].w.decay = 0.005;
 		layer_params[i].w.learn_rate = 0.0005;
@@ -307,10 +310,10 @@ int main(int argc, char** argv)
 	}
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
-		.mini_batch = 256,
+		.mini_batch = 128,
 		.layer_params = layer_params,
 	};
-	for (i = 0; i < 256; i++)
+	for (i = 0; i < 128; i++)
 	{
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
 		ccv_dense_matrix_t* image = 0;
