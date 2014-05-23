@@ -132,7 +132,6 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	printf("finished backward propagate first convolutional layer on GPU\n");
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
-
 	for (i = 0; i < batch; i++)
 	{
 		printf("doing batch %d of %d\n", i + 1, batch);

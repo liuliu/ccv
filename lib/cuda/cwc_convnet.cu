@@ -635,8 +635,8 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 		float* filter, const int filter_rows, const int filter_cols, const int count,
 		float* const biases)
 {
-	assert(gridDim.x * partition * filter_per_block == out_rows * count);
-	assert(gridDim.y == out_cols);
+	assert(gridDim.x * partition * filter_per_block == out_cols * count);
+	assert(gridDim.y == out_rows);
 	assert(gridDim.z == partition);
 	extern __shared__ float shared[];
 	float* shared_block = &shared[0];
