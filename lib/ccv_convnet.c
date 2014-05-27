@@ -1,5 +1,10 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#if defined(HAVE_SSE2)
+#include <xmmintrin.h>
+#elif defined(HAVE_NEON)
+#include <arm_neon.h>
+#endif
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>

@@ -14,11 +14,6 @@
 #include <string.h>
 #include <float.h>
 #include <math.h>
-#if defined(HAVE_SSE2)
-#include <xmmintrin.h>
-#elif defined(HAVE_NEON)
-#include <arm_neon.h>
-#endif
 #include <assert.h>
 #include <alloca.h>
 
