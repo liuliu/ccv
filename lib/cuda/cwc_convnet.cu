@@ -813,24 +813,16 @@ static void _cwc_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, int
 	dim3 threads_per_block(batch);
 	assert(threads_per_block.x <= 1024);
 	int shared_memory_size = sizeof(float) * batch * layer->net.rnorm.size;
-	if (layer->net.rnorm.size == 3)
-	{
-		cudaFuncSetCacheConfig(_cwc_kern_rnorm_forward_propagate<1, 3>, cudaFuncCachePreferShared);
-		_cwc_kern_rnorm_forward_propagate
-		<1, 3>
-		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-		(batch,
-		 a, rows, cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition,
-		 b, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	} else if (layer->net.rnorm.size == 5) {
-		cudaFuncSetCacheConfig(_cwc_kern_rnorm_forward_propagate<1, 5>, cudaFuncCachePreferShared);
-		_cwc_kern_rnorm_forward_propagate
-		<1, 5>
-		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-		(batch,
-		 a, rows, cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition,
-		 b, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	}
+#define vary_block(_, _x) \
+	cudaFuncSetCacheConfig(_cwc_kern_rnorm_forward_propagate<1, _x>, cudaFuncCachePreferShared); \
+	_cwc_kern_rnorm_forward_propagate \
+	<1, _x> \
+	<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
+	(batch, \
+	 a, rows, cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition, \
+	 b, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
+	cwc_vary_2_a(layer->net.rnorm.size, 3, 5, vary_block);
+#undef vary_block
 }
 
 template <int input_per_thread>
@@ -1256,8 +1248,8 @@ __global__ static void _cwc_kern_convolutional_backward_propagate_bias(const int
 		bias[blockIdx.x] = shared_bias[0];
 }
 
-template <int input_per_thread, int channel_per_thread, int channel_per_block>
-__global__ static void _cwc_kern_convolutional_backward_propagate_error(const int strides, const int border, const int batch,
+template <int input_per_thread, int channel_per_thread, int channel_per_block, int strides>
+__global__ static void _cwc_kern_convolutional_backward_propagate_error(const int border, const int batch,
 		float* input_grad, const int rows, const int cols, const int channels,
 		float* out_grad, const int out_rows, const int out_cols,
 		float* filter, const int filter_rows, const int filter_cols, const int count_per_partition, const int partition)
@@ -1473,21 +1465,21 @@ static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_
 	_cwc_kern_reorder_matrix_major_parted
 	<<<dim3(layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels / out_partition), dim3(layer->net.convolutional.count / out_partition, out_partition), 0, stream>>>
 	(layer->w, chw, layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels, layer->net.convolutional.count, layer->input.matrix.channels / out_partition, layer->net.convolutional.count / out_partition, out_partition);
-#define vary_block(_x, _y, _z) do { \
+#define vary_block(_x, _y, _z, _s) do { \
 		dim3 threads_per_block(batch / _x, _z / _y); \
 		assert(threads_per_block.x * threads_per_block.y <= 1024); \
 		dim3 num_blocks(layer->input.matrix.cols * layer->input.matrix.channels / (_z * out_partition), layer->input.matrix.rows, out_partition); \
 		int shared_memory_size = sizeof(float) * (batch + _z); \
-		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_error<_x, _y, _z>, cudaFuncCachePreferShared); \
+		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_error<_x, _y, _z, _s>, cudaFuncCachePreferShared); \
 		_cwc_kern_convolutional_backward_propagate_error \
-		<_x, _y, _z> \
+		<_x, _y, _z, _s> \
 		<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
+		(layer->net.convolutional.border, batch, \
 		 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
 		 a, out_rows, out_cols, \
 		 chw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count / out_partition, out_partition); \
 	} while (0)
-	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
+	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, cwc_vary_4_d, layer->net.convolutional.strides, 1, 2, 3, 4, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
 	return 0;
@@ -1612,24 +1604,16 @@ static void _cwc_convnet_rnorm_backward_propagate(ccv_convnet_layer_t* layer, in
 	dim3 threads_per_block(batch);
 	assert(threads_per_block.x <= 1024);
 	int shared_memory_size = sizeof(float) * batch * (layer->net.rnorm.size * 3 + 1);
-	if (layer->net.rnorm.size == 3)
-	{
-		cudaFuncSetCacheConfig(_cwc_kern_rnorm_backward_propagate<1, 3>, cudaFuncCachePreferShared);
-		_cwc_kern_rnorm_backward_propagate
-		<1, 3>
-		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-		(batch,
-		 m, b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition,
-		 n, a, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	} else if (layer->net.rnorm.size == 5) {
-		cudaFuncSetCacheConfig(_cwc_kern_rnorm_backward_propagate<1, 5>, cudaFuncCachePreferShared);
-		_cwc_kern_rnorm_backward_propagate
-		<1, 5>
-		<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-		(batch,
-		 m, b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition,
-		 n, a, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	}
+#define vary_block(_, _x) \
+	cudaFuncSetCacheConfig(_cwc_kern_rnorm_backward_propagate<1, _x>, cudaFuncCachePreferShared); \
+	_cwc_kern_rnorm_backward_propagate \
+	<1, _x> \
+	<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
+	(batch, \
+	 m, b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition, \
+	 n, a, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
+	cwc_vary_2_a(layer->net.rnorm.size, 3, 5, vary_block);
+#undef vary_block
 }
 
 template <int input_per_thread>

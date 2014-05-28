@@ -99,6 +99,36 @@
 	case e: { block(__VA_ARGS__, e); break; } \
 	case f: { block(__VA_ARGS__, f); break; } } }
 
+#define cwc_vary_2_d(type, a, b, block, ...) { switch (type) { \
+	case a: { block(__VA_ARGS__, a); break; } \
+	case b: { block(__VA_ARGS__, b); break; } } }
+
+#define cwc_vary_3_d(type, a, b, c, block, ...) { switch (type) { \
+	case a: { block(__VA_ARGS__, a); break; } \
+	case b: { block(__VA_ARGS__, b); break; } \
+	case c: { block(__VA_ARGS__, c); break; } } }
+
+#define cwc_vary_4_d(type, a, b, c, d, block, ...) { switch (type) { \
+	case a: { block(__VA_ARGS__, a); break; } \
+	case b: { block(__VA_ARGS__, b); break; } \
+	case c: { block(__VA_ARGS__, c); break; } \
+	case d: { block(__VA_ARGS__, d); break; } } }
+
+#define cwc_vary_5_d(type, a, b, c, d, e, block, ...) { switch (type) { \
+	case a: { block(__VA_ARGS__, a); break; } \
+	case b: { block(__VA_ARGS__, b); break; } \
+	case c: { block(__VA_ARGS__, c); break; } \
+	case d: { block(__VA_ARGS__, d); break; } \
+	case e: { block(__VA_ARGS__, e); break; } } }
+
+#define cwc_vary_6_d(type, a, b, c, d, e, f, block, ...) { switch (type) { \
+	case a: { block(__VA_ARGS__, a); break; } \
+	case b: { block(__VA_ARGS__, b); break; } \
+	case c: { block(__VA_ARGS__, c); break; } \
+	case d: { block(__VA_ARGS__, d); break; } \
+	case e: { block(__VA_ARGS__, e); break; } \
+	case f: { block(__VA_ARGS__, f); break; } } }
+
 // define the body of the function that bench / select best kernels
 
 #define CWC_IMPLEMENT_VARY_STUB(config, vary_x, vary_y, vary_z, vary_func, ...) \
