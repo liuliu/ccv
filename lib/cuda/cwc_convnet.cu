@@ -1158,7 +1158,6 @@ __global__ static void _cwc_kern_convolutional_backward_propagate_coefficient_mu
 		for (j = 0; j < filter_per_thread; j++)
 			prod[i][j] = 0;
 	const int iy = origin_y + y * strides - border;
-	const int chidx = thidx < channels * batch_per_block ? thidx : channels * batch_per_block - 1;
 	if (iy >= 0 && iy < rows)
 	{
 		input += (y * strides - border) * cols * channels * batch_per_block;
@@ -1169,7 +1168,8 @@ __global__ static void _cwc_kern_convolutional_backward_propagate_coefficient_mu
 				#pragma unroll
 				for (c = 0; c < batch_per_block; c++)
 					shared_out_grad[c * count + thidx] = out_grad[x * count * batch_per_block + c * count + thidx];
-			shared_input[chidx] = input[(x * strides - border) * channels * batch_per_block + chidx]; // no need for a conditional
+			if (thidx < channels * batch_per_block)
+				shared_input[thidx] = input[(x * strides - border) * channels * batch_per_block + thidx];
 			__syncthreads();
 			#pragma unroll
 			for (i = 0; i < channel_per_thread; i++)
