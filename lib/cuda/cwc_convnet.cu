@@ -1393,7 +1393,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, out_rows * batch_group_count, &alpha, cbw, count, unit, out_rows * batch_group_count, &beta, configuration->w, count); \
 	} while (0)
 	// special casing for image
-	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_2_b, y, 1, 2, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
+	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_4_b, y, 1, 2, 3, 4, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
 #undef vary_block
 	assert(cudaGetLastError() == cudaSuccess);
 	return 0;
@@ -1402,7 +1402,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 static void _cwc_convnet_convolutional_backward_propagate_coefficient_rows(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	static int vary_x[] = { 1, 2, 3, 4 };
-	static int vary_y[] = { 1, 2 };
+	static int vary_y[] = { 1, 2, 3, 4 };
 	static int vary_z[] = { 1 };
 	CWC_IMPLEMENT_VARY_STUB(VARY(layer)->convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 }
