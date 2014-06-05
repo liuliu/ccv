@@ -10,7 +10,7 @@ extern "C" {
 extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
 {
 	int batch = params.mini_batch;
-	int i, x, y, k, c;
+	int i;
 	_cwc_convnet_alloc_reserved_both(convnet, batch, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	for (i = 0; i < convnet->rows * convnet->cols * convnet->channels; i++)
@@ -132,6 +132,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	printf("finished backward propagate first convolutional layer on GPU\n");
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
+	int x, y, k, c;
 	for (i = 0; i < batch; i++)
 	{
 		printf("doing batch %d of %d\n", i + 1, batch);
