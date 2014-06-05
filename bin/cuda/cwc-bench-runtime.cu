@@ -115,7 +115,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	// first convolutional layer backward propagate
 	ccv_convnet_layer_t* first_gpu_configuration = GPU(convnet)->configurations;
 	VARY(first_gpu_layer)->convolutional.backward.coefficient.x = 1;
-	VARY(first_gpu_layer)->convolutional.backward.coefficient.y = 2;
+	VARY(first_gpu_layer)->convolutional.backward.coefficient.y = 3;
 	VARY(first_gpu_layer)->convolutional.backward.coefficient.z = 1;
 	cudaEventRecord(start, context->device.stream);
 	_cwc_convnet_convolutional_backward_propagate(first_gpu_layer, batch, GPU(convnet)->backwards[1], GPU(convnet)->forwards[0], context->device.input, GPU(convnet)->backwards[0], first_gpu_configuration, GPU(convnet)->scratch, GPU(convnet)->unit, context->device.stream, context->device.cublas);
