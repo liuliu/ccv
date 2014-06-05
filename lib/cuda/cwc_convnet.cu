@@ -1341,8 +1341,8 @@ __global__ static void _cwc_kern_reorder_matrix_major_parted(float* a, float* b,
 // this method rewinds a matrix
 __global__ static void _cwc_kern_reorder_matrix_major_per_block(float* a, float* b, const int count, const int channels, const int batch, const int batch_per_block)
 {
-	const int thidx = threadIdx.x + threadIdx.y * batch_per_block;
-	b[(threadIdx.y * count + blockIdx.x) * channels * batch_per_block + threadIdx.x * channels + blockIdx.y] = a[(blockIdx.y * count + blockIdx.x) * batch + thidx];
+	const int thidx = blockIdx.y * batch_per_block + threadIdx.y;
+	b[(blockIdx.y * count + blockIdx.x) * channels * batch_per_block + threadIdx.y * channels + threadIdx.x] = a[(threadIdx.x * count + blockIdx.x) * batch + thidx];
 }
 
 static int _cwc_convnet_convolutional_backward_propagate_coefficient_multi_way_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
@@ -1363,11 +1363,13 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_multi_way_v
 	float alpha = 1, beta = 0;
 	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
 	const int batch_group_count = batch / BATCH_PER_BLOCK;
+	assert(layer->input.matrix.channels * BATCH_PER_BLOCK <= 1024);
 	_cwc_kern_reorder_matrix_major_per_block
-	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
+	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, batch_group_count), dim3(layer->input.matrix.channels, BATCH_PER_BLOCK), 0, stream>>>
 	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch, BATCH_PER_BLOCK);
+	assert(layer->net.convolutional.count * BATCH_PER_BLOCK <= 1024);
 	_cwc_kern_reorder_matrix_major_per_block
-	<<<dim3(out_rows * out_cols, layer->net.convolutional.count), dim3(BATCH_PER_BLOCK, batch_group_count), 0, stream>>>
+	<<<dim3(out_rows * out_cols, batch_group_count), dim3(layer->net.convolutional.count, BATCH_PER_BLOCK), 0, stream>>>
 	(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch, BATCH_PER_BLOCK);
 #define vary_block(_x, _y) do { \
 		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, layer->input.matrix.channels / _x); \
