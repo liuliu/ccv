@@ -1338,7 +1338,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
 			cha, out_rows, out_cols, \
 			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, out_rows * batch_group_count, &alpha, cbw, count, unit, out_rows * batch_group_count, &beta, configuration->w, count); \
+		cublasSgemv(handle, CUBLAS_OP_N, count, out_rows * batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
 	} while (0)
 	// special casing for image
 	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_4_b, y, 1, 2, 3, 4, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
@@ -1389,7 +1389,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, \
 			cha, out_rows, out_cols, \
 			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count / out_partition); \
-		cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, count, 1, batch_group_count, &alpha, cbw, count, unit, batch_group_count, &beta, configuration->w, count); \
+		cublasSgemv(handle, CUBLAS_OP_N, count, batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
 	} while (0)
 	cwc_vary_6_a(x, 1, 2, 3, 4, 6, 8, cwc_vary_6_b, y, 1, 2, 3, 4, 6, 8, cwc_vary_4_c, z, 16, 24, 32, 36, vary_block);
 #undef vary_block
