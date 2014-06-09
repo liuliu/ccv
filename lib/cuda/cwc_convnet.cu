@@ -466,6 +466,7 @@ static void _cwc_convnet_make_unit(ccv_convnet_t* convnet, int batch)
 			_ccv_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			if (_cwc_convnet_layer_use_rows(layers + i))
 				unit_size = ccv_max(unit_size, out_rows * (batch / BATCH_PER_BLOCK));
+			unit_size = ccv_max(unit_size, out_rows * out_cols * batch);
 		}
 	float* unit = 0;
 	cudaMallocHost(&unit, sizeof(float) * unit_size);
@@ -1199,60 +1200,6 @@ __global__ static void _cwc_kern_convolutional_backward_propagate_coefficient_ro
 				coeff[(i + threadIdx.y * channel_per_thread) * cocnt + j * filter_cols * count + k + threadIdx.x * filter_per_thread] = prod[j][i][k];
 }
 
-template <int out_per_thread>
-__global__ static void _cwc_kern_convolutional_backward_propagate_bias(const int batch,
-		float* out_grad, const int out_rows, const int out_cols,
-		float* bias, const int count)
-{
-	assert(gridDim.x == count);
-	const int skip_pixels = blockDim.y;
-	extern __shared__ float shared[];
-	float* shared_bias = &shared[0];
-	float* shared_grad = &shared[1];
-	int i, x;
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	const int out_loads = (batch * skip_pixels + thcnt - 1) / thcnt;
-	assert(thcnt % batch == 0);
-	out_grad += blockIdx.x * out_rows * out_cols * batch + thidx;
-	const int out_load_factor = thcnt;
-	const int out_load_pixels = thcnt / batch;
-	if (thidx == 0)
-		shared_bias[0] = 0;
-	for (x = 0; x < out_rows * out_cols; x += skip_pixels)
-	{
-		for (i = 0; i < out_loads; i++)
-			if (i * thcnt + thidx < batch * skip_pixels && x + i * out_load_pixels < out_rows * out_cols)
-				shared_grad[i * thcnt + thidx] = out_grad[x * batch + i * out_load_factor];
-		__syncthreads();
-		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause
-		if (threadIdx.y + x < out_rows * out_cols)
-		{
-			#pragma unroll
-			for (i = 1; i < out_per_thread; i++)
-				shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread] += shared_grad[threadIdx.y * batch + threadIdx.x * out_per_thread + i];
-		}
-		__syncthreads();
-		// I can do better here, but bias computation is not the bottleneck
-		if (threadIdx.y + x < out_rows * out_cols && threadIdx.x == 0)
-			#pragma unroll
-			for (i = 1; i < blockDim.x; i++)
-				shared_grad[threadIdx.y * batch] += shared_grad[threadIdx.y * batch + i * out_per_thread];
-		__syncthreads();
-		// because I branched out with threadIdx, therefore, synchronization must happen outside of the if clause, thus, this if clause appeared repeatedly
-		if (threadIdx.y + x < out_rows * out_cols && thidx == 0)
-		{
-			#pragma unroll
-			for (i = 1; i < blockDim.y && i + x < out_rows * out_cols; i++)
-				shared_grad[0] += shared_grad[i * batch];
-			shared_bias[0] += shared_grad[0];
-		}
-		__syncthreads();
-	}
-	if (thidx == 0)
-		bias[blockIdx.x] = shared_bias[0];
-}
-
 template <int input_per_thread, int channel_per_thread, int channel_per_block, int strides>
 __global__ static void _cwc_kern_convolutional_backward_propagate_error(const int border, const int batch,
 		float* input_grad, const int rows, const int cols, const int channels,
@@ -1337,6 +1284,7 @@ __global__ static void _cwc_kern_reorder_matrix_major(float* a, float* b, const 
 	a += blockIdx.z * count * channels_per_partition * batch;
 	b[(threadIdx.x * count + blockIdx.x) * channels_per_partition + blockIdx.y] = a[(blockIdx.y * count + blockIdx.x) * batch + threadIdx.x];
 }
+
 // this method rewinds a matrix
 __global__ static void _cwc_kern_reorder_matrix_major_parted(float* a, float* b, const int count, const int channels, const int batch, const int channels_per_partition, const int batch_per_partition, const int partition)
 {
@@ -1504,27 +1452,20 @@ static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 {
 	assert(layer->net.convolutional.count % 4 == 0);
 	assert(batch % BATCH_PER_BLOCK == 0);
-	int out_rows, out_cols, out_partition, shared_memory_size;
+	int out_rows, out_cols, out_partition;
 	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	// it turns out that first apply relu would save us a lot of computation because no need to low both out and out_grad any more
 	_cwc_kern_relu_backward_propagate
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
+	float alpha = 1, beta = 0;
 	if (_cwc_convnet_layer_use_rows(layer))
 		_cwc_convnet_convolutional_backward_propagate_coefficient_rows(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 	else
 		_cwc_convnet_convolutional_backward_propagate_coefficient_default(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-	dim3 threads_per_block_for_bias(batch / 16, 16);
-	assert(threads_per_block_for_bias.x * threads_per_block_for_bias.y <= 1024);
-	dim3 num_blocks_for_bias(layer->net.convolutional.count);
-	shared_memory_size = sizeof(float) * (1 + batch * 16);
-	_cwc_kern_convolutional_backward_propagate_bias
-	<16>
-	<<<num_blocks_for_bias, threads_per_block_for_bias, shared_memory_size, stream>>>
-	(batch,
-		a, out_rows, out_cols,
-		configuration->bias, layer->net.convolutional.count);
+	// compute the bias directly using gemv routine
+	cublasSgemv(handle, CUBLAS_OP_T, out_rows * out_cols * batch, layer->net.convolutional.count, &alpha, a, out_rows * out_cols * batch, unit, 1, &beta, configuration->bias, 1);
 	assert(cudaGetLastError() == cudaSuccess);
 	if (b)
 		_cwc_convnet_convolutional_backward_propagate_error(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);

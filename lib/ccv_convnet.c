@@ -869,7 +869,7 @@ static void _ccv_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* l
 			np += n->cols * count;
 			mp += m->cols * ch * (ccv_max((i + 1) * strides - border, 0) - ccv_max(i * strides - border, 0));
 		}
-		update_params->bias[k] = bias;
+		update_params->bias[k] += bias;
 	} parallel_endfor
 	if (b)
 	{

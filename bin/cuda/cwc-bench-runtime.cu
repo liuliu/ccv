@@ -169,9 +169,9 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMallocHost(&seventh_back, sizeof(float) * sixth_out_rows * sixth_out_cols * sixth_out_channels * batch);
 	cudaMemcpy(seventh_back, GPU(convnet)->backwards[6], sizeof(float) * sixth_out_rows * sixth_out_cols * sixth_out_channels * batch, cudaMemcpyDeviceToHost);
 	float* seventh_grad = 0;
-	cudaMallocHost(&seventh_grad, sizeof(float) * seventh_gpu_layer->wnum);
+	cudaMallocHost(&seventh_grad, sizeof(float) * (seventh_gpu_layer->wnum + seventh_gpu_layer->net.convolutional.count));
 	assert(seventh_grad);
-	cudaMemcpy(seventh_grad, seventh_gpu_configuration->w, sizeof(float) * seventh_gpu_layer->wnum, cudaMemcpyDeviceToHost);
+	cudaMemcpy(seventh_grad, seventh_gpu_configuration->w, sizeof(float) * (seventh_gpu_layer->wnum + seventh_gpu_layer->net.convolutional.count), cudaMemcpyDeviceToHost);
 	printf("finished backward propagate seventh convolutional layer on GPU\n");
 
 	// sixth convolutonal layer backward propagate
@@ -194,9 +194,9 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMallocHost(&sixth_back, sizeof(float) * fifth_out_rows * fifth_out_cols * fifth_out_channels * batch);
 	cudaMemcpy(sixth_back, GPU(convnet)->backwards[5], sizeof(float) * fifth_out_rows * fifth_out_cols * fifth_out_channels * batch, cudaMemcpyDeviceToHost);
 	float* sixth_grad = 0;
-	cudaMallocHost(&sixth_grad, sizeof(float) * sixth_gpu_layer->wnum);
+	cudaMallocHost(&sixth_grad, sizeof(float) * (sixth_gpu_layer->wnum + sixth_gpu_layer->net.convolutional.count));
 	assert(sixth_grad);
-	cudaMemcpy(sixth_grad, sixth_gpu_configuration->w, sizeof(float) * sixth_gpu_layer->wnum, cudaMemcpyDeviceToHost);
+	cudaMemcpy(sixth_grad, sixth_gpu_configuration->w, sizeof(float) * (sixth_gpu_layer->wnum + sixth_gpu_layer->net.convolutional.count), cudaMemcpyDeviceToHost);
 	printf("finished backward propagate sixth convolutional layer on GPU\n");
 
 	// fifth convolutonal layer backward propagate
@@ -219,9 +219,9 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMallocHost(&fifth_back, sizeof(float) * forth_out_rows * forth_out_cols * forth_out_channels * batch);
 	cudaMemcpy(fifth_back, GPU(convnet)->backwards[4], sizeof(float) * forth_out_rows * forth_out_cols * forth_out_channels * batch, cudaMemcpyDeviceToHost);
 	float* fifth_grad = 0;
-	cudaMallocHost(&fifth_grad, sizeof(float) * fifth_gpu_layer->wnum);
+	cudaMallocHost(&fifth_grad, sizeof(float) * (fifth_gpu_layer->wnum + fifth_gpu_layer->net.convolutional.count));
 	assert(fifth_grad);
-	cudaMemcpy(fifth_grad, fifth_gpu_configuration->w, sizeof(float) * fifth_gpu_layer->wnum, cudaMemcpyDeviceToHost);
+	cudaMemcpy(fifth_grad, fifth_gpu_configuration->w, sizeof(float) * (fifth_gpu_layer->wnum + fifth_gpu_layer->net.convolutional.count), cudaMemcpyDeviceToHost);
 	printf("finished backward propagate fifth convolutional layer on GPU\n");
 
 	// third convolutonal layer backward propagate
@@ -245,9 +245,9 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMallocHost(&third_back, sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch);
 	cudaMemcpy(third_back, GPU(convnet)->backwards[2], sizeof(float) * second_out_rows * second_out_cols * second_out_channels * batch, cudaMemcpyDeviceToHost);
 	float* third_grad = 0;
-	cudaMallocHost(&third_grad, sizeof(float) * third_gpu_layer->wnum);
+	cudaMallocHost(&third_grad, sizeof(float) * (third_gpu_layer->wnum + third_gpu_layer->net.convolutional.count));
 	assert(third_grad);
-	cudaMemcpy(third_grad, third_gpu_configuration->w, sizeof(float) * third_gpu_layer->wnum, cudaMemcpyDeviceToHost);
+	cudaMemcpy(third_grad, third_gpu_configuration->w, sizeof(float) * (third_gpu_layer->wnum + third_gpu_layer->net.convolutional.count), cudaMemcpyDeviceToHost);
 	printf("finished backward propagate third convolutional layer on GPU\n");
 
 	// second average pool layer backward propagate
@@ -273,9 +273,9 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaStreamSynchronize(context->device.stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	float* first_grad = 0;
-	cudaMallocHost(&first_grad, sizeof(float) * first_gpu_layer->wnum);
+	cudaMallocHost(&first_grad, sizeof(float) * (first_gpu_layer->wnum + first_gpu_layer->net.convolutional.count));
 	assert(first_grad);
-	cudaMemcpy(first_grad, first_gpu_configuration->w, sizeof(float) * first_gpu_layer->wnum, cudaMemcpyDeviceToHost);
+	cudaMemcpy(first_grad, first_gpu_configuration->w, sizeof(float) * (first_gpu_layer->wnum + first_gpu_layer->net.convolutional.count), cudaMemcpyDeviceToHost);
 	printf("finished backward propagate first convolutional layer on GPU\n");
 	cudaEventDestroy(start);
 	cudaEventDestroy(stop);
@@ -472,6 +472,14 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-4)
 						printf("conv bprop 7: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
+	for (k = 0; k < seventh_filter_count; k++)
+	{
+		float p = seventh_cpu_configuration->bias[k];
+		float q = seventh_grad[seventh_gpu_layer->wnum + k];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-4)
+			printf("conv bprop 7 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
+	}
 
 	ccv_convnet_layer_t* sixth_cpu_configuration = update_params->layers + 5;
 	int sixth_filter_rows = sixth_gpu_layer->net.convolutional.rows;
@@ -489,6 +497,14 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-3)
 						printf("conv bprop 6: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
+	for (k = 0; k < sixth_filter_count; k++)
+	{
+		float p = sixth_cpu_configuration->bias[k];
+		float q = sixth_grad[sixth_gpu_layer->wnum + k];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-4)
+			printf("conv bprop 6 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
+	}
 
 	ccv_convnet_layer_t* fifth_cpu_configuration = update_params->layers + 4;
 	int fifth_filter_rows = fifth_gpu_layer->net.convolutional.rows;
@@ -506,6 +522,14 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-2)
 						printf("conv bprop 5: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
+	for (k = 0; k < fifth_filter_count; k++)
+	{
+		float p = fifth_cpu_configuration->bias[k];
+		float q = fifth_grad[fifth_gpu_layer->wnum + k];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-4)
+			printf("conv bprop 5 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
+	}
 
 	ccv_convnet_layer_t* third_cpu_configuration = update_params->layers + 2;
 	int third_filter_rows = third_gpu_layer->net.convolutional.rows;
@@ -523,6 +547,14 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-4)
 						printf("conv bprop 3: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
+	for (k = 0; k < third_filter_count; k++)
+	{
+		float p = third_cpu_configuration->bias[k];
+		float q = third_grad[third_gpu_layer->wnum + k];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-4)
+			printf("conv bprop 3 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
+	}
 
 	ccv_convnet_layer_t* first_cpu_configuration = update_params->layers;
 	int first_filter_rows = first_gpu_layer->net.convolutional.rows;
@@ -540,4 +572,12 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-3)
 						printf("conv bprop 1: %d %d %d %d: |%g - %g| = %g\n", x, y, k, c, p, q, delta);
 				}
+	for (k = 0; k < first_filter_count; k++)
+	{
+		float p = first_cpu_configuration->bias[k];
+		float q = first_grad[first_gpu_layer->wnum + k];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-4)
+			printf("conv bprop 1 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
+	}
 }
