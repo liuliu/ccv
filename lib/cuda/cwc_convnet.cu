@@ -667,8 +667,6 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 	const int start_y = max(origin_y * strides - border, 0) - (origin_y * strides - border);
 	const int end_y = min(origin_y * strides - border + filter_rows, rows) - (origin_y * strides - border);
 	filter += filter_group_idx * filter_per_block;
-	float* read_block = shared_block + threadIdx.x * input_per_thread;
-	float* read_weights = shared_weights + threadIdx.y * filter_per_thread;
 	for (c = 0; c < channels_per_partition; c++)
 	{
 		for (y = start_y; y < end_y; y++)
@@ -683,7 +681,7 @@ __global__ static void _cwc_kern_convolutional_forward_propagate(const int strid
 				for (i = 0; i < filter_per_thread; i++)
 					#pragma unroll
 					for (j = 0; j < input_per_thread; j++)
-						prod[i][j] += read_block[j] * read_weights[i];
+						prod[i][j] += shared_block[j + threadIdx.x * input_per_thread] * shared_weights[i + threadIdx.y * filter_per_thread];
 				__syncthreads();
 			}
 		input += rows * cols * batch;
@@ -754,9 +752,7 @@ __global__ static void _cwc_kern_rnorm_forward_propagate(const int batch,
 	extern __shared__ float shared[];
 	float* shared_input = &shared[0];
 	const int way = size / 2;
-	const int thcnt = blockDim.x;
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
 	int i, j, c;
 	float prod[input_per_thread];
 	const int incnt = rows * cols * batch;
@@ -766,10 +762,7 @@ __global__ static void _cwc_kern_rnorm_forward_propagate(const int batch,
 	const int end_way = min(way, channels_per_partition - 1);
 	for (c = 0; c < end_way; c++)
 	{
-		#pragma unroll
-		for (i = 0; i < input_loads; i++)
-			if (i * thcnt + thidx < batch)
-				shared_input[c * batch + i * thcnt + thidx] = input[i * thcnt + thidx];
+		shared_input[c * batch + thidx] = input[thidx];
 		input += incnt;
 	}
 	for (c = 0; c < channels_per_partition; c++)
@@ -778,17 +771,14 @@ __global__ static void _cwc_kern_rnorm_forward_propagate(const int batch,
 		const int end_way = min(c + way, channels_per_partition - 1);
 		if (c + way < channels_per_partition)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_input[(end_way % size) * batch + i * thcnt + thidx] = input[i * thcnt + thidx];
+			shared_input[(end_way % size) * batch + thidx] = input[thidx];
 			input += incnt;
 		}
 		__syncthreads();
 		#pragma unroll
 		for (i = 0; i < input_per_thread; i++)
 			prod[i] = 0;
-		#pragma unroll
+		#pragma unroll 5
 		for (i = start_way; i <= end_way; i++)
 			#pragma unroll
 			for (j = 0; j < input_per_thread; j++)
@@ -836,9 +826,8 @@ __global__ static void _cwc_kern_max_pool_forward_propagate(const int strides, c
 	assert(gridDim.z == channels);
 	extern __shared__ float shared[];
 	float* shared_input = &shared[0];
-	const int thcnt = blockDim.x;
+	assert(blockDim.x == batch);
 	const int thidx = threadIdx.x;
-	assert(thcnt >= batch);
 	int i, x, y;
 	input += blockIdx.z * rows * cols * batch + (blockIdx.y * strides * cols + blockIdx.x * strides) * batch;
 	float prod[input_per_thread];
@@ -858,8 +847,7 @@ __global__ static void _cwc_kern_max_pool_forward_propagate(const int strides, c
 		#pragma unroll
 		for (x = size_start_x; x < size_end_x; x++)
 		{
-			if (thidx < batch)
-				shared_input[thidx] = input[(y * cols + x) * batch + thidx];
+			shared_input[thidx] = input[(y * cols + x) * batch + thidx];
 			__syncthreads();
 			if (x == size_start_x && y == size_start_y)
 				#pragma unroll
@@ -1485,9 +1473,8 @@ __global__ static void _cwc_kern_rnorm_backward_propagate(const int batch,
 	float* shared_denoms = &shared[batch * size * 2];
 	float* shared_input = &shared[batch * size * 3];
 	const int way = size / 2;
-	const int thcnt = blockDim.x;
+	assert(blockDim.x == batch);
 	const int thidx = threadIdx.x;
-	const int input_loads = (batch + thcnt - 1) / thcnt;
 	int i, j, c;
 	float prod[input_per_thread];
 	const int incnt = rows * cols * batch;
@@ -1499,12 +1486,9 @@ __global__ static void _cwc_kern_rnorm_backward_propagate(const int batch,
 	const int end_way = min(way, channels_per_partition - 1);
 	for (c = 0; c < end_way; c++)
 	{
-		#pragma unroll
-		for (i = 0; i < input_loads; i++)
-			if (i * thcnt + thidx < batch)
-				shared_out_grad[c * batch + i * thcnt + thidx] = out_grad[i * thcnt + thidx],
-				shared_out[c * batch + i * thcnt + thidx] = out[i * thcnt + thidx],
-				shared_denoms[c * batch + i * thcnt + thidx] = denoms[i * thcnt + thidx];
+		shared_out_grad[c * batch + thidx] = out_grad[thidx],
+		shared_out[c * batch + thidx] = out[thidx],
+		shared_denoms[c * batch + thidx] = denoms[thidx];
 		out_grad += incnt;
 		out += incnt;
 		denoms += incnt;
@@ -1515,24 +1499,19 @@ __global__ static void _cwc_kern_rnorm_backward_propagate(const int batch,
 		const int end_way = min(c + way, channels_per_partition - 1);
 		if (c + way < channels_per_partition)
 		{
-			#pragma unroll
-			for (i = 0; i < input_loads; i++)
-				if (i * thcnt + thidx < batch)
-					shared_out_grad[(end_way % size) * batch + i * thcnt + thidx] = out_grad[i * thcnt + thidx],
-					shared_out[(end_way % size) * batch + i * thcnt + thidx] = out[i * thcnt + thidx],
-					shared_denoms[(end_way % size) * batch + i * thcnt + thidx] = denoms[i * thcnt + thidx];
+			shared_out_grad[(end_way % size) * batch + thidx] = out_grad[thidx],
+			shared_out[(end_way % size) * batch + thidx] = out[thidx],
+			shared_denoms[(end_way % size) * batch + thidx] = denoms[thidx];
 			out_grad += incnt;
 			out += incnt;
 			denoms += incnt;
 		}
-		for (i = 0; i < input_loads; i++)
-			if (i * thcnt + thidx < batch)
-				shared_input[i * thcnt + thidx] = input[i * thcnt + thidx];
+		shared_input[thidx] = input[thidx];
 		__syncthreads();
 		#pragma unroll
 		for (i = 0; i < input_per_thread; i++)
 			prod[i] = 0;
-		#pragma unroll
+		#pragma unroll 5
 		for (i = start_way; i <= end_way; i++)
 			#pragma unroll
 			for (j = 0; j < input_per_thread; j++)
@@ -1576,9 +1555,8 @@ __global__ static void _cwc_kern_max_pool_backward_propagate(const int strides, 
 	float* shared_input = &shared[0];
 	float* shared_out = &shared[batch];
 	float* shared_grad = &shared[batch * 2];
-	const int thcnt = blockDim.x;
+	assert(blockDim.x == batch);
 	const int thidx = threadIdx.x;
-	assert(thcnt >= batch);
 	float prod[input_per_thread];
 	int i, x, y;
 	#pragma unroll
@@ -1601,9 +1579,8 @@ __global__ static void _cwc_kern_max_pool_backward_propagate(const int strides, 
 	{
 		for (x = out_start_x; x < out_end_x; x++)
 		{
-			if (thidx < batch)
-				shared_out[thidx] = out[x * batch + thidx],
-				shared_grad[thidx] = out_grad[x * batch + thidx];
+			shared_out[thidx] = out[x * batch + thidx],
+			shared_grad[thidx] = out_grad[x * batch + thidx];
 			__syncthreads();
 			#pragma unroll
 			for (i = 0; i < input_per_thread; i++)
