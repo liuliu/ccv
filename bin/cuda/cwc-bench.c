@@ -25,6 +25,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r);
 	free(file);
+	/* MattNet parameters */
 	ccv_convnet_layer_param_t params[13] = {
 		// first layer (convolutional => max pool => rnorm)
 		{
@@ -313,6 +314,596 @@ int main(int argc, char** argv)
 			},
 		},
 	};
+	/* AlexNet 12 (ImageNet 2012 winner)
+	ccv_convnet_layer_param_t params[13] = {
+		// first layer (convolutional => max pool => rnorm)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 225,
+					.cols = 225,
+					.channels = 3,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 96,
+					.strides = 4,
+					.border = 1,
+					.rows = 11,
+					.cols = 11,
+					.channels = 3,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 96,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 96,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// second layer (convolutional => max pool => rnorm)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 96,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 256,
+					.strides = 1,
+					.border = 2,
+					.rows = 5,
+					.cols = 5,
+					.channels = 96,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// third layer (convolutional)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 256,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 384,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+		},
+		// fourth layer (convolutional)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 384,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+		},
+		// fifth layer (convolutional => max pool)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 256,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// sixth layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 6,
+					.cols = 6,
+					.channels = 256,
+					.partition = 1,
+				},
+				.node = {
+					.count = 6 * 6 * 256,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 1,
+					.count = 4096,
+				},
+			},
+		},
+		// seventh layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 4096,
+					.cols = 1,
+					.channels = 1,
+					.partition = 1,
+				},
+				.node = {
+					.count = 4096,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 1,
+					.count = 4096,
+				},
+			},
+		},
+		// eighth layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 4096,
+					.cols = 1,
+					.channels = 1,
+					.partition = 1,
+				},
+				.node = {
+					.count = 4096,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 0,
+					.count = 1000,
+				},
+			},
+		},
+	};
+	*/
+	/* AlexNet 14 (One Weird Trick)
+	 * Note that Alex claimed that this is a one tower model,
+	 * but if this is a true one tower model, it should has
+	 * 11 * 11 * 64 * 3 + 5 * 5 * 64 * 192 + 3 * 3 * 192 * 384 + 3 * 3 * 384 * 384 + 3 * 3 * 384 * 256 + 6 * 6 * 256 * 4096 + 4096 * 4096 + 4096 * 1000 = 61827776 parameters
+	 * However, AlexNet 12 (ImageNet 2012 winner, the two towers model) has
+	 * 11 * 11 * 96 * 3 + 5 * 5 * 96 * 256 / 2 + 3 * 3 * 256 * 384 + 3 * 3 * 384 * 384 / 2 + 3 * 3 * 384 * 256 / 2 + 6 * 6 * 256 * 4096 + 4096 * 4096 + 4096 * 1000 = 60954656 parameters
+	 * That works out to be (61827776 - 60954656) / 60954656 = 1.4% more parameters
+	 * The (One Weird Trick claimed to have only 0.2% more parameters, that works out to be around 61076565 parameters
+	 * Thus, the following model, with
+	 * 11 * 11 * 64 * 3 + 5 * 5 * 64 * 192 / 2 + 3 * 3 * 192 * 384 + 3 * 3 * 384 * 384 / 2 + 3 * 3 * 384 * 256 + 6 * 6 * 256 * 4096 + 4096 * 4096 + 4096 * 1000 = 61010624 parameters
+	 * seems to be the closest (and the libccv's implementation works out to be roughly 500ms per 128 examples, about 100+ hours for 90 epochs, about the same performance as (One Weird Trick)'s one GPU case
+	ccv_convnet_layer_param_t params[13] = {
+		// first layer (convolutional => max pool => rnorm)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 225,
+					.cols = 225,
+					.channels = 3,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 64,
+					.strides = 4,
+					.border = 1,
+					.rows = 11,
+					.cols = 11,
+					.channels = 3,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 64,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 55,
+					.cols = 55,
+					.channels = 64,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// second layer (convolutional => max pool => rnorm)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 64,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 192,
+					.strides = 1,
+					.border = 2,
+					.rows = 5,
+					.cols = 5,
+					.channels = 64,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 192,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.rnorm = {
+					.size = 5,
+					.kappa = 2,
+					.alpha = 1e-4,
+					.beta = 0.75,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 27,
+					.cols = 27,
+					.channels = 192,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// third layer (convolutional)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 192,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 384,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 192,
+					.partition = 2,
+				},
+			},
+		},
+		// fourth layer (convolutional)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 384,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 384,
+					.partition = 2,
+				},
+			},
+		},
+		// fifth layer (convolutional => max pool)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 384,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 256,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 384,
+					.partition = 1,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 13,
+					.cols = 13,
+					.channels = 256,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 0,
+				},
+			},
+		},
+		// sixth layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 6,
+					.cols = 6,
+					.channels = 256,
+					.partition = 1,
+				},
+				.node = {
+					.count = 6 * 6 * 256,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 1,
+					.count = 4096,
+				},
+			},
+		},
+		// seventh layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 4096,
+					.cols = 1,
+					.channels = 1,
+					.partition = 1,
+				},
+				.node = {
+					.count = 4096,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 1,
+					.count = 4096,
+				},
+			},
+		},
+		// eighth layer (full connect)
+		{
+			.type = CCV_CONVNET_FULL_CONNECT,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 4096,
+					.cols = 1,
+					.channels = 1,
+					.partition = 1,
+				},
+				.node = {
+					.count = 4096,
+				},
+			},
+			.output = {
+				.full_connect = {
+					.relu = 0,
+					.count = 1000,
+				},
+			},
+		},
+	};
+	*/
 	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(225, 225), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
 	ccv_convnet_layer_train_param_t layer_params[13];
