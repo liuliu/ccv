@@ -3,7 +3,7 @@ include ../../lib/config.mk
 #CC += -faddress-sanitizer -fno-omit-frame-pointer
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
-NVFLAGS := -O3 -I"../../lib" $(NVFLAGS)
+NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
 all: libccv.a cwc-bench cwc-verify
 
