@@ -1761,19 +1761,18 @@ static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 __global__ static void _cwc_kern_softmax_with_logistic_loss(const int batch, const int count, float* a, int* c)
 {
 	int i;
-	float prod;
 	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
 	float max_val = a[thidx];
 	for (i = 1; i < count; i++)
 	{
-		prod = a[i * batch + thidx];
+		float prod = a[i * batch + thidx];
 		if (prod > max_val)
 			max_val = prod;
 	}
 	float val = 0;
 	for (i = 0; i < count; i++)
 	{
-		prod = a[i * batch + thidx];
+		float prod = a[i * batch + thidx];
 		val += (prod = expf(prod - max_val));
 		a[i * batch + thidx] = prod;
 	}
