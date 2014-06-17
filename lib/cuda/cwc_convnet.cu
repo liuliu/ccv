@@ -71,7 +71,7 @@ typedef struct {
 #define VARY(x) ((cwc_convnet_layer_vary_t*)((x)->reserved))
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
 #define BATCH_PER_BLOCK (8)
-#define REORDER_PER_BLOCK (16)
+#define THREAD_PER_BLOCK (16)
 
 static int _cwc_convnet_layer_use_rows(ccv_convnet_layer_t* layer)
 {
@@ -1335,12 +1335,12 @@ static void _cwc_convnet_reorder_matrix_major_per_block(float* a, float* b, cons
 		<<<dim3(count, batch_group_count), dim3(channels, BATCH_PER_BLOCK), 0, stream>>>
 		(a, b, count, channels, batch);
 	} else {
-		assert(channels % REORDER_PER_BLOCK == 0);
-		assert(REORDER_PER_BLOCK % BATCH_PER_BLOCK == 0);
-		assert(batch % REORDER_PER_BLOCK == 0);
+		assert(channels % THREAD_PER_BLOCK == 0);
+		assert(THREAD_PER_BLOCK % BATCH_PER_BLOCK == 0);
+		assert(batch % THREAD_PER_BLOCK == 0);
 		_cwc_kern_reorder_matrix_major_per_block
-		<REORDER_PER_BLOCK, BATCH_PER_BLOCK, REORDER_PER_BLOCK / BATCH_PER_BLOCK>
-		<<<dim3(count, (channels / REORDER_PER_BLOCK) * (batch / REORDER_PER_BLOCK)), REORDER_PER_BLOCK, sizeof(float) * REORDER_PER_BLOCK * REORDER_PER_BLOCK, stream>>>
+		<THREAD_PER_BLOCK, BATCH_PER_BLOCK, THREAD_PER_BLOCK / BATCH_PER_BLOCK>
+		<<<dim3(count, (channels / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK)), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
 		(a, b, count, channels, batch);
 	}
 }
@@ -1412,16 +1412,16 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
 	float alpha = 1, beta = 0;
 	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels / out_partition;
-	assert((layer->input.matrix.channels / out_partition) % REORDER_PER_BLOCK == 0);
-	assert((layer->net.convolutional.count / out_partition) % REORDER_PER_BLOCK == 0);
-	assert(batch % REORDER_PER_BLOCK == 0);
+	assert((layer->input.matrix.channels / out_partition) % THREAD_PER_BLOCK == 0);
+	assert((layer->net.convolutional.count / out_partition) % THREAD_PER_BLOCK == 0);
+	assert(batch % THREAD_PER_BLOCK == 0);
 	_cwc_kern_reorder_matrix_major
-	<REORDER_PER_BLOCK>
-	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, (layer->input.matrix.channels / out_partition / REORDER_PER_BLOCK) * (batch / REORDER_PER_BLOCK), out_partition), REORDER_PER_BLOCK, sizeof(float) * REORDER_PER_BLOCK * REORDER_PER_BLOCK, stream>>>
+	<THREAD_PER_BLOCK>
+	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, (layer->input.matrix.channels / out_partition / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK), out_partition), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
 	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, batch);
 	_cwc_kern_reorder_matrix_major
-	<REORDER_PER_BLOCK>
-	<<<dim3(out_rows * out_cols, (layer->net.convolutional.count / out_partition / REORDER_PER_BLOCK) * (batch / REORDER_PER_BLOCK), out_partition), REORDER_PER_BLOCK, sizeof(float) * REORDER_PER_BLOCK * REORDER_PER_BLOCK, stream>>>
+	<THREAD_PER_BLOCK>
+	<<<dim3(out_rows * out_cols, (layer->net.convolutional.count / out_partition / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK), out_partition), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
 	(a, cha, out_rows * out_cols, layer->net.convolutional.count / out_partition, out_partition, batch);
 #define vary_block(_x, _y, _z) do { \
 		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / (_y * out_partition), _z / _x); \
@@ -1758,25 +1758,24 @@ static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &alpha, m, batch, a, batch, &beta, configuration->w, rows);
 }
 
-template <int input_per_thread>
 __global__ static void _cwc_kern_softmax_with_logistic_loss(const int batch, const int count, float* a, int* c)
 {
 	int i;
-	extern float shared[];
-	const int thidx = threadIdx.x;
+	float prod;
+	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
 	float max_val = a[thidx];
 	for (i = 1; i < count; i++)
 	{
-		shared[thidx] = a[i * batch + thidx];
-		if (shared[thidx] > max_val)
-			max_val = shared[thidx];
+		prod = a[i * batch + thidx];
+		if (prod > max_val)
+			max_val = prod;
 	}
 	float val = 0;
 	for (i = 0; i < count; i++)
 	{
-		shared[thidx] = a[i * batch + thidx];
-		val += (shared[thidx] = expf(shared[thidx] - max_val));
-		a[i * batch + thidx] = shared[thidx];
+		prod = a[i * batch + thidx];
+		val += (prod = expf(prod - max_val));
+		a[i * batch + thidx] = prod;
 	}
 	val = 1.0 / val;
 	for (i = 0; i < count; i++)
@@ -1785,21 +1784,19 @@ __global__ static void _cwc_kern_softmax_with_logistic_loss(const int batch, con
 
 static void _cwc_convnet_softmax_with_logistic_loss(int batch, int count, float* a, int* c, const cudaStream_t& stream)
 {
-	dim3 num_blocks(1);
-	dim3 threads_per_block(batch);
+	dim3 num_blocks(ccv_max(1, batch / 64));
+	dim3 threads_per_block(ccv_min(batch, 64));
 	assert(threads_per_block.x <= 1024);
 	int shared_memory_size = sizeof(float) * batch;
 	_cwc_kern_softmax_with_logistic_loss
-	<1>
 	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
 	(batch, count, a, c);
 }
 
-template <int input_per_thread>
 __global__ static void _cwc_kern_tests_return(const int batch, const int count, float* a, int* c)
 {
 	int i;
-	const int thidx = threadIdx.x;
+	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
 	float max_val = a[thidx];
 	int max_idx = 0;
 	for (i = 1; i < count; i++)
@@ -1813,11 +1810,10 @@ __global__ static void _cwc_kern_tests_return(const int batch, const int count, 
 
 static void _cwc_convnet_tests_return(int batch, int count, float* a, int* c, const cudaStream_t& stream)
 {
-	dim3 num_blocks(1);
-	dim3 threads_per_block(batch);
+	dim3 num_blocks(ccv_max(1, batch / 64));
+	dim3 threads_per_block(ccv_min(batch, 64));
 	assert(threads_per_block.x <= 1024);
 	_cwc_kern_tests_return
-	<1>
 	<<<num_blocks, threads_per_block, 0, stream>>>
 	(batch, count, a, c);
 }
@@ -1843,7 +1839,7 @@ __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int batch, ccv_convnet_layer_train_param_t* layer_params, cwc_convnet_context_t* context)
 {
 	int i, out_rows, out_cols, out_partition;
-	dim3 threads_per_block(128);
+	dim3 threads_per_block(64);
 	assert(threads_per_block.x <= 1024);
 	dim3 num_blocks_for_coeff;
 	dim3 num_blocks_for_bias;
@@ -1856,8 +1852,8 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
 				_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-				num_blocks_for_coeff = (layer->wnum + 127) / 128;
-				num_blocks_for_bias = (layer->net.convolutional.count + 127) / 128;
+				num_blocks_for_coeff = (layer->wnum + 63) / 64;
+				num_blocks_for_bias = (layer->net.convolutional.count + 63) / 64;
 				if (momentum_read)
 				{
 					_cwc_kern_net_sgd
@@ -1885,8 +1881,8 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int momentum_read, int 
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				// assume coeff and bias in the same continuous memory region
-				num_blocks_for_coeff = (layer->wnum + 127) / 128;
-				num_blocks_for_bias = (layer->net.full_connect.count + 127) / 128;
+				num_blocks_for_coeff = (layer->wnum + 63) / 64;
+				num_blocks_for_bias = (layer->net.full_connect.count + 63) / 64;
 				if (momentum_read)
 				{
 					_cwc_kern_net_sgd
