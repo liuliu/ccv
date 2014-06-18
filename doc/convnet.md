@@ -18,6 +18,10 @@ The parameters are modified based on Matthew D. Zeiler's work presented in:
 
 Visualizing and Understanding Convolutional Networks, Matthew D. Zeiler, and Rob Fergus, Arxiv 1311.2901 (Nov 2013)
 
+The multi-GPU implementation was heavily influenced by:
+
+One Weird Trick for Parallelizing Convolutional Neural Networks, Alex Krizhevsky, ICLR 2014
+
 How it works?
 -------------
 
@@ -104,17 +108,20 @@ makes little sense). Their reported number are 1s per image on unspecified confi
 unspecified hardware (I suspect that their unspecified configuration does much more than the
 averaging 10 patches ccv or Decaf does).
 
-For AlexNet, the GPU version does forward pass + backward error propagate for batch size of 256
-in about 1.6s. Thus, training ImageNet convolutional network takes about 9 days with 100 epochs.
-Caffe reported their forward pass + backward error propagate for batch size of 256 in about 1.8s
-on Tesla K20 (known to be about 30% slower cross the board than TITAN). In the paper, Alex
-reported 90 epochs within 6 days on two GeForce 580. In "Multi-GPU Training of ConvNets" (Omry Yadan,
-Keith Adams, Yaniv Taigman, and Marc'Aurelio Ranzato, arXiv:1312.5853), Omry mentioned that they did
-100 epochs of AlexNet in 10.5 days on 1 GPU), which suggests my time is within line of these
-implementations.
+For AlexNet 12, the GPU version does forward pass + backward error propagate for batch size of 128
+in about 0.664s. Thus, training ImageNet convolutional network takes about 186 hours with 100 epochs.
+Caffe reported their forward pass + backward error propagate for batch size of 256 in about 1.3s
+on NVIDIA TITAN. In the paper, Alex reported 90 epochs within 6 days on two GeForce 580. In
+"Multi-GPU Training of ConvNets" (Omry Yadan, Keith Adams, Yaniv Taigman, and Marc'Aurelio Ranzato,
+arXiv:1312.5853), Omry mentioned that they did 100 epochs of AlexNet in 10.5 days on 1 GPU), which
+suggests my time is within line of these implementations.
 
-For MattNet, the GPU version does forward pass + backward error propagate for batch size of 128
-in about 1.0s.
+For MattNet, the GPU version does forward pass + backward error propagate for batch size of 128 in
+about 0.845s.
+
+For AlexNet 14 (One Weird Trick), the reported time on one GPU with 90 epochs is 98.05 hours. ccv's
+implementation of AlexNet 14 does forward pass + backward error propagate for batch size of 128 in
+about 0.55s, thus, for 90 epochs, will take 137.6 hours.
 
 As a preliminary implementation, I didn't spend enough time to optimize these operations in ccv if
 any at all. For example, [cuda-convnet](http://code.google.com/p/cuda-convnet/) implements its
