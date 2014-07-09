@@ -222,7 +222,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	ccv_matrix_free(dy);
 }
 
-ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio, int min_height, int max_height, int min_area)
+static ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio, int min_height, int max_height, int min_area)
 {
 	int i, j, k;
 	int* a_ptr = a->data.i32;
@@ -538,7 +538,7 @@ static ccv_array_t* _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_
 }
 
 #define less_than(a, b, aux) ((a)->center.x < (b)->center.x)
-CCV_IMPLEMENT_QSORT(_ccv_sort_letters, ccv_letter_t*, less_than)
+static CCV_IMPLEMENT_QSORT(_ccv_sort_letters, ccv_letter_t*, less_than)
 #undef less_than
 
 static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t params)

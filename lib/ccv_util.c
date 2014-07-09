@@ -385,10 +385,10 @@ void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void
 	(aux)[(int)(&(i2) - (array))] = td;							\
 	CCV_SWAP(i1, i2, t); }
 
-CCV_IMPLEMENT_QSORT_EX(_ccv_indice_uchar_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_uchar_data, unsigned char*);
-CCV_IMPLEMENT_QSORT_EX(_ccv_indice_int_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_int_data, int*);
-CCV_IMPLEMENT_QSORT_EX(_ccv_indice_float_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_float_data, float*);
-CCV_IMPLEMENT_QSORT_EX(_ccv_indice_double_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_double_data, double*);
+static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_uchar_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_uchar_data, unsigned char*);
+static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_int_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_int_data, int*);
+static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_float_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_float_data, float*);
+static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_double_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_double_data, double*);
 
 void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
 {

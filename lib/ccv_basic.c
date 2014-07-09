@@ -289,7 +289,7 @@ void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, 
 	ccv_matrix_free(ty);
 }
 
-void _ccv_flip_y_self(ccv_dense_matrix_t* a)
+static void _ccv_flip_y_self(ccv_dense_matrix_t* a)
 {
 	int i;
 	unsigned char* buffer = (unsigned char*)alloca(a->step);
@@ -305,7 +305,7 @@ void _ccv_flip_y_self(ccv_dense_matrix_t* a)
 	}
 }
 
-void _ccv_flip_x_self(ccv_dense_matrix_t* a)
+static void _ccv_flip_x_self(ccv_dense_matrix_t* a)
 {
 	int i, j;
 	int len = CCV_GET_DATA_TYPE_SIZE(a->type) * CCV_GET_CHANNEL(a->type);
