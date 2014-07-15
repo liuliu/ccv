@@ -2367,14 +2367,14 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 			{
 				for (i = 0; i < GPU(z->convnet)->dual_device + 1; i++)
 				{
+					ccv_convnet_layer_t* layer = GPU(z->convnet)->device[i].layers + sqlite3_column_int(momentum_data_stmt, 0);
+					ccv_convnet_layer_t* momentum = GPU(z->convnet)->device[i].momentums + sqlite3_column_int(momentum_data_stmt, 0);
 					int wnum = sqlite3_column_bytes(momentum_data_stmt, 1) / sizeof(float);
 					int bnum = sqlite3_column_bytes(momentum_data_stmt, 2) / sizeof(float);
 					if (wnum != layer->wnum)
 						continue;
 					const void* w = sqlite3_column_blob(momentum_data_stmt, 1);
 					const void* bias = sqlite3_column_blob(momentum_data_stmt, 2);
-					ccv_convnet_layer_t* layer = GPU(z->convnet)->device[i].layers + sqlite3_column_int(momentum_data_stmt, 0);
-					ccv_convnet_layer_t* momentum = GPU(z->convnet)->device[i].momentums + sqlite3_column_int(momentum_data_stmt, 0);
 					switch (layer->type)
 					{
 						case CCV_CONVNET_CONVOLUTIONAL:
@@ -2720,11 +2720,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 {
 #ifdef HAVE_GSL
 	assert(params.mini_batch % BATCH_PER_BLOCK == 0);
-	int deviceCount = 0;
-	cudaGetDeviceCount(&deviceCount);
-	if (params.dual_device && deviceCount < 2)
+	int device_count = 0;
+	cudaGetDeviceCount(&device_count);
+	if (params.dual_device && device_count < 2)
 		params.dual_device = 0;
-	assert(deviceCount > 0);
+	assert(device_count > 0);
 	_cwc_convnet_alloc_reserved_both(convnet, params.mini_batch, params.dual_device, params.layer_params);
 	int i, j, k;
 	gsl_rng_env_setup();
@@ -2946,7 +2946,7 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 		}
 		for (i = 0; i < convnet->count; i++)
 		{
-			for (j = 0; j < dual_device; j++)
+			for (j = 0; j < dual_device + 1; j++)
 			{
 				ccv_convnet_layer_t* layer = GPU(convnet)->device[j].layers + i;
 				if (layer->w)
