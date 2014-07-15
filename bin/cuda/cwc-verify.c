@@ -292,6 +292,7 @@ int main(int argc, char** argv)
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,
+		.dual_device = 0,
 		.layer_params = layer_params,
 	};
 	for (i = 0; i < 128; i++)
