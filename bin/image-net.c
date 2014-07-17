@@ -358,7 +358,7 @@ int main(int argc, char** argv)
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 		},
@@ -369,19 +369,19 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 4096,
+					.rows = 2048,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 		},
@@ -392,13 +392,13 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 4096,
+					.rows = 2048,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 			.output = {
@@ -416,10 +416,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.02;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.02;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;

@@ -1792,7 +1792,7 @@ static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* la
 	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	out_cols = batch;
 	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
-	// apply relu for full connect layer
+	// apply relu for full connect layer, not that this requires both n and a, and for the last full connect layer, we re-used the forwards, thus, it required the last full connect layer to not have relu enabled
 	if (layer->net.full_connect.relu)
 		_cwc_kern_relu_backward_propagate
 		<<<dim3(1, out_rows, 1), batch, 0, stream>>>

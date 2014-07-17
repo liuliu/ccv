@@ -7,10 +7,10 @@ extern "C" {
 #include "../lib/cuda/cwc_convnet.cu"
 #include "../lib/ccv_convnet.c"
 
-extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
+extern "C" void cwc_verify_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
 {
 	int batch = params.mini_batch;
-	int i;
+	int i, j;
 	const int device_id = 0;
 	_cwc_convnet_alloc_reserved_both(convnet, batch, 0, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
@@ -148,6 +148,42 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaMallocHost(&seventh_out, sizeof(float) * seventh_out_rows * seventh_out_cols * seventh_out_channels * batch);
 	cudaMemcpy(seventh_out, GPU(convnet)->device[device_id].forwards[6], sizeof(float) * seventh_out_rows * seventh_out_cols * seventh_out_channels * batch, cudaMemcpyDeviceToHost);
 	printf("finished forward propagate seventh convolutional layer on GPU\n");
+
+	// the last full connect layer forward propagate
+	ccv_convnet_layer_t* eleventh_gpu_layer = GPU(convnet)->device[device_id].layers + 10;
+	float* eleventh_in = 0;
+	cudaMallocHost(&eleventh_in, sizeof(float) * batch * eleventh_gpu_layer->input.node.count);
+	for (i = 0; i < batch; i++)
+		for (j = 0; j < eleventh_gpu_layer->input.node.count; j++)
+			eleventh_in[j * batch + i] = (j - 100 + i) / 200;
+	cudaMemcpy(GPU(convnet)->device[device_id].forwards[9], eleventh_in, sizeof(float) * batch * eleventh_gpu_layer->input.node.count, cudaMemcpyHostToDevice);
+	cudaEventRecord(start, context->device[device_id].data_stream);
+	_cwc_convnet_full_connect_forward_propagate(eleventh_gpu_layer, 128, GPU(convnet)->device[device_id].forwards[9], GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+	cudaEventRecord(stop, context->device[device_id].data_stream);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("elapsed time for eleventh full connect layer fprop: %f milliseconds\n", elapsed_time);
+	float* eleventh_out = 0;
+	cudaMallocHost(&eleventh_out, sizeof(float) * batch * eleventh_gpu_layer->net.full_connect.count);
+	cudaMemcpy(eleventh_out, GPU(convnet)->device[device_id].forwards[10], sizeof(float) * batch * eleventh_gpu_layer->net.full_connect.count, cudaMemcpyDeviceToHost);
+	printf("finished forward propagate eleventh full connect layer on GPU\n");
+
+	// eleventh full connect layer backward propagate
+	ccv_convnet_layer_t* eleventh_gpu_configuration = GPU(convnet)->device[device_id].configurations + 10;
+	cudaEventRecord(start, context->device[device_id].data_stream);
+	_cwc_convnet_full_connect_backward_propagate(eleventh_gpu_layer, batch, GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[9], GPU(convnet)->device[device_id].backwards[10], GPU(convnet)->device[device_id].unit, eleventh_gpu_configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+	cudaEventRecord(stop, context->device[device_id].data_stream);
+	cudaEventSynchronize(stop);
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("elapsed time for eleventh full connect layer bprop: %f milliseconds\n", elapsed_time);
+	float* eleventh_back = 0;
+	cudaMallocHost(&eleventh_back, sizeof(float) * eleventh_gpu_layer->input.node.count * batch);
+	cudaMemcpy(eleventh_back, GPU(convnet)->device[device_id].backwards[10], sizeof(float) * eleventh_gpu_layer->input.node.count * batch, cudaMemcpyDeviceToHost);
+	float* eleventh_grad = 0;
+	cudaMallocHost(&eleventh_grad, sizeof(float) * (eleventh_gpu_layer->wnum + eleventh_gpu_layer->net.full_connect.count));
+	assert(eleventh_grad);
+	cudaMemcpy(eleventh_grad, eleventh_gpu_configuration->w, sizeof(float) * (eleventh_gpu_layer->wnum + eleventh_gpu_layer->net.full_connect.count), cudaMemcpyDeviceToHost);
+	printf("finished backward propagate eleventh full connect layer on GPU\n");
 
 	// seventh convolutonal layer backward propagate
 	cudaMemcpy(GPU(convnet)->device[device_id].backwards[7], GPU(convnet)->device[device_id].forwards[6], sizeof(float) * seventh_out_rows * seventh_out_cols * seventh_out_channels * batch, cudaMemcpyDeviceToDevice);
@@ -386,6 +422,32 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					if (delta > 1e-4)
 						printf("conv fprop 7: %d %d %d %d: |%g - %g| = %g\n", i, x, y, k, p, q, delta);
 				}
+		// eleventh full connect layer forward propagate
+		ccv_convnet_layer_t* eleventh_cpu_layer = convnet->layers + 10;
+		convnet->acts[9] = ccv_dense_matrix_new(eleventh_cpu_layer->input.node.count, 1, CCV_32F | CCV_C1, 0, 0);
+		for (k = 0; k < eleventh_cpu_layer->input.node.count; k++)
+			convnet->acts[9]->data.f32[k] = eleventh_in[k * batch + i];
+		_ccv_convnet_full_connect_forward_propagate(eleventh_cpu_layer, convnet->acts[9], convnet->acts + 10);
+		ccv_dense_matrix_t* z = convnet->acts[10];
+		for (k = 0; k < eleventh_cpu_layer->net.full_connect.count; k++)
+		{
+			float p = eleventh_out[k * batch + i];
+			float q = z->data.f32[k];
+			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+			if (delta > 1e-4)
+				printf("fc fprop 11: %d %d: |%g - %g| = %g\n", i, k, p, q, delta);
+		}
+		_ccv_convnet_full_connect_backward_propagate(eleventh_cpu_layer, convnet->acts[10], convnet->acts[10], convnet->acts[9], update_params->acts + 9, update_params->layers + 10);
+		ccv_matrix_free(convnet->acts[9]);
+		ccv_dense_matrix_t* bz = update_params->acts[9];
+		for (k = 0; k < eleventh_cpu_layer->input.node.count; k++)
+		{
+			float p = eleventh_back[k * batch + i];
+			float q = bz->data.f32[k];
+			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+			if (delta > 1e-4)
+				printf("fc bprop 11: %d %d: |%g - %g| = %g\n", i, k, p, q, delta);
+		}
 
 		// seventh convolutional layer backward propagate
 		_ccv_convnet_convolutional_backward_propagate(seventh_cpu_layer, convnet->acts[6], convnet->acts[6], convnet->acts[5], update_params->acts + 5, update_params->layers + 6);
@@ -455,6 +517,25 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 
 		// first convolutional layer backward propagate
 		_ccv_convnet_convolutional_backward_propagate(first_cpu_layer, update_params->acts[0], convnet->acts[0], categorized->matrix, 0, update_params->layers);
+	}
+
+	ccv_convnet_layer_t* eleventh_cpu_configuration = update_params->layers + 10;
+	for (x = 0; x < eleventh_cpu_configuration->net.full_connect.count; x++)
+		for (y = 0; y < eleventh_cpu_configuration->input.node.count; y++)
+		{
+			float p = eleventh_cpu_configuration->w[x * eleventh_cpu_configuration->input.node.count + y];
+			float q = eleventh_grad[x * eleventh_cpu_configuration->input.node.count + y];
+			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+			if (delta > 1e-3)
+				printf("fc bprop 11: %d %d: |%g - %g| = %g\n", x, y, p, q, delta);
+		}
+	for (x = 0; x < eleventh_cpu_configuration->net.full_connect.count; x++)
+	{
+		float p = eleventh_cpu_configuration->bias[x];
+		float q = eleventh_grad[eleventh_cpu_configuration->net.full_connect.count * eleventh_cpu_configuration->input.node.count + x];
+		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+		if (delta > 1e-3)
+			printf("fc bprop 11 bias: %d: |%g - %g| = %g\n", x, p, q, delta);
 	}
 
 	ccv_convnet_layer_t* seventh_cpu_configuration = update_params->layers + 6;
@@ -581,4 +662,5 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		if (delta > 1e-4)
 			printf("conv bprop 1 bias: %d: |%g - %g| = %g\n", k, p, q, delta);
 	}
+	cudaFreeHost(eleventh_in);
 }

@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include <ctype.h>
 
-void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
+void cwc_verify_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
 
 int main(int argc, char** argv)
 {
@@ -315,7 +315,7 @@ int main(int argc, char** argv)
 		categorized->type = CCV_CATEGORIZED_DENSE_MATRIX;
 		categorized->matrix = c;
 	}
-	cwc_bench_runtime(convnet, categorizeds, train_params);
+	cwc_verify_runtime(convnet, categorizeds, train_params);
 	ccv_disable_cache();
 	return 0;
 }
