@@ -2194,7 +2194,7 @@ ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int co
 			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
 			int ncomp = ccv_array_group(seq[k], &idx_seq, _ccv_is_equal_same_class, 0);
-			ccv_comp_t* comps = (ccv_comp_t*)cccalloc(sizeof(ccv_comp_t), ncomp + 1);
+			ccv_comp_t* comps = (ccv_comp_t*)cccalloc(ncomp + 1, sizeof(ccv_comp_t));
 
 			// count number of neighbors
 			for (i = 0; i < seq[k]->rnum; i++)

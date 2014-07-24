@@ -948,7 +948,7 @@ static void _ccv_filter_kissfft(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, cc
 }
 #endif
 
-void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
+static void _ccv_filter_direct_8u(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t* d, int padding_pattern)
 {
 	int i, j, y, x, k;
 	int nz = b->rows * b->cols;

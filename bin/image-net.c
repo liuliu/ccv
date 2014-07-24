@@ -44,6 +44,7 @@ int main(int argc, char** argv)
 		.max_epoch = 100,
 		.mini_batch = 128,
 		.iterations = 20000,
+		.dual_device = 0,
 		.symmetric = 1,
 		.color_gain = 0.001,
 	};
@@ -357,7 +358,7 @@ int main(int argc, char** argv)
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 		},
@@ -368,19 +369,19 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 4096,
+					.rows = 2048,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 		},
@@ -391,13 +392,13 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 4096,
+					.rows = 2048,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 4096,
+					.count = 2048,
 				},
 			},
 			.output = {
