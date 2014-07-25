@@ -5,7 +5,8 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-all: libccv.a cwc-bench cwc-verify
+all: libccv.a cwc-forwards
+# cwc-bench cwc-verify
 
 clean:
 	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
@@ -15,6 +16,9 @@ cwc-bench: %: %.o cwc-bench-runtime.o libccv.a
 
 cwc-verify: %: %.o cwc-verify-runtime.o libccv.a
 	$(CC) -o $@ cwc-verify-runtime.o $< $(LDFLAGS)
+
+cwc-forwards: %: %.o cwc-forwards-runtime.o libccv.a
+	$(CC) -o $@ cwc-forwards-runtime.o $< $(LDFLAGS)
 
 libccv.a:
 	${MAKE} -C ../../lib

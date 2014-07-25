@@ -117,6 +117,21 @@ int ccv_convnet_verify(ccv_convnet_t* convnet, int output)
 	}
 	if (out_rows * out_cols != output)
 		return -1;
+	int count = 0;
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = convnet->layers + i;
+		if (layer->type == CCV_CONVNET_FULL_CONNECT)
+		{
+			count = i;
+			break;
+		}
+	}
+	// all the layers after the first full connect layer should only be full connect layer
+	for (i = count; i < convnet->count; i++)
+		if (convnet->layers[i].type != CCV_CONVNET_FULL_CONNECT ||
+			convnet->layers[i].input.matrix.rows * convnet->layers[i].input.matrix.cols * convnet->layers[i].input.matrix.channels != convnet->layers[i].input.node.count)
+			return -1;
 	return 0;
 }
 
