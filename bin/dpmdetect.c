@@ -131,5 +131,6 @@ int main(int argc, char** argv)
 	ccv_drain_cache();
 	for (i = 0; i < num_models; i++)
 		ccv_dpm_mixture_model_free(models[i]);
+	ccfree(models);
 	return 0;
 }
