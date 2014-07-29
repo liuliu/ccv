@@ -34,6 +34,8 @@ int count_models(const char* directory, int *model_list)
 		while (getline(&line, &len, r) != -1)
 			if (line[0] != '\n')
 				num_models++;
+		free(file);
+		fclose(r);
 	}
 	return num_models;
 }
@@ -45,23 +47,28 @@ ccv_dpm_mixture_model_t** read_models(const char* directory, int num_models, int
 	{
 		int i;
 		FILE* r = fopen(directory, "rt");
-		size_t len = 1024;
-		char* line = (char*)malloc(len);
-		ssize_t read;
-		for (i = 0; i < num_models; i++)
+		if(r)
 		{
-			if ((read = getline(&line, &len, r)) != -1)
+			size_t len = 1024;
+			char* line = (char*)malloc(len);
+			ssize_t read;
+			for (i = 0; i < num_models; i++)
 			{
-				if (line[0] != '\n')
+				if ((read = getline(&line, &len, r)) != -1)
 				{
-					while(read > 1 && isspace(line[read - 1]))
-						read--;
-					line[read] = 0;
-					models[i] = ccv_dpm_read_mixture_model(line);
+					if (line[0] != '\n')
+					{
+						while(read > 1 && isspace(line[read - 1]))
+							read--;
+						line[read] = 0;
+						models[i] = ccv_dpm_read_mixture_model(line);
+					}
+					else
+						i--;
 				}
-				else
-					i--;
 			}
+			free(file);
+			fclose(r);
 		}
 	}
 	else
