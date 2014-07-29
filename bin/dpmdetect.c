@@ -20,7 +20,7 @@ int count_models(const char* directory, int *model_list)
 		char* line = (char*)malloc(len);
 		ssize_t read;
 		/* check if it is a model file */
-		if((read = getline(&line, &len, r)) != -1)
+		if ((read = getline(&line, &len, r)) != -1)
 		{
 			while(read > 1 && isspace(line[read - 1]))
 				read--;
@@ -31,8 +31,9 @@ int count_models(const char* directory, int *model_list)
 			(*model_list) = 1;
 			num_models++;
 		}
-		while((read = getline(&line, &len, r)) != -1)
-			num_models++;
+		while (getline(&line, &len, r) != -1)
+			if (line[0] != '\n')
+				num_models++;
 	}
 	return num_models;
 }
@@ -49,12 +50,17 @@ ccv_dpm_mixture_model_t** read_models(const char* directory, int num_models, int
 		ssize_t read;
 		for (i = 0; i < num_models; i++)
 		{
-			if((read = getline(&line, &len, r)) != -1)
+			if ((read = getline(&line, &len, r)) != -1)
 			{
-				while(read > 1 && isspace(line[read - 1]))
-					read--;
-				line[read] = 0;
-				models[i] = ccv_dpm_read_mixture_model(line);
+				if (line[0] != '\n')
+				{
+					while(read > 1 && isspace(line[read - 1]))
+						read--;
+					line[read] = 0;
+					models[i] = ccv_dpm_read_mixture_model(line);
+				}
+				else
+					i--;
 			}
 		}
 	}
