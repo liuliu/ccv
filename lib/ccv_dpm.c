@@ -2080,9 +2080,17 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				ccv_dpm_root_classifier_t* root = model->root + j;
 				ccv_dense_matrix_t* root_feature = 0;
 				ccv_dense_matrix_t* part_feature[CCV_DPM_PART_MAX];
-				ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
+
+                //ccv_dense_matrix_t* dictionary_feature[NO_OF_DICTIONARY ELEMENTS]; //    TODO, MOVE OUT OF LOOP
+
+                ccv_dense_matrix_t* dx[CCV_DPM_PART_MAX];
 				ccv_dense_matrix_t* dy[CCV_DPM_PART_MAX];
-				_ccv_dpm_compute_score(root, pyr[i], pyr[i - next], &root_feature, part_feature, dx, dy);
+
+                _ccv_dpm_compute_score(root, pyr[i], pyr[i - next], &root_feature, part_feature, dx, dy);   // TODO, comment this
+                //_ccv_dpm_compute_score_root_only(root, pyr[i], pyr[i - next], &root_feature);   // TODO
+                //_ccv_dpm_compute_score_dictionary_only(root_dictionary, pyr[i], pyr[i - next], dictionary_feature/*, dx, dy*/); // TODO, MOVE OUT OF LOOP
+                // reconstruct_part_filter_responses(dictionary_feature,alpha_vectors,...,part_feature,dx,dy);  // TODO
+
 				int rwh = (root->root.w->rows - 1) / 2, rww = (root->root.w->cols - 1) / 2;
 				int rwh_1 = root->root.w->rows / 2, rww_1 = root->root.w->cols / 2;
 				/* these values are designed to make sure works with odd/even number of rows/cols
@@ -2091,7 +2099,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 				 * at (2,2) and end at (2,2), thus, it is capped by (rwh, rww) to (6 - rwh_1 - 1, 6 - rww_1 - 1)
 				 * this computation works for odd root classifier too (i.e. 5x5) */
 				float* f_ptr = (float*)ccv_get_dense_matrix_cell_by(CCV_32F | CCV_C1, root_feature, rwh, 0, 0);
-				for (y = rwh; y < root_feature->rows - rwh_1; y++)
+                for (y = rwh; y < root_feature->rows - rwh_1; y++)  // sliding window for final confidence assignment
 				{
 					for (x = rww; x < root_feature->cols - rww_1; x++)
 						if (f_ptr[x] + root->beta > params.threshold)
@@ -2104,7 +2112,7 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 							float drift_x = root->alpha[0],
 								  drift_y = root->alpha[1],
 								  drift_scale = root->alpha[2];
-							for (k = 0; k < root->count; k++)
+                            for (k = 0; k < root->count; k++)   // loop over the parts
 							{
 								ccv_dpm_part_classifier_t* part = root->part + k;
 								comp.part[k].neighbors = 1;
