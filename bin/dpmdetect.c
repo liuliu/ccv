@@ -34,7 +34,7 @@ int count_models(const char* directory, int *model_list)
 		while (getline(&line, &len, r) != -1)
 			if (line[0] != '\n')
 				num_models++;
-		free(line);
+		free(file);
 		fclose(r);
 	}
 	return num_models;
@@ -67,7 +67,7 @@ ccv_dpm_mixture_model_t** read_models(const char* directory, int num_models, int
 						i--;
 				}
 			}
-			free(line);
+			free(file);
 			fclose(r);
 		}
 	}
