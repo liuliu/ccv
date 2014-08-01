@@ -2053,11 +2053,11 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca((scale_upto + next * 2) * sizeof(ccv_dense_matrix_t*));
 	_ccv_dpm_feature_pyramid(a, pyr, scale_upto, params.interval);
 	ccv_array_t* idx_seq;
-	ccv_array_t* seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
-	ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
 	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
 	for (c = 0; c < count; c++)
 	{
+		ccv_array_t* seq = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
+		ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_root_comp_t), 64, 0);
 		ccv_dpm_mixture_model_t* model = _model[c];
 		double scale_x = 1.0;
 		double scale_y = 1.0;
@@ -2226,13 +2226,12 @@ ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model
 			ccv_array_free(idx_seq);
 			ccfree(comps);
 		}
+		ccv_array_free(seq);
+		ccv_array_free(seq2);
 	}
 
 	for (i = 0; i < scale_upto + next * 2; i++)
 		ccv_matrix_free(pyr[i]);
-
-	ccv_array_free(seq);
-	ccv_array_free(seq2);
 
 	ccv_array_t* result_seq2;
 	/* the following code from OpenCV's haar feature implementation */

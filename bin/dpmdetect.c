@@ -9,18 +9,87 @@ unsigned int get_current_time()
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
+int count_models(const char* directory, int *model_list)
+{
+	int num_models = 0;
+
+	FILE* r = fopen(directory, "rt");
+	if(r)
+	{
+		size_t len = 1024;
+		char* line = (char*)malloc(len);
+		ssize_t read;
+		/* check if it is a model file */
+		if ((read = getline(&line, &len, r)) != -1)
+		{
+			while(read > 1 && isspace(line[read - 1]))
+				read--;
+			line[read] = 0;
+			if (strlen(line) == 1 && line[0] == '.')
+				return 1;
+			/* if it reaches here, it must be a list of model files */
+			(*model_list) = 1;
+			num_models++;
+		}
+		while (getline(&line, &len, r) != -1)
+			if (line[0] != '\n')
+				num_models++;
+		free(line);
+		fclose(r);
+	}
+	return num_models;
+}
+
+ccv_dpm_mixture_model_t** read_models(const char* directory, int num_models, int model_list)
+{
+	ccv_dpm_mixture_model_t** models = (ccv_dpm_mixture_model_t**)ccmalloc(sizeof(ccv_dpm_mixture_model_t*) * num_models);
+	if (num_models > 1 || model_list)
+	{
+		int i;
+		FILE* r = fopen(directory, "rt");
+		if(r)
+		{
+			size_t len = 1024;
+			char* line = (char*)malloc(len);
+			ssize_t read;
+			for (i = 0; i < num_models; i++)
+			{
+				if ((read = getline(&line, &len, r)) != -1)
+				{
+					if (line[0] != '\n')
+					{
+						while(read > 1 && isspace(line[read - 1]))
+							read--;
+						line[read] = 0;
+						models[i] = ccv_dpm_read_mixture_model(line);
+					}
+					else
+						i--;
+				}
+			}
+			free(line);
+			fclose(r);
+		}
+	}
+	else
+		models[0] = ccv_dpm_read_mixture_model(directory);
+
+	return models;
+}
+
 int main(int argc, char** argv)
 {
 	assert(argc >= 3);
-	int i, j;
+	int i, j, num_models, model_list = 0;
 	ccv_enable_default_cache();
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(argv[1], &image, CCV_IO_ANY_FILE);
-	ccv_dpm_mixture_model_t* model = ccv_dpm_read_mixture_model(argv[2]);
+	num_models = count_models(argv[2], &model_list);
+	ccv_dpm_mixture_model_t** models = read_models(argv[2], num_models, model_list);
 	if (image != 0)
 	{
 		unsigned int elapsed_time = get_current_time();
-		ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, ccv_dpm_default_params);
+		ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params);
 		elapsed_time = get_current_time() - elapsed_time;
 		if (seq)
 		{
@@ -54,7 +123,7 @@ int main(int argc, char** argv)
 				image = 0;
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
-				ccv_array_t* seq = ccv_dpm_detect_objects(image, &model, 1, ccv_dpm_default_params);
+				ccv_array_t* seq = ccv_dpm_detect_objects(image, models, num_models, ccv_dpm_default_params);
 				if (seq != 0)
 				{
 					for (i = 0; i < seq->rnum; i++)
@@ -73,6 +142,8 @@ int main(int argc, char** argv)
 		}
 	}
 	ccv_drain_cache();
-	ccv_dpm_mixture_model_free(model);
+	for (i = 0; i < num_models; i++)
+		ccv_dpm_mixture_model_free(models[i]);
+	ccfree(models);
 	return 0;
 }
