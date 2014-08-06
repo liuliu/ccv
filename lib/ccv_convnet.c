@@ -1582,36 +1582,51 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 					ccv_convnet_layer_t* layer = convnet->layers + sqlite3_column_int(layer_data_stmt, 0);
 					int half_precision = sqlite3_column_int(layer_data_stmt, 3);
 					int wnum = sqlite3_column_bytes(layer_data_stmt, 1) / (half_precision ? sizeof(uint16_t) : sizeof(float));
+					// if weights available, load weights
+					if (wnum == layer->wnum)
+					{
+						const void* w = sqlite3_column_blob(layer_data_stmt, 1);
+						if (half_precision)
+						{
+							float* f = (float*)ccmalloc(sizeof(float) * layer->wnum);
+							ccv_half_precision_to_float((uint16_t*)w, f, layer->wnum);
+							w = f;
+						}
+						switch (layer->type)
+						{
+							case CCV_CONVNET_CONVOLUTIONAL:
+								memcpy(layer->w, w, sizeof(float) * layer->wnum);
+								break;
+							case CCV_CONVNET_FULL_CONNECT:
+								memcpy(layer->w, w, sizeof(float) * layer->wnum);
+								break;
+						}
+						if (half_precision)
+							ccfree((void*)w);
+					}
 					int bnum = sqlite3_column_bytes(layer_data_stmt, 2) / (half_precision ? sizeof(uint16_t) : sizeof(float));
-					if (wnum != layer->wnum)
-						continue;
-					const void* w = sqlite3_column_blob(layer_data_stmt, 1);
-					const void* bias = sqlite3_column_blob(layer_data_stmt, 2);
-					if (half_precision)
+					// if bias available, load bias
+					if (bnum == (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count))
 					{
-						float* f = (float*)ccmalloc(sizeof(float) * (layer->wnum + (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count)));
-						ccv_half_precision_to_float((uint16_t*)w, f, layer->wnum);
-						ccv_half_precision_to_float((uint16_t*)bias, f + layer->wnum, layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count);
-						w = f;
-						bias = f + layer->wnum;
+						const void* bias = sqlite3_column_blob(layer_data_stmt, 2);
+						if (half_precision)
+						{
+							float* f = (float*)ccmalloc(sizeof(float) * (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count));
+							ccv_half_precision_to_float((uint16_t*)bias, f, layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count);
+							bias = f;
+						}
+						switch (layer->type)
+						{
+							case CCV_CONVNET_CONVOLUTIONAL:
+								memcpy(layer->bias, bias, sizeof(float) * layer->net.convolutional.count);
+								break;
+							case CCV_CONVNET_FULL_CONNECT:
+								memcpy(layer->bias, bias, sizeof(float) * layer->net.full_connect.count);
+								break;
+						}
+						if (half_precision)
+							ccfree((void*)bias);
 					}
-					switch (layer->type)
-					{
-						case CCV_CONVNET_CONVOLUTIONAL:
-							if (bnum != layer->net.convolutional.count)
-								continue;
-							memcpy(layer->w, w, sizeof(float) * layer->wnum);
-							memcpy(layer->bias, bias, sizeof(float) * layer->net.convolutional.count);
-							break;
-						case CCV_CONVNET_FULL_CONNECT:
-							if (bnum != layer->net.full_connect.count)
-								continue;
-							memcpy(layer->w, w, sizeof(float) * layer->wnum);
-							memcpy(layer->bias, bias, sizeof(float) * layer->net.full_connect.count);
-							break;
-					}
-					if (half_precision)
-						ccfree((void*)w);
 				}
 				sqlite3_finalize(layer_data_stmt);
 			}
