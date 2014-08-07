@@ -39,13 +39,13 @@ _gaq.push(['_trackPageview']);
 
 <p><img src="/photo/2014-08-07-iphone.png" alt="klaus" /></p>
 
-<p><em>Challenge</em></p>
+<p><strong>Challenge</strong></p>
 
 <p>Deep learning based image classifier normally has large memory footprint. ccv’s default image classifier uses around 220MiB memory, which is reasonable on desktop, but a bit too much on mobile devices. A deep learning based image classifier also comes with large data files (so-called pre-trained model), ccv’s pre-trained model is about 110MiB, <a href="http://caffe.berkeleyvision.org/">Caffe</a>’s is about 200MiB, and <a href="http://cilvr.nyu.edu/doku.php?id=software:overfeat:start">OverFeat</a> is about 1GiB. Delivering an app with 100MiB is quite unreasonable.</p>
 
 <p>In <a href="https://github.com/liuliu/klaus">Klaus</a>, accuracy is scarified for smaller memory footprint as well as smaller data files. Specifically, on imageNet 2012, ccv’s default image classifier has top-5 missing rate at 16.17% (meaning that given an image, for total 5 guesses, ccv’s default image classifier has 83.83% chances to get it right). The mobile-friendly image classifier has top-5 missing rate at 18.22%. This is achieved with a 19.3MiB pre-trained model.</p>
 
-<p><em>Detail</em></p>
+<p><strong>Detail</strong></p>
 
 <p>The first difference of this new mobile-friendly image classifier is its full connect layer size. ccv’s default image classifier follows Matt’s model, and thus, the full connect layer has 4096 neurons. The new mobile-friendly image classifier has only 2048 neurons for that layer. This change effectively cut memory footprint by half, and it is where the accuracy loss comes from. The pre-trained mobile friendly model can be downloaded from: <a href="http://static.libccv.org/image-net-2012-mobile.sqlite3">http://static.libccv.org/image-net-2012-mobile.sqlite3</a>.</p>
 
@@ -73,7 +73,7 @@ _gaq.push(['_trackPageview']);
 
 <p>ccv’s newer CPU implementation also uses NEON instruction set to speed up convolutional layer computation, thus, the forward pass can be completed around 3 seconds on iPhone 5 (averaging 10 patches).</p>
 
-<p><em>More</em></p>
+<p><strong>More</strong></p>
 
 <p>This is obviously a very early presentation about how to run deep learning based image classifier on mobile devices. A few explorations based on these early results may possible. For example, memory footprint with the mobile-friendly version is still around 100MiB, however, with quantization, the full connect layers could expect 4 times smaller memory footprint when implemented properly. The full connect layers may be further deepened but with fewer neurons each layer to get better accuracy and performance.</p>
 
