@@ -41,7 +41,7 @@ _gaq.push(['_trackPageview']);
 
 <p><strong>Challenge</strong></p>
 
-<p>Deep learning based image classifier normally has large memory footprint. ccv’s default image classifier uses around 220MiB memory, which is reasonable on desktop, but a bit too much on mobile devices. A deep learning based image classifier also comes with large data files (so-called pre-trained model), ccv’s pre-trained model is about 110MiB, <a href="http://caffe.berkeleyvision.org/">Caffe</a>’s is about 200MiB, and <a href="http://cilvr.nyu.edu/doku.php?id=software:overfeat:start">OverFeat</a> is about 1GiB. Delivering an app with 100MiB is quite unreasonable.</p>
+<p>Deep learning based image classifier normally has large memory footprint. ccv’s default image classifier uses around 220MiB memory, which is reasonable on desktop, but a bit too much on mobile devices. A deep learning based image classifier also comes with large data files (so-called pre-trained model), ccv’s pre-trained model is about 110MiB, <a href="http://caffe.berkeleyvision.org/">Caffe</a>’s is about 200MiB, and <a href="http://cilvr.nyu.edu/doku.php?id=software:overfeat:start">OverFeat</a>’s is about 1GiB. Delivering a mobile utility app with 100MiB data file is quite unreasonable.</p>
 
 <p>In <a href="https://github.com/liuliu/klaus">Klaus</a>, accuracy is scarified for smaller memory footprint as well as smaller data files. Specifically, on imageNet 2012, ccv’s default image classifier has top-5 missing rate at 16.17% (meaning that given an image, for total 5 guesses, ccv’s default image classifier has 83.83% chances to get it right). The mobile-friendly image classifier has top-5 missing rate at 18.22%. This is achieved with a 19.3MiB pre-trained model.</p>
 
@@ -49,9 +49,9 @@ _gaq.push(['_trackPageview']);
 
 <p>The first difference of this new mobile-friendly image classifier is its full connect layer size. ccv’s default image classifier follows Matt’s model, and thus, the full connect layer has 4096 neurons. The new mobile-friendly image classifier has only 2048 neurons for that layer. This change effectively cut memory footprint by half, and it is where the accuracy loss comes from. The pre-trained mobile friendly model can be downloaded from: <a href="http://static.libccv.org/image-net-2012-mobile.sqlite3">http://static.libccv.org/image-net-2012-mobile.sqlite3</a>.</p>
 
-<p>ccv’s default image classifier already compresses its parameters with half-precision float-point. We’ve done comparison previously and it showed no loss of accuracy by going from 32-bit to 16-bit. Since full connect layer residents most model parameters, I’ve done more experiment on what accuracy loss we are looking at when going to more aggressive on quantization.</p>
+<p>ccv’s default image classifier already compresses its parameters with half-precision float-point. We’ve done comparison previously and it showed no loss of accuracy by going from 32-bit to 16-bit. Since full connect layer resides most model parameters, I’ve done more experiments on what accuracy loss we are looking at when going more aggressive on quantization.</p>
 
-<p>I’ve using this code snippet to generate quantization table for full connect layers with K-mean: <a href="https://gist.github.com/liuliu/9117a0011a682ab231d3">https://gist.github.com/liuliu/9117a0011a682ab231d3</a>.</p>
+<p>I’ve using this code snippet to generate quantization table for full connect layers with K-mean algorithm: <a href="https://gist.github.com/liuliu/9117a0011a682ab231d3">https://gist.github.com/liuliu/9117a0011a682ab231d3</a>.</p>
 
 <p>After the quantization table generated, full connect layer’s model parameters are exported to a PNG file with this code snippet: <a href="https://gist.github.com/liuliu/970d97db15f47c196454">https://gist.github.com/liuliu/970d97db15f47c196454</a>.</p>
 
@@ -59,15 +59,17 @@ _gaq.push(['_trackPageview']);
 
 <p>It turns out that the loss of accuracy is not much.</p>
 
-<p>8-bit: 41.15% (1), 18.18% (5) (for one guess, it has 58.85% chances to get it right, for 5 guesses, it has 81.82% changes to get it right)
-4-bit: 41.38% (1), 18.28% (5)
-2-bit: 45.22% (1), 20.62% (5)</p>
+<p>8-bit: 41.15% (1), 18.18% (5) <em>(for one guess, it has 58.85% chances to get it right, for 5 guesses, it has 81.82% changes to get it right)</em></p>
+
+<p>4-bit: 41.38% (1), 18.28% (5)</p>
+
+<p>2-bit: 45.22% (1), 20.62% (5)</p>
 
 <p>To strike the balance between accuracy and size, a mixed model is chose: the first full connect layer will be quantized to 4-bit, the other full connect layers will be quantized to 8-bit, which gives 18.20% top-5 missing rate.</p>
 
 <p>The quantization table later is stored at half-precision inside the sqlite3 model with this code snippet: <a href="https://gist.github.com/liuliu/1f3e2c1fceb5f1b47dc5">https://gist.github.com/liuliu/1f3e2c1fceb5f1b47dc5</a>.</p>
 
-<p>The full connect layer parameters is stored separately into a series of PNG files, you can use this code snippet to load it back: <a href="https://gist.github.com/liuliu/10b7b067ace070ee7e33">https://gist.github.com/liuliu/10b7b067ace070ee7e33</a>.</p>
+<p>The full connect layer parameters are stored separately into a series of PNG files, you can use this code snippet to load it back: <a href="https://gist.github.com/liuliu/10b7b067ace070ee7e33">https://gist.github.com/liuliu/10b7b067ace070ee7e33</a>.</p>
 
 <p>The beautiful part of using PNG file to store parameters is that all optimization techniques available to PNG is now available to us. The generated PNG file can be further reduced with pngcrush -brute. In fact, 10% data file size reduced with pngcrush.</p>
 
