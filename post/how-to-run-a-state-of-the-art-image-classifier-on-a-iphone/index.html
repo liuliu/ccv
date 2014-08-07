@@ -1,0 +1,101 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>how to run a state of the art image classifier on a iPhone</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>how to run a state of the art image classifier on a iPhone</h1>
+<p>August 7th, 2014</p>
+<p>For a while, ccv’s open-source deep learning based image classifier has a pretty good score on imageNet 2012. But how to run it on a mobile device such as iPhone? Is it possible? And how?</p>
+
+<p>In the past few days, I’ve made a demo project to show that it is indeed possible: <a href="https://github.com/liuliu/klaus">https://github.com/liuliu/klaus</a>.</p>
+
+<p>Here is what this tiny app looks like:</p>
+
+<p><img src="/photo/2014-08-07-iphone.png" alt="klaus" /></p>
+
+<p><em>Challenge</em></p>
+
+<p>Deep learning based image classifier normally has large memory footprint. ccv’s default image classifier uses around 220MiB memory, which is reasonable on desktop, but a bit too much on mobile devices. A deep learning based image classifier also comes with large data files (so-called pre-trained model), ccv’s pre-trained model is about 110MiB, <a href="http://caffe.berkeleyvision.org/">Caffe</a>’s is about 200MiB, and <a href="http://cilvr.nyu.edu/doku.php?id=software:overfeat:start">OverFeat</a> is about 1GiB. Delivering an app with 100MiB is quite unreasonable.</p>
+
+<p>In <a href="https://github.com/liuliu/klaus">Klaus</a>, accuracy is scarified for smaller memory footprint as well as smaller data files. Specifically, on imageNet 2012, ccv’s default image classifier has top-5 missing rate at 16.17% (meaning that given an image, for total 5 guesses, ccv’s default image classifier has 83.83% chances to get it right). The mobile-friendly image classifier has top-5 missing rate at 18.22%. This is achieved with a 19.3MiB pre-trained model.</p>
+
+<p><em>Detail</em></p>
+
+<p>The first difference of this new mobile-friendly image classifier is its full connect layer size. ccv’s default image classifier follows Matt’s model, and thus, the full connect layer has 4096 neurons. The new mobile-friendly image classifier has only 2048 neurons for that layer. This change effectively cut memory footprint by half, and it is where the accuracy loss comes from. The pre-trained mobile friendly model can be downloaded from: <a href="http://static.libccv.org/image-net-2012-mobile.sqlite3">http://static.libccv.org/image-net-2012-mobile.sqlite3</a>.</p>
+
+<p>ccv’s default image classifier already compresses its parameters with half-precision float-point. We’ve done comparison previously and it showed no loss of accuracy by going from 32-bit to 16-bit. Since full connect layer residents most model parameters, I’ve done more experiment on what accuracy loss we are looking at when going to more aggressive on quantization.</p>
+
+<p>I’ve using this code snippet to generate quantization table for full connect layers with K-mean: <a href="https://gist.github.com/liuliu/9117a0011a682ab231d3">https://gist.github.com/liuliu/9117a0011a682ab231d3</a>.</p>
+
+<p>After the quantization table generated, full connect layer’s model parameters are exported to a PNG file with this code snippet: <a href="https://gist.github.com/liuliu/970d97db15f47c196454">https://gist.github.com/liuliu/970d97db15f47c196454</a>.</p>
+
+<p>With this code snippet: <a href="https://gist.github.com/liuliu/9c737fa53a62d7165f2c">https://gist.github.com/liuliu/9c737fa53a62d7165f2c</a>, the quantized model parameters are loaded back for analysis.</p>
+
+<p>It turns out that the loss of accuracy is not much.</p>
+
+<p>8-bit: 41.15% (1), 18.18% (5) (for one guess, it has 58.85% chances to get it right, for 5 guesses, it has 81.82% changes to get it right)
+4-bit: 41.38% (1), 18.28% (5)
+2-bit: 45.22% (1), 20.62% (5)</p>
+
+<p>To strike the balance between accuracy and size, a mixed model is chose: the first full connect layer will be quantized to 4-bit, the other full connect layers will be quantized to 8-bit, which gives 18.20% top-5 missing rate.</p>
+
+<p>The quantization table later is stored at half-precision inside the sqlite3 model with this code snippet: <a href="https://gist.github.com/liuliu/1f3e2c1fceb5f1b47dc5">https://gist.github.com/liuliu/1f3e2c1fceb5f1b47dc5</a>.</p>
+
+<p>The full connect layer parameters is stored separately into a series of PNG files, you can use this code snippet to load it back: <a href="https://gist.github.com/liuliu/10b7b067ace070ee7e33">https://gist.github.com/liuliu/10b7b067ace070ee7e33</a>.</p>
+
+<p>The beautiful part of using PNG file to store parameters is that all optimization techniques available to PNG is now available to us. The generated PNG file can be further reduced with pngcrush -brute. In fact, 10% data file size reduced with pngcrush.</p>
+
+<p>ccv’s newer CPU implementation also uses NEON instruction set to speed up convolutional layer computation, thus, the forward pass can be completed around 3 seconds on iPhone 5 (averaging 10 patches).</p>
+
+<p><em>More</em></p>
+
+<p>This is obviously a very early presentation about how to run deep learning based image classifier on mobile devices. A few explorations based on these early results may possible. For example, memory footprint with the mobile-friendly version is still around 100MiB, however, with quantization, the full connect layers could expect 4 times smaller memory footprint when implemented properly. The full connect layers may be further deepened but with fewer neurons each layer to get better accuracy and performance.</p>
+
+<p>As always, <a href="https://github.com/liuliu/klaus">Klaus</a> is open-sourced under BSD 3-clause license, and the pretrained model is under Creative Commons Attribution 4.0 International License. Hope you will enjoy it.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>
