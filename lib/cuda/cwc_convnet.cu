@@ -2515,6 +2515,8 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 		return;
 	int i, device_id;
 	for (device_id = 0; device_id < GPU(z->convnet)->dual_device + 1; device_id++)
+	{
+		cudaSetDevice(device_id);
 		for (i = 0; i < convnet->count; i++)
 		{
 			ccv_convnet_layer_t* layer = GPU(z->convnet)->device[device_id].layers + i;
@@ -2536,6 +2538,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 					break;
 			}
 		}
+	}
 	assert(convnet->input.height == z->convnet->input.height);
 	assert(convnet->input.width == z->convnet->input.width);
 	assert(convnet->rows == z->convnet->rows);

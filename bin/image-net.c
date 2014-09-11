@@ -42,7 +42,7 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
-		.mini_batch = 128,
+		.mini_batch = 48,
 		.iterations = 20000,
 		.dual_device = 0,
 		.symmetric = 1,
@@ -121,8 +121,8 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
-	ccv_convnet_layer_param_t params[13] = {
-		// first layer (convolutional => max pool => rnorm)
+	ccv_convnet_layer_param_t params[16] = {
+		// first layer (convolutional 64 => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
@@ -137,42 +137,23 @@ int main(int argc, char** argv)
 			},
 			.output = {
 				.convolutional = {
-					.count = 96,
-					.strides = 2,
+					.count = 64,
+					.strides = 1,
 					.border = 1,
-					.rows = 7,
-					.cols = 7,
+					.rows = 3,
+					.cols = 3,
 					.channels = 3,
 					.partition = 2,
 				},
 			},
 		},
 		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 111,
-					.cols = 111,
-					.channels = 96,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
-				},
-			},
-		},
-		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
-					.rows = 111,
-					.cols = 111,
-					.channels = 96,
+					.rows = 225,
+					.cols = 225,
+					.channels = 64,
 					.partition = 2,
 				},
 			},
@@ -180,51 +161,32 @@ int main(int argc, char** argv)
 				.pool = {
 					.strides = 2,
 					.size = 3,
-					.border = 0,
+					.border = 1,
 				},
 			},
 		},
-		// second layer (convolutional => max pool => rnorm)
+		// second layer (convolutional 128 => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 1,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 55,
-					.cols = 55,
-					.channels = 96,
-					.partition = 2,
+					.rows = 113,
+					.cols = 113,
+					.channels = 64,
+					.partition = 1,
 				},
 			},
 			.output = {
 				.convolutional = {
-					.count = 256,
-					.strides = 2,
+					.count = 128,
+					.strides = 1,
 					.border = 1,
-					.rows = 5,
-					.cols = 5,
-					.channels = 96,
+					.rows = 3,
+					.cols = 3,
+					.channels = 64,
 					.partition = 2,
-				},
-			},
-		},
-		{
-			.type = CCV_CONVNET_LOCAL_RESPONSE_NORM,
-			.input = {
-				.matrix = {
-					.rows = 27,
-					.cols = 27,
-					.channels = 256,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.rnorm = {
-					.size = 5,
-					.kappa = 2,
-					.alpha = 1e-4,
-					.beta = 0.75,
 				},
 			},
 		},
@@ -232,9 +194,9 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
-					.rows = 27,
-					.cols = 27,
-					.channels = 256,
+					.rows = 113,
+					.cols = 113,
+					.channels = 128,
 					.partition = 2,
 				},
 			},
@@ -242,70 +204,44 @@ int main(int argc, char** argv)
 				.pool = {
 					.strides = 2,
 					.size = 3,
-					.border = 0,
+					.border = 1,
 				},
 			},
 		},
-		// third layer (convolutional)
+		// third layer (convolutional 256x2 => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 256,
+					.rows = 57,
+					.cols = 57,
+					.channels = 128,
 					.partition = 1,
 				},
 			},
 			.output = {
 				.convolutional = {
-					.count = 384,
+					.count = 256,
 					.strides = 1,
 					.border = 1,
 					.rows = 3,
 					.cols = 3,
+					.channels = 128,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 57,
+					.cols = 57,
 					.channels = 256,
-					.partition = 2,
-				},
-			},
-		},
-		// fourth layer (convolutional)
-		{
-			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
-			.sigma = 0.01,
-			.input = {
-				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 384,
-					.partition = 2,
-				},
-			},
-			.output = {
-				.convolutional = {
-					.count = 384,
-					.strides = 1,
-					.border = 1,
-					.rows = 3,
-					.cols = 3,
-					.channels = 384,
-					.partition = 2,
-				},
-			},
-		},
-		// fifth layer (convolutional => max pool)
-		{
-			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
-			.sigma = 0.01,
-			.input = {
-				.matrix = {
-					.rows = 13,
-					.cols = 13,
-					.channels = 384,
 					.partition = 2,
 				},
 			},
@@ -316,7 +252,7 @@ int main(int argc, char** argv)
 					.border = 1,
 					.rows = 3,
 					.cols = 3,
-					.channels = 384,
+					.channels = 256,
 					.partition = 2,
 				},
 			},
@@ -325,8 +261,8 @@ int main(int argc, char** argv)
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
 				.matrix = {
-					.rows = 13,
-					.cols = 13,
+					.rows = 57,
+					.cols = 57,
 					.channels = 256,
 					.partition = 2,
 				},
@@ -335,7 +271,141 @@ int main(int argc, char** argv)
 				.pool = {
 					.strides = 2,
 					.size = 3,
-					.border = 0,
+					.border = 1,
+				},
+			},
+		},
+		// forth layer (convolutional 512x2 => max pool)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 29,
+					.cols = 29,
+					.channels = 256,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 512,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 256,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 29,
+					.cols = 29,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 512,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 29,
+					.cols = 29,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 1,
+				},
+			},
+		},
+		// fifth layer (convolutional 512x2 => max pool)
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 0,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 15,
+					.cols = 15,
+					.channels = 512,
+					.partition = 1,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 512,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_CONVOLUTIONAL,
+			.bias = 1,
+			.sigma = 0.01,
+			.input = {
+				.matrix = {
+					.rows = 15,
+					.cols = 15,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.convolutional = {
+					.count = 512,
+					.strides = 1,
+					.border = 1,
+					.rows = 3,
+					.cols = 3,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+		},
+		{
+			.type = CCV_CONVNET_MAX_POOL,
+			.input = {
+				.matrix = {
+					.rows = 15,
+					.cols = 15,
+					.channels = 512,
+					.partition = 2,
+				},
+			},
+			.output = {
+				.pool = {
+					.strides = 2,
+					.size = 3,
+					.border = 1,
 				},
 			},
 		},
@@ -346,19 +416,19 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 6,
-					.cols = 6,
-					.channels = 256,
+					.rows = 8,
+					.cols = 8,
+					.channels = 512,
 					.partition = 1,
 				},
 				.node = {
-					.count = 6 * 6 * 256,
+					.count = 8 * 8 * 512,
 				},
 			},
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 2048,
+					.count = 4096,
 				},
 			},
 		},
@@ -369,19 +439,19 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 2048,
+					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 2048,
+					.count = 4096,
 				},
 			},
 			.output = {
 				.full_connect = {
 					.relu = 1,
-					.count = 2048,
+					.count = 4096,
 				},
 			},
 		},
@@ -392,13 +462,13 @@ int main(int argc, char** argv)
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
-					.rows = 2048,
+					.rows = 4096,
 					.cols = 1,
 					.channels = 1,
 					.partition = 1,
 				},
 				.node = {
-					.count = 2048,
+					.count = 4096,
 				},
 			},
 			.output = {
@@ -411,9 +481,9 @@ int main(int argc, char** argv)
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
-	ccv_convnet_layer_train_param_t layer_params[13];
+	ccv_convnet_layer_train_param_t layer_params[16];
 	memset(layer_params, 0, sizeof(layer_params));
-	for (i = 0; i < 13; i++)
+	for (i = 0; i < 16; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
 		layer_params[i].w.learn_rate = 0.01;
@@ -422,8 +492,8 @@ int main(int argc, char** argv)
 		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
-	layer_params[10].dor = 0.5;
-	layer_params[11].dor = 0.5;
+	layer_params[13].dor = 0.5;
+	layer_params[14].dor = 0.5;
 	train_params.layer_params = layer_params;
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);
