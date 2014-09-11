@@ -313,41 +313,42 @@ static void _cwc_convnet_alloc_backwards(ccv_convnet_t* convnet, int device_id, 
 {
 	int i;
 	ccv_convnet_layer_t* layers = GPU(convnet)->device[device_id].layers;
+	// find the layer with max memory usage, and then allocate two of them, because for backward propagate, no need to preserve the results
+	size_t max_memory_usage = 0;
 	for (i = 0; i < convnet->count; i++)
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				GPU(convnet)->device[device_id].backwards[i] = 0;
-				if (i > 0) // if it is the input layer, no need to backprop to outmost one
-				{
-					cudaMalloc(&GPU(convnet)->device[device_id].backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
-					GPU(convnet)->stats.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
-					assert(GPU(convnet)->device[device_id].backwards[i]);
-				}
+				max_memory_usage = ccv_max(max_memory_usage, sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(i > 0);
-				GPU(convnet)->device[device_id].backwards[i] = 0;
 				// for full connect layer, because it uses model parallelism, each layer needs to hold 2 batches
-				cudaMalloc(&GPU(convnet)->device[device_id].backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * (dual_device + 1));
-				GPU(convnet)->stats.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * (dual_device + 1);
-				assert(GPU(convnet)->device[device_id].backwards[i]);
+				max_memory_usage = ccv_max(max_memory_usage, sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch * (dual_device + 1));
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-				GPU(convnet)->device[device_id].backwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->device[device_id].backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
-				GPU(convnet)->stats.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
-				assert(GPU(convnet)->device[device_id].backwards[i]);
+				max_memory_usage = ccv_max(max_memory_usage, sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
 				break;
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
 				assert(i > 0);
-				GPU(convnet)->device[device_id].backwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->device[device_id].backwards[i], sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
-				GPU(convnet)->stats.memory_usage += sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch;
-				assert(GPU(convnet)->device[device_id].backwards[i]);
+				max_memory_usage = ccv_max(max_memory_usage, sizeof(float) * layers[i].input.matrix.rows * layers[i].input.matrix.cols * layers[i].input.matrix.channels * batch);
 				break;
 		}
+	assert(convnet->count > 2);
+	// allocate two layers
+	GPU(convnet)->device[device_id].backwards[0] = 0;
+	for (i = 1; i < 3; i++)
+	{
+		GPU(convnet)->device[device_id].backwards[i] = 0;
+		cudaMalloc(&GPU(convnet)->device[device_id].backwards[i], max_memory_usage);
+		GPU(convnet)->stats.memory_usage += max_memory_usage;
+		assert(GPU(convnet)->device[device_id].backwards[i]);
+	}
+	for (i = 3; i < convnet->count; i += 2)
+		GPU(convnet)->device[device_id].backwards[i] = GPU(convnet)->device[device_id].backwards[1];
+	for (i = 4; i < convnet->count; i += 2)
+		GPU(convnet)->device[device_id].backwards[i] = GPU(convnet)->device[device_id].backwards[2];
 }
 
 static void _cwc_convnet_alloc_dor(ccv_convnet_t* convnet, int device_id, int batch, ccv_convnet_layer_train_param_t* layer_params)
@@ -3079,7 +3080,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				// do backward propagate
 				_cwc_convnet_backward_propagate_error(z.convnet, params.dual_device, params.mini_batch, context);
 				assert(cudaGetLastError() == cudaSuccess);
-				_cwc_convnet_net_sgd(z.convnet, device_id, z.t > 0 || i > 0, params.mini_batch, params.layer_params, context);
+				for (device_id = 0; device_id < params.dual_device + 1; device_id++)
+				{
+					cudaSetDevice(device_id);
+					_cwc_convnet_net_sgd(z.convnet, device_id, z.t > 0 || i > 0, params.mini_batch, params.layer_params, context);
+				}
 				assert(cudaGetLastError() == cudaSuccess);
 			}
 			for (device_id = 0; device_id < params.dual_device + 1; device_id++)
@@ -3093,6 +3098,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			miss = 0;
 			// run it on one device for now
 			device_id = 0;
+			cudaSetDevice(device_id);
 			for (i = j = 0; i < tests->rnum; i += params.mini_batch, j++)
 			{
 				cwc_convnet_context_t* context = GPU(z.convnet)->contexts + (j % 2);
@@ -3116,11 +3122,11 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch, elapsed_time[device_id] / 1000);
 				}
 				cudaEventRecord(iteration[device_id], context->device[device_id].data_stream);
-				_cwc_convnet_encode_impl(z.convnet, params.dual_device, params.mini_batch, 0, context);
+				_cwc_convnet_encode_impl(z.convnet, 0, params.mini_batch, 0, context);
 				assert(cudaGetLastError() == cudaSuccess);
 				_cwc_convnet_tests_return(params.mini_batch, category_count, GPU(z.convnet)->device[device_id].forwards[z.convnet->count - 1], test_returns[j % 2].device[device_id], context->device[device_id].data_stream);
 				assert(cudaGetLastError() == cudaSuccess);
-				cudaMemcpyAsync(test_returns[j % 2].host, test_returns[j % 2].device, sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device[device_id].data_stream);
+				cudaMemcpyAsync(test_returns[j % 2].host[device_id], test_returns[j % 2].device[device_id], sizeof(int) * params.mini_batch, cudaMemcpyDeviceToHost, context->device[device_id].data_stream);
 				assert(cudaGetLastError() == cudaSuccess);
 			}
 			cudaDeviceSynchronize(); // synchronize at this point
@@ -3217,7 +3223,6 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 			}
 		}
 		for (i = 0; i < convnet->count; i++)
-		{
 			for (device_id = 0; device_id < dual_device + 1; device_id++)
 			{
 				cudaSetDevice(device_id);
@@ -3240,8 +3245,6 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 					cudaFree(GPU(convnet)->device[device_id].denoms[i]);
 				if (GPU(convnet)->device[device_id].forwards && GPU(convnet)->device[device_id].forwards[i])
 					cudaFree(GPU(convnet)->device[device_id].forwards[i]);
-				if (GPU(convnet)->device[device_id].backwards && GPU(convnet)->device[device_id].backwards[i])
-					cudaFree(GPU(convnet)->device[device_id].backwards[i]);
 				if (GPU(convnet)->device[device_id].scans && GPU(convnet)->device[device_id].scans[i])
 					cudaFree(GPU(convnet)->device[device_id].scans[i]);
 				for (j = 0; j < 2; j++)
@@ -3253,7 +3256,15 @@ void cwc_convnet_compact(ccv_convnet_t* convnet)
 						cudaFree(context->device[device_id].dor[i]);
 				}
 			}
-		}
+		assert(convnet->count > 2);
+		// we only allocated two backwards layers (backwards[0] is always 0)
+		for (i = 1; i < 3; i++)
+			for (device_id = 0; device_id < dual_device + 1; device_id++)
+			{
+				cudaSetDevice(device_id);
+				if (GPU(convnet)->device[device_id].backwards && GPU(convnet)->device[device_id].backwards[i])
+					cudaFree(GPU(convnet)->device[device_id].backwards[i]);
+			}
 		ccfree(convnet->reserved);
 		convnet->reserved = 0;
 	}
