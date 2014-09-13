@@ -83,7 +83,11 @@ typedef struct {
 	} convolutional;
 } cwc_convnet_layer_vary_t;
 
-#define VARY(x) ((cwc_convnet_layer_vary_t*)((x)->reserved))
+typedef struct {
+	cwc_convnet_layer_vary_t vary;
+} cwc_convnet_layer_t;
+
+#define EXTRA(x) ((cwc_convnet_layer_t*)((x)->reserved))
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
 #define BATCH_PER_BLOCK (8)
 #define THREAD_PER_BLOCK (16)
@@ -556,22 +560,21 @@ static void _cwc_convnet_alloc_reserved_for_classify(ccv_convnet_t* convnet, int
 		ccv_convnet_compact(convnet);
 	else if (GPU(convnet))
 		return; // it is allocated properly, no-op
-	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(cwc_convnet_layer_vary_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(float*) * convnet->count * 3);
+	convnet->reserved = (cwc_convnet_t*)ccmalloc(sizeof(cwc_convnet_t) + sizeof(cwc_convnet_layer_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count + sizeof(float*) * convnet->count * 3);
 	GPU(convnet)->batch = batch;
 	GPU(convnet)->tops = tops;
 	GPU(convnet)->dual_device = 0;
 	GPU(convnet)->layer_params = 0;
 	GPU(convnet)->stats.memory_usage = 0;
-	cwc_convnet_layer_vary_t* layer_vary = (cwc_convnet_layer_vary_t*)(GPU(convnet) + 1);
-	memset(layer_vary, 0, sizeof(cwc_convnet_layer_vary_t) * convnet->count);
-	GPU(convnet)->device[0].layers = (ccv_convnet_layer_t*)(layer_vary + convnet->count);
+	cwc_convnet_layer_t* layer_extra = (cwc_convnet_layer_t*)(GPU(convnet) + 1);
+	memset(layer_extra, 0, sizeof(cwc_convnet_layer_t) * convnet->count);
+	GPU(convnet)->device[0].layers = (ccv_convnet_layer_t*)(layer_extra + convnet->count);
 	memcpy(GPU(convnet)->device[0].layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 	ccv_convnet_layer_t* layers = GPU(convnet)->device[0].layers;
 	// point reserved place to layer_vary
 	int i;
 	for (i = 0; i < convnet->count; i++)
-		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
-			layers[i].reserved = layer_vary + i;
+		layers[i].reserved = layer_extra + i;
 	// alloc and copy layers
 	_cwc_convnet_alloc_layers(convnet, 0, 0);
 	GPU(convnet)->device[0].configurations = 0;
@@ -621,7 +624,7 @@ static void _cwc_convnet_alloc_reserved_both(ccv_convnet_t* convnet, int batch, 
 	else if (GPU(convnet))
 		return; // it is allocated properly, no-op
 	assert(dual_device == !!dual_device);
-	uint8_t* reserved = (uint8_t*)ccmalloc(sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_vary_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * (dual_device + 1));
+	uint8_t* reserved = (uint8_t*)ccmalloc(sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * (dual_device + 1));
 	convnet->reserved = (cwc_convnet_t*)reserved;
 	GPU(convnet)->batch = batch;
 	GPU(convnet)->tops = 0;
@@ -633,22 +636,23 @@ static void _cwc_convnet_alloc_reserved_both(ccv_convnet_t* convnet, int batch, 
 	{
 		cudaSetDevice(device_id);
 		GPU(convnet)->device[device_id].scans = 0;
-		cwc_convnet_layer_vary_t* layer_vary = (cwc_convnet_layer_vary_t*)(reserved + sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_vary_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * device_id);
-		memset(layer_vary, 0, sizeof(cwc_convnet_layer_vary_t) * convnet->count);
-		GPU(convnet)->device[device_id].layers = (ccv_convnet_layer_t*)(layer_vary + convnet->count);
+		cwc_convnet_layer_t* layer_extra = (cwc_convnet_layer_t*)(reserved + sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * device_id);
+		memset(layer_extra, 0, sizeof(cwc_convnet_layer_t) * convnet->count);
+		GPU(convnet)->device[device_id].layers = (ccv_convnet_layer_t*)(layer_extra + convnet->count);
 		memcpy(GPU(convnet)->device[device_id].layers, convnet->layers, sizeof(ccv_convnet_layer_t) * convnet->count);
 		ccv_convnet_layer_t* layers = GPU(convnet)->device[device_id].layers;
 		for (i = 0; i < convnet->count; i++)
-			// point reserved place to layer_vary
-			if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
-				layers[i].reserved = layer_vary + i;
+		{
+			// point reserved place to layer_extra
+			layers[i].reserved = layer_extra + i;
 			// depends on if it is dual_device or not, full_connect will use model parallelism, therefore, here we split the model into half
-			else if (layers[i].type == CCV_CONVNET_FULL_CONNECT)
+			if (layers[i].type == CCV_CONVNET_FULL_CONNECT)
 			{
 				assert(convnet->layers[i].net.full_connect.count % (dual_device + 1) == 0);
 				layers[i].net.full_connect.count = convnet->layers[i].net.full_connect.count / (dual_device + 1);
 				layers[i].wnum = layers[i].net.full_connect.count * layers[i].input.node.count;
 			}
+		}
 		// hook up configurations (the backprop coefficients)
 		GPU(convnet)->device[device_id].configurations = GPU(convnet)->device[device_id].layers + convnet->count;
 		memcpy(GPU(convnet)->device[device_id].configurations, layers, sizeof(ccv_convnet_layer_t) * convnet->count);
@@ -805,7 +809,7 @@ static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* la
 	static int vary_x[] = { 1, 2, 4, 8 };
 	static int vary_y[] = { 1, 2, 4, 6, 8 };
 	static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
-	CWC_IMPLEMENT_VARY_STUB(VARY(layer)->convolutional.forward, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_forward_propagate_vary, layer, rows, cols, batch, a, b, stream);
+	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.forward, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_forward_propagate_vary, layer, rows, cols, batch, a, b, stream);
 }
 
 template <int input_per_thread, int size>
@@ -1601,7 +1605,7 @@ static void _cwc_convnet_convolutional_backward_propagate_coefficient_rows(ccv_c
 	static int vary_x[] = { 1, 2, 3, 4 };
 	static int vary_y[] = { 1, 2, 3, 4 };
 	static int vary_z[] = { 1 };
-	CWC_IMPLEMENT_VARY_STUB(VARY(layer)->convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 }
 
 static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
@@ -1656,7 +1660,7 @@ static void _cwc_convnet_convolutional_backward_propagate_coefficient_default(cc
 	static int vary_x[] = { 1, 2, 3, 4, 6, 8 };
 	static int vary_y[] = { 1, 2, 3, 4, 6, 8 };
 	static int vary_z[] = { 16, 24, 32, 36 };
-	CWC_IMPLEMENT_VARY_STUB(VARY(layer)->convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 }
 
 static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
@@ -1699,7 +1703,7 @@ static void _cwc_convnet_convolutional_backward_propagate_error(ccv_convnet_laye
 	static int vary_x[] = { 1, 2, 4, 8 };
 	static int vary_y[] = { 1, 2, 4, 6, 8 };
 	static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
-	CWC_IMPLEMENT_VARY_STUB(VARY(layer)->convolutional.backward.gradient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_error_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.gradient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_error_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 }
 
 static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
