@@ -1,3 +1,8 @@
+#include <cuda.h>
+#include <cublas_v2.h>
+#ifdef HAVE_CUDNN
+#include <cudnn.h>
+#endif
 extern "C" {
 #include "cwc.h"
 #include "cwc_internal.h"
@@ -7,11 +12,6 @@ extern "C" {
 #include <gsl/gsl_randist.h>
 #endif
 }
-#include <cuda.h>
-#include <cublas_v2.h>
-#ifdef HAVE_CUDNN
-#include <cudnn.h>
-#endif
 #include "../3rdparty/sqlite3/sqlite3.h"
 #include "../inl/ccv_convnet_inl.h"
 
@@ -31,12 +31,9 @@ typedef struct {
 		cudaStream_t data_stream; // based on above description, we need 3 streams, one stream for data parallelism
 		cudaStream_t model_stream[2]; // two streams for model parallelism (to overlap data transfer and computation
 		// based on above description, we need 6 events (3 join points):
-		// 0: in forward pass, when data parallelism is done, and model parallelism will start;
-		// 1: in forward pass, the first stream's model parallelism is done;
-		// 2: in forward pass, the second stream's model parallelism is done;
-		// 3: in backward pass, when the error propagate starts, (thus, model parallelism starts);
-		// 4: in backward pass, the first stream's model parallelism is done;
-		// 5: in backward pass, the second stream's model parallelism is done;
+		// data_joint: in forward pass, when data parallelism is done, and model parallelism will start;
+		// model_joint[0]: in forward pass, the first stream's model parallelism is done;
+		// model_joint[1]: in forward pass, the second stream's model parallelism is done;
 		cudaEvent_t data_joint;
 		cudaEvent_t model_joint[2];
 		cublasHandle_t data_cublas; // the same, just cublas handle to stream
@@ -75,46 +72,7 @@ typedef struct {
 	cwc_convnet_stats_t stats;
 } cwc_convnet_t;
 
-typedef struct {
-	int x, y, z;
-} cwc_convnet_kernel_vary_t;
-
-typedef struct {
-	struct {
-		cwc_convnet_kernel_vary_t forward;
-		struct {
-			cwc_convnet_kernel_vary_t coefficient;
-			cwc_convnet_kernel_vary_t gradient;
-		} backward;
-	} convolutional;
-} cwc_convnet_layer_vary_t;
-
-#ifdef HAVE_CUDNN
-typedef struct {
-	cudnnTensor4dDescriptor_t input_descriptor;
-	cudnnTensor4dDescriptor_t output_descriptor;
-	cudnnFilterDescriptor_t filter_descriptor;
-	cudnnConvolutionDescriptor_t convolutional_descriptor;
-} cwc_convnet_cudnn_context_t;
-#endif
-
-typedef struct {
-	cwc_convnet_layer_vary_t vary;
-#ifdef HAVE_CUDNN
-	// cudnn doesn't support partitions, therefore, but ccv's configuration could have multiple partitions
-	cwc_convnet_cudnn_context_t* partitions;
-#endif
-} cwc_convnet_layer_t;
-
-#define EXTRA(x) ((cwc_convnet_layer_t*)((x)->reserved))
 #define GPU(x) ((cwc_convnet_t*)((x)->reserved))
-#define BATCH_PER_BLOCK (8)
-#define THREAD_PER_BLOCK (16)
-
-static int _cwc_convnet_layer_use_rows(ccv_convnet_layer_t* layer)
-{
-	return layer->input.matrix.channels <= 8 && layer->input.matrix.partition == 1;
-}
 
 static void _cwc_convnet_reorder_convolutional_weights_onto_device(float* w, float* ow, int wnum, int filters, int channels, int channel_partition)
 {
@@ -155,7 +113,7 @@ static void _cwc_convnet_alloc_cudnn(ccv_convnet_t* convnet, int device_id, int 
 	for (i = start; i < start + length; i++)
 	{
 		ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + i;
-		_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+		ccv_convnet_make_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
 		{
 			if (prior_layer)
@@ -296,7 +254,7 @@ static void _cwc_convnet_alloc_forwards(ccv_convnet_t* convnet, int device_id, i
 	int out_rows, out_cols, out_partition;
 	for (i = start; i < start + length; i++)
 	{
-		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		ccv_convnet_make_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		// if the next layer is full connect (model parallelism), the forwards neuron needs to hold 2 batches rather than 1
 		int dual_batch = (i + 1 < start + length && layers[i + 1].type == CCV_CONVNET_FULL_CONNECT) ? batch * (dual_device + 1) : batch;
 		switch (layers[i].type)
@@ -343,7 +301,7 @@ static void _cwc_convnet_alloc_denoms(ccv_convnet_t* convnet, int device_id, int
 	int out_rows, out_cols, out_partition;
 	for (i = start; i < start + length; i++)
 	{
-		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		ccv_convnet_make_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
@@ -414,7 +372,7 @@ static void _cwc_convnet_alloc_dor(ccv_convnet_t* convnet, int device_id, int ba
 	int out_rows, out_cols, out_partition;
 	for (i = 0; i < convnet->count; i++)
 	{
-		_ccv_convnet_layer_derive_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
+		ccv_convnet_make_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
@@ -537,8 +495,8 @@ static void _cwc_convnet_alloc_scratch(ccv_convnet_t* convnet, int device_id, in
 	for (i = 0; i < convnet->count; i++)
 		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
 		{
-			int use_rows = _cwc_convnet_layer_use_rows(layers + i);
-			_ccv_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			int use_rows = cwc_convnet_layer_use_rows(layers + i);
+			ccv_convnet_make_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			scratch_space = ccv_max(scratch_space, layers[i].wnum);
 			scratch_space = ccv_max(scratch_space,
 					out_rows * out_cols * layers[i].net.convolutional.count * batch + // output layer reorder
@@ -560,8 +518,8 @@ static void _cwc_convnet_make_unit(ccv_convnet_t* convnet, int device_id, int ba
 	for (i = 0; i < convnet->count; i++)
 		if (layers[i].type == CCV_CONVNET_CONVOLUTIONAL)
 		{
-			_ccv_convnet_layer_derive_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
-			if (_cwc_convnet_layer_use_rows(layers + i))
+			ccv_convnet_make_output(layers + i, layers[i].input.matrix.rows, layers[i].input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			if (cwc_convnet_layer_use_rows(layers + i))
 				unit_size = ccv_max(unit_size, out_rows * (batch / BATCH_PER_BLOCK));
 			unit_size = ccv_max(unit_size, out_rows * out_cols * batch);
 		}
@@ -750,350 +708,6 @@ static void _cwc_convnet_alloc_reserved_both(ccv_convnet_t* convnet, int batch, 
 
 // =========================================== KERNEL CODE ===================================================
 
-template <int input_per_thread, int filter_per_thread, int filter_per_block>
-__global__ static void _cwc_kern_convolutional_forward_propagate(const int strides, const int border, const int batch,
-		float* input, const int rows, const int cols, const int channels_per_partition, const int partition,
-		float* out, const int out_rows, const int out_cols,
-		float* filter, const int filter_rows, const int filter_cols, const int count,
-		float* const biases)
-{
-	assert(gridDim.x * partition * filter_per_block == out_cols * count);
-	assert(gridDim.y == out_rows);
-	assert(gridDim.z == partition);
-	extern __shared__ float shared[];
-	float* shared_block = &shared[0];
-	float* shared_weights = &shared[batch];
-	float* shared_bias = &shared[batch + filter_per_block];
-	float prod[filter_per_thread][input_per_thread];
-	assert(batch == input_per_thread * blockDim.x);
-	assert(filter_per_block == filter_per_thread * blockDim.y);
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	int c, i, j, x, y;
-	#pragma unroll
-	for (i = 0; i < filter_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < input_per_thread; j++)
-			prod[i][j] = 0;
-	const int origin_x = blockIdx.x % out_cols;
-	const int origin_y = blockIdx.y;
-	const int filter_group_idx = blockIdx.z * count / (filter_per_block * partition) + blockIdx.x / out_cols; // for the partitioned filter group
-	input += (blockIdx.z * channels_per_partition * rows * cols +  origin_y * strides * cols + origin_x * strides) * batch;
-	assert(thcnt >= batch);
-	assert(thcnt >= filter_per_block);
-	if (thidx < filter_per_block)
-		shared_bias[thidx] = biases[filter_group_idx * filter_per_block + thidx];
-	const int start_x = max(origin_x * strides - border, 0) - (origin_x * strides - border);
-	const int end_x = min(origin_x * strides - border + filter_cols, cols) - (origin_x * strides - border);
-	const int start_y = max(origin_y * strides - border, 0) - (origin_y * strides - border);
-	const int end_y = min(origin_y * strides - border + filter_rows, rows) - (origin_y * strides - border);
-	filter += filter_group_idx * filter_per_block;
-	for (c = 0; c < channels_per_partition; c++)
-	{
-		for (y = start_y; y < end_y; y++)
-			for (x = start_x; x < end_x; x++)
-			{
-				if (thidx < batch)
-					shared_block[thidx] = input[((y - border) * cols + x - border) * batch + thidx];
-				if (thidx < filter_per_block)
-					shared_weights[thidx] = filter[(y * filter_cols + x) * count + thidx];
-				__syncthreads();
-				#pragma unroll
-				for (i = 0; i < filter_per_thread; i++)
-					#pragma unroll
-					for (j = 0; j < input_per_thread; j++)
-						prod[i][j] += shared_block[j + threadIdx.x * input_per_thread] * shared_weights[i + threadIdx.y * filter_per_thread];
-				__syncthreads();
-			}
-		input += rows * cols * batch;
-		filter += filter_rows * filter_cols * count;
-	}
-	const int outcnt = out_rows * out_cols * batch;
-	out += (filter_group_idx * filter_per_block + threadIdx.y * filter_per_thread) * outcnt + (origin_y * out_cols + origin_x) * batch + threadIdx.x * input_per_thread;
-	#pragma unroll
-	for (i = 0; i < filter_per_thread; i++)
-	{
-		const float bias = shared_bias[i + threadIdx.y * filter_per_thread];
-		#pragma unroll
-		for (j = 0; j < input_per_thread; j++)
-			out[j] = max(0.0, prod[i][j] + bias);
-		out += outcnt;
-	}
-}
-
-static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream,
-		int x, int y, int z) // these are the dynamic configurations
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
-	// first do configuration validation
-	if (!(batch % x == 0 && z % y == 0 && layer->net.convolutional.count % (z * out_partition) == 0 &&
-				batch / x * z / y <= 1024 && /* thread number constraint */
-				batch / x * z / y >= batch && batch / x * z / y >= z && /* kernel internal loading constraint */
-				sizeof(float) * (batch + z * 2) <= 48 * 1024 /* shared memory size constraint */))
-		return -1;
-	assert(b);
-#define vary_block(_x, _y, _z) do { \
-		dim3 threads_per_block(batch / _x, _z / _y); \
-		assert(threads_per_block.x * threads_per_block.y <= 1024); \
-		dim3 num_blocks(out_cols * layer->net.convolutional.count / (_z * out_partition), out_rows, out_partition); \
-		int shared_memory_size = sizeof(float) * (batch + _z * 2); \
-		cudaFuncSetCacheConfig(_cwc_kern_convolutional_forward_propagate<_x, _y, _z>, cudaFuncCachePreferShared); \
-		_cwc_kern_convolutional_forward_propagate \
-			<_x, _y, _z> \
-			<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-			(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
-			 a, rows, cols, layer->input.matrix.channels / out_partition, out_partition, \
-			 b, out_rows, out_cols, \
-			 layer->w, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count, \
-			 layer->bias); \
-	} while (0)
-	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
-#undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
-	return 0;
-}
-
-static void _cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream)
-{
-	static int vary_x[] = { 1, 2, 4, 8 };
-	static int vary_y[] = { 1, 2, 4, 6, 8 };
-	static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
-	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.forward, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_forward_propagate_vary, layer, rows, cols, batch, a, b, stream);
-}
-
-template <int input_per_thread, int size>
-__global__ static void _cwc_kern_rnorm_forward_propagate(const int batch,
-		float* input, const int rows, const int cols, const int channels_per_partition, const int partition,
-		float* out, float* denoms, const float kappa, const float alpha, const float beta)
-{
-	assert(gridDim.x == cols);
-	assert(gridDim.y == rows);
-	assert(gridDim.z == partition);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	const int way = size / 2;
-	const int thidx = threadIdx.x;
-	int i, j, c;
-	float prod[input_per_thread];
-	const int incnt = rows * cols * batch;
-	input += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	out += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	denoms += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	const int end_way = min(way, channels_per_partition - 1);
-	for (c = 0; c < end_way; c++)
-	{
-		shared_input[c * batch + thidx] = input[thidx];
-		input += incnt;
-	}
-	for (c = 0; c < channels_per_partition; c++)
-	{
-		const int start_way = max(c - way, 0);
-		const int end_way = min(c + way, channels_per_partition - 1);
-		if (c + way < channels_per_partition)
-		{
-			shared_input[(end_way % size) * batch + thidx] = input[thidx];
-			input += incnt;
-		}
-		__syncthreads();
-		#pragma unroll
-		for (i = 0; i < input_per_thread; i++)
-			prod[i] = 0;
-		#pragma unroll 5
-		for (i = start_way; i <= end_way; i++)
-			#pragma unroll
-			for (j = 0; j < input_per_thread; j++)
-				prod[j] += shared_input[(i % size) * batch + j + threadIdx.x * input_per_thread] * shared_input[(i % size) * batch + j + threadIdx.x * input_per_thread];
-		#pragma unroll
-		for (i = 0; i < input_per_thread; i++)
-			prod[i] = kappa + alpha * prod[i];
-		#pragma unroll
-		for (i = 0; i < input_per_thread; i++)
-		{
-			denoms[i + threadIdx.x * input_per_thread] = prod[i];
-			out[i + threadIdx.x * input_per_thread] = shared_input[(c % size) * batch + i + threadIdx.x * input_per_thread] *  powf(prod[i], -beta);
-		}
-		denoms += incnt;
-		out += incnt;
-		__syncthreads();
-	}
-}
-
-static void _cwc_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, float* denoms, const cudaStream_t& stream)
-{
-	dim3 num_blocks(cols, rows, layer->input.matrix.partition);
-	dim3 threads_per_block(batch);
-	assert(threads_per_block.x <= 1024);
-	int shared_memory_size = sizeof(float) * batch * layer->net.rnorm.size;
-#define vary_block(_, _x) \
-	cudaFuncSetCacheConfig(_cwc_kern_rnorm_forward_propagate<1, _x>, cudaFuncCachePreferShared); \
-	_cwc_kern_rnorm_forward_propagate \
-	<1, _x> \
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-	(batch, \
-	 a, rows, cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition, \
-	 b, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	cwc_vary_2_a(layer->net.rnorm.size, 3, 5, vary_block);
-#undef vary_block
-}
-
-template <int input_per_thread>
-__global__ static void _cwc_kern_max_pool_forward_propagate(const int strides, const int border, const int size, const int batch,
-		float* input, const int rows, const int cols, const int channels,
-		float* out, const int out_rows, const int out_cols)
-{
-	assert(gridDim.x == out_cols);
-	assert(gridDim.y == out_rows);
-	assert(gridDim.z == channels);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	assert(blockDim.x == batch);
-	const int thidx = threadIdx.x;
-	int i, x, y;
-	input += blockIdx.z * rows * cols * batch + (blockIdx.y * strides * cols + blockIdx.x * strides) * batch;
-	float prod[input_per_thread];
-	const int input_y = blockIdx.y * strides - border;
-	const int input_x = blockIdx.x * strides - border;
-	const int input_start_y = max(input_y, 0);
-	const int input_start_x = max(input_x, 0);
-	const int input_end_y = min(input_y + size, rows);
-	const int input_end_x = min(input_x + size, cols);
-	const int size_start_y = input_start_y - input_y - border;
-	const int size_start_x = input_start_x - input_x - border;
-	const int size_end_y = size - border + (input_end_y - (input_y + size));
-	const int size_end_x = size - border + (input_end_x - (input_x + size));
-	// this is equal to iterating over 0 to size, and then compute the input origin by blockIdx.y * strides - border + y
-	#pragma unroll
-	for (y = size_start_y; y < size_end_y; y++)
-		#pragma unroll
-		for (x = size_start_x; x < size_end_x; x++)
-		{
-			shared_input[thidx] = input[(y * cols + x) * batch + thidx];
-			__syncthreads();
-			if (x == size_start_x && y == size_start_y)
-				#pragma unroll
-				for (i = 0; i < input_per_thread; i++)
-					prod[i] = shared_input[i + threadIdx.x * input_per_thread];
-			else
-				#pragma unroll
-				for (i = 0; i < input_per_thread; i++)
-					prod[i] = max(prod[i], shared_input[i + threadIdx.x * input_per_thread]);
-			__syncthreads();
-		}
-	out += blockIdx.z * out_rows * out_cols * batch + (blockIdx.y * out_cols + blockIdx.x) * batch;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		out[i + threadIdx.x * input_per_thread] = prod[i];
-}
-
-static void _cwc_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
-	dim3 num_blocks(out_cols, out_rows, layer->input.matrix.channels);
-	dim3 threads_per_block(batch);
-	assert(threads_per_block.x <= 1024);
-	int shared_memory_size = sizeof(float) * batch;
-	_cwc_kern_max_pool_forward_propagate
-	<1>
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-	(layer->net.pool.strides, layer->net.pool.border, layer->net.pool.size, batch,
-	 a, rows, cols, layer->input.matrix.channels,
-	 b, out_rows, out_cols);
-}
-
-template <int input_per_thread>
-__global__ static void _cwc_kern_average_pool_forward_propagate(const int strides, const int border, const int size, const int batch,
-		float* input, const int rows, const int cols, const int channels,
-		float* out, const int out_rows, const int out_cols)
-{
-	assert(gridDim.x == out_rows);
-	assert(gridDim.y == out_cols);
-	assert(gridDim.z == channels);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	const int thcnt = blockDim.x;
-	const int thidx = threadIdx.x;
-	assert(thcnt >= batch);
-	int i, x, y;
-	input += blockIdx.z * rows * cols * batch + (blockIdx.x * strides * cols + blockIdx.y * strides) * batch;
-	float prod[input_per_thread];
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		prod[i] = 0;
-	const int input_y = blockIdx.x * strides - border;
-	const int input_x = blockIdx.y * strides - border;
-	const int input_start_y = max(input_y, 0);
-	const int input_start_x = max(input_x, 0);
-	const int input_end_y = min(input_y + size, rows);
-	const int input_end_x = min(input_x + size, cols);
-	const int size_start_y = input_start_y - input_y - border;
-	const int size_start_x = input_start_x - input_x - border;
-	const int size_end_y = size - border + (input_end_y - (input_y + size));
-	const int size_end_x = size - border + (input_end_x - (input_x + size));
-	// this is equal to iterating over 0 to size, and then compute the input origin by blockIdx.x * strides - border + y
-	#pragma unroll
-	for (y = size_start_y; y < size_end_y; y++)
-		#pragma unroll
-		for (x = size_start_x; x < size_end_x; x++)
-		{
-			if (thidx < batch)
-				shared_input[thidx] = input[(y * cols + x) * batch + thidx];
-			__syncthreads();
-			#pragma unroll
-			for (i = 0; i < input_per_thread; i++)
-				prod[i] += shared_input[i + threadIdx.x * input_per_thread];
-			__syncthreads();
-		}
-	float inv_size = 1.0 / ((input_end_y - input_start_y) * (input_end_x - input_start_x));
-	out += blockIdx.z * out_rows * out_cols * batch + (blockIdx.x * out_cols + blockIdx.y) * batch;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		out[i + threadIdx.x * input_per_thread] = prod[i] * inv_size;
-}
-
-static void _cwc_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
-	dim3 num_blocks(out_rows, out_cols, layer->input.matrix.channels);
-	dim3 threads_per_block(batch);
-	int shared_memory_size = sizeof(float) * batch;
-	_cwc_kern_average_pool_forward_propagate
-	<1>
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-	(layer->net.pool.strides, layer->net.pool.border, layer->net.pool.size, batch,
-	 a, rows, cols, layer->input.matrix.channels,
-	 b, out_rows, out_cols);
-}
-
-__global__ static void _cwc_kern_relu_forward_propagate(float* a)
-{
-	a += blockIdx.x * blockDim.x;
-	const int thidx = threadIdx.x;
-	a[thidx] = max(0.0, a[thidx]);
-}
-
-static void _cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	int rows, out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	out_cols = batch;
-	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
-	float alpha = 1;
-	float beta = 0;
-	// make copies of bias into db's columns, note that for cublas, it is row-major matrix
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, 1, &alpha, batch_unit, batch, layer->bias, 1, &beta, b, batch);
-	beta = 1;
-	// and then do the GEMM by adding bias
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, rows, &alpha, a, batch, layer->w, rows, &beta, b, batch);
-	if (layer->net.full_connect.relu)
-		_cwc_kern_relu_forward_propagate
-		<<<layer->net.full_connect.count, batch, 0, stream>>>
-		(b);
-
-}
-
 __global__ static void _cwc_kern_mute_neuron(float* a, float* d)
 {
 	a += blockIdx.x * blockDim.x;
@@ -1107,11 +721,11 @@ static void _cwc_convnet_layer_forward_propagate(ccv_convnet_layer_t* layer, int
 	switch (layer->type)
 	{
 		case CCV_CONVNET_CONVOLUTIONAL:
-			_cwc_convnet_convolutional_forward_propagate(layer, rows, cols, batch, a, b, context->device[device_id].data_stream);
+			cwc_convnet_convolutional_forward_propagate(layer, rows, cols, batch, a, b, context->device[device_id].data_stream);
 			if (dor && context->device[device_id].dor[k])
 			{
 				int out_rows, out_cols, out_partition;
-				_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+				ccv_convnet_make_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 				_cwc_kern_mute_neuron
 				<<<out_rows * out_cols * layer->net.convolutional.count, batch, 0, context->device[device_id].data_stream>>>
 				(b, context->device[device_id].dor[k]);
@@ -1119,7 +733,7 @@ static void _cwc_convnet_layer_forward_propagate(ccv_convnet_layer_t* layer, int
 			break;
 		case CCV_CONVNET_FULL_CONNECT:
 			assert(k > 0);
-			_cwc_convnet_full_connect_forward_propagate(layer, batch, a, b, batch_unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+			cwc_convnet_full_connect_forward_propagate(layer, batch, a, b, batch_unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 			if (dor && context->device[device_id].dor[k])
 				_cwc_kern_mute_neuron
 				<<<layer->net.full_connect.count, batch, 0, context->device[device_id].data_stream>>>
@@ -1127,15 +741,15 @@ static void _cwc_convnet_layer_forward_propagate(ccv_convnet_layer_t* layer, int
 			break;
 		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			assert(k > 0);
-			_cwc_convnet_rnorm_forward_propagate(layer, rows, cols, batch, a, b, denoms, context->device[device_id].data_stream);
+			cwc_convnet_rnorm_forward_propagate(layer, rows, cols, batch, a, b, denoms, context->device[device_id].data_stream);
 			break;
 		case CCV_CONVNET_MAX_POOL:
 			assert(k > 0);
-			_cwc_convnet_max_pool_forward_propagate(layer, rows, cols, batch, a, b, context->device[device_id].data_stream);
+			cwc_convnet_max_pool_forward_propagate(layer, rows, cols, batch, a, b, context->device[device_id].data_stream);
 			break;
 		case CCV_CONVNET_AVERAGE_POOL:
 			assert(k > 0);
-			_cwc_convnet_average_pool_forward_propagate(layer, rows, cols, batch,  a, b, context->device[device_id].data_stream);
+			cwc_convnet_average_pool_forward_propagate(layer, rows, cols, batch,  a, b, context->device[device_id].data_stream);
 			break;
 	}
 }
@@ -1186,7 +800,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int dual_device, in
 			int other_device_id = (device_id + 1) & dual_device;
 			ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + count;
 			assert(layer->type == CCV_CONVNET_FULL_CONNECT);
-			_cwc_convnet_full_connect_forward_propagate(layer, batch,
+			cwc_convnet_full_connect_forward_propagate(layer, batch,
 					GPU(convnet)->device[device_id].forwards[count - 1],
 					GPU(convnet)->device[device_id].forwards[count] + ((dual_device + 1) * device_id + device_id) * batch * layer->net.full_connect.count,
 					GPU(convnet)->device[device_id].unit,
@@ -1204,7 +818,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int dual_device, in
 			// although it is slightly faster to use source stream, but we sync on the destination stream because otherwise we need to signal an event, and in that case, total cost is higher
 			cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[count - 1] + batch * layer->input.node.count, device_id, GPU(convnet)->device[other_device_id].forwards[count - 1], other_device_id, sizeof(float) * batch * layer->input.node.count, context->device[device_id].model_stream[1]);
 			// the last compute issued on this device
-			_cwc_convnet_full_connect_forward_propagate(layer, batch,
+			cwc_convnet_full_connect_forward_propagate(layer, batch,
 					GPU(convnet)->device[device_id].forwards[count - 1] + batch * layer->input.node.count,
 					GPU(convnet)->device[device_id].forwards[count] + ((dual_device + 1) * other_device_id + device_id) * batch * layer->net.full_connect.count,
 					GPU(convnet)->device[device_id].unit,
@@ -1243,7 +857,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int dual_device, in
 				int first_device_id = (device_id + first) & dual_device;
 				int second_device_id = (device_id + second) & dual_device;
 				// first do the computation on the device that we already have full data
-				_cwc_convnet_full_connect_forward_propagate(layer, batch,
+				cwc_convnet_full_connect_forward_propagate(layer, batch,
 						GPU(convnet)->device[device_id].forwards[i - 1] + first_device_id * batch * layer->input.node.count,
 						GPU(convnet)->device[device_id].forwards[i] + ((dual_device + 1) * first_device_id + device_id) * batch * layer->net.full_connect.count,
 						GPU(convnet)->device[device_id].unit, context->device[device_id].model_stream[first], context->device[device_id].model_cublas[first]);
@@ -1261,7 +875,7 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int dual_device, in
 				cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[i - 1] + ((dual_device + 1) * second_device_id + other_device_id) * batch * input_node_count, device_id, GPU(convnet)->device[other_device_id].forwards[i - 1] + ((dual_device + 1) * second_device_id + other_device_id) * batch * input_node_count, other_device_id, sizeof(float) * batch * input_node_count, context->device[device_id].model_stream[second]);
 				// copy (second_device_id, other_device_id), available on device_id now with stream second
 				// the last compute issued on this device
-				_cwc_convnet_full_connect_forward_propagate(layer, batch,
+				cwc_convnet_full_connect_forward_propagate(layer, batch,
 						GPU(convnet)->device[device_id].forwards[i - 1] + second_device_id * batch * layer->input.node.count,
 						GPU(convnet)->device[device_id].forwards[i] + ((dual_device + 1) * second_device_id + device_id) * batch * layer->net.full_connect.count,
 						GPU(convnet)->device[device_id].unit,
@@ -1294,730 +908,6 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int dual_device, in
 }
 
 #ifdef HAVE_GSL
-
-__global__ static void _cwc_kern_relu_backward_propagate(const int batch,
-		float* out, float* out_grad, const int out_rows, const int out_cols,
-		const int count)
-{
-	assert(gridDim.x == out_cols);
-	assert(gridDim.y == out_rows);
-	assert(gridDim.z == count);
-	assert(blockDim.x == batch);
-	out += (blockIdx.z * out_rows * out_cols + blockIdx.y * out_cols + blockIdx.x) * batch;
-	out_grad += (blockIdx.z * out_rows * out_cols + blockIdx.y * out_cols + blockIdx.x) * batch;
-	if (out[threadIdx.x] <= 0)
-		out_grad[threadIdx.x] = 0;
-}
-
-template <int channel_per_thread, int filter_per_thread, int channel_per_block, int batch_per_block>
-__global__ static void _cwc_kern_convolutional_backward_propagate_coefficient_default(const int strides, const int border, const int batch, const int batch_group_count,
-		float* input, const int rows, const int cols, const int channels_per_partition, const int partition,
-		float* out_grad, const int out_rows, const int out_cols,
-		float* coeff, const int filter_rows, const int filter_cols, const int count_per_partition)
-{
-	assert(gridDim.x == filter_cols);
-	assert(gridDim.y == filter_rows);
-	assert(gridDim.z * channel_per_block * batch_per_block == channels_per_partition * partition * batch);
-	assert(batch == batch_per_block * batch_group_count);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	float* shared_out_grad = &shared[channel_per_block];
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	assert(blockDim.x * filter_per_thread == count_per_partition);
-	assert(blockDim.y * channel_per_thread == channel_per_block);
-	assert(thcnt >= channel_per_block);
-	assert(thcnt >= count_per_partition);
-	const int origin_x = blockIdx.x;
-	const int origin_y = blockIdx.y;
-	const int channel_group_count = channels_per_partition / channel_per_block;
-	const int partition_idx = blockIdx.z / (channel_group_count * batch_group_count);
-	const int batch_group_idx = (blockIdx.z % (channel_group_count * batch_group_count)) / channel_group_count;
-	const int channel_group_idx = blockIdx.z % channel_group_count;
-	const int start_x = max(origin_x - border, 0) - (origin_x - border);
-	const int end_x = min(out_cols, (cols + border - origin_x + strides - 1) / strides);
-	const int start_y = max(origin_y - border, 0) - (origin_y - border);
-	const int end_y = min(out_rows, (rows + border - origin_y + strides - 1) / strides);
-	input += (partition_idx * batch + batch_group_idx * batch_per_block) * rows * cols * channels_per_partition + (origin_y * cols + origin_x) * channels_per_partition + channel_group_idx * channel_per_block;
-	out_grad += (partition_idx * batch + batch_group_idx * batch_per_block) * out_rows * out_cols * count_per_partition;
-	int i, j, c, x, y;
-	float prod[channel_per_thread][filter_per_thread];
-	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < filter_per_thread; j++)
-			prod[i][j] = 0;
-	for (c = 0; c < batch_per_block; c++)
-	{
-		for (y = start_y; y < end_y; y++)
-			for (x = start_x; x < end_x; x++)
-			{
-				if (thidx < count_per_partition)
-					shared_out_grad[thidx] = out_grad[(y * out_cols + x) * count_per_partition + thidx];
-				if (thidx < channel_per_block)
-					shared_input[thidx] = input[((y * strides - border) * cols + x * strides - border) * channels_per_partition + thidx];
-				__syncthreads();
-				#pragma unroll
-				for (i = 0; i < channel_per_thread; i++)
-					#pragma unroll
-					for (j = 0; j < filter_per_thread; j++)
-						prod[i][j] += shared_input[i + threadIdx.y * channel_per_thread] * shared_out_grad[j + threadIdx.x * filter_per_thread];
-				__syncthreads();
-			}
-		input += rows * cols * channels_per_partition;
-		out_grad += out_rows * out_cols * count_per_partition;
-	}
-	const int cocnt = filter_cols * filter_rows * count_per_partition * partition;
-	coeff += cocnt * (channels_per_partition * batch_group_idx + channel_group_idx * channel_per_block) + (origin_y * filter_cols + origin_x) * count_per_partition * partition + partition_idx * count_per_partition;
-	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < filter_per_thread; j++)
-			coeff[(i + threadIdx.y * channel_per_thread) * cocnt + j + threadIdx.x * filter_per_thread] = prod[i][j];
-}
-
-template <int channel_per_thread, int filter_per_thread, int static_filter_rows, int batch_per_block>
-__global__ static void _cwc_kern_convolutional_backward_propagate_coefficient_rows(const int strides, const int border, const int batch,
-		float* input, const int rows, const int cols, const int channels,
-		float* out_grad, const int out_rows, const int out_cols,
-		float* coeff, const int filter_rows, const int filter_cols, const int count)
-{
-	assert(gridDim.x == filter_cols);
-	assert(gridDim.y == out_rows);
-	assert(static_filter_rows == filter_rows);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	float* shared_out_grad = &shared[filter_rows * channels * batch_per_block];
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	assert(blockDim.x * filter_per_thread == count);
-	assert(blockDim.y * channel_per_thread == channels);
-	assert(thcnt >= channels * batch_per_block);
-	assert(thcnt >= count);
-	const int origin_x = blockIdx.x;
-	const int batch_group_idx = blockIdx.z;
-	const int start_x = max(origin_x - border, 0) - (origin_x - border);
-	const int end_x = min(out_cols, (cols + border - origin_x + strides - 1) / strides);
-	input += (rows * cols * channels * batch_group_idx + origin_x * channels) * batch_per_block;
-	out_grad += out_rows * out_cols * count * batch_group_idx * batch_per_block;
-	int i, j, k, c, x;
-	const int y = blockIdx.y;
-	float prod[static_filter_rows][channel_per_thread][filter_per_thread];
-	#pragma unroll
-	for (i = 0; i < static_filter_rows; i++)
-		#pragma unroll
-		for (j = 0; j < channel_per_thread; j++)
-			#pragma unroll
-			for (k = 0; k < filter_per_thread; k++)
-				prod[i][j][k] = 0;
-	const int iy = y * strides - border;
-	input += y * strides * cols * channels * batch_per_block;
-	out_grad += y * out_cols * count * batch_per_block;
-	for (x = start_x; x < end_x; x++)
-	{
-		if (thidx < channels * batch_per_block)
-			#pragma unroll
-			for (i = 0; i < static_filter_rows; i++)
-				shared_input[i * channels * batch_per_block + thidx] = (i + iy >= 0 && i + iy < rows) ? input[((i - border) * cols + x * strides - border) * channels * batch_per_block + thidx] : 0;
-		if (thidx < count)
-			#pragma unroll
-			for (c = 0; c < batch_per_block; c++)
-				shared_out_grad[c * count + thidx] = out_grad[x * count * batch_per_block + c * count + thidx];
-		__syncthreads();
-		#pragma unroll
-		for (i = 0; i < static_filter_rows; i++)
-			#pragma unroll
-			for (j = 0; j < channel_per_thread; j++)
-				#pragma unroll
-				for (k = 0; k < filter_per_thread; k++)
-				{
-					float sum = 0;
-					#pragma unroll
-					for (c = 0; c < batch_per_block; c++)
-						sum += shared_input[i * channels * batch_per_block + c * channels + j + threadIdx.y * channel_per_thread] * shared_out_grad[c * count + k + threadIdx.x * filter_per_thread];
-					prod[i][j][k] += sum;
-				}
-		__syncthreads();
-	}
-	const int cocnt = filter_cols * filter_rows * count;
-	coeff += cocnt * channels * (blockIdx.y + blockIdx.z * out_rows) + origin_x * count;
-	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < static_filter_rows; j++)
-			#pragma unroll
-			for (k = 0; k < filter_per_thread; k++)
-				coeff[(i + threadIdx.y * channel_per_thread) * cocnt + j * filter_cols * count + k + threadIdx.x * filter_per_thread] = prod[j][i][k];
-}
-
-template <int input_per_thread, int channel_per_thread, int channel_per_block, int strides>
-__global__ static void _cwc_kern_convolutional_backward_propagate_error(const int border, const int batch,
-		float* input_grad, const int rows, const int cols, const int channels,
-		float* out_grad, const int out_rows, const int out_cols,
-		float* filter, const int filter_rows, const int filter_cols, const int count_per_partition, const int partition)
-{
-	assert(gridDim.z == partition);
-	extern __shared__ float shared[];
-	float* shared_grad = &shared[0];
-	float* shared_weights = &shared[batch];
-	float prod[input_per_thread][channel_per_thread];
-	assert(batch == input_per_thread * blockDim.x);
-	assert(channel_per_block == channel_per_thread * blockDim.y);
-	const int thidx = threadIdx.x + threadIdx.y * blockDim.x;
-	const int thcnt = blockDim.x * blockDim.y;
-	assert(thcnt >= batch);
-	assert(thcnt >= channel_per_block);
-	const int origin_x = blockIdx.x % cols;
-	const int origin_y = blockIdx.y;
-	const int channel_group_idx = blockIdx.z * channels / (channel_per_block * partition) + blockIdx.x / cols;
-	int i, j, k, c, x, y;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < channel_per_thread; j++)
-			prod[i][j] = 0;
-	const int ycnt = (filter_rows - 1 - (origin_x + border) % strides) / strides + 1;
-	const int xcnt = (filter_cols - 1 - (origin_y + border) % strides) / strides + 1;
-	const int filter_y = (ycnt - 1) * strides + (origin_x + border) % strides;
-	assert(filter_y < filter_rows);
-	const int filter_x = (xcnt - 1) * strides + (origin_y + border) % strides;
-	assert(filter_x < filter_cols);
-	const int out_y = (origin_x + border) / strides - ycnt + 1;
-	const int out_x = (origin_y + border) / strides - xcnt + 1;
-	const int out_start_y = max(out_y, 0);
-	const int out_start_x = max(out_x, 0);
-	const int filter_start_y = filter_y - (out_start_y - out_y) * strides;
-	const int filter_start_x = filter_x - (out_start_x - out_x) * strides;
-	out_grad += (blockIdx.z * count_per_partition * out_rows * out_cols + out_start_y * out_cols + out_start_x) * batch;
-	const int out_end_y = out_y + ycnt - 1;
-	const int out_end_x = out_x + xcnt - 1;
-	const int filter_end_y = (origin_x + border) % strides + (out_end_y - min(out_end_y, out_rows - 1)) * strides;
-	const int filter_end_x = (origin_y + border) % strides + (out_end_x - min(out_end_x, out_cols - 1)) * strides;
-	const int outcnt = out_rows * out_cols * batch;
-	filter += channel_group_idx * channel_per_block;
-	for (k = 0; k < count_per_partition; k++)
-	{
-		float* out_grad_per_filter = out_grad + k * outcnt;
-		for (y = filter_start_y; y >= filter_end_y; y -= strides)
-		{
-			for (x = filter_start_x, c = 0; x >= filter_end_x; x -= strides, c++)
-			{
-				if (thidx < batch)
-					shared_grad[thidx] = out_grad_per_filter[c * batch + thidx];
-				if (thidx < channel_per_block)
-					shared_weights[thidx] = filter[(y * filter_cols + x) * channels + thidx];
-				__syncthreads();
-				#pragma unroll
-				for (i = 0; i < input_per_thread; i++)
-					#pragma unroll
-					for (j = 0; j < channel_per_thread; j++)
-						prod[i][j] += shared_grad[i + threadIdx.x * input_per_thread] * shared_weights[j + threadIdx.y * channel_per_thread];
-				__syncthreads();
-			}
-			out_grad_per_filter += out_cols * batch;
-		}
-		filter += filter_rows * filter_cols * channels;
-	}
-	const int incnt = rows * cols * batch;
-	input_grad += channel_group_idx * channel_per_block * incnt + (origin_x * cols + origin_y) * batch;
-	#pragma unroll
-	for (i = 0; i < channel_per_thread; i++)
-		#pragma unroll
-		for (j = 0; j < input_per_thread; j++)
-			input_grad[(i + threadIdx.y * channel_per_thread) * incnt + j + threadIdx.x * input_per_thread] = prod[j][i];
-}
-
-// this method rewinds a matrix
-template <int reorder_per_block>
-__global__ static void _cwc_kern_reorder_matrix_major(float* a, float* b, const int count, const int channels_per_partition, const int partition, const int batch)
-{
-	assert(blockDim.x == reorder_per_block);
-	const int batch_group_idx = blockIdx.y % (batch / reorder_per_block);
-	const int channel_group_idx = blockIdx.y / (batch / reorder_per_block);
-	a += (blockIdx.z * count * channels_per_partition + blockIdx.x + channel_group_idx * reorder_per_block * count) * batch + batch_group_idx * reorder_per_block;
-	b += (blockIdx.z * count * batch + batch_group_idx * reorder_per_block * count + blockIdx.x) * channels_per_partition + channel_group_idx * reorder_per_block;
-	__shared__ float prod[reorder_per_block][reorder_per_block];
-	int i;
-	#pragma unroll
-	for (i = 0; i < reorder_per_block; i++)
-		prod[i][threadIdx.x] = a[i * count * batch + threadIdx.x];
-	__syncthreads();
-	#pragma unroll
-	for (i = 0; i < reorder_per_block; i++)
-		b[i * count * channels_per_partition + threadIdx.x] = prod[threadIdx.x][i];
-}
-
-// this method rewinds a matrix
-__global__ static void _cwc_kern_reorder_matrix_major_parted(float* a, float* b, const int count, const int channels, const int batch, const int channels_per_partition, const int batch_per_partition, const int partition)
-{
-	b[(threadIdx.x * count + blockIdx.x) * channels + blockIdx.y + threadIdx.y * channels_per_partition] = a[(blockIdx.y * count + blockIdx.x) * batch + threadIdx.x + threadIdx.y * batch_per_partition];
-}
-
-// this method rewinds a matrix
-template <int batch_per_block>
-__global__ static void _cwc_kern_reorder_matrix_major_per_block_rows(float* a, float* b, const int count, const int channels, const int batch)
-{
-	const int thidx = blockIdx.y * batch_per_block + threadIdx.y;
-	b[(blockIdx.y * count + blockIdx.x) * channels * batch_per_block + threadIdx.y * channels + threadIdx.x] = a[(threadIdx.x * count + blockIdx.x) * batch + thidx];
-}
-
-// this method rewinds a matrix
-template <int channel_per_block, int batch_per_block, int batch_group_per_block>
-__global__ static void _cwc_kern_reorder_matrix_major_per_block(float* a, float* b, const int count, const int channels, const int batch)
-{
-	const int batch_group_idx = blockIdx.y % (batch / (batch_per_block * batch_group_per_block));
-	const int channel_group_idx = blockIdx.y / (batch / (batch_per_block * batch_group_per_block));
-	a += (channel_group_idx * channel_per_block * count + blockIdx.x) * batch + batch_group_idx * batch_per_block * batch_group_per_block;
-	b += (batch_group_idx * batch_group_per_block * count + blockIdx.x) * channels * batch_per_block + channel_group_idx * channel_per_block;
-	__shared__ float prod[channel_per_block][batch_per_block * batch_group_per_block];
-	int i, j;
-	#pragma unroll
-	for (i = 0; i < channel_per_block; i++)
-		prod[i][threadIdx.x] = a[i * count * batch + threadIdx.x];
-	__syncthreads();
-	if (threadIdx.x < channel_per_block)
-		#pragma unroll
-		for (i = 0; i < batch_group_per_block; i++)
-			#pragma unroll
-			for (j = 0; j < batch_per_block; j++)
-				b[(i * count * batch_per_block + j) * channels + threadIdx.x] = prod[threadIdx.x][i * batch_per_block + j];
-}
-
-static void _cwc_convnet_reorder_matrix_major_per_block(float* a, float* b, const int count, const int channels, const int batch, const cudaStream_t& stream)
-{
-	// this is by experience, ideally, this can be profile-guided too
-	const int batch_group_count = batch / BATCH_PER_BLOCK;
-	if (channels < 8)
-	{
-		assert(batch % BATCH_PER_BLOCK == 0);
-		assert(channels * BATCH_PER_BLOCK <= 1024);
-		_cwc_kern_reorder_matrix_major_per_block_rows
-		<BATCH_PER_BLOCK>
-		<<<dim3(count, batch_group_count), dim3(channels, BATCH_PER_BLOCK), 0, stream>>>
-		(a, b, count, channels, batch);
-	} else {
-		assert(channels % THREAD_PER_BLOCK == 0);
-		assert(THREAD_PER_BLOCK % BATCH_PER_BLOCK == 0);
-		assert(batch % THREAD_PER_BLOCK == 0);
-		_cwc_kern_reorder_matrix_major_per_block
-		<THREAD_PER_BLOCK, BATCH_PER_BLOCK, THREAD_PER_BLOCK / BATCH_PER_BLOCK>
-		<<<dim3(count, (channels / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK)), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
-		(a, b, count, channels, batch);
-	}
-}
-
-static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
-		int x, int y, int z)
-{
-	if (!(layer->net.convolutional.count % y == 0 && layer->input.matrix.channels % x == 0 &&
-				layer->net.convolutional.count / y * layer->input.matrix.channels / x <= 1024 && /* thread per block constraint */
-				layer->net.convolutional.count / y * layer->input.matrix.channels / x >= layer->input.matrix.channels * BATCH_PER_BLOCK &&
-				layer->net.convolutional.count / y * layer->input.matrix.channels / x >= layer->net.convolutional.count && /* shared loading constraint */
-				sizeof(float) * BATCH_PER_BLOCK * (layer->net.convolutional.rows * layer->input.matrix.channels + layer->net.convolutional.count) <= 48 * 1024 /* shared memory size constraint */))
-		return -1;
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	assert(out_partition == 1); // this cannot handle partition
-	float* chm = scratch;
-	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
-	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
-	float alpha = 1, beta = 0;
-	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
-	const int batch_group_count = batch / BATCH_PER_BLOCK;
-	_cwc_convnet_reorder_matrix_major_per_block
-	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch, stream);
-	_cwc_convnet_reorder_matrix_major_per_block
-	(a, cha, out_rows * out_cols, layer->net.convolutional.count, batch, stream);
-#define vary_block(_x, _y, _z) do { \
-		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / _y, layer->input.matrix.channels / _x); \
-		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
-		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, out_rows, batch_group_count); \
-		int shared_memory_size = sizeof(float) * BATCH_PER_BLOCK * (layer->net.convolutional.rows * layer->input.matrix.channels + layer->net.convolutional.count); \
-		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_coefficient_rows<_x, _y, _z, BATCH_PER_BLOCK>, cudaFuncCachePreferShared); \
-		_cwc_kern_convolutional_backward_propagate_coefficient_rows \
-		<_x, _y, _z, BATCH_PER_BLOCK> \
-		<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
-		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, \
-			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
-			cha, out_rows, out_cols, \
-			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-		cublasSgemv(handle, CUBLAS_OP_N, count, out_rows * batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
-	} while (0)
-	// special casing for image
-	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_4_b, y, 1, 2, 3, 4, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
-#undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
-	return 0;
-}
-
-static void _cwc_convnet_convolutional_backward_propagate_coefficient_rows(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	static int vary_x[] = { 1, 2, 3, 4 };
-	static int vary_y[] = { 1, 2, 3, 4 };
-	static int vary_z[] = { 1 };
-	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-}
-
-static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
-		int x, int y, int z)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	if (!(layer->net.convolutional.count % (y * out_partition) == 0 && z % x == 0 && layer->net.convolutional.channels % (z * out_partition) == 0 &&
-		  layer->net.convolutional.count / (y * out_partition) * z / x <= 1024 && /* thread per block constraint */
-		  layer->net.convolutional.count / (y * out_partition) * z / x >= z && layer->net.convolutional.count / (y * out_partition) * z / x >= layer->net.convolutional.count / out_partition && /* shared loading constraint */
-				sizeof(float) * (z + layer->net.convolutional.count / out_partition) <= 32 * 1024 /* shared memory size constraint */))
-		return -1;
-	float* chm = scratch;
-	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
-	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
-	float alpha = 1, beta = 0;
-	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels / out_partition;
-	assert((layer->input.matrix.channels / out_partition) % THREAD_PER_BLOCK == 0);
-	assert((layer->net.convolutional.count / out_partition) % THREAD_PER_BLOCK == 0);
-	assert(batch % THREAD_PER_BLOCK == 0);
-	_cwc_kern_reorder_matrix_major
-	<THREAD_PER_BLOCK>
-	<<<dim3(layer->input.matrix.rows * layer->input.matrix.cols, (layer->input.matrix.channels / out_partition / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK), out_partition), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
-	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, batch);
-	_cwc_kern_reorder_matrix_major
-	<THREAD_PER_BLOCK>
-	<<<dim3(out_rows * out_cols, (layer->net.convolutional.count / out_partition / THREAD_PER_BLOCK) * (batch / THREAD_PER_BLOCK), out_partition), THREAD_PER_BLOCK, sizeof(float) * THREAD_PER_BLOCK * THREAD_PER_BLOCK, stream>>>
-	(a, cha, out_rows * out_cols, layer->net.convolutional.count / out_partition, out_partition, batch);
-#define vary_block(_x, _y, _z) do { \
-		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / (_y * out_partition), _z / _x); \
-		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
-		int batch_group_count = batch / BATCH_PER_BLOCK; \
-		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.channels / _z * batch_group_count); \
-		int shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count / out_partition); \
-		_cwc_kern_convolutional_backward_propagate_coefficient_default \
-		<_x, _y, _z, BATCH_PER_BLOCK> \
-		<<<num_blocks_for_coeff, threads_per_block_for_coeff, shared_memory_size, stream>>> \
-		(layer->net.convolutional.strides, layer->net.convolutional.border, batch, batch_group_count, \
-			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, \
-			cha, out_rows, out_cols, \
-			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count / out_partition); \
-		cublasSgemv(handle, CUBLAS_OP_N, count, batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
-	} while (0)
-	cwc_vary_6_a(x, 1, 2, 3, 4, 6, 8, cwc_vary_6_b, y, 1, 2, 3, 4, 6, 8, cwc_vary_4_c, z, 16, 24, 32, 36, vary_block);
-#undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
-	return 0;
-}
-
-static void _cwc_convnet_convolutional_backward_propagate_coefficient_default(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	static int vary_x[] = { 1, 2, 3, 4, 6, 8 };
-	static int vary_y[] = { 1, 2, 3, 4, 6, 8 };
-	static int vary_z[] = { 16, 24, 32, 36 };
-	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-}
-
-static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
-		int x, int y, int z)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	if (!(batch % x == 0 && z % y == 0 &&
-				layer->input.matrix.channels % (z * out_partition) == 0 &&
-				batch / x * z / y <= 1024 && /* thread per block constraint */
-				batch / x * z / y >= batch && batch / x * z / y >= z && /* shared memory loading constraint */
-				sizeof(float) * (batch + z) <= 48 * 1024 /* shared memory size constraint */))
-		return -1;
-	float* chw = scratch;
-	_cwc_kern_reorder_matrix_major_parted
-	<<<dim3(layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels / out_partition), dim3(layer->net.convolutional.count / out_partition, out_partition), 0, stream>>>
-	(layer->w, chw, layer->net.convolutional.rows * layer->net.convolutional.cols, layer->input.matrix.channels, layer->net.convolutional.count, layer->input.matrix.channels / out_partition, layer->net.convolutional.count / out_partition, out_partition);
-#define vary_block(_x, _y, _z, _s) do { \
-		dim3 threads_per_block(batch / _x, _z / _y); \
-		assert(threads_per_block.x * threads_per_block.y <= 1024); \
-		dim3 num_blocks(layer->input.matrix.cols * layer->input.matrix.channels / (_z * out_partition), layer->input.matrix.rows, out_partition); \
-		int shared_memory_size = sizeof(float) * (batch + _z); \
-		cudaFuncSetCacheConfig(_cwc_kern_convolutional_backward_propagate_error<_x, _y, _z, _s>, cudaFuncCachePreferShared); \
-		_cwc_kern_convolutional_backward_propagate_error \
-		<_x, _y, _z, _s> \
-		<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-		(layer->net.convolutional.border, batch, \
-		 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
-		 a, out_rows, out_cols, \
-		 chw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count / out_partition, out_partition); \
-	} while (0)
-	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, cwc_vary_4_d, layer->net.convolutional.strides, 1, 2, 3, 4, vary_block);
-#undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
-	return 0;
-}
-
-static void _cwc_convnet_convolutional_backward_propagate_error(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	static int vary_x[] = { 1, 2, 4, 8 };
-	static int vary_y[] = { 1, 2, 4, 6, 8 };
-	static int vary_z[] = { 16, 24, 32, 36, 64, 72 };
-	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.gradient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_error_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-}
-
-static void _cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	assert(layer->net.convolutional.count % 4 == 0);
-	assert(batch % BATCH_PER_BLOCK == 0);
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	// it turns out that first apply relu would save us a lot of computation because no need to low both out and out_grad any more
-	_cwc_kern_relu_backward_propagate
-	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
-	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
-	assert(cudaGetLastError() == cudaSuccess);
-	float alpha = 1, beta = 0;
-	if (_cwc_convnet_layer_use_rows(layer))
-		_cwc_convnet_convolutional_backward_propagate_coefficient_rows(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-	else
-		_cwc_convnet_convolutional_backward_propagate_coefficient_default(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-	// compute the bias directly using gemv routine
-	cublasSgemv(handle, CUBLAS_OP_T, out_rows * out_cols * batch, layer->net.convolutional.count, &alpha, a, out_rows * out_cols * batch, unit, 1, &beta, configuration->bias, 1);
-	assert(cudaGetLastError() == cudaSuccess);
-	if (b)
-		_cwc_convnet_convolutional_backward_propagate_error(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
-}
-
-template <int input_per_thread, int size>
-__global__ static void _cwc_kern_rnorm_backward_propagate(const int batch,
-		float* input, float* input_grad, const int rows, const int cols, const int channels_per_partition, const int partition,
-		float* out, float* out_grad, float* denoms, const float kappa, const float alpha, const float beta)
-{
-	assert(gridDim.x == cols);
-	assert(gridDim.y == rows);
-	assert(gridDim.z == partition);
-	extern __shared__ float shared[];
-	float* shared_out_grad = &shared[0];
-	float* shared_out = &shared[batch * size];
-	float* shared_denoms = &shared[batch * size * 2];
-	float* shared_input = &shared[batch * size * 3];
-	const int way = size / 2;
-	assert(blockDim.x == batch);
-	const int thidx = threadIdx.x;
-	int i, j, c;
-	float prod[input_per_thread];
-	const int incnt = rows * cols * batch;
-	out += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	out_grad += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	denoms += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	input += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	input_grad += (blockIdx.z * channels_per_partition * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	const int end_way = min(way, channels_per_partition - 1);
-	for (c = 0; c < end_way; c++)
-	{
-		shared_out_grad[c * batch + thidx] = out_grad[thidx],
-		shared_out[c * batch + thidx] = out[thidx],
-		shared_denoms[c * batch + thidx] = denoms[thidx];
-		out_grad += incnt;
-		out += incnt;
-		denoms += incnt;
-	}
-	for (c = 0; c < channels_per_partition; c++)
-	{
-		const int start_way = max(c - way, 0);
-		const int end_way = min(c + way, channels_per_partition - 1);
-		if (c + way < channels_per_partition)
-		{
-			shared_out_grad[(end_way % size) * batch + thidx] = out_grad[thidx],
-			shared_out[(end_way % size) * batch + thidx] = out[thidx],
-			shared_denoms[(end_way % size) * batch + thidx] = denoms[thidx];
-			out_grad += incnt;
-			out += incnt;
-			denoms += incnt;
-		}
-		shared_input[thidx] = input[thidx];
-		__syncthreads();
-		#pragma unroll
-		for (i = 0; i < input_per_thread; i++)
-			prod[i] = 0;
-		#pragma unroll 5
-		for (i = start_way; i <= end_way; i++)
-			#pragma unroll
-			for (j = 0; j < input_per_thread; j++)
-				prod[j] += -2 * alpha * beta * shared_out_grad[(i % size) * batch + j + threadIdx.x * input_per_thread] * shared_out[(i % size) * batch + j + threadIdx.x * input_per_thread] / shared_denoms[(i % size) * batch + j + threadIdx.x * input_per_thread];
-		#pragma unroll
-		for (i = 0; i < input_per_thread; i++)
-			input_grad[i + threadIdx.x * input_per_thread] = shared_input[i + threadIdx.x * input_per_thread] * prod[i] + shared_out_grad[(c % size) * batch + i + threadIdx.x * input_per_thread] *  powf(shared_denoms[(c % size) * batch + i + threadIdx.x * input_per_thread], -beta);
-		input += incnt;
-		input_grad += incnt;
-		__syncthreads();
-	}
-}
-
-static void _cwc_convnet_rnorm_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* denoms, float* b, const cudaStream_t& stream)
-{
-	dim3 num_blocks(layer->input.matrix.cols, layer->input.matrix.rows, layer->input.matrix.partition);
-	dim3 threads_per_block(batch);
-	assert(threads_per_block.x <= 1024);
-	int shared_memory_size = sizeof(float) * batch * (layer->net.rnorm.size * 3 + 1);
-#define vary_block(_, _x) \
-	cudaFuncSetCacheConfig(_cwc_kern_rnorm_backward_propagate<1, _x>, cudaFuncCachePreferShared); \
-	_cwc_kern_rnorm_backward_propagate \
-	<1, _x> \
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>> \
-	(batch, \
-	 m, b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / layer->input.matrix.partition, layer->input.matrix.partition, \
-	 n, a, denoms, layer->net.rnorm.kappa, layer->net.rnorm.alpha, layer->net.rnorm.beta);
-	cwc_vary_2_a(layer->net.rnorm.size, 3, 5, vary_block);
-#undef vary_block
-}
-
-template <int input_per_thread>
-__global__ static void _cwc_kern_max_pool_backward_propagate(const int strides, const int border, const int size, const int batch,
-		float* input, float* input_grad, const int rows, const int cols, const int channels,
-		float* out, float* out_grad, const int out_rows, int out_cols)
-{
-	assert(gridDim.x == cols);
-	assert(gridDim.y == rows);
-	assert(gridDim.z == channels);
-	extern __shared__ float shared[];
-	float* shared_input = &shared[0];
-	float* shared_out = &shared[batch];
-	float* shared_grad = &shared[batch * 2];
-	assert(blockDim.x == batch);
-	const int thidx = threadIdx.x;
-	float prod[input_per_thread];
-	int i, x, y;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		prod[i] = 0;
-	const int ycnt = (size - 1 - (blockIdx.y + border) % strides) / strides + 1;
-	const int xcnt = (size - 1 - (blockIdx.x + border) % strides) / strides + 1;
-	const int out_y = (blockIdx.y + border) / strides - ycnt + 1;
-	const int out_x = (blockIdx.x + border) / strides - xcnt + 1;
-	const int out_start_y = max(out_y, 0);
-	const int out_start_x = max(out_x, 0);
-	out += (blockIdx.z * out_rows * out_cols + out_start_y * out_cols) * batch;
-	out_grad += (blockIdx.z * out_rows * out_cols + out_start_y * out_cols) * batch;
-	const int out_end_y = min(out_y + ycnt, out_rows);
-	const int out_end_x = min(out_x + xcnt, out_cols);
-	input += (blockIdx.z * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	if (thidx < batch)
-		shared_input[thidx] = input[thidx];
-	for (y = out_start_y; y < out_end_y; y++)
-	{
-		for (x = out_start_x; x < out_end_x; x++)
-		{
-			shared_out[thidx] = out[x * batch + thidx],
-			shared_grad[thidx] = out_grad[x * batch + thidx];
-			__syncthreads();
-			#pragma unroll
-			for (i = 0; i < input_per_thread; i++)
-				// we have to do direct comparison otherwise it will contribute to too many cells
-				// and the propagation won't work. But CPU will have different result comparing with GPU
-				if (shared_out[i + threadIdx.x * input_per_thread] == shared_input[i + threadIdx.x * input_per_thread])
-					prod[i] += shared_grad[i + threadIdx.x * input_per_thread];
-			__syncthreads();
-		}
-		out += out_cols * batch;
-		out_grad += out_cols * batch;
-	}
-	input_grad += (blockIdx.z * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		input_grad[i + threadIdx.x * input_per_thread] = prod[i];
-}
-
-static void _cwc_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, const cudaStream_t& stream)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	dim3 num_blocks(layer->input.matrix.cols, layer->input.matrix.rows, layer->input.matrix.channels);
-	dim3 threads_per_block(batch);
-	int shared_memory_size = sizeof(float) * batch * 3;
-	_cwc_kern_max_pool_backward_propagate
-	<1>
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-	(layer->net.pool.strides, layer->net.pool.border, layer->net.pool.size, batch,
-	 m, b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels,
-	 n, a, out_rows, out_cols);
-}
-
-template <int input_per_thread>
-__global__ static void _cwc_kern_average_pool_backward_propagate(const int strides, const int border, const int size, const int batch,
-		float* input_grad, const int rows, const int cols, const int channels,
-		float* out_grad, const int out_rows, int out_cols)
-{
-	assert(gridDim.x == cols);
-	assert(gridDim.y == rows);
-	assert(gridDim.z == channels);
-	extern __shared__ float shared[];
-	float* shared_grad = &shared[0];
-	const int thcnt = blockDim.x;
-	const int thidx = threadIdx.x;
-	assert(thcnt >= batch);
-	float prod[input_per_thread];
-	int i, x, y;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		prod[i] = 0;
-	const int ycnt = (size - 1 - (blockIdx.y + border) % strides) / strides + 1;
-	const int xcnt = (size - 1 - (blockIdx.x + border) % strides) / strides + 1;
-	const int out_y = (blockIdx.y + border) / strides - ycnt + 1;
-	const int out_x = (blockIdx.x + border) / strides - xcnt + 1;
-	const int out_start_y = max(out_y, 0);
-	const int out_start_x = max(out_x, 0);
-	out_grad += (blockIdx.z * out_rows * out_cols + out_start_y * out_cols) * batch;
-	const int out_end_y = min(out_y + ycnt, out_rows);
-	const int out_end_x = min(out_x + xcnt, out_cols);
-	for (y = out_start_y; y < out_end_y; y++)
-	{
-		for (x = out_start_x; x < out_end_x; x++)
-		{
-			if (thidx < batch)
-				shared_grad[thidx] = out_grad[x * batch + thidx];
-			__syncthreads();
-			float inv_size = 1.0 / ((min(y * strides + size - border, rows) - max(y * strides - border, 0)) * (min(x * strides + size - border, cols) - max(x * strides - border, 0)));
-			#pragma unroll
-			for (i = 0; i < input_per_thread; i++)
-				prod[i] += shared_grad[i + threadIdx.x * input_per_thread] * inv_size;
-			__syncthreads();
-		}
-		out_grad += out_cols * batch;
-	}
-	input_grad += (blockIdx.z * rows * cols + blockIdx.y * cols + blockIdx.x) * batch;
-	#pragma unroll
-	for (i = 0; i < input_per_thread; i++)
-		input_grad[i + threadIdx.x * input_per_thread] = prod[i];
-}
-
-static void _cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream)
-{
-	int out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	dim3 num_blocks(layer->input.matrix.cols, layer->input.matrix.rows, layer->input.matrix.channels);
-	dim3 threads_per_block(batch);
-	assert(threads_per_block.x <= 1024);
-	int shared_memory_size = sizeof(float) * batch;
-	_cwc_kern_average_pool_backward_propagate
-	<1>
-	<<<num_blocks, threads_per_block, shared_memory_size, stream>>>
-	(layer->net.pool.strides, layer->net.pool.border, layer->net.pool.size, batch,
-	 b, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels,
-	 a, out_rows, out_cols);
-}
-
-static void _cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle)
-{
-	int rows, out_rows, out_cols, out_partition;
-	_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
-	out_cols = batch;
-	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
-	// apply relu for full connect layer, not that this requires both n and a, and for the last full connect layer, we re-used the forwards, thus, it required the last full connect layer to not have relu enabled
-	if (layer->net.full_connect.relu)
-		_cwc_kern_relu_backward_propagate
-		<<<dim3(1, out_rows, 1), batch, 0, stream>>>
-		(batch, n, a, out_rows, 1, 1);
-	float alpha = 1;
-	float beta = 0;
-	// propagate bias
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &alpha, batch_unit, 1, a, batch, &beta, configuration->bias, 1);
-	// propagate error
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, batch, rows, out_rows, &alpha, a, batch, layer->w, rows, &beta, b, batch);
-	// propagate weights
-	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &alpha, m, batch, a, batch, &beta, configuration->w, rows);
-}
 
 __global__ static void _cwc_kern_softmax_with_logistic_loss(const int batch, const int count, float* a, int* c)
 {
@@ -2111,7 +1001,7 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_id, int mome
 		switch (layer->type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
-				_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+				ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 				num_blocks_for_coeff = (layer->wnum + 63) / 64;
 				num_blocks_for_bias = (layer->net.convolutional.count + 63) / 64;
 				if (momentum_read)
@@ -2435,7 +1325,7 @@ static void _cwc_convnet_dor_formation(ccv_convnet_t* convnet, int device_id, in
 			assert(layer_params[i].dor > 0);
 			ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + i;
 			int out_rows, out_cols, out_partition;
-			_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+			ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 			assert(layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT);
 			int count = layer->type == CCV_CONVNET_FULL_CONNECT ? layer->net.full_connect.count : out_rows * out_cols * layer->net.convolutional.count;
 			for (j = 0; j < batch * count; j++)
@@ -2453,12 +1343,12 @@ static void _cwc_convnet_layer_backward_propagate(ccv_convnet_layer_t* layer, in
 			if (context->device[device_id].dor[k])
 			{
 				int out_rows, out_cols, out_partition;
-				_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+				ccv_convnet_make_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 				_cwc_kern_mute_neuron
 				<<<out_rows * out_cols * layer->net.convolutional.count, batch, 0, context->device[device_id].data_stream>>>
 				(a, context->device[device_id].dor[k]);
 			}
-			_cwc_convnet_convolutional_backward_propagate(layer, batch, a, n, m, b, configuration, scratch, batch_unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+			cwc_convnet_convolutional_backward_propagate(layer, batch, a, n, m, b, configuration, scratch, batch_unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 			assert(cudaGetLastError() == cudaSuccess);
 			break;
 		case CCV_CONVNET_FULL_CONNECT:
@@ -2466,19 +1356,19 @@ static void _cwc_convnet_layer_backward_propagate(ccv_convnet_layer_t* layer, in
 				_cwc_kern_mute_neuron
 				<<<layer->net.full_connect.count, batch, 0, context->device[device_id].data_stream>>>
 				(a, context->device[device_id].dor[k]);
-			_cwc_convnet_full_connect_backward_propagate(layer, batch, a, n, m, b, batch_unit, configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+			cwc_convnet_full_connect_backward_propagate(layer, batch, a, n, m, b, batch_unit, configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 			assert(cudaGetLastError() == cudaSuccess);
 			break;
 		case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-			_cwc_convnet_rnorm_backward_propagate(layer, batch, a, n, m, denoms, b, context->device[device_id].data_stream);
+			cwc_convnet_rnorm_backward_propagate(layer, batch, a, n, m, denoms, b, context->device[device_id].data_stream);
 			assert(cudaGetLastError() == cudaSuccess);
 			break;
 		case CCV_CONVNET_MAX_POOL:
-			_cwc_convnet_max_pool_backward_propagate(layer, batch, a, n, m, b, context->device[device_id].data_stream);
+			cwc_convnet_max_pool_backward_propagate(layer, batch, a, n, m, b, context->device[device_id].data_stream);
 			assert(cudaGetLastError() == cudaSuccess);
 			break;
 		case CCV_CONVNET_AVERAGE_POOL:
-			_cwc_convnet_average_pool_backward_propagate(layer, batch, a, b, context->device[device_id].data_stream);
+			cwc_convnet_average_pool_backward_propagate(layer, batch, a, b, context->device[device_id].data_stream);
 			assert(cudaGetLastError() == cudaSuccess);
 			break;
 	}
@@ -2516,7 +1406,7 @@ static void _cwc_convnet_backward_propagate_error(ccv_convnet_t* convnet, int du
 					_cwc_kern_mute_neuron
 					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].data_stream>>>
 					(a, context->device[device_id].dor[i]);
-				_cwc_convnet_full_connect_backward_propagate(layer, batch,
+				cwc_convnet_full_connect_backward_propagate(layer, batch,
 						a,
 						GPU(convnet)->device[device_id].forwards[i],
 						GPU(convnet)->device[device_id].forwards[i - 1],
@@ -2948,7 +1838,7 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 	for (i = 0; i < scan + 1; i++)
 	{
 		ccv_convnet_layer_t* layer = GPU(convnet)->device[0].layers + i;
-		_ccv_convnet_layer_derive_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
+		ccv_convnet_make_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
 		_cwc_convnet_layer_forward_propagate(layer, 0, i, rows, cols, batch * 6, 0, i == 0 ? default_context->device[0].input : GPU(convnet)->device[0].forwards[i - 1], GPU(convnet)->device[0].forwards[i], GPU(convnet)->device[0].denoms[i], GPU(convnet)->device[0].unit, default_context);
 		rows = out_rows, cols = out_cols;
 	}

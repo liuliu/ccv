@@ -20,8 +20,8 @@ ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
 3rdparty/sqlite3/sqlite3.o: 3rdparty/sqlite3/sqlite3.c
 	$(CC) $< -o $@ -c -O3 -D SQLITE_THREADSAFE=0 -D SQLITE_OMIT_LOAD_EXTENSION
 
-%.o: %.c ccv.h ccv_internal.h cuda/*.h
+%.o: %.c ccv.h ccv_internal.h cuda/cwc.h
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu ccv.h cuda/*.h
+%.o: %.cu ccv.h cuda/cwc.h cuda/cwc_internal.h
 	$(NVCC) $< -o $@ -c $(NVFLAGS)

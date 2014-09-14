@@ -121,7 +121,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
-	ccv_convnet_layer_param_t params[13] = {
+	ccv_convnet_layer_param_t params[16] = {
 		// first layer (convolutional 64 => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
@@ -168,7 +168,7 @@ int main(int argc, char** argv)
 		// second layer (convolutional 128 => max pool)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -233,10 +233,9 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		/*
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -258,7 +257,6 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		*/
 		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
@@ -302,10 +300,9 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		/*
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -327,7 +324,6 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		*/
 		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
@@ -371,10 +367,9 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		/*
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
-			.bias = 1,
+			.bias = 0,
 			.sigma = 0.01,
 			.input = {
 				.matrix = {
@@ -396,7 +391,6 @@ int main(int argc, char** argv)
 				},
 			},
 		},
-		*/
 		{
 			.type = CCV_CONVNET_MAX_POOL,
 			.input = {
@@ -487,19 +481,19 @@ int main(int argc, char** argv)
 	};
 	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), params, sizeof(params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
-	ccv_convnet_layer_train_param_t layer_params[13];
+	ccv_convnet_layer_train_param_t layer_params[16];
 	memset(layer_params, 0, sizeof(layer_params));
-	for (i = 0; i < 13; i++)
+	for (i = 0; i < 16; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.03;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.03;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
-	layer_params[10].dor = 0.5;
-	layer_params[11].dor = 0.5;
+	layer_params[13].dor = 0.5;
+	layer_params[14].dor = 0.5;
 	train_params.layer_params = layer_params;
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);

@@ -175,4 +175,72 @@
 	} else /* we already have configuration, run it */ \
 		vary_func(__VA_ARGS__, config.x, config.y, config.z);
 
+typedef struct {
+	int x, y, z;
+} cwc_convnet_kernel_vary_t;
+
+typedef struct {
+	struct {
+		cwc_convnet_kernel_vary_t forward;
+		struct {
+			cwc_convnet_kernel_vary_t coefficient;
+			cwc_convnet_kernel_vary_t gradient;
+		} backward;
+	} convolutional;
+} cwc_convnet_layer_vary_t;
+
+#ifdef HAVE_CUDNN
+typedef struct {
+	cudnnTensor4dDescriptor_t input_descriptor;
+	cudnnTensor4dDescriptor_t output_descriptor;
+	cudnnFilterDescriptor_t filter_descriptor;
+	cudnnConvolutionDescriptor_t convolutional_descriptor;
+} cwc_convnet_cudnn_context_t;
+#endif
+
+typedef struct {
+	cwc_convnet_layer_vary_t vary;
+#ifdef HAVE_CUDNN
+	// cudnn doesn't support partitions, therefore, but ccv's configuration could have multiple partitions
+	cwc_convnet_cudnn_context_t* partitions;
+#endif
+} cwc_convnet_layer_t;
+
+#define EXTRA(x) ((cwc_convnet_layer_t*)((x)->reserved))
+#define BATCH_PER_BLOCK (8)
+#define THREAD_PER_BLOCK (16)
+
+inline static int cwc_convnet_layer_use_rows(ccv_convnet_layer_t* layer)
+{
+	return layer->input.matrix.channels <= 8 && layer->input.matrix.partition == 1;
+}
+
+__global__ static void cwc_kern_relu_backward_propagate(const int batch,
+		float* out, float* out_grad, const int out_rows, const int out_cols,
+		const int count)
+{
+	assert(gridDim.x == out_cols);
+	assert(gridDim.y == out_rows);
+	assert(gridDim.z == count);
+	assert(blockDim.x == batch);
+	out += (blockIdx.z * out_rows * out_cols + blockIdx.y * out_cols + blockIdx.x) * batch;
+	out_grad += (blockIdx.z * out_rows * out_cols + blockIdx.y * out_cols + blockIdx.x) * batch;
+	if (out[threadIdx.x] <= 0)
+		out_grad[threadIdx.x] = 0;
+}
+
+void cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream);
+void cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle);
+
+void cwc_convnet_rnorm_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, float* denoms, const cudaStream_t& stream);
+void cwc_convnet_rnorm_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* denoms, float* b, const cudaStream_t& stream);
+
+void cwc_convnet_max_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream);
+void cwc_convnet_average_pool_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream);
+void cwc_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, const cudaStream_t& stream);
+void cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream);
+
+void cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cudaStream_t& stream, const cublasHandle_t& handle);
+void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle);
+
 #endif

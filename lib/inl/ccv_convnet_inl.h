@@ -1,7 +1,7 @@
 #ifndef GUARD_ccv_convnet_inl_h
 #define GUARD_ccv_convnet_inl_h
 
-inline static void _ccv_convnet_layer_derive_output(ccv_convnet_layer_t* layer, int input_rows, int input_cols, int* rows, int* cols, int* partition)
+inline static void ccv_convnet_make_output(ccv_convnet_layer_t* layer, int input_rows, int input_cols, int* rows, int* cols, int* partition)
 {
 	assert(rows != 0 && cols != 0);
 	switch(layer->type)

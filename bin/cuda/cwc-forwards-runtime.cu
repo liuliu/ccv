@@ -19,9 +19,9 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 		for (i = 0; i < 5; i++)
 		{
 			ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + conv_layers[i];
-			VARY(layer)->convolutional.forward.x = 4;
-			VARY(layer)->convolutional.forward.y = 8;
-			VARY(layer)->convolutional.forward.z = 32;
+			EXTRA(layer)->vary.convolutional.forward.x = 4;
+			EXTRA(layer)->vary.convolutional.forward.y = 8;
+			EXTRA(layer)->vary.convolutional.forward.z = 32;
 		}
 	// doing model parallelism
 	for (device_id = 0; device_id < 2; device_id++)
@@ -60,9 +60,9 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	for (i = 0; i < 5; i++)
 	{
 		ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + conv_layers[i];
-		VARY(layer)->convolutional.forward.x = 4;
-		VARY(layer)->convolutional.forward.y = 8;
-		VARY(layer)->convolutional.forward.z = 32;
+		EXTRA(layer)->vary.convolutional.forward.x = 4;
+		EXTRA(layer)->vary.convolutional.forward.y = 8;
+		EXTRA(layer)->vary.convolutional.forward.z = 32;
 	}
 	_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, convnet->input, convnet->rows, convnet->cols, convnet->channels, 1000, 0, mini_batch, 0, mini_batch, context->host[device_id].input, context->host[device_id].c);
 	cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);

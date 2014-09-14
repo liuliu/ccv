@@ -28,21 +28,21 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	float elapsed_time;
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.forward.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.forward.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.forward.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.forward.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.forward.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.forward.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.forward.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.forward.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.forward.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.forward.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.forward.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.forward.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.forward.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.forward.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.forward.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.forward.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.forward.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.forward.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.forward.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.forward.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.forward.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.forward.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.forward.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.forward.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.forward.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.forward.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.forward.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.forward.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.forward.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.forward.z = 32;
 	cudaEventRecord(overallStart, context->device[device_id].data_stream);
 	for (i = 0; i < convnet->count; i++)
 	{
@@ -53,7 +53,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&elapsed_time, start, stop);
 		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
-			printf("%d %d %d, elapsed time for layer %d fprop: %f milliseconds\n", VARY(layer)->convolutional.forward.x, VARY(layer)->convolutional.forward.y, VARY(layer)->convolutional.forward.z, i + 1, elapsed_time);
+			printf("%d %d %d, elapsed time for layer %d fprop: %f milliseconds\n", EXTRA(layer)->vary.convolutional.forward.x, EXTRA(layer)->vary.convolutional.forward.y, EXTRA(layer)->vary.convolutional.forward.z, i + 1, elapsed_time);
 		else
 			printf("elapsed time for layer %d fprop: %f milliseconds\n", i + 1, elapsed_time);
 	}
@@ -62,33 +62,33 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	cudaEventElapsedTime(&elapsed_time, overallStart, overallStop);
 	printf("forward pass %f milliseconds\n", elapsed_time);
 
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.backward.coefficient.x = 1;
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.backward.coefficient.y = 3;
-	VARY(GPU(convnet)->device[device_id].layers + 0)->convolutional.backward.coefficient.z = 1;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.coefficient.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.coefficient.y = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.coefficient.z = 16;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.gradient.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.gradient.y = 6;
-	VARY(GPU(convnet)->device[device_id].layers + 3)->convolutional.backward.gradient.z = 24;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.coefficient.x = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.coefficient.y = 3;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.coefficient.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.gradient.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.gradient.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 6)->convolutional.backward.gradient.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.coefficient.x = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.coefficient.y = 3;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.coefficient.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.gradient.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.gradient.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 7)->convolutional.backward.gradient.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.coefficient.x = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.coefficient.y = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.coefficient.z = 32;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.gradient.x = 4;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.gradient.y = 8;
-	VARY(GPU(convnet)->device[device_id].layers + 8)->convolutional.backward.gradient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.backward.coefficient.x = 1;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.backward.coefficient.y = 3;
+	EXTRA(GPU(convnet)->device[device_id].layers + 0)->vary.convolutional.backward.coefficient.z = 1;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.coefficient.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.coefficient.y = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.coefficient.z = 16;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.gradient.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.gradient.y = 6;
+	EXTRA(GPU(convnet)->device[device_id].layers + 3)->vary.convolutional.backward.gradient.z = 24;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.coefficient.x = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.coefficient.y = 3;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.coefficient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.gradient.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.gradient.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 6)->vary.convolutional.backward.gradient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.coefficient.x = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.coefficient.y = 3;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.coefficient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.gradient.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.gradient.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 7)->vary.convolutional.backward.gradient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.coefficient.x = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.coefficient.y = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.coefficient.z = 32;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.gradient.x = 4;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.gradient.y = 8;
+	EXTRA(GPU(convnet)->device[device_id].layers + 8)->vary.convolutional.backward.gradient.z = 32;
 	float* a = 0;
 	cudaMalloc(&a, sizeof(float) * 1000 * batch);
 	cudaMemcpy(a, GPU(convnet)->device[device_id].forwards[convnet->count - 1], sizeof(float) * 1000 * batch, cudaMemcpyDeviceToDevice);
@@ -104,12 +104,12 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				if (context->device[device_id].dor[i])
 				{
 					int out_rows, out_cols, out_partition;
-					_ccv_convnet_layer_derive_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+					ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 					_cwc_kern_mute_neuron
 					<<<out_rows * out_cols * layer->net.convolutional.count, batch, 0, context->device[device_id].data_stream>>>
 					(i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], context->device[device_id].dor[i]);
 				}
-				_cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], configuration, GPU(convnet)->device[device_id].scratch, GPU(convnet)->device[device_id].unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+				cwc_convnet_convolutional_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], configuration, GPU(convnet)->device[device_id].scratch, GPU(convnet)->device[device_id].unit, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
@@ -117,19 +117,19 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					_cwc_kern_mute_neuron
 					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].data_stream>>>
 					(i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], context->device[device_id].dor[i]);
-				_cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], GPU(convnet)->device[device_id].unit, configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+				cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], GPU(convnet)->device[device_id].unit, configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
-				_cwc_convnet_rnorm_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].denoms[i], GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
+				cwc_convnet_rnorm_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].denoms[i], GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_MAX_POOL:
-				_cwc_convnet_max_pool_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
+				cwc_convnet_max_pool_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_AVERAGE_POOL:
-				_cwc_convnet_average_pool_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
+				cwc_convnet_average_pool_backward_propagate(layer, batch, i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].backwards[i], context->device[device_id].data_stream);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 		}
@@ -137,7 +137,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaEventSynchronize(stop);
 		cudaEventElapsedTime(&elapsed_time, start, stop);
 		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
-			printf("%d %d %d, %d %d %d, elapsed time for layer %d bprop: %f milliseconds\n", VARY(layer)->convolutional.backward.coefficient.x, VARY(layer)->convolutional.backward.coefficient.y, VARY(layer)->convolutional.backward.coefficient.z, VARY(layer)->convolutional.backward.gradient.x, VARY(layer)->convolutional.backward.gradient.y, VARY(layer)->convolutional.backward.gradient.z, i + 1, elapsed_time);
+			printf("%d %d %d, %d %d %d, elapsed time for layer %d bprop: %f milliseconds\n", EXTRA(layer)->vary.convolutional.backward.coefficient.x, EXTRA(layer)->vary.convolutional.backward.coefficient.y, EXTRA(layer)->vary.convolutional.backward.coefficient.z, EXTRA(layer)->vary.convolutional.backward.gradient.x, EXTRA(layer)->vary.convolutional.backward.gradient.y, EXTRA(layer)->vary.convolutional.backward.gradient.z, i + 1, elapsed_time);
 		else
 			printf("elapsed time for layer %d bprop: %f milliseconds\n", i + 1, elapsed_time);
 	}
