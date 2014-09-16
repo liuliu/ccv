@@ -1189,7 +1189,7 @@ typedef struct {
 	int mini_batch;
 	int iterations;
 	int symmetric;
-	int dual_device; // for now, ccv's implementation only support up to 2 GPUs
+	int device_count; // for now, ccv's implementation only support up to 2 GPUs
 	float color_gain; // the gaussian value for color variations
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;

@@ -280,7 +280,7 @@ int main(int argc, char** argv)
 			.iterations = 500,
 			.symmetric = 1,
 			.color_gain = 0,
-			.dual_device = 0,
+			.device_count = 1,
 			.layer_params = layer_params,
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, "cifar-10.sqlite3", params);

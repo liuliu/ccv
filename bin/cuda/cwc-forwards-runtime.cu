@@ -11,7 +11,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 {
 	int dual_batch = params.mini_batch;
 	int mini_batch = dual_batch / 2;
-	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 1, params.layer_params);
+	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 2, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	int i, device_id;
 	int conv_layers[] = {0, 3, 6, 7, 8};
@@ -38,7 +38,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 		cudaSetDevice(device_id);
 		cudaDeviceSynchronize();
 	}
-	_cwc_convnet_encode_impl(convnet, 1, mini_batch, 0, context);
+	_cwc_convnet_encode_impl(convnet, 2, mini_batch, 0, context);
 	float *dual_out[2] = {0};
 	cudaMallocHost(&dual_out[0], sizeof(float) * dual_batch * 1000);
 	cudaMallocHost(&dual_out[1], sizeof(float) * dual_batch * 1000);
@@ -54,7 +54,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	device_id = 0;
 	cudaSetDevice(device_id);
 	mini_batch = dual_batch;
-	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 0, params.layer_params);
+	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 1, params.layer_params);
 	assert(cudaGetLastError() == cudaSuccess);
 	context = GPU(convnet)->contexts;
 	for (i = 0; i < 5; i++)
@@ -70,7 +70,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	cudaDeviceSynchronize();
-	_cwc_convnet_encode_impl(convnet, 0, mini_batch, 0, context);
+	_cwc_convnet_encode_impl(convnet, 1, mini_batch, 0, context);
 	cudaDeviceSynchronize();
 	float* out = 0;
 	cudaMallocHost(&out, sizeof(float) * dual_batch * 1000);
@@ -80,12 +80,10 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	for (i = 0; i < 1000; i++)
 	{
 		for (j = 0; j < mini_batch / 2; j++)
-			if (fabs(out[i * mini_batch + j] - dual_out[0][i * (mini_batch / 2) + j]) > 1e-3 &&
-				fabs(out[i * mini_batch + j] - dual_out[1][i * (mini_batch / 2) + j]) > 1e-3)
+			if (fabs(out[i * mini_batch + j] - dual_out[0][i * (mini_batch / 2) + j]) > 1e-3)
 				printf("%d %d %f %f %f\n", i, j, out[i * mini_batch + j], dual_out[0][i * (mini_batch / 2) + j], dual_out[1][i * (mini_batch / 2) + j]);
 		for (j = 0; j < mini_batch / 2; j++)
-			if (fabs(out[i * mini_batch + mini_batch / 2 + j] - dual_out[0][1000 * mini_batch / 2 + i * (mini_batch / 2) + j]) > 1e-3 &&
-				fabs(out[i * mini_batch + mini_batch / 2 + j] - dual_out[1][1000 * mini_batch / 2 + i * (mini_batch / 2) + j]) > 1e-3)
+			if (fabs(out[i * mini_batch + mini_batch / 2 + j] - dual_out[0][1000 * mini_batch / 2 + i * (mini_batch / 2) + j]) > 1e-3)
 				printf("%d %d %f %f %f\n", i, j + mini_batch / 2, out[i * mini_batch + mini_batch / 2 + j], dual_out[0][1000 * mini_batch / 2 + i * (mini_batch / 2) + j], dual_out[1][1000 * mini_batch / 2 + i * (mini_batch / 2) + j]);
 	}
 	cudaFreeHost(dual_out[0]);

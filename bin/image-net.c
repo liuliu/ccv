@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 		.max_epoch = 100,
 		.mini_batch = 48,
 		.iterations = 50000,
-		.dual_device = 0,
+		.device_count = 1,
 		.symmetric = 1,
 		.color_gain = 0.001,
 	};

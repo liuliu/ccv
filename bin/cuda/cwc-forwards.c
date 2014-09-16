@@ -27,7 +27,7 @@ int main(int argc, char** argv)
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 128,
-		.dual_device = 1,
+		.device_count = 2,
 	};
 	ccv_convnet_t *convnet = ccv_convnet_read(1, argv[2]);
 	cwc_forwards_runtime(convnet, categorizeds, train_params);
