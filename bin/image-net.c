@@ -42,7 +42,8 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
-		.mini_batch = 48,
+		.mini_batch = 32,
+		.sgd_frequency = 4, // do sgd every 3 batches
 		.iterations = 50000,
 		.device_count = 1,
 		.symmetric = 1,
@@ -126,7 +127,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 225,
@@ -143,7 +144,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 3,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 		},
@@ -154,7 +155,7 @@ int main(int argc, char** argv)
 					.rows = 225,
 					.cols = 225,
 					.channels = 64,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -169,7 +170,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 113,
@@ -186,7 +187,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 64,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 		},
@@ -197,7 +198,7 @@ int main(int argc, char** argv)
 					.rows = 113,
 					.cols = 113,
 					.channels = 128,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -212,7 +213,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 57,
@@ -236,7 +237,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 57,
@@ -264,7 +265,7 @@ int main(int argc, char** argv)
 					.rows = 57,
 					.cols = 57,
 					.channels = 256,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -279,7 +280,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 29,
@@ -303,7 +304,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 29,
@@ -331,7 +332,7 @@ int main(int argc, char** argv)
 					.rows = 29,
 					.cols = 29,
 					.channels = 512,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -346,7 +347,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 15,
@@ -370,7 +371,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 15,
@@ -398,7 +399,7 @@ int main(int argc, char** argv)
 					.rows = 15,
 					.cols = 15,
 					.channels = 512,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 			.output = {
@@ -413,7 +414,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 1,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 8,
@@ -436,7 +437,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 1,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 4096,
@@ -459,7 +460,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 0,
-			.sigma = 0.01,
+			.sigma = 0.02,
 			.input = {
 				.matrix = {
 					.rows = 4096,

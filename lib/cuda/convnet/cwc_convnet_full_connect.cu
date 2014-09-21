@@ -19,13 +19,10 @@ void cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int 
 	ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 	out_cols = batch;
 	rows = layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels;
-	float alpha = 1;
-	float beta = 0;
 	// make copies of bias into db's columns, note that for cublas, it is row-major matrix
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, 1, &alpha, batch_unit, batch, layer->bias, 1, &beta, b, batch);
-	beta = 1;
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, 1, &one, batch_unit, batch, layer->bias, 1, &zero, b, batch);
 	// and then do the GEMM by adding bias
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, rows, &alpha, a, batch, layer->w, rows, &beta, b, batch);
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, batch, out_rows, rows, &one, a, batch, layer->w, rows, &one, b, batch);
 	if (layer->net.full_connect.relu)
 		_cwc_kern_relu_forward_propagate
 		<<<layer->net.full_connect.count, batch, 0, stream>>>
@@ -44,12 +41,10 @@ void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int
 		cwc_kern_relu_backward_propagate
 		<<<dim3(1, out_rows, 1), batch, 0, stream>>>
 		(batch, n, a, out_rows, 1, 1);
-	float alpha = 1;
-	float beta = 0;
 	// propagate bias
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &alpha, batch_unit, 1, a, batch, &beta, configuration->bias, 1);
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &one, batch_unit, 1, a, batch, &one, configuration->bias, 1);
 	// propagate error
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, batch, rows, out_rows, &alpha, a, batch, layer->w, rows, &beta, b, batch);
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, batch, rows, out_rows, &one, a, batch, layer->w, rows, &zero, b, batch);
 	// propagate weights
-	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &alpha, m, batch, a, batch, &beta, configuration->w, rows);
+	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &one, m, batch, a, batch, &one, configuration->w, rows);
 }

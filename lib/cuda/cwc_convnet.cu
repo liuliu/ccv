@@ -186,6 +186,7 @@ static void _cwc_convnet_alloc_configurations(ccv_convnet_t* convnet, int device
 				// allocating for configurations 
 				configurations[i].w = 0;
 				cudaMalloc(&configurations[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
+				cudaMemset(configurations[i].w, 0, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
 				GPU(convnet)->stats.memory_usage += sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count);
 				assert(configurations[i].w);
 				configurations[i].bias = configurations[i].w + layers[i].wnum;
@@ -196,6 +197,7 @@ static void _cwc_convnet_alloc_configurations(ccv_convnet_t* convnet, int device
 				// allocating for configurations 
 				configurations[i].w = 0;
 				cudaMalloc(&configurations[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
+				cudaMemset(configurations[i].w, 0, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
 				GPU(convnet)->stats.memory_usage += sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count);
 				assert(configurations[i].w);
 				configurations[i].bias = configurations[i].w + layers[i].wnum;
@@ -223,6 +225,7 @@ static void _cwc_convnet_alloc_momentums(ccv_convnet_t* convnet, int device_id)
 				// allocating for momentums
 				momentums[i].w = 0;
 				cudaMalloc(&momentums[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
+				cudaMemset(momentums[i].w, 0, sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count));
 				GPU(convnet)->stats.memory_usage += sizeof(float) * (layers[i].wnum + layers[i].net.convolutional.count);
 				assert(momentums[i].w);
 				momentums[i].bias = momentums[i].w + layers[i].wnum;
@@ -233,6 +236,7 @@ static void _cwc_convnet_alloc_momentums(ccv_convnet_t* convnet, int device_id)
 				// allocating for momentums
 				momentums[i].w = 0;
 				cudaMalloc(&momentums[i].w, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
+				cudaMemset(momentums[i].w, 0, sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count));
 				GPU(convnet)->stats.memory_usage += sizeof(float) * (layers[i].wnum + layers[i].net.full_connect.count);
 				assert(momentums[i].w);
 				momentums[i].bias = momentums[i].w + layers[i].wnum;
@@ -916,30 +920,33 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int device_count, i
 
 __global__ static void _cwc_kern_softmax_with_logistic_loss(const int batch, const int count, float* a, int* c)
 {
-	int i;
 	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
-	float max_val = a[thidx];
-	for (i = 1; i < count; i++)
+	if (thidx < batch)
 	{
-		float prod = a[i * batch + thidx];
-		if (prod > max_val)
-			max_val = prod;
+		int i;
+		float max_val = a[thidx];
+		for (i = 1; i < count; i++)
+		{
+			float prod = a[i * batch + thidx];
+			if (prod > max_val)
+				max_val = prod;
+		}
+		float val = 0;
+		for (i = 0; i < count; i++)
+		{
+			float prod = a[i * batch + thidx];
+			val += (prod = expf(prod - max_val));
+			a[i * batch + thidx] = prod;
+		}
+		val = 1.0 / val;
+		for (i = 0; i < count; i++)
+			a[i * batch + thidx] = (i == c[thidx]) - (a[i * batch + thidx] * val);
 	}
-	float val = 0;
-	for (i = 0; i < count; i++)
-	{
-		float prod = a[i * batch + thidx];
-		val += (prod = expf(prod - max_val));
-		a[i * batch + thidx] = prod;
-	}
-	val = 1.0 / val;
-	for (i = 0; i < count; i++)
-		a[i * batch + thidx] = (i == c[thidx]) - (a[i * batch + thidx] * val);
 }
 
 static void _cwc_convnet_softmax_with_logistic_loss(int batch, int count, float* a, int* c, const cudaStream_t& stream)
 {
-	dim3 num_blocks(ccv_max(1, batch / 64));
+	dim3 num_blocks((batch + 63) / 64);
 	dim3 threads_per_block(ccv_min(batch, 64));
 	assert(threads_per_block.x <= 1024);
 	int shared_memory_size = sizeof(float) * batch;
@@ -950,22 +957,25 @@ static void _cwc_convnet_softmax_with_logistic_loss(int batch, int count, float*
 
 __global__ static void _cwc_kern_tests_return(const int batch, const int count, float* a, int* c)
 {
-	int i;
 	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
-	float max_val = a[thidx];
-	int max_idx = 0;
-	for (i = 1; i < count; i++)
+	if (thidx < batch)
 	{
-		float val = a[i * batch + thidx];
-		if (val > max_val)
-			max_val = val, max_idx = i;
+		int i;
+		float max_val = a[thidx];
+		int max_idx = 0;
+		for (i = 1; i < count; i++)
+		{
+			float val = a[i * batch + thidx];
+			if (val > max_val)
+				max_val = val, max_idx = i;
+		}
+		c[thidx] = max_idx;
 	}
-	c[thidx] = max_idx;
 }
 
 static void _cwc_convnet_tests_return(int batch, int count, float* a, int* c, const cudaStream_t& stream)
 {
-	dim3 num_blocks(ccv_max(1, batch / 64));
+	dim3 num_blocks((batch + 63) / 64);
 	dim3 threads_per_block(ccv_min(batch, 64));
 	assert(threads_per_block.x <= 1024);
 	_cwc_kern_tests_return
@@ -973,7 +983,6 @@ static void _cwc_convnet_tests_return(int batch, int count, float* a, int* c, co
 	(batch, count, a, c);
 }
 
-template <int momentum_read>
 __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 		const int count,
 		const float learn_rate, const float momentum_rate, const float decay_and_learn)
@@ -985,14 +994,15 @@ __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 		momentum += blockIdx.x * blockDim.x;
 		const int thidx = threadIdx.x;
 		float old_a = a[thidx];
-		float velocity = (momentum_read ? momentum_rate * momentum[thidx] : 0) - decay_and_learn * old_a + learn_rate * grad[thidx];
+		float velocity = momentum_rate * momentum[thidx] - decay_and_learn * old_a + learn_rate * grad[thidx];
 		a[thidx] = velocity + old_a;
 		momentum[thidx] = velocity;
+		grad[thidx] = 0;
 	}
 }
 
-static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_id, int momentum_read, int batch, ccv_convnet_layer_train_param_t* layer_params, cwc_convnet_context_t* context)
-{
+static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_id, int batch, ccv_convnet_layer_train_param_t* layer_params, cwc_convnet_context_t* context)
+{static int c = 0;++c;
 	int i, out_rows, out_cols, out_partition;
 	dim3 threads_per_block(64);
 	assert(threads_per_block.x <= 1024);
@@ -1009,59 +1019,27 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_id, int mome
 				ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
 				num_blocks_for_coeff = (layer->wnum + 63) / 64;
 				num_blocks_for_bias = (layer->net.convolutional.count + 63) / 64;
-				if (momentum_read)
-				{
-					_cwc_kern_net_sgd
-					<1>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
-					_cwc_kern_net_sgd
-					<1>
-					<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
-					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
-				} else {
-					_cwc_kern_net_sgd
-					<0>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
-					_cwc_kern_net_sgd
-					<0>
-					<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
-					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
-				}
+				_cwc_kern_net_sgd
+				<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
+				(layer->w, configuration->w, momentum->w, layer->wnum,
+				 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
+				_cwc_kern_net_sgd
+				<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
+				(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
+				 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				// assume coeff and bias in the same continuous memory region
 				num_blocks_for_coeff = (layer->wnum + 63) / 64;
 				num_blocks_for_bias = (layer->net.full_connect.count + 63) / 64;
-				if (momentum_read)
-				{
-					_cwc_kern_net_sgd
-					<1>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
-					_cwc_kern_net_sgd
-					<1>
-					<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
-					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
-				} else {
-					_cwc_kern_net_sgd
-					<0>
-					<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->w, configuration->w, momentum->w, layer->wnum,
-					 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
-					_cwc_kern_net_sgd
-					<0>
-					<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
-					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
-					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
-				}
+				_cwc_kern_net_sgd
+				<<<num_blocks_for_coeff, threads_per_block, 0, context->device[device_id].data_stream>>>
+				(layer->w, configuration->w, momentum->w, layer->wnum,
+				 layer_params[i].w.learn_rate / batch, layer_params[i].w.momentum, layer_params[i].w.decay * layer_params[i].w.learn_rate);
+				_cwc_kern_net_sgd
+				<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
+				(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
+				 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 			case CCV_CONVNET_MAX_POOL:
@@ -1891,7 +1869,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	assert(params.mini_batch % BATCH_PER_BLOCK == 0);
 	int device_id, device_count = 0;
 	cudaGetDeviceCount(&device_count);
-	if (params.device_count < device_count)
+	if (params.device_count > device_count)
 		params.device_count = device_count;
 	assert(device_count > 0);
 	// enable peer access
@@ -1948,7 +1926,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	z.eigenvectors = 0;
 	z.eigenvalues = 0;
 	z.line_no = 0;
-	int miss;
+	int miss, sgd_count;
 	float elapsed_time[2] = {0};
 	ccv_function_state_begin(_cwc_convnet_supervised_train_function_state_read, z, filename);
 	_cwc_convnet_mean_formation(categorizeds, z.convnet->input, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
@@ -1958,6 +1936,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
+		sgd_count = 0;
 		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
 		{
 			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
@@ -2031,10 +2010,14 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				// do backward propagate
 				_cwc_convnet_backward_propagate_error(z.convnet, params.device_count, params.mini_batch, context);
 				assert(cudaGetLastError() == cudaSuccess);
-				for (device_id = 0; device_id < params.device_count; device_id++)
+				if (++sgd_count == params.sgd_frequency)
 				{
-					cudaSetDevice(device_id);
-					_cwc_convnet_net_sgd(z.convnet, device_id, z.t > 0 || i > 0, params.mini_batch, params.layer_params, context);
+					for (device_id = 0; device_id < params.device_count; device_id++)
+					{
+						cudaSetDevice(device_id);
+						_cwc_convnet_net_sgd(z.convnet, device_id, params.mini_batch * sgd_count, params.layer_params, context);
+					}
+					sgd_count = 0; // reset the counter
 				}
 				assert(cudaGetLastError() == cudaSuccess);
 			}

@@ -12,7 +12,7 @@ extern "C" void cwc_verify_runtime(ccv_convnet_t* convnet, ccv_array_t* categori
 	int batch = params.mini_batch;
 	int i, j;
 	const int device_id = 0;
-	_cwc_convnet_alloc_reserved_both(convnet, batch, 0, params.layer_params);
+	_cwc_convnet_alloc_reserved_both(convnet, batch, 1, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	for (i = 0; i < convnet->rows * convnet->cols * convnet->channels; i++)
 		convnet->mean_activity->data.f32[i] = 128;

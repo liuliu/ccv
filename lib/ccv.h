@@ -1188,6 +1188,7 @@ typedef struct {
 	int max_epoch;
 	int mini_batch;
 	int iterations;
+	int sgd_frequency;
 	int symmetric;
 	int device_count; // for now, ccv's implementation only support up to 2 GPUs
 	float color_gain; // the gaussian value for color variations

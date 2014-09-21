@@ -229,6 +229,9 @@ __global__ static void cwc_kern_relu_backward_propagate(const int batch,
 		out_grad[threadIdx.x] = 0;
 }
 
+static const float zero = 0;
+static const float one = 1;
+
 void cwc_convnet_convolutional_forward_propagate(ccv_convnet_layer_t* layer, int rows, int cols, int batch, float* a, float* b, const cudaStream_t& stream);
 void cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle);
 

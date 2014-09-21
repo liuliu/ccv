@@ -430,8 +430,6 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 	float* chm = scratch;
 	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
 	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
-	float alpha = 1, beta = 0;
-	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
 	const int batch_group_count = batch / BATCH_PER_BLOCK;
 	_cwc_convnet_reorder_matrix_major_per_block
 	(m, chm, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels, batch, stream);
@@ -450,7 +448,6 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels, \
 			cha, out_rows, out_cols, \
 			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count); \
-		cublasSgemv(handle, CUBLAS_OP_N, count, out_rows * batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
 	} while (0)
 	// special casing for image
 	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_4_b, y, 1, 2, 3, 4, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
@@ -464,7 +461,15 @@ static void _cwc_convnet_convolutional_backward_propagate_coefficient_rows(ccv_c
 	static int vary_x[] = { 1, 2, 3, 4 };
 	static int vary_y[] = { 1, 2, 3, 4 };
 	static int vary_z[] = { 1 };
+	// benchmarking requires it has no side effect
 	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	int out_rows, out_cols, out_partition;
+	ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
+	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels;
+	const int batch_group_count = batch / BATCH_PER_BLOCK;
+	// this has side-effect since it is accumulation
+	cublasSgemv(handle, CUBLAS_OP_N, count, out_rows * batch_group_count, &one, cbw, count, unit, 1, &one, configuration->w, 1);
 }
 
 static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
@@ -480,8 +485,7 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 	float* chm = scratch;
 	float* cha = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch;
 	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
-	float alpha = 1, beta = 0;
-	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels / out_partition;
+	const int batch_group_count = batch / BATCH_PER_BLOCK;
 	assert((layer->input.matrix.channels / out_partition) % THREAD_PER_BLOCK == 0);
 	assert((layer->net.convolutional.count / out_partition) % THREAD_PER_BLOCK == 0);
 	assert(batch % THREAD_PER_BLOCK == 0);
@@ -496,7 +500,6 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 #define vary_block(_x, _y, _z) do { \
 		dim3 threads_per_block_for_coeff(layer->net.convolutional.count / (_y * out_partition), _z / _x); \
 		assert(threads_per_block_for_coeff.x * threads_per_block_for_coeff.y <= 1024); \
-		int batch_group_count = batch / BATCH_PER_BLOCK; \
 		dim3 num_blocks_for_coeff(layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.channels / _z * batch_group_count); \
 		int shared_memory_size = sizeof(float) * (_z + layer->net.convolutional.count / out_partition); \
 		_cwc_kern_convolutional_backward_propagate_coefficient_default \
@@ -506,7 +509,6 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 			chm, layer->input.matrix.rows, layer->input.matrix.cols, layer->input.matrix.channels / out_partition, out_partition, \
 			cha, out_rows, out_cols, \
 			cbw, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.count / out_partition); \
-		cublasSgemv(handle, CUBLAS_OP_N, count, batch_group_count, &alpha, cbw, count, unit, 1, &beta, configuration->w, 1); \
 	} while (0)
 	cwc_vary_6_a(x, 1, 2, 3, 4, 6, 8, cwc_vary_6_b, y, 1, 2, 3, 4, 6, 8, cwc_vary_4_c, z, 16, 24, 32, 36, vary_block);
 #undef vary_block
@@ -519,7 +521,15 @@ static void _cwc_convnet_convolutional_backward_propagate_coefficient_default(cc
 	static int vary_x[] = { 1, 2, 3, 4, 6, 8 };
 	static int vary_y[] = { 1, 2, 3, 4, 6, 8 };
 	static int vary_z[] = { 16, 24, 32, 36 };
+	// benchmarking requires it has no side effect
 	CWC_IMPLEMENT_VARY_STUB(EXTRA(layer)->vary.convolutional.backward.coefficient, vary_x, vary_y, vary_z, _cwc_convnet_convolutional_backward_propagate_coefficient_default_vary, layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
+	int out_rows, out_cols, out_partition;
+	ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
+	float* cbw = scratch + layer->input.matrix.rows * layer->input.matrix.cols * layer->input.matrix.channels * batch + out_rows * out_cols * layer->net.convolutional.count * batch;
+	int count = layer->net.convolutional.rows * layer->net.convolutional.cols * layer->net.convolutional.count * layer->input.matrix.channels / out_partition;
+	const int batch_group_count = batch / BATCH_PER_BLOCK;
+	// this has side-effect since it is accumulation
+	cublasSgemv(handle, CUBLAS_OP_N, count, batch_group_count, &one, cbw, count, unit, 1, &one, configuration->w, 1);
 }
 
 static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, ccv_convnet_layer_t* configuration, float* scratch, float* unit, const cudaStream_t& stream, const cublasHandle_t& handle,
@@ -576,13 +586,12 @@ void cwc_convnet_convolutional_backward_propagate(ccv_convnet_layer_t* layer, in
 	<<<dim3(out_cols, out_rows, layer->net.convolutional.count), batch, 0, stream>>>
 	(batch, n, a, out_rows, out_cols, layer->net.convolutional.count);
 	assert(cudaGetLastError() == cudaSuccess);
-	float alpha = 1, beta = 0;
 	if (cwc_convnet_layer_use_rows(layer))
 		_cwc_convnet_convolutional_backward_propagate_coefficient_rows(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 	else
 		_cwc_convnet_convolutional_backward_propagate_coefficient_default(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
 	// compute the bias directly using gemv routine
-	cublasSgemv(handle, CUBLAS_OP_T, out_rows * out_cols * batch, layer->net.convolutional.count, &alpha, a, out_rows * out_cols * batch, unit, 1, &beta, configuration->bias, 1);
+	cublasSgemv(handle, CUBLAS_OP_T, out_rows * out_cols * batch, layer->net.convolutional.count, &one, a, out_rows * out_cols * batch, unit, 1, &one, configuration->bias, 1);
 	assert(cudaGetLastError() == cudaSuccess);
 	if (b)
 		_cwc_convnet_convolutional_backward_propagate_error(layer, batch, a, n, m, b, configuration, scratch, unit, stream, handle);
