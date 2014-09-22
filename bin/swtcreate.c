@@ -553,7 +553,7 @@ int main(int argc, char** argv)
 				recall[k] += one_recall; \
 				total_words[k] += words->rnum; \
 				ccv_array_free(words); \
-				FLUSH("perform SWT on %s (%d / %d) for " #parameter " = (%lg <- [%lg, %lg])", name, j + 1, aof->rnum, v, parameter##_range.min_value, parameter##_range.max_value); \
+				FLUSH(CCV_CLI_INFO, "perform SWT on %s (%d / %d) for " #parameter " = (%lg <- [%lg, %lg])", name, j + 1, aof->rnum, v, parameter##_range.min_value, parameter##_range.max_value); \
 			} \
 			ccv_matrix_free(image); \
 		} \
@@ -571,7 +571,7 @@ int main(int argc, char** argv)
 				best_precision = total_precision; \
 				best_recall = total_recall; \
 			} \
-			FLUSH("current harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, total_precision * 100, total_recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
+			FLUSH(CCV_CLI_INFO, "current harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; best harmonic mean : %.2lf%%, precision : %.2lf%%, recall : %.2lf%% ; at " #parameter " = %lg (%lg <- [%lg, %lg])", f * 100, total_precision * 100, total_recall * 100, best_f * 100, best_precision * 100, best_recall * 100, (double)best_params.parameter, v, parameter##_range.min_value, parameter##_range.max_value); \
 		} \
 		printf("\n"); \
 		ccfree(precision); \

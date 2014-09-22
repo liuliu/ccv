@@ -1001,6 +1001,89 @@ __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 	}
 }
 
+static void _cwc_convnet_collect_disk_stats(ccv_convnet_t* convnet)
+{
+	int i, j;
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = convnet->layers + i;
+		if (layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT)
+		{
+			int bias_count = layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count;
+			float w_asum = 0;
+			for (j = 0; j < layer->wnum; j++)
+				w_asum += layer->w[j];
+			float w_mean = w_asum / layer->wnum;
+			float w_variance = 0;
+			for (j = 0; j < layer->wnum; j++)
+				w_variance += (layer->w[j] - w_mean) * (layer->w[j] - w_mean);
+			w_variance = w_variance / layer->wnum;
+			float bias_asum = 0;
+			for (j = 0; j < bias_count; j++)
+				bias_asum += layer->bias[j];
+			float bias_mean = bias_asum / bias_count;
+			float bias_variance = 0;
+			for (j = 0; j < bias_count; j++)
+				bias_variance += (layer->bias[j] - bias_mean) * (layer->bias[j] - bias_mean);
+			bias_variance = bias_variance / bias_count;
+			PRINT(CCV_CLI_VERBOSE, " - at layer %d parameters weights (%f, %f), bias (%f, %f)\n", i, w_mean, w_variance, bias_mean, bias_variance);
+		}
+	}
+}
+
+static void _cwc_convnet_collect_runtime_stats(ccv_convnet_t* convnet, cwc_convnet_context_t* context)
+{
+	int i;
+	// collecting stats from device 0
+	const int device_id = 0;
+	cudaSetDevice(device_id);
+	PRINT(CCV_CLI_VERBOSE, "\n");
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + i;
+		ccv_convnet_layer_t* configuration = GPU(convnet)->device[device_id].configurations + i;
+		ccv_convnet_layer_t* momentum = GPU(convnet)->device[device_id].momentums + i;
+		if (layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT)
+		{
+			int bias_count = layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->net.full_connect.count;
+			float layer_w_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, layer->wnum, 1, &one, layer->w, layer->wnum, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, layer->wnum, layer->w, 1, &layer_w_nrm2);
+			float layer_bias_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, bias_count, 1, &one, layer->bias, bias_count, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch + 1, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, bias_count, layer->bias, 1, &layer_bias_nrm2);
+			float configuration_w_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, layer->wnum, 1, &one, configuration->w, layer->wnum, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch + 2, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, configuration->wnum, configuration->w, 1, &configuration_w_nrm2);
+			float configuration_bias_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, bias_count, 1, &one, configuration->bias, bias_count, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch + 3, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, bias_count, configuration->bias, 1, &configuration_bias_nrm2);
+			float momentum_w_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, layer->wnum, 1, &one, momentum->w, layer->wnum, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch + 4, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, momentum->wnum, momentum->w, 1, &momentum_w_nrm2);
+			float momentum_bias_nrm2;
+			cublasSgemv(context->device[device_id].data_cublas, CUBLAS_OP_T, bias_count, 1, &one, momentum->bias, bias_count, GPU(convnet)->device[device_id].unit, 1, &zero, GPU(convnet)->device[device_id].scratch + 5, 1);
+			cublasSnrm2(context->device[device_id].data_cublas, bias_count, momentum->bias, 1, &momentum_bias_nrm2);
+			float sum[6];
+			cudaMemcpyAsync(&sum, GPU(convnet)->device[device_id].scratch, sizeof(float) * 6, cudaMemcpyDeviceToHost, context->device[device_id].data_stream);
+			cudaStreamSynchronize(context->device[device_id].data_stream);
+			float layer_w_mean = sum[0] / layer->wnum;
+			float layer_bias_mean = sum[1] / bias_count;
+			float layer_w_variance = (layer_w_nrm2 * layer_w_nrm2 - sum[0] * sum[0] / layer->wnum) / (layer->wnum - 1);
+			float layer_bias_variance = (layer_bias_nrm2 * layer_bias_nrm2 - sum[1] * sum[1] / bias_count) / (bias_count - 1);
+			float configuration_w_mean = sum[2] / layer->wnum;
+			float configuration_bias_mean = sum[3] / bias_count;
+			float configuration_w_variance = (configuration_w_nrm2 * configuration_w_nrm2 - sum[2] * sum[2] / layer->wnum) / (layer->wnum - 1);
+			float configuration_bias_variance = (configuration_bias_nrm2 * configuration_bias_nrm2 - sum[3] * sum[3] / bias_count) / (bias_count - 1);
+			float momentum_w_mean = sum[4] / layer->wnum;
+			float momentum_bias_mean = sum[5] / bias_count;
+			float momentum_w_variance = (momentum_w_nrm2 * momentum_w_nrm2 - sum[4] * sum[4] / layer->wnum) / (layer->wnum - 1);
+			float momentum_bias_variance = (momentum_bias_nrm2 * momentum_bias_nrm2 - sum[5] * sum[5] / bias_count) / (bias_count - 1);
+			PRINT(CCV_CLI_VERBOSE, " - at layer %d\n -- parameters weights (%f, %f), bias (%f, %f)\n -- gradient weights (%f, %f), bias (%f, %f)\n -- momentum weights (%f, %f), bias (%f, %f)\n", i, layer_w_mean, layer_w_variance, layer_bias_mean, layer_bias_variance, configuration_w_mean, configuration_w_variance, configuration_bias_mean, configuration_bias_variance, momentum_w_mean, momentum_w_variance, momentum_bias_mean, momentum_bias_variance);
+		}
+	}
+}
+
 static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_id, int batch, ccv_convnet_layer_train_param_t* layer_params, cwc_convnet_context_t* context)
 {static int c = 0;++c;
 	int i, out_rows, out_cols, out_partition;
@@ -1465,6 +1548,8 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 			}
 		}
 	}
+	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+		_cwc_convnet_collect_disk_stats(z->convnet);
 	assert(convnet->input.height == z->convnet->input.height);
 	assert(convnet->input.width == z->convnet->input.width);
 	assert(convnet->rows == z->convnet->rows);
@@ -1926,7 +2011,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	z.eigenvectors = 0;
 	z.eigenvalues = 0;
 	z.line_no = 0;
-	int miss, sgd_count;
+	int miss, sgd_count, stats_count;
 	float elapsed_time[2] = {0};
 	ccv_function_state_begin(_cwc_convnet_supervised_train_function_state_read, z, filename);
 	_cwc_convnet_mean_formation(categorizeds, z.convnet->input, z.convnet->channels, params.symmetric, &z.convnet->mean_activity);
@@ -1936,7 +2021,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
-		sgd_count = 0;
+		sgd_count = stats_count = 0;
 		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
 		{
 			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
@@ -2012,6 +2097,8 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				assert(cudaGetLastError() == cudaSuccess);
 				if (++sgd_count == params.sgd_frequency)
 				{
+					if ((++stats_count % 50) /* only print this out every 50 sgd's */ == 1 && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+						_cwc_convnet_collect_runtime_stats(z.convnet, context);
 					for (device_id = 0; device_id < params.device_count; device_id++)
 					{
 						cudaSetDevice(device_id);
