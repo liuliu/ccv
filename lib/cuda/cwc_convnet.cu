@@ -1072,7 +1072,7 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 				if (!image)
 				{
-					printf("cannot load %s.\n", categorized->file.filename);
+					PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
 					continue;
 				}
 				break;
@@ -1131,7 +1131,7 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 	for (i = 0; i < categorizeds->rnum; i++)
 	{
 		if (i % 23 == 0 || i == categorizeds->rnum - 1)
-			FLUSH(" - compute mean activity %d / %d", i + 1, categorizeds->rnum);
+			FLUSH(CCV_CLI_INFO, " - compute mean activity %d / %d", i + 1, categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
 		ccv_dense_matrix_t* image;
 		switch (categorized->type)
@@ -1144,7 +1144,7 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 				if (!image)
 				{
-					printf("cannot load %s.\n", categorized->file.filename);
+					PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
 					continue;
 				}
 				break;
@@ -1184,7 +1184,7 @@ static void _cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t di
 			db->data.f32[i] = p * c->data.f64[i];
 	}
 	ccv_matrix_free(c);
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 }
 
 static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_size_t dim, int channels, ccv_dense_matrix_t** eigenvectors, ccv_dense_matrix_t** eigenvalues)
@@ -1206,7 +1206,7 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 	for (c = 0; c < categorizeds->rnum; c++)
 	{
 		if (c % 23 == 0 || c == categorizeds->rnum - 1)
-			FLUSH(" - compute covariance matrix for data augmentation (color gain) %d / %d", c + 1, categorizeds->rnum);
+			FLUSH(CCV_CLI_INFO, " - compute covariance matrix for data augmentation (color gain) %d / %d", c + 1, categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, c);
 		ccv_dense_matrix_t* image;
 		switch (categorized->type)
@@ -1219,7 +1219,7 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 				if (!image)
 				{
-					printf("cannot load %s.\n", categorized->file.filename);
+					PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
 					continue;
 				}
 				break;
@@ -1251,7 +1251,7 @@ static void _cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matr
 			covariance[i * channels + j] *= p; // scale down
 	ccv_dense_matrix_t covm = ccv_dense_matrix(3, 3, CCV_64F | CCV_C1, covariance, 0);
 	ccv_eigen(&covm, eigenvectors, eigenvalues, CCV_64F, 1e-8);
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 }
 
 static void _cwc_convnet_dor_mean_net(ccv_convnet_t* convnet, int device_id, ccv_convnet_layer_train_param_t* layer_params, const cublasHandle_t& handle)
@@ -1983,7 +1983,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 								++miss;
 						cudaEventElapsedTime(&elapsed_time[device_id], iteration[device_id], stop[device_id]);
 					}
-					FLUSH(" - at epoch %03d / %d => stochastic gradient descent with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f /((i - z.i) * dual_batch), i + 1, aligned_batches, ccv_max(elapsed_time[0], elapsed_time[1]) / 1000);
+					FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => stochastic gradient descent with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f /((i - z.i) * dual_batch), i + 1, aligned_batches, ccv_max(elapsed_time[0], elapsed_time[1]) / 1000);
 				}
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
@@ -2053,7 +2053,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 							++miss;
 					}
 					cudaEventElapsedTime(&elapsed_time[device_id], iteration[device_id], stop[device_id]);
-					FLUSH(" - at epoch %03d / %d => with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch, elapsed_time[device_id] / 1000);
+					FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f / i, j + 1, (tests->rnum + params.mini_batch - 1) / params.mini_batch, elapsed_time[device_id] / 1000);
 				}
 				cudaEventRecord(iteration[device_id], context->device[device_id].data_stream);
 				_cwc_convnet_encode_impl(z.convnet, 0, params.mini_batch, 0, context);
@@ -2074,7 +2074,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			cudaEventSynchronize(stop[device_id]);
 			elapsed_time[device_id] = 0;
 			cudaEventElapsedTime(&elapsed_time[device_id], start[device_id], stop[device_id]);
-			FLUSH(" - at epoch %03d / %d (%03d - %d) => with miss rate %.2f%% (%.3f sec)\n", z.t + 1, params.max_epoch, z.i + 1, ccv_min(z.i + params.iterations, aligned_batches), miss * 100.0f / tests->rnum, elapsed_time[device_id] / 1000);
+			FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d (%03d - %d) => with miss rate %.2f%% (%.3f sec)\n", z.t + 1, params.max_epoch, z.i + 1, ccv_min(z.i + params.iterations, aligned_batches), miss * 100.0f / tests->rnum, elapsed_time[device_id] / 1000);
 			ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 		}
 		if (z.t + 1 < params.max_epoch)
@@ -2103,7 +2103,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	gsl_rng_free(rng);
 	GPU(convnet)->layer_params = 0;
 #else
-	printf("cwc_convnet_supervised_train requires GSL library support");
+	PRINT(CCV_CLI_ERROR, "cwc_convnet_supervised_train requires GSL library support");
 	exit(-1);
 #endif
 }

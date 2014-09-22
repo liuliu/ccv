@@ -1236,4 +1236,22 @@ void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet
 void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
 void ccv_convnet_free(ccv_convnet_t* convnet);
 
+/* add for command-line outputs, b/c ccv's training steps has a ton of outputs,
+ * and in the future, it can be piped into callback functions for critical information
+ * (such as the on-going missing rate, or iterations etc.) */
+
+enum {
+	CCV_CLI_ERROR = 1 << 2,
+	CCV_CLI_INFO = 1 << 1,
+	CCV_CLI_VERBOSE = 1,
+	CCV_CLI_NONE = 0,
+};
+
+
+int ccv_cli_output_level_and_above(int level);
+void ccv_set_cli_output_levels(int level);
+int ccv_get_cli_output_levels(void);
+
+#define CCV_CLI_OUTPUT_LEVEL_IS(a) (a & ccv_get_cli_output_levels())
+
 #endif

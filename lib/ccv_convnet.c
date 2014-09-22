@@ -1325,7 +1325,7 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 			_ccv_convnet_propagate_loss(convnet, categorized->matrix, softmax, update_params);
 			if ((i + 1) % params.mini_batch == 0)
 			{
-				FLUSH(" - at epoch %03d / %d => stochastic gradient descent at %d / %d", t + 1, params.max_epoch, (i + 1) / params.mini_batch, aligned_rnum / params.mini_batch);
+				FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => stochastic gradient descent at %d / %d", t + 1, params.max_epoch, (i + 1) / params.mini_batch, aligned_rnum / params.mini_batch);
 				// update weights
 				_ccv_convnet_update(convnet, params.mini_batch, momentum, update_params, params.layer_params);
 				_ccv_convnet_update_zero(update_params);
@@ -1336,14 +1336,14 @@ void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		int miss = 0;
 		for (i = 0; i < tests->rnum; i++)
 		{
-			FLUSH(" - at epoch %03d / %d => going through %d / %d for tests", t + 1, params.max_epoch, i + 1, tests->rnum);
+			FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => going through %d / %d for tests", t + 1, params.max_epoch, i + 1, tests->rnum);
 			ccv_categorized_t* test = (ccv_categorized_t*)ccv_array_get(tests, i);
 			int c = 0;
 			_ccv_convnet_classify(convnet, &test->matrix, &c, 1);
 			if (c != test->c)
 				++miss;
 		}
-		FLUSH(" - at epoch %03d / %d => with miss rate %.2f%%\n", t + 1, params.max_epoch, miss * 100.0f / tests->rnum);
+		FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => with miss rate %.2f%%\n", t + 1, params.max_epoch, miss * 100.0f / tests->rnum);
 		if (t + 1 < params.max_epoch)
 		{
 			// reshuffle the parts we visited and move the rest to the beginning

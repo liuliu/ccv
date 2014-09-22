@@ -761,7 +761,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	size_t step = (3 * (positives->rnum + negatives->rnum) + 3) & -4;
 	uint8_t* precomputed = (uint8_t*)ccmalloc(sizeof(uint8_t) * feature_size * step);
 	ccv_icf_value_index_t* sortkv = (ccv_icf_value_index_t*)ccmalloc(sizeof(ccv_icf_value_index_t) * (positives->rnum + negatives->rnum));
-	printf(" - precompute features using %uM memory temporarily\n", (uint32_t)((sizeof(float) * (positives->rnum + negatives->rnum) * feature_size + sizeof(uint8_t) * feature_size * step) / (1024 * 1024)));
+	PRINT(CCV_CLI_INFO, " - precompute features using %uM memory temporarily\n", (uint32_t)((sizeof(float) * (positives->rnum + negatives->rnum) * feature_size + sizeof(uint8_t) * feature_size * step) / (1024 * 1024)));
 	float* featval = (float*)ccmalloc(sizeof(float) * feature_size * (positives->rnum + negatives->rnum));
 	ccv_disable_cache(); // clean up cache so we have enough space to run it
 #ifdef USE_DISPATCH
@@ -775,7 +775,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 		dispatch_semaphore_wait(sema, DISPATCH_TIME_FOREVER);
 #endif
 		if (i % 37 == 0 || i == positives->rnum + negatives->rnum - 1) // don't flush too fast
-			FLUSH(" - precompute %d features through %d%% (%d / %d) examples", feature_size, (int)(i + 1) * 100 / (positives->rnum + negatives->rnum), (int)i + 1, positives->rnum + negatives->rnum);
+			FLUSH(CCV_CLI_INFO, " - precompute %d features through %d%% (%d / %d) examples", feature_size, (int)(i + 1) * 100 / (positives->rnum + negatives->rnum), (int)i + 1, positives->rnum + negatives->rnum);
 #ifdef USE_DISPATCH
 		dispatch_semaphore_signal(sema);
 		int j;
@@ -804,13 +804,13 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 #else
 	}
 #endif
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 	uint8_t* computed = precomputed;
 	float* pfeatval = featval;
 	for (i = 0; i < feature_size; i++)
 	{
 		if (i % 37 == 0 || i == feature_size - 1) // don't flush too fast
-			FLUSH(" - precompute %d examples through %d%% (%d / %d) features", positives->rnum + negatives->rnum, (i + 1) * 100 / feature_size, i + 1, feature_size);
+			FLUSH(CCV_CLI_INFO, " - precompute %d examples through %d%% (%d / %d) features", positives->rnum + negatives->rnum, (i + 1) * 100 / feature_size, i + 1, feature_size);
 		for (j = 0; j < positives->rnum + negatives->rnum; j++)
 			sortkv[j].value = pfeatval[j], sortkv[j].index = j;
 		_ccv_icf_precomputed_ordering(sortkv, positives->rnum + negatives->rnum, 0);
@@ -824,7 +824,7 @@ static uint8_t* _ccv_icf_precompute_features(ccv_icf_feature_t* features, int fe
 	}
 	ccfree(featval);
 	ccfree(sortkv);
-	printf("\n - features are precomputed on examples and will occupy %uM memory\n", (uint32_t)((feature_size * step) / (1024 * 1024)));
+	PRINT(CCV_CLI_INFO, "\n - features are precomputed on examples and will occupy %uM memory\n", (uint32_t)((feature_size * step) / (1024 * 1024)));
 	return precomputed;
 }
 
@@ -1101,7 +1101,7 @@ static ccv_array_t* _ccv_icf_collect_validates(gsl_rng* rng, ccv_size_t size, cc
 		ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 		if (image == 0)
 		{
-			printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
+			PRINT(CCV_CLI_ERROR, "\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
 			continue;
 		}
 		ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, file_info->pose, size, margin, 0, 0, 0);
@@ -1120,7 +1120,7 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 	// collect positives (with random deformation)
 	for (i = 0; i < posnum;)
 	{
-		FLUSH(" - collect positives %d%% (%d / %d)", (i + 1) * 100 / posnum, i + 1, posnum);
+		FLUSH(CCV_CLI_INFO, " - collect positives %d%% (%d / %d)", (i + 1) * 100 / posnum, i + 1, posnum);
 		double ratio = (double)(posnum - i) / posfiles->rnum;
 		for (j = 0; j < posfiles->rnum && i < posnum; j++)
 		{
@@ -1129,13 +1129,13 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
-				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
+				PRINT(CCV_CLI_ERROR, "\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
 				continue;
 			}
 			for (q = 0; q < ratio; q++)
 				if (q < (int)ratio || gsl_rng_uniform(rng) <= ratio - (int)ratio)
 				{
-					FLUSH(" - collect positives %d%% (%d / %d)", (i + 1) * 100 / posnum, i + 1, posnum);
+					FLUSH(CCV_CLI_INFO, " - collect positives %d%% (%d / %d)", (i + 1) * 100 / posnum, i + 1, posnum);
 					ccv_dense_matrix_t* feature = _ccv_icf_capture_feature(rng, image, file_info->pose, size, margin, deform_angle, deform_scale, deform_shift);
 					feature->sig = 0;
 					ccv_array_push(positives, feature);
@@ -1147,7 +1147,7 @@ static ccv_array_t* _ccv_icf_collect_positives(gsl_rng* rng, ccv_size_t size, cc
 			ccv_matrix_free(image);
 		}
 	}
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 	return positives;
 }
 
@@ -1223,7 +1223,7 @@ static void _ccv_icf_classifier_cascade_soft_with_validates(ccv_array_t* validat
 			acceptance[i >> 6] &= ~(1UL << (i & 63));
 		computed += step;
 	}
-	printf(" - at threshold %f, true positive rate: %f%%\n", threshold, (float)true_positives * 100 / validates->rnum);
+	PRINT(CCV_CLI_INFO, " - at threshold %f, true positive rate: %f%%\n", threshold, (float)true_positives * 100 / validates->rnum);
 	float* rate = (float*)cccalloc(validates->rnum, sizeof(float));
 	for (j = 0; j < cascade->count; j++)
 	{
@@ -1293,7 +1293,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 				continue;
 #endif
 			}
-			FLUSH(" - bootstrap negatives %d%% (%d / %d) [%u / %d] %s", (i + 1) * 100 / negnum, i + 1, negnum, (uint32_t)(j + 1), bgfiles->rnum, spread ? "" : "without statistic balancing");
+			FLUSH(CCV_CLI_INFO, " - bootstrap negatives %d%% (%d / %d) [%u / %d] %s", (i + 1) * 100 / negnum, i + 1, negnum, (uint32_t)(j + 1), bgfiles->rnum, spread ? "" : "without statistic balancing");
 #ifdef USE_DISPATCH
 			gsl_rng* crng = gsl_rng_alloc(gsl_rng_default);
 			gsl_rng_set(crng, gsl_rng_get(rng));
@@ -1306,7 +1306,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
-				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
+				PRINT(CCV_CLI_ERROR, "\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
 				ccfree(a);
 #ifdef USE_DISPATCH
 				gsl_rng_free(crng);
@@ -1493,7 +1493,7 @@ static void _ccv_icf_bootstrap_negatives(ccv_icf_classifier_cascade_t* cascade, 
 		if (t > (spread ? 4 : 3) && !spread) // we've go over 4 or 3 transformations (original, flip x, flip y, flip x & y, [and original again]), and nothing we can do now
 			break;
 	}
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 }
 
 static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_margin_t margin, ccv_array_t* bgfiles, int negnum, float deform_angle, float deform_scale, float deform_shift, int grayscale)
@@ -1503,7 +1503,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 	// randomly collect negatives (with random deformation)
 	for (i = 0; i < negnum;)
 	{
-		FLUSH(" - collect negatives %d%% (%d / %d)", (i + 1) * 100 / negnum, i + 1, negnum);
+		FLUSH(CCV_CLI_INFO, " - collect negatives %d%% (%d / %d)", (i + 1) * 100 / negnum, i + 1, negnum);
 		double ratio = (double)(negnum - i) / bgfiles->rnum;
 		for (j = 0; j < bgfiles->rnum && i < negnum; j++)
 		{
@@ -1512,7 +1512,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
 			if (image == 0)
 			{
-				printf("\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
+				PRINT(CCV_CLI_ERROR, "\n - %s: cannot be open, possibly corrupted\n", file_info->filename);
 				continue;
 			}
 			double max_scale_ratio = ccv_min((double)image->rows / size.height, (double)image->cols / size.width);
@@ -1521,7 +1521,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 			for (q = 0; q < ratio; q++)
 				if (q < (int)ratio || gsl_rng_uniform(rng) <= ratio - (int)ratio)
 				{
-					FLUSH(" - collect negatives %d%% (%d / %d)", (i + 1) * 100 / negnum, i + 1, negnum);
+					FLUSH(CCV_CLI_INFO, " - collect negatives %d%% (%d / %d)", (i + 1) * 100 / negnum, i + 1, negnum);
 					ccv_decimal_pose_t pose;
 					double scale_ratio = gsl_rng_uniform(rng) * (max_scale_ratio - 0.5) + 0.5;
 					pose.a = size.width * 0.5 * scale_ratio;
@@ -1540,7 +1540,7 @@ static ccv_array_t* _ccv_icf_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 			ccv_matrix_free(image);
 		}
 	}
-	printf("\n");
+	PRINT(CCV_CLI_INFO, "\n");
 	return negatives;
 }
 
@@ -1593,22 +1593,22 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 	assert(posfiles->rnum > 0);
 	assert(bgfiles->rnum > 0);
 	assert(posnum > 0 && negnum > 0);
-	printf("with %d positive examples and %d negative examples\n"
-		   "positive examples are going to be collected from %d positive images\n"
-		   "negative examples are are going to be collected from %d background images\n",
-		   posnum, negnum, posfiles->rnum, bgfiles->rnum);
-	printf("use color? %s\n", params.grayscale ? "no" : "yes");
-	printf("feature pool size : %d\n"
-		   "weak classifier count : %d\n"
-		   "soft cascade acceptance : %lf\n"
-		   "minimum dimension of ICF feature : %d\n"
-		   "number of bootstrap : %d\n"
-		   "distortion on translation : %f\n"
-		   "distortion on rotation : %f\n"
-		   "distortion on scale : %f\n"
-	       "learn ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
-		   "------------------------\n",
-		   params.feature_size, params.weak_classifier, params.acceptance, params.min_dimension, params.bootstrap, params.deform_shift, params.deform_angle, params.deform_scale, params.size.width, params.size.height, params.margin.left, params.margin.top, params.margin.right, params.margin.bottom);
+	PRINT(CCV_CLI_INFO, "with %d positive examples and %d negative examples\n"
+						"positive examples are going to be collected from %d positive images\n"
+						"negative examples are are going to be collected from %d background images\n",
+						posnum, negnum, posfiles->rnum, bgfiles->rnum);
+	PRINT(CCV_CLI_INFO, "use color? %s\n", params.grayscale ? "no" : "yes");
+	PRINT(CCV_CLI_INFO, "feature pool size : %d\n"
+						"weak classifier count : %d\n"
+						"soft cascade acceptance : %lf\n"
+						"minimum dimension of ICF feature : %d\n"
+						"number of bootstrap : %d\n"
+						"distortion on translation : %f\n"
+						"distortion on rotation : %f\n"
+						"distortion on scale : %f\n"
+						"learn ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
+						"------------------------\n",
+						params.feature_size, params.weak_classifier, params.acceptance, params.min_dimension, params.bootstrap, params.deform_shift, params.deform_angle, params.deform_scale, params.size.width, params.size.height, params.margin.left, params.margin.top, params.margin.right, params.margin.bottom);
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	// we will keep all states inside this structure for easier save / resume across process
@@ -1646,7 +1646,7 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 		for (z.i = 0; z.i < params.weak_classifier; z.i++)
 		{
 			z.classifier->count = z.i + 1;
-			printf(" - boost weak classifier %d of %d\n", z.i + 1, params.weak_classifier);
+			PRINT(CCV_CLI_INFO, " - boost weak classifier %d of %d\n", z.i + 1, params.weak_classifier);
 			int j;
 			ccv_icf_decision_tree_t weak_classifier;
 			double rate = _ccv_icf_find_best_weak_classifier(z.features, params.feature_size, z.positives, z.negatives, z.precomputed, z.example_state, &weak_classifier);
@@ -1669,9 +1669,9 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 			}
 			reweigh = 1.0 / reweigh;
 #ifdef USE_SANITY_ASSERTION
-			printf(" - on all examples, best feature at rate %lf, confirm rate %lf\n", rate, confirm_rate);
+			PRINT(CCV_CLI_INFO, " - on all examples, best feature at rate %lf, confirm rate %lf\n", rate, confirm_rate);
 #else
-			printf(" - on all examples, best feature at rate %lf\n", rate);
+			PRINT(CCV_CLI_INFO, " - on all examples, best feature at rate %lf\n", rate);
 #endif
 			// balancing the weight to sum 1.0
 			for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
@@ -1689,21 +1689,21 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 			for (j = z.positives->rnum; j < z.positives->rnum + z.negatives->rnum; j++)
 				if (z.example_state[j].rate >= threshold)
 					++false_positives;
-			printf(" - at threshold %f, true positive rate: %f%%, false positive rate: %f%% (%d)\n", threshold, (float)true_positives * 100 / z.positives->rnum, (float)false_positives * 100 / z.negatives->rnum, false_positives);
-			printf(" - first feature :\n");
+			PRINT(CCV_CLI_INFO, " - at threshold %f, true positive rate: %f%%, false positive rate: %f%% (%d)\n", threshold, (float)true_positives * 100 / z.positives->rnum, (float)false_positives * 100 / z.negatives->rnum, false_positives);
+			PRINT(CCV_CLI_INFO, " - first feature :\n");
 			for (j = 0; j < weak_classifier.features[0].count; j++)
-				printf(" - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[0].channel[j], weak_classifier.features[0].sat[j * 2].x, weak_classifier.features[0].sat[j * 2].y, weak_classifier.features[0].sat[j * 2 + 1].x, weak_classifier.features[0].sat[j * 2 + 1].y);
+				PRINT(CCV_CLI_INFO, " - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[0].channel[j], weak_classifier.features[0].sat[j * 2].x, weak_classifier.features[0].sat[j * 2].y, weak_classifier.features[0].sat[j * 2 + 1].x, weak_classifier.features[0].sat[j * 2 + 1].y);
 			if (weak_classifier.pass & 0x2)
 			{
-				printf(" - second feature, on left :\n");
+				PRINT(CCV_CLI_INFO, " - second feature, on left :\n");
 				for (j = 0; j < weak_classifier.features[1].count; j++)
-					printf(" - | - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[1].channel[j], weak_classifier.features[1].sat[j * 2].x, weak_classifier.features[1].sat[j * 2].y, weak_classifier.features[1].sat[j * 2 + 1].x, weak_classifier.features[1].sat[j * 2 + 1].y);
+					PRINT(CCV_CLI_INFO, " - | - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[1].channel[j], weak_classifier.features[1].sat[j * 2].x, weak_classifier.features[1].sat[j * 2].y, weak_classifier.features[1].sat[j * 2 + 1].x, weak_classifier.features[1].sat[j * 2 + 1].y);
 			}
 			if (weak_classifier.pass & 0x1)
 			{
-				printf(" - second feature, on right :\n");
+				PRINT(CCV_CLI_INFO, " - second feature, on right :\n");
 				for (j = 0; j < weak_classifier.features[2].count; j++)
-					printf(" - | - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[2].channel[j], weak_classifier.features[2].sat[j * 2].x, weak_classifier.features[2].sat[j * 2].y, weak_classifier.features[2].sat[j * 2 + 1].x, weak_classifier.features[2].sat[j * 2 + 1].y);
+					PRINT(CCV_CLI_INFO, " - | - %d - (%d, %d) - (%d, %d)\n", weak_classifier.features[2].channel[j], weak_classifier.features[2].sat[j * 2].x, weak_classifier.features[2].sat[j * 2].y, weak_classifier.features[2].sat[j * 2 + 1].x, weak_classifier.features[2].sat[j * 2 + 1].y);
 			}
 			z.classifier->count = z.i + 1; // update count
 			z.classifier->size = ccv_size(z.size.width + z.margin.left + z.margin.right, z.size.height + z.margin.top + z.margin.bottom);
@@ -1736,7 +1736,7 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 				ccv_array_free(validates);
 				_ccv_icf_bootstrap_negatives(z.classifier, z.negatives, rng, bgfiles, leftover, params.grayscale, spread_policy, params.detector);
 			}
-			printf(" - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
+			PRINT(CCV_CLI_INFO, " - after %d bootstrapping, learn with %d positives and %d negatives\n", z.bootstrap + 1, z.positives->rnum, z.negatives->rnum);
 			z.classifier->count = 0; // reset everything
 			z.x.negatives = 0;
 		} else {
@@ -1764,13 +1764,13 @@ ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfil
 void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance)
 {
 #ifdef HAVE_GSL
-	printf("with %d positive examples\n"
-		   "going to accept %.2lf%% positive examples\n",
+	PRINT(CCV_CLI_INFO, "with %d positive examples\n"
+						"going to accept %.2lf%% positive examples\n",
 		   posfiles->rnum, acceptance * 100);
 	ccv_size_t size = ccv_size(cascade->size.width - cascade->margin.left - cascade->margin.right, cascade->size.height - cascade->margin.top - cascade->margin.bottom);
-	printf("use color? %s\n", cascade->grayscale ? "no" : "yes");
-	printf("compute soft cascading thresholds for ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
-		   "------------------------\n",
+	PRINT(CCV_CLI_INFO, "use color? %s\n", cascade->grayscale ? "no" : "yes");
+	PRINT(CCV_CLI_INFO, "compute soft cascading thresholds for ICF classifier cascade at size %dx%d with margin (%d,%d,%d,%d)\n"
+						"------------------------\n",
 		   size.width, size.height, cascade->margin.left, cascade->margin.top, cascade->margin.right, cascade->margin.bottom);
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);

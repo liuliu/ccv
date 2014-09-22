@@ -24,16 +24,29 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 
 /* macro printf utilities */
 
-#define FLUSH(a, ...) \
+#define PRINT(l, a, ...) \
 	do { \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf(" "); \
-		for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
-			printf("\b"); \
-		_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
-		fflush(stdout); \
+		if (CCV_CLI_OUTPUT_LEVEL_IS(l)) \
+		{ \
+			printf(a, ##__VA_ARGS__); \
+			fflush(stdout); \
+		} \
+	} while (0) // using do while (0) to force ; line end
+
+
+#define FLUSH(l, a, ...) \
+	do { \
+		if (CCV_CLI_OUTPUT_LEVEL_IS(l)) \
+		{ \
+			for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+				printf("\b"); \
+			for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+				printf(" "); \
+			for (_CCV_PRINT_LOOP = 0; _CCV_PRINT_LOOP < _CCV_PRINT_COUNT; _CCV_PRINT_LOOP++) \
+				printf("\b"); \
+			_CCV_PRINT_COUNT = printf(a, ##__VA_ARGS__); \
+			fflush(stdout); \
+		} \
 	} while (0) // using do while (0) to force ; line end
 
 /* the following macro enables the usage such as:
