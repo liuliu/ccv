@@ -260,20 +260,19 @@ static void _cwc_convnet_alloc_forwards(ccv_convnet_t* convnet, int device_id, i
 	for (i = start; i < start + length; i++)
 	{
 		ccv_convnet_make_output(layers + i, rows, cols, &out_rows, &out_cols, &out_partition);
-		// if the next layer is full connect (model parallelism), the forwards neuron needs to hold 2 batches rather than 1
-		int dual_batch = (i + 1 < start + length && layers[i + 1].type == CCV_CONVNET_FULL_CONNECT) ? batch * device_count : batch;
+		// if the next layer is full connect (model parallelism), the forwards neuron needs to hold all batches rather than 1
+		int multi_batch = (i + 1 < start + length && layers[i + 1].type == CCV_CONVNET_FULL_CONNECT) ? batch * device_count : batch;
 		switch (layers[i].type)
 		{
 			case CCV_CONVNET_CONVOLUTIONAL:
 				GPU(convnet)->device[device_id].forwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * dual_batch);
-				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * dual_batch;
+				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * multi_batch);
+				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].net.convolutional.count * multi_batch;
 				assert(GPU(convnet)->device[device_id].forwards[i]);
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				assert(i > 0);
 				GPU(convnet)->device[device_id].forwards[i] = 0;
-				// for full connect layer, because it uses model parallelism, each layer needs to hold 2 batches and full outputs
 				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * layers[i].net.full_connect.count * batch * device_count * device_count);
 				GPU(convnet)->stats.memory_usage += sizeof(float) * layers[i].net.full_connect.count * batch * device_count * device_count;
 				assert(GPU(convnet)->device[device_id].forwards[i]);
@@ -281,16 +280,16 @@ static void _cwc_convnet_alloc_forwards(ccv_convnet_t* convnet, int device_id, i
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
 				assert(i > 0);
 				GPU(convnet)->device[device_id].forwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * dual_batch);
-				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * dual_batch;
+				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * multi_batch);
+				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * multi_batch;
 				assert(GPU(convnet)->device[device_id].forwards[i]);
 				break;
 			case CCV_CONVNET_MAX_POOL:
 			case CCV_CONVNET_AVERAGE_POOL:
 				assert(i > 0);
 				GPU(convnet)->device[device_id].forwards[i] = 0;
-				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * dual_batch);
-				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * dual_batch;
+				cudaMalloc(&GPU(convnet)->device[device_id].forwards[i], sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * multi_batch);
+				GPU(convnet)->stats.memory_usage += sizeof(float) * out_rows * out_cols * layers[i].input.matrix.channels * multi_batch;
 				assert(GPU(convnet)->device[device_id].forwards[i]);
 				break;
 		}
@@ -808,7 +807,6 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int device_count, i
 		for (device_id = 0; device_id < device_count; device_id++)
 		{
 			cudaSetDevice(device_id);
-			int other_device_id = (device_id + 1) % device_count;
 			ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + count;
 			assert(layer->type == CCV_CONVNET_FULL_CONNECT);
 			cwc_convnet_full_connect_forward_propagate(layer, batch,
@@ -821,92 +819,116 @@ static void _cwc_convnet_encode_impl(ccv_convnet_t* convnet, int device_count, i
 				<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[0]>>>
 				(GPU(convnet)->device[device_id].forwards[count] + (device_count * device_id + device_id) * batch * layer->net.full_connect.count,
 				 context->device[device_id].dor[count]);
-			// finished and copy to (device_id, device_id), both available on device_id and other_device_id with stream 0
-			cudaMemcpyPeerAsync(GPU(convnet)->device[other_device_id].forwards[count] + (device_count * device_id + device_id) * batch * layer->net.full_connect.count, other_device_id, GPU(convnet)->device[device_id].forwards[count] + (device_count * device_id + device_id) * batch * layer->net.full_connect.count, device_id, sizeof(float) * batch * layer->net.full_connect.count, context->device[device_id].model_stream[0]);
-			// record the event so the other device can wait on the copy to complete
+			int c = 1;
+			for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+				if (device_id != other_device_id)
+				{
+					// overlap the memory copy and the gemm computation
+					// although it is slightly faster to use source stream, but we sync on the destination stream because otherwise we need to signal an event, and in that case, total cost is higher
+					cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[count - 1] + c * batch * layer->input.node.count, device_id, GPU(convnet)->device[other_device_id].forwards[count - 1], other_device_id, sizeof(float) * batch * layer->input.node.count, context->device[device_id].model_stream[c % 2]);
+					// the last compute issued on this device
+					cwc_convnet_full_connect_forward_propagate(layer, batch,
+							GPU(convnet)->device[device_id].forwards[count - 1] + c * batch * layer->input.node.count,
+							GPU(convnet)->device[device_id].forwards[count] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count,
+							GPU(convnet)->device[device_id].unit,
+							context->device[device_id].model_stream[c % 2], context->device[device_id].model_cublas[c % 2]);
+					if (dor && context->device[device_id].dor[count])
+						_cwc_kern_mute_neuron
+						<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[c % 2]>>>
+						(GPU(convnet)->device[device_id].forwards[count] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count, context->device[device_id].dor[count]);
+					// figure out the free memory to use
+					++c;
+				}
 			cudaEventRecord(context->device[device_id].model_joint[0], context->device[device_id].model_stream[0]);
-			// overlap the memory copy and the gemm computation
-			// although it is slightly faster to use source stream, but we sync on the destination stream because otherwise we need to signal an event, and in that case, total cost is higher
-			cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[count - 1] + batch * layer->input.node.count, device_id, GPU(convnet)->device[other_device_id].forwards[count - 1], other_device_id, sizeof(float) * batch * layer->input.node.count, context->device[device_id].model_stream[1]);
-			// the last compute issued on this device
-			cwc_convnet_full_connect_forward_propagate(layer, batch,
-					GPU(convnet)->device[device_id].forwards[count - 1] + batch * layer->input.node.count,
-					GPU(convnet)->device[device_id].forwards[count] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count,
-					GPU(convnet)->device[device_id].unit,
-					context->device[device_id].model_stream[1], context->device[device_id].model_cublas[1]);
-			if (dor && context->device[device_id].dor[count])
-				_cwc_kern_mute_neuron
-				<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[1]>>>
-				(GPU(convnet)->device[device_id].forwards[count] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count, context->device[device_id].dor[count]);
 			cudaEventRecord(context->device[device_id].model_joint[1], context->device[device_id].model_stream[1]);
-			// finished (other_device_id, device_id), available on device_id with stream 1
 		}
 		for (i = count + 1; i < convnet->count; i++)
 		{
-			// now it is all model parallelism, in model parallelism, it does two things:
-			// 1). copy source data to current device => compute on current device
-			// 2). compute on current device => copy result data to another device
-			// 1 and 2 happen in parallel on one device
-			int first = (i - count) % device_count;
-			int second = (i - count - 1) % device_count;
-			// wait for the previous copy to finish
+			// big sync point to wait everything to finish
 			for (device_id = 0; device_id < device_count; device_id++)
 			{
 				cudaSetDevice(device_id);
-				int other_device_id = (device_id + 1) % device_count;
-				// device_id on stream second waiting other_device_id on stream first
-				cudaStreamWaitEvent(context->device[device_id].model_stream[second], context->device[other_device_id].model_joint[first], 0);
-				// device_id on stream first waiting other_device_id on stream second
-				cudaStreamWaitEvent(context->device[device_id].model_stream[first], context->device[other_device_id].model_joint[second], 0);
+				cudaStreamWaitEvent(context->device[device_id].model_stream[0], context->device[device_id].model_joint[1], 0);
+				cudaStreamWaitEvent(context->device[device_id].model_stream[1], context->device[device_id].model_joint[0], 0);
+				for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+					if (other_device_id != device_id)
+					{
+						cudaStreamWaitEvent(context->device[device_id].model_stream[0], context->device[other_device_id].model_joint[0], 0);
+						cudaStreamWaitEvent(context->device[device_id].model_stream[0], context->device[other_device_id].model_joint[1], 0);
+						cudaStreamWaitEvent(context->device[device_id].model_stream[1], context->device[other_device_id].model_joint[0], 0);
+						cudaStreamWaitEvent(context->device[device_id].model_stream[1], context->device[other_device_id].model_joint[1], 0);
+					}
 			}
 			for (device_id = 0; device_id < device_count; device_id++)
 			{
 				cudaSetDevice(device_id);
-				int other_device_id = (device_id + 1) % device_count;
 				ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + i;
 				assert(layer->type == CCV_CONVNET_FULL_CONNECT);
-				int first_device_id = (device_id + first) % device_count;
-				int second_device_id = (device_id + second) % device_count;
+				// finishing copy the 1 / 4th so that everyone can proceed
+				assert(layer->input.node.count % device_count == 0);
+				int input_node_count = layer->input.node.count / device_count;
+				// copy data in, and do the computation
+				for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+					if (other_device_id != device_id)
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[i - 1] + (device_count * device_id + other_device_id) * batch * input_node_count, device_id, GPU(convnet)->device[other_device_id].forwards[i - 1] + (device_count * device_id + other_device_id) * batch * input_node_count, other_device_id, sizeof(float) * batch * input_node_count, context->device[device_id].model_stream[0]);
 				// first do the computation on the device that we already have full data
 				cwc_convnet_full_connect_forward_propagate(layer, batch,
-						GPU(convnet)->device[device_id].forwards[i - 1] + first_device_id * batch * layer->input.node.count,
-						GPU(convnet)->device[device_id].forwards[i] + (device_count * first_device_id + device_id) * batch * layer->net.full_connect.count,
-						GPU(convnet)->device[device_id].unit, context->device[device_id].model_stream[first], context->device[device_id].model_cublas[first]);
+						GPU(convnet)->device[device_id].forwards[i - 1] + device_id * batch * layer->input.node.count,
+						GPU(convnet)->device[device_id].forwards[i] + (device_count * device_id + device_id) * batch * layer->net.full_connect.count,
+						GPU(convnet)->device[device_id].unit, context->device[device_id].model_stream[0], context->device[device_id].model_cublas[0]);
 				if (dor && context->device[device_id].dor[i])
 					_cwc_kern_mute_neuron
-					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[first]>>>
-					(GPU(convnet)->device[device_id].forwards[i] + (device_count * first_device_id + device_id) * batch * layer->net.full_connect.count,
+					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[0]>>>
+					(GPU(convnet)->device[device_id].forwards[i] + (device_count * device_id + device_id) * batch * layer->net.full_connect.count,
 					 context->device[device_id].dor[i]);
-				// finished and copy to (first_device_id, device_id), both available on device_id and other_device_id with stream first
-				cudaMemcpyPeerAsync(GPU(convnet)->device[other_device_id].forwards[i] + (device_count * first_device_id + device_id) * batch * layer->net.full_connect.count, other_device_id, GPU(convnet)->device[device_id].forwards[i] + (device_count * first_device_id + device_id) * batch * layer->net.full_connect.count, device_id, sizeof(float) * batch * layer->net.full_connect.count, context->device[device_id].model_stream[first]);
-				cudaEventRecord(context->device[device_id].model_joint[first], context->device[device_id].model_stream[first]);
-				// finishing copy the 1 / 4th so that everyone can proceed
-				int input_node_count = layer->input.node.count / 2;
-				assert(layer->input.node.count % 2 == 0);
-				cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[i - 1] + (device_count * second_device_id + other_device_id) * batch * input_node_count, device_id, GPU(convnet)->device[other_device_id].forwards[i - 1] + (device_count * second_device_id + other_device_id) * batch * input_node_count, other_device_id, sizeof(float) * batch * input_node_count, context->device[device_id].model_stream[second]);
-				// copy (second_device_id, other_device_id), available on device_id now with stream second
-				// the last compute issued on this device
-				cwc_convnet_full_connect_forward_propagate(layer, batch,
-						GPU(convnet)->device[device_id].forwards[i - 1] + second_device_id * batch * layer->input.node.count,
-						GPU(convnet)->device[device_id].forwards[i] + (device_count * second_device_id + device_id) * batch * layer->net.full_connect.count,
-						GPU(convnet)->device[device_id].unit,
-						context->device[device_id].model_stream[second], context->device[device_id].model_cublas[second]);
-				if (dor && context->device[device_id].dor[i])
-					_cwc_kern_mute_neuron
-					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[second]>>>
-					(GPU(convnet)->device[device_id].forwards[i] + (device_count * second_device_id + device_id) * batch * layer->net.full_connect.count, context->device[device_id].dor[i]);
-				// finished (second_device_id, device_id), available on device_id with stream second
-				cudaEventRecord(context->device[device_id].model_joint[second], context->device[device_id].model_stream[second]);
+				int c = 1;
+				for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+					if (other_device_id != device_id)
+					{
+						int k;
+						for (k = 0; k < device_count; k++)
+							if (k != device_id)
+								cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[i - 1] + (device_count * other_device_id + k) * batch * input_node_count, device_id, GPU(convnet)->device[k].forwards[i - 1] + (device_count * other_device_id + k) * batch * input_node_count, k, sizeof(float) * batch * input_node_count, context->device[device_id].model_stream[c % 2]);
+						// copy (second_device_id, other_device_id), available on device_id now with stream second
+						// the last compute issued on this device
+						cwc_convnet_full_connect_forward_propagate(layer, batch,
+								GPU(convnet)->device[device_id].forwards[i - 1] + other_device_id * batch * layer->input.node.count,
+								GPU(convnet)->device[device_id].forwards[i] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count,
+								GPU(convnet)->device[device_id].unit,
+								context->device[device_id].model_stream[c % 2], context->device[device_id].model_cublas[c % 2]);
+						if (dor && context->device[device_id].dor[i])
+							_cwc_kern_mute_neuron
+							<<<layer->net.full_connect.count, batch, 0, context->device[device_id].model_stream[c % 2]>>>
+							(GPU(convnet)->device[device_id].forwards[i] + (device_count * other_device_id + device_id) * batch * layer->net.full_connect.count, context->device[device_id].dor[i]);
+						++c;
+					}
+				cudaEventRecord(context->device[device_id].model_joint[0], context->device[device_id].model_stream[0]);
+				cudaEventRecord(context->device[device_id].model_joint[1], context->device[device_id].model_stream[1]);
 			}
 		}
-		// wait for the copy to device 0 to finish
+		// copy everything to device 0
 		device_id = 0;
-		int first = (convnet->count - 1 - count) % device_count;
-		int second = (convnet->count - count) % device_count;
 		cudaSetDevice(device_id);
-		other_device_id = (device_id + 1) % device_count;
-		cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[other_device_id].model_joint[first], 0);
-		cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[device_id].model_joint[second], 0);
+		cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[device_id].model_joint[0], 0);
+		cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[device_id].model_joint[1], 0);
+		for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+			if (other_device_id != device_id)
+			{
+				cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[other_device_id].model_joint[0], 0);
+				cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[other_device_id].model_joint[1], 0);
+			}
+		ccv_convnet_layer_t* last_layer = GPU(convnet)->device[device_id].layers + (convnet->count - 1);
+		assert(last_layer->type == CCV_CONVNET_FULL_CONNECT);
+		int output_node_count = last_layer->net.full_connect.count; // this is already halved.
+		// copy data in, and do the computation
+		for (other_device_id = 0; other_device_id < device_count; other_device_id++)
+			if (other_device_id != device_id)
+			{
+				cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[convnet->count - 1] + (device_count * device_id + other_device_id) * batch * output_node_count, device_id, GPU(convnet)->device[other_device_id].forwards[convnet->count - 1] + (device_count * device_id + other_device_id) * batch * output_node_count, other_device_id, sizeof(float) * batch * output_node_count, context->device[device_id].data_stream);
+				for (i = 0; i < device_count; i++)
+					if (i != device_id)
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].forwards[convnet->count - 1] + (device_count * other_device_id + i) * batch * output_node_count, device_id, GPU(convnet)->device[i].forwards[convnet->count - 1] + (device_count * other_device_id + i) * batch * output_node_count, i, sizeof(float) * batch * output_node_count, context->device[device_id].data_stream);
+			}
 	} else {
 		for (i = 0; i < convnet->count; i++)
 		{
@@ -1026,7 +1048,7 @@ static void _cwc_convnet_collect_disk_stats(ccv_convnet_t* convnet)
 			for (j = 0; j < bias_count; j++)
 				bias_variance += (layer->bias[j] - bias_mean) * (layer->bias[j] - bias_mean);
 			bias_variance = bias_variance / bias_count;
-			PRINT(CCV_CLI_VERBOSE, " - at layer %d parameters weights (%f, %f), bias (%f, %f)\n", i, w_mean, w_variance, bias_mean, bias_variance);
+			PRINT(CCV_CLI_VERBOSE, " - %03d * %g %g | %g %g\n", i, w_mean, w_variance, bias_mean, bias_variance);
 		}
 	}
 }
@@ -1079,7 +1101,7 @@ static void _cwc_convnet_collect_runtime_stats(ccv_convnet_t* convnet, cwc_convn
 			float momentum_bias_mean = sum[5] / bias_count;
 			float momentum_w_variance = (momentum_w_nrm2 * momentum_w_nrm2 - sum[4] * sum[4] / layer->wnum) / (layer->wnum - 1);
 			float momentum_bias_variance = (momentum_bias_nrm2 * momentum_bias_nrm2 - sum[5] * sum[5] / bias_count) / (bias_count - 1);
-			PRINT(CCV_CLI_VERBOSE, " - at layer %d\n -- parameters weights (%f, %f), bias (%f, %f)\n -- gradient weights (%f, %f), bias (%f, %f)\n -- momentum weights (%f, %f), bias (%f, %f)\n", i, layer_w_mean, layer_w_variance, layer_bias_mean, layer_bias_variance, configuration_w_mean, configuration_w_variance, configuration_bias_mean, configuration_bias_variance, momentum_w_mean, momentum_w_variance, momentum_bias_mean, momentum_bias_variance);
+			PRINT(CCV_CLI_VERBOSE, " - %03d * %g %g | %g %g\n - %d # %g %g | %g %g\n - %d @ %g %g | %g %g\n", i, layer_w_mean, layer_w_variance, layer_bias_mean, layer_bias_variance, i, configuration_w_mean, configuration_w_variance, configuration_bias_mean, configuration_bias_variance, i, momentum_w_mean, momentum_w_variance, momentum_bias_mean, momentum_bias_variance);
 		}
 	}
 }
@@ -1969,10 +1991,10 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	int i, j, k;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
-	int dual_batch = params.mini_batch * params.device_count;
-	int aligned_padding = categorizeds->rnum % dual_batch;
+	int multi_batch = params.mini_batch * params.device_count;
+	int aligned_padding = categorizeds->rnum % multi_batch;
 	int aligned_rnum = categorizeds->rnum - aligned_padding;
-	int aligned_batches = categorizeds->rnum / dual_batch;
+	int aligned_batches = categorizeds->rnum / multi_batch;
 	int* idx = (int*)ccmalloc(sizeof(int) * (categorizeds->rnum + aligned_padding));
 	for (i = 0; i < categorizeds->rnum; i++)
 		idx[i] = i;
@@ -2040,7 +2062,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					cudaSetDevice(device_id);
-					_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, dual_batch, i * dual_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
+					_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, multi_batch, i * multi_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					assert(cudaGetLastError() == cudaSuccess);
 					cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
@@ -2068,7 +2090,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 								++miss;
 						cudaEventElapsedTime(&elapsed_time[device_id], iteration[device_id], stop[device_id]);
 					}
-					FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => stochastic gradient descent with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f /((i - z.i) * dual_batch), i + 1, aligned_batches, ccv_max(elapsed_time[0], elapsed_time[1]) / 1000);
+					FLUSH(CCV_CLI_INFO, " - at epoch %03d / %d => stochastic gradient descent with miss rate %.2f%% at %d / %d (%.3f sec)", z.t + 1, params.max_epoch, miss * 100.0f /((i - z.i) * multi_batch), i + 1, aligned_batches, ccv_max(elapsed_time[0], elapsed_time[1]) / 1000);
 				}
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{

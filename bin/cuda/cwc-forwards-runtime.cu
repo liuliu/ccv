@@ -38,14 +38,25 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 		cudaSetDevice(device_id);
 		cudaDeviceSynchronize();
 	}
+	cudaSetDevice(0);
+	cudaEvent_t start;
+	cudaEvent_t stop;
+	cudaEventCreate(&start);
+	cudaEventCreate(&stop);
+	cudaEventRecord(start, context->device[0].data_stream);
 	_cwc_convnet_encode_impl(convnet, 2, mini_batch, 0, context);
+	cudaSetDevice(0);
+	cudaEventRecord(stop, context->device[0].data_stream);
+	cudaEventSynchronize(stop);
+	float elapsed_time = 0;
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("dual GPU uses %f ms\n", elapsed_time);
 	float *dual_out[2] = {0};
 	cudaMallocHost(&dual_out[0], sizeof(float) * dual_batch * 1000);
 	cudaMallocHost(&dual_out[1], sizeof(float) * dual_batch * 1000);
 	for (device_id = 0; device_id < 2; device_id++)
 	{
 		cudaSetDevice(device_id);
-		cudaDeviceSynchronize();
 		cudaMemcpy(dual_out[device_id], GPU(convnet)->device[device_id].forwards[convnet->count - 1], sizeof(float) * dual_batch * 1000, cudaMemcpyDeviceToHost);
 	}
 	ccv_convnet_compact(convnet);
@@ -70,7 +81,15 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	cudaDeviceSynchronize();
+	cudaEventRecord(start, context->device[0].data_stream);
 	_cwc_convnet_encode_impl(convnet, 1, mini_batch, 0, context);
+	cudaEventRecord(stop, context->device[0].data_stream);
+	cudaEventSynchronize(stop);
+	elapsed_time = 0;
+	cudaEventElapsedTime(&elapsed_time, start, stop);
+	printf("one GPU uses %f ms\n", elapsed_time);
+	cudaEventDestroy(start);
+	cudaEventDestroy(stop);
 	cudaDeviceSynchronize();
 	float* out = 0;
 	cudaMallocHost(&out, sizeof(float) * dual_batch * 1000);
