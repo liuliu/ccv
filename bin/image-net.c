@@ -43,9 +43,9 @@ int main(int argc, char** argv)
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 48,
-		.sgd_frequency = 3, // do sgd every 3 batches
+		.sgd_frequency = 2, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
-		.device_count = 1,
+		.device_count = 2,
 		.symmetric = 1,
 		.color_gain = 0.001,
 	};

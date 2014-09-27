@@ -968,7 +968,6 @@ __global__ static void _cwc_kern_net_sgd(float* a, float* grad, float* momentum,
 		float velocity = momentum_rate * momentum[thidx] - decay_and_learn * old_a + learn_rate * grad[thidx];
 		a[thidx] = velocity + old_a;
 		momentum[thidx] = velocity;
-		grad[thidx] = 0;
 	}
 }
 
@@ -1159,6 +1158,15 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_count, int b
 				<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
 				(layer->bias, configuration->bias, momentum->bias, layer->net.convolutional.count,
 				 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
+				for (device_id = 0; device_id < device_count; device_id++)
+				{
+					cudaSetDevice(device_id);
+					layer = GPU(convnet)->device[device_id].layers + i;
+					configuration = GPU(convnet)->device[device_id].configurations + i;
+					// reset so that we can accumulate again
+					cudaMemsetAsync(configuration->w, 0, sizeof(float) * layer->wnum, context->device[device_id].data_stream);
+					cudaMemsetAsync(configuration->bias, 0, sizeof(float) * layer->net.convolutional.count, context->device[device_id].data_stream);
+				}
 				break;
 			case CCV_CONVNET_FULL_CONNECT:
 				// this is model parallelism, therefore, updates on each device
@@ -1178,6 +1186,9 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_count, int b
 					<<<num_blocks_for_bias, threads_per_block, 0, context->device[device_id].data_stream>>>
 					(layer->bias, configuration->bias, momentum->bias, layer->net.full_connect.count,
 					 layer_params[i].bias.learn_rate / batch, layer_params[i].bias.momentum, layer_params[i].bias.decay * layer_params[i].bias.learn_rate);
+					// reset so that we can accumulate again
+					cudaMemsetAsync(configuration->w, 0, sizeof(float) * (device_count > 1 ? 2 : 1) * layer->wnum, context->device[device_id].data_stream);
+					cudaMemsetAsync(configuration->bias, 0, sizeof(float) * (device_count > 1 ? 2 : 1) * layer->net.full_connect.count, context->device[device_id].data_stream);
 				}
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:
@@ -1723,8 +1734,12 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 						case CCV_CONVNET_CONVOLUTIONAL:
 							if (bnum != layer->net.convolutional.count)
 								continue;
-							_cwc_convnet_reorder_convolutional_weights_onto_device((float*)w, momentum->w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels, layer->input.matrix.partition);
-							cudaMemcpy(momentum->bias, bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyHostToDevice);
+							if (device_id == 0)
+							{
+								// only copy for device 0's momentum
+								_cwc_convnet_reorder_convolutional_weights_onto_device((float*)w, momentum->w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels, layer->input.matrix.partition);
+								cudaMemcpy(momentum->bias, bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyHostToDevice);
+							}
 							break;
 						case CCV_CONVNET_FULL_CONNECT:
 							if (bnum != layer->net.full_connect.count)
@@ -1849,9 +1864,13 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 					switch (layer->type)
 					{
 						case CCV_CONVNET_CONVOLUTIONAL:
-							_cwc_convnet_reorder_convolutional_weights_onto_host(momentum->w, w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels, layer->input.matrix.partition);
-							cudaMemcpy(bias, momentum->bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyDeviceToHost);
-							assert(cudaGetLastError() == cudaSuccess);
+							if (device_id == 0)
+							{
+								// only save from device 0
+								_cwc_convnet_reorder_convolutional_weights_onto_host(momentum->w, w, layer->wnum, layer->net.convolutional.count, layer->net.convolutional.channels, layer->input.matrix.partition);
+								cudaMemcpy(bias, momentum->bias, sizeof(float) * layer->net.convolutional.count, cudaMemcpyDeviceToHost);
+								assert(cudaGetLastError() == cudaSuccess);
+							}
 							break;
 						case CCV_CONVNET_FULL_CONNECT:
 							_cwc_convnet_reorder_full_connect_weights_onto_host(momentum->w, w + device_id * layer->wnum, layer->wnum, layer->input.matrix.rows * layer->input.matrix.cols, layer->input.matrix.channels);
@@ -2140,9 +2159,9 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 	ccv_function_state_resume(_cwc_convnet_supervised_train_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.max_epoch; z.t++)
 	{
-		sgd_count = stats_count = 0;
 		for (z.i = 0; z.i < aligned_batches; z.i += params.iterations)
 		{
+			sgd_count = stats_count = 0;
 			// using context-1's cublas handle because we will wait this handle to finish when the copy to context-0 is required in updating
 			// undo the mean network for further training
 			for (device_id = 0; device_id < params.device_count; device_id++)
