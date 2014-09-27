@@ -29,6 +29,9 @@ int main(int argc, char** argv)
 		.mini_batch = 128,
 		.device_count = 2,
 	};
+	ccv_convnet_layer_train_param_t layer_params[16];
+	memset(layer_params, 0, sizeof(layer_params));
+	train_params.layer_params = layer_params;
 	ccv_convnet_t *convnet = ccv_convnet_read(1, argv[2]);
 	cwc_forwards_runtime(convnet, categorizeds, train_params);
 	return 0;

@@ -171,7 +171,7 @@ extern "C" void cwc_verify_runtime(ccv_convnet_t* convnet, ccv_array_t* categori
 	// eleventh full connect layer backward propagate
 	ccv_convnet_layer_t* eleventh_gpu_configuration = GPU(convnet)->device[device_id].configurations + 10;
 	cudaEventRecord(start, context->device[device_id].data_stream);
-	cwc_convnet_full_connect_backward_propagate(eleventh_gpu_layer, batch, GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[9], GPU(convnet)->device[device_id].backwards[10], GPU(convnet)->device[device_id].unit, eleventh_gpu_configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+	cwc_convnet_full_connect_backward_propagate(eleventh_gpu_layer, batch, GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[10], GPU(convnet)->device[device_id].forwards[9], GPU(convnet)->device[device_id].backwards[10], GPU(convnet)->device[device_id].unit, eleventh_gpu_configuration->w, eleventh_gpu_configuration->bias, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 	cudaEventRecord(stop, context->device[device_id].data_stream);
 	cudaEventSynchronize(stop);
 	cudaEventElapsedTime(&elapsed_time, start, stop);

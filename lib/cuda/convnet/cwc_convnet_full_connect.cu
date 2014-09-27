@@ -30,7 +30,7 @@ void cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int 
 
 }
 
-void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle)
+void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, float* w, float* bias, const cudaStream_t& stream, const cublasHandle_t& handle)
 {
 	int rows, out_rows, out_cols, out_partition;
 	ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &out_rows, &out_cols, &out_partition);
@@ -42,9 +42,9 @@ void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int
 		<<<dim3(1, out_rows, 1), batch, 0, stream>>>
 		(batch, n, a, out_rows, 1, 1);
 	// propagate bias
-	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &one, batch_unit, 1, a, batch, &one, configuration->bias, 1);
+	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_N, 1, out_rows, batch, &one, batch_unit, 1, a, batch, &one, bias, 1);
 	// propagate error
 	cublasSgemm(handle, CUBLAS_OP_N, CUBLAS_OP_T, batch, rows, out_rows, &one, a, batch, layer->w, rows, &zero, b, batch);
 	// propagate weights
-	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &one, m, batch, a, batch, &one, configuration->w, rows);
+	cublasSgemm(handle, CUBLAS_OP_T, CUBLAS_OP_N, rows, out_rows, batch, &one, m, batch, a, batch, &one, w, rows);
 }

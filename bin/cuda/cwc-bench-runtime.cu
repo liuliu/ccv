@@ -117,7 +117,7 @@ extern "C" void cwc_bench_runtime(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					_cwc_kern_mute_neuron
 					<<<layer->net.full_connect.count, batch, 0, context->device[device_id].data_stream>>>
 					(i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], context->device[device_id].dor[i]);
-				cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], GPU(convnet)->device[device_id].unit, configuration, context->device[device_id].data_stream, context->device[device_id].data_cublas);
+				cwc_convnet_full_connect_backward_propagate(layer, batch,  i == convnet->count - 1 ? a : GPU(convnet)->device[device_id].backwards[i + 1], GPU(convnet)->device[device_id].forwards[i], i > 0 ? GPU(convnet)->device[device_id].forwards[i - 1] : context->device[device_id].input, GPU(convnet)->device[device_id].backwards[i], GPU(convnet)->device[device_id].unit, configuration->w, configuration->bias, context->device[device_id].data_stream, context->device[device_id].data_cublas);
 				assert(cudaGetLastError() == cudaSuccess);
 				break;
 			case CCV_CONVNET_LOCAL_RESPONSE_NORM:

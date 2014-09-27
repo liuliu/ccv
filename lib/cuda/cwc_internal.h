@@ -244,6 +244,6 @@ void cwc_convnet_max_pool_backward_propagate(ccv_convnet_layer_t* layer, int bat
 void cwc_convnet_average_pool_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, const cudaStream_t& stream);
 
 void cwc_convnet_full_connect_forward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* b, float* batch_unit /* this is just 1's in device */, const cudaStream_t& stream, const cublasHandle_t& handle);
-void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, ccv_convnet_layer_t* configuration, const cudaStream_t& stream, const cublasHandle_t& handle);
+void cwc_convnet_full_connect_backward_propagate(ccv_convnet_layer_t* layer, int batch, float* a, float* n, float* m, float* b, float* batch_unit, float* w, float* bias, const cudaStream_t& stream, const cublasHandle_t& handle);
 
 #endif
