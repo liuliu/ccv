@@ -653,6 +653,8 @@ static void _cwc_convnet_alloc_reserved_both(ccv_convnet_t* convnet, int batch, 
 	{
 		cudaSetDevice(device_id);
 		GPU(convnet)->device[device_id].scans = 0;
+		for (i = 0; i < device_count; i++)
+			GPU(convnet)->device[device_id].canAccessPeer[i] = (i == device_id); // init to it can access itself
 		cwc_convnet_layer_t* layer_extra = (cwc_convnet_layer_t*)(reserved + sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * device_id);
 		memset(layer_extra, 0, sizeof(cwc_convnet_layer_t) * convnet->count);
 		GPU(convnet)->device[device_id].layers = (ccv_convnet_layer_t*)(layer_extra + convnet->count);
@@ -1112,8 +1114,16 @@ static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int dev
 				{
 					ccv_convnet_layer_t* configuration_a = GPU(convnet)->device[device_id].configurations + j;
 					ccv_convnet_layer_t* configuration_b = GPU(convnet)->device[other_device_id].configurations + j;
-					cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, configuration_b->w, 1, configuration_a->w, 1);
-					cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, configuration_b->bias, 1, configuration_a->bias, 1);
+					if (GPU(convnet)->device[device_id].canAccessPeer[other_device_id])
+					{
+						cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, configuration_b->w, 1, configuration_a->w, 1);
+						cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, configuration_b->bias, 1, configuration_a->bias, 1);
+					} else {
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->w, other_device_id, sizeof(float) * layer->wnum);
+						cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, GPU(convnet)->device[device_id].scratch, 1, configuration_a->w, 1);
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->bias, other_device_id, sizeof(float) * layer->net.convolutional.count);
+						cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, GPU(convnet)->device[device_id].scratch, 1, configuration_a->bias, 1);
+					}
 				}
 			}
 		}
@@ -2123,8 +2133,9 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		params.device_count = device_count;
 	assert(device_count > 0);
 	_cwc_convnet_alloc_reserved_both(convnet, params.mini_batch, params.device_count, params.layer_params);
-	// enable peer access
-	_cwc_convnet_enable_peer_access(convnet, params.device_count);
+	// enable peer access if requested, it works if not
+	if (params.peer_access)
+		_cwc_convnet_enable_peer_access(convnet, params.device_count);
 	int i, j, k;
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);

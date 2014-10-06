@@ -46,6 +46,7 @@ int main(int argc, char** argv)
 		.sgd_frequency = 2, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
 		.device_count = 2,
+		.peer_access = 0,
 		.symmetric = 1,
 		.color_gain = 0.001,
 	};

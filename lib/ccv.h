@@ -1191,6 +1191,7 @@ typedef struct {
 	int sgd_frequency;
 	int symmetric;
 	int device_count; // for now, ccv's implementation only support up to 2 GPUs
+	int peer_access; // to enable peer access
 	float color_gain; // the gaussian value for color variations
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;

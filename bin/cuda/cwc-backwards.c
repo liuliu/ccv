@@ -28,6 +28,7 @@ int main(int argc, char** argv)
 		.max_epoch = 100,
 		.mini_batch = 128,
 		.device_count = 2,
+		.peer_access = 0,
 	};
 	/* MattNet parameters */
 	ccv_convnet_layer_param_t params[13] = {

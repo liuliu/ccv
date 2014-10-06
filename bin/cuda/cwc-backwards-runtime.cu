@@ -44,7 +44,8 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 				EXTRA(layer)->vary.convolutional.backward.coefficient.z = 32;
 			}
 		}
-	_cwc_convnet_enable_peer_access(convnet, params.device_count);
+	if (params.peer_access)
+		_cwc_convnet_enable_peer_access(convnet, params.device_count);
 	// doing model parallelism
 	for (device_id = 0; device_id < 2; device_id++)
 	{
