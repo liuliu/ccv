@@ -70,7 +70,7 @@ typedef struct {
 		float** scans; // the scan layer to reformat outputs
 		float* unit; // the unit vector for a batch, ease the GEMM on full-connect layer
 		float* scratch; // the scratch space for temporary reuse, it will be max(wnum, input rows * cols * channels + output rows * cols * channels)
-		int canAccessPeer[MAX_DEVICE_SUPPORT];
+		int can_access_peer[MAX_DEVICE_SUPPORT];
 	} device[MAX_DEVICE_SUPPORT];
 	cwc_convnet_context_t contexts[2];
 	cwc_convnet_stats_t stats;
@@ -654,7 +654,7 @@ static void _cwc_convnet_alloc_reserved_both(ccv_convnet_t* convnet, int batch, 
 		cudaSetDevice(device_id);
 		GPU(convnet)->device[device_id].scans = 0;
 		for (i = 0; i < device_count; i++)
-			GPU(convnet)->device[device_id].canAccessPeer[i] = (i == device_id); // init to it can access itself
+			GPU(convnet)->device[device_id].can_access_peer[i] = (i == device_id); // init to it can access itself
 		cwc_convnet_layer_t* layer_extra = (cwc_convnet_layer_t*)(reserved + sizeof(cwc_convnet_t) + (sizeof(cwc_convnet_layer_t) * convnet->count + sizeof(ccv_convnet_layer_t) * convnet->count * 3 + sizeof(float*) * convnet->count * 10) * device_id);
 		memset(layer_extra, 0, sizeof(cwc_convnet_layer_t) * convnet->count);
 		GPU(convnet)->device[device_id].layers = (ccv_convnet_layer_t*)(layer_extra + convnet->count);
@@ -725,12 +725,12 @@ static void _cwc_convnet_enable_peer_access(ccv_convnet_t* convnet, int device_c
 			if (device_id != other_device_id)
 			{
 				cudaSetDevice(device_id);
-				GPU(convnet)->device[device_id].canAccessPeer[other_device_id] = 0;
-				assert(cudaSuccess == cudaDeviceCanAccessPeer(&GPU(convnet)->device[device_id].canAccessPeer[other_device_id], device_id, other_device_id));
-				if (GPU(convnet)->device[device_id].canAccessPeer[other_device_id]) // only enable peer access when can access peer
+				GPU(convnet)->device[device_id].can_access_peer[other_device_id] = 0;
+				assert(cudaSuccess == cudaDeviceCanAccessPeer(&GPU(convnet)->device[device_id].can_access_peer[other_device_id], device_id, other_device_id));
+				if (GPU(convnet)->device[device_id].can_access_peer[other_device_id]) // only enable peer access when can access peer
 					cudaDeviceEnablePeerAccess(other_device_id, 0);
 			} else
-				GPU(convnet)->device[device_id].canAccessPeer[other_device_id] = 1; // of course
+				GPU(convnet)->device[device_id].can_access_peer[other_device_id] = 1; // of course
 }
 
 // =========================================== KERNEL CODE ===================================================
@@ -1114,7 +1114,7 @@ static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int dev
 				{
 					ccv_convnet_layer_t* configuration_a = GPU(convnet)->device[device_id].configurations + j;
 					ccv_convnet_layer_t* configuration_b = GPU(convnet)->device[other_device_id].configurations + j;
-					if (GPU(convnet)->device[device_id].canAccessPeer[other_device_id])
+					if (GPU(convnet)->device[device_id].can_access_peer[other_device_id])
 					{
 						cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, configuration_b->w, 1, configuration_a->w, 1);
 						cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, configuration_b->bias, 1, configuration_a->bias, 1);
@@ -1594,7 +1594,7 @@ static void _cwc_convnet_backward_propagate_error(ccv_convnet_t* convnet, int de
 						{
 							cudaStreamWaitEvent(context->device[device_id].model_stream[j % 2], context->device[other_device_id].model_joint[j % 2], 0);
 							// make sure we enabled peer to peer direct access, doing sum direct from the other device is faster than copy over and sum from my profiling
-							if (GPU(convnet)->device[device_id].canAccessPeer[other_device_id])
+							if (GPU(convnet)->device[device_id].can_access_peer[other_device_id])
 								cublasSaxpy(context->device[device_id].model_cublas[j % 2], batch * layer->net.full_connect.count, &one, GPU(convnet)->device[other_device_id].backwards[i + 1] + (device_count * j + device_id) * batch * layer->net.full_connect.count, 1, GPU(convnet)->device[device_id].backwards[i + 1] + (device_count * j + device_id) * batch * layer->net.full_connect.count, 1);
 							else {
 								cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch + (j % 2) * batch * layer->net.full_connect.count, device_id, GPU(convnet)->device[other_device_id].backwards[i + 1] + (device_count * j + device_id) * batch * layer->net.full_connect.count, other_device_id, sizeof(float) * batch * layer->net.full_connect.count, context->device[device_id].model_stream[j % 2]);
@@ -1632,7 +1632,7 @@ static void _cwc_convnet_backward_propagate_error(ccv_convnet_t* convnet, int de
 					// waiting other device to finish, and then copy
 					cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[other_device_id].model_joint[device_id % 2], 0);
 					// make sure we enabled peer to peer direct access, doing sum direct from the other device is faster than copy over and sum from my profiling
-					if (GPU(convnet)->device[device_id].canAccessPeer[other_device_id])
+					if (GPU(convnet)->device[device_id].can_access_peer[other_device_id])
 						cublasSaxpy(context->device[device_id].data_cublas, batch * layer->input.node.count, &one, GPU(convnet)->device[other_device_id].backwards[count] + device_id * batch * layer->input.node.count, 1, GPU(convnet)->device[device_id].backwards[count] + device_id * batch * layer->input.node.count, 1);
 					else {
 						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, GPU(convnet)->device[other_device_id].backwards[count] + device_id * batch * layer->input.node.count, other_device_id, sizeof(float) * batch * layer->input.node.count, context->device[device_id].data_stream);
