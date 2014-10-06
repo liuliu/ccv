@@ -1119,9 +1119,9 @@ static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int dev
 						cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, configuration_b->w, 1, configuration_a->w, 1);
 						cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, configuration_b->bias, 1, configuration_a->bias, 1);
 					} else {
-						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->w, other_device_id, sizeof(float) * layer->wnum);
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->w, other_device_id, sizeof(float) * layer->wnum, context->device[device_id].data_stream);
 						cublasSaxpy(context->device[device_id].data_cublas, layer->wnum, &one, GPU(convnet)->device[device_id].scratch, 1, configuration_a->w, 1);
-						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->bias, other_device_id, sizeof(float) * layer->net.convolutional.count);
+						cudaMemcpyPeerAsync(GPU(convnet)->device[device_id].scratch, device_id, configuration_b->bias, other_device_id, sizeof(float) * layer->net.convolutional.count, context->device[device_id].data_stream);
 						cublasSaxpy(context->device[device_id].data_cublas, layer->net.convolutional.count, &one, GPU(convnet)->device[device_id].scratch, 1, configuration_a->bias, 1);
 					}
 				}
