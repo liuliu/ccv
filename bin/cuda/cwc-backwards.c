@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include <ctype.h>
 
-void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
+void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params);
 
 int main(int argc, char** argv)
 {
@@ -323,6 +323,6 @@ int main(int argc, char** argv)
 	ccv_convnet_layer_train_param_t layer_params[16];
 	memset(layer_params, 0, sizeof(layer_params));
 	train_params.layer_params = layer_params;
-	cwc_forwards_runtime(convnet, categorizeds, train_params);
+	cwc_backwards_runtime(convnet, categorizeds, train_params);
 	return 0;
 }

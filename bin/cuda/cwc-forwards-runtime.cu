@@ -13,7 +13,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 	int mini_batch = dual_batch / 2;
 	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 2, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
-	int i, device_id, other_device_id;
+	int i, device_id;
 	int conv_layers[] = {0, 3, 6, 7, 8};
 	for (device_id = 0; device_id < 2; device_id++)
 		for (i = 0; i < 5; i++)
@@ -23,13 +23,7 @@ extern "C" void cwc_forwards_runtime(ccv_convnet_t* convnet, ccv_array_t* catego
 			EXTRA(layer)->vary.convolutional.forward.y = 8;
 			EXTRA(layer)->vary.convolutional.forward.z = 32;
 		}
-	for (device_id = 0; device_id < params.device_count; device_id++)
-		for (other_device_id = 0; other_device_id < params.device_count; other_device_id++)
-			if (device_id != other_device_id)
-			{
-				cudaSetDevice(device_id);
-				cudaDeviceEnablePeerAccess(other_device_id, 0);
-			}
+	_cwc_convnet_enable_peer_access(convnet, params.device_count);
 	// doing model parallelism
 	for (device_id = 0; device_id < 2; device_id++)
 	{
