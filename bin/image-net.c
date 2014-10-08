@@ -497,7 +497,7 @@ int main(int argc, char** argv)
 	layer_params[13].dor = 0.5;
 	layer_params[14].dor = 0.5;
 	train_params.layer_params = layer_params;
-	ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_INFO));
+	ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();
