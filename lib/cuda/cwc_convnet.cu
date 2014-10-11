@@ -2381,12 +2381,12 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					ASSERT_NO_CUDA_ERROR();
 					// sync with the other stream core so that we can compute on the single true layer parameters
-					cudaEventRecord(GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].stop_timing, GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].data_stream);
+					cudaEventRecord(GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].stop_timing, GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].data_stream);
 				}
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					cudaSetDevice(device_id);
-					cudaEventSynchronize(GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].stop_timing);
+					cudaEventSynchronize(GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].stop_timing);
 				}
 				ASSERT_NO_CUDA_ERROR();
 				if (j > 0) // we have another result, pull these
@@ -2400,7 +2400,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 							if (test->c != test_returns[(j + 1) % 2].host[device_id][k])
 								++miss;
 						}
-						cudaEventElapsedTime(&elapsed_time[device_id], GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].start_timing, GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].stop_timing);
+						cudaEventElapsedTime(&elapsed_time[device_id], GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].start_timing, GPU(z.convnet)->contexts[(j + 1) % 2].device[device_id].stop_timing);
 					}
 					max_elapsed_time = elapsed_time[0];
 					for (device_id = 1; device_id < params.device_count; device_id++)

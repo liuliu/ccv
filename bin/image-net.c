@@ -43,9 +43,9 @@ int main(int argc, char** argv)
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 48,
-		.sgd_frequency = 2, // do sgd every 2 batches (96 * 2 = 192)
+		.sgd_frequency = 4, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
-		.device_count = 2,
+		.device_count = 1,
 		.peer_access = 0,
 		.symmetric = 1,
 		.color_gain = 0.001,
@@ -497,7 +497,7 @@ int main(int argc, char** argv)
 	layer_params[13].dor = 0.5;
 	layer_params[14].dor = 0.5;
 	train_params.layer_params = layer_params;
-	ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_VERBOSE));
+	ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_INFO));
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	ccv_convnet_free(convnet);
 	ccv_disable_cache();
