@@ -1721,25 +1721,6 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 					ASSERT_NO_CUDA_ERROR();
 					break;
 			}
-			if (i == 0)
-			{
-				EXTRA(layer)->vary.convolutional.forward.x = 4;
-				EXTRA(layer)->vary.convolutional.forward.y = 8;
-				EXTRA(layer)->vary.convolutional.forward.z = 64;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.x = 1;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.y = 2;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.z = 1;
-			} else {
-				EXTRA(layer)->vary.convolutional.forward.x = 8;
-				EXTRA(layer)->vary.convolutional.forward.y = 4;
-				EXTRA(layer)->vary.convolutional.forward.z = 64;
-				EXTRA(layer)->vary.convolutional.backward.gradient.x = 8;
-				EXTRA(layer)->vary.convolutional.backward.gradient.y = 4;
-				EXTRA(layer)->vary.convolutional.backward.gradient.z = 64;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.x = 8;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.y = 4;
-				EXTRA(layer)->vary.convolutional.backward.coefficient.z = 32;
-			}
 		}
 	}
 	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
@@ -1825,6 +1806,30 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 			}
 			sqlite3_finalize(momentum_data_stmt);
 		}
+		sqlite3_stmt* conv_vary_params_stmt = 0;
+		const char conv_vary_params_qs[] =
+			"SELECT layer, fx, fy, fz, bcx, bcy, bcz, bgx, bgy, bgz FROM conv_vary_params;";
+		if (SQLITE_OK == sqlite3_prepare_v2(db, conv_vary_params_qs, sizeof(conv_vary_params_qs), &conv_vary_params_stmt, 0))
+		{
+			while(sqlite3_step(conv_vary_params_stmt) == SQLITE_ROW)
+			{
+				for (device_id = 0; device_id < GPU(z->convnet)->device_count; device_id++)
+				{
+					ccv_convnet_layer_t* layer = GPU(z->convnet)->device[device_id].layers + sqlite3_column_int(conv_vary_params_stmt, 0);
+					assert(layer->type == CCV_CONVNET_CONVOLUTIONAL);
+					EXTRA(layer)->vary.convolutional.forward.x = sqlite3_column_int(conv_vary_params_stmt, 1);
+					EXTRA(layer)->vary.convolutional.forward.y = sqlite3_column_int(conv_vary_params_stmt, 2);
+					EXTRA(layer)->vary.convolutional.forward.z = sqlite3_column_int(conv_vary_params_stmt, 3);
+					EXTRA(layer)->vary.convolutional.backward.coefficient.x = sqlite3_column_int(conv_vary_params_stmt, 4);
+					EXTRA(layer)->vary.convolutional.backward.coefficient.y = sqlite3_column_int(conv_vary_params_stmt, 5);
+					EXTRA(layer)->vary.convolutional.backward.coefficient.z = sqlite3_column_int(conv_vary_params_stmt, 6);
+					EXTRA(layer)->vary.convolutional.backward.gradient.x = sqlite3_column_int(conv_vary_params_stmt, 7);
+					EXTRA(layer)->vary.convolutional.backward.gradient.y = sqlite3_column_int(conv_vary_params_stmt, 8);
+					EXTRA(layer)->vary.convolutional.backward.gradient.z = sqlite3_column_int(conv_vary_params_stmt, 9);
+				}
+			}
+			sqlite3_finalize(conv_vary_params_stmt);
+		}
 		sqlite3_close(db);
 	}
 }
@@ -1896,7 +1901,9 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 			"CREATE TABLE IF NOT EXISTS function_state "
 			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, i INTEGER, inum INTEGER, line_no INTEGER, idx BLOB, eigenvectors BLOB, eigenvalues BLOB);"
 			"CREATE TABLE IF NOT EXISTS momentum_data "
-			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);";
+			"(layer INTEGER PRIMARY KEY ASC, weight BLOB, bias BLOB);"
+			"CREATE TABLE IF NOT EXISTS conv_vary_params "
+			"(layer INTEGER PRIMARY KEY ASC, fx INTEGER, fy INTEGER, fz INTEGER, bcx INTEGER, bcy INTEGER, bcz INTEGER, bgx INTEGER, bgy INTEGER, bgz INTEGER);";
 		assert(SQLITE_OK == sqlite3_exec(db, function_state_create_table_qs, 0, 0, 0));
 		const char function_state_insert_qs[] =
 			"REPLACE INTO function_state "
@@ -1961,6 +1968,33 @@ static void _cwc_convnet_supervised_train_function_state_write(cwc_convnet_super
 			}
 		}
 		sqlite3_finalize(momentum_data_insert_stmt);
+		const char conv_vary_params_insert_qs[] =
+			"REPLACE INTO conv_vary_params "
+			"(layer, fx, fy, fz, bcx, bcy, bcz, bgx, bgy, bgz) VALUES ($layer, $fx, $fy, $fz, $bcx, $bcy, $bcz, $bgx, $bgy, $bgz);";
+		sqlite3_stmt* conv_vary_params_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare_v2(db, conv_vary_params_insert_qs, sizeof(conv_vary_params_insert_qs), &conv_vary_params_insert_stmt, 0));
+		for (i = 0; i < z->convnet->count; i++)
+		{
+			ccv_convnet_layer_t* layer = GPU(z->convnet)->device[0].layers + i;
+			// insert momentum data
+			if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
+			{
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 1, i);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 2, EXTRA(layer)->vary.convolutional.forward.x);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 3, EXTRA(layer)->vary.convolutional.forward.y);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 4, EXTRA(layer)->vary.convolutional.forward.z);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 5, EXTRA(layer)->vary.convolutional.backward.coefficient.x);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 6, EXTRA(layer)->vary.convolutional.backward.coefficient.y);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 7, EXTRA(layer)->vary.convolutional.backward.coefficient.z);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 8, EXTRA(layer)->vary.convolutional.backward.gradient.x);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 9, EXTRA(layer)->vary.convolutional.backward.gradient.y);
+				sqlite3_bind_int(conv_vary_params_insert_stmt, 10, EXTRA(layer)->vary.convolutional.backward.gradient.z);
+				assert(SQLITE_DONE == sqlite3_step(conv_vary_params_insert_stmt));
+				sqlite3_reset(conv_vary_params_insert_stmt);
+				sqlite3_clear_bindings(conv_vary_params_insert_stmt);
+			}
+		}
+		sqlite3_finalize(conv_vary_params_insert_stmt);
 		sqlite3_close(db);
 	}
 }
