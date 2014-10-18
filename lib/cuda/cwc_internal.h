@@ -201,7 +201,7 @@ typedef struct {
 typedef struct {
 	cwc_convnet_layer_vary_t vary;
 #ifdef HAVE_CUDNN
-	// cudnn doesn't support partitions, therefore, but ccv's configuration could have multiple partitions
+	// cudnn doesn't support partitions, however ccv's configuration could have multiple partitions
 	cwc_convnet_cudnn_context_t* partitions;
 #endif
 } cwc_convnet_layer_t;

@@ -2,12 +2,14 @@
 #include <sys/time.h>
 #include <ctype.h>
 
-unsigned int get_current_time()
+static unsigned int get_current_time()
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
+
+static const int BATCH_SIZE = 16;
 
 int main(int argc, char** argv)
 {
@@ -45,7 +47,7 @@ int main(int argc, char** argv)
 		{
 			ccv_convnet_t* convnet = ccv_convnet_read(1, argv[2]);
 			int i, j, k = 0;
-			ccv_dense_matrix_t* images[32] = {
+			ccv_dense_matrix_t* images[BATCH_SIZE] = {
 				0
 			};
 			size_t len = 1024;
@@ -56,22 +58,22 @@ int main(int argc, char** argv)
 				while(read > 1 && isspace(file[read - 1]))
 					read--;
 				file[read] = 0;
-				if (images[k % 32] != 0)
-					ccv_matrix_free(images[k % 32]);
+				if (images[k % BATCH_SIZE] != 0)
+					ccv_matrix_free(images[k % BATCH_SIZE]);
 				ccv_dense_matrix_t* image = 0;
 				ccv_read(file, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 				assert(image != 0);
-				images[k % 32] = 0;
-				ccv_convnet_input_formation(convnet, image, images + (k % 32));
+				images[k % BATCH_SIZE] = 0;
+				ccv_convnet_input_formation(convnet, image, images + (k % BATCH_SIZE));
 				ccv_matrix_free(image);
 				++k;
-				if (k % 32 == 0)
+				if (k % BATCH_SIZE == 0)
 				{
-					ccv_array_t* ranks[32] = {
+					ccv_array_t* ranks[BATCH_SIZE] = {
 						0
 					};
-					ccv_convnet_classify(convnet, images, 1, ranks, 5, 32);
-					for (i = 0; i < 32; i++)
+					ccv_convnet_classify(convnet, images, 1, ranks, 5, BATCH_SIZE);
+					for (i = 0; i < BATCH_SIZE; i++)
 					{
 						for (j = 0; j < ranks[i]->rnum - 1; j++)
 						{
@@ -84,16 +86,16 @@ int main(int argc, char** argv)
 					}
 				}
 			}
-			if (k % 32 != 0)
+			if (k % BATCH_SIZE != 0)
 			{
-				if (k < 32) // special casing this
-					for (i = k; i < 32; i++)
-						images[i] = images[0]; // padding to 32 batch size
-				ccv_array_t* ranks[32] = {
+				if (k < BATCH_SIZE) // special casing this
+					for (i = k; i < BATCH_SIZE; i++)
+						images[i] = images[0]; // padding to BATCH_SIZE batch size
+				ccv_array_t* ranks[BATCH_SIZE] = {
 					0
 				};
-				ccv_convnet_classify(convnet, images, 1, ranks, 5, 32);
-				for (i = 0; i < (k % 32); i++)
+				ccv_convnet_classify(convnet, images, 1, ranks, 5, BATCH_SIZE);
+				for (i = 0; i < (k % BATCH_SIZE); i++)
 				{
 					for (j = 0; j < ranks[i]->rnum - 1; j++)
 					{
@@ -104,9 +106,9 @@ int main(int argc, char** argv)
 					printf("%d %f\n", classification->id + 1, classification->confidence);
 					ccv_array_free(ranks[i]);
 				}
-				for (i = (k % 32); i < 32; i++)
+				for (i = (k % BATCH_SIZE); i < BATCH_SIZE; i++)
 					ccv_array_free(ranks[i]);
-				for (i = 0; i < ccv_min(32, k); i++)
+				for (i = 0; i < ccv_min(BATCH_SIZE, k); i++)
 					ccv_matrix_free(images[i]);
 			}
 			ccv_convnet_free(convnet);

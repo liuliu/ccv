@@ -8,7 +8,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.0001,
+			.glorot = sqrtf(2),
 			.input = {
 				.matrix = {
 					.rows = 31,
@@ -69,7 +69,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.glorot = sqrtf(2),
 			.input = {
 				.matrix = {
 					.rows = 15,
@@ -130,7 +130,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_CONVOLUTIONAL,
 			.bias = 0,
-			.sigma = 0.01,
+			.glorot = sqrtf(2),
 			.input = {
 				.matrix = {
 					.rows = 7,
@@ -172,7 +172,7 @@ int main(int argc, char** argv)
 		{
 			.type = CCV_CONVNET_FULL_CONNECT,
 			.bias = 0,
-			.sigma = 0.01,
+			.glorot = sqrtf(2),
 			.input = {
 				.matrix = {
 					.rows = 3,

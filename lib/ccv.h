@@ -1074,7 +1074,58 @@ void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_ca
 /* polymorph function to run ICF based detector */
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
+/* categorization types and methods for train */
+
+enum {
+	CCV_CATEGORIZED_DENSE_MATRIX = 0x01,
+	CCV_CATEGORIZED_FILE = 0x02,
+};
+
+typedef struct {
+	int c; // class / category label
+	int type;
+	union {
+		ccv_dense_matrix_t* matrix;
+		ccv_file_info_t file;
+	};
+} ccv_categorized_t;
+
+inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matrix, ccv_file_info_t* file)
+{
+	assert((matrix && !file) || (!matrix && file));
+	ccv_categorized_t categorized;
+	categorized.c = c;
+	if (matrix)
+		categorized.type = CCV_CATEGORIZED_DENSE_MATRIX, categorized.matrix = matrix;
+	else
+		categorized.type = CCV_CATEGORIZED_FILE, categorized.file = *file;
+	return categorized;
+}
+
+/* SCD: SURF-Cascade Detector
+ * This is a variant of VJ framework for object detection
+ * Read: Learning SURF Cascade for Fast and Accurate Object Detection
+ */
+
+typedef struct {
+} ccv_scd_classifier_cascade_t;
+
+typedef struct {
+} ccv_scd_train_param_t;
+
+typedef struct {
+} ccv_scd_param_t;
+
+ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_new(ccv_array_t* categorizeds, ccv_array_t* hard_mine, const char* filename, ccv_scd_train_param_t params);
+void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename);
+ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
+void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade);
+
+ccv_array_t* __attribute__((warn_unused_result)) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
+
 /* ConvNet: Convolutional Neural Networks
+ * This is a limited implementation of convolutional neural network for mainly for
+ * image recognition and object detection.
  */
 
 enum {
@@ -1136,7 +1187,7 @@ typedef struct {
 typedef struct {
 	int type;
 	float bias; // bias initialization
-	float sigma; // weight initialization with deviation from Gaussian distribution
+	float glorot; // weight initialization with deviation from Gaussian distribution
 	ccv_convnet_input_t input;
 	ccv_convnet_type_t output;
 } ccv_convnet_layer_param_t;
@@ -1195,32 +1246,6 @@ typedef struct {
 	float color_gain; // the gaussian value for color variations
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
-
-enum {
-	CCV_CATEGORIZED_DENSE_MATRIX = 0x01,
-	CCV_CATEGORIZED_FILE = 0x02,
-};
-
-typedef struct {
-	int c; // class / category label
-	int type;
-	union {
-		ccv_dense_matrix_t* matrix;
-		ccv_file_info_t file;
-	};
-} ccv_categorized_t;
-
-inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matrix, ccv_file_info_t* file)
-{
-	assert((matrix && !file) || (!matrix && file));
-	ccv_categorized_t categorized;
-	categorized.c = c;
-	if (matrix)
-		categorized.type = CCV_CATEGORIZED_DENSE_MATRIX, categorized.matrix = matrix;
-	else
-		categorized.type = CCV_CATEGORIZED_FILE, categorized.file = *file;
-	return categorized;
-}
 
 typedef struct {
 	int half_precision;

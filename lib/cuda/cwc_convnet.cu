@@ -2092,7 +2092,6 @@ __global__ static void _cwc_kern_classify(float* a, int* c, float* b, const int 
 void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch)
 {
 	assert(symmetric == 1); // only works with symmetric as well
-	assert(batch == 32); // I haven't figured out to do this for any batch size
 	// classify step uses only device 0
 	_cwc_convnet_alloc_reserved_for_classify(convnet, tops, batch);
 	int i, j, k;
@@ -2373,7 +2372,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				ASSERT_NO_CUDA_ERROR();
 				if (++sgd_count == params.sgd_frequency)
 				{
-					if ((++stats_count % 50) /* only print this out every 50 sgd's */ == 1 && 0) // CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+					if ((++stats_count % 25) /* only print this out every 25 sgd's */ == 1 && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 						_cwc_convnet_collect_runtime_stats(z.convnet, context);
 					// no need to reduce the data parallelism updates to device 0 if we don't have multiple devices
 					if (params.device_count > 1)

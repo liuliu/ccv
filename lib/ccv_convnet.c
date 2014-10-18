@@ -62,7 +62,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_
 				layers[i].bias = layers[i].w + layers[i].wnum;
 #ifdef HAVE_GSL
 				for (j = 0; j < layers[i].wnum; j++)
-					layers[i].w[j] = gsl_ran_gaussian(rng, params[i].sigma);
+					layers[i].w[j] = (gsl_rng_uniform_pos(rng) * 2 - 1) * params[i].glorot / sqrtf(params[i].output.convolutional.rows * params[i].output.convolutional.cols * params[i].output.convolutional.channels / params[i].input.matrix.partition + params[i].output.convolutional.count);
 #else
 				for (j = 0; j < layers[i].wnum; j++)
 					layers[i].w[j] = 0;
@@ -76,7 +76,7 @@ ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_
 				layers[i].bias = layers[i].w + layers[i].wnum;
 #ifdef HAVE_GSL
 				for (j = 0; j < layers[i].wnum; j++)
-					layers[i].w[j] = gsl_ran_gaussian(rng, params[i].sigma);
+					layers[i].w[j] = (gsl_rng_uniform_pos(rng) * 2 - 1) * params[i].glorot / sqrtf(params[i].input.node.count + params[i].output.full_connect.count);
 #else
 				for (j = 0; j < layers[i].wnum; j++)
 					layers[i].w[j] = 0;
@@ -1537,7 +1537,7 @@ ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename)
 				layer_param.input.matrix.channels = sqlite3_column_int(layer_params_stmt, 3);
 				layer_param.input.matrix.partition = sqlite3_column_int(layer_params_stmt, 4);
 				layer_param.input.node.count = sqlite3_column_int(layer_params_stmt, 5);
-				layer_param.bias = layer_param.sigma = 0; // this is irrelevant to read convnet
+				layer_param.bias = layer_param.glorot = 0; // this is irrelevant to read convnet
 				switch (layer_param.type)
 				{
 					case CCV_CONVNET_CONVOLUTIONAL:
