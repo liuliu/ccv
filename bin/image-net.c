@@ -43,9 +43,9 @@ int main(int argc, char** argv)
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
 		.mini_batch = 48,
-		.sgd_frequency = 2, // do sgd every 2 batches (96 * 2 = 192)
+		.sgd_frequency = 1, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
-		.device_count = 2,
+		.device_count = 4,
 		.peer_access = 0,
 		.symmetric = 1,
 		.color_gain = 0.001,
@@ -488,10 +488,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 16; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.02;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.02;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[13].dor = 0.5;

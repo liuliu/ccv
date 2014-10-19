@@ -7,16 +7,19 @@ extern "C" {
 #include "../lib/cuda/cwc_convnet.cu"
 #include "../lib/ccv_convnet.c"
 
+static const int DEVICE_COUNT = 4;
+
 extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_convnet_train_param_t params)
 {
 	int dual_batch = params.mini_batch;
 	int category_count = 1000;
-	int mini_batch = dual_batch / 2;
-	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, 2, params.layer_params);
+	int mini_batch = dual_batch / DEVICE_COUNT;
+	params.device_count = DEVICE_COUNT;
+	_cwc_convnet_alloc_reserved_both(convnet, mini_batch, DEVICE_COUNT, params.layer_params);
 	cwc_convnet_context_t* context = GPU(convnet)->contexts;
 	int i, device_id;
 	int conv_layers[] = {0, 3, 6, 7, 8};
-	for (device_id = 0; device_id < 2; device_id++)
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 		for (i = 0; i < 5; i++)
 		{
 			ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + conv_layers[i];
@@ -47,7 +50,7 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 	if (params.peer_access)
 		_cwc_convnet_enable_peer_access(convnet, params.device_count);
 	// doing model parallelism
-	for (device_id = 0; device_id < 2; device_id++)
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 	{
 		cudaSetDevice(device_id);
 		_cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, convnet->input, convnet->rows, convnet->cols, convnet->channels, category_count, 0, mini_batch, mini_batch * device_id, mini_batch, context->host[device_id].input, context->host[device_id].c);
@@ -56,7 +59,7 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 		cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 		assert(cudaGetLastError() == cudaSuccess);
 	}
-	for (device_id = 0; device_id < 2; device_id++)
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 	{
 		cudaSetDevice(device_id);
 		cudaDeviceSynchronize();
@@ -67,42 +70,46 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 	cudaEventCreate(&start);
 	cudaEventCreate(&stop);
 	cudaEventRecord(start, context->device[0].data_stream);
-	_cwc_convnet_encode_impl(convnet, 2, mini_batch, 0, context);
-	for (device_id = 0; device_id < 2; device_id++)
+	_cwc_convnet_encode_impl(convnet, DEVICE_COUNT, mini_batch, 0, context);
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 	{
 		cudaSetDevice(device_id);
 		// do the logistic loss
 		_cwc_convnet_softmax_with_logistic_loss(mini_batch, category_count, GPU(convnet)->device[device_id].forwards[convnet->count - 1] + device_id * mini_batch * category_count, context->device[device_id].c, context->device[device_id].data_stream);
 	}
-	_cwc_convnet_backward_propagate_error(convnet, 2, mini_batch, context);
-	_cwc_convnet_reduce_data_parallelism(convnet, 2, context);
-	cudaSetDevice(1);
-	cudaEventRecord(context->device[1].data_joint, context->device[1].data_stream);
+	_cwc_convnet_backward_propagate_error(convnet, DEVICE_COUNT, mini_batch, context);
+	_cwc_convnet_reduce_data_parallelism(convnet, DEVICE_COUNT, context);
+	for (device_id = 1; device_id < DEVICE_COUNT; device_id++)
+	{
+		cudaSetDevice(device_id);
+		cudaEventRecord(context->device[device_id].data_joint, context->device[device_id].data_stream);
+	}
 	cudaSetDevice(0);
-	cudaStreamWaitEvent(context->device[0].data_stream, context->device[1].data_joint, 0);
+	for (device_id = 1; device_id < DEVICE_COUNT; device_id++)
+		cudaStreamWaitEvent(context->device[0].data_stream, context->device[device_id].data_joint, 0);
 	cudaEventRecord(stop, context->device[0].data_stream);
 	cudaEventSynchronize(stop);
 	assert(cudaGetLastError() == cudaSuccess);
 	float elapsed_time = 0;
 	cudaEventElapsedTime(&elapsed_time, start, stop);
-	printf("dual GPU uses %f ms\n", elapsed_time);
-	float *dual_out[2] = {0};
-	cudaMallocHost(&dual_out[0], sizeof(float) * dual_batch * category_count);
-	cudaMallocHost(&dual_out[1], sizeof(float) * dual_batch * category_count);
-	float *back_out[2] = {0};
+	printf("%d GPUs uses %f ms\n", DEVICE_COUNT, elapsed_time);
+	float *dual_out[DEVICE_COUNT] = {0};
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+		cudaMallocHost(&dual_out[device_id], sizeof(float) * dual_batch * category_count);
+	float *back_out[DEVICE_COUNT] = {0};
 	ccv_convnet_layer_t* second_layer = convnet->layers + 1;
 	int second_count = second_layer->input.matrix.rows * second_layer->input.matrix.cols * second_layer->input.matrix.channels;
-	cudaMallocHost(&back_out[0], sizeof(float) * mini_batch * second_count);
-	cudaMallocHost(&back_out[1], sizeof(float) * mini_batch * second_count);
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+		cudaMallocHost(&back_out[device_id], sizeof(float) * mini_batch * second_count);
 	ccv_convnet_layer_t* last_layer = GPU(convnet)->device[0].layers + convnet->count - 1;
-	float *dual_w[2] = {0};
-	cudaMallocHost(&dual_w[0], sizeof(float) * last_layer->wnum);
-	cudaMallocHost(&dual_w[1], sizeof(float) * last_layer->wnum);
+	float *dual_w[DEVICE_COUNT] = {0};
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+		cudaMallocHost(&dual_w[device_id], sizeof(float) * last_layer->wnum);
 	ccv_convnet_layer_t* second_last_layer = GPU(convnet)->device[0].layers + convnet->count - 2;
-	float *dual_w_2[2] = {0};
-	cudaMallocHost(&dual_w_2[0], sizeof(float) * second_last_layer->wnum);
-	cudaMallocHost(&dual_w_2[1], sizeof(float) * second_last_layer->wnum);
-	for (device_id = 0; device_id < 2; device_id++)
+	float *dual_w_2[DEVICE_COUNT] = {0};
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+		cudaMallocHost(&dual_w_2[device_id], sizeof(float) * second_last_layer->wnum);
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 	{
 		cudaSetDevice(device_id);
 		cudaMemcpy(dual_out[device_id], GPU(convnet)->device[device_id].forwards[convnet->count - 1], sizeof(float) * dual_batch * category_count, cudaMemcpyDeviceToHost);
@@ -182,80 +189,58 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 	int j;
 	for (i = 0; i < category_count; i++)
 	{
-		for (j = 0; j < mini_batch; j++)
+		for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+			for (j = 0; j < mini_batch; j++)
+			{
+				float p = out[i * dual_batch + mini_batch * device_id + j];
+				float q = dual_out[device_id][category_count * mini_batch * device_id + i * mini_batch + j];
+				float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
+				if (delta > 1e-4)
+					printf("softmax with logistic loss doesn't match: %d %d %d %g %g\n", device_id, i, j, out[i * dual_batch + mini_batch * device_id + j], dual_out[device_id][category_count * mini_batch * device_id + i * mini_batch + j]);
+			}
+	}
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+	{
+		const int pwnum = wnum / DEVICE_COUNT;
+		for (i = 0; i < pwnum; i++)
 		{
-			float p = out[i * dual_batch + j];
-			float q = dual_out[0][i * mini_batch + j];
-			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-			if (delta > 1e-4)
-				printf("softmax with logistic loss doesn't match: %d %d %g %g %g\n", i, j, out[i * dual_batch + j], dual_out[0][i * mini_batch + j], dual_out[1][i * mini_batch + j]);
+			float p = w[i + pwnum * device_id];
+			float q = dual_w[device_id][i];
+			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
+			if (delta > 1e-3)
+				printf("the weight update on last layer doesn't match: %d %d %g %g\n", device_id, i + pwnum * device_id, w[i + pwnum * device_id], dual_w[device_id][i]);
 		}
-		for (j = 0; j < mini_batch; j++)
+	}
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+	{
+		const int pwnum_2 = wnum_2 / DEVICE_COUNT;
+		for (i = 0; i < pwnum_2; i++)
 		{
-			float p = out[i * dual_batch + mini_batch + j];
-			float q = dual_out[1][category_count * mini_batch + i * mini_batch + j];
-			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1);
-			if (delta > 1e-4)
-				printf("softmax with logistic loss doesn't match: %d %d %g %g %g\n", i, j + mini_batch, out[i * dual_batch + mini_batch + j], dual_out[0][category_count * mini_batch + i * mini_batch + j], dual_out[1][1000 * mini_batch + i * mini_batch + j]);
+			float p = w_2[i + pwnum_2 * device_id];
+			float q = dual_w_2[device_id][i];
+			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
+			if (delta > 1e-3)
+				printf("the weight update on second to last layer doesn't match: %d %d %g %g\n", device_id, i + pwnum_2 * device_id, w_2[i + pwnum_2 * device_id], dual_w_2[device_id][i]);
 		}
-	}
-	for (i = 0; i < wnum / 2; i++)
-	{
-		float p = w[i];
-		float q = dual_w[0][i];
-		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-4);
-		if (delta > 1e-4)
-			printf("the weight update on last layer doesn't match: %d %g %g\n", i, w[i], dual_w[0][i]);
-	}
-	for (i = 0; i < wnum / 2; i++)
-	{
-		float p = w[i + wnum / 2];
-		float q = dual_w[1][i];
-		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-4);
-		if (delta > 1e-4)
-			printf("the weight update on last layer doesn't match: %d %g %g\n", i + wnum / 2, w[i + wnum / 2], dual_w[1][i]);
-	}
-	for (i = 0; i < wnum_2 / 2; i++)
-	{
-		float p = w_2[i];
-		float q = dual_w_2[0][i];
-		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
-		if (delta > 1e-4)
-			printf("the weight update on second to last layer doesn't match: %d %g %g\n", i, w_2[i], dual_w_2[0][i]);
-	}
-	for (i = 0; i < wnum_2 / 2; i++)
-	{
-		float p = w_2[i + wnum_2 / 2];
-		float q = dual_w_2[1][i];
-		float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
-		if (delta > 1e-3)
-			printf("the weight update second to last layer doesn't match: %d %g %g\n", i + wnum_2 / 2, w_2[i + wnum_2 / 2], dual_w_2[1][i]);
 	}
 	for (i = 0; i < second_count; i++)
 	{
-		for (j = 0; j < mini_batch; j++)
-		{
-			float p = back[i * dual_batch + j];
-			float q = back_out[0][i * mini_batch + j];
-			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
-			if (delta > 1e-3)
-				printf("the last layer of backwards propagated error doesn't match: %d %d %g %g\n", i, j, back[i * dual_batch + j], back_out[0][i * mini_batch + j]);
-		}
-		for (j = 0; j < mini_batch; j++)
-		{
-			float p = back[i * dual_batch + mini_batch + j];
-			float q = back_out[1][i * mini_batch + j];
-			float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
-			if (delta > 1e-3)
-				printf("the last layer of backwards propagated error doesn't match: %d %d %g %g\n", i, j, back[i * dual_batch + mini_batch + j], back_out[1][i * mini_batch + j]);
-		}
+		for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+			for (j = 0; j < mini_batch; j++)
+			{
+				float p = back[i * dual_batch + mini_batch * device_id + j];
+				float q = back_out[device_id][i * mini_batch + j];
+				float delta = fabs(p - q) / ccv_max(ccv_max(fabs(p), fabs(q)), 1e-3);
+				if (delta > 1e-3)
+					printf("the last layer of backwards propagated error doesn't match: %d %d %d %g %g\n", device_id, i, j, back[i * dual_batch + mini_batch * device_id + j], back_out[device_id][i * mini_batch + j]);
+			}
 	}
-	cudaFreeHost(dual_out[0]);
-	cudaFreeHost(dual_out[1]);
-	cudaFreeHost(back_out[0]);
-	cudaFreeHost(back_out[1]);
-	cudaFreeHost(dual_w[0]);
-	cudaFreeHost(dual_w[1]);
+	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
+	{
+		cudaFreeHost(dual_out[device_id]);
+		cudaFreeHost(back_out[device_id]);
+		cudaFreeHost(dual_w[device_id]);
+	}
 	cudaFreeHost(out);
 	cudaFreeHost(back);
 	cudaFreeHost(w);
