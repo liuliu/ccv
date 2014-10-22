@@ -19,6 +19,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 	unsigned char* b_ptr = db->data.u8;
 	if (dx == 1 && dy == 0)
 	{
+		assert(a->cols >= 3);
 		/* special case 1: 1x3 or 3x1 window */
 #define for_block(_for_get, _for_set) \
 		for (i = 0; i < a->rows; i++) \
@@ -36,6 +37,7 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
 	} else if (dx == 0 && dy == 1) {
+		assert(a->rows >= 3);
 		/* special case 1: 1x3 or 3x1 window */
 #define for_block(_for_get, _for_set) \
 		for (j = 0; j < a->cols; j++) \
@@ -56,10 +58,69 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 				_for_set(b_ptr, j * ch + k, 2 * (_for_get(a_ptr, j * ch + k, 0) - _for_get(a_ptr - a->step, j * ch + k, 0)), 0);
 		ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
 #undef for_block
-	} else if ((dx == 1 && dy == -1) || (dx == -1 && dy == 1)) {
 	} else if ((dx == 1 && dy == 1) || (dx == -1 && dy == -1)) {
+		/* special case 2: 3x3 window with diagonal direction */
+		assert(a->rows >= 3 && a->cols >= 3);
+#define for_block(_for_get, _for_set) \
+		for (j = 0; j < a->cols - 1; j++) \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, j * ch + k, 2 * (_for_get(a_ptr + a->step, (j + 1) * ch + k, 0) - _for_get(a_ptr, j * ch + k, 0)), 0); \
+		for (k = 0; k < ch; k++) \
+			_for_set(b_ptr, (a->cols - 1) * ch + k, 2 * (_for_get(a_ptr + a->step, (a->cols - 1) * ch + k, 0) - _for_get(a_ptr, (a->cols - 1) * ch + k, 0)), 0); \
+		a_ptr += a->step; \
+		b_ptr += db->step; \
+		for (i = 1; i < a->rows - 1; i++) \
+		{ \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, k, 2 * (_for_get(a_ptr + a->step, ch + k, 0) - _for_get(a_ptr, k, 0)), 0); \
+			for (j = 1; j < a->cols - 1; j++) \
+				for (k = 0; k < ch; k++) \
+					_for_set(b_ptr, j * ch + k, _for_get(a_ptr + a->step, (j + 1) * ch + k, 0) - _for_get(a_ptr - a->step, (j - 1) * ch + k, 0), 0); \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, (a->cols - 1) * ch + k, 2 * (_for_get(a_ptr, (a->cols - 1) * ch + k, 0) - _for_get(a_ptr - a->step, (a->cols - 2) * ch + k, 0)), 0); \
+			a_ptr += a->step; \
+			b_ptr += db->step; \
+		} \
+		for (k = 0; k < ch; k++) \
+			_for_set(b_ptr, k, 2 * (_for_get(a_ptr, k, 0) - _for_get(a_ptr - a->step, k, 0)), 0); \
+		for (j = 1; j < a->cols; j++) \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, j * ch + k, 2 * (_for_get(a_ptr, j * ch + k, 0) - _for_get(a_ptr - a->step, (j - 1) * ch + k, 0)), 0);
+		ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
+#undef for_block
+	} else if ((dx == 1 && dy == -1) || (dx == -1 && dy == 1)) {
+		/* special case 2: 3x3 window with diagonal direction */
+		assert(a->rows >= 3 && a->cols >= 3);
+#define for_block(_for_get, _for_set) \
+		for (k = 0; k < ch; k++) \
+			_for_set(b_ptr, k, 2 * (_for_get(a_ptr + a->step, k, 0) - _for_get(a_ptr, k, 0)), 0); \
+		for (j = 1; j < a->cols; j++) \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, j * ch + k, 2 * (_for_get(a_ptr + a->step, (j - 1) * ch + k, 0) - _for_get(a_ptr, j * ch + k, 0)), 0); \
+		a_ptr += a->step; \
+		b_ptr += db->step; \
+		for (i = 1; i < a->rows - 1; i++) \
+		{ \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, k, 2 * (_for_get(a_ptr, k, 0) - _for_get(a_ptr - a->step, ch + k, 0)), 0); \
+			for (j = 1; j < a->cols - 1; j++) \
+				for (k = 0; k < ch; k++) \
+					_for_set(b_ptr, j * ch + k, _for_get(a_ptr + a->step, (j - 1) * ch + k, 0) - _for_get(a_ptr - a->step, (j + 1) * ch + k, 0), 0); \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, (a->cols - 1) * ch + k, 2 * (_for_get(a_ptr + a->step, (a->cols - 2) * ch + k, 0) - _for_get(a_ptr, (a->cols - 1) * ch + k, 0)), 0); \
+			a_ptr += a->step; \
+			b_ptr += db->step; \
+		} \
+		for (j = 0; j < a->cols - 1; j++) \
+			for (k = 0; k < ch; k++) \
+				_for_set(b_ptr, j * ch + k, 2 * (_for_get(a_ptr, j * ch + k, 0) - _for_get(a_ptr - a->step, (j + 1) * ch + k, 0)), 0); \
+		for (k = 0; k < ch; k++) \
+			_for_set(b_ptr, (a->cols - 1) * ch + k, 2 * (_for_get(a_ptr, (a->cols - 1) * ch + k, 0) - _for_get(a_ptr - a->step, (a->cols - 1) * ch + k, 0)), 0);
+		ccv_matrix_getter(a->type, ccv_matrix_setter, db->type, for_block);
+#undef for_block
 	} else if (dx == 3 && dy == 0) {
-		/* special case 2: 3x3 window, corresponding sigma = 0.85 */
+		assert(a->rows >= 3 && a->cols >= 3);
+		/* special case 3: 3x3 window, corresponding sigma = 0.85 */
 		unsigned char* buf = (unsigned char*)alloca(db->step);
 #define for_block(_for_get, _for_set_b, _for_get_b) \
 		for (j = 0; j < a->cols; j++) \
@@ -94,7 +155,8 @@ void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, 
 		ccv_matrix_getter(a->type, ccv_matrix_setter_getter, db->type, for_block);
 #undef for_block
 	} else if (dx == 0 && dy == 3) {
-		/* special case 2: 3x3 window, corresponding sigma = 0.85 */
+		assert(a->rows >= 3 && a->cols >= 3);
+		/* special case 3: 3x3 window, corresponding sigma = 0.85 */
 		unsigned char* buf = (unsigned char*)alloca(db->step);
 #define for_block(_for_get, _for_set_b, _for_get_b) \
 		for (j = 0; j < a->cols; j++) \
