@@ -48,10 +48,10 @@
     <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
     <script src="../dist/jquery.facedetection.js"></script> 
     <script>
-        $(function() {
+        $(function () {
             "use strict";
             
-            $('#try-it').click(function(e) {
+            $('#try-it').click(function (e) {
                 e.preventDefault();
 
                 $('.face').remove();
@@ -65,7 +65,9 @@
 
                 $('#video').faceDetection({
                     interval: 1,
-                    complete: function(faces) {
+                    complete: function (faces) {
+                        console.log(faces);
+                        
                         for (var i = 0; i < faces.length; i++) {
                             $('<div>', {
                                 'class':'face',
@@ -80,7 +82,7 @@
                             .insertAfter(this);
                         }
                     },
-                    error:function(code, message) {
+                    error:function (code, message) {
                         alert('Error: ' + message);
                     }
                 });
