@@ -1,11 +1,8 @@
 {
   "name": "jquery.facedetection",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "homepage": "https://facedetection.jaysalvat.com",
   "main": "./dist/jquery.facedetection.min.js",
-  "ignore": [
-    "ignore": [ "./!(bower.js)", "./!(dist/)", "./!(examples/)"  ]
-  ],
   "dependencies": {
     "jquery": ">=1.10"
   }

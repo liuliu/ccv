@@ -1,8 +1,8 @@
 {
   "name": "jquery.facedetection",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "title": "jQuery Facedetection",
-  "description": "A jQuery plugin to detect faces on images, videos and canvas.",
+  "description": "A jQuery plugin to detect faces on images, videos and canvases.",
   "homepage": "https://facedetection.jaysalvat.com",
   "download": "https://github.com/jaysalvat/facedetection/archive/master.zip",
   "keywords": [

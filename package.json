@@ -1,14 +1,12 @@
 {
   "name": "jquery.facedetection",
-  "version": "0.0.1",
-  "description": "jQuery Facedetection - A jQuery plugin to detect faces on images, videos and canva",
-  "main": "dist/jquery.facedetection.min.js",
-  "directories": {
-    "example": "examples",
-    "test": "test"
-  },
+  "version": "1.0.0",
+  "description": "A jQuery plugin to detect faces on images, videos and canvases.",
+  "homepage": "http://facedetection.jaysalvat.com",
+  "main": "./dist/jquery.facedetection.min.js",
   "scripts": {
-    "test": "gulp test"
+    "test": "gulp test",
+    "build": "gulp build"
   },
   "repository": {
     "type": "git",
@@ -34,7 +32,6 @@
     }
   ],
   "license": "MIT",
-  "homepage": "http://facedetection.jaysalvat.com",
   "devDependencies": {
     "del": "^0.1.1",
     "exec": "^0.1.2",
