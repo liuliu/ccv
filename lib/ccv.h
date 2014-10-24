@@ -1107,7 +1107,32 @@ inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matri
  * Read: Learning SURF Cascade for Fast and Accurate Object Detection
  */
 
+enum {
+	CCV_SCD_FEATURE_2X2 = 0x01,
+	CCV_SCD_FEATURE_4X1 = 0x02,
+	CCV_SCD_FEATURE_1X4 = 0x03,
+};
+
 typedef struct {
+	int type;
+	int x;
+	int y;
+	int rows;
+	int cols;
+	float bias;
+	float w[32];
+} ccv_scd_feature_t;
+
+typedef struct {
+	int count;
+	ccv_scd_feature_t* features;
+	float* alpha;
+	float beta;
+} ccv_scd_classifier_t;
+
+typedef struct {
+	int count;
+	ccv_scd_classifier_t* classifiers;
 } ccv_scd_classifier_cascade_t;
 
 typedef struct {
@@ -1121,6 +1146,7 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
 void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade);
 
+void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 ccv_array_t* __attribute__((warn_unused_result)) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
 
 /* ConvNet: Convolutional Neural Networks
