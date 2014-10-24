@@ -1,0 +1,49 @@
+{
+  "name": "jquery.facedetection",
+  "version": "0.0.1",
+  "description": "jQuery Facedetection - A jQuery plugin to detect faces on images, videos and canva",
+  "main": "dist/jquery.facedetection.min.js",
+  "directories": {
+    "example": "examples",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "gulp test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jaysalvat/jquery.facedetection"
+  },
+  "keywords": [
+    "jquery",
+    "face",
+    "detection",
+    "image",
+    "picture",
+    "video",
+    "canvas"
+  ],
+  "author": {
+    "name": "Jay Salvat",
+    "url": "http://jaysalvat.com"
+  },
+  "contributors": [
+    {
+      "name": "Liu Liu",
+      "url": "http://liuliu.me"
+    }
+  ],
+  "license": "MIT",
+  "homepage": "http://facedetection.jaysalvat.com",
+  "devDependencies": {
+    "del": "^0.1.1",
+    "gulp": "^3.8.7",
+    "gulp-bump": "^0.1.11",
+    "gulp-header": "^1.0.5",
+    "gulp-jshint": "^1.8.4",
+    "gulp-replace": "^0.4.0",
+    "gulp-uglifyjs": "^0.4.2",
+    "gulp-util": "^3.0.0",
+    "yargs": "^1.3.1"
+  }
+}

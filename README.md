@@ -13,10 +13,8 @@ Html & Scripts
 
 **Includes**
 
-	<script src="http://code.jquery.com/jquery-1.4.3.min.js"></script> 
-	<script src="js/facedetection/ccv.js"></script> 
-	<script src="js/facedetection/face.js"></script>
-	<script src="js/jquery.facedetection.js"></script> 
+	<script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> 
+	<script src="dist/jquery.facedetection.min.js"></script> 
 
 **Image**
 
@@ -26,19 +24,20 @@ Html & Scripts
 
 	<script>
 		$(function() {
-   			var coords = $('#myPicture').faceDetection();
-			console.log(coords);    
+   			$('#myPicture').faceDetection(function (faces) {
+				console.log(faces);    
+			});
 		});
 	</script> 
 
 Results
 -------
 
-Returns an array with found faces object:
+Returns an array of found faces object:
 
-**x:** Y coord of the face
+**x:** Y coord of the face in the picture
 
-**y:** Y coord of the face
+**y:** Y coord of the face in the picture
 
 **width:** Width of the face
 
@@ -52,27 +51,33 @@ Returns an array with found faces object:
 
 **offsetY:** Y position relative to the offset parent
 
+**scaleX:** Ratio between original image width and displayed width
+
+**scaleY:** Ratio between original image height and displayed height
+
 **confidence:** Level of confidence
 
 Settings
 --------
 
-**confidence:** Minimum level of confidence
+**interval:** Interval
 
-**start:** Callback function trigged just before the process starts. **DOES'NT WORK PROPERLY**
+**minNeighbors:** Minimum neighbors
 
-	start:function(img) {
-		// ...
-	}
+**confidence:** Minimum confidence
+
+**async:** async mode if Worker available
+
+**grayscale:** 
 
 **complete:** Callback function trigged after the detection is completed
 
-	complete:function(img, coords) {
+	complete:function(faces) {
 		// ...
 	}
 
 **error:** Callback function trigged on errors
 
-	error:function(img, code, message) {
+	error:function(code, message) {
 		// ...
 	}

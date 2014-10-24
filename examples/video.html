@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>jQuery FaceDetection Examples</title>
+    <link rel="stylesheet" href="css/styles.css">
+    <style>
+        .video-container {
+            position: relative;
+            width: 260px;
+            height: auto;
+            margin: 20px auto;
+            border: 10px solid #fff;
+            box-shadow: 0 5px 5px #000;
+        }
+            .video {
+                display: block;
+                width: 100%;
+                height: auto;
+            }
+
+        .face {
+            position: absolute;
+            border: 2px solid #FFF;
+        }
+    </style>
+</head>
+<body>
+    <a href="http://facedetection.jaysalvat.com">
+        <img src="img/logo.svg" class="logo">
+    </a>
+    
+    <div class="video-container">
+        <video id="video" class="video" loop autoplay>
+            <source src="assets/video.mp4"  type="video/mp4">
+            <source src="assets/video.ogv"  type="video/ogg">
+            <source src="assets/video.webm" type="video/webm">
+        </video>
+    </div>
+    
+    <a href="#" id="try-it">
+        <img src="img/tryit.svg" class="button">
+    </a>
+
+    <p><a href="http://facedetection.jaysalvat.com">Visit the website</a></p>
+
+    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script src="../dist/jquery.facedetection.js"></script> 
+    <script>
+        $(function() {
+            "use strict";
+            
+            $('#try-it').click(function(e) {
+                e.preventDefault();
+
+                $('.face').remove();
+
+                if ($('#video')[0].paused) {
+                    $('#video')[0].play();
+                    return;
+                } else {
+                    $('#video')[0].pause();
+                }
+
+                $('#video').faceDetection({
+                    interval: 1,
+                    complete: function(faces) {
+                        for (var i = 0; i < faces.length; i++) {
+                            $('<div>', {
+                                'class':'face',
+                                'css': {
+                                    'position': 'absolute',
+                                    'left':     faces[i].x + 'px',
+                                    'top':      faces[i].y + 'px',
+                                    'width':    faces[i].width  + 'px',
+                                    'height':   faces[i].height + 'px'
+                                }
+                            })
+                            .insertAfter(this);
+                        }
+                    },
+                    error:function(code, message) {
+                        alert('Error: ' + message);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>
