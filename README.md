@@ -2,33 +2,34 @@
 Face detection jquery plugin
 ============================
 
-A jQuery plugin which detects faces in pictures and returns theirs coords.
-This plugin uses an algorithm by Liu Liu.
+A jQuery plugin to detect faces on images, videos and canvas and get theirs coordinates.
 
-Demo here:
+**Importante note:** This plugin uses an algorithm by [http://liuliu.me](Liu Liu).
+
+Website and demo here:
 [http://facedetection.jaysalvat.com/](http://facedetection.jaysalvat.com/)
 
-Html & Scripts
---------------
+Get started
+-----------
 
 **Includes**
 
-	<script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> 
-	<script src="dist/jquery.facedetection.min.js"></script> 
+    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> 
+    <script src="dist/jquery.facedetection.min.js"></script> 
 
 **Image**
 
-	<img id="myPicture" src="img/face.jpg">
+    <img id="picture" src="img/face.jpg">
 
 **Script**
 
-	<script>
-		$(function() {
-   			$('#myPicture').faceDetection(function (faces) {
-				console.log(faces);    
-			});
-		});
-	</script> 
+    <script>
+        $('#picture').faceDetection({
+            complete: function (faces) {
+            	console.log(faces);
+        	}
+        });
+    </script> 
 
 Results
 -------
@@ -60,24 +61,24 @@ Returns an array of found faces object:
 Settings
 --------
 
-**interval:** Interval
+**interval:** Interval (default 4)
 
-**minNeighbors:** Minimum neighbors
+**minNeighbors:** Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)
 
-**confidence:** Minimum confidence
+**confidence:** Minimum confidence (default null)
 
-**async:** async mode if Worker available
+**async:** Async mode if Worker available (default false)
 
-**grayscale:** 
+**grayscale:** Convert to grayscale before processing (default true)
 
 **complete:** Callback function trigged after the detection is completed
 
-	complete:function(faces) {
-		// ...
-	}
+    complete: function (faces) {
+        // ...
+    }
 
 **error:** Callback function trigged on errors
 
-	error:function(code, message) {
-		// ...
-	}
+    error: function (code, message) {
+        // ...
+    }
