@@ -1,7 +1,4 @@
-/*
-        Utlimate Mega Gulpfile
-        Jay Salvat
- */
+/*  Utlimate Jay Mega Gulpfile */
 
 (function () {
     "use strict";
@@ -242,7 +239,7 @@
                 'cp -r tmp/* releases/latest',
                 'git add -A releases/latest',
                 'git commit -m "Publish release v' + version + '."',
-                'git push origin gh-pages',
+                // 'git push origin gh-pages',
                 'git checkout -'
             ].join(" && "),
             function (err, output, code) {
