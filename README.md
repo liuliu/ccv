@@ -49,49 +49,34 @@ Results
 
 Returns an array of found faces object:
 
-**x:** Y coord of the face in the picture
-
-**y:** Y coord of the face in the picture
-
-**width:** Width of the face
-
-**height:** Height of the face
-
-**positionX:** X position relative to the document
-
-**positionY:** Y position relative to the document
-
-**offsetX:** X position relative to the offset parent
-
-**offsetY:** Y position relative to the offset parent
-
-**scaleX:** Ratio between original image width and displayed width
-
-**scaleY:** Ratio between original image height and displayed height
-
-**confidence:** Level of confidence
+- **x** — Y coord of the face in the picture
+- **y** — Y coord of the face in the picture
+- **width** — Width of the face
+- **height** — Height of the face
+- **positionX** — X position relative to the document
+- **positionY** — Y position relative to the document
+- **offsetX** — X position relative to the offset parent
+- **offsetY** — Y position relative to the offset parent
+- **scaleX** — Ratio between original image width and displayed width
+- **scaleY** — Ratio between original image height and displayed height
+- **confidence** — Level of confidence
 
 Settings
 --------
+- **interval** — Interval (default 4)
+- **minNeighbors** — Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)
+- **confidence** — Minimum confidence (default null)
+- **async** — Async mode if Worker available (default false). The async mode uses Workers and needs the script to be on the same domain.
+- **grayscale** — Convert to grayscale before processing (default true)
+- **complete** — Callback function trigged after the detection is completed
 
-**interval:** Interval (default 4)
+        complete: function (faces) {
+            // ...
+        }
+    
+- **error** — Callback function trigged on errors
 
-**minNeighbors:** Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)
-
-**confidence:** Minimum confidence (default null)
-
-**async:** Async mode if Worker available (default false). The async mode uses Workers and needs the script to be on the same domain.
-
-**grayscale:** Convert to grayscale before processing (default true)
-
-**complete:** Callback function trigged after the detection is completed
-
-    complete: function (faces) {
-        // ...
-    }
-
-**error:** Callback function trigged on errors
-
-    error: function (code, message) {
-        // ...
-    }
+        error: function (code, message) {
+            // ...
+        }
+        
