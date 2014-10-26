@@ -72,7 +72,7 @@ Settings
 
 **interval:** Interval (default 4)
 
-**minNeighbors:** Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)
+**minNeighbors:** Neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)
 
 **confidence:** Minimum confidence (default null)
 
