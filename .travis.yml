@@ -5,4 +5,4 @@ node_js:
 before_script:
   - npm install -g gulp
 
-script: "gul test"
+script: "gulp test"
