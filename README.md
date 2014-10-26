@@ -3,7 +3,7 @@ Face detection jquery plugin
 
 [![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/{{project}})
 
-A jQuery plugin to detect faces on images, videos and canvas and get theirs coordinates.
+A jQuery plugin to detect faces on images, videos and canvases to get theirs coordinates.
 
 **Importante note:** This plugin uses an algorithm by [http://liuliu.me](Liu Liu).
 
