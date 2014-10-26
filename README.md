@@ -37,13 +37,13 @@ Set a picture with some faces in your HTML page.
 
     <img id="picture" src="img/face.jpg">
 
-And apply this plugin to this image.
+Apply the plugin to this image and get the face coordinates.
 
     <script>
         $('#picture').faceDetection({
             complete: function (faces) {
-            	console.log(faces);
-        	}
+                console.log(faces);
+            }
         });
     </script> 
 
