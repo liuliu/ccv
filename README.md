@@ -1,4 +1,4 @@
-Face detection jquery plugin
+jQuery Face Detection Plugin
 ============================
 
 [![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/{{project}})
