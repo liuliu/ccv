@@ -19,11 +19,11 @@ Get started
 
 Download the [last release](jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) manually...
 
-Or install it with [bower](http://bower.io/):
+Or install it with [Bower](http://bower.io/):
 
     bower install jquery.facedetection
 
-Or install it by [https://www.npmjs.org/package/jquery.facedetection](npm).
+Or install it by [NPM](https://www.npmjs.org/package/jquery.facedetection).
 
     npm install jquery.facedetection
 
