@@ -7,22 +7,30 @@ A jQuery plugin to detect faces on images, videos and canvas and get theirs coor
 
 **Importante note:** This plugin uses an algorithm by [http://liuliu.me](Liu Liu).
 
+Demos
+-----
+
 Website and demo here:
+
 [http://facedetection.jaysalvat.com/](http://facedetection.jaysalvat.com/)
 
 Get started
 -----------
 
-**Includes**
+Download the [last release](jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) or install it with [bower](http://bower.io/):
+
+    bower install jquery.facedetection
+
+Include [jQuery](http://code.jquery.com/jquery-1.11.1.min.js) and the plugin.
 
     <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> 
-    <script src="dist/jquery.facedetection.min.js"></script> 
+    <script src="path/to/dist/jquery.facedetection.min.js"></script> 
 
-**Image**
+Set a picture with some faces in your HTML page.
 
     <img id="picture" src="img/face.jpg">
 
-**Script**
+And apply this plugin to this image.
 
     <script>
         $('#picture').faceDetection({
