@@ -19,7 +19,8 @@
     "image",
     "picture",
     "video",
-    "canvas"
+    "canvas",
+    "jquery-plugin"
   ],
   "author": {
     "name": "Jay Salvat",
