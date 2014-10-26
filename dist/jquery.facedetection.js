@@ -1,6 +1,6 @@
 /*! ----------------------------------------------------------------------------
- *  jQuery Facedetection - A jQuery plugin to detect faces on images, videos and canva
- *  v0.0.1 released 2014-10-24 19:56
+ *  A jQuery plugin to detect faces on images, videos and canvases.
+ *  v2.0.0 released 2014-10-26 16:07
  *  http://facedetection.jaysalvat.com
  *  Copyright (c) 2010-2014, Jay Salvat
  *  http://jaysalvat.com/
