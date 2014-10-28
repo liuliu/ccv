@@ -7,7 +7,7 @@ jQuery Face Detection Plugin
 
 A jQuery plugin to detect faces on images, videos and canvases to get theirs coordinates.
 
-**Importante note:** This plugin uses an algorithm by [http://liuliu.me](Liu Liu).
+**Importante note:** This plugin uses an algorithm by [Liu Liu](http://liuliu.me/).
 
 Demos
 -----
