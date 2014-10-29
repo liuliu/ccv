@@ -269,6 +269,28 @@ void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 #undef for_block
 }
 
+void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds)
+{
+	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);
+	ccv_declare_derived_signature(sig, da->sig != 0, ccv_sign_with_format(20, "ccv_scale(%lf)", ds), da->sig, CCV_EOF_SIGN);
+	type = (type == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_GET_CHANNEL(da->type) : CCV_GET_DATA_TYPE(type) | CCV_GET_CHANNEL(da->type);
+	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_GET_CHANNEL(da->type), type, sig);
+	ccv_object_return_if_cached(, db);
+	int i, j, ch = CCV_GET_CHANNEL(da->type);
+	unsigned char* aptr = da->data.u8;
+	unsigned char* bptr = db->data.u8;
+#define for_block(_for_get, _for_set) \
+	for (i = 0; i < da->rows; i++) \
+	{ \
+		for (j = 0; j < da->cols * ch; j++) \
+			_for_set(bptr, j, ds * _for_get(aptr, j, 0), 0); \
+		aptr += da->step; \
+		bptr += db->step; \
+	}
+	ccv_matrix_getter(da->type, ccv_matrix_setter, db->type, for_block);
+#undef for_block
+}
+
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type)
 {
 	ccv_dense_matrix_t* da = ccv_get_dense_matrix(a);

@@ -389,7 +389,7 @@ int main(int argc, char** argv)
 					.rows = 3,
 					.cols = 3,
 					.channels = 512,
-					.partition = 2,
+					.partition = 1,
 				},
 			},
 		},
@@ -488,10 +488,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 16; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.005;
+		layer_params[i].w.learn_rate = 0.0002;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.005;
+		layer_params[i].bias.learn_rate = 0.0002;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[13].dor = 0.5;

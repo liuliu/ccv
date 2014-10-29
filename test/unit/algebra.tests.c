@@ -45,9 +45,41 @@ TEST_CASE("matrix addition")
 	ccv_dense_matrix_t* y = 0;
 	ccv_add(a, b, (ccv_matrix_t**)&y, 0);
 	double hy[6] = {1011.11, 1012.12, 1021.13, 1022.21, 1031.22, 1032.23};
-	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, hy, y->data.f64, 4, 1e-6, "3x2, 3x2 matrix addition failure");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, hy, y->data.f64, 6, 1e-6, "3x2, 3x2 matrix addition failure");
 	ccv_matrix_free(a);
 	ccv_matrix_free(b);
+	ccv_matrix_free(y);
+}
+
+TEST_CASE("matrix scale with overflow")
+{
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1, 4, CCV_8U | CCV_C1, 0, 0);
+	a->data.u8[0] = 11;
+	a->data.u8[1] = 111;
+	a->data.u8[2] = 55;
+	a->data.u8[3] = 155;
+	ccv_dense_matrix_t* y = 0;
+	ccv_scale(a, (ccv_matrix_t**)&y, 0, 2);
+	uint8_t hy[4] = {22, 222, 110, 255};
+	REQUIRE_ARRAY_EQ(uint8_t, hy, y->data.u8, 4, "1x4 matrix scale with overflow failure");
+	ccv_matrix_free(a);
+	ccv_matrix_free(y);
+}
+
+TEST_CASE("matrix scale")
+{
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(3, 2, CCV_64F | CCV_C1, 0, 0);
+	a->data.f64[0] = 0.11;
+	a->data.f64[1] = 0.12;
+	a->data.f64[2] = 0.13;
+	a->data.f64[3] = 0.21;
+	a->data.f64[4] = 0.22;
+	a->data.f64[5] = 0.23;
+	ccv_dense_matrix_t* y = 0;
+	ccv_scale(a, (ccv_matrix_t**)&y, 0, 10);
+	double hy[6] = {1.1, 1.2, 1.3, 2.1, 2.2, 2.3};
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, hy, y->data.f64, 6, 1e-6, "3x2 matrix scale failure");
+	ccv_matrix_free(a);
 	ccv_matrix_free(y);
 }
 

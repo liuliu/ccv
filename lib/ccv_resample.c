@@ -366,7 +366,6 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 		else
 			_ccv_resample_area(a, db);
 	} else if (type & CCV_INTER_CUBIC) {
-		assert(db->rows >= a->rows && db->cols >= a->cols);
 		if (CCV_GET_DATA_TYPE(db->type) == CCV_32F || CCV_GET_DATA_TYPE(db->type) == CCV_64F)
 			_ccv_resample_cubic_float_only(a, db);
 		else

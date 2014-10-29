@@ -342,6 +342,7 @@ double ccv_variance(ccv_matrix_t* mat);
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_add(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
 void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds);
 
 enum {
 	CCV_A_TRANSPOSE = 0x01,
@@ -558,11 +559,15 @@ enum {
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
 
+/* basic image processing algorithms ccv_image_processing.c */
+
 enum {
 	CCV_RGB_TO_YUV = 0x01,
 };
 
 void ccv_color_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag);
+void ccv_saturation(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double ds);
+void ccv_contrast(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double ds);
 
 /* resample algorithms ccv_resample.c */
 
@@ -1074,7 +1079,72 @@ void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_ca
 /* polymorph function to run ICF based detector */
 ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
-/* categorization types and methods for train */
+/* SCD: SURF-Cascade Detector
+ * This is a variant of VJ framework for object detection
+ * Read: Learning SURF Cascade for Fast and Accurate Object Detection
+ */
+
+enum {
+	CCV_SCD_FEATURE_2X2 = 0x01,
+	CCV_SCD_FEATURE_4X1 = 0x02,
+	CCV_SCD_FEATURE_1X4 = 0x03,
+};
+
+typedef struct {
+	int type;
+	int x;
+	int y;
+	int rows;
+	int cols;
+	float bias;
+	float w[32];
+} ccv_scd_feature_t;
+
+typedef struct {
+	int count;
+	ccv_scd_feature_t* features;
+	float* alpha;
+	float threshold;
+} ccv_scd_classifier_t;
+
+typedef struct {
+	int count;
+	ccv_margin_t margin;
+	ccv_size_t size;
+	ccv_scd_classifier_t* classifiers;
+} ccv_scd_classifier_cascade_t;
+
+typedef struct {
+	int min_neighbors;
+	int flags;
+	int step_through;
+	int interval;
+} ccv_scd_param_t;
+
+typedef struct {
+	int boosting;
+	ccv_size_t size;
+	struct {
+		ccv_size_t base;
+		int step_through;
+	} feature;
+	struct {
+		float angle;
+		float scale;
+		float shift;
+	} deform;
+	int grayscale;
+} ccv_scd_train_param_t;
+
+ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params);
+void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename);
+ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
+void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade);
+
+void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
+ccv_array_t* __attribute__((warn_unused_result)) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
+
+/* categorization types and methods for training */
 
 enum {
 	CCV_CATEGORIZED_DENSE_MATRIX = 0x01,
@@ -1101,53 +1171,6 @@ inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matri
 		categorized.type = CCV_CATEGORIZED_FILE, categorized.file = *file;
 	return categorized;
 }
-
-/* SCD: SURF-Cascade Detector
- * This is a variant of VJ framework for object detection
- * Read: Learning SURF Cascade for Fast and Accurate Object Detection
- */
-
-enum {
-	CCV_SCD_FEATURE_2X2 = 0x01,
-	CCV_SCD_FEATURE_4X1 = 0x02,
-	CCV_SCD_FEATURE_1X4 = 0x03,
-};
-
-typedef struct {
-	int type;
-	int x;
-	int y;
-	int rows;
-	int cols;
-	float bias;
-	float w[32];
-} ccv_scd_feature_t;
-
-typedef struct {
-	int count;
-	ccv_scd_feature_t* features;
-	float* alpha;
-	float beta;
-} ccv_scd_classifier_t;
-
-typedef struct {
-	int count;
-	ccv_scd_classifier_t* classifiers;
-} ccv_scd_classifier_cascade_t;
-
-typedef struct {
-} ccv_scd_train_param_t;
-
-typedef struct {
-} ccv_scd_param_t;
-
-ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_new(ccv_array_t* categorizeds, ccv_array_t* hard_mine, const char* filename, ccv_scd_train_param_t params);
-void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename);
-ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
-void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade);
-
-void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
 
 /* ConvNet: Convolutional Neural Networks
  * This is a limited implementation of convolutional neural network for mainly for

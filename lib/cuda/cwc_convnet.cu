@@ -1282,7 +1282,22 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		// random horizontal reflection
 		if (symmetric && rng && gsl_rng_uniform_int(rng, 2) == 0)
 			ccv_flip(input, &input, 0, CCV_FLIP_X);
+		if (rng)
+		{
+			// introduce some brightness changes
+			ccv_scale(input, (ccv_matrix_t**)&input, 0, gsl_rng_uniform_pos(rng) + 0.5);
+		}
 		ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
+		if (rng)
+		{
+			// introduce some scale change
+			ccv_dense_matrix_t* scaled = 0;
+			int scaled_rows = rows + gsl_rng_uniform_int(rng, (input->rows - rows) * 2 + 1);
+			int scaled_cols = cols + gsl_rng_uniform_int(rng, (input->cols - cols) * 2 + 1);
+			ccv_resample(input, &scaled, CCV_32F, scaled_rows, scaled_cols, CCV_INTER_CUBIC);
+			ccv_matrix_free(input);
+			input = scaled;
+		}
 		ccv_dense_matrix_t* patch = 0;
 		if (input->cols != cols || input->rows != rows)
 		{
