@@ -1267,6 +1267,11 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 				break;
 		}
 		assert(image->rows == dim.height || image->cols == dim.width);
+		if (rng)
+		{
+			// introduce some brightness changes to the original image
+			ccv_scale(image, (ccv_matrix_t**)&image, 0, gsl_rng_uniform_pos(rng) + 0.5);
+		}
 		ccv_dense_matrix_t* input = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
 		{
@@ -1282,11 +1287,6 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		// random horizontal reflection
 		if (symmetric && rng && gsl_rng_uniform_int(rng, 2) == 0)
 			ccv_flip(input, &input, 0, CCV_FLIP_X);
-		if (rng)
-		{
-			// introduce some brightness changes
-			ccv_scale(input, (ccv_matrix_t**)&input, 0, gsl_rng_uniform_pos(rng) + 0.5);
-		}
 		ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
 		if (rng)
 		{
