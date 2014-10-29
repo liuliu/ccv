@@ -1238,7 +1238,32 @@ static void _cwc_convnet_net_sgd(ccv_convnet_t* convnet, int device_count, int b
 	}
 }
 
-static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
+static void _cwc_convnet_random_image_manipulation(gsl_rng* rng, ccv_dense_matrix_t* image, float image_manipulation)
+{
+	assert(rng && CCV_GET_CHANNEL(image->type) == CCV_C3 && image_manipulation > 0 && image_manipulation <= 1);
+	int ord[3] = {0, 1, 2};
+	gsl_ran_shuffle(rng, ord, 3, sizeof(int));
+	int i;
+	for (i = 0; i < 3; i++)
+		// change the applying order
+		switch (ord[i])
+		{
+			case 0:
+				// introduce some brightness changes to the original image
+				ccv_scale(image, (ccv_matrix_t**)&image, 0, gsl_rng_uniform_pos(rng) * image_manipulation * 2 + (1 - image_manipulation));
+				break;
+			case 1:
+				// introduce some saturation changes to the original image
+				ccv_saturation(image, &image, 0, gsl_rng_uniform_pos(rng) * image_manipulation * 2 + (1 - image_manipulation));
+				break;
+			case 2:
+				// introduce some contrast changes to the original image
+				ccv_contrast(image, &image, 0, gsl_rng_uniform_pos(rng) * image_manipulation * 2 + (1 - image_manipulation));
+				break;
+		}
+}
+
+static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float image_manipulation, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
 	int i, k, x;
 	assert(size <= batch);
@@ -1267,11 +1292,8 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 				break;
 		}
 		assert(image->rows == dim.height || image->cols == dim.width);
-		if (rng)
-		{
-			// introduce some brightness changes to the original image
-			ccv_scale(image, (ccv_matrix_t**)&image, 0, gsl_rng_uniform_pos(rng) + 0.5);
-		}
+		if (rng && image_manipulation > 0)
+			_cwc_convnet_random_image_manipulation(rng, image, image_manipulation);
 		ccv_dense_matrix_t* input = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
 		{
@@ -2321,7 +2343,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					cudaSetDevice(device_id);
-					_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i * multi_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
+					_cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.image_manipulation, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i * multi_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					ASSERT_NO_CUDA_ERROR();
 					cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
@@ -2425,7 +2447,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					cudaSetDevice(device_id);
-					_cwc_convnet_batch_formation(0, tests, z.convnet->mean_activity, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i + device_id * params.mini_batch, ccv_min(params.mini_batch, tests->rnum - i - device_id * params.mini_batch), context->host[device_id].input, 0);
+					_cwc_convnet_batch_formation(0, tests, z.convnet->mean_activity, 0, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i + device_id * params.mini_batch, ccv_min(params.mini_batch, tests->rnum - i - device_id * params.mini_batch), context->host[device_id].input, 0);
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					ASSERT_NO_CUDA_ERROR();
 					// sync with the other stream core so that we can compute on the single true layer parameters
