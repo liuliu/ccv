@@ -2228,13 +2228,6 @@ void cwc_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 
 // to print out verbose for debugging
 
-static const char* CWC_DEVICE_RECEIVED_BATCH_FROM_HOST = "received batch from host";
-static const char* CWC_DEVICE_DEQUEUED_FORWARD_PROPAGATE = "dequeued forward propagate";
-static const char* CWC_DEVICE_DEQUEUED_BACKWARD_PROPAGATE = "dequeued backward propagate";
-static const char* CWC_DEVICE_DEQUEUED_REDUCE_DATA_PARALLELISM = "dequeued reduce data parallelism";
-static const char* CWC_DEVICE_DEQUEUED_SGD = "dequeued stochastic gradient descent";
-static const char* CWC_DEVICE_DEQUEUED_BROADCAST_DATA_PARALLELISM = "dequeued broadcast data parallelism";
-
 static void CUDART_CB _cwc_stream_callback_verbose(cudaStream_t stream,  cudaError_t status, void* data)
 {
 	PRINT(CCV_CLI_VERBOSE, " -- device with stream %p %s with status %s\n", stream, (char*)data, cudaGetErrorString(status));
@@ -2355,7 +2348,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 						cudaEventRecord(GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].stop_timing, GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].data_stream);
 				}
 				PRINT(CCV_CLI_VERBOSE, " -- host prepared a batch on CPU\n");
-				PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_RECEIVED_BATCH_FROM_HOST);
+				PRINT_VERBOSE_ON_CONTEXT(context, "received batch from host");
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					PRINT(CCV_CLI_VERBOSE, " -- host to sync with data stream %p [%d]\n", GPU(z.convnet)->contexts[(i + 1) % 2].device[device_id].data_stream, device_id);
@@ -2388,7 +2381,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				}
 				PRINT(CCV_CLI_VERBOSE, " -- host enqueued forward propagate\n");
 				_cwc_convnet_encode_impl(z.convnet, params.device_count, params.mini_batch, 1, context);
-				PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_DEQUEUED_FORWARD_PROPAGATE);
+				PRINT_VERBOSE_ON_CONTEXT(context, "dequeued forward propagate");
 				ASSERT_NO_CUDA_ERROR();
 				// compute miss rate on training data
 				for (device_id = 0; device_id < params.device_count; device_id++)
@@ -2405,7 +2398,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				// do backward propagate
 				PRINT(CCV_CLI_VERBOSE, " -- host enqueued backward propagate\n");
 				_cwc_convnet_backward_propagate_error(z.convnet, params.device_count, params.mini_batch, context);
-				PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_DEQUEUED_BACKWARD_PROPAGATE);
+				PRINT_VERBOSE_ON_CONTEXT(context, "dequeued backward propagate");
 				ASSERT_NO_CUDA_ERROR();
 				if (++sgd_count == params.sgd_frequency)
 				{
@@ -2416,17 +2409,17 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 					{
 						PRINT(CCV_CLI_VERBOSE, " -- host enqueued reduce data parallelism\n");
 						_cwc_convnet_reduce_data_parallelism(z.convnet, params.device_count, context);
-						PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_DEQUEUED_REDUCE_DATA_PARALLELISM);
+						PRINT_VERBOSE_ON_CONTEXT(context, "dequeued reduce data parallelism");
 					}
 					PRINT(CCV_CLI_VERBOSE, " -- host enqueued stochastic gradient descent\n");
 					_cwc_convnet_net_sgd(z.convnet, params.device_count, multi_batch * sgd_count, params.layer_params, context);
-					PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_DEQUEUED_SGD);
+					PRINT_VERBOSE_ON_CONTEXT(context, "dequeued stochastic gradient descent");
 					// no need to fan out the data parallelism updates to all devices if we don't have multiple devices
 					if (params.device_count > 1)
 					{
 						PRINT(CCV_CLI_VERBOSE, " -- host enqueued broadcast data parallelism\n");
 						_cwc_convnet_broadcast_data_parallelism(z.convnet, params.device_count, context);
-						PRINT_VERBOSE_ON_CONTEXT(context, CWC_DEVICE_DEQUEUED_BROADCAST_DATA_PARALLELISM);
+						PRINT_VERBOSE_ON_CONTEXT(context, "dequeued broadcast data parallelism");
 					}
 					sgd_count = 0; // reset the counter
 				}
