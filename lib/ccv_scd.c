@@ -214,6 +214,107 @@ static ccv_array_t*_ccv_scd_collect_positives(ccv_size_t size, ccv_array_t* posf
 	}
 	return positives;
 }
+
+static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int step_through, ccv_size_t size)
+{
+	ccv_array_t* features = ccv_array_new(sizeof(ccv_scd_feature_t), 64, 0);
+	int x, y, w, h;
+	for (w = base.width; w <= size.width; w += range_through)
+		for (h = base.height; h <= size.height; h += range_through)
+			for (x = 0; x <= size.width - w; x += step_through)
+				for (y = 0; y <= size.height - h; y += step_through)
+				{
+					ccv_scd_feature_t feature = {
+						.x = x,
+						.y = y,
+						.rows = h,
+						.cols = w,
+					};
+					if (w % 4 == 0)
+					{
+						feature.type = CCV_SCD_FEATURE_4X1;
+						ccv_array_push(features, &feature);
+					}
+					if (h % 4 == 0)
+					{
+						feature.type = CCV_SCD_FEATURE_1X4;
+						ccv_array_push(features, &feature);
+					}
+					if (w % 2 == 0 && h % 2 == 0)
+					{
+						feature.type = CCV_SCD_FEATURE_2X2;
+						ccv_array_push(features, &feature);
+					}
+				}
+	return features;
+}
+
+typedef struct {
+	double weight;
+	int index;
+} ccv_scd_weight_index_t;
+
+#define more_than(s1, s2, aux) ((s1).weight >= (s2).weight)
+static CCV_IMPLEMENT_QSORT(_ccv_scd_weight_index_qsort, ccv_scd_weight_index_t, more_than)
+#undef more_than
+
+static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* feature, float surf[32])
+{
+	ccv_dense_matrix_t* b = 0;
+	ccv_scd(a, &b, 0);
+	ccv_dense_matrix_t* sat = 0;
+	ccv_sat(b, &sat, 0, CCV_PADDING_ZERO);
+	ccv_matrix_free(b);
+	ccv_matrix_free(sat);
+}
+
+static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set)
+{
+	int i, j;
+	ccv_scd_weight_index_t* pwidx = (ccv_scd_weight_index_t*)ccmalloc(sizeof(ccv_scd_weight_index_t) * positives->rnum);
+	for (i = 0; i < positives->rnum; i++)
+		pwidx[i].index = i, pwidx[i].weight = pw[i];
+	_ccv_scd_weight_index_qsort(pwidx, positives->rnum, 0);
+	int adjusted_positive_set = wide_set;
+	for (i = wide_set - 1; i < positives->rnum; i++)
+		if (fabs(pwidx[i].weight - pwidx[i + 1].weight) > FLT_MIN)
+		{
+			adjusted_positive_set = i + 1;
+			break;
+		}
+	ccv_scd_weight_index_t* nwidx = (ccv_scd_weight_index_t*)ccmalloc(sizeof(ccv_scd_weight_index_t) * negatives->rnum);
+	for (i = 0; i < negatives->rnum; i++)
+		nwidx[i].index = i, nwidx[i].weight = nw[i];
+	_ccv_scd_weight_index_qsort(nwidx, negatives->rnum, 0);
+	int adjusted_negative_set = wide_set;
+	for (i = wide_set - 1; i < negatives->rnum; i++)
+		if (fabs(nwidx[i].weight - nwidx[i + 1].weight) > FLT_MIN)
+		{
+			adjusted_negative_set = i + 1;
+			break;
+		}
+	for (i = 0; i < features->rnum; i++)
+	{
+		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		gsl_ran_shuffle(rng, pwidx, adjusted_positive_set, sizeof(ccv_scd_weight_index_t));
+		float surf[32];
+		for (j = 0; j < active_set; j++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(positives, pwidx[j].index);
+			a->data.u8 = (unsigned char*)(a + 1);
+			_ccv_scd_run_feature(a, feature, surf);
+		}
+		gsl_ran_shuffle(rng, nwidx, adjusted_negative_set, sizeof(ccv_scd_weight_index_t));
+		for (j = 0; j < active_set; j++)
+		{
+			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(negatives, nwidx[j].index);
+			a->data.u8 = (unsigned char*)(a + 1);
+			_ccv_scd_run_feature(a, feature, surf);
+		}
+	}
+	ccfree(pwidx);
+	ccfree(nwidx);
+}
 #endif
 
 ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params)
@@ -225,10 +326,16 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	ccv_array_t* positives = _ccv_scd_collect_positives(params.size, posfiles, params.grayscale);
 	ccv_array_t* negatives = _ccv_scd_collect_negatives(rng, params.size, hard_mine, negative_count, params.deform.angle, params.deform.scale, params.deform.shift, params.grayscale);
+	ccv_array_t* features = _ccv_scd_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
 	int t;
+	double* pw = (double*)ccmalloc(sizeof(double) * positives->rnum);
+	double* nw = (double*)ccmalloc(sizeof(double) * negatives->rnum);
 	for (t = 0; t < params.boosting; t++)
 	{
+		_ccv_scd_feature_supervised_train(rng, features, positives, pw, negatives, nw, params.feature.active_set, params.feature.wide_set);
 	}
+	ccfree(pw);
+	ccfree(nw);
 	return 0;
 #else
 	assert(0 && "ccv_scd_classifier_cascade_new requires GSL library support");

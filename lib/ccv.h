@@ -1126,7 +1126,10 @@ typedef struct {
 	ccv_size_t size;
 	struct {
 		ccv_size_t base;
+		int range_through;
 		int step_through;
+		int active_set;
+		int wide_set;
 	} feature;
 	struct {
 		float angle;

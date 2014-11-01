@@ -107,6 +107,12 @@ int main(int argc, char** argv)
 	fclose(r1);
 	free(file);
 	ccv_scd_train_param_t params = {
+		.size = ccv_size(40, 40),
+		.feature = {
+			.base = ccv_size(12, 12),
+			.range_through = 8,
+			.step_through = 4,
+		},
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);
