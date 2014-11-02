@@ -1084,18 +1084,11 @@ ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dens
  * Read: Learning SURF Cascade for Fast and Accurate Object Detection
  */
 
-enum {
-	CCV_SCD_FEATURE_2X2 = 0x01,
-	CCV_SCD_FEATURE_4X1 = 0x02,
-	CCV_SCD_FEATURE_1X4 = 0x03,
-};
-
 typedef struct {
-	int type;
-	int x;
-	int y;
-	int rows;
-	int cols;
+	int sx[4];
+	int sy[4];
+	int dx[4];
+	int dy[4];
 	float bias;
 	float w[32];
 } ccv_scd_feature_t;
@@ -1136,6 +1129,7 @@ typedef struct {
 		float scale;
 		float shift;
 	} deform;
+	double C;
 	int grayscale;
 } ccv_scd_train_param_t;
 

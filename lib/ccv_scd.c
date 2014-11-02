@@ -4,6 +4,9 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
+#ifdef HAVE_LIBLINEAR
+#include <linear.h>
+#endif
 
 void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
@@ -224,25 +227,48 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 			for (x = 0; x <= size.width - w; x += step_through)
 				for (y = 0; y <= size.height - h; y += step_through)
 				{
-					ccv_scd_feature_t feature = {
-						.x = x,
-						.y = y,
-						.rows = h,
-						.cols = w,
-					};
+					ccv_scd_feature_t feature;
 					if (w % 4 == 0)
 					{
-						feature.type = CCV_SCD_FEATURE_4X1;
+						// 4x1 feature
+						feature.sx[0] = x;
+						feature.dx[0] = x + (w / 4);
+						feature.sx[1] = x + (w / 4);
+						feature.dx[1] = x + 2 * (w / 4);
+						feature.sx[2] = x + 2 * (w / 4);
+						feature.dx[2] = x + 3 * (w / 4);
+						feature.sx[3] = x + 3 * (w / 4);
+						feature.dx[3] = x + w;
+						feature.sy[0] = feature.sy[1] = feature.sy[2] = feature.sy[3] = y;
+						feature.dy[0] = feature.dy[1] = feature.dy[2] = feature.dy[3] = y + h;
 						ccv_array_push(features, &feature);
 					}
 					if (h % 4 == 0)
 					{
-						feature.type = CCV_SCD_FEATURE_1X4;
+						// 1x4 feature
+						feature.sx[0] = feature.sx[1] = feature.sx[2] = feature.sx[3] = x;
+						feature.dx[0] = feature.dx[1] = feature.dx[2] = feature.dx[3] = x + w;
+						feature.sy[0] = y;
+						feature.dy[0] = y + (h / 4);
+						feature.sy[1] = y + (h / 4);
+						feature.dy[1] = y + 2 * (h / 4);
+						feature.sy[2] = y + 2 * (h / 4);
+						feature.dy[2] = y + 3 * (h / 4);
+						feature.sy[3] = y + 3 * (h / 4);
+						feature.dy[3] = y + h;
 						ccv_array_push(features, &feature);
 					}
 					if (w % 2 == 0 && h % 2 == 0)
 					{
-						feature.type = CCV_SCD_FEATURE_2X2;
+						// 2x2 feature
+						feature.sx[0] = feature.sx[1] = x;
+						feature.dx[0] = feature.dx[1] = x + (w / 2);
+						feature.sy[0] = feature.sy[2] = y;
+						feature.dy[0] = feature.dy[2] = y + (h / 2);
+						feature.sx[2] = feature.sx[3] = x + (w / 2);
+						feature.dx[2] = feature.dx[3] = x + w;
+						feature.sy[1] = feature.sy[3] = y + (h / 2);
+						feature.dy[1] = feature.dy[3] = y + h;
 						ccv_array_push(features, &feature);
 					}
 				}
@@ -265,12 +291,39 @@ static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* featu
 	ccv_dense_matrix_t* sat = 0;
 	ccv_sat(b, &sat, 0, CCV_PADDING_ZERO);
 	ccv_matrix_free(b);
+	int i, j;
+	// extract feature
+	for (i = 0; i < 4; i++)
+	{
+		float* d = sat->data.f32 + (sat->cols * feature->sy[i] + feature->sx[i]) * 8;
+		float* du = sat->data.f32 + (sat->cols * feature->dy[i] + feature->sx[i]) * 8;
+		float* dv = sat->data.f32 + (sat->cols * feature->sy[i] + feature->dx[i]) * 8;
+		float* duv = sat->data.f32 + (sat->cols * feature->dy[i] + feature->dx[i]) * 8;
+		for (j = 0; j < 8; j++)
+			surf[i * 8 + j] = duv[j] - du[j] + d[j] - dv[j];
+	}
 	ccv_matrix_free(sat);
+	// L2Hys normalization
+	float v = 0;
+	for (i = 0; i < 32; i++)
+		v += surf[i] * surf[i];
+	v = 1.0 / (sqrtf(v) + 1e-6);
+	static float theta = 2.0 / 5.65685424949; // sqrtf(32)
+	float u = 0;
+	for (i = 0; i < 32; i++)
+	{
+		surf[i] = surf[i] * v;
+		surf[i] = ccv_clamp(surf[i], -theta, theta);
+		u += surf[i] * surf[i];
+	}
+	u = 1.0 / (sqrtf(u) + 1e-6);
+	for (i = 0; i < 32; i++)
+		surf[i] = surf[i] * v;
 }
 
-static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set)
+static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set, double C)
 {
-	int i, j;
+	int i, j, k;
 	ccv_scd_weight_index_t* pwidx = (ccv_scd_weight_index_t*)ccmalloc(sizeof(ccv_scd_weight_index_t) * positives->rnum);
 	for (i = 0; i < positives->rnum; i++)
 		pwidx[i].index = i, pwidx[i].weight = pw[i];
@@ -295,14 +348,29 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		}
 	for (i = 0; i < features->rnum; i++)
 	{
+		struct problem prob;
+		prob.l = active_set * 2;
+		prob.n = 32 + 1;
+		prob.bias = 1.0;
+		prob.y = malloc(sizeof(prob.y[0]) * active_set * 2);
+		prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * active_set * 2);
 		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
 		gsl_ran_shuffle(rng, pwidx, adjusted_positive_set, sizeof(ccv_scd_weight_index_t));
 		float surf[32];
+		struct feature_node* surf_feature;
 		for (j = 0; j < active_set; j++)
 		{
 			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(positives, pwidx[j].index);
 			a->data.u8 = (unsigned char*)(a + 1);
 			_ccv_scd_run_feature(a, feature, surf);
+		 	surf_feature = (struct feature_node*)malloc(sizeof(struct feature_node) * (32 + 2));
+			for (k = 0; k < 32; k++)
+				surf_feature[k].index = k + 1, surf_feature[k].value = surf[k];
+			surf_feature[32].index = 33;
+			surf_feature[32].value = prob.bias;
+			surf_feature[33].index = -1;
+			prob.x[j] = surf_feature;
+			prob.y[j] = 1;
 		}
 		gsl_ran_shuffle(rng, nwidx, adjusted_negative_set, sizeof(ccv_scd_weight_index_t));
 		for (j = 0; j < active_set; j++)
@@ -310,7 +378,36 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(negatives, nwidx[j].index);
 			a->data.u8 = (unsigned char*)(a + 1);
 			_ccv_scd_run_feature(a, feature, surf);
+		 	surf_feature = (struct feature_node*)malloc(sizeof(struct feature_node) * (32 + 2));
+			for (k = 0; k < 32; k++)
+				surf_feature[k].index = k + 1, surf_feature[k].value = surf[k];
+			surf_feature[32].index = 33;
+			surf_feature[32].value = prob.bias;
+			surf_feature[33].index = -1;
+			prob.x[j + active_set] = surf_feature;
+			prob.y[j + active_set] = -1;
 		}
+		struct parameter linear_parameters = { .solver_type = L1R_LR,
+											   .eps = 1e-1,
+											   .C = C,
+											   .nr_weight = 0,
+											   .weight_label = 0,
+											   .weight = 0 };
+		const char* err = check_parameter(&prob, &linear_parameters);
+		if (err)
+		{
+			PRINT(CCV_CLI_ERROR, " - ERROR: cannot pass check parameter: %s\n", err);
+			exit(-1);
+		}
+		struct model* linear = train(&prob, &linear_parameters);
+		for (j = 0; j < 32; j++)
+			feature->w[j] = linear->w[j];
+		feature->bias = linear->w[32];
+		free_and_destroy_model(&linear);
+		free(prob.y);
+		for (j = 0; j < prob.l; j++)
+			free(prob.x[j]);
+		free(prob.x);
 	}
 	ccfree(pwidx);
 	ccfree(nwidx);
@@ -332,7 +429,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	double* nw = (double*)ccmalloc(sizeof(double) * negatives->rnum);
 	for (t = 0; t < params.boosting; t++)
 	{
-		_ccv_scd_feature_supervised_train(rng, features, positives, pw, negatives, nw, params.feature.active_set, params.feature.wide_set);
+		_ccv_scd_feature_supervised_train(rng, features, positives, pw, negatives, nw, params.feature.active_set, params.feature.wide_set, params.C);
 	}
 	ccfree(pw);
 	ccfree(nw);

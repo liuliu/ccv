@@ -113,6 +113,7 @@ int main(int argc, char** argv)
 			.range_through = 8,
 			.step_through = 4,
 		},
+		.C = 0.002,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);

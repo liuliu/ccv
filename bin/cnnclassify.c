@@ -9,7 +9,7 @@ static unsigned int get_current_time()
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-static const int BATCH_SIZE = 16;
+#define BATCH_SIZE (16)
 
 int main(int argc, char** argv)
 {
