@@ -26,8 +26,8 @@ int main(int argc, char** argv)
 		/* required parameters */
 		{"positive-list", 1, 0, 0},
 		{"background-list", 1, 0, 0},
-		{"working-dir", 1, 0, 0},
 		{"negative-count", 1, 0, 0},
+		{"working-dir", 1, 0, 0},
 		/* optional parameters */
 		{0, 0, 0, 0}
 	};
@@ -107,13 +107,17 @@ int main(int argc, char** argv)
 	fclose(r1);
 	free(file);
 	ccv_scd_train_param_t params = {
+		.boosting = 8,
 		.size = ccv_size(40, 40),
 		.feature = {
 			.base = ccv_size(12, 12),
 			.range_through = 8,
 			.step_through = 4,
+			.active_set = 32,
+			.wide_set = 256,
 		},
-		.C = 0.002,
+		.C = 5,
+		.grayscale = 0,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);
