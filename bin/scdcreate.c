@@ -111,10 +111,10 @@ int main(int argc, char** argv)
 		.size = ccv_size(40, 40),
 		.feature = {
 			.base = ccv_size(12, 12),
-			.range_through = 8,
+			.range_through = 4,
 			.step_through = 4,
-			.active_set = 32,
-			.wide_set = 256,
+			.active_set = 320,
+			.wide_set = 960,
 		},
 		.C = 5,
 		.grayscale = 0,

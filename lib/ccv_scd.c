@@ -225,44 +225,58 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 	ccv_array_t* features = ccv_array_new(sizeof(ccv_scd_feature_t), 64, 0);
 	int x, y, w, h;
 	for (w = base.width; w <= size.width; w += range_through)
-		for (h = base.height; h <= size.height; h += range_through)
+		if (w % 4 == 0) // only allow 4:1
+		{
+			h = w / 4;
 			for (x = 0; x <= size.width - w; x += step_through)
 				for (y = 0; y <= size.height - h; y += step_through)
 				{
+					// 4x1 feature
 					ccv_scd_feature_t feature;
-					if (w % 4 == 0)
-					{
-						// 4x1 feature
-						feature.sx[0] = x;
-						feature.dx[0] = x + (w / 4);
-						feature.sx[1] = x + (w / 4);
-						feature.dx[1] = x + 2 * (w / 4);
-						feature.sx[2] = x + 2 * (w / 4);
-						feature.dx[2] = x + 3 * (w / 4);
-						feature.sx[3] = x + 3 * (w / 4);
-						feature.dx[3] = x + w;
-						feature.sy[0] = feature.sy[1] = feature.sy[2] = feature.sy[3] = y;
-						feature.dy[0] = feature.dy[1] = feature.dy[2] = feature.dy[3] = y + h;
-						ccv_array_push(features, &feature);
-					}
-					if (h % 4 == 0)
-					{
-						// 1x4 feature
-						feature.sx[0] = feature.sx[1] = feature.sx[2] = feature.sx[3] = x;
-						feature.dx[0] = feature.dx[1] = feature.dx[2] = feature.dx[3] = x + w;
-						feature.sy[0] = y;
-						feature.dy[0] = y + (h / 4);
-						feature.sy[1] = y + (h / 4);
-						feature.dy[1] = y + 2 * (h / 4);
-						feature.sy[2] = y + 2 * (h / 4);
-						feature.dy[2] = y + 3 * (h / 4);
-						feature.sy[3] = y + 3 * (h / 4);
-						feature.dy[3] = y + h;
-						ccv_array_push(features, &feature);
-					}
-					if (w % 2 == 0 && h % 2 == 0)
+					feature.sx[0] = x;
+					feature.dx[0] = x + (w / 4);
+					feature.sx[1] = x + (w / 4);
+					feature.dx[1] = x + 2 * (w / 4);
+					feature.sx[2] = x + 2 * (w / 4);
+					feature.dx[2] = x + 3 * (w / 4);
+					feature.sx[3] = x + 3 * (w / 4);
+					feature.dx[3] = x + w;
+					feature.sy[0] = feature.sy[1] = feature.sy[2] = feature.sy[3] = y;
+					feature.dy[0] = feature.dy[1] = feature.dy[2] = feature.dy[3] = y + h;
+					ccv_array_push(features, &feature);
+				}
+		}
+	for (h = base.height; h <= size.height; h += range_through)
+		if (h % 4 == 0) // only allow 1:4
+		{
+			w = h / 4;
+			for (x = 0; x <= size.width - w; x += step_through)
+				for (y = 0; y <= size.height - h; y += step_through)
+				{
+					// 1x4 feature
+					ccv_scd_feature_t feature;
+					feature.sx[0] = feature.sx[1] = feature.sx[2] = feature.sx[3] = x;
+					feature.dx[0] = feature.dx[1] = feature.dx[2] = feature.dx[3] = x + w;
+					feature.sy[0] = y;
+					feature.dy[0] = y + (h / 4);
+					feature.sy[1] = y + (h / 4);
+					feature.dy[1] = y + 2 * (h / 4);
+					feature.sy[2] = y + 2 * (h / 4);
+					feature.dy[2] = y + 3 * (h / 4);
+					feature.sy[3] = y + 3 * (h / 4);
+					feature.dy[3] = y + h;
+					ccv_array_push(features, &feature);
+				}
+		}
+	for (w = base.width; w <= size.width; w += range_through)
+		for (h = base.height; h <= size.height; h += range_through)
+			for (x = 0; x <= size.width - w; x += step_through)
+				for (y = 0; y <= size.height - h; y += step_through)
+					if (w % 2 == 0 && h % 2 == 0 &&
+						(w == h || w == h * 2 || w * 2 == h || w * 2 == h * 3 || w * 3 == h * 2)) // allow 1:1, 1:2, 2:1, 2:3, 3:2
 					{
 						// 2x2 feature
+						ccv_scd_feature_t feature;
 						feature.sx[0] = feature.sx[1] = x;
 						feature.dx[0] = feature.dx[1] = x + (w / 2);
 						feature.sy[0] = feature.sy[2] = y;
@@ -273,17 +287,16 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 						feature.dy[1] = feature.dy[3] = y + h;
 						ccv_array_push(features, &feature);
 					}
-				}
 	return features;
 }
 
 typedef struct {
-	double weight;
+	double value;
 	int index;
-} ccv_scd_weight_index_t;
+} ccv_scd_value_index_t;
 
-#define more_than(s1, s2, aux) ((s1).weight >= (s2).weight)
-static CCV_IMPLEMENT_QSORT(_ccv_scd_weight_index_qsort, ccv_scd_weight_index_t, more_than)
+#define more_than(s1, s2, aux) ((s1).value >= (s2).value)
+static CCV_IMPLEMENT_QSORT(_ccv_scd_value_index_qsort, ccv_scd_value_index_t, more_than)
 #undef more_than
 
 static void _ccv_scd_run_feature_sat(ccv_dense_matrix_t* sat, ccv_scd_feature_t* feature, float surf[32])
@@ -328,27 +341,29 @@ static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* featu
 	ccv_matrix_free(sat);
 }
 
+static void _ccv_scd_liblinear_null(const char* str) { /* do nothing */ }
+
 static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set, double C)
 {
 	int i, j, k;
-	ccv_scd_weight_index_t* pwidx = (ccv_scd_weight_index_t*)ccmalloc(sizeof(ccv_scd_weight_index_t) * positives->rnum);
+	ccv_scd_value_index_t* pwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * positives->rnum);
 	for (i = 0; i < positives->rnum; i++)
-		pwidx[i].index = i, pwidx[i].weight = pw[i];
-	_ccv_scd_weight_index_qsort(pwidx, positives->rnum, 0);
+		pwidx[i].index = i, pwidx[i].value = pw[i];
+	_ccv_scd_value_index_qsort(pwidx, positives->rnum, 0);
 	int adjusted_positive_set = positives->rnum;
 	for (i = wide_set - 1; i < positives->rnum; i++)
-		if (fabs(pwidx[i].weight - pwidx[i + 1].weight) > FLT_MIN)
+		if (fabs(pwidx[i].value - pwidx[i + 1].value) > FLT_MIN)
 		{
 			adjusted_positive_set = i + 1;
 			break;
 		}
-	ccv_scd_weight_index_t* nwidx = (ccv_scd_weight_index_t*)ccmalloc(sizeof(ccv_scd_weight_index_t) * negatives->rnum);
+	ccv_scd_value_index_t* nwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * negatives->rnum);
 	for (i = 0; i < negatives->rnum; i++)
-		nwidx[i].index = i, nwidx[i].weight = nw[i];
-	_ccv_scd_weight_index_qsort(nwidx, negatives->rnum, 0);
+		nwidx[i].index = i, nwidx[i].value = nw[i];
+	_ccv_scd_value_index_qsort(nwidx, negatives->rnum, 0);
 	int adjusted_negative_set = negatives->rnum;
 	for (i = wide_set - 1; i < negatives->rnum; i++)
-		if (fabs(nwidx[i].weight - nwidx[i + 1].weight) > FLT_MIN)
+		if (fabs(nwidx[i].value - nwidx[i + 1].value) > FLT_MIN)
 		{
 			adjusted_negative_set = i + 1;
 			break;
@@ -362,7 +377,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		prob.y = malloc(sizeof(prob.y[0]) * active_set * 2);
 		prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * active_set * 2);
 		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
-		gsl_ran_shuffle(rng, pwidx, adjusted_positive_set, sizeof(ccv_scd_weight_index_t));
+		gsl_ran_shuffle(rng, pwidx, adjusted_positive_set, sizeof(ccv_scd_value_index_t));
 		float surf[32];
 		struct feature_node* surf_feature;
 		for (j = 0; j < active_set; j++)
@@ -379,7 +394,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 			prob.x[j] = surf_feature;
 			prob.y[j] = 1;
 		}
-		gsl_ran_shuffle(rng, nwidx, adjusted_negative_set, sizeof(ccv_scd_weight_index_t));
+		gsl_ran_shuffle(rng, nwidx, adjusted_negative_set, sizeof(ccv_scd_value_index_t));
 		for (j = 0; j < active_set; j++)
 		{
 			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(negatives, nwidx[j].index);
@@ -406,6 +421,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 			PRINT(CCV_CLI_ERROR, " - ERROR: cannot pass check parameter: %s\n", err);
 			exit(-1);
 		}
+		set_print_string_function(_ccv_scd_liblinear_null);
 		struct model* linear = train(&prob, &linear_parameters);
 		for (j = 0; j < 32; j++)
 			feature->w[j] = linear->w[j];
@@ -476,10 +492,37 @@ static ccv_scd_feature_t _ccv_scd_best_feature(ccv_array_t* features, ccv_array_
 			max_w = fw[i];
 			j = i;
 		}
-	printf("%lf %d\n", max_w, j);
 	memcpy(&best_feature, ccv_array_get(features, j), sizeof(ccv_scd_feature_t));
 	ccfree(fw);
 	return best_feature;
+}
+
+static double _ccv_scd_compute_auc(double* s, int posnum, int negnum)
+{
+	ccv_scd_value_index_t* sidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * (posnum + negnum));
+	int i;
+	for (i = 0; i < posnum + negnum; i++)
+		sidx[i].value = s[i], sidx[i].index = i;
+	_ccv_scd_value_index_qsort(sidx, posnum + negnum, 0);
+	int fp = 0, tp = 0, fp_prev = 0, tp_prev = 0;
+	double a = 0;
+	double f_prev = -DBL_MAX;
+	for (i = 0; i < posnum + negnum; i++)
+	{
+		if (sidx[i].value != f_prev)
+		{
+			a += (double)(fp - fp_prev) * (tp + tp_prev) * 0.5;
+			f_prev = sidx[i].value;
+			fp_prev = fp;
+			tp_prev = tp;
+		}
+		if (sidx[i].index < posnum)
+			++tp;
+		else
+			++fp;
+	}
+	a += (double)(negnum - fp_prev) * (posnum + tp_prev) * 0.5;
+	return a / ((double)posnum * negnum);
 }
 #endif
 
@@ -490,14 +533,19 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	assert(hard_mine->rnum > 0);
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
+	ccv_array_t* features = _ccv_scd_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
+	PRINT(CCV_CLI_INFO, " - %d features\n", features->rnum);
 	ccv_array_t* positives = _ccv_scd_collect_positives(params.size, posfiles, params.grayscale);
 	ccv_array_t* negatives = _ccv_scd_collect_negatives(rng, params.size, hard_mine, negative_count, params.deform.angle, params.deform.scale, params.deform.shift, params.grayscale);
-	ccv_array_t* features = _ccv_scd_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
 	int t, k, i, j;
 	double* pw = (double*)ccmalloc(sizeof(double) * positives->rnum);
 	double* nw = (double*)ccmalloc(sizeof(double) * negatives->rnum);
 	int* h = (int*)ccmalloc(sizeof(int) * (positives->rnum + negatives->rnum));
 	double* s = (double*)ccmalloc(sizeof(double) * (positives->rnum + negatives->rnum));
+	ccv_scd_classifier_cascade_t* cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
+	cascade->margin = ccv_margin(0, 0, 0, 0);
+	cascade->size = params.size;
+	cascade->count = 0;
 	float surf[32];
 	for (t = 0; t < params.boosting; t++)
 	{
@@ -522,16 +570,19 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 				h[i] = v > 0 ? 1 : -1;
 				int y = i < positives->rnum ? 1 : -1;
 				double w = i < positives->rnum ? pw[i] : nw[i - positives->rnum];
-				// Gentle Boost: to minimize w * (y[i] - alpha * h[i])^2
-				// therefore, 2 * w * (y[i] - alpha * h[i]) * h[i] == 0
-				// therefore, alpha = sum(h[i] * y[i] * w, for i) / sum(h[i] * h[i] * w, for i)
-				// and sum(h[i] * h[i] * w) == sum(w) == 1
-				alpha += h[i] * y * w;
+				// Discrete Adaboost
+				alpha += (y != h[i]) ? w : 0;
 			}
+			assert(alpha < 0.5);
+			printf("error: %lf\n", alpha);
+			alpha = 0.5 * log((1 - alpha) / alpha);
+			printf("alpha: %lf\n", alpha);
 			// compute the total score so far
 			for (i = 0; i < positives->rnum + negatives->rnum; i++)
 				s[i] += h[i] * alpha;
 			// compute AUC
+			double auc = _ccv_scd_compute_auc(s, positives->rnum, negatives->rnum);
+			printf("auc: %lf\n", auc);
 			// re-weight
 			for (i = 0; i < positives->rnum; i++)
 				pw[i] *= exp(-alpha * h[i]);
