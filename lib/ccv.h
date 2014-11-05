@@ -1096,7 +1096,6 @@ typedef struct {
 typedef struct {
 	int count;
 	ccv_scd_feature_t* features;
-	float* alpha;
 	float threshold;
 } ccv_scd_classifier_t;
 
