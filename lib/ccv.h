@@ -1131,6 +1131,7 @@ typedef struct {
 	struct {
 		float hit_rate;
 		float false_positive_rate;
+		float auc_crit;
 		int maximum_feature;
 		int light_stage;
 		int light_feature;
