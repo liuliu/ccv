@@ -115,6 +115,37 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	ccv_matrix_free(dv);
 }
 
+static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_feature_t* feature, float surf[32])
+{
+	int i, j;
+	// extract feature
+	for (i = 0; i < 4; i++)
+	{
+		float* d = at + (cols * feature->sy[i] + feature->sx[i]) * 8;
+		float* du = at + (cols * feature->dy[i] + feature->sx[i]) * 8;
+		float* dv = at + (cols * feature->sy[i] + feature->dx[i]) * 8;
+		float* duv = at + (cols * feature->dy[i] + feature->dx[i]) * 8;
+		for (j = 0; j < 8; j++)
+			surf[i * 8 + j] = duv[j] - du[j] + d[j] - dv[j];
+	}
+	// L2Hys normalization
+	float v = 0;
+	for (i = 0; i < 32; i++)
+		v += surf[i] * surf[i];
+	v = 1.0 / (sqrtf(v) + 1e-6);
+	static float theta = 2.0 / 5.65685424949; // sqrtf(32)
+	float u = 0;
+	for (i = 0; i < 32; i++)
+	{
+		surf[i] = surf[i] * v;
+		surf[i] = ccv_clamp(surf[i], -theta, theta);
+		u += surf[i] * surf[i];
+	}
+	u = 1.0 / (sqrtf(u) + 1e-6);
+	for (i = 0; i < 32; i++)
+		surf[i] = surf[i] * u;
+}
+
 #if defined(HAVE_GSL) && defined(HAVE_LIBLINEAR)
 static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
 {
@@ -298,37 +329,6 @@ typedef struct {
 #define more_than(s1, s2, aux) ((s1).value >= (s2).value)
 static CCV_IMPLEMENT_QSORT(_ccv_scd_value_index_qsort, ccv_scd_value_index_t, more_than)
 #undef more_than
-
-static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_feature_t* feature, float surf[32])
-{
-	int i, j;
-	// extract feature
-	for (i = 0; i < 4; i++)
-	{
-		float* d = at + (cols * feature->sy[i] + feature->sx[i]) * 8;
-		float* du = at + (cols * feature->dy[i] + feature->sx[i]) * 8;
-		float* dv = at + (cols * feature->sy[i] + feature->dx[i]) * 8;
-		float* duv = at + (cols * feature->dy[i] + feature->dx[i]) * 8;
-		for (j = 0; j < 8; j++)
-			surf[i * 8 + j] = duv[j] - du[j] + d[j] - dv[j];
-	}
-	// L2Hys normalization
-	float v = 0;
-	for (i = 0; i < 32; i++)
-		v += surf[i] * surf[i];
-	v = 1.0 / (sqrtf(v) + 1e-6);
-	static float theta = 2.0 / 5.65685424949; // sqrtf(32)
-	float u = 0;
-	for (i = 0; i < 32; i++)
-	{
-		surf[i] = surf[i] * v;
-		surf[i] = ccv_clamp(surf[i], -theta, theta);
-		u += surf[i] * surf[i];
-	}
-	u = 1.0 / (sqrtf(u) + 1e-6);
-	for (i = 0; i < 32; i++)
-		surf[i] = surf[i] * u;
-}
 
 static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* feature, float surf[32])
 {
@@ -578,12 +578,12 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 		if (_ccv_scd_classifier_cascade_pass(cascade, a))
 			ccv_array_push(hard_negatives, a);
 	}
-	int n_per_mine = ccv_max((negative_count - hard_negatives->rnum) / hard_mine->rnum, 1);
+	int n_per_mine = ccv_max((negative_count - hard_negatives->rnum) / hard_mine->rnum, 10);
 	for (t = 0; hard_negatives->rnum < negative_count; t++)
 	{
 		for (i = 0; i < hard_mine->rnum; i++)
 		{
-			FLUSH(CCV_CLI_INFO, " - hard mine negatives %2d%%", 100 * hard_negatives->rnum / negative_count);
+			FLUSH(CCV_CLI_INFO, " - hard mine negatives %d%%", 100 * hard_negatives->rnum / negative_count);
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(hard_mine, i);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
