@@ -1129,6 +1129,14 @@ typedef struct {
 		float scale;
 		float shift;
 	} deform;
+	struct {
+		float hit_rate;
+		float false_positive_rate;
+		int maximum_feature;
+		int light_stage;
+		int light_feature;
+	} stop_criteria;
+	double weight_trimming;
 	double C;
 	int grayscale;
 } ccv_scd_train_param_t;

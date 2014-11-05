@@ -116,6 +116,14 @@ int main(int argc, char** argv)
 			.active_set = 320,
 			.wide_set = 960,
 		},
+		.stop_criteria = {
+			.hit_rate = 0.995,
+			.false_positive_rate = 1e-6,
+			.maximum_feature = 128,
+			.light_stage = 3,
+			.light_feature = 4,
+		},
+		.weight_trimming = 0.99,
 		.C = 5,
 		.grayscale = 0,
 	};
