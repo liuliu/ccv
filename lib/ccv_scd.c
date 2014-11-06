@@ -662,6 +662,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		classifier->features = 0;
 		classifier->count = 0;
 		double auc_prev = 0;
+		assert(positives->rnum > 0 && negatives->rnum > 0);
 		// for the first light stages, we have more restrictive number of features (faster)
 		int maximum_feature = (t < params.stop_criteria.light_stage ? params.stop_criteria.light_feature : params.stop_criteria.maximum_feature);
 		for (k = 0; k < maximum_feature; k++)
@@ -727,7 +728,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	ccfree(h);
 	ccfree(pw);
 	ccfree(nw);
-	return 0;
+	return cascade;
 #else
 	assert(0 && "ccv_scd_classifier_cascade_new requires GSL library and liblinear support");
 	return 0;
