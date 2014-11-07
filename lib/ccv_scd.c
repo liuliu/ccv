@@ -754,7 +754,7 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 		const char create_table_qs[] =
 			"CREATE TABLE IF NOT EXISTS cascade_params "
 			"(id INTEGER PRIMARY KEY ASC, count INTEGER, "
-			"margin_top INTEGER, margin_right INTEGER, margin_bottom INTEGER, margin_left INTEGER, "
+			"margin_left INTEGER, margin_top INTEGER, margin_right INTEGER, margin_bottom INTEGER, "
 			"size_width INTEGER, size_height INTEGER);"
 			"CREATE TABLE IF NOT EXISTS classifier_params "
 			"(classifier INTEGER PRIMARY KEY ASC, count INTEGER, threshold DOUBLE);"
@@ -769,18 +769,18 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 		const char cascade_params_insert_qs[] = 
 			"REPLACE INTO cascade_params "
 			"(id, count, "
-			"margin_top, margin_right, margin_bottom, margin_left, "
+			"margin_left, margin_top, margin_right, margin_bottom, "
 			"size_width, size_height) VALUES "
 			"(0, $count, " // 0
-			"$margin_top, $margin_right, $margin_bottom, $margin_right, " // 4
+			"$margin_left, $margin_top, $margin_bottom, $margin_right, " // 4
 			"$size_width, $size_height);"; // 6
 		sqlite3_stmt* cascade_params_insert_stmt = 0;
 		assert(SQLITE_OK == sqlite3_prepare_v2(db, cascade_params_insert_qs, sizeof(cascade_params_insert_qs), &cascade_params_insert_stmt, 0));
 		sqlite3_bind_int(cascade_params_insert_stmt, 1, cascade->count);
-		sqlite3_bind_int(cascade_params_insert_stmt, 2, cascade->margin.top);
-		sqlite3_bind_int(cascade_params_insert_stmt, 3, cascade->margin.right);
-		sqlite3_bind_int(cascade_params_insert_stmt, 4, cascade->margin.bottom);
-		sqlite3_bind_int(cascade_params_insert_stmt, 5, cascade->margin.left);
+		sqlite3_bind_int(cascade_params_insert_stmt, 2, cascade->margin.left);
+		sqlite3_bind_int(cascade_params_insert_stmt, 3, cascade->margin.top);
+		sqlite3_bind_int(cascade_params_insert_stmt, 4, cascade->margin.right);
+		sqlite3_bind_int(cascade_params_insert_stmt, 5, cascade->margin.bottom);
 		sqlite3_bind_int(cascade_params_insert_stmt, 6, cascade->size.width);
 		sqlite3_bind_int(cascade_params_insert_stmt, 7, cascade->size.height);
 		assert(SQLITE_DONE == sqlite3_step(cascade_params_insert_stmt));
@@ -844,11 +844,87 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 
 ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filename)
 {
-	return 0;
+	int i;
+	sqlite3* db = 0;
+	ccv_scd_classifier_cascade_t* cascade = 0;
+	if (SQLITE_OK == sqlite3_open(filename, &db))
+	{
+		const char cascade_params_qs[] =
+			"SELECT count, " // 1
+			"margin_left, margin_top, margin_right, margin_bottom, " // 5
+			"size_width, size_height FROM cascade_params WHERE id = 0;"; // 7
+		sqlite3_stmt* cascade_params_stmt = 0;
+		if (SQLITE_OK == sqlite3_prepare_v2(db, cascade_params_qs, sizeof(cascade_params_qs), &cascade_params_stmt, 0))
+		{
+			while (sqlite3_step(cascade_params_stmt) == SQLITE_ROW)
+			{
+				cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
+				cascade->count = sqlite3_column_int(cascade_params_stmt, 1);
+				cascade->classifiers = (ccv_scd_classifier_t*)ccmalloc(sizeof(ccv_scd_classifier_t) * cascade->count);
+				cascade->margin = ccv_margin(sqlite3_column_int(cascade_params_stmt, 2), sqlite3_column_int(cascade_params_stmt, 3), sqlite3_column_int(cascade_params_stmt, 4), sqlite3_column_int(cascade_params_stmt, 5));
+				cascade->size = ccv_size(sqlite3_column_int(cascade_params_stmt, 6), sqlite3_column_int(cascade_params_stmt, 7));
+			}
+			sqlite3_finalize(cascade_params_stmt);
+		}
+		if (cascade)
+		{
+			const char classifier_params_qs[] =
+				"SELECT classifier, count, threshold FROM classifier_params ORDER BY classifier ASC;";
+			sqlite3_stmt* classifier_params_stmt = 0;
+			if (SQLITE_OK == sqlite3_prepare_v2(db, classifier_params_qs, sizeof(classifier_params_qs), &classifier_params_stmt, 0))
+			{
+				while (sqlite3_step(classifier_params_stmt) == SQLITE_ROW)
+				{
+					ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 1);
+					classifier->count = sqlite3_column_int(classifier_params_stmt, 2);
+					classifier->features = (ccv_scd_feature_t*)ccmalloc(sizeof(ccv_scd_feature_t) * classifier->count);
+					classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 3);
+				}
+				sqlite3_finalize(classifier_params_stmt);
+			}
+			const char feature_params_qs[] =
+				"SELECT classifier, id, "
+				"sx_0, sy_0, dx_0, dy_0, "
+				"sx_1, sy_1, dx_1, dy_1, "
+				"sx_2, sy_2, dx_2, dy_2, "
+				"sx_3, sy_3, dx_3, dy_3, "
+				"bias, w FROM feature_params ORDER BY classifier, id ASC;";
+			sqlite3_stmt* feature_params_stmt = 0;
+			if (SQLITE_OK == sqlite3_prepare_v2(db, feature_params_qs, sizeof(feature_params_qs), &feature_params_stmt, 0))
+			{
+				while (sqlite3_step(feature_params_stmt) == SQLITE_ROW)
+				{
+					ccv_scd_feature_t* feature = cascade->classifiers[sqlite3_column_int(feature_params_stmt, 1)].features + sqlite3_column_int(feature_params_stmt, 2);
+					for (i = 0; i < 4; i++)
+					{
+						feature->sx[i] = sqlite3_column_int(feature_params_stmt, 2 + i * 4);
+						feature->sy[i] = sqlite3_column_int(feature_params_stmt, 3 + i * 4);
+						feature->dx[i] = sqlite3_column_int(feature_params_stmt, 4 + i * 4);
+						feature->dy[i] = sqlite3_column_int(feature_params_stmt, 5 + i * 4);
+					}
+					feature->bias = (float)sqlite3_column_double(feature_params_stmt, 18);
+					int wnum = sqlite3_column_bytes(feature_params_stmt, 19);
+					assert(wnum == 32 * sizeof(float));
+					const void* w = sqlite3_column_blob(feature_params_stmt, 19);
+					memcpy(feature->w, w, sizeof(float) * 32);
+				}
+			}
+		}
+		sqlite3_close(db);
+	}
+	return cascade;
 }
 
 void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade)
 {
+	int i;
+	for (i = 0; i < cascade->count; i++)
+	{
+		ccv_scd_classifier_t* classifier = cascade->classifiers + i;
+		ccfree(classifier->features);
+	}
+	ccfree(cascade->classifiers);
+	ccfree(cascade);
 }
 
 static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data)
