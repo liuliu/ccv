@@ -1111,6 +1111,7 @@ typedef struct {
 	int flags;
 	int step_through;
 	int interval;
+	ccv_size_t size;
 } ccv_scd_param_t;
 
 typedef struct {

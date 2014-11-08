@@ -14,6 +14,10 @@ const ccv_scd_param_t ccv_scd_default_params = {
 	.min_neighbors = 2,
 	.flags = 0,
 	.step_through = 4,
+	.size = {
+		.width = 40,
+		.height = 40,
+	},
 };
 
 void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
@@ -518,7 +522,7 @@ static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* 
 	return best_feature;
 }
 
-static float _ccv_scd_threshold_at_hit_rate(double* s, int posnum, int negnum, float hit_rate)
+static float _ccv_scd_threshold_at_hit_rate(double* s, int posnum, int negnum, float hit_rate, float* tp_out, float* fp_out)
 {
 	ccv_scd_value_index_t* psidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * posnum);
 	int i;
@@ -537,6 +541,10 @@ static float _ccv_scd_threshold_at_hit_rate(double* s, int posnum, int negnum, f
 			++fp;
 	float etp = (float)tp / posnum;
 	float efp = (float)fp / negnum;
+	if (tp_out)
+		*tp_out = etp;
+	if (fp_out)
+		*fp_out = efp;
 	PRINT(CCV_CLI_INFO, " - stage classifier TP rate : %f, FP rate : %f at threshold : %f\n", etp, efp, threshold);
 	return threshold;
 }
@@ -587,7 +595,14 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 			ccv_array_push(hard_negatives, a);
 	}
 	int n_per_mine = ccv_max((negative_count - hard_negatives->rnum) / hard_mine->rnum, 10);
-	for (t = 0; hard_negatives->rnum < negative_count; t++)
+	// the hard mining comes in following fashion:
+	// 1). original, with n_per_mine set;
+	// 2). horizontal flip, with n_per_mine set;
+	// 3). vertical flip, with n_per_mine set;
+	// 4). 180 rotation, with n_per_mine set;
+	// 5~8). repeat above, but with no n_per_mine set;
+	// after above, if we still cannot collect enough, so be it.
+	for (t = 0; t < 8 /* exhausted all variations */ && hard_negatives->rnum < negative_count; t++)
 	{
 		for (i = 0; i < hard_mine->rnum; i++)
 		{
@@ -604,42 +619,48 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 				ccv_flip(image, 0, 0, CCV_FLIP_X);
 			if (t % 4 >= 2)
 				ccv_flip(image, 0, 0, CCV_FLIP_Y);
+			if (t >= 4)
+				n_per_mine = negative_count; // no hard limit on n_per_mine anymore for the last pass
 			ccv_scd_param_t params = {
 				.interval = 3,
 				.min_neighbors = 0,
 				.flags = 0,
 				.step_through = 4,
+				.size = ccv_size(40, 40),
 			};
 			ccv_array_t* objects = ccv_scd_detect_objects(image, &cascade, 1, params);
-			gsl_ran_shuffle(rng, objects->data, objects->rnum, objects->rsize);
-			for (j = 0; j < ccv_min(objects->rnum, n_per_mine); j++)
+			if (objects->rnum > 0)
 			{
-				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(objects, j);
-				if (rect->x < 0 || rect->y < 0 || rect->x + rect->width > image->cols || rect->y + rect->height > image->rows)
-					continue;
-				ccv_dense_matrix_t* sliced = 0;
-				ccv_slice(image, (ccv_matrix_t**)&sliced, 0, rect->y, rect->x, rect->height, rect->width);
-				ccv_dense_matrix_t* resized = 0;
-				assert(sliced->rows >= cascade->size.height && sliced->cols >= cascade->size.width);
-				if (sliced->rows > cascade->size.height || sliced->cols > cascade->size.width)
+				gsl_ran_shuffle(rng, objects->data, objects->rnum, objects->rsize);
+				for (j = 0; j < ccv_min(objects->rnum, n_per_mine); j++)
 				{
-					ccv_resample(sliced, &resized, 0, cascade->size.height, cascade->size.width, CCV_INTER_CUBIC);
-					ccv_matrix_free(sliced);
-				} else {
-					resized = sliced;
+					ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(objects, j);
+					if (rect->x < 0 || rect->y < 0 || rect->x + rect->width > image->cols || rect->y + rect->height > image->rows)
+						continue;
+					ccv_dense_matrix_t* sliced = 0;
+					ccv_slice(image, (ccv_matrix_t**)&sliced, 0, rect->y, rect->x, rect->height, rect->width);
+					ccv_dense_matrix_t* resized = 0;
+					assert(sliced->rows >= cascade->size.height && sliced->cols >= cascade->size.width);
+					if (sliced->rows > cascade->size.height || sliced->cols > cascade->size.width)
+					{
+						ccv_resample(sliced, &resized, 0, cascade->size.height, cascade->size.width, CCV_INTER_CUBIC);
+						ccv_matrix_free(sliced);
+					} else {
+						resized = sliced;
+					}
+					if (_ccv_scd_classifier_cascade_pass(cascade, resized))
+						ccv_array_push(hard_negatives, resized);
+					ccv_matrix_free(resized);
+					if (hard_negatives->rnum >= negative_count)
+						break;
 				}
-				if (_ccv_scd_classifier_cascade_pass(cascade, resized))
-					ccv_array_push(hard_negatives, resized);
-				ccv_matrix_free(resized);
-				if (hard_negatives->rnum >= negative_count)
-					break;
 			}
 			ccv_matrix_free(image);
 			if (hard_negatives->rnum >= negative_count)
 				break;
 		}
 	}
-	PRINT(CCV_CLI_INFO, "\n");
+	FLUSH(CCV_CLI_INFO, " - hard mine negatives 100%%\n");
 	return hard_negatives;
 }
 #endif
@@ -666,6 +687,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	cascade->count = 0;
 	cascade->classifiers = 0;
 	float surf[32];
+	double accu_false_positive_rate = 1;
 	for (t = 0; t < params.boosting; t++)
 	{
 		for (i = 0; i < positives->rnum; i++)
@@ -729,9 +751,13 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			for (i = 0; i < negatives->rnum; i++)
 				nw[i] *= w;
 		}
-		classifier->threshold = _ccv_scd_threshold_at_hit_rate(s, positives->rnum, negatives->rnum, params.stop_criteria.hit_rate);
+		float false_positive_rate = 0;
+		classifier->threshold = _ccv_scd_threshold_at_hit_rate(s, positives->rnum, negatives->rnum, params.stop_criteria.hit_rate, 0, &false_positive_rate);
+		accu_false_positive_rate *= false_positive_rate;
 		cascade->count = t + 1;
 		ccv_scd_classifier_cascade_write(cascade, filename);
+		if (accu_false_positive_rate < params.stop_criteria.false_positive_rate)
+			break;
 		if (t < params.boosting - 1)
 		{
 			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, cascade, hard_mine, negatives, negative_count, params.grayscale);
@@ -956,6 +982,15 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 {
 	int i, j, k, x, y, p, q, r;
 	int scale_upto = 1;
+	float up_ratio = 1.0;
+	for (i = 0; i < count; i++)
+		up_ratio = ccv_max(up_ratio, ccv_max((float)cascades[i]->size.width / params.size.width, (float)cascades[i]->size.height / params.size.height));
+	if (up_ratio - 1.0 > 1e-4)
+	{
+		ccv_dense_matrix_t* resized = 0;
+		ccv_resample(a, &resized, 0, (int)(a->rows * up_ratio + 0.5), (int)(a->cols * up_ratio + 0.5), CCV_INTER_CUBIC);
+		a = resized;
+	}
 	for (i = 0; i < count; i++)
 		scale_upto = ccv_max(scale_upto, (int)(log(ccv_min((double)a->rows / (cascades[i]->size.height - cascades[i]->margin.top - cascades[i]->margin.bottom), (double)a->cols / (cascades[i]->size.width - cascades[i]->margin.left - cascades[i]->margin.right))) / log(2.) - DBL_MIN) + 1);
 	ccv_dense_matrix_t** pyr = (ccv_dense_matrix_t**)alloca(sizeof(ccv_dense_matrix_t*) * scale_upto);
@@ -1032,7 +1067,10 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 						if (pass)
 						{
 							ccv_comp_t comp;
-							comp.rect = ccv_rect((int)((x + 0.5) * scale * (1 << i) - 0.5), (int)((y + 0.5) * scale * (1 << i) - 0.5), (cascade->size.width - cascade->margin.left - cascade->margin.right) * scale * (1 << i), (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * scale * (1 << i));
+							comp.rect = ccv_rect((int)((x + 0.5) * (scale / up_ratio) * (1 << i) - 0.5),
+												 (int)((y + 0.5) * (scale / up_ratio) * (1 << i) - 0.5),
+												 (cascade->size.width - cascade->margin.left - cascade->margin.right) * (scale / up_ratio) * (1 << i),
+												 (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * (scale / up_ratio) * (1 << i));
 							comp.neighbors = 1;
 							comp.classification.id = j + 1;
 							comp.classification.confidence = sum;
@@ -1049,6 +1087,8 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 
 	for (i = 1; i < scale_upto; i++)
 		ccv_matrix_free(pyr[i]);
+	if (up_ratio - 1.0 > 1e-4)
+		ccv_matrix_free(a);
 
 	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
 	ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
