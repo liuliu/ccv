@@ -9,6 +9,13 @@
 #endif
 #include "3rdparty/sqlite3/sqlite3.h"
 
+const ccv_scd_param_t ccv_scd_default_params = {
+	.interval = 5,
+	.min_neighbors = 2,
+	.flags = 0,
+	.step_through = 4,
+};
+
 void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 {
 	int ch = CCV_GET_CHANNEL(a->type);
@@ -859,10 +866,10 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			while (sqlite3_step(cascade_params_stmt) == SQLITE_ROW)
 			{
 				cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
-				cascade->count = sqlite3_column_int(cascade_params_stmt, 1);
+				cascade->count = sqlite3_column_int(cascade_params_stmt, 0);
 				cascade->classifiers = (ccv_scd_classifier_t*)ccmalloc(sizeof(ccv_scd_classifier_t) * cascade->count);
-				cascade->margin = ccv_margin(sqlite3_column_int(cascade_params_stmt, 2), sqlite3_column_int(cascade_params_stmt, 3), sqlite3_column_int(cascade_params_stmt, 4), sqlite3_column_int(cascade_params_stmt, 5));
-				cascade->size = ccv_size(sqlite3_column_int(cascade_params_stmt, 6), sqlite3_column_int(cascade_params_stmt, 7));
+				cascade->margin = ccv_margin(sqlite3_column_int(cascade_params_stmt, 1), sqlite3_column_int(cascade_params_stmt, 2), sqlite3_column_int(cascade_params_stmt, 3), sqlite3_column_int(cascade_params_stmt, 4));
+				cascade->size = ccv_size(sqlite3_column_int(cascade_params_stmt, 5), sqlite3_column_int(cascade_params_stmt, 6));
 			}
 			sqlite3_finalize(cascade_params_stmt);
 		}
@@ -875,10 +882,10 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			{
 				while (sqlite3_step(classifier_params_stmt) == SQLITE_ROW)
 				{
-					ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 1);
-					classifier->count = sqlite3_column_int(classifier_params_stmt, 2);
+					ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 0);
+					classifier->count = sqlite3_column_int(classifier_params_stmt, 1);
 					classifier->features = (ccv_scd_feature_t*)ccmalloc(sizeof(ccv_scd_feature_t) * classifier->count);
-					classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 3);
+					classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 2);
 				}
 				sqlite3_finalize(classifier_params_stmt);
 			}
@@ -894,7 +901,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			{
 				while (sqlite3_step(feature_params_stmt) == SQLITE_ROW)
 				{
-					ccv_scd_feature_t* feature = cascade->classifiers[sqlite3_column_int(feature_params_stmt, 1)].features + sqlite3_column_int(feature_params_stmt, 2);
+					ccv_scd_feature_t* feature = cascade->classifiers[sqlite3_column_int(feature_params_stmt, 0)].features + sqlite3_column_int(feature_params_stmt, 1);
 					for (i = 0; i < 4; i++)
 					{
 						feature->sx[i] = sqlite3_column_int(feature_params_stmt, 2 + i * 4);
@@ -908,6 +915,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 					const void* w = sqlite3_column_blob(feature_params_stmt, 19);
 					memcpy(feature->w, w, sizeof(float) * 32);
 				}
+				sqlite3_finalize(feature_params_stmt);
 			}
 		}
 		sqlite3_close(db);
@@ -984,6 +992,7 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 					ccv_matrix_free(image);
 				ccv_dense_matrix_t* scd = 0;
 				ccv_scd(bordered, &scd, 0);
+				ccv_matrix_free(bordered);
 				ccv_dense_matrix_t* sat = 0;
 				ccv_sat(scd, &sat, 0, CCV_PADDING_ZERO);
 				assert(CCV_GET_CHANNEL(sat->type) == 8);

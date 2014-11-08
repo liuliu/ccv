@@ -1141,6 +1141,8 @@ typedef struct {
 	int grayscale;
 } ccv_scd_train_param_t;
 
+extern const ccv_scd_param_t ccv_scd_default_params;
+
 ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params);
 void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename);
 ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
