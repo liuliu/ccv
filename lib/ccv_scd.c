@@ -889,7 +889,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 		sqlite3_stmt* cascade_params_stmt = 0;
 		if (SQLITE_OK == sqlite3_prepare_v2(db, cascade_params_qs, sizeof(cascade_params_qs), &cascade_params_stmt, 0))
 		{
-			while (sqlite3_step(cascade_params_stmt) == SQLITE_ROW)
+			if (sqlite3_step(cascade_params_stmt) == SQLITE_ROW)
 			{
 				cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
 				cascade->count = sqlite3_column_int(cascade_params_stmt, 0);
@@ -907,12 +907,13 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			if (SQLITE_OK == sqlite3_prepare_v2(db, classifier_params_qs, sizeof(classifier_params_qs), &classifier_params_stmt, 0))
 			{
 				while (sqlite3_step(classifier_params_stmt) == SQLITE_ROW)
-				{
-					ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 0);
-					classifier->count = sqlite3_column_int(classifier_params_stmt, 1);
-					classifier->features = (ccv_scd_feature_t*)ccmalloc(sizeof(ccv_scd_feature_t) * classifier->count);
-					classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 2);
-				}
+					if (sqlite3_column_int(classifier_params_stmt, 0) < cascade->count)
+					{
+						ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 0);
+						classifier->count = sqlite3_column_int(classifier_params_stmt, 1);
+						classifier->features = (ccv_scd_feature_t*)ccmalloc(sizeof(ccv_scd_feature_t) * classifier->count);
+						classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 2);
+					}
 				sqlite3_finalize(classifier_params_stmt);
 			}
 			const char feature_params_qs[] =
@@ -926,21 +927,26 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			if (SQLITE_OK == sqlite3_prepare_v2(db, feature_params_qs, sizeof(feature_params_qs), &feature_params_stmt, 0))
 			{
 				while (sqlite3_step(feature_params_stmt) == SQLITE_ROW)
-				{
-					ccv_scd_feature_t* feature = cascade->classifiers[sqlite3_column_int(feature_params_stmt, 0)].features + sqlite3_column_int(feature_params_stmt, 1);
-					for (i = 0; i < 4; i++)
+					if (sqlite3_column_int(feature_params_stmt, 0) < cascade->count)
 					{
-						feature->sx[i] = sqlite3_column_int(feature_params_stmt, 2 + i * 4);
-						feature->sy[i] = sqlite3_column_int(feature_params_stmt, 3 + i * 4);
-						feature->dx[i] = sqlite3_column_int(feature_params_stmt, 4 + i * 4);
-						feature->dy[i] = sqlite3_column_int(feature_params_stmt, 5 + i * 4);
+						ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(feature_params_stmt, 0);
+						if (sqlite3_column_int(feature_params_stmt, 1) < classifier->count)
+						{
+							ccv_scd_feature_t* feature = classifier->features + sqlite3_column_int(feature_params_stmt, 1);
+							for (i = 0; i < 4; i++)
+							{
+								feature->sx[i] = sqlite3_column_int(feature_params_stmt, 2 + i * 4);
+								feature->sy[i] = sqlite3_column_int(feature_params_stmt, 3 + i * 4);
+								feature->dx[i] = sqlite3_column_int(feature_params_stmt, 4 + i * 4);
+								feature->dy[i] = sqlite3_column_int(feature_params_stmt, 5 + i * 4);
+							}
+							feature->bias = (float)sqlite3_column_double(feature_params_stmt, 18);
+							int wnum = sqlite3_column_bytes(feature_params_stmt, 19);
+							assert(wnum == 32 * sizeof(float));
+							const void* w = sqlite3_column_blob(feature_params_stmt, 19);
+							memcpy(feature->w, w, sizeof(float) * 32);
+						}
 					}
-					feature->bias = (float)sqlite3_column_double(feature_params_stmt, 18);
-					int wnum = sqlite3_column_bytes(feature_params_stmt, 19);
-					assert(wnum == 32 * sizeof(float));
-					const void* w = sqlite3_column_blob(feature_params_stmt, 19);
-					memcpy(feature->w, w, sizeof(float) * 32);
-				}
 				sqlite3_finalize(feature_params_stmt);
 			}
 		}
