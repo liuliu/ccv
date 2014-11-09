@@ -657,9 +657,13 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 				break;
 		}
 	}
-	FLUSH(CCV_CLI_INFO, " - hard mine negatives 100%%\n");
+	FLUSH(CCV_CLI_INFO, " - hard mine negatives : %d\n", hard_negatives->rnum);
 	return hard_negatives;
 }
+
+typedef struct {
+	ccv_function_state_reserve_field;
+} ccv_scd_classifier_cascade_state_t;
 #endif
 
 ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params)
@@ -763,10 +767,10 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 					a->data.u8 = (unsigned char*)(a + 1);
 					_ccv_scd_run_feature(a, feature, surf);
 					float v = feature->bias;
-					for (j = 0; j < 32; j++)
-						v += feature->w[j] * surf[j];
+					for (k = 0; k < 32; k++)
+						v += feature->w[k] * surf[k];
 					v = expf(v);
-					h[i] = s[i] - (v - 1) / (v + 1);
+					h[j] = s[j] - (v - 1) / (v + 1);
 				}
 				double auc = _ccv_scd_auc(h, positives->rnum, negatives->rnum);
 				if (auc > max_auc)
@@ -782,16 +786,17 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 					a->data.u8 = (unsigned char*)(a + 1);
 					_ccv_scd_run_feature(a, feature, surf);
 					float v = feature->bias;
-					for (j = 0; j < 32; j++)
-						v += feature->w[j] * surf[j];
+					for (k = 0; k < 32; k++)
+						v += feature->w[k] * surf[k];
 					v = expf(v);
-					s[i] -= (v - 1) / (v + 1);
+					s[j] -= (v - 1) / (v + 1);
 				}
 				auc_prev = _ccv_scd_auc(s, positives->rnum, negatives->rnum);
 				--classifier->count;
 				if (k < classifier->count)
 					memmove(classifier->features + k + 1, classifier->features + k, sizeof(ccv_scd_feature_t) * (classifier->count - k));
-			}
+			} else
+				break;
 		}
 		float true_positive_rate = 0;
 		float false_positive_rate = 0;

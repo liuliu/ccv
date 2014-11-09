@@ -1312,7 +1312,7 @@ static void _cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds
 		ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
 		if (rng)
 		{
-			// introduce some scale change
+			// introduce some aspect change
 			ccv_dense_matrix_t* scaled = 0;
 			int scaled_rows = rows + gsl_rng_uniform_int(rng, (input->rows - rows) * 2 + 1);
 			int scaled_cols = cols + gsl_rng_uniform_int(rng, (input->cols - cols) * 2 + 1);

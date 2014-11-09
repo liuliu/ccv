@@ -119,14 +119,14 @@ int main(int argc, char** argv)
 		.stop_criteria = {
 			.hit_rate = 0.9975,
 			.false_positive_rate = 1e-8,
-			.auc_crit = 1e-4,
+			.auc_crit = 1e-5,
 			.maximum_feature = 128,
 			.light_stage = 3,
 			.light_feature = 4,
 		},
 		.weight_trimming = 0.99,
 		.C = 5,
-		.grayscale = 0,
+		.grayscale = 1,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);

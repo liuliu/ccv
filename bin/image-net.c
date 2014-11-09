@@ -49,7 +49,7 @@ int main(int argc, char** argv)
 		.device_count = 4,
 		.peer_access = 0,
 		.symmetric = 1,
-		.image_manipulation = 0.5,
+		.image_manipulation = 0.1,
 		.color_gain = 0.001,
 	};
 	int i, c;
