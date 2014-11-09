@@ -539,13 +539,10 @@ static float _ccv_scd_threshold_at_hit_rate(double* s, int posnum, int negnum, f
 	for (i = 0; i < negnum; i++)
 		if (s[i + posnum] > threshold)
 			++fp;
-	float etp = (float)tp / posnum;
-	float efp = (float)fp / negnum;
 	if (tp_out)
-		*tp_out = etp;
+		*tp_out = (float)tp / posnum;
 	if (fp_out)
-		*fp_out = efp;
-	PRINT(CCV_CLI_INFO, " - stage classifier TP rate : %f, FP rate : %f at threshold : %f\n", etp, efp, threshold);
+		*fp_out = (float)fp / negnum;
 	return threshold;
 }
 
@@ -606,7 +603,7 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 	{
 		for (i = 0; i < hard_mine->rnum; i++)
 		{
-			FLUSH(CCV_CLI_INFO, " - hard mine negatives %d%%", 100 * hard_negatives->rnum / negative_count);
+			FLUSH(CCV_CLI_INFO, " - hard mine negatives %d%% with %d-th permutation", 100 * hard_negatives->rnum / negative_count, t + 1);
 			ccv_file_info_t* file_info = (ccv_file_info_t*)ccv_array_get(hard_mine, i);
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(file_info->filename, &image, CCV_IO_ANY_FILE | (grayscale ? CCV_IO_GRAY : CCV_IO_RGB_COLOR));
@@ -687,6 +684,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	cascade->count = 0;
 	cascade->classifiers = 0;
 	float surf[32];
+	double accu_true_positive_rate = 1;
 	double accu_false_positive_rate = 1;
 	for (t = 0; t < params.boosting; t++)
 	{
@@ -725,11 +723,11 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 				s[i] += h[i];
 			// compute AUC
 			double auc = _ccv_scd_auc(s, positives->rnum, negatives->rnum);
-			FLUSH(CCV_CLI_INFO, " - at %d, auc: %lf\n", k + 1, auc);
+			FLUSH(CCV_CLI_INFO, " - at %d-th iteration, auc: %lf\n", k + 1, auc);
 			if (auc - auc_prev < params.stop_criteria.auc_crit)
 				break;
 			auc_prev = auc;
-			PRINT(CCV_CLI_INFO, " - feature %s @ (%d, %d, %d, %d)\n", ((best_feature.dy[3] == best_feature.dy[0] ? "4x1" : (best_feature.dx[3] == best_feature.dx[0] ? "1x4" : "2x2"))), best_feature.sx[0], best_feature.sy[0], best_feature.dx[3], best_feature.dy[3]);
+			PRINT(CCV_CLI_INFO, " --- pick feature %s @ (%d, %d, %d, %d)\n", ((best_feature.dy[3] == best_feature.dy[0] ? "4x1" : (best_feature.dx[3] == best_feature.dx[0] ? "1x4" : "2x2"))), best_feature.sx[0], best_feature.sy[0], best_feature.dx[3], best_feature.dy[3]);
 			classifier->features[k] = best_feature;
 			classifier->count = k + 1;
 			// re-weight, with Gentle AdaBoost
@@ -751,9 +749,56 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			for (i = 0; i < negatives->rnum; i++)
 				nw[i] *= w;
 		}
+		// backtrack removal
+		while (classifier->count > 1)
+		{
+			double max_auc = 0;
+			k = -1;
+			for (i = 0; i < classifier->count; i++)
+			{
+				ccv_scd_feature_t* feature = classifier->features + i;
+				for (j = 0; j < positives->rnum + negatives->rnum; j++)
+				{
+					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < positives->rnum ? ccv_array_get(positives, j) : ccv_array_get(negatives, j - positives->rnum));
+					a->data.u8 = (unsigned char*)(a + 1);
+					_ccv_scd_run_feature(a, feature, surf);
+					float v = feature->bias;
+					for (j = 0; j < 32; j++)
+						v += feature->w[j] * surf[j];
+					v = expf(v);
+					h[i] = s[i] - (v - 1) / (v + 1);
+				}
+				double auc = _ccv_scd_auc(h, positives->rnum, negatives->rnum);
+				if (auc > max_auc)
+					max_auc = auc, k = i;
+			}
+			if (max_auc >= auc_prev)
+			{
+				PRINT(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", k, max_auc);
+				ccv_scd_feature_t* feature = classifier->features + k;
+				for (j = 0; j < positives->rnum + negatives->rnum; j++)
+				{
+					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < positives->rnum ? ccv_array_get(positives, j) : ccv_array_get(negatives, j - positives->rnum));
+					a->data.u8 = (unsigned char*)(a + 1);
+					_ccv_scd_run_feature(a, feature, surf);
+					float v = feature->bias;
+					for (j = 0; j < 32; j++)
+						v += feature->w[j] * surf[j];
+					v = expf(v);
+					s[i] -= (v - 1) / (v + 1);
+				}
+				auc_prev = _ccv_scd_auc(s, positives->rnum, negatives->rnum);
+				--classifier->count;
+				if (k < classifier->count)
+					memmove(classifier->features + k + 1, classifier->features + k, sizeof(ccv_scd_feature_t) * (classifier->count - k));
+			}
+		}
+		float true_positive_rate = 0;
 		float false_positive_rate = 0;
-		classifier->threshold = _ccv_scd_threshold_at_hit_rate(s, positives->rnum, negatives->rnum, params.stop_criteria.hit_rate, 0, &false_positive_rate);
+		classifier->threshold = _ccv_scd_threshold_at_hit_rate(s, positives->rnum, negatives->rnum, params.stop_criteria.hit_rate, &true_positive_rate, &false_positive_rate);
+		accu_true_positive_rate *= true_positive_rate;
 		accu_false_positive_rate *= false_positive_rate;
+		PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lf, at threshold : %f\n", t + 1, true_positive_rate, false_positive_rate, accu_true_positive_rate, accu_false_positive_rate, classifier->threshold);
 		cascade->count = t + 1;
 		ccv_scd_classifier_cascade_write(cascade, filename);
 		if (accu_false_positive_rate < params.stop_criteria.false_positive_rate)
@@ -893,7 +938,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			{
 				cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
 				cascade->count = sqlite3_column_int(cascade_params_stmt, 0);
-				cascade->classifiers = (ccv_scd_classifier_t*)ccmalloc(sizeof(ccv_scd_classifier_t) * cascade->count);
+				cascade->classifiers = (ccv_scd_classifier_t*)cccalloc(cascade->count, sizeof(ccv_scd_classifier_t));
 				cascade->margin = ccv_margin(sqlite3_column_int(cascade_params_stmt, 1), sqlite3_column_int(cascade_params_stmt, 2), sqlite3_column_int(cascade_params_stmt, 3), sqlite3_column_int(cascade_params_stmt, 4));
 				cascade->size = ccv_size(sqlite3_column_int(cascade_params_stmt, 5), sqlite3_column_int(cascade_params_stmt, 6));
 			}
