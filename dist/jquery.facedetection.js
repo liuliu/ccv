@@ -1,6 +1,6 @@
 /*! ----------------------------------------------------------------------------
  *  A jQuery plugin to detect faces on images, videos and canvases.
- *  v2.0.0 released 2014-10-26 16:07
+ *  v2.0.0 released 2014-11-10 16:10
  *  http://facedetection.jaysalvat.com
  *  Copyright (c) 2010-2014, Jay Salvat
  *  http://jaysalvat.com/
@@ -16570,6 +16570,6 @@
             void options.complete.apply($$, [ [] ]));
         });
     };
-}("function" != typeof jQuery ? {
+}("function" == typeof jQuery ? jQuery : "function" == typeof Zepto ? Zepto : {
     fn: {}
-} : jQuery);
+});

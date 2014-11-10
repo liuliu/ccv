@@ -54,7 +54,8 @@
             out: 'jquery.facedetection'
         },
         enclose: { 
-            '(typeof jQuery !== "function") ? { fn: {} } : jQuery': '$' // jQuery hack for Worker mode
+            // jQuery / Zepto / Worker mode
+            '("function" === typeof jQuery) ? jQuery : ("function" === typeof Zepto) ? Zepto : { fn: {} }': '$' 
         }
     };
 
