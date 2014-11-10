@@ -48,6 +48,7 @@ int main(int argc, char** argv)
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
 				ccv_scd_param_t params = ccv_scd_default_params;
+				params.min_neighbors = 1;
 				params.size = ccv_size(20, 20);
 				ccv_array_t* seq = ccv_scd_detect_objects(image, &cascade, 1, params);
 				for (i = 0; i < seq->rnum; i++)

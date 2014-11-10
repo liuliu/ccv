@@ -106,7 +106,10 @@ static int _cwc_convnet_convolutional_forward_propagate_vary(ccv_convnet_layer_t
 	} while (0)
 	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, vary_block);
 #undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
+	cudaError_t error = cudaGetLastError();
+	if (cudaErrorInvalidConfiguration == error)
+		return -1;
+	assert(error == cudaSuccess);
 	return 0;
 }
 
@@ -452,7 +455,10 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_rows_vary(c
 	// special casing for image
 	cwc_vary_4_a(x, 1, 2, 3, 4, cwc_vary_4_b, y, 1, 2, 3, 4, cwc_vary_5_c, layer->net.convolutional.rows, 3, 5, 7, 9, 11, vary_block);
 #undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
+	cudaError_t error = cudaGetLastError();
+	if (cudaErrorInvalidConfiguration == error)
+		return -1;
+	assert(error == cudaSuccess);
 	return 0;
 }
 
@@ -512,7 +518,10 @@ static int _cwc_convnet_convolutional_backward_propagate_coefficient_default_var
 	} while (0)
 	cwc_vary_6_a(x, 1, 2, 3, 4, 6, 8, cwc_vary_6_b, y, 1, 2, 3, 4, 6, 8, cwc_vary_4_c, z, 16, 24, 32, 36, vary_block);
 #undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
+	cudaError_t error = cudaGetLastError();
+	if (cudaErrorInvalidConfiguration == error)
+		return -1;
+	assert(error == cudaSuccess);
 	return 0;
 }
 
@@ -563,7 +572,10 @@ static int _cwc_convnet_convolutional_backward_propagate_error_vary(ccv_convnet_
 	} while (0)
 	cwc_vary_4_a(x, 1, 2, 4, 8, cwc_vary_5_b, y, 1, 2, 4, 6, 8, cwc_vary_6_c, z, 16, 24, 32, 36, 64, 72, cwc_vary_4_d, layer->net.convolutional.strides, 1, 2, 3, 4, vary_block);
 #undef vary_block
-	assert(cudaGetLastError() == cudaSuccess);
+	cudaError_t error = cudaGetLastError();
+	if (cudaErrorInvalidConfiguration == error)
+		return -1;
+	assert(error == cudaSuccess);
 	return 0;
 }
 
