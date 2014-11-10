@@ -37,11 +37,21 @@ static void _cwc_convnet_random_image_manipulation(gsl_rng* rng, ccv_dense_matri
 
 void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float image_manipulation, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
-	assert(size <= batch);
+	assert(size > 0 && size <= batch);
 	float* channel_gains = (float*)alloca(sizeof(float) * channels);
 	memset(channel_gains, 0, sizeof(float) * channels);
+	int i;
+	gsl_rng** rngs = (gsl_rng**)malloc(sizeof(gsl_rng*) * size);
+	memset(rngs, 0, sizeof(gsl_rng*) * size);
+	if (rng)
+		for (i = 0; i < size; i++)
+		{
+			rngs[i] = gsl_rng_alloc(gsl_rng_default);
+			gsl_rng_set(rngs[i], gsl_rng_get(rng));
+		}
 	parallel_for(i, size) {
 		int k, x;
+		assert(offset + i < categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx ? idx[offset + i] : offset + i);
 		assert(categorized->c < category_count && categorized->c >= 0); // now only accept classes listed
 		if (c)
@@ -60,13 +70,13 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 		if (image)
 		{
 			assert(image->rows == dim.height || image->cols == dim.width);
-			if (rng && image_manipulation > 0)
-				_cwc_convnet_random_image_manipulation(rng, image, image_manipulation);
+			if (rngs[i] && image_manipulation > 0)
+				_cwc_convnet_random_image_manipulation(rngs[i], image, image_manipulation);
 			ccv_dense_matrix_t* input = 0;
 			if (image->cols != dim.width || image->rows != dim.height)
 			{
-				int x = rng ? gsl_rng_uniform_int(rng, image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
-				int y = rng ? gsl_rng_uniform_int(rng, image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
+				int x = rngs[i] ? gsl_rng_uniform_int(rngs[i], image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
+				int y = rngs[i] ? gsl_rng_uniform_int(rngs[i], image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
 				assert(x == 0 || y == 0);
 				ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
 			} else
@@ -75,15 +85,15 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 			if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
 				ccv_matrix_free(image);
 			// random horizontal reflection
-			if (symmetric && rng && gsl_rng_uniform_int(rng, 2) == 0)
+			if (symmetric && rngs[i] && gsl_rng_uniform_int(rngs[i], 2) == 0)
 				ccv_flip(input, &input, 0, CCV_FLIP_X);
 			ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
-			if (rng)
+			if (rngs[i])
 			{
 				// introduce some aspect change
 				ccv_dense_matrix_t* scaled = 0;
-				int scaled_rows = rows + gsl_rng_uniform_int(rng, (input->rows - rows) * 2 + 1);
-				int scaled_cols = cols + gsl_rng_uniform_int(rng, (input->cols - cols) * 2 + 1);
+				int scaled_rows = rows + gsl_rng_uniform_int(rngs[i], (input->rows - rows) * 2 + 1);
+				int scaled_cols = cols + gsl_rng_uniform_int(rngs[i], (input->cols - cols) * 2 + 1);
 				ccv_resample(input, &scaled, CCV_32F, scaled_rows, scaled_cols, CCV_INTER_CUBIC);
 				ccv_matrix_free(input);
 				input = scaled;
@@ -91,20 +101,20 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 			ccv_dense_matrix_t* patch = 0;
 			if (input->cols != cols || input->rows != rows)
 			{
-				int x = rng ? gsl_rng_uniform_int(rng, input->cols - cols + 1) : (input->cols - cols + 1) / 2;
-				int y = rng ? gsl_rng_uniform_int(rng, input->rows - rows + 1) : (input->rows - rows + 1) / 2;
+				int x = rngs[i] ? gsl_rng_uniform_int(rngs[i], input->cols - cols + 1) : (input->cols - cols + 1) / 2;
+				int y = rngs[i] ? gsl_rng_uniform_int(rngs[i], input->rows - rows + 1) : (input->rows - rows + 1) / 2;
 				ccv_slice(input, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
 				ccv_matrix_free(input);
 			} else
 				patch = input;
 			assert(channels == CCV_GET_CHANNEL(patch->type));
-			if (color_gain > 0 && rng && eigenvectors && eigenvalues)
+			if (color_gain > 0 && rngs[i] && eigenvectors && eigenvalues)
 			{
 				assert(channels == 3); // only support RGB color gain
 				memset(channel_gains, 0, sizeof(float) * channels);
 				for (k = 0; k < channels; k++)
 				{
-					float alpha = gsl_ran_gaussian(rng, color_gain) * eigenvalues->data.f64[k];
+					float alpha = gsl_ran_gaussian(rngs[i], color_gain) * eigenvalues->data.f64[k];
 					for (x = 0; x < channels; x++)
 						channel_gains[x] += eigenvectors->data.f64[k * channels + x] * alpha;
 				}
@@ -116,6 +126,10 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 		} else
 			PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
 	} parallel_endfor
+	if (rng)
+		for (i = 0; i < size; i++)
+			gsl_rng_free(rngs[i]);
+	ccfree(rngs);
 }
 #endif
 
