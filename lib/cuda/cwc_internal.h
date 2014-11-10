@@ -229,6 +229,8 @@ __global__ static void cwc_kern_relu_backward_propagate(const int batch,
 		out_grad[threadIdx.x] = 0;
 }
 
+// propagate functions
+
 static const float zero = 0;
 static const float one = 1;
 
