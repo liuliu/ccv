@@ -5,7 +5,7 @@ jQuery Face Detection Plugin
 [![NPM version](https://badge.fury.io/js/jquery.facedetection.svg)](http://badge.fury.io/js/jquery.facedetection)
 [![Bower version](https://badge.fury.io/bo/jquery.facedetection.svg)](http://badge.fury.io/bo/jquery.facedetection)
 
-A jQuery plugin to detect faces on images, videos and canvases to get theirs coordinates.
+A jQuery/Zepto plugin to detect faces on images, videos and canvases to get theirs coordinates.
 
 **Importante note:** This plugin uses an algorithm by [Liu Liu](http://liuliu.me/).
 
