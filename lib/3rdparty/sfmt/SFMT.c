@@ -339,7 +339,7 @@ void sfmt_fill_array64(sfmt_t * sfmt, uint64_t *array, int size) {
  * @param rsize the size of each record in the array
  */
 #if !defined(__OpenBSD__) && !defined(__FreeBSD__)
-    #include <alloca.h>
+#include <alloca.h>
 #endif
 
 void sfmt_genrand_shuffle(sfmt_t * sfmt, void *array, int size, int rsize) {
