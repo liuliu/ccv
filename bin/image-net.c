@@ -49,7 +49,7 @@ int main(int argc, char** argv)
 		.device_count = 4,
 		.peer_access = 0,
 		.symmetric = 1,
-		.image_manipulation = 0.5,
+		.image_manipulation = 0,
 		.color_gain = 0.001,
 	};
 	int i, c;
@@ -132,10 +132,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.0001;
+		layer_params[i].w.learn_rate = 0.001;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.0001;
+		layer_params[i].bias.learn_rate = 0.001;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;

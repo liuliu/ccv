@@ -180,19 +180,18 @@ static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dens
 	ccv_dense_matrix_t* b = 0;
 	ccv_perspective_transform(image, &b, 0, m00, m01, m02, m10, m11, m12, m20, m21, m22);
 	ccv_dense_matrix_t* resize = 0;
-	// have 1px border around the grayscale image because we need these to compute correct gradient feature
 	ccv_size_t scale_size = {
-		.width = (int)((size.width + margin.left + margin.right + 2) / scale_ratio + 0.5),
-		.height = (int)((size.height + margin.top + margin.bottom + 2) / scale_ratio + 0.5),
+		.width = (int)((size.width + margin.left + margin.right) / scale_ratio + 0.5),
+		.height = (int)((size.height + margin.top + margin.bottom) / scale_ratio + 0.5),
 	};
 	assert(scale_size.width > 0 && scale_size.height > 0);
-	ccv_slice(b, (ccv_matrix_t**)&resize, 0, (int)(b->rows * 0.5 - (size.height + margin.top + margin.bottom + 2) / scale_ratio * 0.5 + 0.5), (int)(b->cols * 0.5 - (size.width + margin.left + margin.right + 2) / scale_ratio * 0.5 + 0.5), scale_size.height, scale_size.width);
+	ccv_slice(b, (ccv_matrix_t**)&resize, 0, (int)(b->rows * 0.5 - (size.height + margin.top + margin.bottom) / scale_ratio * 0.5 + 0.5), (int)(b->cols * 0.5 - (size.width + margin.left + margin.right) / scale_ratio * 0.5 + 0.5), scale_size.height, scale_size.width);
 	ccv_matrix_free(b);
 	b = 0;
 	if (scale_ratio > 1)
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom + 2, size.width + margin.left + margin.right + 2, CCV_INTER_CUBIC);
+		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_CUBIC);
 	else
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom + 2, size.width + margin.left + margin.right + 2, CCV_INTER_AREA);
+		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_AREA);
 	ccv_matrix_free(resize);
 	return b;
 }
@@ -484,6 +483,7 @@ static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* 
 	int i, j, k;
 	float surf[32];
 	double* sn = (double*)ccmalloc(sizeof(double) * features->rnum * (positives->rnum + negatives->rnum));
+	assert(positives->rnum + negatives->rnum > 0);
 	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
 		FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for auc", i + 1, positives->rnum + negatives->rnum, (float)(i + 1) * 100 / (positives->rnum + negatives->rnum));

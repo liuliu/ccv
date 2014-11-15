@@ -56,7 +56,7 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 		assert(categorized->c < category_count && categorized->c >= 0); // now only accept classes listed
 		if (c)
 			c[i] = categorized->c;
-		ccv_dense_matrix_t* image;
+		ccv_dense_matrix_t* image = 0;
 		switch (categorized->type)
 		{
 			case CCV_CATEGORIZED_DENSE_MATRIX:
@@ -88,16 +88,6 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 			if (symmetric && rngs[i] && gsl_rng_uniform_int(rngs[i], 2) == 0)
 				ccv_flip(input, &input, 0, CCV_FLIP_X);
 			ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
-			if (rngs[i])
-			{
-				// introduce some aspect change
-				ccv_dense_matrix_t* scaled = 0;
-				int scaled_rows = rows + gsl_rng_uniform_int(rngs[i], (input->rows - rows) * 2 + 1);
-				int scaled_cols = cols + gsl_rng_uniform_int(rngs[i], (input->cols - cols) * 2 + 1);
-				ccv_resample(input, &scaled, CCV_32F, scaled_rows, scaled_cols, CCV_INTER_CUBIC);
-				ccv_matrix_free(input);
-				input = scaled;
-			}
 			ccv_dense_matrix_t* patch = 0;
 			if (input->cols != cols || input->rows != rows)
 			{
@@ -144,7 +134,7 @@ void cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t dim, int c
 		if (i % 23 == 0 || i == categorizeds->rnum - 1)
 			FLUSH(CCV_CLI_INFO, " - compute mean activity %d / %d", i + 1, categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, i);
-		ccv_dense_matrix_t* image;
+		ccv_dense_matrix_t* image = 0;
 		switch (categorized->type)
 		{
 			case CCV_CATEGORIZED_DENSE_MATRIX:
@@ -219,7 +209,7 @@ void cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* me
 		if (c % 23 == 0 || c == categorizeds->rnum - 1)
 			FLUSH(CCV_CLI_INFO, " - compute covariance matrix for data augmentation (color gain) %d / %d", c + 1, categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, c);
-		ccv_dense_matrix_t* image;
+		ccv_dense_matrix_t* image = 0;
 		switch (categorized->type)
 		{
 			case CCV_CATEGORIZED_DENSE_MATRIX:
