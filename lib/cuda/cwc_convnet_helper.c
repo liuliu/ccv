@@ -141,14 +141,13 @@ void cwc_convnet_mean_formation(ccv_array_t* categorizeds, ccv_size_t dim, int c
 				image = categorized->matrix;
 				break;
 			case CCV_CATEGORIZED_FILE:
-				image = 0;
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-				if (!image)
-				{
-					PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
-					continue;
-				}
 				break;
+		}
+		if (!image)
+		{
+			PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
+			continue;
 		}
 		ccv_dense_matrix_t* patch = 0;
 		if (image->cols != dim.width || image->rows != dim.height)
@@ -216,14 +215,13 @@ void cwc_convnet_channel_eigen(ccv_array_t* categorizeds, ccv_dense_matrix_t* me
 				image = categorized->matrix;
 				break;
 			case CCV_CATEGORIZED_FILE:
-				image = 0;
 				ccv_read(categorized->file.filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-				if (!image)
-				{
-					PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
-					continue;
-				}
 				break;
+		}
+		if (!image)
+		{
+			PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
+			continue;
 		}
 		ccv_dense_matrix_t* patch = 0;
 		if (image->cols != dim.width || image->rows != dim.height)

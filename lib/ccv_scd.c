@@ -482,7 +482,7 @@ static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* 
 	ccv_scd_feature_t best_feature;
 	int i, j, k;
 	float surf[32];
-	double* sn = (double*)ccmalloc(sizeof(double) * features->rnum * (positives->rnum + negatives->rnum));
+	double* sn = (double*)cccalloc(features->rnum * (positives->rnum + negatives->rnum), sizeof(double));
 	assert(positives->rnum + negatives->rnum > 0);
 	for (i = 0; i < positives->rnum + negatives->rnum; i++)
 	{
@@ -1154,7 +1154,7 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 								pass = 0;
 								break;
 							}
-							sum += v / classifier->count;
+							sum = v / classifier->count;
 						}
 						if (pass)
 						{
@@ -1165,7 +1165,7 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 												 (cascade->size.height - cascade->margin.top - cascade->margin.bottom) * (scale / up_ratio) * (1 << i));
 							comp.neighbors = 1;
 							comp.classification.id = j + 1;
-							comp.classification.confidence = sum;
+							comp.classification.confidence = sum + (cascade->count - 1);
 							ccv_array_push(seq[j], &comp);
 						}
 					}
