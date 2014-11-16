@@ -38,10 +38,10 @@ static void _cwc_convnet_random_image_manipulation(gsl_rng* rng, ccv_dense_matri
 void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float image_manipulation, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
 	assert(size > 0 && size <= batch);
-	float* channel_gains = (float*)alloca(sizeof(float) * channels);
-	memset(channel_gains, 0, sizeof(float) * channels);
+	float* channel_gains = (float*)alloca(sizeof(float) * channels * size);
+	memset(channel_gains, 0, sizeof(float) * channels * size);
 	int i;
-	gsl_rng** rngs = (gsl_rng**)malloc(sizeof(gsl_rng*) * size);
+	gsl_rng** rngs = (gsl_rng**)alloca(sizeof(gsl_rng*) * size);
 	memset(rngs, 0, sizeof(gsl_rng*) * size);
 	if (rng)
 		for (i = 0; i < size; i++)
@@ -101,17 +101,17 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 			if (color_gain > 0 && rngs[i] && eigenvectors && eigenvalues)
 			{
 				assert(channels == 3); // only support RGB color gain
-				memset(channel_gains, 0, sizeof(float) * channels);
+				memset(channel_gains + channels * i, 0, sizeof(float) * channels);
 				for (k = 0; k < channels; k++)
 				{
 					float alpha = gsl_ran_gaussian(rngs[i], color_gain) * eigenvalues->data.f64[k];
 					for (x = 0; x < channels; x++)
-						channel_gains[x] += eigenvectors->data.f64[k * channels + x] * alpha;
+						channel_gains[x + i * channels] += eigenvectors->data.f64[k * channels + x] * alpha;
 				}
 			}
 			for (k = 0; k < channels; k++)
 				for (x = 0; x < rows * cols; x++)
-					b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] + channel_gains[k];
+					b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] + channel_gains[k + i * channels];
 			ccv_matrix_free(patch);
 		} else
 			PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);
@@ -119,7 +119,6 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 	if (rng)
 		for (i = 0; i < size; i++)
 			gsl_rng_free(rngs[i]);
-	ccfree(rngs);
 }
 #endif
 

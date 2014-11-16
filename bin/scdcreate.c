@@ -67,13 +67,16 @@ int main(int argc, char** argv)
 	assert(r0 && "positive-list doesn't exists");
 	FILE* r1 = fopen(background_list, "r");
 	assert(r1 && "background-list doesn't exists");
-	ccv_decimal_pose_t pose;
 	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
 	ccv_array_t* posfiles = ccv_array_new(sizeof(ccv_file_info_t), 32, 0);
 	char* file = (char*)malloc(1024);
-	// roll pitch yaw
-	while (fscanf(r0, "%s %f %f %f %f %f %f %f", file, &pose.x, &pose.y, &pose.a, &pose.b, &pose.roll, &pose.pitch, &pose.yaw) != EOF)
+	size_t len = 1024;
+	ssize_t read;
+	while ((read = getline(&file, &len, r0)) != -1)
 	{
+		while(read > 1 && isspace(file[read - 1]))
+			read--;
+		file[read] = 0;
 		ccv_file_info_t file_info;
 		file_info.filename = (char*)ccmalloc(1024);
 		if (base_dir != 0)
@@ -82,12 +85,9 @@ int main(int argc, char** argv)
 			file_info.filename[dirlen - 1] = '/';
 		}
 		strncpy(file_info.filename + dirlen, file, 1024 - dirlen);
-		file_info.pose = pose;
 		ccv_array_push(posfiles, &file_info);
 	}
 	fclose(r0);
-	size_t len = 1024;
-	ssize_t read;
 	ccv_array_t* hard_mine = (ccv_array_t*)ccv_array_new(sizeof(ccv_file_info_t), 32, 0);
 	while ((read = getline(&file, &len, r1)) != -1)
 	{
@@ -113,8 +113,8 @@ int main(int argc, char** argv)
 			.base = ccv_size(12, 12),
 			.range_through = 4,
 			.step_through = 4,
-			.active_set = 640,
-			.wide_set = 1920,
+			.active_set = 1920,
+			.wide_set = 5760,
 		},
 		.stop_criteria = {
 			.hit_rate = 0.995,
@@ -126,7 +126,7 @@ int main(int argc, char** argv)
 		},
 		.weight_trimming = 0.99,
 		.C = 5,
-		.grayscale = 1,
+		.grayscale = 0,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);

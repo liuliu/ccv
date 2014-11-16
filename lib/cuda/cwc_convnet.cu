@@ -1086,6 +1086,11 @@ static void _cwc_convnet_collect_runtime_stats(ccv_convnet_t* convnet, cwc_convn
 	}
 }
 
+static void CUDART_CB _cwc_stream_forced_cpu_sync(cudaStream_t stream,  cudaError_t status, void* data)
+{
+	PRINT(CCV_CLI_VERBOSE, " -- *** forced CPU sync with stream %p and status %s ***\n", stream, cudaGetErrorString(status));
+}
+
 static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int device_count, cwc_convnet_context_t* context)
 {
 	int i, j, k, device_id;
@@ -1138,6 +1143,11 @@ static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int dev
 				}
 			}
 		}
+	}
+	for (device_id = 0; device_id < device_count; device_id++)
+	{ // without this forced sync (which let the data stream to callback onto CPU after it finishes, I cannot make it work somehow
+		cudaSetDevice(device_id);
+		cudaStreamAddCallback(context->device[device_id].data_stream, _cwc_stream_forced_cpu_sync, 0, 0);
 	}
 }
 
@@ -1497,7 +1507,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 	for (device_id = 0; device_id < GPU(z->convnet)->device_count; device_id++)
 	{
 		cudaSetDevice(device_id);
-		for (i = 0; i < convnet->count; i++)
+		/*for (i = 0; i < convnet->count; i++)
 		{
 			ccv_convnet_layer_t* layer = GPU(z->convnet)->device[device_id].layers + i;
 			ccv_convnet_layer_t* z_layer = z->convnet->layers + i;
@@ -1517,7 +1527,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 					ASSERT_NO_CUDA_ERROR();
 					break;
 			}
-		}
+		}*/
 	}
 	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 		_cwc_convnet_collect_disk_stats(z->convnet);

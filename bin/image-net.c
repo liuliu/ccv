@@ -47,7 +47,7 @@ int main(int argc, char** argv)
 		.sgd_frequency = 1, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
 		.device_count = 4,
-		.peer_access = 0,
+		.peer_access = 1,
 		.symmetric = 1,
 		.image_manipulation = 0,
 		.color_gain = 0.001,
@@ -132,10 +132,10 @@ int main(int argc, char** argv)
 	for (i = 0; i < 13; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.001;
+		layer_params[i].w.learn_rate = 0.02;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.001;
+		layer_params[i].bias.learn_rate = 0.02;
 		layer_params[i].bias.momentum = 0.9;
 	}
 	layer_params[10].dor = 0.5;
