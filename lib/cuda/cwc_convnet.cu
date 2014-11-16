@@ -1086,11 +1086,6 @@ static void _cwc_convnet_collect_runtime_stats(ccv_convnet_t* convnet, cwc_convn
 	}
 }
 
-static void CUDART_CB _cwc_stream_forced_cpu_sync(cudaStream_t stream,  cudaError_t status, void* data)
-{
-	PRINT(CCV_CLI_VERBOSE, " -- *** forced CPU sync with stream %p and status %s ***\n", stream, cudaGetErrorString(status));
-}
-
 static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int device_count, cwc_convnet_context_t* context)
 {
 	int i, j, k, device_id;
@@ -1144,10 +1139,13 @@ static void _cwc_convnet_reduce_data_parallelism(ccv_convnet_t* convnet, int dev
 			}
 		}
 	}
-	for (device_id = 0; device_id < device_count; device_id++)
-	{ // without this forced sync (which let the data stream to callback onto CPU after it finishes, I cannot make it work somehow
+	cudaSetDevice(0);
+	cudaEventRecord(context->device[0].data_joint, context->device[0].data_stream);
+	// other devices need to sync with the 0 device before proceed (otherwise in net_sgd, it will reset configuration->w to 0 on its own device and cause out-of-sync)
+	for (device_id = 1; device_id < device_count; device_id++)
+	{
 		cudaSetDevice(device_id);
-		cudaStreamAddCallback(context->device[device_id].data_stream, _cwc_stream_forced_cpu_sync, 0, 0);
+		cudaStreamWaitEvent(context->device[device_id].data_stream, context->device[0].data_joint, 0);
 	}
 }
 
