@@ -1507,7 +1507,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 	for (device_id = 0; device_id < GPU(z->convnet)->device_count; device_id++)
 	{
 		cudaSetDevice(device_id);
-		/*for (i = 0; i < convnet->count; i++)
+		for (i = 0; i < convnet->count; i++)
 		{
 			ccv_convnet_layer_t* layer = GPU(z->convnet)->device[device_id].layers + i;
 			ccv_convnet_layer_t* z_layer = z->convnet->layers + i;
@@ -1527,7 +1527,7 @@ static void _cwc_convnet_supervised_train_function_state_read(const char* filena
 					ASSERT_NO_CUDA_ERROR();
 					break;
 			}
-		}*/
+		}
 	}
 	if (CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
 		_cwc_convnet_collect_disk_stats(z->convnet);
