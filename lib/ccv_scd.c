@@ -4,6 +4,9 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
+#ifdef USE_DISPATCH
+#include <dispatch/dispatch.h>
+#endif
 #ifdef HAVE_LIBLINEAR
 #include <linear.h>
 #endif
@@ -356,7 +359,7 @@ static void _ccv_scd_liblinear_null(const char* str) { /* do nothing */ }
 
 static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set, double C)
 {
-	int i, j, k;
+	int i;
 	ccv_scd_value_index_t* pwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * positives->rnum);
 	for (i = 0; i < positives->rnum; i++)
 		pwidx[i].index = i, pwidx[i].value = pw[i];
@@ -379,9 +382,10 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 			adjusted_negative_set = i + 1;
 			break;
 		}
-	for (i = 0; i < features->rnum; i++)
-	{
-		FLUSH(CCV_CLI_INFO, " - supervised train feature %d / %d with logistic regression", i + 1, features->rnum);
+	parallel_for(i, features->rnum) {
+		int j, k;
+		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
+			FLUSH(CCV_CLI_INFO, " - supervised train feature %d / %d with logistic regression", (int)(i + 1), features->rnum);
 		struct problem prob;
 		prob.l = active_set * 2;
 		prob.n = 32 + 1;
@@ -443,7 +447,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		for (j = 0; j < prob.l; j++)
 			free(prob.x[j]);
 		free(prob.x);
-	}
+	} parallel_endfor
 	ccfree(pwidx);
 	ccfree(nwidx);
 }
@@ -480,13 +484,13 @@ static double _ccv_scd_auc(double* s, int posnum, int negnum)
 static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* features, ccv_array_t* positives, ccv_array_t* negatives)
 {
 	ccv_scd_feature_t best_feature;
-	int i, j, k;
-	float surf[32];
+	int i;
 	double* sn = (double*)cccalloc(features->rnum * (positives->rnum + negatives->rnum), sizeof(double));
 	assert(positives->rnum + negatives->rnum > 0);
-	for (i = 0; i < positives->rnum + negatives->rnum; i++)
-	{
-		FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for auc", i + 1, positives->rnum + negatives->rnum, (float)(i + 1) * 100 / (positives->rnum + negatives->rnum));
+	parallel_for(i, positives->rnum + negatives->rnum) {
+		int j, k;
+		if ((i + 1) % 1111 == 1 || (i + 1) == positives->rnum + negatives->rnum)
+			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for auc", (int)(i + 1), positives->rnum + negatives->rnum, (float)(i + 1) * 100 / (positives->rnum + negatives->rnum));
 		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(i < positives->rnum ? ccv_array_get(positives, i) : ccv_array_get(negatives, i - positives->rnum));
 		a->data.u8 = (unsigned char*)(a + 1);
 		ccv_dense_matrix_t* b = 0;
@@ -494,6 +498,7 @@ static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* 
 		ccv_dense_matrix_t* sat = 0;
 		ccv_sat(b, &sat, 0, CCV_PADDING_ZERO);
 		ccv_matrix_free(b);
+		float surf[32];
 		for (j = 0; j < features->rnum; j++)
 		{
 			ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, j);
@@ -505,9 +510,9 @@ static ccv_scd_feature_t _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* 
 			sn[i + j * (positives->rnum + negatives->rnum)] = s[i] + (v - 1) / (v + 1); // probability
 		}
 		ccv_matrix_free(sat);
-	}
+	} parallel_endfor
 	double max_auc = _ccv_scd_auc(sn, positives->rnum, negatives->rnum);
-	j = 0;
+	int j = 0;
 	for (i = 1; i < features->rnum; i++)
 	{
 		double auc = _ccv_scd_auc(sn + i * (positives->rnum + negatives->rnum), positives->rnum, negatives->rnum);

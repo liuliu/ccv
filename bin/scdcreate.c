@@ -113,20 +113,20 @@ int main(int argc, char** argv)
 			.base = ccv_size(12, 12),
 			.range_through = 4,
 			.step_through = 4,
-			.active_set = 1920,
-			.wide_set = 5760,
+			.active_set = 640,
+			.wide_set = 1920,
 		},
 		.stop_criteria = {
 			.hit_rate = 0.995,
 			.false_positive_rate = 1e-8,
-			.auc_crit = 1e-5,
+			.auc_crit = 1e-4,
 			.maximum_feature = 256,
 			.light_stage = 3,
 			.light_feature = 4,
 		},
 		.weight_trimming = 0.99,
 		.C = 5,
-		.grayscale = 0,
+		.grayscale = 1,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);
