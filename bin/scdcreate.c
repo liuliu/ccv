@@ -117,9 +117,9 @@ int main(int argc, char** argv)
 			.wide_set = 1920,
 		},
 		.stop_criteria = {
-			.hit_rate = 0.995,
+			.hit_rate = 0.9925,
 			.false_positive_rate = 1e-8,
-			.auc_crit = 1e-4,
+			.auc_crit = 1e-5,
 			.maximum_feature = 256,
 			.light_stage = 3,
 			.light_feature = 4,

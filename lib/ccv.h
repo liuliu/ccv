@@ -448,7 +448,7 @@ typedef struct {
 } ccv_array_t;
 
 ccv_array_t* __attribute__((warn_unused_result)) ccv_array_new(int rsize, int rnum, uint64_t sig);
-void ccv_array_push(ccv_array_t* array, void* r);
+void ccv_array_push(ccv_array_t* array, const void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
 void ccv_make_array_immutable(ccv_array_t* array);

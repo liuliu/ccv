@@ -2066,13 +2066,10 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 		cudaEventCreate(&start[device_id]);
 		cudaEventCreate(&stop[device_id]);
 	}
-	cwc_convnet_supervised_train_function_state_t z;
+	cwc_convnet_supervised_train_function_state_t z = {0};
 	z.idx = idx;
 	z.inum = categorizeds->rnum;
 	z.convnet = convnet;
-	z.eigenvectors = 0;
-	z.eigenvalues = 0;
-	z.line_no = 0;
 	int miss, sgd_count, stats_count;
 	float max_elapsed_time;
 	float elapsed_time[MAX_DEVICE_SUPPORT] = {0};

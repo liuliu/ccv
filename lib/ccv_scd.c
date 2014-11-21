@@ -201,7 +201,7 @@ static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dens
 
 static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* hard_mine, int total, float deform_angle, float deform_scale, float deform_shift, int grayscale)
 {
-	ccv_array_t* negatives = ccv_array_new(ccv_compute_dense_matrix_size(size.height + 2, size.width + 2, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), total, 0);
+	ccv_array_t* negatives = ccv_array_new(ccv_compute_dense_matrix_size(size.height, size.width, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), total, 0);
 	int i, j, k;
 	for (i = 0; i < total;)
 	{
@@ -244,6 +244,7 @@ static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 		}
 	}
 	PRINT(CCV_CLI_INFO, "\n");
+	ccv_make_array_immutable(negatives);
 	return negatives;
 }
 
@@ -262,6 +263,7 @@ static ccv_array_t*_ccv_scd_collect_positives(ccv_size_t size, ccv_array_t* posf
 		ccv_matrix_free(a);
 	}
 	PRINT(CCV_CLI_INFO, "\n");
+	ccv_make_array_immutable(positives);
 	return positives;
 }
 
@@ -663,12 +665,15 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 		}
 	}
 	FLUSH(CCV_CLI_INFO, " - hard mine negatives : %d\n", hard_negatives->rnum);
+	ccv_make_array_immutable(hard_negatives);
 	return hard_negatives;
 }
 
 typedef struct {
 	ccv_function_state_reserve_field;
 	int t, k;
+	int positive_count;
+	uint64_t array_signature;
 	ccv_array_t* negatives;
 	double* s;
 	double* pw;
@@ -677,22 +682,120 @@ typedef struct {
 	double accu_true_positive_rate;
 	double accu_false_positive_rate;
 	ccv_scd_classifier_cascade_t* cascade;
+	ccv_scd_train_param_t params;
 } ccv_scd_classifier_cascade_new_function_state_t;
 
 static void _ccv_scd_classifier_cascade_new_function_state_read(const char* filename, ccv_scd_classifier_cascade_new_function_state_t* z)
 {
+	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_read(filename);
+	if (!cascade)
+		return;
+	if (z->cascade)
+		ccv_scd_classifier_cascade_free(z->cascade);
+	z->cascade = cascade;
+	assert(z->cascade->size.width == z->params.size.width);
+	assert(z->cascade->size.height == z->params.size.height);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
 	{
+		const char negative_data_qs[] =
+			"SELECT data, rnum, rsize FROM negative_data WHERE id=0;";
+		sqlite3_stmt* negative_data_stmt = 0;
+		if (SQLITE_OK == sqlite3_prepare_v2(db, negative_data_qs, sizeof(negative_data_qs), &negative_data_stmt, 0))
+		{
+			if (sqlite3_step(negative_data_stmt) == SQLITE_ROW)
+			{
+				int rsize = ccv_compute_dense_matrix_size(z->cascade->size.height, z->cascade->size.width, CCV_8U | (z->params.grayscale ? CCV_C1 : CCV_C3));
+				int rnum = sqlite3_column_int(negative_data_stmt, 1);
+				assert(sqlite3_column_int(negative_data_stmt, 2) == rsize);
+				size_t size = sqlite3_column_bytes(negative_data_stmt, 0);
+				assert(size == (size_t)rsize * rnum);
+				if (z->negatives)
+					ccv_array_clear(z->negatives);
+				else
+					z->negatives = ccv_array_new(rsize, rnum, 0);
+				int i;
+				const uint8_t* data = (const uint8_t*)sqlite3_column_blob(negative_data_stmt, 0);
+				for (i = 0; i < rnum; i++)
+					ccv_array_push(z->negatives, data + (off_t)i * rsize);
+				ccv_make_array_immutable(z->negatives);
+				z->array_signature = z->negatives->sig;
+			}
+			sqlite3_finalize(negative_data_stmt);
+		}
+		const char function_state_qs[] =
+			"SELECT t, k, positive_count, auc_prev, " // 4
+			"accu_true_positive_rate, accu_false_positive_rate, " // 6
+			"line_no, s, pw, nw FROM function_state WHERE fsid = 0;"; // 10
+		sqlite3_stmt* function_state_stmt = 0;
+		if (SQLITE_OK == sqlite3_prepare_v2(db, function_state_qs, sizeof(function_state_qs), &function_state_stmt, 0))
+		{
+			if (sqlite3_step(function_state_stmt) == SQLITE_ROW)
+			{
+				z->t = sqlite3_column_int(function_state_stmt, 0);
+				z->k = sqlite3_column_int(function_state_stmt, 1);
+				z->positive_count = sqlite3_column_int(function_state_stmt, 2);
+				z->auc_prev = sqlite3_column_double(function_state_stmt, 3);
+				z->accu_true_positive_rate = sqlite3_column_double(function_state_stmt, 4);
+				z->accu_false_positive_rate = sqlite3_column_double(function_state_stmt, 5);
+				z->line_no = sqlite3_column_int(function_state_stmt, 6);
+				size_t size = sqlite3_column_bytes(function_state_stmt, 7);
+				const void* s = sqlite3_column_blob(function_state_stmt, 7);
+				memcpy(z->s, s, size);
+				size = sqlite3_column_bytes(function_state_stmt, 8);
+				const void* pw = sqlite3_column_blob(function_state_stmt, 8);
+				memcpy(z->pw, pw, size);
+			}
+			sqlite3_finalize(function_state_stmt);
+		}
 		sqlite3_close(db);
 	}
 }
 
 static void _ccv_scd_classifier_cascade_new_function_state_write(ccv_scd_classifier_cascade_new_function_state_t* z, const char* filename)
 {
+	ccv_scd_classifier_cascade_write(z->cascade, filename);
 	sqlite3* db = 0;
 	if (SQLITE_OK == sqlite3_open(filename, &db))
 	{
+		const char function_state_create_table_qs[] =
+			"CREATE TABLE IF NOT EXISTS function_state "
+			"(fsid INTEGER PRIMARY KEY ASC, t INTEGER, k INTEGER, positive_count INTEGER, auc_prev DOUBLE, accu_true_positive_rate DOUBLE, accu_false_positive_rate DOUBLE, line_no INTEGER, s BLOB, pw BLOB, nw BLOB);"
+			"CREATE TABLE IF NOT EXISTS negative_data "
+			"(id INTEGER PRIMARY KEY ASC, data BLOB, rnum INTEGER, rsize INTEGER);";
+		assert(SQLITE_OK == sqlite3_exec(db, function_state_create_table_qs, 0, 0, 0));
+		const char function_state_insert_qs[] =
+			"REPLACE INTO function_state "
+			"(fsid, t, k, positive_count, auc_prev, accu_true_positive_rate, accu_false_positive_rate, line_no, s, pw, nw) VALUES "
+			"(0, $t, $k, $positive_count, $auc_prev, $accu_true_positive_rate, $accu_false_positive_rate, $line_no, $s, $pw, $nw);";
+		sqlite3_stmt* function_state_insert_stmt = 0;
+		assert(SQLITE_OK == sqlite3_prepare_v2(db, function_state_insert_qs, sizeof(function_state_insert_qs), &function_state_insert_stmt, 0));
+		sqlite3_bind_int(function_state_insert_stmt, 1, z->t);
+		sqlite3_bind_int(function_state_insert_stmt, 2, z->k);
+		sqlite3_bind_int(function_state_insert_stmt, 3, z->positive_count);
+		sqlite3_bind_double(function_state_insert_stmt, 4, z->auc_prev);
+		sqlite3_bind_double(function_state_insert_stmt, 5, z->accu_true_positive_rate);
+		sqlite3_bind_double(function_state_insert_stmt, 6, z->accu_false_positive_rate);
+		sqlite3_bind_int(function_state_insert_stmt, 7, z->line_no);
+		sqlite3_bind_blob(function_state_insert_stmt, 8, z->s, sizeof(double) * (z->positive_count + z->negatives->rnum), SQLITE_STATIC);
+		sqlite3_bind_blob(function_state_insert_stmt, 9, z->pw, sizeof(double) * z->positive_count, SQLITE_STATIC);
+		sqlite3_bind_blob(function_state_insert_stmt, 10, z->nw, sizeof(double) * z->negatives->rnum, SQLITE_STATIC);
+		assert(SQLITE_DONE == sqlite3_step(function_state_insert_stmt));
+		sqlite3_finalize(function_state_insert_stmt);
+		if (z->array_signature != z->negatives->sig)
+		{
+			const char negative_data_insert_qs[] =
+				"REPLACE INTO negative_data "
+				"(id, data, rnum, rsize) VALUES (0, $data, $rnum, $rsize);";
+			sqlite3_stmt* negative_data_insert_stmt = 0;
+			assert(SQLITE_OK == sqlite3_prepare_v2(db, negative_data_insert_qs, sizeof(negative_data_insert_qs), &negative_data_insert_stmt, 0));
+			sqlite3_bind_blob(negative_data_insert_stmt, 1, z->negatives->data, z->negatives->rsize * z->negatives->rnum, SQLITE_STATIC);
+			sqlite3_bind_int(negative_data_insert_stmt, 2, z->negatives->rnum);
+			sqlite3_bind_int(negative_data_insert_stmt, 3, z->negatives->rsize);
+			assert(SQLITE_DONE == sqlite3_step(negative_data_insert_stmt));
+			sqlite3_finalize(negative_data_insert_stmt);
+			z->array_signature = z->negatives->sig;
+		}
 		sqlite3_close(db);
 	}
 }
@@ -710,11 +813,13 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	int i, j, p, q;
 	ccv_array_t* positives = _ccv_scd_collect_positives(params.size, posfiles, params.grayscale);
 	double* h = (double*)ccmalloc(sizeof(double) * (positives->rnum + negative_count));
-	ccv_scd_classifier_cascade_new_function_state_t z;
+	ccv_scd_classifier_cascade_new_function_state_t z = {0};
 	z.s = (double*)ccmalloc(sizeof(double) * (positives->rnum + negative_count));
 	z.pw = (double*)ccmalloc(sizeof(double) * positives->rnum);
 	z.nw = (double*)ccmalloc(sizeof(double) * negative_count);
+	z.params = params;
 	ccv_function_state_begin(_ccv_scd_classifier_cascade_new_function_state_read, z, filename);
+	z.positive_count = positives->rnum;
 	z.negatives = _ccv_scd_collect_negatives(rng, params.size, hard_mine, negative_count, params.deform.angle, params.deform.scale, params.deform.shift, params.grayscale);
 	z.cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
 	z.cascade->margin = ccv_margin(0, 0, 0, 0);
@@ -724,6 +829,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	float surf[32];
 	z.accu_true_positive_rate = 1;
 	z.accu_false_positive_rate = 1;
+	ccv_function_state_resume(_ccv_scd_classifier_cascade_new_function_state_write, z, filename);
 	for (z.t = 0; z.t < params.boosting; z.t++)
 	{
 		for (i = 0; i < positives->rnum; i++)
@@ -843,7 +949,6 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		z.accu_false_positive_rate *= false_positive_rate;
 		PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lg, at threshold : %f\n", z.t + 1, true_positive_rate, false_positive_rate, z.accu_true_positive_rate, z.accu_false_positive_rate, classifier->threshold);
 		z.cascade->count = z.t + 1;
-		ccv_scd_classifier_cascade_write(z.cascade, filename);
 		if (z.accu_false_positive_rate < params.stop_criteria.false_positive_rate)
 			break;
 		if (z.t < params.boosting - 1)
