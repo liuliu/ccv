@@ -473,7 +473,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		int j;
 		for (j = 0; j < 33; j++)
 			x->data.f32[j] = gsl_rng_uniform_pos(rng) * 2 - 1.0;
-		ccv_minimize(x, 5, 1.0, _ccv_scd_feature_logistic_loss, ccv_minimize_default_params, &context);
+		ccv_minimize(x, 10, 1.0, _ccv_scd_feature_logistic_loss, ccv_minimize_default_params, &context);
 		for (j = 0; j < 32; j++)
 			feature->w[j] = x->data.f32[j];
 		feature->bias = x->data.f32[32];

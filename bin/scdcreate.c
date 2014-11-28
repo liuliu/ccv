@@ -113,8 +113,6 @@ int main(int argc, char** argv)
 			.base = ccv_size(12, 12),
 			.range_through = 4,
 			.step_through = 4,
-			.active_set = 640,
-			.wide_set = 1920,
 		},
 		.stop_criteria = {
 			.hit_rate = 0.9925,
@@ -125,7 +123,7 @@ int main(int argc, char** argv)
 			.light_feature = 4,
 		},
 		.weight_trimming = 0.99,
-		.C = 0.005,
+		.C = 0.0005,
 		.grayscale = 1,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
