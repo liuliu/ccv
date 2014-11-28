@@ -454,7 +454,7 @@ static int _ccv_scd_feature_logistic_loss(const ccv_dense_matrix_t* x, double* f
 	return 0;
 }
 
-static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, int positive_count, int negative_count, double* pw, double* nw, float* fv, int active_set, int wide_set, double C)
+static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, int positive_count, int negative_count, double* pw, double* nw, float* fv, double C)
 {
 	parallel_for(i, features->rnum) {
 		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
@@ -469,19 +469,11 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 			.nw = nw,
 			.fv = fv,
 		};
-		ccv_minimize_param_t params = {
-			.interp = 0.1,
-			.extrap = 3.0,
-			.max_iter = 20,
-			.ratio = 10.0,
-			.sig = 0.1,
-			.rho = 0.05,
-		};
 		ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 33, CCV_32F | CCV_C1, 0, 0);
 		int j;
 		for (j = 0; j < 33; j++)
 			x->data.f32[j] = gsl_rng_uniform_pos(rng) * 2 - 1.0;
-		ccv_minimize(x, 5, 1.0, _ccv_scd_feature_logistic_loss, params, &context);
+		ccv_minimize(x, 5, 1.0, _ccv_scd_feature_logistic_loss, ccv_minimize_default_params, &context);
 		for (j = 0; j < 32; j++)
 			feature->w[j] = x->data.f32[j];
 		feature->bias = x->data.f32[32];
@@ -882,7 +874,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		{
 			ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
 			classifier->features = (ccv_scd_feature_t*)ccrealloc(classifier->features, sizeof(ccv_scd_feature_t) * (z.k + 1));
-			_ccv_scd_feature_supervised_train(rng, z.features, z.positives->rnum, z.negatives->rnum, z.pw, z.nw, z.fv, params.feature.active_set, params.feature.wide_set, params.C);
+			_ccv_scd_feature_supervised_train(rng, z.features, z.positives->rnum, z.negatives->rnum, z.pw, z.nw, z.fv, params.C);
 			int best_feature_no = _ccv_scd_best_feature_with_auc(z.s, z.features, z.positives->rnum, z.negatives->rnum, z.fv);
 			ccv_scd_feature_t best_feature = *(ccv_scd_feature_t*)ccv_array_get(z.features, best_feature_no);
 			for (i = 0; i < z.positives->rnum + z.negatives->rnum; i++)

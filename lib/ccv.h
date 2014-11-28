@@ -535,6 +535,8 @@ typedef struct {
 	double sig;
 } ccv_minimize_param_t;
 
+extern const ccv_minimize_param_t ccv_minimize_default_params;
+
 typedef int(*ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void*);
 void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data);
 
@@ -1123,8 +1125,6 @@ typedef struct {
 		ccv_size_t base;
 		int range_through;
 		int step_through;
-		int active_set;
-		int wide_set;
 	} feature;
 	struct {
 		float angle;

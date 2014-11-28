@@ -69,14 +69,7 @@ TEST_CASE("minimize rosenbrock")
 	ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 2, CCV_64F | CCV_C1, 0, 0);
 	ccv_zero(x);
 	int steps = 0;
-	ccv_minimize_param_t params;
-	params.interp = 0.1;
-	params.extrap = 3.0;
-	params.max_iter = 20;
-	params.ratio = 10.0;
-	params.sig = 0.1;
-	params.rho = 0.05;
-	ccv_minimize(x, 25, 1.0, rosenbrock, params, &steps);
+	ccv_minimize(x, 25, 1.0, rosenbrock, ccv_minimize_default_params, &steps);
 	double dx[2] = { 1, 1 };
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(double, x->data.f64, dx, 2, 1e-6, "the global minimal should be at (1.0, 1.0)");
 	ccv_matrix_free(x);

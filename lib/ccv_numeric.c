@@ -9,6 +9,15 @@
 #include "3rdparty/kissfft/kissf_fftndr.h"
 #endif
 
+const ccv_minimize_param_t ccv_minimize_default_params = {
+	.interp = 0.1,
+	.extrap = 3.0,
+	.max_iter = 20,
+	.ratio = 10.0,
+	.sig = 0.1,
+	.rho = 0.05,
+};
+
 void ccv_invert(ccv_matrix_t* a, ccv_matrix_t** b, int type)
 {
 }
