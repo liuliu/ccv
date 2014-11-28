@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 	char* base_dir = 0;
 	ccv_convnet_train_param_t train_params = {
 		.max_epoch = 100,
-		.mini_batch = 64,
+		.mini_batch = 48,
 		.sgd_frequency = 1, // do sgd every 2 batches (96 * 2 = 192)
 		.iterations = 50000,
 		.device_count = 4,
@@ -125,21 +125,21 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
-	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), matt_params, sizeof(matt_params) / sizeof(ccv_convnet_layer_param_t));
+	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), vgg_d_params, sizeof(vgg_d_params) / sizeof(ccv_convnet_layer_param_t));
 	ccv_convnet_verify(convnet, 1000);
-	ccv_convnet_layer_train_param_t layer_params[13];
+	ccv_convnet_layer_train_param_t layer_params[21];
 	memset(layer_params, 0, sizeof(layer_params));
-	for (i = 0; i < 13; i++)
+	for (i = 0; i < 21; i++)
 	{
 		layer_params[i].w.decay = 0.0005;
-		layer_params[i].w.learn_rate = 0.00001;
+		layer_params[i].w.learn_rate = 0.01;
 		layer_params[i].w.momentum = 0.9;
 		layer_params[i].bias.decay = 0;
-		layer_params[i].bias.learn_rate = 0.00001;
+		layer_params[i].bias.learn_rate = 0.01;
 		layer_params[i].bias.momentum = 0.9;
 	}
-	layer_params[10].dor = 0.5;
-	layer_params[11].dor = 0.5;
+	layer_params[18].dor = 0.5;
+	layer_params[19].dor = 0.5;
 	train_params.layer_params = layer_params;
 	ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_INFO));
 	ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);

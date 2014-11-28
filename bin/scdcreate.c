@@ -125,7 +125,7 @@ int main(int argc, char** argv)
 			.light_feature = 4,
 		},
 		.weight_trimming = 0.99,
-		.C = 5,
+		.C = 0.005,
 		.grayscale = 1,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);

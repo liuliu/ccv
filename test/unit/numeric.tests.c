@@ -44,7 +44,7 @@ TEST_CASE("compute eigenvectors and eigenvalues of a symmetric matrix")
 	ccv_matrix_free(eval);
 }
 
-int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
+static int rosenbrock(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
 	int* steps = (int*)data;
 	(*steps)++;

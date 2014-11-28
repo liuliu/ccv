@@ -7,9 +7,6 @@
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
-#ifdef HAVE_LIBLINEAR
-#include <linear.h>
-#endif
 #include "3rdparty/sqlite3/sqlite3.h"
 
 const ccv_scd_param_t ccv_scd_default_params = {
@@ -357,101 +354,92 @@ static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* featu
 	ccv_matrix_free(sat);
 }
 
-static void _ccv_scd_liblinear_null(const char* str) { /* do nothing */ }
+typedef struct {
+	ccv_scd_feature_t* feature;
+	double C;
+	ccv_array_t* positives;
+	double* pw;
+	ccv_array_t* negatives;
+	double* nw;
+} ccv_loss_minimize_context_t;
+
+static int _ccv_scd_feature_logistic_loss(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
+{
+	ccv_loss_minimize_context_t* context = (ccv_loss_minimize_context_t*)data;
+	float surf[32];
+	int i, j;
+	float loss = 0;
+	float d[33];
+	for (i = 0; i < 33; i++)
+	{
+		loss += context->C * fabs(x->data.f32[i]);
+		d[i] = x->data.f32[i] > 0 ? context->C : -context->C;
+	}
+	for (i = 0; i < context->positives->rnum; i++)
+	{
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(context->positives, i);
+		a->data.u8 = (unsigned char*)(a + 1);
+		_ccv_scd_run_feature(a, context->feature, surf);
+		float v = x->data.f32[32];
+		for (j = 0; j < 32; j++)
+			v += surf[j] * x->data.f32[j];
+		v = expf(-v);
+		loss += context->pw[i] * logf(1.0 + v);
+		for (j = 0; j < 32; j++)
+			d[j] += context->pw[i] * (-surf[j] * v / (1 + v));
+		d[32] += context->pw[i] * (-v / (1 + v));
+	}
+	for (i = 0; i < context->negatives->rnum; i++)
+	{
+		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(context->negatives, i);
+		a->data.u8 = (unsigned char*)(a + 1);
+		_ccv_scd_run_feature(a, context->feature, surf);
+		float v = x->data.f32[32];
+		for (j = 0; j < 32; j++)
+			v += surf[j] * x->data.f32[j];
+		v = expf(v);
+		loss += context->nw[i] * logf(1.0 + v);
+		for (j = 0; j < 32; j++)
+			d[j] += context->nw[i] * (surf[j] * v / (1 + v));
+		d[32] += context->nw[i] * (v / (1 + v));
+	}
+	f[0] = loss;
+	for (i = 0; i < 33; i++)
+		df->data.f32[i] = d[i];
+	return 0;
+}
 
 static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, ccv_array_t* positives, double* pw, ccv_array_t* negatives, double* nw, int active_set, int wide_set, double C)
 {
-	int i;
-	ccv_scd_value_index_t* pwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * positives->rnum);
-	for (i = 0; i < positives->rnum; i++)
-		pwidx[i].index = i, pwidx[i].value = pw[i];
-	_ccv_scd_value_index_qsort(pwidx, positives->rnum, 0);
-	int adjusted_positive_set = positives->rnum;
-	for (i = wide_set - 1; i < positives->rnum; i++)
-		if (fabs(pwidx[i].value - pwidx[i + 1].value) > FLT_MIN)
-		{
-			adjusted_positive_set = i + 1;
-			break;
-		}
-	ccv_scd_value_index_t* nwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * negatives->rnum);
-	for (i = 0; i < negatives->rnum; i++)
-		nwidx[i].index = i, nwidx[i].value = nw[i];
-	_ccv_scd_value_index_qsort(nwidx, negatives->rnum, 0);
-	int adjusted_negative_set = negatives->rnum;
-	for (i = wide_set - 1; i < negatives->rnum; i++)
-		if (fabs(nwidx[i].value - nwidx[i + 1].value) > FLT_MIN)
-		{
-			adjusted_negative_set = i + 1;
-			break;
-		}
-	parallel_for(i, features->rnum) {
-		int j, k;
+	parallel_for(i, 1) { //features->rnum) {
 		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
 			FLUSH(CCV_CLI_INFO, " - supervised train feature %d / %d with logistic regression", (int)(i + 1), features->rnum);
-		struct problem prob;
-		prob.l = active_set * 2;
-		prob.n = 32 + 1;
-		prob.bias = 1.0;
-		prob.y = malloc(sizeof(prob.y[0]) * active_set * 2);
-		prob.x = (struct feature_node**)malloc(sizeof(struct feature_node*) * active_set * 2);
-		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
-		gsl_ran_shuffle(rng, pwidx, adjusted_positive_set, sizeof(ccv_scd_value_index_t));
-		float surf[32];
-		struct feature_node* surf_feature;
-		for (j = 0; j < active_set; j++)
-		{
-			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(positives, pwidx[j].index);
-			a->data.u8 = (unsigned char*)(a + 1);
-			_ccv_scd_run_feature(a, feature, surf);
-		 	surf_feature = (struct feature_node*)malloc(sizeof(struct feature_node) * (32 + 2));
-			for (k = 0; k < 32; k++)
-				surf_feature[k].index = k + 1, surf_feature[k].value = surf[k];
-			surf_feature[32].index = 33;
-			surf_feature[32].value = prob.bias;
-			surf_feature[33].index = -1;
-			prob.x[j] = surf_feature;
-			prob.y[j] = 1;
-		}
-		gsl_ran_shuffle(rng, nwidx, adjusted_negative_set, sizeof(ccv_scd_value_index_t));
-		for (j = 0; j < active_set; j++)
-		{
-			ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(negatives, nwidx[j].index);
-			a->data.u8 = (unsigned char*)(a + 1);
-			_ccv_scd_run_feature(a, feature, surf);
-		 	surf_feature = (struct feature_node*)malloc(sizeof(struct feature_node) * (32 + 2));
-			for (k = 0; k < 32; k++)
-				surf_feature[k].index = k + 1, surf_feature[k].value = surf[k];
-			surf_feature[32].index = 33;
-			surf_feature[32].value = prob.bias;
-			surf_feature[33].index = -1;
-			prob.x[j + active_set] = surf_feature;
-			prob.y[j + active_set] = -1;
-		}
-		struct parameter linear_parameters = { .solver_type = L1R_LR,
-											   .eps = 1e-2,
-											   .C = C,
-											   .nr_weight = 0,
-											   .weight_label = 0,
-											   .weight = 0 };
-		const char* err = check_parameter(&prob, &linear_parameters);
-		if (err)
-		{
-			PRINT(CCV_CLI_ERROR, " - ERROR: cannot pass check parameter: %s\n", err);
-			exit(-1);
-		}
-		set_print_string_function(_ccv_scd_liblinear_null);
-		struct model* linear = train(&prob, &linear_parameters);
+		ccv_loss_minimize_context_t context = {
+			.feature = (ccv_scd_feature_t*)ccv_array_get(features, i),
+			.C = C,
+			.positives = positives,
+			.pw = pw,
+			.negatives = negatives,
+			.nw = nw,
+		};
+		ccv_minimize_param_t params = {
+			.interp = 0.1,
+			.extrap = 3.0,
+			.max_iter = 20,
+			.ratio = 10.0,
+			.sig = 0.1,
+			.rho = 0.05,
+		};
+		ccv_dense_matrix_t* x = ccv_dense_matrix_new(1, 33, CCV_32F | CCV_C1, 0, 0);
+		int j;
+		for (j = 0; j < 33; j++)
+			x->data.f32[j] = gsl_rng_uniform_pos(rng) * 2 - 1.0;
+		ccv_minimize(x, 5, 1.0, _ccv_scd_feature_logistic_loss, params, &context);
 		for (j = 0; j < 32; j++)
-			feature->w[j] = linear->w[j];
-		feature->bias = linear->w[32];
-		free_and_destroy_model(&linear);
-		free(prob.y);
-		for (j = 0; j < prob.l; j++)
-			free(prob.x[j]);
-		free(prob.x);
+			context.feature->w[j] = x->data.f32[j];
+		context.feature->bias = x->data.f32[32];printf("finished\n");
+		ccv_matrix_free(x);
 	} parallel_endfor
-	ccfree(pwidx);
-	ccfree(nwidx);
 }
 
 static double _ccv_scd_auc(double* s, int posnum, int negnum)
