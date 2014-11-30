@@ -910,11 +910,10 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			z.nw[i] = 0.5 / z.negatives->rnum;
 		memset(z.s, 0, sizeof(double) * (z.positives->rnum + z.negatives->rnum));
 		z.cascade->classifiers = (ccv_scd_classifier_t*)ccrealloc(z.cascade->classifiers, sizeof(ccv_scd_classifier_t) * (z.t + 1));
-		ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
 		z.cascade->count = z.t + 1;
-		classifier->threshold = 0;
-		classifier->features = 0;
-		classifier->count = 0;
+		z.cascade->classifiers[z.t].threshold = 0;
+		z.cascade->classifiers[z.t].features = 0;
+		z.cascade->classifiers[z.t].count = 0;
 		z.auc_prev = 0;
 		assert(z.positives->rnum > 0 && z.negatives->rnum > 0);
 		// for the first light stages, we have more restrictive number of features (faster)
@@ -942,7 +941,8 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			FLUSH(CCV_CLI_INFO, " - at %d-th iteration, auc: %lf\n", z.k + 1, auc);
 			if (auc - z.auc_prev < params.stop_criteria.auc_crit)
 			{
-				z.auc_prev = auc;
+				for (i = 0; i < z.positives->rnum + z.negatives->rnum; i++) // not worth it, rollback
+					z.s[i] -= h[i];
 				break;
 			}
 			z.auc_prev = auc;
@@ -970,13 +970,13 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			ccv_function_state_resume(_ccv_scd_classifier_cascade_new_function_state_write, z, filename);
 		}
 		// backtrack removal
-		while (classifier->count > 1)
+		while (z.cascade->classifiers[z.t].count > 1)
 		{
 			double max_auc = 0;
 			p = -1;
-			for (i = 0; i < classifier->count; i++)
+			for (i = 0; i < z.cascade->classifiers[z.t].count; i++)
 			{
-				ccv_scd_feature_t* feature = classifier->features + i;
+				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + i;
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				{
 					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < z.positives->rnum ? ccv_array_get(z.positives, j) : ccv_array_get(z.negatives, j - z.positives->rnum));
@@ -989,13 +989,14 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 					h[j] = z.s[j] - (v - 1) / (v + 1);
 				}
 				double auc = _ccv_scd_auc(h, z.positives->rnum, z.negatives->rnum);
+				FLUSH(CCV_CLI_INFO, " - attempting without %d-th feature, auc: %lf", i + 1, auc);
 				if (auc > max_auc)
 					max_auc = auc, p = i;
 			}
 			if (max_auc >= z.auc_prev)
 			{
-				PRINT(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p, max_auc);
-				ccv_scd_feature_t* feature = classifier->features + p;
+				FLUSH(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p, max_auc);
+				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + p;
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				{
 					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < z.positives->rnum ? ccv_array_get(z.positives, j) : ccv_array_get(z.negatives, j - z.positives->rnum));
@@ -1008,18 +1009,18 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 					z.s[j] -= (v - 1) / (v + 1);
 				}
 				z.auc_prev = _ccv_scd_auc(z.s, z.positives->rnum, z.negatives->rnum);
-				--classifier->count;
-				if (p < classifier->count)
-					memmove(classifier->features + p + 1, classifier->features + p, sizeof(ccv_scd_feature_t) * (classifier->count - p));
+				--z.cascade->classifiers[z.t].count;
+				if (p < z.cascade->classifiers[z.t].count)
+					memmove(z.cascade->classifiers[z.t].features + p + 1, z.cascade->classifiers[z.t].features + p, sizeof(ccv_scd_feature_t) * (z.cascade->classifiers[z.t].count - p));
 			} else
 				break;
 		}
 		float true_positive_rate = 0;
 		float false_positive_rate = 0;
-		classifier->threshold = _ccv_scd_threshold_at_hit_rate(z.s, z.positives->rnum, z.negatives->rnum, params.stop_criteria.hit_rate, &true_positive_rate, &false_positive_rate);
+		z.cascade->classifiers[z.t].threshold = _ccv_scd_threshold_at_hit_rate(z.s, z.positives->rnum, z.negatives->rnum, params.stop_criteria.hit_rate, &true_positive_rate, &false_positive_rate);
 		z.accu_true_positive_rate *= true_positive_rate;
 		z.accu_false_positive_rate *= false_positive_rate;
-		PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lg, at threshold : %f\n", z.t + 1, true_positive_rate, false_positive_rate, z.accu_true_positive_rate, z.accu_false_positive_rate, classifier->threshold);
+		FLUSH(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lg, at threshold : %f\n", z.t + 1, true_positive_rate, false_positive_rate, z.accu_true_positive_rate, z.accu_false_positive_rate, z.cascade->classifiers[z.t].threshold);
 		if (z.accu_false_positive_rate < params.stop_criteria.false_positive_rate)
 			break;
 		if (z.t < params.boosting - 1)
