@@ -808,6 +808,9 @@ static void _ccv_scd_classifier_cascade_new_function_state_read(const char* file
 				size = sqlite3_column_bytes(function_state_stmt, 8);
 				const void* pw = sqlite3_column_blob(function_state_stmt, 8);
 				memcpy(z->pw, pw, size);
+				size = sqlite3_column_bytes(function_state_stmt, 9);
+				const void* nw = sqlite3_column_blob(function_state_stmt, 9);
+				memcpy(z->nw, nw, size);
 			}
 			sqlite3_finalize(function_state_stmt);
 		}
@@ -908,6 +911,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		memset(z.s, 0, sizeof(double) * (z.positives->rnum + z.negatives->rnum));
 		z.cascade->classifiers = (ccv_scd_classifier_t*)ccrealloc(z.cascade->classifiers, sizeof(ccv_scd_classifier_t) * (z.t + 1));
 		ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
+		z.cascade->count = z.t + 1;
 		classifier->threshold = 0;
 		classifier->features = 0;
 		classifier->count = 0;
@@ -1016,7 +1020,6 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		z.accu_true_positive_rate *= true_positive_rate;
 		z.accu_false_positive_rate *= false_positive_rate;
 		PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lg, at threshold : %f\n", z.t + 1, true_positive_rate, false_positive_rate, z.accu_true_positive_rate, z.accu_false_positive_rate, classifier->threshold);
-		z.cascade->count = z.t + 1;
 		if (z.accu_false_positive_rate < params.stop_criteria.false_positive_rate)
 			break;
 		if (z.t < params.boosting - 1)
