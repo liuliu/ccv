@@ -366,7 +366,7 @@ static void _ccv_scd_precompute_feature_vectors(const ccv_array_t* features, con
 {
 	parallel_for(i, positives->rnum) {
 		int j;
-		if ((i + 1) % 731 == 1)
+		if ((i + 1) % 4031 == 1)
 			FLUSH(CCV_CLI_INFO, " - precompute feature vectors of example %d / %d over %d features", (int)(i + 1), positives->rnum + negatives->rnum, features->rnum);
 		ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(positives, i);
 		a->data.u8 = (unsigned char*)(a + 1);
@@ -561,7 +561,7 @@ static int _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* features, int 
 	assert(positive_count + negative_count > 0);
 	parallel_for(i, positive_count + negative_count) {
 		int j, k;
-		if ((i + 1) % 1111 == 1 || (i + 1) == positive_count + negative_count)
+		if ((i + 1) % 3111 == 1 || (i + 1) == positive_count + negative_count)
 			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for auc", (int)(i + 1), positive_count + negative_count, (float)(i + 1) * 100 / (positive_count + negative_count));
 		for (j = 0; j < features->rnum; j++)
 		{
