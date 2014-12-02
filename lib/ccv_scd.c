@@ -416,17 +416,18 @@ typedef struct {
 	float* fv;
 } ccv_loss_minimize_context_t;
 
-static int _ccv_scd_feature_logistic_loss(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
+static int _ccv_scd_feature_gentle_adaboost_loss(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
 	ccv_loss_minimize_context_t* context = (ccv_loss_minimize_context_t*)data;
 	int i, j;
 	float loss = 0;
-	float d[33];
-	for (i = 0; i < 33; i++)
+	float* d = df->data.f32;
+	for (i = 0; i < 32; i++)
 	{
 		loss += context->C * fabs(x->data.f32[i]);
 		d[i] = x->data.f32[i] > 0 ? context->C : -context->C;
 	}
+	d[32] = 0;
 	float* surf = _ccv_scd_get_surf_at(context->fv, context->feature_no, 0, context->positive_count, context->negative_count);
 	for (i = 0; i < context->active_positive_count; i++)
 	{
@@ -434,11 +435,13 @@ static int _ccv_scd_feature_logistic_loss(const ccv_dense_matrix_t* x, double* f
 		float v = x->data.f32[32];
 		for (j = 0; j < 32; j++)
 			v += cur_surf[j] * x->data.f32[j];
-		v = expf(-v);
-		loss += context->pwidx[i].value * logf(1.0 + v);
+		v = expf(v);
+		float tanh = (v - 1) / (v + 1);
+		loss += context->pwidx[i].value * (1.0 - tanh) * (1.0 - tanh);
+		float dv = -8.0 * context->pwidx[i].value * v / ((1.0 + v) * (1.0 + v) * (1.0 + v));
 		for (j = 0; j < 32; j++)
-			d[j] += context->pwidx[i].value * (-cur_surf[j] * v / (1 + v));
-		d[32] += context->pwidx[i].value * (-v / (1 + v));
+			d[j] += dv * cur_surf[j];
+		d[32] += dv;
 	}
 	for (i = 0; i < context->active_negative_count; i++)
 	{
@@ -447,14 +450,14 @@ static int _ccv_scd_feature_logistic_loss(const ccv_dense_matrix_t* x, double* f
 		for (j = 0; j < 32; j++)
 			v += cur_surf[j] * x->data.f32[j];
 		v = expf(v);
-		loss += context->nwidx[i].value * logf(1.0 + v);
+		float tanh = (v - 1) / (v + 1);
+		loss += context->nwidx[i].value * (-1.0 - tanh) * (-1.0 - tanh);
+		float dv = 8.0 * context->nwidx[i].value * v * v / ((1.0 + v) * (1.0 + v) * (1.0 + v));
 		for (j = 0; j < 32; j++)
-			d[j] += context->nwidx[i].value * (cur_surf[j] * v / (1 + v));
-		d[32] += context->nwidx[i].value * (v / (1 + v));
+			d[j] += dv * cur_surf[j];
+		d[32] += dv;
 	}
 	f[0] = loss;
-	for (i = 0; i < 33; i++)
-		df->data.f32[i] = d[i];
 	return 0;
 }
 
@@ -515,7 +518,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		int j;
 		for (j = 0; j < 33; j++)
 			x->data.f32[j] = gsl_rng_uniform_pos(rng) * 2 - 1.0;
-		ccv_minimize(x, 10, 1.0, _ccv_scd_feature_logistic_loss, ccv_minimize_default_params, &context);
+		ccv_minimize(x, 10, 1.0, _ccv_scd_feature_gentle_adaboost_loss, ccv_minimize_default_params, &context);
 		for (j = 0; j < 32; j++)
 			feature->w[j] = x->data.f32[j];
 		feature->bias = x->data.f32[32];

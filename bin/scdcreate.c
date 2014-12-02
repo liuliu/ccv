@@ -115,14 +115,14 @@ int main(int argc, char** argv)
 			.step_through = 4,
 		},
 		.stop_criteria = {
-			.hit_rate = 0.9925,
+			.hit_rate = 0.99,
 			.false_positive_rate = 1e-8,
 			.auc_crit = 1e-5,
 			.maximum_feature = 1024,
 			.light_stage = 3,
 			.light_feature = 4,
 		},
-		.weight_trimming = 0.99,
+		.weight_trimming = 0.98,
 		.C = 0.0005,
 		.grayscale = 1,
 	};
