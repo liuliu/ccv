@@ -346,17 +346,6 @@ static CCV_IMPLEMENT_QSORT(_ccv_scd_value_index_sortby_value, ccv_scd_value_inde
 static CCV_IMPLEMENT_QSORT(_ccv_scd_value_index_sortby_index, ccv_scd_value_index_t, less_than)
 #undef less_than
 
-static void _ccv_scd_run_feature(ccv_dense_matrix_t* a, ccv_scd_feature_t* feature, float surf[32])
-{
-	ccv_dense_matrix_t* b = 0;
-	ccv_scd(a, &b, 0);
-	ccv_dense_matrix_t* sat = 0;
-	ccv_sat(b, &sat, 0, CCV_PADDING_ZERO);
-	ccv_matrix_free(b);
-	_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, surf);
-	ccv_matrix_free(sat);
-}
-
 static float* _ccv_scd_get_surf_at(float* fv, int feature_no, int example_no, int positive_count, int negative_count)
 {
 	return fv + ((off_t)example_no + feature_no * (positive_count + negative_count)) * 32;
@@ -555,6 +544,25 @@ static double _ccv_scd_auc(double* s, int posnum, int negnum)
 	ccfree(sidx);
 	a += (double)(negnum - fp_prev) * (posnum + tp_prev) * 0.5;
 	return a / ((double)posnum * negnum);
+}
+
+static int _ccv_scd_find_match_feature(ccv_scd_feature_t* value, ccv_array_t* features)
+{
+	int i;
+	for (i = 0; i < features->rnum; i++)
+	{
+		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		if (feature->sx[0] == value->sx[0] && feature->sy[0] == value->sy[0] &&
+			feature->dx[0] == value->dx[0] && feature->dy[0] == value->dy[0] &&
+			feature->sx[1] == value->sx[1] && feature->sy[1] == value->sy[1] &&
+			feature->dx[1] == value->dx[1] && feature->dy[1] == value->dy[1] &&
+			feature->sx[2] == value->sx[2] && feature->sy[2] == value->sy[2] &&
+			feature->dx[2] == value->dx[2] && feature->dy[2] == value->dy[2] &&
+			feature->sx[3] == value->sx[3] && feature->sy[3] == value->sy[3] &&
+			feature->dx[3] == value->dx[3] && feature->dy[3] == value->dy[3])
+			return i;
+	}
+	return -1;
 }
 
 static int _ccv_scd_best_feature_gentle_adaboost(double* s, ccv_array_t* features, double* pw, double* nw, int positive_count, int negative_count, float* fv)
@@ -890,7 +898,6 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	z.features = _ccv_scd_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
 	PRINT(CCV_CLI_INFO, " - using %d features\n", z.features->rnum);
 	int i, j, p, q;
-	float surf[32];
 	z.positives = _ccv_scd_collect_positives(params.size, posfiles, params.grayscale);
 	double* h = (double*)ccmalloc(sizeof(double) * (z.positives->rnum + negative_count));
 	z.s = (double*)ccmalloc(sizeof(double) * (z.positives->rnum + negative_count));
@@ -990,11 +997,11 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			for (i = 0; i < z.cascade->classifiers[z.t].count; i++)
 			{
 				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + i;
+				int k = _ccv_scd_find_match_feature(feature, z.features);
+				assert(k >= 0);
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				{
-					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < z.positives->rnum ? ccv_array_get(z.positives, j) : ccv_array_get(z.negatives, j - z.positives->rnum));
-					a->data.u8 = (unsigned char*)(a + 1);
-					_ccv_scd_run_feature(a, feature, surf);
+					float* surf = _ccv_scd_get_surf_at(z.fv, k, j, z.positives->rnum, z.negatives->rnum);
 					float v = feature->bias;
 					for (q = 0; q < 32; q++)
 						v += feature->w[q]* surf[q];
@@ -1010,11 +1017,11 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			{
 				FLUSH(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p + 1, max_auc);
 				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + p;
+				int k = _ccv_scd_find_match_feature(feature, z.features);
+				assert(k >= 0);
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				{
-					ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)(j < z.positives->rnum ? ccv_array_get(z.positives, j) : ccv_array_get(z.negatives, j - z.positives->rnum));
-					a->data.u8 = (unsigned char*)(a + 1);
-					_ccv_scd_run_feature(a, feature, surf);
+					float* surf = _ccv_scd_get_surf_at(z.fv, k, j, z.positives->rnum, z.negatives->rnum);
 					float v = feature->bias;
 					for (q = 0; q < 32; q++)
 						v += feature->w[q] * surf[q];
