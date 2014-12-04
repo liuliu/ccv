@@ -557,38 +557,46 @@ static double _ccv_scd_auc(double* s, int posnum, int negnum)
 	return a / ((double)posnum * negnum);
 }
 
-static int _ccv_scd_best_feature_with_auc(double* s, ccv_array_t* features, int positive_count, int negative_count, float* fv)
+static int _ccv_scd_best_feature_gentle_adaboost(double* s, ccv_array_t* features, double* pw, double* nw, int positive_count, int negative_count, float* fv)
 {
 	int i;
-	double* sn = (double*)cccalloc(features->rnum * (positive_count + negative_count), sizeof(double));
+	double* error_rate = (double*)cccalloc(features->rnum, sizeof(double));
 	assert(positive_count + negative_count > 0);
-	parallel_for(i, positive_count + negative_count) {
+	parallel_for(i, features->rnum) {
 		int j, k;
-		if ((i + 1) % 3111 == 1 || (i + 1) == positive_count + negative_count)
-			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for auc", (int)(i + 1), positive_count + negative_count, (float)(i + 1) * 100 / (positive_count + negative_count));
-		for (j = 0; j < features->rnum; j++)
+		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
+			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for adaboost", (int)(i + 1), features->rnum, (float)(i + 1) * 100 / features->rnum);
+		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		for (j = 0; j < positive_count; j++)
 		{
-			float* surf = _ccv_scd_get_surf_at(fv, j, i, positive_count, negative_count);
-			ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, j);
+			float* surf = _ccv_scd_get_surf_at(fv, i, j, positive_count, negative_count);
 			float v = feature->bias;
 			for (k = 0; k < 32; k++)
 				v += surf[k] * feature->w[k];
 			v = expf(v);
-			sn[i + j * (positive_count + negative_count)] = s[i] + (v - 1) / (v + 1); // probability
+			v = (v - 1) / (v + 1); // probability
+			error_rate[i] += pw[j] * (1 - v) * (1 - v);
+		}
+		for (j = 0; j < negative_count; j++)
+		{
+			float* surf = _ccv_scd_get_surf_at(fv, i, j + positive_count, positive_count, negative_count);
+			float v = feature->bias;
+			for (k = 0; k < 32; k++)
+				v += surf[k] * feature->w[k];
+			v = expf(v);
+			v = (v - 1) / (v + 1); // probability
+			error_rate[i] += nw[j] * (-1 - v) * (-1 - v);
 		}
 	} parallel_endfor
-	double max_auc = _ccv_scd_auc(sn, positive_count, negative_count);
+	double min_error_rate = error_rate[0];
 	int j = 0;
 	for (i = 1; i < features->rnum; i++)
-	{
-		double auc = _ccv_scd_auc(sn + i * (positive_count + negative_count), positive_count, negative_count);
-		if (auc > max_auc)
+		if (error_rate[i] < min_error_rate)
 		{
-			max_auc = auc;
+			min_error_rate = error_rate[i];
 			j = i;
 		}
-	}
-	ccfree(sn);
+	ccfree(error_rate);
 	return j;
 }
 
@@ -650,7 +658,7 @@ static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascad
 	return pass;
 }
 
-static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascade_t* cascade, ccv_array_t* hard_mine, ccv_array_t* negatives, int negative_count, int grayscale)
+static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascade_t* cascade, ccv_array_t* hard_mine, ccv_array_t* negatives, int negative_count, int grayscale, int even_dist)
 {
 	ccv_array_t* hard_negatives = ccv_array_new(ccv_compute_dense_matrix_size(cascade->size.height, cascade->size.width, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), negative_count, 0);
 	int i, j, t;
@@ -669,7 +677,7 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 	// 4). 180 rotation, with n_per_mine set;
 	// 5~8). repeat above, but with no n_per_mine set;
 	// after above, if we still cannot collect enough, so be it.
-	for (t = 0; t < 8 /* exhausted all variations */ && hard_negatives->rnum < negative_count; t++)
+	for (t = (even_dist ? 0 : 4); t < 8 /* exhausted all variations */ && hard_negatives->rnum < negative_count; t++)
 	{
 		for (i = 0; i < hard_mine->rnum; i++)
 		{
@@ -925,7 +933,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
 			classifier->features = (ccv_scd_feature_t*)ccrealloc(classifier->features, sizeof(ccv_scd_feature_t) * (z.k + 1));
 			_ccv_scd_feature_supervised_train(rng, z.features, z.positives->rnum, z.negatives->rnum, z.pw, z.nw, z.fv, params.C, params.weight_trimming);
-			int best_feature_no = _ccv_scd_best_feature_with_auc(z.s, z.features, z.positives->rnum, z.negatives->rnum, z.fv);
+			int best_feature_no = _ccv_scd_best_feature_gentle_adaboost(z.s, z.features, z.pw, z.nw, z.positives->rnum, z.negatives->rnum, z.fv);
 			ccv_scd_feature_t best_feature = *(ccv_scd_feature_t*)ccv_array_get(z.features, best_feature_no);
 			for (i = 0; i < z.positives->rnum + z.negatives->rnum; i++)
 			{
@@ -941,17 +949,19 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 				z.s[i] += h[i];
 			// compute AUC
 			double auc = _ccv_scd_auc(z.s, z.positives->rnum, z.negatives->rnum);
-			FLUSH(CCV_CLI_INFO, " - at %d-th iteration, auc: %lf\n", z.k + 1, auc);
-			if (auc - z.auc_prev < params.stop_criteria.auc_crit)
-			{
-				for (i = 0; i < z.positives->rnum + z.negatives->rnum; i++) // not worth it, rollback
-					z.s[i] -= h[i];
-				break;
-			}
-			z.auc_prev = auc;
+			float true_positive_rate = 0;
+			float false_positive_rate = 0;
+			// compute true positive / false positive rate
+			_ccv_scd_threshold_at_hit_rate(z.s, z.positives->rnum, z.negatives->rnum, params.stop_criteria.hit_rate, &true_positive_rate, &false_positive_rate);
+			FLUSH(CCV_CLI_INFO, " - at %d-th iteration, auc: %lf, TP rate: %f, FP rate: %f\n", z.k + 1, auc, true_positive_rate, false_positive_rate);
 			PRINT(CCV_CLI_INFO, " --- pick feature %s @ (%d, %d, %d, %d)\n", ((best_feature.dy[3] == best_feature.dy[0] ? "4x1" : (best_feature.dx[3] == best_feature.dx[0] ? "1x4" : "2x2"))), best_feature.sx[0], best_feature.sy[0], best_feature.dx[3], best_feature.dy[3]);
 			classifier->features[z.k] = best_feature;
 			classifier->count = z.k + 1;
+			double auc_prev = z.auc_prev;
+			z.auc_prev = auc;
+			// auc stop to improve, as well as the false positive rate goal reach, at that point, we stop
+			if (auc - auc_prev < params.stop_criteria.auc_crit && false_positive_rate < params.stop_criteria.false_positive_rate)
+				break;
 			// re-weight, with Gentle AdaBoost
 			for (i = 0; i < z.positives->rnum; i++)
 				z.pw[i] *= exp(-h[i]);
@@ -998,7 +1008,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			}
 			if (max_auc >= z.auc_prev)
 			{
-				FLUSH(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p, max_auc);
+				FLUSH(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p + 1, max_auc);
 				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + p;
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
 				{
@@ -1024,11 +1034,12 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		z.accu_true_positive_rate *= true_positive_rate;
 		z.accu_false_positive_rate *= false_positive_rate;
 		FLUSH(CCV_CLI_INFO, " - %d-th stage classifier TP rate : %f, FP rate : %f, ATP rate : %lf, AFP rate : %lg, at threshold : %f\n", z.t + 1, true_positive_rate, false_positive_rate, z.accu_true_positive_rate, z.accu_false_positive_rate, z.cascade->classifiers[z.t].threshold);
-		if (z.accu_false_positive_rate < params.stop_criteria.false_positive_rate)
+		if (z.accu_false_positive_rate < params.stop_criteria.accu_false_positive_rate)
 			break;
+		ccv_function_state_resume(_ccv_scd_classifier_cascade_new_function_state_write, z, filename);
 		if (z.t < params.boosting - 1)
 		{
-			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, z.cascade, hard_mine, z.negatives, negative_count, params.grayscale);
+			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, z.cascade, hard_mine, z.negatives, negative_count, params.grayscale, z.t < params.stop_criteria.light_stage /* try to balance even distribution among negatives when we are in light stage */);
 			ccv_array_free(z.negatives);
 			z.negatives = hard_negatives;
 			_ccv_scd_precompute_feature_vectors(z.features, z.positives, z.negatives, z.fv);

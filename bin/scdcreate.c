@@ -107,16 +107,17 @@ int main(int argc, char** argv)
 	fclose(r1);
 	free(file);
 	ccv_scd_train_param_t params = {
-		.boosting = 8,
+		.boosting = 10,
 		.size = ccv_size(40, 40),
 		.feature = {
-			.base = ccv_size(12, 12),
-			.range_through = 4,
+			.base = ccv_size(8, 8),
+			.range_through = 2,
 			.step_through = 4,
 		},
 		.stop_criteria = {
 			.hit_rate = 0.99,
-			.false_positive_rate = 1e-8,
+			.false_positive_rate = 0.5,
+			.accu_false_positive_rate = 1e-7,
 			.auc_crit = 1e-5,
 			.maximum_feature = 1024,
 			.light_stage = 3,
