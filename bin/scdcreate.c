@@ -115,17 +115,17 @@ int main(int argc, char** argv)
 			.step_through = 4,
 		},
 		.stop_criteria = {
-			.hit_rate = 0.99,
+			.hit_rate = 0.995,
 			.false_positive_rate = 0.5,
 			.accu_false_positive_rate = 1e-7,
 			.auc_crit = 1e-5,
-			.maximum_feature = 1024,
+			.maximum_feature = 2048,
 			.light_stage = 3,
 			.light_feature = 4,
 		},
 		.weight_trimming = 0.98,
 		.C = 0.0005,
-		.grayscale = 1,
+		.grayscale = 0,
 	};
 	ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_new(posfiles, hard_mine, negative_count, working_dir, params);
 	ccv_scd_classifier_cascade_write(cascade, working_dir);

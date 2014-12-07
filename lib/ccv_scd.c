@@ -11,7 +11,7 @@
 
 const ccv_scd_param_t ccv_scd_default_params = {
 	.interval = 5,
-	.min_neighbors = 2,
+	.min_neighbors = 1,
 	.flags = 0,
 	.step_through = 4,
 	.size = {
@@ -28,14 +28,17 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	// diagonal u v, and x, y, therefore 8 channels
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_32F | 8, CCV_32F | 8, sig);
 	ccv_object_return_if_cached(, db);
+	ccv_dense_matrix_t* blur = 0;
+	ccv_blur(a, &blur, 0, 0.5); // do a modest blur, which suppresses noise
 	ccv_dense_matrix_t* dx = 0;
-	ccv_sobel(a, &dx, 0, 1, 0);
+	ccv_sobel(blur, &dx, 0, 1, 0);
 	ccv_dense_matrix_t* dy = 0;
-	ccv_sobel(a, &dy, 0, 0, 1);
+	ccv_sobel(blur, &dy, 0, 0, 1);
 	ccv_dense_matrix_t* du = 0;
-	ccv_sobel(a, &du, 0, 1, 1);
+	ccv_sobel(blur, &du, 0, 1, 1);
 	ccv_dense_matrix_t* dv = 0;
-	ccv_sobel(a, &dv, 0, -1, 1);
+	ccv_sobel(blur, &dv, 0, -1, 1);
+	ccv_matrix_free(blur);
 	assert(CCV_GET_DATA_TYPE(dx->type) == CCV_GET_DATA_TYPE(dy->type));
 	assert(CCV_GET_DATA_TYPE(dy->type) == CCV_GET_DATA_TYPE(du->type));
 	assert(CCV_GET_DATA_TYPE(du->type) == CCV_GET_DATA_TYPE(dv->type));
@@ -60,10 +63,10 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 				float fdu = _for_get(du_ptr, j, 0), fdv = _for_get(dv_ptr, j, 0); \
 				float adx = fabsf(fdx), ady = fabsf(fdy); \
 				float adu = fabsf(fdu), adv = fabsf(fdv); \
-				dbp[0] = adx - fdx, dbp[1] = adx + fdx; \
-				dbp[2] = ady - fdy, dbp[3] = ady + fdy; \
-				dbp[4] = adu - fdu, dbp[5] = adu + fdu; \
-				dbp[6] = adv - fdv, dbp[7] = adv + fdv; \
+				dbp[0] = fdx, dbp[1] = fdy; \
+				dbp[2] = fdu, dbp[3] = fdv; \
+				dbp[4] = adx, dbp[5] = ady; \
+				dbp[6] = adu, dbp[7] = adv; \
 				dbp += 8; \
 			} \
 			dx_ptr += dx->step; \
@@ -107,10 +110,10 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 						adv = fabsf(fdv); \
 					} \
 				} \
-				dbp[0] = adx - fdx, dbp[1] = adx + fdx; \
-				dbp[2] = ady - fdy, dbp[3] = ady + fdy; \
-				dbp[4] = adu - fdu, dbp[5] = adu + fdu; \
-				dbp[6] = adv - fdv, dbp[7] = adv + fdv; \
+				dbp[0] = fdx, dbp[1] = fdy; \
+				dbp[2] = fdu, dbp[3] = fdv; \
+				dbp[4] = adx, dbp[5] = ady; \
+				dbp[6] = adu, dbp[7] = adv; \
 				dbp += 8; \
 			} \
 			dx_ptr += dx->step; \
@@ -572,7 +575,7 @@ static int _ccv_scd_best_feature_gentle_adaboost(double* s, ccv_array_t* feature
 	assert(positive_count + negative_count > 0);
 	parallel_for(i, features->rnum) {
 		int j, k;
-		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
+		if ((i + 1) % 331 == 1 || (i + 1) == features->rnum)
 			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for adaboost", (int)(i + 1), features->rnum, (float)(i + 1) * 100 / features->rnum);
 		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
 		for (j = 0; j < positive_count; j++)
@@ -1046,6 +1049,15 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		ccv_function_state_resume(_ccv_scd_classifier_cascade_new_function_state_write, z, filename);
 		if (z.t < params.boosting - 1)
 		{
+			int pass = 0;
+			for (i = 0; i < z.positives->rnum; i++)
+			{
+				ccv_dense_matrix_t* a = (ccv_dense_matrix_t*)ccv_array_get(z.positives, i);
+				a->data.u8 = (unsigned char*)(a + 1);
+				if (_ccv_scd_classifier_cascade_pass(z.cascade, a))
+					++pass;
+			}
+			PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate (with pass) : %f\n", z.t + 1, (float)pass / z.positives->rnum);
 			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, z.cascade, hard_mine, z.negatives, negative_count, params.grayscale, z.t < params.stop_criteria.light_stage /* try to balance even distribution among negatives when we are in light stage */);
 			ccv_array_free(z.negatives);
 			z.negatives = hard_negatives;
@@ -1262,17 +1274,14 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
 {
 	const ccv_comp_t* r1 = (const ccv_comp_t*)_r1;
 	const ccv_comp_t* r2 = (const ccv_comp_t*)_r2;
-	int distance = (int)(ccv_min(r1->rect.width, r1->rect.height) * 0.25 + 0.5);
 
-	return r2->classification.id == r1->classification.id &&
-		r2->rect.x <= r1->rect.x + distance &&
-		r2->rect.x >= r1->rect.x - distance &&
-		r2->rect.y <= r1->rect.y + distance &&
-		r2->rect.y >= r1->rect.y - distance &&
-		r2->rect.width <= (int)(r1->rect.width * 1.5 + 0.5) &&
-		(int)(r2->rect.width * 1.5 + 0.5) >= r1->rect.width &&
-		r2->rect.height <= (int)(r1->rect.height * 1.5 + 0.5) &&
-		(int)(r2->rect.height * 1.5 + 0.5) >= r1->rect.height;
+	if (r2->classification.id != r1->classification.id)
+		return 0;
+
+	int i = ccv_max(ccv_min(r2->rect.x + r2->rect.width, r1->rect.x + r1->rect.width) - ccv_max(r2->rect.x, r1->rect.x), 0) * ccv_max(ccv_min(r2->rect.y + r2->rect.height, r1->rect.y + r1->rect.height) - ccv_max(r2->rect.y, r1->rect.y), 0);
+	int m = ccv_min(r2->rect.width * r2->rect.height, r1->rect.width * r1->rect.height);
+
+	return i >= 0.3 * m; // IoM > 0.3 like HeadHunter does
 }
 
 ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params)
@@ -1388,10 +1397,9 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 		ccv_matrix_free(a);
 
 	ccv_array_t* result_seq = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
-	ccv_array_t* seq2 = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
 	for (k = 0; k < count; k++)
 	{
-		/* the following code from OpenCV's haar feature implementation */
+		/* simple non-maximum suppression, we merge when intersected area / min area > 0.3  */
 		if(params.min_neighbors == 0)
 		{
 			for (i = 0; i < seq[k]->rnum; i++)
@@ -1401,7 +1409,6 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 			}
 		} else {
 			ccv_array_t* idx_seq = 0;
-			ccv_array_clear(seq2);
 			// group retrieved rectangles in order to filter out noise
 			int ncomp = ccv_array_group(seq[k], &idx_seq, _ccv_is_equal_same_class, 0);
 			ccv_comp_t* comps = (ccv_comp_t*)cccalloc(ncomp + 1, sizeof(ccv_comp_t));
@@ -1422,74 +1429,18 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 				++comps[idx].neighbors;
 			}
 
-			// calculate average bounding box
+			// push merged bounding box to result_seq
 			for (i = 0; i < ncomp; i++)
 			{
 				int n = comps[i].neighbors;
 				if (n >= params.min_neighbors)
-					ccv_array_push(seq2, comps + i);
-			}
-
-			// filter out large object rectangles contains small object rectangles
-			for (i = 0; i < seq2->rnum; i++)
-			{
-				ccv_comp_t* r2 = (ccv_comp_t*)ccv_array_get(seq2, i);
-				int distance = (int)(ccv_min(r2->rect.width, r2->rect.height) * 0.25 + 0.5);
-				for (j = 0; j < seq2->rnum; j++)
-				{
-					ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, j);
-					if (i != j &&
-						abs(r1.classification.id) == r2->classification.id &&
-						r1.rect.x >= r2->rect.x - distance &&
-						r1.rect.y >= r2->rect.y - distance &&
-						r1.rect.x + r1.rect.width <= r2->rect.x + r2->rect.width + distance &&
-						r1.rect.y + r1.rect.height <= r2->rect.y + r2->rect.height + distance &&
-						// if r1 (the smaller one) is better, mute r2
-						(r2->classification.confidence <= r1.classification.confidence && r2->neighbors < r1.neighbors))
-					{
-						r2->classification.id = -r2->classification.id;
-						break;
-					}
-				}
-			}
-
-			// filter out small object rectangles inside large object rectangles
-			for (i = 0; i < seq2->rnum; i++)
-			{
-				ccv_comp_t r1 = *(ccv_comp_t*)ccv_array_get(seq2, i);
-				if (r1.classification.id > 0)
-				{
-					int flag = 1;
-
-					for (j = 0; j < seq2->rnum; j++)
-					{
-						ccv_comp_t r2 = *(ccv_comp_t*)ccv_array_get(seq2, j);
-						int distance = (int)(ccv_min(r2.rect.width, r2.rect.height) * 0.25 + 0.5);
-
-						if (i != j &&
-							abs(r1.classification.id) == abs(r2.classification.id) &&
-							r1.rect.x >= r2.rect.x - distance &&
-							r1.rect.y >= r2.rect.y - distance &&
-							r1.rect.x + r1.rect.width <= r2.rect.x + r2.rect.width + distance &&
-							r1.rect.y + r1.rect.height <= r2.rect.y + r2.rect.height + distance &&
-							// if r2 is better, we mute r1
-							(r2.classification.confidence > r1.classification.confidence || r2.neighbors >= r1.neighbors))
-						{
-							flag = 0;
-							break;
-						}
-					}
-
-					if (flag)
-						ccv_array_push(result_seq, &r1);
-				}
+					ccv_array_push(result_seq, comps + i);
 			}
 			ccv_array_free(idx_seq);
 			ccfree(comps);
 		}
 		ccv_array_free(seq[k]);
 	}
-	ccv_array_free(seq2);
 
 	return result_seq;
 }
