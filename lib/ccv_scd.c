@@ -161,7 +161,7 @@ static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_feature_
 		surf[i] = surf[i] * u;
 }
 
-#if defined(HAVE_GSL) && defined(HAVE_LIBLINEAR)
+#ifdef HAVE_GSL
 static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
 {
 	float rotate_x = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.pitch;
@@ -892,7 +892,7 @@ static void _ccv_scd_classifier_cascade_new_function_state_write(ccv_scd_classif
 
 ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params)
 {
-#if defined(HAVE_GSL) && defined(HAVE_LIBLINEAR)
+#ifdef HAVE_GSL
 	assert(posfiles->rnum > 0);
 	assert(hard_mine->rnum > 0);
 	gsl_rng_env_setup();
@@ -1077,7 +1077,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	ccv_function_state_finish();
 	return z.cascade;
 #else
-	assert(0 && "ccv_scd_classifier_cascade_new requires GSL library and liblinear support");
+	assert(0 && "ccv_scd_classifier_cascade_new requires GSL library and support");
 	return 0;
 #endif
 }
