@@ -15,8 +15,8 @@ const ccv_scd_param_t ccv_scd_default_params = {
 	.flags = 0,
 	.step_through = 4,
 	.size = {
-		.width = 40,
-		.height = 40,
+		.width = 48,
+		.height = 48,
 	},
 };
 
@@ -712,7 +712,7 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 				.min_neighbors = 0,
 				.flags = 0,
 				.step_through = 4,
-				.size = ccv_size(40, 40),
+				.size = cascade->size,
 			};
 			ccv_array_t* objects = ccv_scd_detect_objects(image, &cascade, 1, params);
 			if (objects->rnum > 0)

@@ -7,11 +7,12 @@
 #endif
 
 #ifdef HAVE_GSL
-static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
+/*
+static ccv_dense_matrix_t* _ccv_aflw_slice_with_pose(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
 {
 	float rotate_x = 0; // (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.pitch;
 	float rotate_y = 0; // (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.yaw;
-	float rotate_z = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180; // + pose.roll;
+	float rotate_z = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.roll;
 	float scale = gsl_rng_uniform(rng);
 	// to make the scale evenly distributed, for example, when deforming of 1/2 ~ 2, we want it to distribute around 1, rather than any average of 1/2 ~ 2
 	scale = (1 + deform_scale * scale) / (1 + deform_scale * (1 - scale));
@@ -33,10 +34,32 @@ static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dens
 		.height = (int)((size.height + margin.top + margin.bottom) / scale_ratio + 0.5),
 	};
 	assert(scale_size.width > 0 && scale_size.height > 0);
-	ccv_slice(b, (ccv_matrix_t**)&resize, 0, (int)(b->rows * 0.5 - (size.height + margin.top + margin.bottom - 15 /* offset for aflw data */) / scale_ratio * 0.5 + 0.5), (int)(b->cols * 0.5 - (size.width + margin.left + margin.right) / scale_ratio * 0.5 + 0.5), scale_size.height, scale_size.width);
+	ccv_slice(b, (ccv_matrix_t**)&resize, 0, (int)(b->rows * 0.5 - (size.height + margin.top + margin.bottom - 16) / scale_ratio * 0.5 + 0.5), (int)(b->cols * 0.5 - (size.width + margin.left + margin.right) / scale_ratio * 0.5 + 0.5), scale_size.height, scale_size.width);
 	ccv_matrix_free(b);
 	b = 0;
 	if (scale_ratio > 1)
+		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_CUBIC);
+	else
+		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_AREA);
+	ccv_matrix_free(resize);
+	return b;
+}
+*/
+static ccv_dense_matrix_t* _ccv_aflw_slice_with_rect(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_rect_t rect, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
+{
+	ccv_dense_matrix_t* resize = 0;
+	ccv_slice(image, (ccv_matrix_t**)&resize, 0, rect.y, rect.x, rect.height, rect.width);
+	assert(rect.width == rect.height);
+	float scale = gsl_rng_uniform(rng);
+	// to make the scale evenly distributed, for example, when deforming of 1/2 ~ 2, we want it to distribute around 1, rather than any average of 1/2 ~ 2
+	scale = (1 + deform_scale * scale) / (1 + deform_scale * (1 - scale));
+	int new_width = (int)(rect.width * scale + 0.5);
+	int new_height = (int)(rect.height * scale + 0.5);
+	ccv_point_t offset = ccv_point((int)((deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * rect.width + 0.5 + (rect.width - new_width) * 0.5), (int)((deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) * rect.height + 0.5 + (rect.height - new_height) * 0.5));
+	rect.x += offset.x;
+	rect.y += offset.y;
+	ccv_dense_matrix_t* b = 0;
+	if (size.width > rect.width)
 		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_CUBIC);
 	else
 		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_AREA);
@@ -53,20 +76,18 @@ int main(int argc, char** argv)
 	char* base_dir = argv[2];
 	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
 	char* file = (char*)malloc(1024);
-	char* file_id = (char*)malloc(1024);
-	int face_id;
-	ccv_decimal_pose_t pose;
 	int i = 0;
-	// roll pitch yaw
-	while (fscanf(r, "%s %s %d %f %f %f %f %f %f %f", file_id, file, &face_id, &pose.x, &pose.y, &pose.a, &pose.b, &pose.roll, &pose.pitch, &pose.yaw) != EOF)
+	ccv_rect_t rect;
+	ccv_decimal_pose_t pose;
+	// rect.x, rect.y, rect.width, rect.height roll pitch yaw
+	while (fscanf(r, "%s %d %d %d %d %f %f %f", file, &rect.x, &rect.y, &rect.width, &rect.height, &pose.roll, &pose.pitch, &pose.yaw) != EOF)
 	{
 		if (pose.pitch < CCV_PI * 22.5 / 180 && pose.pitch > -CCV_PI * 22.5 / 180 &&
 			pose.roll < CCV_PI * 22.5 / 180 && pose.roll > -CCV_PI * 22.5 / 180 &&
-			pose.yaw < CCV_PI * 20 / 180 && pose.yaw > -CCV_PI * 20 / 180)
+			pose.yaw < CCV_PI * 20 / 180 && pose.yaw > -CCV_PI * 20 / 180 &&
+			rect.width >= 15 && rect.height >= 15)
 		{
 			// resize to a more proper sizes
-			pose.a *= 0.9;
-			pose.b *= 0.9;
 			char* filename = (char*)malloc(1024);
 			strncpy(filename, base_dir, 1024);
 			filename[dirlen - 1] = '/';
@@ -74,14 +95,14 @@ int main(int argc, char** argv)
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
 			char* savefile = (char*)malloc(1024);
-			ccv_dense_matrix_t* b = _ccv_scd_slice_with_distortion(rng, image, pose, ccv_size(40, 40), ccv_margin(0, 0, 0, 0), CCV_PI * 5 / 180, 0.1, 0.05);
+			ccv_dense_matrix_t* b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
 			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-bw.png", i);
 			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(b);
 			ccv_matrix_free(image);
 			image = 0;
 			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-			b = _ccv_scd_slice_with_distortion(rng, image, pose, ccv_size(40, 40), ccv_margin(0, 0, 0, 0), CCV_PI * 5 / 180, 0.1, 0.05);
+			b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
 			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-rgb.png", i);
 			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(b);
@@ -91,9 +112,46 @@ int main(int argc, char** argv)
 			free(filename);
 		}
 	}
+	/*
+	char* file_id = (char*)malloc(1024);
+	int face_id;
+	// roll pitch yaw
+	while (fscanf(r, "%s %s %d %f %f %f %f %f %f %f", file_id, file, &face_id, &pose.x, &pose.y, &pose.a, &pose.b, &pose.roll, &pose.pitch, &pose.yaw) != EOF)
+	{
+		if (pose.pitch < CCV_PI * 22.5 / 180 && pose.pitch > -CCV_PI * 22.5 / 180 &&
+			pose.roll < CCV_PI * 22.5 / 180 && pose.roll > -CCV_PI * 22.5 / 180 &&
+			pose.yaw < CCV_PI * 20 / 180 && pose.yaw > -CCV_PI * 20 / 180 &&
+			pose.a >= 10 && pose.b >= 10)
+		{
+			// resize to a more proper sizes
+			char* filename = (char*)malloc(1024);
+			strncpy(filename, base_dir, 1024);
+			filename[dirlen - 1] = '/';
+			strncpy(filename + dirlen, file, 1024 - dirlen);
+			ccv_dense_matrix_t* image = 0;
+			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
+			char* savefile = (char*)malloc(1024);
+			ccv_dense_matrix_t* b = _ccv_aflw_slice_with_pose(rng, image, pose, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
+			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-bw.png", i);
+			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
+			ccv_matrix_free(b);
+			ccv_matrix_free(image);
+			image = 0;
+			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+			b = _ccv_aflw_slice_with_pose(rng, image, pose, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
+			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-rgb.png", i);
+			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
+			ccv_matrix_free(b);
+			ccv_matrix_free(image);
+			i++;
+			free(savefile);
+			free(filename);
+		}
+	}
+	free(file_id);
+	*/
 	fclose(r);
 	free(file);
-	free(file_id);
 	gsl_rng_free(rng);
 #else
 	assert(0 && "aflw requires GSL library support");

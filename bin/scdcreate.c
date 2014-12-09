@@ -108,7 +108,7 @@ int main(int argc, char** argv)
 	free(file);
 	ccv_scd_train_param_t params = {
 		.boosting = 10,
-		.size = ccv_size(40, 40),
+		.size = ccv_size(48, 48),
 		.feature = {
 			.base = ccv_size(8, 8),
 			.range_through = 2,
