@@ -162,44 +162,7 @@ static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_feature_
 }
 
 #ifdef HAVE_GSL
-static ccv_dense_matrix_t* _ccv_scd_slice_with_distortion(gsl_rng* rng, ccv_dense_matrix_t* image, ccv_decimal_pose_t pose, ccv_size_t size, ccv_margin_t margin, float deform_angle, float deform_scale, float deform_shift)
-{
-	float rotate_x = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.pitch;
-	float rotate_y = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.yaw;
-	float rotate_z = (deform_angle * 2 * gsl_rng_uniform(rng) - deform_angle) * CCV_PI / 180 + pose.roll;
-	float scale = gsl_rng_uniform(rng);
-	// to make the scale evenly distributed, for example, when deforming of 1/2 ~ 2, we want it to distribute around 1, rather than any average of 1/2 ~ 2
-	scale = (1 + deform_scale * scale) / (1 + deform_scale * (1 - scale));
-	float scale_ratio = sqrtf((float)(size.width * size.height) / (pose.a * pose.b * 4));
-	float m00 = cosf(rotate_z) * scale;
-	float m01 = cosf(rotate_y) * sinf(rotate_z) * scale;
-	float m02 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) / scale_ratio + pose.x + (margin.right - margin.left) / scale_ratio - image->cols * 0.5;
-	float m10 = (sinf(rotate_y) * cosf(rotate_z) - cosf(rotate_x) * sinf(rotate_z)) * scale;
-	float m11 = (sinf(rotate_y) * sinf(rotate_z) + cosf(rotate_x) * cosf(rotate_z)) * scale;
-	float m12 = (deform_shift * 2 * gsl_rng_uniform(rng) - deform_shift) / scale_ratio + pose.y + (margin.bottom - margin.top) / scale_ratio - image->rows * 0.5;
-	float m20 = (sinf(rotate_y) * cosf(rotate_z) + sinf(rotate_x) * sinf(rotate_z)) * scale;
-	float m21 = (sinf(rotate_y) * sinf(rotate_z) - sinf(rotate_x) * cosf(rotate_z)) * scale;
-	float m22 = cosf(rotate_x) * cosf(rotate_y);
-	ccv_dense_matrix_t* b = 0;
-	ccv_perspective_transform(image, &b, 0, m00, m01, m02, m10, m11, m12, m20, m21, m22);
-	ccv_dense_matrix_t* resize = 0;
-	ccv_size_t scale_size = {
-		.width = (int)((size.width + margin.left + margin.right) / scale_ratio + 0.5),
-		.height = (int)((size.height + margin.top + margin.bottom) / scale_ratio + 0.5),
-	};
-	assert(scale_size.width > 0 && scale_size.height > 0);
-	ccv_slice(b, (ccv_matrix_t**)&resize, 0, (int)(b->rows * 0.5 - (size.height + margin.top + margin.bottom) / scale_ratio * 0.5 + 0.5), (int)(b->cols * 0.5 - (size.width + margin.left + margin.right) / scale_ratio * 0.5 + 0.5), scale_size.height, scale_size.width);
-	ccv_matrix_free(b);
-	b = 0;
-	if (scale_ratio > 1)
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_CUBIC);
-	else
-		ccv_resample(resize, &b, 0, size.height + margin.top + margin.bottom, size.width + margin.left + margin.right, CCV_INTER_AREA);
-	ccv_matrix_free(resize);
-	return b;
-}
-
-static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* hard_mine, int total, float deform_angle, float deform_scale, float deform_shift, int grayscale)
+static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* hard_mine, int total, int grayscale)
 {
 	ccv_array_t* negatives = ccv_array_new(ccv_compute_dense_matrix_size(size.height, size.width, CCV_8U | (grayscale ? CCV_C1 : CCV_C3)), total, 0);
 	int i, j, k;
@@ -224,18 +187,24 @@ static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, cc
 				if (k < (int)ratio || gsl_rng_uniform(rng) <= ccv_max(0.1, ratio - (int)ratio))
 				{
 					FLUSH(CCV_CLI_INFO, " - collect negatives %d%% (%d / %d)", (i + 1) * 100 / total, i + 1, total);
-					ccv_decimal_pose_t pose;
+					ccv_rect_t rect;
 					double scale_ratio = gsl_rng_uniform(rng) * (max_scale_ratio - 0.5) + 0.5;
-					pose.a = size.width * 0.5 * scale_ratio;
-					pose.b = size.height * 0.5 * scale_ratio;
-					pose.x = gsl_rng_uniform_int(rng, ccv_max((int)(image->cols - pose.a * 2 + 1.5), 1)) + pose.a;
-					pose.y = gsl_rng_uniform_int(rng, ccv_max((int)(image->rows - pose.b * 2 + 1.5), 1)) + pose.b;
-					pose.roll = pose.pitch = pose.yaw = 0;
-					ccv_dense_matrix_t* sliced = _ccv_scd_slice_with_distortion(rng, image, pose, size, ccv_margin(0, 0, 0, 0), deform_angle, deform_scale, deform_shift);
-					sliced->sig = 0;
-					// this leveraged the fact that because I know the ccv_dense_matrix_t is continuous in memory
-					ccv_array_push(negatives, sliced);
+					rect.width = ccv_min(image->cols, (int)(size.width * scale_ratio + 0.5));
+					rect.height = ccv_min(image->rows, (int)(size.height * scale_ratio + 0.5));
+					rect.x = gsl_rng_uniform_int(rng, ccv_max(image->cols - rect.width + 1, 1));
+					rect.y = gsl_rng_uniform_int(rng, ccv_max(image->rows - rect.height + 1, 1));
+					ccv_dense_matrix_t* sliced = 0;
+					ccv_slice(image, (ccv_matrix_t**)&sliced, 0, rect.y, rect.x, rect.height, rect.width);
+					ccv_dense_matrix_t* b = 0;
+					if (size.width > rect.width)
+						ccv_resample(sliced, &b, 0, size.height, size.width, CCV_INTER_CUBIC);
+					else
+						ccv_resample(sliced, &b, 0, size.height, size.width, CCV_INTER_AREA);
 					ccv_matrix_free(sliced);
+					b->sig = 0;
+					// this leveraged the fact that because I know the ccv_dense_matrix_t is continuous in memory
+					ccv_array_push(negatives, b);
+					ccv_matrix_free(b);
 					++i;
 					if (i >= total)
 						break;
@@ -913,7 +882,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	assert(z.fv);
 	z.params = params;
 	ccv_function_state_begin(_ccv_scd_classifier_cascade_new_function_state_read, z, filename);
-	z.negatives = _ccv_scd_collect_negatives(rng, params.size, hard_mine, negative_count, params.deform.angle, params.deform.scale, params.deform.shift, params.grayscale);
+	z.negatives = _ccv_scd_collect_negatives(rng, params.size, hard_mine, negative_count, params.grayscale);
 	_ccv_scd_precompute_feature_vectors(z.features, z.positives, z.negatives, z.fv);
 	z.cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
 	z.cascade->margin = ccv_margin(0, 0, 0, 0);
@@ -937,8 +906,8 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		z.cascade->classifiers[z.t].count = 0;
 		z.auc_prev = 0;
 		assert(z.positives->rnum > 0 && z.negatives->rnum > 0);
-		// for the first light stages, we have more restrictive number of features (faster)
-		for (z.k = 0; z.k < (z.t < params.stop_criteria.light_stage ? params.stop_criteria.light_feature : params.stop_criteria.maximum_feature); z.k++)
+		// for the first prune stages, we have more restrictive number of features (faster)
+		for (z.k = 0; z.k < (z.t < params.stop_criteria.prune_stage ? params.stop_criteria.prune_feature : params.stop_criteria.maximum_feature); z.k++)
 		{
 			ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
 			classifier->features = (ccv_scd_feature_t*)ccrealloc(classifier->features, sizeof(ccv_scd_feature_t) * (z.k + 1));
@@ -1058,7 +1027,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 					++pass;
 			}
 			PRINT(CCV_CLI_INFO, " - %d-th stage classifier TP rate (with pass) : %f\n", z.t + 1, (float)pass / z.positives->rnum);
-			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, z.cascade, hard_mine, z.negatives, negative_count, params.grayscale, z.t < params.stop_criteria.light_stage /* try to balance even distribution among negatives when we are in light stage */);
+			ccv_array_t* hard_negatives = _ccv_scd_hard_mining(rng, z.cascade, hard_mine, z.negatives, negative_count, params.grayscale, z.t < params.stop_criteria.prune_stage /* try to balance even distribution among negatives when we are in prune stage */);
 			ccv_array_free(z.negatives);
 			z.negatives = hard_negatives;
 			_ccv_scd_precompute_feature_vectors(z.features, z.positives, z.negatives, z.fv);

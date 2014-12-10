@@ -95,14 +95,14 @@ int main(int argc, char** argv)
 			ccv_dense_matrix_t* image = 0;
 			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_GRAY);
 			char* savefile = (char*)malloc(1024);
-			ccv_dense_matrix_t* b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
+			ccv_dense_matrix_t* b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.1, 0.05);
 			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-bw.png", i);
 			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(b);
 			ccv_matrix_free(image);
 			image = 0;
 			ccv_read(filename, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
-			b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.05, 0.05);
+			b = _ccv_aflw_slice_with_rect(rng, image, rect, ccv_size(48, 48), ccv_margin(0, 0, 0, 0), 10, 0.1, 0.05);
 			snprintf(savefile, 1024, "/home/liu/Data/facepos/aflw-%07d-rgb.png", i);
 			ccv_write(b, savefile, 0, CCV_IO_PNG_FILE, 0);
 			ccv_matrix_free(b);

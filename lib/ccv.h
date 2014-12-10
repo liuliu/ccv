@@ -1127,18 +1127,13 @@ typedef struct {
 		int step_through;
 	} feature;
 	struct {
-		float angle;
-		float scale;
-		float shift;
-	} deform;
-	struct {
 		float hit_rate;
 		float false_positive_rate;
 		float accu_false_positive_rate;
 		float auc_crit;
 		int maximum_feature;
-		int light_stage;
-		int light_feature;
+		int prune_stage;
+		int prune_feature;
 	} stop_criteria;
 	double weight_trimming;
 	double C;

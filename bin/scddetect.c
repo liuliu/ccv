@@ -50,8 +50,6 @@ int main(int argc, char** argv)
 				ccv_read(filename, &image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
 				assert(image != 0);
 				ccv_scd_param_t params = ccv_scd_default_params;
-				params.step_through = 2;
-				params.interval = 7;
 				params.size = ccv_size(24, 24);
 				ccv_array_t* seq = ccv_scd_detect_objects(image, &cascade, 1, params);
 				printf("%s\n%d\n", file, seq->rnum);
