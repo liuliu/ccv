@@ -130,7 +130,7 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	ccv_matrix_free(dv);
 }
 
-static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_feature_t* feature, float surf[32])
+static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_stump_feature_t* feature, float surf[32])
 {
 	int i, j;
 	// extract feature
@@ -236,9 +236,9 @@ static ccv_array_t*_ccv_scd_collect_positives(ccv_size_t size, ccv_array_t* posf
 	return positives;
 }
 
-static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int step_through, ccv_size_t size)
+static ccv_array_t* _ccv_scd_stump_features(ccv_size_t base, int range_through, int step_through, ccv_size_t size)
 {
-	ccv_array_t* features = ccv_array_new(sizeof(ccv_scd_feature_t), 64, 0);
+	ccv_array_t* features = ccv_array_new(sizeof(ccv_scd_stump_feature_t), 64, 0);
 	int x, y, w, h;
 	for (w = base.width; w <= size.width; w += range_through)
 		if (w % 4 == 0) // only allow 4:1
@@ -248,7 +248,7 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 				for (y = 0; y <= size.height - h; y += step_through)
 				{
 					// 4x1 feature
-					ccv_scd_feature_t feature;
+					ccv_scd_stump_feature_t feature;
 					feature.sx[0] = x;
 					feature.dx[0] = x + (w / 4);
 					feature.sx[1] = x + (w / 4);
@@ -270,7 +270,7 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 				for (y = 0; y <= size.height - h; y += step_through)
 				{
 					// 1x4 feature
-					ccv_scd_feature_t feature;
+					ccv_scd_stump_feature_t feature;
 					feature.sx[0] = feature.sx[1] = feature.sx[2] = feature.sx[3] = x;
 					feature.dx[0] = feature.dx[1] = feature.dx[2] = feature.dx[3] = x + w;
 					feature.sy[0] = y;
@@ -292,7 +292,7 @@ static ccv_array_t* _ccv_scd_features(ccv_size_t base, int range_through, int st
 						(w == h || w == h * 2 || w * 2 == h || w * 2 == h * 3 || w * 3 == h * 2)) // allow 1:1, 1:2, 2:1, 2:3, 3:2
 					{
 						// 2x2 feature
-						ccv_scd_feature_t feature;
+						ccv_scd_stump_feature_t feature;
 						feature.sx[0] = feature.sx[1] = x;
 						feature.dx[0] = feature.dx[1] = x + (w / 2);
 						feature.sy[0] = feature.sy[2] = y;
@@ -338,7 +338,7 @@ static void _ccv_scd_precompute_feature_vectors(const ccv_array_t* features, con
 		ccv_matrix_free(b);
 		for (j = 0; j < features->rnum; j++)
 		{
-			ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, j);
+			ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, j);
 			// save to fv
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, _ccv_scd_get_surf_at(fv, j, i, positives->rnum, negatives->rnum));
 		}
@@ -357,7 +357,7 @@ static void _ccv_scd_precompute_feature_vectors(const ccv_array_t* features, con
 		ccv_matrix_free(b);
 		for (j = 0; j < features->rnum; j++)
 		{
-			ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, j);
+			ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, j);
 			// save to fv
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, _ccv_scd_get_surf_at(fv, j, i + positives->rnum, positives->rnum, negatives->rnum));
 		}
@@ -377,7 +377,7 @@ typedef struct {
 	float* fv;
 } ccv_loss_minimize_context_t;
 
-static int _ccv_scd_feature_gentle_adaboost_loss(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
+static int _ccv_scd_stump_feature_gentle_adaboost_loss(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data)
 {
 	ccv_loss_minimize_context_t* context = (ccv_loss_minimize_context_t*)data;
 	int i, j;
@@ -445,7 +445,7 @@ static int _ccv_scd_weight_trimming(ccv_scd_value_index_t* idx, int count, doubl
 	return active_count;
 }
 
-static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, int positive_count, int negative_count, double* pw, double* nw, float* fv, double C, double weight_trimming)
+static void _ccv_scd_stump_feature_supervised_train(gsl_rng* rng, ccv_array_t* features, int positive_count, int negative_count, double* pw, double* nw, float* fv, double C, double weight_trimming)
 {
 	int i;
 	ccv_scd_value_index_t* pwidx = (ccv_scd_value_index_t*)ccmalloc(sizeof(ccv_scd_value_index_t) * positive_count);
@@ -463,7 +463,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 	parallel_for(i, features->rnum) {
 		if ((i + 1) % 31 == 1 || (i + 1) == features->rnum)
 			FLUSH(CCV_CLI_INFO, " - supervised train feature %d / %d with logistic regression, active set {%d, %d}", (int)(i + 1), features->rnum, active_positive_count, active_negative_count);
-		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, i);
 		ccv_loss_minimize_context_t context = {
 			.feature_no = i,
 			.C = C,
@@ -479,7 +479,7 @@ static void _ccv_scd_feature_supervised_train(gsl_rng* rng, ccv_array_t* feature
 		int j;
 		for (j = 0; j < 33; j++)
 			x->data.f32[j] = gsl_rng_uniform_pos(rng) * 2 - 1.0;
-		ccv_minimize(x, 10, 1.0, _ccv_scd_feature_gentle_adaboost_loss, ccv_minimize_default_params, &context);
+		ccv_minimize(x, 10, 1.0, _ccv_scd_stump_feature_gentle_adaboost_loss, ccv_minimize_default_params, &context);
 		for (j = 0; j < 32; j++)
 			feature->w[j] = x->data.f32[j];
 		feature->bias = x->data.f32[32];
@@ -518,12 +518,12 @@ static double _ccv_scd_auc(double* s, int posnum, int negnum)
 	return a / ((double)posnum * negnum);
 }
 
-static int _ccv_scd_find_match_feature(ccv_scd_feature_t* value, ccv_array_t* features)
+static int _ccv_scd_find_match_feature(ccv_scd_stump_feature_t* value, ccv_array_t* features)
 {
 	int i;
 	for (i = 0; i < features->rnum; i++)
 	{
-		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, i);
 		if (feature->sx[0] == value->sx[0] && feature->sy[0] == value->sy[0] &&
 			feature->dx[0] == value->dx[0] && feature->dy[0] == value->dy[0] &&
 			feature->sx[1] == value->sx[1] && feature->sy[1] == value->sy[1] &&
@@ -546,7 +546,7 @@ static int _ccv_scd_best_feature_gentle_adaboost(double* s, ccv_array_t* feature
 		int j, k;
 		if ((i + 1) % 331 == 1 || (i + 1) == features->rnum)
 			FLUSH(CCV_CLI_INFO, " - go through %d / %d (%.1f%%) for adaboost", (int)(i + 1), features->rnum, (float)(i + 1) * 100 / features->rnum);
-		ccv_scd_feature_t* feature = (ccv_scd_feature_t*)ccv_array_get(features, i);
+		ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, i);
 		for (j = 0; j < positive_count; j++)
 		{
 			float* surf = _ccv_scd_get_surf_at(fv, i, j, positive_count, negative_count);
@@ -616,11 +616,11 @@ static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascad
 	int i, j, k;
 	for (i = 0; i < cascade->count; i++)
 	{
-		ccv_scd_classifier_t* classifier = cascade->classifiers + i;
+		ccv_scd_stump_classifier_t* classifier = cascade->classifiers + i;
 		float v = 0;
 		for (j = 0; j < classifier->count; j++)
 		{
-			ccv_scd_feature_t* feature = classifier->features + j;
+			ccv_scd_stump_feature_t* feature = classifier->features + j;
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, surf);
 			float u = feature->bias;
 			for (k = 0; k < 32; k++)
@@ -867,7 +867,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	gsl_rng_env_setup();
 	gsl_rng* rng = gsl_rng_alloc(gsl_rng_default);
 	ccv_scd_classifier_cascade_new_function_state_t z = {0};
-	z.features = _ccv_scd_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
+	z.features = _ccv_scd_stump_features(params.feature.base, params.feature.range_through, params.feature.step_through, params.size);
 	PRINT(CCV_CLI_INFO, " - using %d features\n", z.features->rnum);
 	int i, j, p, q;
 	z.positives = _ccv_scd_collect_positives(params.size, posfiles, params.grayscale);
@@ -899,7 +899,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		for (i = 0; i < z.negatives->rnum; i++)
 			z.nw[i] = 0.5 / z.negatives->rnum;
 		memset(z.s, 0, sizeof(double) * (z.positives->rnum + z.negatives->rnum));
-		z.cascade->classifiers = (ccv_scd_classifier_t*)ccrealloc(z.cascade->classifiers, sizeof(ccv_scd_classifier_t) * (z.t + 1));
+		z.cascade->classifiers = (ccv_scd_stump_classifier_t*)ccrealloc(z.cascade->classifiers, sizeof(ccv_scd_stump_classifier_t) * (z.t + 1));
 		z.cascade->count = z.t + 1;
 		z.cascade->classifiers[z.t].threshold = 0;
 		z.cascade->classifiers[z.t].features = 0;
@@ -909,11 +909,11 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		// for the first prune stages, we have more restrictive number of features (faster)
 		for (z.k = 0; z.k < (z.t < params.stop_criteria.prune_stage ? params.stop_criteria.prune_feature : params.stop_criteria.maximum_feature); z.k++)
 		{
-			ccv_scd_classifier_t* classifier = z.cascade->classifiers + z.t;
-			classifier->features = (ccv_scd_feature_t*)ccrealloc(classifier->features, sizeof(ccv_scd_feature_t) * (z.k + 1));
-			_ccv_scd_feature_supervised_train(rng, z.features, z.positives->rnum, z.negatives->rnum, z.pw, z.nw, z.fv, params.C, params.weight_trimming);
+			ccv_scd_stump_classifier_t* classifier = z.cascade->classifiers + z.t;
+			classifier->features = (ccv_scd_stump_feature_t*)ccrealloc(classifier->features, sizeof(ccv_scd_stump_feature_t) * (z.k + 1));
+			_ccv_scd_stump_feature_supervised_train(rng, z.features, z.positives->rnum, z.negatives->rnum, z.pw, z.nw, z.fv, params.C, params.weight_trimming);
 			int best_feature_no = _ccv_scd_best_feature_gentle_adaboost(z.s, z.features, z.pw, z.nw, z.positives->rnum, z.negatives->rnum, z.fv);
-			ccv_scd_feature_t best_feature = *(ccv_scd_feature_t*)ccv_array_get(z.features, best_feature_no);
+			ccv_scd_stump_feature_t best_feature = *(ccv_scd_stump_feature_t*)ccv_array_get(z.features, best_feature_no);
 			for (i = 0; i < z.positives->rnum + z.negatives->rnum; i++)
 			{
 				float* surf = _ccv_scd_get_surf_at(z.fv, best_feature_no, i, z.positives->rnum, z.negatives->rnum);
@@ -968,7 +968,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			p = -1;
 			for (i = 0; i < z.cascade->classifiers[z.t].count; i++)
 			{
-				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + i;
+				ccv_scd_stump_feature_t* feature = z.cascade->classifiers[z.t].features + i;
 				int k = _ccv_scd_find_match_feature(feature, z.features);
 				assert(k >= 0);
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
@@ -988,7 +988,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 			if (max_auc >= z.auc_prev)
 			{
 				FLUSH(CCV_CLI_INFO, " - remove %d-th feature with new auc %lf\n", p + 1, max_auc);
-				ccv_scd_feature_t* feature = z.cascade->classifiers[z.t].features + p;
+				ccv_scd_stump_feature_t* feature = z.cascade->classifiers[z.t].features + p;
 				int k = _ccv_scd_find_match_feature(feature, z.features);
 				assert(k >= 0);
 				for (j = 0; j < z.positives->rnum + z.negatives->rnum; j++)
@@ -1003,7 +1003,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 				z.auc_prev = _ccv_scd_auc(z.s, z.positives->rnum, z.negatives->rnum);
 				--z.cascade->classifiers[z.t].count;
 				if (p < z.cascade->classifiers[z.t].count)
-					memmove(z.cascade->classifiers[z.t].features + p + 1, z.cascade->classifiers[z.t].features + p, sizeof(ccv_scd_feature_t) * (z.cascade->classifiers[z.t].count - p));
+					memmove(z.cascade->classifiers[z.t].features + p + 1, z.cascade->classifiers[z.t].features + p, sizeof(ccv_scd_stump_feature_t) * (z.cascade->classifiers[z.t].count - p));
 			} else
 				break;
 		}
@@ -1115,7 +1115,7 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 		int i, j, k;
 		for (i = 0; i < cascade->count; i++)
 		{
-			ccv_scd_classifier_t* classifier = cascade->classifiers + i;
+			ccv_scd_stump_classifier_t* classifier = cascade->classifiers + i;
 			sqlite3_bind_int(classifier_params_insert_stmt, 1, i);
 			sqlite3_bind_int(classifier_params_insert_stmt, 2, classifier->count);
 			sqlite3_bind_double(classifier_params_insert_stmt, 3, classifier->threshold);
@@ -1124,7 +1124,7 @@ void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, con
 			sqlite3_clear_bindings(classifier_params_insert_stmt);
 			for (j = 0; j < classifier->count; j++)
 			{
-				ccv_scd_feature_t* feature = classifier->features + j;
+				ccv_scd_stump_feature_t* feature = classifier->features + j;
 				sqlite3_bind_int(feature_params_insert_stmt, 1, i);
 				sqlite3_bind_int(feature_params_insert_stmt, 2, j);
 				for (k = 0; k < 4; k++)
@@ -1165,7 +1165,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 			{
 				cascade = (ccv_scd_classifier_cascade_t*)ccmalloc(sizeof(ccv_scd_classifier_cascade_t));
 				cascade->count = sqlite3_column_int(cascade_params_stmt, 0);
-				cascade->classifiers = (ccv_scd_classifier_t*)cccalloc(cascade->count, sizeof(ccv_scd_classifier_t));
+				cascade->classifiers = (ccv_scd_stump_classifier_t*)cccalloc(cascade->count, sizeof(ccv_scd_stump_classifier_t));
 				cascade->margin = ccv_margin(sqlite3_column_int(cascade_params_stmt, 1), sqlite3_column_int(cascade_params_stmt, 2), sqlite3_column_int(cascade_params_stmt, 3), sqlite3_column_int(cascade_params_stmt, 4));
 				cascade->size = ccv_size(sqlite3_column_int(cascade_params_stmt, 5), sqlite3_column_int(cascade_params_stmt, 6));
 			}
@@ -1181,9 +1181,9 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 				while (sqlite3_step(classifier_params_stmt) == SQLITE_ROW)
 					if (sqlite3_column_int(classifier_params_stmt, 0) < cascade->count)
 					{
-						ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 0);
+						ccv_scd_stump_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(classifier_params_stmt, 0);
 						classifier->count = sqlite3_column_int(classifier_params_stmt, 1);
-						classifier->features = (ccv_scd_feature_t*)ccmalloc(sizeof(ccv_scd_feature_t) * classifier->count);
+						classifier->features = (ccv_scd_stump_feature_t*)ccmalloc(sizeof(ccv_scd_stump_feature_t) * classifier->count);
 						classifier->threshold = (float)sqlite3_column_double(classifier_params_stmt, 2);
 					}
 				sqlite3_finalize(classifier_params_stmt);
@@ -1201,10 +1201,10 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filena
 				while (sqlite3_step(feature_params_stmt) == SQLITE_ROW)
 					if (sqlite3_column_int(feature_params_stmt, 0) < cascade->count)
 					{
-						ccv_scd_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(feature_params_stmt, 0);
+						ccv_scd_stump_classifier_t* classifier = cascade->classifiers + sqlite3_column_int(feature_params_stmt, 0);
 						if (sqlite3_column_int(feature_params_stmt, 1) < classifier->count)
 						{
-							ccv_scd_feature_t* feature = classifier->features + sqlite3_column_int(feature_params_stmt, 1);
+							ccv_scd_stump_feature_t* feature = classifier->features + sqlite3_column_int(feature_params_stmt, 1);
 							for (i = 0; i < 4; i++)
 							{
 								feature->sx[i] = sqlite3_column_int(feature_params_stmt, 2 + i * 4);
@@ -1232,7 +1232,7 @@ void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade)
 	int i;
 	for (i = 0; i < cascade->count; i++)
 	{
-		ccv_scd_classifier_t* classifier = cascade->classifiers + i;
+		ccv_scd_stump_classifier_t* classifier = cascade->classifiers + i;
 		ccfree(classifier->features);
 	}
 	ccfree(cascade->classifiers);
@@ -1320,11 +1320,11 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 						float sum = 0;
 						for (p = 0; p < cascade->count; p++)
 						{
-							ccv_scd_classifier_t* classifier = cascade->classifiers + p;
+							ccv_scd_stump_classifier_t* classifier = cascade->classifiers + p;
 							float v = 0;
 							for (q = 0; q < classifier->count; q++)
 							{
-								ccv_scd_feature_t* feature = classifier->features + q;
+								ccv_scd_stump_feature_t* feature = classifier->features + q;
 								_ccv_scd_run_feature_at(ptr + x * 8, sat->cols, feature, surf);
 								float u = feature->bias;
 								for (r = 0; r < 32; r++)

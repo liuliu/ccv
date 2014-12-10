@@ -1095,19 +1095,53 @@ typedef struct {
 	int dy[4];
 	float bias;
 	float w[32];
-} ccv_scd_feature_t;
+} ccv_scd_stump_feature_t;
 
 typedef struct {
 	int count;
-	ccv_scd_feature_t* features;
+	ccv_scd_stump_feature_t* features;
 	float threshold;
-} ccv_scd_classifier_t;
+} ccv_scd_stump_classifier_t;
+
+// this is simpler than ccv's icf feature, largely inspired
+// by the latest implementation of doppia, it seems more restrictive
+// approach can generate more robust feature due to the overfitting
+// nature of decision tree
+typedef struct {
+	int channel;
+	int sx;
+	int sy;
+	int dx;
+	int dy;
+	float bias;
+} ccv_scd_tree_feature_t;
+
+enum {
+	CCV_SCD_STUMP_FEATURE = 0x01,
+	CCV_SCD_TREE_FEATURE = 0x02,
+};
+
+typedef struct {
+	int type;
+	uint32_t pass;
+	ccv_scd_stump_feature_t feature;
+	ccv_scd_tree_feature_t node[3];
+	float beta[6];
+	float threshold;
+} ccv_scd_decision_tree_t;
 
 typedef struct {
 	int count;
 	ccv_margin_t margin;
 	ccv_size_t size;
-	ccv_scd_classifier_t* classifiers;
+	ccv_scd_stump_classifier_t* classifiers;
+	// the last stage classifier is a hybrid of scd feature with icf-like feature
+	// this is trained as soft-cascade classifier, and select between a depth-2 decision tree
+	// or the scd feature.
+	struct {
+		int count;
+		ccv_scd_decision_tree_t* tree;
+	} decision;
 } ccv_scd_classifier_cascade_t;
 
 typedef struct {
