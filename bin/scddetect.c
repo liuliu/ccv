@@ -45,19 +45,20 @@ int main(int argc, char** argv)
 					read--;
 				file[read] = 0;
 				image = 0;
-				char filename[1024];
-				snprintf(filename, 1024, "%s.jpg", file);
-				ccv_read(filename, &image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
+				// char filename[1024];
+				// snprintf(filename, 1024, "%s.jpg", file);
+				// ccv_read(filename, &image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
+				ccv_read(file, &image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
 				assert(image != 0);
 				ccv_scd_param_t params = ccv_scd_default_params;
 				params.size = ccv_size(24, 24);
 				ccv_array_t* seq = ccv_scd_detect_objects(image, &cascade, 1, params);
-				printf("%s\n%d\n", file, seq->rnum);
+				// printf("%s\n%d\n", file, seq->rnum);
 				for (i = 0; i < seq->rnum; i++)
 				{
 					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-					// printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
-					printf("%d %d %d %d %d %f\n", (int)(comp->rect.width / 2), (int)(comp->rect.height / 2 * 1.6), 0, comp->rect.x + comp->rect.width / 2, (int)(comp->rect.y + comp->rect.height * 0.3), comp->classification.confidence);
+					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
+					// printf("%d %d %d %d %d %f\n", (int)(comp->rect.width / 2), (int)(comp->rect.height / 2 * 1.6), 0, comp->rect.x + comp->rect.width / 2, (int)(comp->rect.y + comp->rect.height * 0.3), comp->classification.confidence);
 				}
 				ccv_array_free(seq);
 				ccv_matrix_free(image);

@@ -982,7 +982,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 				}
 				double auc = _ccv_scd_auc(h, z.positives->rnum, z.negatives->rnum);
 				FLUSH(CCV_CLI_INFO, " - attempting without %d-th feature, auc: %lf", i + 1, auc);
-				if (auc > max_auc)
+				if (auc >= max_auc)
 					max_auc = auc, p = i;
 			}
 			if (max_auc >= z.auc_prev)

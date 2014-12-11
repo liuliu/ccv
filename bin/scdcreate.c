@@ -111,7 +111,7 @@ int main(int argc, char** argv)
 		.size = ccv_size(48, 48),
 		.feature = {
 			.base = ccv_size(8, 8),
-			.range_through = 2,
+			.range_through = 4,
 			.step_through = 4,
 		},
 		.stop_criteria = {
