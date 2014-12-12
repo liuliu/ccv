@@ -22,7 +22,26 @@ else
 	AC_MSG_RESULT(no)
 fi
 
-# check for libpng, libjpeg, fftw3, liblinear, cblas, Accelerate framework, avformat, avcodec, swscale
+# check for blas
+blas_ok=no
+# check for Generic BLAS library
+if test "$blas_ok" = no; then
+	AC_CHECK_LIB(blas, sgemm, [blas_ok=yes; BLAS_LIBS="-lblas"])
+fi
+# check for ATLAS library
+if test "$blas_ok" = no; then
+	AC_CHECK_LIB(atlas, ATL_xerbla,
+		[AC_CHECK_LIB(cblas, cblas_dgemm,
+		[blas_ok=yes
+		BLAS_LIBS="-lcblas -latlas"],
+		[], [-latlas])])
+fi
+if test "$blas_ok" = yes; then
+	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CBLAS "])
+	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$BLAS_LIBS "])
+fi
+
+# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
 AC_CHECK_HEADER(png.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
 AC_CHECK_HEADER(jpeglib.h,
@@ -31,8 +50,6 @@ AC_CHECK_HEADER(fftw3.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
 AC_CHECK_HEADER(linear.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBLINEAR "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-llinear "])])
-AC_CHECK_HEADER(cblas.h,
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CBLAS "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lblas "])])
 AC_CHECK_HEADER(tesseract/capi.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_TESSERACT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ltesseract "])])
 AC_CHECK_HEADER([Accelerate/Accelerate.h],
