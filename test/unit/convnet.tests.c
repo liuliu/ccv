@@ -887,6 +887,7 @@ TEST_CASE("local response normalization with partitioned by 2")
 // so that we can test static functions, note that CASE_TESTS is defined in case.h, which will disable all extern functions
 #include "ccv_convnet.c"
 
+#ifdef HAVE_GSL
 TEST_CASE("full connect network backward propagate")
 {
 	ccv_convnet_layer_param_t params = {
@@ -1794,5 +1795,6 @@ TEST_CASE("average pool network backward propagate")
 	ccv_matrix_free(b);
 	ccv_convnet_free(convnet);
 }
+#endif
 
 #include "case_main.h"
