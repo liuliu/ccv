@@ -12,7 +12,6 @@
 const ccv_scd_param_t ccv_scd_default_params = {
 	.interval = 5,
 	.min_neighbors = 1,
-	.flags = 0,
 	.step_through = 4,
 	.size = {
 		.width = 48,
@@ -679,7 +678,6 @@ static ccv_array_t* _ccv_scd_hard_mining(gsl_rng* rng, ccv_scd_classifier_cascad
 			ccv_scd_param_t params = {
 				.interval = 3,
 				.min_neighbors = 0,
-				.flags = 0,
 				.step_through = 4,
 				.size = cascade->size,
 			};
