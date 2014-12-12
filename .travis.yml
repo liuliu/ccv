@@ -2,5 +2,5 @@ language: c
 compiler: clang
 before_install:
   - sudo apt-get update -qq
-  - sudo apt-get install -qq libpng-dev libjpeg-dev libatlas-dev libgsl0-dev
+  - sudo apt-get install -qq libpng-dev libjpeg-dev libatlas3-base libatlas-dev libgsl0-dev
 script: cd lib && ./configure && make && cd ../bin && make && cd ../test && make test
