@@ -23,6 +23,9 @@
 #include <jpeglib.h>
 #include "io/_ccv_io_libjpeg.c"
 #endif
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <sys/param.h>
+#endif
 #include "io/_ccv_io_bmp.c"
 #include "io/_ccv_io_binary.c"
 #include "io/_ccv_io_raw.c"

@@ -3,6 +3,8 @@ AR := ar
 NVCC := @NVCC@
 CUDA_OBJS := @CUDA_OBJS@
 DEFINE_MACROS := @DEFINE_MACROS@
-CFLAGS := @MKCFLAGS@
+prefix := @prefix@
+exec_prefix := @exec_prefix@
+CFLAGS := @MKCFLAGS@ -I@includedir@
 NVFLAGS := --use_fast_math -arch=sm_30 $(DEFINE_MACROS)
-LDFLAGS := @MKLDFLAGS@
+LDFLAGS := -L@libdir@ @MKLDFLAGS@
