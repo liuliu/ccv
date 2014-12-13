@@ -1,6 +1,15 @@
 BBF: Brightness Binary Feature
 ==============================
 
+Deprecated
+----------
+
+This feature is deprecated as it is no longer considered either fast or accurate
+for the task its most interested in (in this case, face detection) in libccv 0.7
+
+The implementation will be removed in the version after libccv 0.7 in favor of
+SCD (for face detection).
+
 What's BBF?
 -----------
 
