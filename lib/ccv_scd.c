@@ -690,7 +690,7 @@ static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascad
 	ccv_sat(b, &sat, 0, CCV_PADDING_ZERO);
 	ccv_matrix_free(b);
 	int pass = 1;
-	int i, j, k;
+	int i, j;
 	for (i = 0; i < cascade->count; i++)
 	{
 		ccv_scd_stump_classifier_t* classifier = cascade->classifiers + i;
@@ -700,22 +700,22 @@ static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascad
 			ccv_scd_stump_feature_t* feature = classifier->features + j;
 #if defined(HAVE_SSE2)
 			_ccv_scd_run_feature_at_sse2(sat->data.f32, sat->cols, feature, surf);
-			__m128 u0 = _mm_load1_ps(&feature->bias);
-			__m128 u1 = u0;
-			for (k = 0; k < 8; k += 2)
-			{
-				u0 = _mm_add_ps(u0, _mm_mul_ps(surf[k], _mm_loadu_ps(feature->w + k * 4)));
-				u1 = _mm_add_ps(u1, _mm_mul_ps(surf[k + 1], _mm_loadu_ps(feature->w + k * 4 + 4)));
-			}
-			struct {
+			__m128 u0 = _mm_add_ps(_mm_mul_ps(surf[0], _mm_loadu_ps(feature->w)), _mm_mul_ps(surf[1], _mm_loadu_ps(feature->w + 4)));
+			__m128 u1 = _mm_add_ps(_mm_mul_ps(surf[2], _mm_loadu_ps(feature->w + 8)), _mm_mul_ps(surf[3], _mm_loadu_ps(feature->w + 12)));
+			__m128 u2 = _mm_add_ps(_mm_mul_ps(surf[4], _mm_loadu_ps(feature->w + 16)), _mm_mul_ps(surf[5], _mm_loadu_ps(feature->w + 20)));
+			__m128 u3 = _mm_add_ps(_mm_mul_ps(surf[6], _mm_loadu_ps(feature->w + 24)), _mm_mul_ps(surf[7], _mm_loadu_ps(feature->w + 28)));
+			u0 = _mm_add_ps(u0, u1);
+			u2 = _mm_add_ps(u2, u3);
+			union {
 				float f[4];
-				__m128 packed;
+				__m128 p;
 			} ux;
-			ux.packed = _mm_add_ps(u0, u1);
-			float u = expf(ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]);
+			ux.p = _mm_add_ps(u0, u2);
+			float u = expf(feature->bias + ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]);
 #else
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, surf);
 			float u = feature->bias;
+			int k;
 			for (k = 0; k < 32; k++)
 				u += surf[k] * feature->w[k];
 			u = expf(u);

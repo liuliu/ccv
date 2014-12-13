@@ -116,7 +116,7 @@ int main(int argc, char** argv)
 		},
 		.stop_criteria = {
 			.hit_rate = 0.995,
-			.false_positive_rate = 0.1,
+			.false_positive_rate = 0.5,
 			.accu_false_positive_rate = 1e-7,
 			.auc_crit = 1e-5,
 			.maximum_feature = 2048,
