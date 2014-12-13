@@ -26,10 +26,15 @@
 #define ccrealloc realloc
 #define ccfree free
 
-#if _POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600
+#if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
+#include <sys/param.h>
+#if defined(__APPLE__) || defined(BSD) || _POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600
 #define ccmemalign posix_memalign
 #else
 #define ccmemalign(memptr, alignment, size) (*memptr = memalign(alignment, size))
+#endif
+#else
+#define ccmemalign(memptr, alignment, size) (*memptr = ccmalloc(size))
 #endif
 
 enum {
