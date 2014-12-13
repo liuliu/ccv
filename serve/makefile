@@ -5,13 +5,15 @@ CFLAGS := -O3 -Wall -I"../lib" $(CFLAGS)
 
 TARGETS = ccv
 
+DEPS = serve.o uri.o parsers.o bbf.o dpm.o icf.o scd.o sift.o swt.o tld.o convnet.o async.o ebb.o ebb_request_parser.o
+
 all: libccv.a $(TARGETS)
 
 clean:
 	${MAKE} clean -C ../lib ; rm -f *.o $(TARGETS) -f
 
-$(TARGETS): serve.o uri.o parsers.o bbf.o dpm.o icf.o sift.o swt.o tld.o convnet.o async.o ebb.o ebb_request_parser.o libccv.a
-	$(CC) -o $@ serve.o uri.o parsers.o bbf.o dpm.o icf.o sift.o swt.o tld.o convnet.o async.o ebb.o ebb_request_parser.o $(LDFLAGS)
+$(TARGETS): $(DEPS) libccv.a
+	$(CC) -o $@ $(DEPS) $(LDFLAGS)
 
 libccv.a:
 	${MAKE} -C ../lib
