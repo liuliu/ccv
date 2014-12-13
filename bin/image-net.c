@@ -4,7 +4,7 @@
 #include <getopt.h>
 #include "models.inl"
 
-void exit_with_help(void)
+static void exit_with_help(void)
 {
 	printf(
 	"\n  \033[1mUSAGE\033[0m\n\n    image-net [OPTION...]\n\n"

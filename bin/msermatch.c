@@ -1,7 +1,7 @@
 #include "ccv.h"
 #include <sys/time.h>
 
-unsigned int get_current_time()
+static unsigned int get_current_time(void)
 {
 	struct timeval tv;
 	gettimeofday(&tv, 0);

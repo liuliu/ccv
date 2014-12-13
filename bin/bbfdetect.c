@@ -2,7 +2,7 @@
 #include <sys/time.h>
 #include <ctype.h>
 
-unsigned int get_current_time()
+static unsigned int get_current_time(void)
 {
 	struct timeval tv;
 	gettimeofday(&tv, NULL);
@@ -48,10 +48,11 @@ int main(int argc, char** argv)
 				ccv_read(file, &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
 				assert(image != 0);
 				ccv_array_t* seq = ccv_bbf_detect_objects(image, &cascade, 1, ccv_bbf_default_params);
+				printf("%s %d\n", file, seq->rnum);
 				for (i = 0; i < seq->rnum; i++)
 				{
 					ccv_comp_t* comp = (ccv_comp_t*)ccv_array_get(seq, i);
-					printf("%s %d %d %d %d %f\n", file, comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
+					printf("%d %d %d %d %f\n", comp->rect.x, comp->rect.y, comp->rect.width, comp->rect.height, comp->classification.confidence);
 				}
 				ccv_array_free(seq);
 				ccv_matrix_free(image);

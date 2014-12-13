@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <getopt.h>
 
-static void exit_with_help()
+static void exit_with_help(void)
 {
 	printf(
 	"\n  \033[1mUSAGE\033[0m\n\n    swtreate input-text [OPTION...]\n\n"
