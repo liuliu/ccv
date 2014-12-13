@@ -1,5 +1,10 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#if defined(HAVE_SSE2)
+#include <xmmintrin.h>
+#elif defined(HAVE_NEON)
+#include <arm_neon.h>
+#endif
 #ifdef HAVE_GSL
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
@@ -129,6 +134,66 @@ void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 	ccv_matrix_free(dv);
 }
 
+#if defined(HAVE_SSE2)
+static inline void _ccv_scd_run_feature_at_sse2(float* at, int cols, ccv_scd_stump_feature_t* feature, __m128 surf[8])
+{
+	int i;
+	// extract feature
+	#pragma unroll
+	for (i = 0; i < 4; i++)
+	{
+		__m128 d0 = _mm_loadu_ps(at + (cols * feature->sy[i] + feature->sx[i]) * 8);
+		__m128 d1 = _mm_loadu_ps(at + 4 + (cols * feature->sy[i] + feature->sx[i]) * 8);
+		__m128 du0 = _mm_loadu_ps(at + (cols * feature->dy[i] + feature->sx[i]) * 8);
+		__m128 du1 = _mm_loadu_ps(at + 4 + (cols * feature->dy[i] + feature->sx[i]) * 8);
+		__m128 dv0 = _mm_loadu_ps(at + (cols * feature->sy[i] + feature->dx[i]) * 8);
+		__m128 dv1 = _mm_loadu_ps(at + 4 + (cols * feature->sy[i] + feature->dx[i]) * 8);
+		__m128 duv0 = _mm_loadu_ps(at + (cols * feature->dy[i] + feature->dx[i]) * 8);
+		__m128 duv1 = _mm_loadu_ps(at + 4 + (cols * feature->dy[i] + feature->dx[i]) * 8);
+		surf[i * 2] = _mm_sub_ps(_mm_add_ps(duv0, d0), _mm_add_ps(du0, dv0));
+		surf[i * 2 + 1] = _mm_sub_ps(_mm_add_ps(duv1, d1), _mm_add_ps(du1, dv1));
+	}
+	// L2Hys normalization
+	__m128 v0 = _mm_add_ps(_mm_mul_ps(surf[0], surf[0]), _mm_mul_ps(surf[1], surf[1]));
+	__m128 v1 = _mm_add_ps(_mm_mul_ps(surf[2], surf[2]), _mm_mul_ps(surf[3], surf[3]));
+	__m128 v2 = _mm_add_ps(_mm_mul_ps(surf[4], surf[4]), _mm_mul_ps(surf[5], surf[5]));
+	__m128 v3 = _mm_add_ps(_mm_mul_ps(surf[6], surf[6]), _mm_mul_ps(surf[7], surf[7]));
+	v0 = _mm_add_ps(v0, v1);
+	v2 = _mm_add_ps(v2, v3);
+	union {
+		float f[4];
+		__m128 p;
+	} vx;
+	vx.p = _mm_add_ps(v0, v2);
+	v0 = _mm_set1_ps(1.0 / (sqrtf(vx.f[0] + vx.f[1] + vx.f[2] + vx.f[3]) + 1e-6));
+	static float thlf = -2.0 / 5.65685424949; // -sqrtf(32)
+	static float thuf = 2.0 / 5.65685424949; // sqrtf(32)
+	const __m128 thl = _mm_set1_ps(thlf);
+	const __m128 thu = _mm_set1_ps(thuf);
+	#pragma unroll
+	for (i = 0; i < 8; i++)
+	{
+		surf[i] = _mm_mul_ps(surf[i], v0);
+		surf[i] = _mm_min_ps(surf[i], thu);
+		surf[i] = _mm_max_ps(surf[i], thl);
+	}
+	__m128 u0 = _mm_add_ps(_mm_mul_ps(surf[0], surf[0]), _mm_mul_ps(surf[1], surf[1]));
+	__m128 u1 = _mm_add_ps(_mm_mul_ps(surf[2], surf[2]), _mm_mul_ps(surf[3], surf[3]));
+	__m128 u2 = _mm_add_ps(_mm_mul_ps(surf[4], surf[4]), _mm_mul_ps(surf[5], surf[5]));
+	__m128 u3 = _mm_add_ps(_mm_mul_ps(surf[6], surf[6]), _mm_mul_ps(surf[7], surf[7]));
+	u0 = _mm_add_ps(u0, u1);
+	u2 = _mm_add_ps(u2, u3);
+	union {
+		float f[4];
+		__m128 p;
+	} ux;
+	ux.p = _mm_add_ps(u0, u2);
+	u0 = _mm_set1_ps(1.0 / (sqrtf(ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]) + 1e-6));
+	#pragma unroll
+	for (i = 0; i < 8; i++)
+		surf[i] = _mm_mul_ps(surf[i], u0);
+}
+#else
 static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_stump_feature_t* feature, float surf[32])
 {
 	int i, j;
@@ -159,6 +224,7 @@ static inline void _ccv_scd_run_feature_at(float* at, int cols, ccv_scd_stump_fe
 	for (i = 0; i < 32; i++)
 		surf[i] = surf[i] * u;
 }
+#endif
 
 #ifdef HAVE_GSL
 static ccv_array_t* _ccv_scd_collect_negatives(gsl_rng* rng, ccv_size_t size, ccv_array_t* hard_mine, int total, int grayscale)
@@ -339,7 +405,11 @@ static void _ccv_scd_precompute_feature_vectors(const ccv_array_t* features, con
 		{
 			ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, j);
 			// save to fv
+#if defined(HAVE_SSE2)
+			_ccv_scd_run_feature_at_sse2(sat->data.f32, sat->cols, feature, (__m128*)_ccv_scd_get_surf_at(fv, j, i, positives->rnum, negatives->rnum));
+#else
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, _ccv_scd_get_surf_at(fv, j, i, positives->rnum, negatives->rnum));
+#endif
 		}
 		ccv_matrix_free(sat);
 	} parallel_endfor
@@ -358,7 +428,11 @@ static void _ccv_scd_precompute_feature_vectors(const ccv_array_t* features, con
 		{
 			ccv_scd_stump_feature_t* feature = (ccv_scd_stump_feature_t*)ccv_array_get(features, j);
 			// save to fv
+#if defined(HAVE_SSE2)
+			_ccv_scd_run_feature_at_sse2(sat->data.f32, sat->cols, feature, (__m128*)_ccv_scd_get_surf_at(fv, j, i + positives->rnum, positives->rnum, negatives->rnum));
+#else
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, _ccv_scd_get_surf_at(fv, j, i + positives->rnum, positives->rnum, negatives->rnum));
+#endif
 		}
 		ccv_matrix_free(sat);
 	} parallel_endfor
@@ -605,7 +679,11 @@ static float _ccv_scd_threshold_at_hit_rate(double* s, int posnum, int negnum, f
 
 static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascade, ccv_dense_matrix_t* a)
 {
+#if defined(HAVE_SSE2)
+	__m128 surf[8];
+#else
 	float surf[32];
+#endif
 	ccv_dense_matrix_t* b = 0;
 	ccv_scd(a, &b, 0);
 	ccv_dense_matrix_t* sat = 0;
@@ -620,11 +698,28 @@ static int _ccv_scd_classifier_cascade_pass(ccv_scd_classifier_cascade_t* cascad
 		for (j = 0; j < classifier->count; j++)
 		{
 			ccv_scd_stump_feature_t* feature = classifier->features + j;
+#if defined(HAVE_SSE2)
+			_ccv_scd_run_feature_at_sse2(sat->data.f32, sat->cols, feature, surf);
+			__m128 u0 = _mm_load1_ps(&feature->bias);
+			__m128 u1 = u0;
+			for (k = 0; k < 8; k += 2)
+			{
+				u0 = _mm_add_ps(u0, _mm_mul_ps(surf[k], _mm_loadu_ps(feature->w + k * 4)));
+				u1 = _mm_add_ps(u1, _mm_mul_ps(surf[k + 1], _mm_loadu_ps(feature->w + k * 4 + 4)));
+			}
+			struct {
+				float f[4];
+				__m128 packed;
+			} ux;
+			ux.packed = _mm_add_ps(u0, u1);
+			float u = expf(ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]);
+#else
 			_ccv_scd_run_feature_at(sat->data.f32, sat->cols, feature, surf);
 			float u = feature->bias;
 			for (k = 0; k < 32; k++)
 				u += surf[k] * feature->w[k];
 			u = expf(u);
+#endif
 			v += (u - 1) / (u + 1);
 		}
 		if (v <= classifier->threshold)
@@ -876,7 +971,7 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 	assert(z.pw);
 	z.nw = (double*)ccmalloc(sizeof(double) * negative_count);
 	assert(z.nw);
-	z.fv = (float*)ccmalloc(sizeof(float) * (z.positives->rnum + negative_count) * z.features->rnum * 32);
+	ccmemalign((void**)&z.fv, 16, sizeof(float) * (z.positives->rnum + negative_count) * z.features->rnum * 32);
 	assert(z.fv);
 	z.params = params;
 	ccv_function_state_begin(_ccv_scd_classifier_cascade_new_function_state_read, z, filename);
@@ -1253,7 +1348,7 @@ static int _ccv_is_equal_same_class(const void* _r1, const void* _r2, void* data
 
 ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params)
 {
-	int i, j, k, x, y, p, q, r;
+	int i, j, k, x, y, p, q;
 	int scale_upto = 1;
 	float up_ratio = 1.0;
 	for (i = 0; i < count; i++)
@@ -1273,7 +1368,11 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 		pyr[i] = 0;
 		ccv_sample_down(pyr[i - 1], &pyr[i], 0, 0, 0);
 	}
+#if defined(HAVE_SSE2)
+	__m128 surf[8];
+#else
 	float surf[32];
+#endif
 	ccv_array_t** seq = (ccv_array_t**)alloca(sizeof(ccv_array_t*) * count);
 	for (i = 0; i < count; i++)
 		seq[i] = ccv_array_new(sizeof(ccv_comp_t), 64, 0);
@@ -1294,13 +1393,20 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 				ccv_dense_matrix_t* image = k == 0 ? pyr[i] : 0;
 				if (k > 0)
 					ccv_resample(pyr[i], &image, 0, rows, cols, CCV_INTER_AREA);
-				ccv_dense_matrix_t* bordered = 0;
-				ccv_border(image, (ccv_matrix_t**)&bordered, 0, cascade->margin);
-				if (k > 0)
-					ccv_matrix_free(image);
 				ccv_dense_matrix_t* scd = 0;
-				ccv_scd(bordered, &scd, 0);
-				ccv_matrix_free(bordered);
+				if (cascade->margin.left == 0 && cascade->margin.top == 0 && cascade->margin.right == 0 && cascade->margin.bottom == 0)
+				{
+					ccv_scd(image, &scd, 0);
+					if (k > 0)
+						ccv_matrix_free(image);
+				} else {
+					ccv_dense_matrix_t* bordered = 0;
+					ccv_border(image, (ccv_matrix_t**)&bordered, 0, cascade->margin);
+					if (k > 0)
+						ccv_matrix_free(image);
+					ccv_scd(bordered, &scd, 0);
+					ccv_matrix_free(bordered);
+				}
 				ccv_dense_matrix_t* sat = 0;
 				ccv_sat(scd, &sat, 0, CCV_PADDING_ZERO);
 				assert(CCV_GET_CHANNEL(sat->type) == 8);
@@ -1323,11 +1429,28 @@ ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_ca
 							for (q = 0; q < classifier->count; q++)
 							{
 								ccv_scd_stump_feature_t* feature = classifier->features + q;
+#if defined(HAVE_SSE2)
+								_ccv_scd_run_feature_at_sse2(ptr + x * 8, sat->cols, feature, surf);
+								__m128 u0 = _mm_add_ps(_mm_mul_ps(surf[0], _mm_loadu_ps(feature->w)), _mm_mul_ps(surf[1], _mm_loadu_ps(feature->w + 4)));
+								__m128 u1 = _mm_add_ps(_mm_mul_ps(surf[2], _mm_loadu_ps(feature->w + 8)), _mm_mul_ps(surf[3], _mm_loadu_ps(feature->w + 12)));
+								__m128 u2 = _mm_add_ps(_mm_mul_ps(surf[4], _mm_loadu_ps(feature->w + 16)), _mm_mul_ps(surf[5], _mm_loadu_ps(feature->w + 20)));
+								__m128 u3 = _mm_add_ps(_mm_mul_ps(surf[6], _mm_loadu_ps(feature->w + 24)), _mm_mul_ps(surf[7], _mm_loadu_ps(feature->w + 28)));
+								u0 = _mm_add_ps(u0, u1);
+								u2 = _mm_add_ps(u2, u3);
+								union {
+									float f[4];
+									__m128 p;
+								} ux;
+								ux.p = _mm_add_ps(u0, u2);
+								float u = expf(feature->bias + ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]);
+#else
 								_ccv_scd_run_feature_at(ptr + x * 8, sat->cols, feature, surf);
 								float u = feature->bias;
+								int r;
 								for (r = 0; r < 32; r++)
 									u += surf[r] * feature->w[r];
 								u = expf(u);
+#endif
 								v += (u - 1) / (u + 1);
 							}
 							if (v <= classifier->threshold)

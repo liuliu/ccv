@@ -26,6 +26,12 @@
 #define ccrealloc realloc
 #define ccfree free
 
+#if _POSIX_C_SOURCE >= 200112L || _XOPEN_SOURCE >= 600
+#define ccmemalign posix_memalign
+#else
+#define ccmemalign(memptr, alignment, size) (*memptr = memalign(alignment, size))
+#endif
+
 enum {
 	CCV_8U  = 0x01000,
 	CCV_32S = 0x02000,
