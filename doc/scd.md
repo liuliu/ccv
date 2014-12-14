@@ -27,7 +27,7 @@ After the dataset is downloaded and unzipped (http://vis-www.cs.umass.edu/fddb/i
 The evaluation tools are downloaded, unzipped, and compiled (http://vis-www.cs.umass.edu/fddb/results.html).
 
 I mainly compared this implementation with the state of the art frontal face
-detector implementations and the BBF implementation as is. scdfmt.rb script
+detector implementations and the BBF implementation as is. `scdfmt.rb` script
 is provided to convert rectangle format from BBF or SCD to ellipse format which
 seems provide a better result on FDDB dataset.
 
@@ -69,7 +69,7 @@ the same false positives.
 What about the speed?
 ---------------------
 
-One reason why BBF implementation, despite its rather unimpressive performance,
+One reason why BBF implementation, despite its rather unimpressive accuracy,
 still provided in ccv is its speed. At the longest time, BBF implementation or
 more accurately, its derivative is the only one that can run semi-real time on
 modern JavaScript engines. Although there is no plan to port SCD implemenation
@@ -96,3 +96,42 @@ false positives.
 
 How to train my own detector?
 -----------------------------
+
+The vision community in the past a few years has generated plenty of open
+dataset, therefore, it is now possible to train a reasonable face detector
+(as shown by [HeadHunter](https://bitbucket.org/rodrigob/doppia)) with open
+dataset.
+
+This face detector is trained on AFLW dataset: http://lrs.icg.tugraz.at/research/aflw/
+
+A script `./aflw` is provided to generate positive images from AFLW annotated
+original photos. But first, we need to generate a list of photos => faces rectangles.
+
+AFLW dataset provided a SQLite file, therefore:
+
+	> sqlite3 aflw.sqlite
+	sqlite> .output outrect.txt
+	sqlite> .mode tabs
+	sqlite> SELECT filepath, x, y, w, h, roll, pitch, yaw FROM FaceImages, Faces, FacePose, FaceRect WHERE FaceImages.file_id = Faces.file_id AND Faces.face_id = FacePose.face_id AND Faces.face_id = FaceRect.face_id;
+	sqlite> .exit
+
+Now, run `./aflw` to generate the positive examples:
+
+	> ./aflw outrect.txt <directory to AFLW dataset>/data/flickr/ <output directory>
+
+It will take a while to complete, but once it is done, you will see 16444 images in the
+output directory, both in grayscale and color.
+
+Using `find` command to create both list of negative images for hard mining, and the list
+of positives:
+
+	> find <output directory for positive images> -name '*.png' > facepos.txt
+	> find <negative images collected from web> -name '*.jpg' > faceneg.txt
+
+Training with `scdcreate` is full automatic, run:
+
+	> ./scdcreate --positive-list facepos.txt --background-list faceneg.txt --working-dir face.sqlite3 --negative-count 16444
+
+It takes me about half day to finish training to 6-th classifier, and this is the depth
+used in ./samples/face.sqlite3.
+
