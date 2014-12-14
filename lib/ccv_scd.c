@@ -139,7 +139,6 @@ static inline void _ccv_scd_run_feature_at_sse2(float* at, int cols, ccv_scd_stu
 {
 	int i;
 	// extract feature
-	#pragma unroll
 	for (i = 0; i < 4; i++)
 	{
 		__m128 d0 = _mm_loadu_ps(at + (cols * feature->sy[i] + feature->sx[i]) * 8);
@@ -170,7 +169,6 @@ static inline void _ccv_scd_run_feature_at_sse2(float* at, int cols, ccv_scd_stu
 	static float thuf = 2.0 / 5.65685424949; // sqrtf(32)
 	const __m128 thl = _mm_set1_ps(thlf);
 	const __m128 thu = _mm_set1_ps(thuf);
-	#pragma unroll
 	for (i = 0; i < 8; i++)
 	{
 		surf[i] = _mm_mul_ps(surf[i], v0);
@@ -189,7 +187,6 @@ static inline void _ccv_scd_run_feature_at_sse2(float* at, int cols, ccv_scd_stu
 	} ux;
 	ux.p = _mm_add_ps(u0, u2);
 	u0 = _mm_set1_ps(1.0 / (sqrtf(ux.f[0] + ux.f[1] + ux.f[2] + ux.f[3]) + 1e-6));
-	#pragma unroll
 	for (i = 0; i < 8; i++)
 		surf[i] = _mm_mul_ps(surf[i], u0);
 }
