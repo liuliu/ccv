@@ -47,7 +47,7 @@ Please make sure the evaluation mode is ellipse format.
 
 The following graph will likely to be generated:
 
-![DiscROC-SCD](resources/disc-roc-scd.png).
+![Discrete ROC for SCD](resources/disc-roc-scd.png)
 
 The threshold is tuned to generate about 200~300 false positives.
 
@@ -57,7 +57,7 @@ The BBF implementation can be evaluated too:
 
 The generated graph:
 
-![DiscROC-BBF](resources/disc-roc-bbf.png)
+![Discrete ROC for BBF](resources/disc-roc-bbf.png)
 
 You can compare the performance with the state of the art face detectors on
 FDDB website, at about 250 false positives, this implementation at 72.93% is 4.23%
@@ -92,7 +92,7 @@ detection rate, where as SCD with 24x24 template and color image has 72.11%
 detection rate. The BBF implementation has 65.11% detection rate at the same
 false positives.
 
-![DiscROC-SCD-Fast](resources/disc-roc-scd-fast.png)
+![Discrete ROC for SCD in Fast Mode](resources/disc-roc-scd-fast.png)
 
 How to train my own detector?
 -----------------------------
