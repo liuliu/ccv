@@ -1,11 +1,11 @@
 Continuous Build Status
 -----------------------
 
-**Travis CI VM** [![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
-**Raspberry Pi** [![Build Status on Raspberry Pi](http://ci.libccv.org/png?builder=arm-runtests)](http://ci.libccv.org/builders/arm-runtests)
-**FreeBSD x64** [![Build Status on FreeBSD](http://ci.libccv.org/png?builder=freebsd-x64-runtests)](http://ci.libccv.org/builders/freebsd-x64-runtests)
-**Linux x64** [![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
-**Mac OSX** [![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
+ * Travis CI VM: [![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
+ * Raspberry Pi: [![Build Status on Raspberry Pi](http://ci.libccv.org/png?builder=arm-runtests)](http://ci.libccv.org/builders/arm-runtests)
+ * FreeBSD x64: [![Build Status on FreeBSD](http://ci.libccv.org/png?builder=freebsd-x64-runtests)](http://ci.libccv.org/builders/freebsd-x64-runtests)
+ * Linux x64: [![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
+ * Mac OSX: [![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
 
 Intro
 =====
