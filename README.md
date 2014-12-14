@@ -1,28 +1,14 @@
-Intro
-=====
-
 Continuous Build Status
 -----------------------
 
-*Travis CI VM*
+**Travis CI VM** [![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
+**Raspberry Pi** [![Build Status on Raspberry Pi](http://ci.libccv.org/png?builder=arm-runtests)](http://ci.libccv.org/builders/arm-runtests)
+**FreeBSD x64** [![Build Status on FreeBSD](http://ci.libccv.org/png?builder=freebsd-x64-runtests)](http://ci.libccv.org/builders/freebsd-x64-runtests)
+**Linux x64** [![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
+**Mac OSX** [![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
 
-[![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
-
-*Raspberry Pi*
-
-[![Build Status on Raspberry Pi](http://ci.libccv.org/png?builder=arm-runtests)](http://ci.libccv.org/builders/arm-runtests)
-
-*FreeBSD x64*
-
-[![Build Status on FreeBSD](http://ci.libccv.org/png?builder=freebsd-x64-runtests)](http://ci.libccv.org/builders/freebsd-x64-runtests)
-
-*Linux x64*
-
-[![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
-
-*Mac OSX*
-
-[![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
+Intro
+=====
 
 Around 2010, when Lian and I was working on our gesture recognition demo, out
 of the frustration to abstract redundant image preprocessing operations into a
