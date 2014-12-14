@@ -157,7 +157,7 @@ void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, in
 			wy = wy - iwy; \
 			int iwx1 = ccv_min(iwx + 1, a->cols - 1); \
 			int iwy1 = ccv_min(iwy + 1, a->rows - 1); \
-			if (iwx >= 0 && iwx <= a->cols && iwy >= 0 && iwy < a->rows) \
+			if (iwx >= 0 && iwx < a->cols && iwy >= 0 && iwy < a->rows) \
 				for (k = 0; k < ch; k++) \
 					_for_set(b_ptr, j * ch + k, _for_get(a_ptr + iwy * a->step, iwx * ch + k, 0) * (1 - wx) * (1 - wy) + \
 												_for_get(a_ptr + iwy * a->step, iwx1 * ch + k, 0) * wx * (1 - wy) + \

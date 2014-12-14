@@ -29,16 +29,25 @@ static void case_conclude(int pass, int fail)
 // in ELF object format, we can simply query custom section rather than scan through the whole binary memory
 // to find function pointer. We do this whenever possible because in this way, we don't have access error
 // when hooking up with memory checkers such as address sanitizer or valgrind
+
+static case_t __test_case_ctx_assessment__ __attribute__((used)) __attribute__((section("case_data_assessment"))) = {0};
+
 extern case_t __start_case_data[];
 extern case_t __stop_case_data[];
 
+extern case_t __start_case_data_assessment[];
+extern case_t __stop_case_data_assessment[];
+
 int main(int argc, char** argv)
 {
-	int total = __stop_case_data - __start_case_data;
+	int case_size = (unsigned char*)__stop_case_data_assessment - (unsigned char*)__start_case_data_assessment;
+	int test_size = (unsigned char*)__stop_case_data - (unsigned char*)__start_case_data;
+	assert(test_size % case_size == 0);
+	int total = test_size / case_size;
 	int i, pass = 0, fail = 0;
 	for (i = 0; i < total; i++)
 	{
-		case_t* test_case = __start_case_data + i;
+		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 		case_run(test_case, i, total, &pass, &fail);
 	}
 	case_conclude(pass, fail);
