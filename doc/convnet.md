@@ -25,12 +25,12 @@ One Weird Trick for Parallelizing Convolutional Neural Networks, Alex Krizhevsky
 How it works?
 -------------
 
-Long story short, with advances in GPGPU programming, we can have very large neural networks
-(with over 50 million parameters) trained on millions of images. It turns out that once you
-have both and a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve
-good image classification results.
+With advances in GPGPU programming, we can have very large neural networks (with over 50
+million parameters) trained on millions of images. It turns out that once you have both and
+a bag of tricks (dropout, pooling etc.), the resulted neural networks can achieve good
+image classification results.
 
-	./cnnclassify ../samples/dex.png ../samples/image-net-2010.sqlite3 | ./cnndraw.rb ../samples/image-net-2010.words ../samples/dex.png output.png
+	> ./cnnclassify ../samples/dex.png ../samples/image-net-2010.sqlite3 | ./cnndraw.rb ../samples/image-net-2010.words ../samples/dex.png output.png
 
 Check output.png, the neural networks suggest a few possible relevant classes in the top
 left chart.
@@ -64,14 +64,14 @@ configured in Fig.3 and averaging 10 patches.
 
 Assuming you have ILSVRC 2012 validation set files ordered in image-net-2012-val.txt, run
 
-	./cnnclassify image-net-2012-val.txt ../samples/image-net-2012.sqlite3 > image-net-2012-classify.txt
+	> ./cnnclassify image-net-2012-val.txt ../samples/image-net-2012.sqlite3 > image-net-2012-classify.txt
 
 For complete validation set to finish, this command takes half an hour on GPU, and if you don't have GPU
 enabled, it will take about half a day to run on CPU.
 
 Assuming you have the ILSVRC 2012 validation ground truth data in LSVRC2012_val_ground_truth.txt
 
-	./cnnvldtr.rb LSVRC2012_val_ground_truth.txt image-net-2012-classify.txt
+	> ./cnnvldtr.rb LSVRC2012_val_ground_truth.txt image-net-2012-classify.txt
 
 will reports the top-1 missing rate as well as top-5 missing rate.
 
@@ -152,7 +152,7 @@ Unfortunately, the metadata are stored in Matlab proprietary format, there are s
 to be done. Here will demonstrate how to use Octave to do this. Install Octave on Linux-like system
 is easy, for me on Ubuntu, it is about one line:
 
-	sudo apt-get install octave
+	> sudo apt-get install octave
 
 Assuming you've downloaded devkit-1.0 from the above link, and found meta.mat file somewhere in that
 tarball, launching Octave interactive environment and run:
@@ -169,13 +169,13 @@ image available for each class.
 The ImageNet data downloaded from the torrent puts the training images into directories named by the
 WordNet ids.
 
-	find <ImageNet dataset>/train/ -name "*.JPEG" > train-file.txt
+	> find <ImageNet dataset>/train/ -name "*.JPEG" > train-file.txt
 
 I use this script to generate format that ccv understands: https://gist.github.com/liuliu/8393461
 
 The test dataset is ordered numerically, thus,
 
-	find <ImageNet dataset>/test/ -name "*.JPEG" > test-file.txt
+	> find <ImageNet dataset>/test/ -name "*.JPEG" > test-file.txt
 
 will generate file list corresponding to ILSVRC2010_test_ground_truth.txt for class ids.
 
@@ -187,7 +187,7 @@ These images need to be first pre-processed to correct size for training.
 I partially replaced ./bin/image-net.c with this snippet: https://gist.github.com/liuliu/8906523 to
 generate files suffixed with ".resize.png". Compile and run:
 
-	./image-net --train-list ~/Fast/imageNet/train-file.txt --test-list ~/Fast/imageNet/test-file.txt --base-dir ~/Fast/imageNet --working-dir image-net.sqlite3
+	> ./image-net --train-list ~/Fast/imageNet/train-file.txt --test-list ~/Fast/imageNet/test-file.txt --base-dir ~/Fast/imageNet --working-dir image-net.sqlite3
 
 The resize will take about 3 hours, and after that, train.txt and test.txt are generated from
 train-file.txt and test-file.txt by suffixing .resize.png on every line.
@@ -201,9 +201,9 @@ The generated image-net.sqlite3 file is about 600MiB in size because it contains
 and resume. You can either open this file with sqlite command-line tool (it is a vanilla sqlite database
 file), and do:
 
-	drop table function_state;
-	drop table momentum_data;
-	vacuum;
+	> drop table function_state;
+	> drop table momentum_data;
+	> vacuum;
 
 The file size will shrink to about 200MiB. You can achieve further reduction in file size by rewrite it into
 half-precision, with ccv_convnet_write and write_param.half_precision = 1. The resulted image-net.sqlite3
