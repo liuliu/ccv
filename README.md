@@ -1,5 +1,5 @@
-Continuous Build Status
------------------------
+Build Status
+------------
 
  * Travis CI VM: [![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
  * Raspberry Pi: [![Build Status on Raspberry Pi](http://ci.libccv.org/png?builder=arm-runtests)](http://ci.libccv.org/builders/arm-runtests)
@@ -7,13 +7,34 @@ Continuous Build Status
  * Linux x64: [![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
  * Mac OSX: [![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
 
-Intro
-=====
+Backstory
+---------
 
-Around 2010, when Lian and I was working on our gesture recognition demo, out
-of the frustration to abstract redundant image preprocessing operations into a
-set of clean and concise functions, I started to consider moving away from the
-stack. Why? Well, after two years, ccv is the very answer.
+I set to build ccv with minimalism inspiration. That was back in 2010, out of
+frustration with the computer vision library then I was using, ccv was meant
+to be a much easier to deploy, simpler organized code with a bit caution of
+dependency hygiene. The simplicity and minimalistic nature at then, made it
+much easier to integrated into any server-side deployment environments.
+
+Portability and Embeddable
+--------------------------
+
+Fast forward to now, the world is quite different from then, but ccv adapts
+pretty well in the new, mobile-first environment. It now runs on Mac OSX,
+Linux, FreeBSD, Windows\*, iPhone, iPad, Android, Raspberry Pi. In fact,
+anything that has a proper C compiler probably can run ccv. The majority
+(with notable exception of convolutional networks, which requires a BLAS
+library) of ccv will just work with no compilation flags or dependencies.
+
+Modern Computer Vision Algorithms
+---------------------------------
+
+One core concept of ccv development is "application driven". As a result, ccv
+end up implementing a handful state-of-art algorithms. It includes
+a close to state-of-the-art image classifier, a state-of-the-art frontal face
+detector, reasonable collection of object detectors for pedestrians and cars.
+a useful text detection algorithm, a long term general object tracking algorithm,
+and the long-standing feature point extraction algorithm.
 
 Cached Image Preprocessing
 --------------------------
@@ -23,24 +44,6 @@ layers: image pyramid generation, color space conversion etc. These potentially
 redundant operations cannot be easily eliminated within a mature API. ccv
 provides a built-in cache mechanism that, while maintains a clean function
 interface, effectively does transparent cache for you.
-
-Easy to Embed
--------------
-
-While it depends on quite a few libraries for the best performance and
-complete feature, ccv's majority functionalities will still work without these
-libraries. You can even drop the ccv source code into your project, and it will
-work!
-
-Modern Computer Vision Algorithms
----------------------------------
-
-One core concept of ccv development is "application driven". As a result, ccv
-end up implementing a handful state-of-art algorithms. It includes
-a very fast detection algorithm for rigid object (face etc.), an accurate
-object detection algorithm for somewhat difficult object (pedestrian, cat etc.),
-a state-of-art text detection algorithm, a long term object tracking algorithm,
-and the long-standing feature point detection algorithm.
 
 For computer vision community, there is no shortage of good algorithms, good
 implementation is what it lacks of. After years, we stuck in between either the
