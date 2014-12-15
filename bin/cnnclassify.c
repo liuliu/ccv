@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 	{
 		ccv_convnet_t* convnet = ccv_convnet_read(0, argv[2]);
 		ccv_dense_matrix_t* input = 0;
-		ccv_convnet_input_formation(convnet, image, &input);
+		ccv_convnet_input_formation(convnet->input, image, &input);
 		ccv_matrix_free(image);
 		unsigned int elapsed_time = get_current_time();
 		ccv_array_t* rank = 0;
@@ -64,7 +64,7 @@ int main(int argc, char** argv)
 				ccv_read(file, &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 				assert(image != 0);
 				images[k % BATCH_SIZE] = 0;
-				ccv_convnet_input_formation(convnet, image, images + (k % BATCH_SIZE));
+				ccv_convnet_input_formation(convnet->input, image, images + (k % BATCH_SIZE));
 				ccv_matrix_free(image);
 				++k;
 				if (k % BATCH_SIZE == 0)

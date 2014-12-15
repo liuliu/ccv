@@ -186,6 +186,30 @@ TEST_CASE("matrix flatten")
 	ccv_matrix_free(result);
 }
 
+TEST_CASE("matrix reshape")
+{
+	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(2, 4, CCV_32S | CCV_C1, 0, 0);
+	dmt->data.i32[0] = 200;
+	dmt->data.i32[1] = 100;
+	dmt->data.i32[2] = 150;
+	dmt->data.i32[3] = 50;
+	dmt->data.i32[4] = 25;
+	dmt->data.i32[5] = 20;
+	dmt->data.i32[6] = 200;
+	dmt->data.i32[7] = 250;
+	ccv_dense_matrix_t sub = ccv_reshape(dmt, 0, 2, 2, 2);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(2, 2, CCV_32S | CCV_C1, 0, 0);
+	a->data.i32[0] = 100;
+	a->data.i32[1] = 100;
+	a->data.i32[2] = 100;
+	a->data.i32[3] = 100;
+	ccv_subtract(a, &sub, (ccv_matrix_t**)&a, 0);
+	int rf[4] = {-50, 50, -100, -150};
+	REQUIRE_ARRAY_EQ(int, a->data.i32, rf, 4, "matrix subtract a reshaped matrix should have same value as reference array");
+	ccv_matrix_free(a);
+	ccv_matrix_free(dmt);
+}
+
 TEST_CASE("matrix border")
 {
 	ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32F | CCV_C1, 0, 0);

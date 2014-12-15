@@ -35,9 +35,11 @@ static void _cwc_convnet_random_image_manipulation(gsl_rng* rng, ccv_dense_matri
 		}
 }
 
-void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float image_manipulation, float color_gain, int* idx, ccv_size_t dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
+void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_dense_matrix_t* mean_activity, ccv_dense_matrix_t* eigenvectors, ccv_dense_matrix_t* eigenvalues, float image_manipulation, float color_gain, int* idx, ccv_size_t dim, int min_dim, int max_dim, int rows, int cols, int channels, int category_count, int symmetric, int batch, int offset, int size, float* b, int* c)
 {
 	assert(size > 0 && size <= batch);
+	assert(min_dim >= rows && min_dim >= cols);
+	assert(max_dim >= min_dim);
 	float* channel_gains = (float*)alloca(sizeof(float) * channels * size);
 	memset(channel_gains, 0, sizeof(float) * channels * size);
 	int i;
@@ -50,7 +52,7 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 			gsl_rng_set(rngs[i], gsl_rng_get(rng));
 		}
 	parallel_for(i, size) {
-		int k, x;
+		int j, k;
 		assert(offset + i < categorizeds->rnum);
 		ccv_categorized_t* categorized = (ccv_categorized_t*)ccv_array_get(categorizeds, idx ? idx[offset + i] : offset + i);
 		assert(categorized->c < category_count && categorized->c >= 0); // now only accept classes listed
@@ -69,49 +71,55 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 		}
 		if (image)
 		{
-			assert(image->rows == dim.height || image->cols == dim.width);
-			if (rngs[i] && image_manipulation > 0)
-				_cwc_convnet_random_image_manipulation(rngs[i], image, image_manipulation);
+			// first resize to between min_dim and max_dim
 			ccv_dense_matrix_t* input = 0;
-			if (image->cols != dim.width || image->rows != dim.height)
+			ccv_size_t resize = dim;
+			if (rngs[i]) // randomize the resized dimensions
 			{
-				int x = rngs[i] ? gsl_rng_uniform_int(rngs[i], image->cols - dim.width + 1) : (image->cols - dim.width + 1) / 2;
-				int y = rngs[i] ? gsl_rng_uniform_int(rngs[i], image->rows - dim.height + 1) : (image->rows - dim.height + 1) / 2;
-				assert(x == 0 || y == 0);
-				ccv_slice(image, (ccv_matrix_t**)&input, CCV_32F, y, x, dim.height, dim.width);
-			} else
-				ccv_shift(image, (ccv_matrix_t**)&input, CCV_32F, 0, 0); // converting to 32f
-			// we loaded it in, deallocate it now
-			if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
-				ccv_matrix_free(image);
-			// random horizontal reflection
-			if (symmetric && rngs[i] && gsl_rng_uniform_int(rngs[i], 2) == 0)
-				ccv_flip(input, &input, 0, CCV_FLIP_X);
-			ccv_subtract(input, mean_activity, (ccv_matrix_t**)&input, 0);
+				int d = gsl_rng_uniform_int(rngs[i], max_dim - min_dim + 1) + min_dim;
+				resize = ccv_size(d, d);
+			}
+			if (resize.height != image->rows || resize.width != image->cols)
+				ccv_convnet_input_formation(resize, image, &input);
+			else
+				input = image;
+			if (rngs[i] && image_manipulation > 0)
+				_cwc_convnet_random_image_manipulation(rngs[i], input, image_manipulation);
 			ccv_dense_matrix_t* patch = 0;
 			if (input->cols != cols || input->rows != rows)
 			{
 				int x = rngs[i] ? gsl_rng_uniform_int(rngs[i], input->cols - cols + 1) : (input->cols - cols + 1) / 2;
 				int y = rngs[i] ? gsl_rng_uniform_int(rngs[i], input->rows - rows + 1) : (input->rows - rows + 1) / 2;
 				ccv_slice(input, (ccv_matrix_t**)&patch, CCV_32F, y, x, rows, cols);
-				ccv_matrix_free(input);
 			} else
-				patch = input;
+				ccv_shift(input, (ccv_matrix_t**)&patch, CCV_32F, 0, 0); // converting to 32f
+			if (input != image) // only unload if we created new input
+				ccv_matrix_free(input);
+			// we loaded image in, deallocate it now
+			if (categorized->type != CCV_CATEGORIZED_DENSE_MATRIX)
+				ccv_matrix_free(image);
+			// random horizontal reflection
+			if (symmetric && rngs[i] && gsl_rng_uniform_int(rngs[i], 2) == 0)
+				ccv_flip(patch, &patch, 0, CCV_FLIP_X);
+			int x = rngs[i] ? gsl_rng_uniform_int(rngs[i], mean_activity->cols - cols + 1) : (mean_activity->cols - cols + 1) / 2;
+			int y = rngs[i] ? gsl_rng_uniform_int(rngs[i], mean_activity->rows - rows + 1) : (mean_activity->rows - rows + 1) / 2;
+			ccv_dense_matrix_t mean_patch = ccv_reshape(mean_activity, y, x, rows, cols);
+			ccv_subtract(patch, &mean_patch, (ccv_matrix_t**)&patch, 0);
 			assert(channels == CCV_GET_CHANNEL(patch->type));
 			if (color_gain > 0 && rngs[i] && eigenvectors && eigenvalues)
 			{
 				assert(channels == 3); // only support RGB color gain
 				memset(channel_gains + channels * i, 0, sizeof(float) * channels);
-				for (k = 0; k < channels; k++)
+				for (j = 0; j < channels; j++)
 				{
-					float alpha = gsl_ran_gaussian(rngs[i], color_gain) * eigenvalues->data.f64[k];
-					for (x = 0; x < channels; x++)
-						channel_gains[x + i * channels] += eigenvectors->data.f64[k * channels + x] * alpha;
+					float alpha = gsl_ran_gaussian(rngs[i], color_gain) * eigenvalues->data.f64[j];
+					for (k = 0; k < channels; k++)
+						channel_gains[k + i * channels] += eigenvectors->data.f64[j * channels + k] * alpha;
 				}
 			}
-			for (k = 0; k < channels; k++)
-				for (x = 0; x < rows * cols; x++)
-					b[(k * rows * cols + x) * batch + i] = patch->data.f32[x * channels + k] + channel_gains[k + i * channels];
+			for (j = 0; j < channels; j++)
+				for (k = 0; k < rows * cols; k++)
+					b[(j * rows * cols + k) * batch + i] = patch->data.f32[k * channels + j] + channel_gains[j + i * channels];
 			ccv_matrix_free(patch);
 		} else
 			PRINT(CCV_CLI_ERROR, "cannot load %s.\n", categorized->file.filename);

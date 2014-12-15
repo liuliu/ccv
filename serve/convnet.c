@@ -195,7 +195,7 @@ int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf)
 	}
 	ccv_convnet_t* convnet = parser->convnet_and_words->convnet;
 	ccv_dense_matrix_t* input = 0;
-	ccv_convnet_input_formation(convnet, image, &input);
+	ccv_convnet_input_formation(convnet->input, image, &input);
 	ccv_matrix_free(image);
 	ccv_array_t* rank = 0;
 	ccv_convnet_classify(convnet, &input, 1, &rank, parser->top, 1);

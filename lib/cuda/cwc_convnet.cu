@@ -2100,7 +2100,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				for (device_id = 0; device_id < params.device_count; device_id++)
 				{
 					cudaSetDevice(device_id);
-					cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.image_manipulation, params.color_gain, z.idx, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i * multi_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
+					cwc_convnet_batch_formation(rng, categorizeds, z.convnet->mean_activity, z.eigenvectors, z.eigenvalues, params.image_manipulation, params.color_gain, z.idx, z.convnet->input, params.input.min_dim, params.input.max_dim, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i * multi_batch + device_id * params.mini_batch, params.mini_batch, context->host[device_id].input, context->host[device_id].c);
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					ASSERT_NO_CUDA_ERROR();
 					cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
@@ -2205,7 +2205,7 @@ void cwc_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categoriz
 				{
 					cudaSetDevice(device_id);
 					if (i + device_id * params.mini_batch < tests->rnum)
-						cwc_convnet_batch_formation(0, tests, z.convnet->mean_activity, 0, 0, 0, 0, 0, z.convnet->input, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i + device_id * params.mini_batch, ccv_min(params.mini_batch, tests->rnum - i - device_id * params.mini_batch), context->host[device_id].input, 0);
+						cwc_convnet_batch_formation(0, tests, z.convnet->mean_activity, 0, 0, 0, 0, 0, z.convnet->input, params.input.min_dim, params.input.max_dim, z.convnet->rows, z.convnet->cols, z.convnet->channels, category_count, params.symmetric, params.mini_batch, i + device_id * params.mini_batch, ccv_min(params.mini_batch, tests->rnum - i - device_id * params.mini_batch), context->host[device_id].input, 0);
 					cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * z.convnet->rows * z.convnet->cols * z.convnet->channels * params.mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 					ASSERT_NO_CUDA_ERROR();
 					// sync with the other stream core so that we can compute on the single true layer parameters

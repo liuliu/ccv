@@ -402,6 +402,7 @@ void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag);
 void ccv_zero(ccv_matrix_t* mat);
 void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr);
 int ccv_any_nan(ccv_matrix_t *a);
+ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, int cols);
 
 // 32-bit float to 16-bit float
 void ccv_float_to_half_precision(float* f, uint16_t* h, size_t len);
@@ -1346,6 +1347,10 @@ typedef struct {
 	int peer_access; // to enable peer access
 	float image_manipulation; // the value for image brightness / contrast / saturation manipulations
 	float color_gain; // the gaussian value for color variations
+	struct {
+		int min_dim;
+		int max_dim;
+	} input;
 	ccv_convnet_layer_train_param_t* layer_params;
 } ccv_convnet_train_param_t;
 
@@ -1357,7 +1362,7 @@ ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_a
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
-void ccv_convnet_input_formation(ccv_convnet_t* convnet, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+void ccv_convnet_input_formation(ccv_size_t input, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
 ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_accel, const char* filename);
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
