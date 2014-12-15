@@ -51,6 +51,10 @@ int main(int argc, char** argv)
 		.symmetric = 1,
 		.image_manipulation = 0.2,
 		.color_gain = 0.001,
+		.input = {
+			.min_dim = 257,
+			.max_dim = 257,
+		},
 	};
 	int i, c;
 	while (getopt_long_only(argc, argv, "", image_net_options, &c) != -1)

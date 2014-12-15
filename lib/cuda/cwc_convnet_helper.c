@@ -79,7 +79,8 @@ void cwc_convnet_batch_formation(gsl_rng* rng, ccv_array_t* categorizeds, ccv_de
 				int d = gsl_rng_uniform_int(rngs[i], max_dim - min_dim + 1) + min_dim;
 				resize = ccv_size(d, d);
 			}
-			if (resize.height != image->rows || resize.width != image->cols)
+			// if neither side is the same as expected, we have to resize first
+			if (resize.height != image->rows && resize.width != image->cols)
 				ccv_convnet_input_formation(resize, image, &input);
 			else
 				input = image;
