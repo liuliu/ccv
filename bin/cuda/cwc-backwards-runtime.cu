@@ -53,7 +53,7 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 	for (device_id = 0; device_id < DEVICE_COUNT; device_id++)
 	{
 		cudaSetDevice(device_id);
-		cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, 0, convnet->input, convnet->rows, convnet->cols, convnet->channels, category_count, 0, mini_batch, mini_batch * device_id, mini_batch, context->host[device_id].input, context->host[device_id].c);
+		cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, 0, convnet->input, params.input.min_dim, params.input.max_dim, convnet->rows, convnet->cols, convnet->channels, category_count, 0, mini_batch, mini_batch * device_id, mini_batch, context->host[device_id].input, context->host[device_id].c);
 		cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 		assert(cudaGetLastError() == cudaSuccess);
 		cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * mini_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
@@ -152,7 +152,7 @@ extern "C" void cwc_backwards_runtime(ccv_convnet_t* convnet, ccv_array_t* categ
 			EXTRA(layer)->vary.convolutional.backward.coefficient.z = 32;
 		}
 	}
-	cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, 0, convnet->input, convnet->rows, convnet->cols, convnet->channels, category_count, 0, dual_batch, 0, dual_batch, context->host[device_id].input, context->host[device_id].c);
+	cwc_convnet_batch_formation(0, categorizeds, convnet->mean_activity, 0, 0, 0, 0, 0, convnet->input, params.input.min_dim, params.input.max_dim, convnet->rows, convnet->cols, convnet->channels, category_count, 0, dual_batch, 0, dual_batch, context->host[device_id].input, context->host[device_id].c);
 	cudaMemcpyAsync(context->device[device_id].input, context->host[device_id].input, sizeof(float) * convnet->rows * convnet->cols * convnet->channels * dual_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);
 	assert(cudaGetLastError() == cudaSuccess);
 	cudaMemcpyAsync(context->device[device_id].c, context->host[device_id].c, sizeof(int) * dual_batch, cudaMemcpyHostToDevice, context->device[device_id].data_stream);

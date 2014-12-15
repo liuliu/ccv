@@ -29,6 +29,10 @@ int main(int argc, char** argv)
 		.mini_batch = 128,
 		.device_count = 4,
 		.peer_access = 0,
+		.input = {
+			.min_dim = 257,
+			.max_dim = 257,
+		},
 	};
 	ccv_convnet_layer_train_param_t layer_params[16];
 	memset(layer_params, 0, sizeof(layer_params));

@@ -29,6 +29,10 @@ int main(int argc, char** argv)
 		.mini_batch = 128,
 		.device_count = 2,
 		.peer_access = 0,
+		.input = {
+			.min_dim = 257,
+			.max_dim = 257,
+		},
 	};
 	/* MattNet parameters */
 	ccv_convnet_layer_param_t params[13] = {
