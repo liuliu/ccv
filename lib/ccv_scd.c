@@ -1124,16 +1124,16 @@ ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfil
 		}
 		ccv_function_state_resume(_ccv_scd_classifier_cascade_new_function_state_write, z, filename);
 	}
+	ccv_array_free(z.negatives);
+	ccv_function_state_finish();
 	ccv_array_free(z.features);
 	ccv_array_free(z.positives);
-	ccv_array_free(z.negatives);
 	ccfree(h);
 	ccfree(z.s);
 	ccfree(z.pw);
 	ccfree(z.nw);
 	ccfree(z.fv);
 	gsl_rng_free(rng);
-	ccv_function_state_finish();
 	return z.cascade;
 #else
 	assert(0 && "ccv_scd_classifier_cascade_new requires GSL library and support");
