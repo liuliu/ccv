@@ -1,0 +1,364 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_util.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_util.c</h1>
+<h2 id="ccvgetdensematrix">ccv_get_dense_matrix</h2>
+
+<pre><code>ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Check and get dense matrix from general matrix structure.</p>
+
+<ul>
+  <li><strong>mat</strong>: a general matrix.</li>
+</ul>
+
+<h2 id="ccvgetsparsematrix">ccv_get_sparse_matrix</h2>
+
+<pre><code>ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Check and get sparse matrix from general matrix structure.</p>
+
+<ul>
+  <li><strong>mat</strong>: a general matrix.</li>
+</ul>
+
+<h2 id="ccvvisualize">ccv_visualize</h2>
+
+<pre><code>void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
+</code></pre>
+
+<p>Convert a input matrix into a matrix within visual range, so that one can output it into PNG file for inspection.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+</ul>
+
+<h2 id="ccvzero">ccv_zero</h2>
+
+<pre><code>void ccv_zero(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Zero out a given matrix.</p>
+
+<ul>
+  <li><strong>mat</strong>: the given matrix.</li>
+</ul>
+
+<h2 id="ccvanynan">ccv_any_nan</h2>
+
+<pre><code>int ccv_any_nan(ccv_matrix_t *a)
+</code></pre>
+
+<p>Check if any nan value in the given matrix, and return its position.</p>
+
+<ul>
+  <li><strong>a</strong>: the given matrix.</li>
+</ul>
+
+<h2 id="ccvflatten">ccv_flatten</h2>
+
+<pre><code>void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
+</code></pre>
+
+<p>If a given matrix has multiple channels, this function will compute a new matrix that each cell in the new matrix is the sum of all channels in the same cell of the given matrix.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>flag</strong>: ccv reserved this for now.</li>
+</ul>
+
+<h2 id="ccvshift">ccv_shift</h2>
+
+<pre><code>void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
+</code></pre>
+
+<p>Compute a new matrix that each element is first left shifted and then right shifted.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>lr</strong>: left shift amount.</li>
+  <li><strong>rr</strong>: right shift amount.</li>
+</ul>
+
+<h2 id="ccvgetsparsematrixvector">ccv_get_sparse_matrix_vector</h2>
+
+<pre><code>ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index)
+</code></pre>
+
+<p>Get vector for a sparse matrix.</p>
+
+<ul>
+  <li><strong>mat</strong>: the sparse matrix.</li>
+  <li><strong>index</strong>: the index of that vector.</li>
+</ul>
+
+<h2 id="ccvgetsparsematrixcell">ccv_get_sparse_matrix_cell</h2>
+
+<pre><code>ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
+</code></pre>
+
+<p>Get cell from a sparse matrix.</p>
+
+<ul>
+  <li><strong>mat</strong>: the sparse matrix.</li>
+  <li><strong>row</strong>: the row index.</li>
+  <li><strong>col</strong>: the column index.</li>
+</ul>
+
+<h2 id="ccvsetsparsematrixcell">ccv_set_sparse_matrix_cell</h2>
+
+<pre><code>void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data)
+</code></pre>
+
+<p>Set cell for a sparse matrix.</p>
+
+<ul>
+  <li><strong>mat</strong>: the sparse matrix.</li>
+  <li><strong>row</strong>: the row index.</li>
+  <li><strong>col</strong>: the column index.</li>
+  <li><strong>data</strong>: the data pointer.</li>
+</ul>
+
+<h2 id="ccvcompresssparsematrix">ccv_compress_sparse_matrix</h2>
+
+<pre><code>void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
+</code></pre>
+
+<p>Transform a sparse matrix into compressed representation.</p>
+
+<ul>
+  <li><strong>mat</strong>: the sparse matrix.</li>
+  <li><strong>csm</strong>: the compressed matrix.</li>
+</ul>
+
+<h2 id="ccvdecompresssparsematrix">ccv_decompress_sparse_matrix</h2>
+
+<pre><code>void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
+</code></pre>
+
+<p>Transform a compressed matrix into a sparse matrix.</p>
+
+<ul>
+  <li><strong>csm</strong>: the compressed matrix.</li>
+  <li><strong>smt</strong>: the sparse matrix.</li>
+</ul>
+
+<h2 id="ccvmatrixeq">ccv_matrix_eq</h2>
+
+<pre><code>int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
+</code></pre>
+
+<p>Compare if two matrix are equal (with type). Return 0 if it is.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix a.</li>
+  <li><strong>b</strong>: the input matrix b.</li>
+</ul>
+
+<h2 id="ccvslice">ccv_slice</h2>
+
+<pre><code>void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int rows, int cols)
+</code></pre>
+
+<p>Slice an input matrix given x, y and row, column size.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>btype</strong>: the type of output matrix, if 0, ccv will use the input matrix type.</li>
+  <li><strong>y</strong>: y coordinate.</li>
+  <li><strong>x</strong>: x coordinate.</li>
+  <li><strong>rows</strong>: row size of targeted matrix.</li>
+  <li><strong>cols</strong>: column size of targeted matrix.</li>
+</ul>
+
+<h2 id="ccvborder">ccv_border</h2>
+
+<pre><code>void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, ccv_margin_t margin)
+</code></pre>
+
+<p>Add border to the input matrix.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>margin</strong>: left, top, right, bottom width for the border.</li>
+</ul>
+
+<h2 id="ccvmove">ccv_move</h2>
+
+<pre><code>void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
+</code></pre>
+
+<p>Offset input matrix by x, y.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>btype</strong>: the type of output matrix, if 0, ccv will use the input matrix type.</li>
+  <li><strong>y</strong>: b(0, 0) = a(x, y).</li>
+  <li><strong>x</strong>: b(0, 0) = a(x, y).</li>
+</ul>
+
+<h2 id="ccvarraynew">ccv_array_new</h2>
+
+<pre><code>ccv_array_t* ccv_array_new(int rnum, int rsize)
+</code></pre>
+
+<p>Create a new, self-growing array.</p>
+
+<ul>
+  <li><strong>rnum</strong>: the initial capacity of the array.</li>
+  <li><strong>rsize</strong>: the size of each element in the array.</li>
+</ul>
+
+<h2 id="ccvarraypush">ccv_array_push</h2>
+
+<pre><code>void ccv_array_push(ccv_array_t* array, void* r)
+</code></pre>
+
+<p>Push a new element into the array.</p>
+
+<ul>
+  <li><strong>array</strong>: the array.</li>
+  <li><strong>r</strong>: the pointer to new element, it will then be copied into the array.</li>
+</ul>
+
+<h2 id="ccvarrayzero">ccv_array_zero</h2>
+
+<pre><code>void ccv_array_zero(ccv_array_t* array)
+</code></pre>
+
+<p>Zero out the array, it won’t change the array-&gt;rnum however.</p>
+
+<ul>
+  <li><strong>array</strong>: the array.</li>
+</ul>
+
+<h2 id="ccvarrayclear">ccv_array_clear</h2>
+
+<pre><code>void ccv_array_clear(ccv_array_t* array)
+</code></pre>
+
+<p>Clear the array, it will reset the array-&gt;rnum to 0.</p>
+
+<ul>
+  <li><strong>array</strong>: the array.</li>
+</ul>
+
+<h2 id="ccvarrayfree">ccv_array_free</h2>
+
+<pre><code>void ccv_array_free(ccv_array_t* array)
+</code></pre>
+
+<p>Free up the array.</p>
+
+<ul>
+  <li><strong>array</strong>: the array.</li>
+</ul>
+
+<h2 id="ccvarraygroup">ccv_array_group</h2>
+
+<pre><code>int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data)
+</code></pre>
+
+<p>Group elements in the array from its similarity.</p>
+
+<ul>
+  <li><strong>array</strong>: the array.</li>
+  <li><strong>index</strong>: the output index, same group element will have the same index.</li>
+  <li><strong>gfunc</strong>: int ccv_array_group_f(const void* a, const void* b, void* data). Return 1 if a and b are in the same group.</li>
+  <li><strong>data</strong>: any extra user data.</li>
+</ul>
+
+<h2 id="ccvcontournew">ccv_contour_new</h2>
+
+<pre><code>ccv_contour_t* ccv_contour_new(int set)
+</code></pre>
+
+<p>Create a new contour object.</p>
+
+<ul>
+  <li><strong>set</strong>: the initial capacity of the contour.</li>
+</ul>
+
+<h2 id="ccvcontourpush">ccv_contour_push</h2>
+
+<pre><code>void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
+</code></pre>
+
+<p>Push a point into the contour object.</p>
+
+<ul>
+  <li><strong>contour</strong>: the contour.</li>
+  <li><strong>point</strong>: the point.</li>
+</ul>
+
+<h2 id="ccvcontourfree">ccv_contour_free</h2>
+
+<pre><code>void ccv_contour_free(ccv_contour_t* contour)
+</code></pre>
+
+<p>Free up the contour object.</p>
+
+<ul>
+  <li><strong>contour</strong>: the contour.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

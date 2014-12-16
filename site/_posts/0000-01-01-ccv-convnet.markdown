@@ -27,7 +27,7 @@ ccv_convnet_layer_param_t
 
  * **type**: one of following value to specify the network layer type, **CCV\_CONVNET\_CONVOLUTIONAL**, **CCV\_CONVNET\_FULL\_CONNECT**, **CCV\_CONVNET\_MAX\_POOL**, **CCV\_CONVNET\_AVERAGE\_POOL**, **CCV\_CONVNET\_LOCAL\_RESPONSE\_NORM**.
  * **bias**: the initialization value for bias if applicable (for convolutional layer and full connect layer).
- * **sigma**: the normal distribution variance for weights if applicable (for convolutional layer and full connect layer).
+ * **glorot**: the truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)).
  * **input**: a **ccv\_convnet\_input\_t** specifies the input structure.
  * **output**: a **ccv\_convnet\_type\_t** specifies the output parameters and structure.
 
@@ -88,8 +88,14 @@ ccv_convnet_train_param_t
  * **max\_epoch**: The number of epoch (an epoch sweeps through all the examples) to go through before end the training.
  * **mini\_batch**: The number of examples for a batch in stochastic gradient descent.
  * **iterations**: The number of iterations (an iteration is for one batch) before save the progress.
+ * **sgd\_frequency**: After how many batches when we do a SGD update.
  * **symmetric**: Whether to exploit the symmetric property of the provided examples.
+ * **device\_count**: Use how many GPU devices, this is capped by available CUDA devices on your system.
+ * **peer\_access**: Enable peer access for cross device communications or not, this will enable faster multiple device training.
+ * **image\_manipulation**: Coefficient for random contrast, brightness, and saturation manipulations for training images.
  * **color\_gain**: The color variance for data augmentation (0 means no such augmentation).
+ * **input.min\_dim**: The minimum dimensions for random resize of training images.
+ * **input.max\_dim**: The maximum dimensions for random resize of training images.
  * **layer\_params**: An C-array of **ccv\_convnet\_layer\_train\_param\_t** training parameters for each layer.
 
 ccv_convnet_layer_train_param_t

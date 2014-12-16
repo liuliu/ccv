@@ -1,0 +1,146 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_algebra.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_algebra.c</h1>
+<h2 id="ccvnormalize">ccv_normalize</h2>
+
+<pre><code>double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
+</code></pre>
+
+<p>Normalize a matrix and return the normalize factor.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>btype</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>flag</strong>: CCV_L1 or CCV_L2, for L1 or L2 normalization.</li>
+</ul>
+
+<h2 id="ccvsat">ccv_sat</h2>
+
+<pre><code>void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern)
+</code></pre>
+
+<p>Generate the <a href="https://en.wikipedia.org/wiki/Summed_area_table">Summed Area Table</a>.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>padding_pattern</strong>: CCV_NO_PADDING - the first row and the first column in the output matrix is the same as the input matrix. CCV_PADDING_ZERO - the first row and the first column in the output matrix is zero, thus, the output matrix size is 1 larger than the input matrix.</li>
+</ul>
+
+<h2 id="ccvsum">ccv_sum</h2>
+
+<pre><code>double ccv_sum(ccv_matrix_t* mat, int flag)
+</code></pre>
+
+<p>Return the sum of all elements in the matrix.</p>
+
+<ul>
+  <li><strong>mat</strong>: the input matrix.</li>
+  <li><strong>flag</strong>: CCV_UNSIGNED - compute fabs(x) of the elements first and then sum up. CCV_SIGNED - compute the sum normally.</li>
+</ul>
+
+<h2 id="ccvmultiply">ccv_multiply</h2>
+
+<pre><code>void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
+</code></pre>
+
+<p>Do element-wise matrix multiplication.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the input matrix.</li>
+  <li><strong>c</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+</ul>
+
+<h2 id="ccvsubtract">ccv_subtract</h2>
+
+<pre><code>void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
+</code></pre>
+
+<p>Matrix subtraction.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the input matrix.</li>
+  <li><strong>c</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+</ul>
+
+<h2 id="ccvgemm">ccv_gemm</h2>
+
+<pre><code>void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type)
+</code></pre>
+
+<p>General purpose matrix multiplication. This function has a hard dependency on <a href="http://www.netlib.org/blas/">cblas</a> library.</p>
+
+<p>As general as it is, it computes:</p>
+
+<pre><code>alpha * A * B + beta * C
+</code></pre>
+
+<p>whereas A, B, C are matrix, and alpha, beta are scalar.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the input matrix.</li>
+  <li><strong>alpha</strong>: the multiplication factor.</li>
+  <li><strong>c</strong>: the input matrix.</li>
+  <li><strong>beta</strong>: the multiplication factor.</li>
+  <li><strong>transpose</strong>: CCV_A_TRANSPOSE, CCV_B_TRANSPOSE to indicate if matrix A or B need to be transposed first before multiplication.</li>
+  <li><strong>d</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

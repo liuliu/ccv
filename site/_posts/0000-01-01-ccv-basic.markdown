@@ -4,10 +4,12 @@ lib: ccv
 slug: ccv-basic
 status: publish
 title: lib/ccv_basic.c
-desc: basic image processing utilities
+desc: basic image pre-processing utilities
 categories:
 - lib
 ---
+
+The utilities in this file provides basic pre-processing which, most-likely, are the first steps for computer vision algorithms.
 
 ccv_sobel
 ---------

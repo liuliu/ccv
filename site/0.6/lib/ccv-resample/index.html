@@ -1,0 +1,99 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_resample.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_resample.c</h1>
+<h2 id="ccvresample">ccv_resample</h2>
+
+<pre><code>void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type)
+</code></pre>
+
+<p>Resample a given matrix to different size, as for now, ccv only supports either downsampling (with CCV_INTER_AREA) or upsampling (with CCV_INTER_CUBIC).</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>btype</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>rows</strong>: the new row.</li>
+  <li><strong>cols</strong>: the new column.</li>
+  <li><strong>type</strong>: for now, ccv supports CCV_INTER_AREA, which is an extension to <a href="https://en.wikipedia.org/wiki/Bilinear_filtering">bilinear resampling</a> for downsampling and CCV_INTER_CUBIC <a href="https://en.wikipedia.org/wiki/Bicubic_interpolation">bicubic resampling</a> for upsampling.</li>
+</ul>
+
+<h2 id="ccvsampledown">ccv_sample_down</h2>
+
+<pre><code>void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
+</code></pre>
+
+<p>Downsample a given matrix to exactly half size with a <a href="https://en.wikipedia.org/wiki/Gaussian_filter">Gaussian filter</a>. The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>src_x</strong>: shift the start point by src_x.</li>
+  <li><strong>src_y</strong>: shift the start point by src_y.</li>
+</ul>
+
+<h2 id="ccvsampleup">ccv_sample_up</h2>
+
+<pre><code>void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
+</code></pre>
+
+<p>Upsample a given matrix to exactly double size with a <a href="https://en.wikipedia.org/wiki/Gaussian_filter">Gaussian filter</a>.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>src_x</strong>: shift the start point by src_x.</li>
+  <li><strong>src_y</strong>: shift the start point by src_y.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

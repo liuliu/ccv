@@ -157,11 +157,11 @@ is easy, for me on Ubuntu, it is about one line:
 Assuming you've downloaded devkit-1.0 from the above link, and found meta.mat file somewhere in that
 tarball, launching Octave interactive environment and run:
 
-	file = fopen('meta.txt', 'w+')
-	for i = 1:1000
-		fprintf(file, "%d %s %d\n", synsets(i).ILSVRC2010_ID, synsets(i).WNID, synsets(i).num_train_images)
-	endfor
-	fclose(file)
+	octave> file = fopen('meta.txt', 'w+')
+	octave> for i = 1:1000
+	octave> 	fprintf(file, "%d %s %d\n", synsets(i).ILSVRC2010_ID, synsets(i).WNID, synsets(i).num_train_images)
+	octave> endfor
+	octave> fclose(file)
 
 The newly created meta.txt file will give us the class id, the WordNet id, and the number of training
 image available for each class.
@@ -201,9 +201,9 @@ The generated image-net.sqlite3 file is about 600MiB in size because it contains
 and resume. You can either open this file with sqlite command-line tool (it is a vanilla sqlite database
 file), and do:
 
-	> drop table function_state;
-	> drop table momentum_data;
-	> vacuum;
+	sqlite> drop table function_state;
+	sqlite> drop table momentum_data;
+	sqlite> vacuum;
 
 The file size will shrink to about 200MiB. You can achieve further reduction in file size by rewrite it into
 half-precision, with ccv_convnet_write and write_param.half_precision = 1. The resulted image-net.sqlite3

@@ -1,0 +1,160 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>HTTP: A REST-ful API</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>HTTP: A REST-ful API</h1>
+<p><a href="/lib/ccv-serve/">Library Reference: serve/*.c</a></p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>Go to ccv/serve. This functionality requires support of <a href="http://libdispatch.macosforge.org/">libdispatch</a> and <a href="http://software.schmorp.de/pkg/libev">libev</a>. Luckily, these libraries are easy to install, for example, on Ubuntu 12.04 LTS, you can simply:</p>
+
+<pre><code>sudo apt-get install libdispatch-dev libev-dev
+</code></pre>
+
+<p>and it is done. If you are on Mac OSX, you can simply:</p>
+
+<pre><code>brew install libev
+</code></pre>
+
+<p>and it is done.</p>
+
+<p>On Mac OSX, you have to manually remove -ldispatch in ccv/serve/makefile, other than that, you are one ‘make’ away:</p>
+
+<pre><code>cd serve/ &amp;&amp; make &amp;&amp; ./ccv
+</code></pre>
+
+<p>Now, it is up and running!</p>
+
+<h2 id="how-can-i-use-it">How can I use it?</h2>
+
+<p>Following chapters assumed that you have basic understanding of curl.</p>
+
+<p>The HTTP API as it is now, only supports 5 major ccv functionalities: <a href="/doc/doc-bbf">BBF</a>, <a href="/doc/doc-dpm">DPM</a>, <a href="/doc/doc-swt">SWT</a>, <a href="/doc/doc-tld">TLD</a> and <a href="/doc/doc-sift">SIFT</a>. All these APIs are discoverable, you can simply:</p>
+
+<pre><code>curl localhost:3350
+</code></pre>
+
+<p>and it will return you the list of API endpoints that you can navigate, try one:</p>
+
+<pre><code>curl localhost:3350/dpm/detect.objects
+</code></pre>
+
+<p>It returns:</p>
+
+<pre lang="json"><code>{
+   "request":{
+      "interval":"integer",
+      "min_neighbors":"integer",
+      "model":"string",
+      "source":"blob",
+      "threshold":"number"
+   },
+   "response":[
+      {
+         "x":"integer",
+         "y":"integer",
+         "width":"integer",
+         "height":"integer",
+         "confidence":"number",
+         "parts":[
+            {
+               "x":"integer",
+               "y":"integer",
+               "width":"integer",
+               "height":"integer",
+               "confidence":"number"
+            }
+         ]
+      }
+   ]
+}
+</code></pre>
+
+<p>All responses from ccv are JSON encoded, like the example above. Particularly, the above JSON encodes what a POST request should look like, and what kind of JSON data structure you can expect as return. From the description, we knew that we should encode file into source field, and specify what model you want to use:</p>
+
+<pre><code>curl -F source=@"pedestrian.png" -F model="pedestrian" localhost:3350/dpm/detect.objects
+</code></pre>
+
+<p>The above query should give you a series of detected rectangles that denotes pedestrians in the given image.</p>
+
+<p>ccv supports multipart-encoded parameter, as well as query strings, the above query is equivalent to:</p>
+
+<pre><code>curl -F source=@"pedestrian.png" "localhost:3350/dpm/detect.objects?model=pedestrian"
+</code></pre>
+
+<p>Or:</p>
+
+<pre><code>curl --data-binary @"pedestrian.png" "localhost:3350/dpm/detect.objects?model=pedestrian"
+</code></pre>
+
+<p>Any ‘source’ parameters in ccv HTTP API can be passed directly as HTTP body.</p>
+
+<p>A more advanced example would be TLD. <a href="/lib/ccv-serve">Read more</a>.</p>
+
+<h2 id="under-the-hood">Under the hood?</h2>
+
+<p>On Life-cycle of a Request</p>
+
+<p>Whenever you issued a HTTP request, ccv received such request with libev, in asynchronous fashion, and then dispatch a processing function to another thread with libdispatch, when the data is ready, ccv will dispatch back to main event loop and send result back. Thus, requests to ccv won’t block each other. Although silly, dummy GET requests to ccv HTTP API endpoints can easily peak to around 25K requests per second, you shouldn’t worry too much about its HTTP performance (you should more worry about its computer vision algorithms’ performance).</p>
+
+<p>On Error Message</p>
+
+<p>ccv’s HTTP endpoints doesn’t provide informative error messages, if you issued a request that it cannot handle, will return 400 with ‘false’ in its body. It may not be a problem for most of the API endpoints, but it would be for some advanced ones.</p>
+
+<p>On Parameters</p>
+
+<p>All HTTP API’s parameters can be easily interpreted through the C API documentation, ccv chooses reasonable defaults from start, so any of them are optional.</p>
+
+<p>On Security</p>
+
+<p>The HTTP API endpoints are not intended to be exposed to public Internet, you should hide these behind firewalls.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

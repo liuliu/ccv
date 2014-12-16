@@ -1,0 +1,102 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_swt.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_swt.c</h1>
+<h2 id="ccvswt">ccv_swt</h2>
+
+<pre><code>void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+</code></pre>
+
+<p>Compute the Stroke-Width-Transform image.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of the output matrix, if 0, ccv will default to CCV_32S | CCV_C1.</li>
+  <li><strong>params</strong>: a <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
+</ul>
+
+<h2 id="ccvswtparamt">ccv_swt_param_t</h2>
+
+<ul>
+  <li><strong>up2x</strong>: upscale the image for better accuracy.</li>
+  <li><strong>direction</strong>: SWT direction. (black to white or white to black).</li>
+  <li><strong>size</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>low_thresh</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>high_thresh</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>max_height</strong>: the maximum height for a letter.</li>
+  <li><strong>min_height</strong>: the minimum height for a letter.</li>
+  <li><strong>aspect_ratio</strong>: the maximum aspect ratio for a letter.</li>
+  <li><strong>variance_ratio</strong>: the inner-class variance when grouping letters.</li>
+  <li><strong>thickness_ratio</strong>: the allowable thickness variance when grouping letters.</li>
+  <li><strong>height_ratio</strong>: the allowable height variance when grouping letters.</li>
+  <li><strong>intensity_thresh</strong>: the allowable intensity variance when grouping letters.</li>
+  <li><strong>distance_ratio</strong>: the allowable distance variance when grouping letters.</li>
+  <li><strong>intersect_ratio</strong>: the allowable intersect variance when grouping letters.</li>
+  <li><strong>elongate_ratio</strong>: the allowable elongate variance when grouping letters.</li>
+  <li><strong>letter_thresh</strong>: the allowable letter threshold.</li>
+  <li><strong>breakdown</strong>: if breakdown text line into words.</li>
+  <li><strong>breakdown_ratio</strong>: apply <a href="/lib/ccv-classic">OSTU</a> and if inter-class variance above the threshold, it will be break down into words.</li>
+</ul>
+
+<h2 id="ccvswtdetectwords">ccv_swt_detect_words</h2>
+
+<pre><code>ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
+</code></pre>
+
+<p>Return array of regions that are potentially text area.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>params</strong>: a <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

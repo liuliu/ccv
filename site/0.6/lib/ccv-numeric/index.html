@@ -1,0 +1,130 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_numeric.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_numeric.c</h1>
+<h2 id="ccvminimize">ccv_minimize</h2>
+
+<pre><code>void ccv_minimize(ccv_dense_matrix_t* x, int length, double red, ccv_minimize_f func, ccv_minimize_param_t params, void* data)
+</code></pre>
+
+<p>Linear-search to minimize function with partial derivatives. It is formed after <a href="http://www.gatsby.ucl.ac.uk/~edward/code/minimize/example.html">minimize.m</a>.</p>
+
+<ul>
+  <li><strong>x</strong>: the input vector.</li>
+  <li><strong>length</strong>: the length of line.</li>
+  <li><strong>red</strong>: the step size.</li>
+  <li><strong>func</strong>: int ccv_minimize_f)(const ccv_dense_matrix_t* x, double* f, ccv_dense_matrix_t* df, void* data). Compute the function value, and its partial derivatives.</li>
+  <li><strong>params</strong>: a <strong>ccv_minimize_param_t</strong> structure that defines various aspect of the minimize function.</li>
+  <li><strong>data</strong>: any extra user data.</li>
+</ul>
+
+<h2 id="ccvminimizeparamt">ccv_minimize_param_t</h2>
+
+<ul>
+  <li><strong>interp</strong>: interpolate value.</li>
+  <li><strong>extrap</strong>: extrapolate value.</li>
+  <li><strong>max_iter</strong>: maximum iterations.</li>
+  <li><strong>ratio</strong>: increase ratio.</li>
+  <li><strong>rho</strong>: decrease ratio.</li>
+  <li><strong>sig</strong>: sigma.</li>
+</ul>
+
+<h2 id="ccvfilter">ccv_filter</h2>
+
+<pre><code>void ccv_filter(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_dense_matrix_t** d, int type, int padding_pattern)
+</code></pre>
+
+<p>Convolve on dense matrix a with dense matrix b. This function has a soft dependency on <a href="http://fftw.org/">FFTW3</a>. If no FFTW3 exists, ccv will use <a href="http://sourceforge.net/projects/kissfft/">KissFFT</a> shipped with it. FFTW3 is about 35% faster than KissFFT.</p>
+
+<ul>
+  <li><strong>a</strong>: dense matrix a.</li>
+  <li><strong>b</strong>: dense matrix b.</li>
+  <li><strong>d</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>padding_pattern</strong>: ccv doesn’t support padding pattern for now.</li>
+</ul>
+
+<h2 id="ccvfilterkernel">ccv_filter_kernel</h2>
+
+<pre><code>void ccv_filter_kernel(ccv_dense_matrix_t* x, ccv_filter_kernel_f func, void* data)
+</code></pre>
+
+<p>Fill a given dense matrix with a kernel function.</p>
+
+<ul>
+  <li><strong>x</strong>: the matrix to be filled with.</li>
+  <li><strong>func</strong>: double ccv_filter_kernel_f(double x, double y, void* data), compute the value with given x, y.</li>
+  <li><strong>data</strong>: any extra user data.</li>
+</ul>
+
+<h2 id="ccvdistancetransform">ccv_distance_transform</h2>
+
+<pre><code>void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_dense_matrix_t** x, int x_type, ccv_dense_matrix_t** y, int y_type, double dx, double dy, double dxx, double dyy, int flag)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Distance_transform">Distance transform</a>. The current implementation follows <a href="http://www.cs.cornell.edu/~dph/papers/dt.pdf">Distance Transforms of Sampled Functions</a>. The dynamic programming technique has O(n) time complexity.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>x</strong>: the x coordinate offset.</li>
+  <li><strong>x_type</strong>: the type of output x coordinate offset, if 0, ccv will default to CCV_32S | CCV_C1.</li>
+  <li><strong>y</strong>: the y coordinate offset.</li>
+  <li><strong>y_type</strong>: the type of output x coordinate offset, if 0, ccv will default to CCV_32S | CCV_C1.</li>
+  <li><strong>dx</strong>: the x coefficient.</li>
+  <li><strong>dy</strong>: the y coefficient.</li>
+  <li><strong>dxx</strong>: the x^2 coefficient.</li>
+  <li><strong>dyy</strong>: the y^2 coefficient.</li>
+  <li><strong>flag</strong>: CCV_GSEDT, generalized squared Euclidean distance transform. CCV_NEGATIVE, negate value in input matrix for computation; effectively, this enables us to compute the maximum distance transform rather than minimum (default one).</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

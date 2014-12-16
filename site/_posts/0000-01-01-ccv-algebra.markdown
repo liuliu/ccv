@@ -56,7 +56,7 @@ Do element-wise matrix multiplication.
  * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
 
 ccv_subtract
--------------
+------------
 
 	void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type)
 
@@ -66,6 +66,18 @@ Matrix subtraction.
  * **b**: the input matrix.
  * **c**: the output matrix.
  * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+
+ccv_scale
+---------
+
+	void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds)
+
+Scale given matrix by factor of **ds**.
+
+ * **a**: the input matrix.
+ * **b**: the output matrix.
+ * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **ds**: the scale factor, `b = a * ds`
 
 ccv_gemm
 --------

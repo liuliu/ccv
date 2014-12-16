@@ -1,0 +1,116 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_classic.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_classic.c</h1>
+<h2 id="ccvhog">ccv_hog</h2>
+
+<pre><code>void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Histogram_of_oriented_gradients">Histogram-of-Oriented-Gradients</a> implementation, specifically, it implements the HOG described in <em>Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</em>.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>b_type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>sbin</strong>: the number of bins for orientation (default to 9, thus, for <strong>b</strong>, it will have 9 * 2 + 9 + 4 = 31 channels).</li>
+  <li><strong>size</strong>: the window size for HOG (default to 8)</li>
+</ul>
+
+<h2 id="ccvcanny">ccv_canny</h2>
+
+<pre><code>void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Canny_edge_detector">Canny edge detector</a> implementation. For performance size, this is a clean-up reimplementation of OpenCV’s Canny edge detector, it has very similar performance characteristic as the OpenCV one. As of today, ccv’s Canny edge detector only works with CCV_8U or CCV_32S dense matrix type.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>b</strong>: the output matrix.</li>
+  <li><strong>type</strong>:the type of output matrix, if 0, ccv will create a CCV_8U | CCV_C1 matrix.</li>
+  <li><strong>size</strong>: the underlying Sobel filter size.</li>
+  <li><strong>low_thresh</strong>: the low threshold that makes the point interesting.</li>
+  <li><strong>high_thresh</strong>: the high threshold that makes the point acceptable.</li>
+</ul>
+
+<h2 id="ccvotsu">ccv_otsu</h2>
+
+<pre><code>int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Otsu%27s_method">OTSU</a> implementation.</p>
+
+<ul>
+  <li><strong>a</strong>: the input matrix.</li>
+  <li><strong>outvar</strong>: the inter-class variance.</li>
+  <li><strong>range</strong>: the maximum range of data in the input matrix.</li>
+</ul>
+
+<p>It turns the threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.</p>
+
+<h2 id="ccvopticalflowlucaskanade">ccv_optical_flow_lucas_kanade</h2>
+
+<pre><code>void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_array_t* point_a, ccv_array_t** point_b, ccv_size_t win_size, int level, double min_eigen)
+</code></pre>
+
+<p><a href="https://en.wikipedia.org/wiki/Lucas%E2%80%93Kanade_Optical_Flow_Method">Lucas Kanade</a> optical flow implementation with image pyramid extension.</p>
+
+<ul>
+  <li><strong>a</strong>: the first frame</li>
+  <li><strong>b</strong>: the next frame</li>
+  <li><strong>point_a</strong>: the points in first frame, of <strong>ccv_decimal_point_t</strong> type</li>
+  <li><strong>point_b</strong>: the output points in the next frame, of <strong>ccv_decimal_point_with_status_t</strong> type</li>
+  <li><strong>win_size</strong>: the window size to compute each optical flow, it must be a odd number</li>
+  <li><strong>level</strong>: how many image pyramids to be used for the computation</li>
+  <li><strong>min_eigen</strong>: the minimal eigen-value to pass optical flow computation</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

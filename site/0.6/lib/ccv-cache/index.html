@@ -1,0 +1,126 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_cache.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_cache.c</h1>
+<p>This class implements a trie-based LRU cache that is then used for ccv application-wide cache in <a href="/lib/ccv-memory">ccv_memory.c</a>.</p>
+
+<h2 id="ccvcacheinit">ccv_cache_init</h2>
+
+<pre><code>void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up)
+</code></pre>
+
+<p>Setup a cache strcture to work with.</p>
+
+<ul>
+  <li><strong>cache</strong>: the allocated cache.</li>
+  <li><strong>ffree</strong>: the function that will be used to free cached object.</li>
+  <li><strong>up</strong>: the upper limit of cache size in bytes.</li>
+</ul>
+
+<h2 id="ccvcacheget">ccv_cache_get</h2>
+
+<pre><code>void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
+</code></pre>
+
+<p>Get an object from cache for its signature. 0 if cannot find the object.</p>
+
+<ul>
+  <li><strong>cache</strong>: the cache.</li>
+  <li><strong>sign</strong>: the signature.</li>
+</ul>
+
+<h2 id="ccvcacheout">ccv_cache_out</h2>
+
+<pre><code>void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
+</code></pre>
+
+<p>Get an object from cache for its signature and then remove that object from the cache. 0 if cannot find the object.</p>
+
+<ul>
+  <li><strong>cache</strong>: the cache.</li>
+  <li><strong>sign</strong>: the signature.</li>
+</ul>
+
+<h2 id="ccvcachedelete">ccv_cache_delete</h2>
+
+<pre><code>int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
+</code></pre>
+
+<p>Delete an object from cache for its signature and free it. Return -1 if cannot find the object, otherwise return 0.</p>
+
+<ul>
+  <li><strong>cache</strong>: the cache.</li>
+  <li><strong>sign</strong>: the signature.</li>
+</ul>
+
+<h2 id="ccvcachecleanup">ccv_cache_cleanup</h2>
+
+<pre><code>void ccv_cache_cleanup(ccv_cache_t* cache)
+</code></pre>
+
+<p>Clean up the cache, free all objects inside and other memory space occupied.</p>
+
+<ul>
+  <li><strong>cache</strong>: the cache.</li>
+</ul>
+
+<h2 id="ccvcacheclose">ccv_cache_close</h2>
+
+<pre><code>void ccv_cache_close(ccv_cache_t* cache)
+</code></pre>
+
+<p>For current implementation (trie-based LRU cache), it is an alias for ccv_cache_cleanup.</p>
+
+<ul>
+  <li><strong>cache</strong>: the cache.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

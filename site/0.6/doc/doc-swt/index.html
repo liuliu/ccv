@@ -1,0 +1,109 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>SWT: Stroke Width Transform</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>SWT: Stroke Width Transform</h1>
+<p><a href="/lib/ccv-swt/">Library Reference: ccv_swt.c</a></p>
+
+<p><em>(This documentation is still largely work in progress, use with caution)</em></p>
+
+<h2 id="whats-swt">What’s SWT?</h2>
+
+<p>The original paper refers to: Stroke Width Transform, Boris Epshtein, Yonathan Wexler,
+and Eyal Ofek 2010.</p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>It is a long story, as always, please read their paper. SWT tries to capture the
+only text effective features and using geometric signature of text to filter out
+non-text areas. As a result, SWT gives you reliable text regions that is language
+neutral. Try it yourself:</p>
+
+<pre><code>./swtdetect &lt;Your Image contains Text&gt; | ./swtdraw.rb &lt;Your Image contains Text&gt; output.png
+</code></pre>
+
+<p>Checkout output.png, luckily, the text area is labeled.</p>
+
+<h2 id="what-about-performance">What about performance?</h2>
+
+<p>SWT is quite fast. The SWT without scale-invariant support (multi-scale) can run
+on a 640x480 photo for well under 50 milliseconds on my laptop. By extending SWT
+to multi-scale, the accuracy increased by about 10% with about 2~4 times longer
+running time.</p>
+
+<p>Accuracy-wise:</p>
+
+<p>ccv’s SWT implementation performs on ICDAR 2003 dataset achieved similar performance
+with what Epshtein et al. reported in their paper, namely, with the old measure
+method described in ICDAR 2003 contest, ccv’s implementation was able to achieve
+precision rate at 66% and recall rate at 59% (numbers reported in the paper are
+precision rate 73% and recall rate at 60%).</p>
+
+<p>However, these results are quite out-dated, and by using <a href="http://robustreading.opendfki.de/wiki/SceneText">ICDAR 2011 dataset</a>,
+more meaningful comparison is possible.</p>
+
+<p>With ccv’s scale-invariant SWT implementation, and do parameter search on ICDAR
+2011’s training dataset, I was able to achieve:</p>
+
+<pre><code>precision: 59%
+recall: 61%
+harmonic mean: 60%
+</code></pre>
+
+<p>Which would rank around 2nd to 3rd place in the chart. Please note that other
+methods in comparison are language specific, thus, were trained with additional
+character shape information using SVM or Adaboost where as SWT is language neutral
+and doesn’t use any language specific features.</p>
+
+<p>Speed-wise:</p>
+
+<h2 id="how-can-i-adopt-swt-for-my-application">How can I adopt SWT for my application?</h2>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

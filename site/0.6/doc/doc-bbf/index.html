@@ -1,0 +1,198 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>BBF: Brightness Binary Feature</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>BBF: Brightness Binary Feature</h1>
+<p><a href="/lib/ccv-bbf/">Library Reference: ccv_bbf.c</a></p>
+
+<h2 id="whats-bbf">What’s BBF?</h2>
+
+<p>The original paper refers to:
+YEF∗ Real-Time Object Detection, Yotam Abramson and Bruno Steux</p>
+
+<p>The improved version refers to:
+High-Performance Rotation Invariant Multiview Face Detection, Chang Huang, Haizhou Ai, Yuan Li and Shihong Lao</p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>That’s a long story, please read the paper. But at least I can show you how to
+use the magic:</p>
+
+<pre><code>./bbfdetect &lt;Your Image contains Faces&gt; ../samples/face | ./bbfdraw.rb &lt;Your Image contains Faces&gt; output.png
+</code></pre>
+
+<p>Check out the output.png, now you get the idea.</p>
+
+<h2 id="what-about-the-performance">What about the performance?</h2>
+
+<p>The tests are performed with MIT+CMU face detection dataset
+(http://vasc.ri.cmu.edu/idb/html/face/frontal_images/index.html)</p>
+
+<p><strong>Setup</strong>:</p>
+
+<p>Download the tarball, copy out files in newtest/ test/ and test-low/ to a single
+folder, let’s say: all/. Since ccv doesn’t support gif format, you need to do file
+format conversion by your own. If you have ImageMagick, it is handy:</p>
+
+<pre><code>for i in *.gif; do convert $i `basename $i .gif`.png; done;
+</code></pre>
+
+<p>For the ground truth data, you can copy them out from
+http://vasc.ri.cmu.edu/idb/images/face/frontal_images/list.html Only Test Set A,
+B, C are needed.</p>
+
+<p>bbfdetect needs a list of files, you can generate them by run the command in the
+same directory of bbfdetect binary:</p>
+
+<pre><code>find &lt;the directory of converted files&gt;/*.png &gt; filelist.txt
+</code></pre>
+
+<p><strong>Speed-wise</strong>:</p>
+
+<p>run</p>
+
+<pre><code>time ./bbfdetect filelist.txt ../samples/face &gt; result.txt
+</code></pre>
+
+<p>On my computer, it reports:</p>
+
+<pre><code>real    0m9.304s
+user    0m9.270s
+sys     0m0.010s
+</code></pre>
+
+<p>How about OpenCV’s face detector? I run OpenCV with default setting on the same
+computer, and it reports:</p>
+
+<pre><code>real    0m27.977s
+user    0m27.860s
+sys     0m0.050s
+</code></pre>
+
+<p>You see the difference.</p>
+
+<p><strong>Accuracy-wise</strong>:</p>
+
+<p>I wrote a little script called bbfvldr.rb that can check the output of bbfdetect
+against ground truth, before run the script, you need to do some house-cleaning
+work on the result.txt:</p>
+
+<p>Basically, the result.txt file will contain the full path to the file, for which,
+we only need the filename, use your favorite editor to remove the directory
+information, for me, it is:</p>
+
+<pre><code>sed -i "s/\.\.\/test\/faces\///g" result.txt
+</code></pre>
+
+<p>Suppose you have copied the ground truth to truth.txt file, run the validator:</p>
+
+<pre><code>./bbfvldr.rb truth.txt result.txt
+</code></pre>
+
+<p>My result for bbfdetect is:</p>
+
+<pre><code>82.97% (12)
+</code></pre>
+
+<p>The former one is detection rate (how many faces are detected), the later one is
+the number of false alarms (how many non-face regions are detected as faces)</p>
+
+<p>The result for OpenCV default face detector is:</p>
+
+<pre><code>86.69% (15)
+</code></pre>
+
+<p>Well, we are a little behind, but you can train the detector yourself, just get
+a better data source!</p>
+
+<h2 id="how-to-train-my-own-detector">How to train my own detector?</h2>
+
+<p>In this chapter, I will go over how I trained the face detector myself. To be
+honest, I lost my face detector training data several years ago. Just like
+everyone else, I have to download it somewhere. In the end, I settled with LFW
+(http://vis-www.cs.umass.edu/lfw/). Technically, it is the dataset for face
+recognition, so there are less variations. But that’s the largest dataset I can
+find to download. I downloaded the aligned data, cropped with random rotation,
+translation and scale variations, got 13125 faces in 24x24 size.</p>
+
+<p>The bbfcreate also requires negative images, just so happened, I have about 8000
+natural scene images that contains no faces downloaded from Flickr. OK, now I
+have all the data, what’s next?</p>
+
+<p>First, you need to create a directory called data/ under the same directory of
+bbfcreate. Then, you need to create two filelists of positive data and negative
+images, for me, it is:</p>
+
+<pre><code>find ../data/faces/*.bmp &gt; faces.dat
+find ../data/negs/*.jpg &gt; negs.dat
+</code></pre>
+
+<p>That’s all! Just find a computer powerful enough and run the following line for several
+days:</p>
+
+<pre><code>./bbfcreate --positive-list faces.dat --background-list negs.dat --negative-count 26250 --working-dir data
+</code></pre>
+
+<p>The –negative-count parameter denotes how many negative samples extracted for each round,
+experimentally, it is something about twice of the number of your positive ones.</p>
+
+<p>If you configure the makefile well, bbfcreate will use OpenMP to speed up, which will
+eat up all the CPUs. My own training process ran about one week, it is a extremely
+powerful desktop PC, you should expect weeks for the result on modest PC with so many
+samples.</p>
+
+<p>You can stop bbfcreate at any time you want, the most recent result will be saved
+in data/ directory, clean up the directory to restart.</p>
+
+<p>I probably will implement MPI support in near future so that you can run this with
+many computers in parallel, but who nowadays have OpenMPI setup besides supercomputing
+centers?</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

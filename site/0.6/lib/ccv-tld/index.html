@@ -1,0 +1,169 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_tld.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_tld.c</h1>
+<h2 id="ccvtldnew">ccv_tld_new</h2>
+
+<pre><code>ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
+</code></pre>
+
+<p>Create a new TLD tracking instance from a given first frame image and the tracking rectangle.</p>
+
+<ul>
+  <li><strong>a</strong>: the first frame image.</li>
+  <li><strong>box</strong>: the initial tracking rectangle.</li>
+  <li><strong>params</strong>: a <strong>ccv_tld_param_t</strong> structure that defines various aspects of TLD tracker.</li>
+</ul>
+
+<h2 id="ccvtldparamt">ccv_tld_param_t</h2>
+
+<p>TLD is complex enough that I will divide its parameters into sections:</p>
+
+<p>Short-term lucas-kanade tracking parameters</p>
+
+<ul>
+  <li><strong>win_size</strong>: the window size to compute optical flow</li>
+  <li><strong>level</strong>: level of image pyramids</li>
+  <li><strong>min_eigen</strong>: the minimal eigenvalue for a valid optical flow computation</li>
+  <li><strong>min_forward_backward_error</strong>: the minimal forward backward error</li>
+</ul>
+
+<p>Image pyramid generation parameters (for scale-invariant object detection)</p>
+
+<ul>
+  <li><strong>interval</strong>: how many intermediate images in between each image pyramid level (from width =&gt; width / 2)</li>
+  <li><strong>shift</strong>: how much steps sliding window should move</li>
+</ul>
+
+<p>Samples generation parameters</p>
+
+<ul>
+  <li><strong>min_win</strong>: the minimal window size of patches for detection</li>
+  <li><strong>include_overlap</strong>: above this threshold, a bounding box will be positively identified as overlapping with target</li>
+  <li><strong>exclude_overlap</strong>: below this threshold, a bounding box will be positively identified as not overlapping with target</li>
+</ul>
+
+<p>Ferns classifier parameters</p>
+
+<ul>
+  <li><strong>structs</strong>: how many ferns in the classifier</li>
+  <li><strong>features</strong>: how many features for each fern</li>
+</ul>
+
+<p>Nearest neighbor classifier parameters</p>
+
+<ul>
+  <li><strong>validate_set</strong>: the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be</li>
+  <li><strong>nnc_same</strong>: above this threshold, a given patch will be identified as the same</li>
+  <li><strong>nnc_thres</strong>: the initial threshold for positively recognize a patch</li>
+  <li><strong>nnc_verify</strong>: the threshold for a tracking result from short-term tracker be verified as a positive detection</li>
+  <li><strong>nnc_beyond</strong>: the upper bound threshold for adaptive computed threshold</li>
+  <li><strong>nnc_collect</strong>: the threshold that a negative patch above this will be collected as negative example</li>
+  <li><strong>bad_patches</strong>: how many patches should be evaluated in initialization to collect enough negative examples</li>
+</ul>
+
+<p>Deformation parameters to apply perspective transforms on patches for robustness</p>
+
+<ul>
+  <li><strong>new_deform</strong>: number of deformations should be applied at initialization</li>
+  <li><strong>new_deform_angle</strong>: the maximal angle for x, y and z axis rotation at initialization</li>
+  <li><strong>new_deform_scale</strong>: the maximal scale for the deformation at initialization</li>
+  <li><strong>new_deform_shift</strong>: the maximal shift for the deformation at initialization</li>
+  <li><strong>track_deform</strong>: number of deformations should be applied at running time</li>
+  <li><strong>track_deform_angle</strong>: the maximal angle for x, y and z axis rotation at running time</li>
+  <li><strong>track_deform_scale</strong>: the maximal scale for the deformation at running time</li>
+  <li><strong>track_deform_shift</strong>: the maximal shift for the deformation at running time</li>
+</ul>
+
+<p>Speed up parameters</p>
+
+<ul>
+  <li><strong>top_n</strong>: only keep these much positive detections when applying ferns classifier</li>
+  <li><strong>rotation</strong>: when &gt;= 1, using “rotation” technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.</li>
+</ul>
+
+<h2 id="ccvtldtrackobject">ccv_tld_track_object</h2>
+
+<pre><code>ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info)
+</code></pre>
+
+<p>ccv doesn’t have retain / release semantics. Thus, a TLD instance cannot retain the most recent frame it tracks for future reference, you have to pass that in by yourself.</p>
+
+<ul>
+  <li><strong>tld</strong>: the TLD instance for continuous tracking</li>
+  <li><strong>a</strong>: the last frame used for tracking (ccv_tld_track_object will check signature of this against the last frame TLD instance tracked)</li>
+  <li><strong>b</strong>: the new frame will be tracked</li>
+  <li><strong>info</strong>: a <strong>ccv_tld_info_t</strong> structure that will records several aspects of current tracking</li>
+</ul>
+
+<h2 id="ccvtldinfot">ccv_tld_info_t</h2>
+
+<ul>
+  <li><strong>perform_track</strong>: whether we performed tracking or not this time</li>
+  <li><strong>perform_learn</strong>: whether we performed learning or not this time</li>
+  <li><strong>track_success</strong>: if we have a successful tracking (thus, short term tracker works)</li>
+  <li><strong>ferns_detects</strong>: how many regions passed ferns classifier</li>
+  <li><strong>nnc_detects</strong>: how many regions passed nearest neighbor classifier</li>
+  <li><strong>clustered_detects</strong>: after cluster, how many regions left</li>
+  <li><strong>confident_matches</strong>: how many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking)</li>
+  <li><strong>close_matches</strong>: how many matches we have inside the tracking (may cause a new learning event)</li>
+</ul>
+
+<h2 id="ccvtldfree">ccv_tld_free</h2>
+
+<pre><code>void ccv_tld_free(ccv_tld_t* tld)
+</code></pre>
+
+<ul>
+  <li><strong>tld</strong>: the TLD instance to be freed.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

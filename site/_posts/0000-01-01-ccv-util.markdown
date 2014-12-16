@@ -56,6 +56,19 @@ Check if any nan value in the given matrix, and return its position.
 
  * **a**: the given matrix.
 
+ccv_reshape
+-----------
+
+	ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, int cols)
+
+Return a temporary ccv\_dense\_matrix\_t matrix that is pointing to a given matrix data section but with different rows and cols. Useful to use part of the given matrix do computations without paying memory copy performance penalty.
+
+ * **a**: the given matrix.
+ * **y**: the y offset to the given matrix.
+ * **x**: the x offset to the given matrix.
+ * **rows**: the number of rows of the new matrix.
+ * **cols**: the number of cols of the new matrix.
+
 ccv_flatten
 -----------
 

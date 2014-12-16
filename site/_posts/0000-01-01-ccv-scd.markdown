@@ -1,0 +1,10 @@
+---
+layout: page
+lib: ccv
+slug: ccv-scd
+status: publish
+title: lib/ccv_scd.c
+desc: SURF-Cascade Detection
+categories:
+- lib
+---
