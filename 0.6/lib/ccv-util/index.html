@@ -87,21 +87,6 @@ _gaq.push(['_trackPageview']);
   <li><strong>a</strong>: the given matrix.</li>
 </ul>
 
-<h2 id="ccvreshape">ccv_reshape</h2>
-
-<pre><code>ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, int cols)
-</code></pre>
-
-<p>Return a temporary ccv_dense_matrix_t matrix that is pointing to a given matrix data section but with different rows and cols. Useful to use part of the given matrix do computations without paying memory copy performance penalty.</p>
-
-<ul>
-  <li><strong>a</strong>: the given matrix.</li>
-  <li><strong>y</strong>: the y offset to the given matrix.</li>
-  <li><strong>x</strong>: the x offset to the given matrix.</li>
-  <li><strong>rows</strong>: the number of rows of the new matrix.</li>
-  <li><strong>cols</strong>: the number of cols of the new matrix.</li>
-</ul>
-
 <h2 id="ccvflatten">ccv_flatten</h2>
 
 <pre><code>void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)

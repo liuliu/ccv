@@ -1,0 +1,163 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>ICF: Integral Channel Features</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>ICF: Integral Channel Features</h1>
+<p><a href="/lib/ccv-icf/">Library Reference: ccv_icf.c</a></p>
+
+<h2 id="whats-icf">What’s ICF?</h2>
+
+<p>The original paper refers to:</p>
+
+<p>Integral Channel Features, P. Dollar, Z. Tu, P. Perona, and S. Belongie, BMVC 2009</p>
+
+<p>The improved version refers to:</p>
+
+<p>Pedestrian Detection at 100 Frames per Second, R. Benenson, M. Mathias, R. Timofte, and L. Van Gool, CVPR 2012</p>
+
+<p>Seeking the Strongest Rigid Detector, R. Benenson, M. Mathias, R. Timofte, and L. Van Gool, CVPR 2013</p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>This is a long story, you should read the original paper and the two follow ups to get
+the idea why ICF is the strongest rigid detector, ccv does this though:</p>
+
+<pre><code>./icfdetect &lt;Your Image contains Pedestrians&gt; ../samples/pedestrian.icf | ./icfdraw.rb &lt;Your Image contains Pedestrians&gt; output.png
+</code></pre>
+
+<p>Checkout the output.png, all pedestrians should have a red box on them.</p>
+
+<h2 id="what-about-performance">What about performance?</h2>
+
+<p>Speed-wise:</p>
+
+<p>ICF has two modes, one is presented on the original paper, by resizing input into different
+scales, and then run the same classifier again and again on these resized inputs. The
+second is presented in the improved version, by running multiple classifiers that are
+trained on different scales on the same input.</p>
+
+<p>The second approach will be the faster alternative, unfortunately, I am unable to obtain
+a reasonable recall / precision with the second approach.</p>
+
+<p>Running in the first mode, on a computer with Core i7 3770K, with INRIA 2008 test set,
+the figures are:</p>
+
+<pre><code>real    2m19.18s
+user    2m16.30s
+sys     0m2.79s
+</code></pre>
+
+<p>It is still slower than HOG, but faster than DPM implementation in libccv.</p>
+
+<p>Accuracy-wise:</p>
+
+<p>The pedestrian.icf model provided in ./samples are trained with INRIA 2008 training
+dataset, but with additional 7542 negative samples collected from VOC2011. The model is
+trained at size 31x74, with 6px margins on each side.</p>
+
+<p>The provided model is then tested with INRIA 2008 test dataset, if bounding boxes
+overlap is greater than 0.5 of the bigger bounding boxes, it is a true positive.
+The validation script is available at ./bin/icfvldtr.rb.</p>
+
+<pre><code>76.23% (52)
+</code></pre>
+
+<p>Which has roughly the same recall as DPM implementation provided in ccv, with roughly 
+the same false alarms too.</p>
+
+<h2 id="how-to-train-my-own-detector">How to train my own detector?</h2>
+
+<p>ccv provides utilities to train your own object models. Specifically, for ICF, these
+utilities are available at ./bin/icfcreate and ./bin/icfoptimize.</p>
+
+<pre><code>./icfcreate --help
+</code></pre>
+
+<p>Will show you the parameters that ccv supports when training an object model.</p>
+
+<p>If you have libdispatch installed and properly enabled on your machine, ccv will utilize
+all your CPU cores to speed up the training process.</p>
+
+<p>The INRIA pedestrian dataset can be downloaded from:</p>
+
+<pre><code>http://pascal.inrialpes.fr/data/human/
+</code></pre>
+
+<p>The annotation format is substantially different from what ccv requires, I use this
+simple script to extract annotations from INRIA dataset:</p>
+
+<pre><code>https://gist.github.com/liuliu/6349801
+</code></pre>
+
+<p>You also want to have a collection of background (none pedestrian) files, I combined
+data from both INRIA and VOC2011 to generates that list:</p>
+
+<pre><code>find ../data/negs/*.jpg &gt; no-pedestrian.txt
+</code></pre>
+
+<p>After all these ready, and have a PC with enough computational power:</p>
+
+<pre><code>./icfcreate --positive-list pedestrian.icf_samples --background-list no-pedestrian.txt --validate-list pedestrian.icf_test --negative-count 10000 --positive-count 10000 --feature-size 50000 --weak-classifier-count 2000 --size 30x90 --margin 10,10,10,10 --working-dir icf-data --acceptance 0.7 --base-dir ../data/INRIAPerson/Train/pos/
+</code></pre>
+
+<p>The classifier cascade will be bootstrapping 3 times, pooling from 50,000 features,
+and the final boosted classifier will have 2,000 weak classifier. On the PC that I
+am running (with SSD / hard-drive hybrid (through flashcache), 32GiB memory and Core
+i7 3770K), it takes a day to finish training one classifier. At minimal, you should
+have about 16GB available memory to get the program finish running.</p>
+
+<p>The final-cascade file in your working directory is the classifier model file that
+you can use. Using ./bin/icfoptimize, you should be able to set proper soft cascading
+thresholds for the classifier to speed up detection:</p>
+
+<pre><code>./icfoptimize --positive-list pedestrian.icf_test --classifier-cascade icf-data/final-cascade --acceptance 0.7 --base-dir ../data/INRIAPerson/Test/pos/
+</code></pre>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

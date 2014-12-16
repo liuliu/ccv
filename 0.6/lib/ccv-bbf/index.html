@@ -1,0 +1,155 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_bbf.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_bbf.c</h1>
+<h2 id="ccvbbfclassifiercascadenew">ccv_bbf_classifier_cascade_new</h2>
+
+<pre><code>void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
+</code></pre>
+
+<p>Create a new BBF classifier cascade from given positive examples and background images. This function has a hard dependency on <a href="http://www.gnu.org/software/gsl/">GSL</a>.</p>
+
+<ul>
+  <li><strong>posimg</strong>: an array of positive examples.</li>
+  <li><strong>posnum</strong>: number of positive examples.</li>
+  <li><strong>bgfiles</strong>: an array of background images.</li>
+  <li><strong>bgnum</strong>: number of background images.</li>
+  <li><strong>negnum</strong>: number of negative examples that is harvested from background images.</li>
+  <li><strong>size</strong>: the image size of positive examples.</li>
+  <li><strong>dir</strong>: the working directory to store/retrieve intermediate data.</li>
+  <li><strong>params</strong>: a <strong>ccv_bbf_new_param_t</strong> structure that defines various aspects of the training function.</li>
+</ul>
+
+<h2 id="ccvbbfnewparamt">ccv_bbf_new_param_t</h2>
+
+<ul>
+  <li><strong>pos_crit</strong>: positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria.</li>
+  <li><strong>neg_crit</strong>: negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria.</li>
+  <li><strong>balance_k</strong>: weight positive examples differently from negative examples.</li>
+  <li><strong>layer</strong>: the maximum layer trained for the classifier cascade.</li>
+  <li><strong>feature_number</strong>: the maximum feature number for each classifier.</li>
+  <li><strong>optimizer</strong>: CCV_BBF_GENETIC_OPT, using genetic algorithm to search the best weak feature; CCV_BBF_FLOAT_OPT, using float search to improve the found best weak feature.</li>
+  <li><strong>detector</strong>: a <strong>ccv_bbf_params_t</strong> structure that will be used to search negative examples from background images.</li>
+</ul>
+
+<h2 id="ccvbbfdetectobjects">ccv_bbf_detect_objects</h2>
+
+<pre><code>ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params)
+</code></pre>
+
+<p>Using a BBF classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
+
+<ul>
+  <li><strong>a</strong>: the input image.</li>
+  <li><strong>cascade</strong>: an array of classifier cascades.</li>
+  <li><strong>count</strong>: how many classifier cascades you’ve passed in.</li>
+  <li><strong>params</strong>: a <strong>ccv_bbf_param_t</strong> structure that defines various aspects of the detector.</li>
+</ul>
+
+<h2 id="ccvbbfparamt">ccv_bbf_param_t</h2>
+
+<ul>
+  <li><strong>interval</strong>: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
+  <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
+  <li><strong>flags</strong>: CCV_BBF_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object.</li>
+  <li><strong>accurate</strong>: BBF will generates 4 spatial scale variations for better accuracy. Set this parameter to 0 will reduce to 1 scale variation, and thus 3 times faster but lower the general accuracy of the detector.</li>
+  <li><strong>size</strong>: the smallest object size that will be interesting to us.</li>
+</ul>
+
+<h2 id="ccvbbfreadclassifiercascade">ccv_bbf_read_classifier_cascade</h2>
+
+<pre><code>ccv_bbf_classifier_cascade_t* ccv_bbf_read_classifier_cascade(const char* directory)
+</code></pre>
+
+<p>Read BBF classifier cascade from working directory.</p>
+
+<ul>
+  <li><strong>directory</strong>: the working directory that trains a BBF classifier cascade.</li>
+</ul>
+
+<h2 id="ccvbbfclassifiercascadereadbinary">ccv_bbf_classifier_cascade_read_binary</h2>
+
+<pre><code>ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s)
+</code></pre>
+
+<p>Load BBF classifier cascade from a memory region.</p>
+
+<ul>
+  <li><strong>s</strong>: the memory region of binarized BBF classifier cascade.</li>
+</ul>
+
+<h2 id="ccvbbfclassifiercascadewritebinary">ccv_bbf_classifier_cascade_write_binary</h2>
+
+<pre><code>int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen)
+</code></pre>
+
+<p>Write BBF classifier cascade to a memory region.</p>
+
+<ul>
+  <li><strong>cascade</strong>: the BBF classifier cascade.</li>
+  <li><strong>s</strong>: the designated memory region.</li>
+  <li><strong>slen</strong>: the size of the designated memory region.</li>
+</ul>
+
+<p>It returns the actual size of the binarized BBF classifier cascade, if this size is larger than <strong>slen</strong>, please reallocate the memory region and do it again.</p>
+
+<h2 id="ccvbbfclassifiercascadefree">ccv_bbf_classifier_cascade_free</h2>
+
+<pre><code>void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade)
+</code></pre>
+
+<p>Free up the memory of BBF classifier cascade.</p>
+
+<ul>
+  <li><strong>cascade</strong>: the BBF classifier cascade.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

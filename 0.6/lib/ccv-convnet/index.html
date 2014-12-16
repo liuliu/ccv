@@ -49,7 +49,7 @@ _gaq.push(['_trackPageview']);
 <ul>
   <li><strong>type</strong>: one of following value to specify the network layer type, <strong>CCV_CONVNET_CONVOLUTIONAL</strong>, <strong>CCV_CONVNET_FULL_CONNECT</strong>, <strong>CCV_CONVNET_MAX_POOL</strong>, <strong>CCV_CONVNET_AVERAGE_POOL</strong>, <strong>CCV_CONVNET_LOCAL_RESPONSE_NORM</strong>.</li>
   <li><strong>bias</strong>: the initialization value for bias if applicable (for convolutional layer and full connect layer).</li>
-  <li><strong>glorot</strong>: the truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)).</li>
+  <li><strong>sigma</strong>: the normal distribution variance for weights if applicable (for convolutional layer and full connect layer).</li>
   <li><strong>input</strong>: a <strong>ccv_convnet_input_t</strong> specifies the input structure.</li>
   <li><strong>output</strong>: a <strong>ccv_convnet_type_t</strong> specifies the output parameters and structure.</li>
 </ul>
@@ -117,14 +117,8 @@ _gaq.push(['_trackPageview']);
   <li><strong>max_epoch</strong>: The number of epoch (an epoch sweeps through all the examples) to go through before end the training.</li>
   <li><strong>mini_batch</strong>: The number of examples for a batch in stochastic gradient descent.</li>
   <li><strong>iterations</strong>: The number of iterations (an iteration is for one batch) before save the progress.</li>
-  <li><strong>sgd_frequency</strong>: After how many batches when we do a SGD update.</li>
   <li><strong>symmetric</strong>: Whether to exploit the symmetric property of the provided examples.</li>
-  <li><strong>device_count</strong>: Use how many GPU devices, this is capped by available CUDA devices on your system.</li>
-  <li><strong>peer_access</strong>: Enable peer access for cross device communications or not, this will enable faster multiple device training.</li>
-  <li><strong>image_manipulation</strong>: Coefficient for random contrast, brightness, and saturation manipulations for training images.</li>
   <li><strong>color_gain</strong>: The color variance for data augmentation (0 means no such augmentation).</li>
-  <li><strong>input.min_dim</strong>: The minimum dimensions for random resize of training images.</li>
-  <li><strong>input.max_dim</strong>: The maximum dimensions for random resize of training images.</li>
   <li><strong>layer_params</strong>: An C-array of <strong>ccv_convnet_layer_train_param_t</strong> training parameters for each layer.</li>
 </ul>
 

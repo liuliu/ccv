@@ -1,0 +1,203 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_memory.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_memory.c</h1>
+<h2 id="ccvdensematrixnew">ccv_dense_matrix_new</h2>
+
+<pre><code>ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig)
+</code></pre>
+
+<p>Create a dense matrix with rows, cols, and type.</p>
+
+<ul>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: matrix supports 4 data types - CCV_8U, CCV_32S, CCV_64S, CCV_32F, CCV_64F and up to 255 channels. e.g. CCV_32F | 31 will create a matrix with float (32-bit float point) data type with 31 channels (the default type for ccv_hog).</li>
+  <li><strong>data</strong>: if 0, ccv will create the matrix by allocating memory itself. Otherwise, it will use the memory region referenced by ‘data’.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
+</ul>
+
+<h2 id="ccvdensematrixrenew">ccv_dense_matrix_renew</h2>
+
+<pre><code>ccv_dense_matrix_t* ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig)
+</code></pre>
+
+<p>Check the input matrix, if it is the allowed type, return it, otherwise create one with prefer_type.</p>
+
+<ul>
+  <li><strong>x</strong>: the matrix to check.</li>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>types</strong>: allowed types, it can be a mask of multiple types, e.g. CCV_8U | CCV_32S allows both 8-bit unsigned integer type and 32-bit signed integer type.</li>
+  <li><strong>prefer_type</strong>: the default type, it can be only one type.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
+</ul>
+
+<h2 id="ccvdensematrix">ccv_dense_matrix</h2>
+
+<pre><code>ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig)
+</code></pre>
+
+<p>This method will return a dense matrix allocated on stack, with a data pointer to a custom memory region.</p>
+
+<ul>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: the type of matrix.</li>
+  <li><strong>data</strong>: the data pointer that stores the actual matrix, it cannot be 0.</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
+</ul>
+
+<h2 id="ccvmakematrixmutable">ccv_make_matrix_mutable</h2>
+
+<pre><code>void ccv_make_matrix_mutable(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Mark the current matrix as mutable. Under the hood, it will set matrix signature to 0, and mark the matrix as non-collectable.</p>
+
+<ul>
+  <li><strong>mat</strong>: the supplied matrix that will be marked as mutable.</li>
+</ul>
+
+<h2 id="ccvmakematriximmutable">ccv_make_matrix_immutable</h2>
+
+<pre><code>void ccv_make_matrix_immutable(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Mark the current matrix as immutable. Under the hood, it will generate a signature for the matrix, and mark it as non-collectable. For the convention, if the matrix is marked as immutable, you shouldn’t change the content of the matrix, otherwise it will cause surprising behavior. If you want to change the content of the matrix, mark it as mutable first.</p>
+
+<ul>
+  <li><strong>mat</strong>: the supplied matrix that will be marked as immutable.</li>
+</ul>
+
+<h2 id="ccvsparsematrixnew">ccv_sparse_matrix_new</h2>
+
+<pre><code>ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig)
+</code></pre>
+
+<p>Create a sparse matrix. ccv uses a double hash table for memory-efficient and quick-access sparse matrix.</p>
+
+<ul>
+  <li><strong>rows</strong>: rows of the matrix.</li>
+  <li><strong>cols</strong>: columns of the matrix.</li>
+  <li><strong>type</strong>: the type of the matrix, the same as dense matrix.</li>
+  <li><strong>major</strong>: either CCV_SPARSE_ROW_MAJOR or CCV_SPARSE_COL_MAJOR, it determines the underlying data structure of the sparse matrix (either using row or column as the first-level hash table).</li>
+  <li><strong>sig</strong>: the signature, using 0 if you don’t know what it is.</li>
+</ul>
+
+<h2 id="ccvmatrixfreeimmediately">ccv_matrix_free_immediately</h2>
+
+<pre><code>void ccv_matrix_free_immediately(ccv_matrix_t* mat)
+</code></pre>
+
+<p>Skip garbage-collecting process and free the matrix immediately.</p>
+
+<ul>
+  <li><strong>mat</strong>: the matrix.</li>
+</ul>
+
+<h2 id="ccvmatrixfree">ccv_matrix_free</h2>
+
+<pre><code>void ccv_matrix_free(ccv_matrix_t* mat)
+</code></pre>
+
+<p>In principal, you should always use this method to free a matrix. If you enabled cache in ccv, this method won’t immediately free up memory space of the matrix. Instead, it will push the matrix to a cache if applicable so that if you want to create the same matrix again, ccv can shortcut the required matrix/image processing and return it from the cache.</p>
+
+<ul>
+  <li><strong>mat</strong>: the matrix.</li>
+</ul>
+
+<h2 id="ccvenablecache">ccv_enable_cache</h2>
+
+<pre><code>void ccv_enable_cache(size_t size)
+</code></pre>
+
+<p>Enable a application-wide cache for ccv. The cache is bounded by given memory size.</p>
+
+<ul>
+  <li><strong>size</strong>: the upper limit of the cache, in bytes.</li>
+</ul>
+
+<h2 id="ccvenabledefaultcache">ccv_enable_default_cache</h2>
+
+<pre><code>void ccv_enable_default_cache(void)
+</code></pre>
+
+<p>Enable a application-wide cache for ccv at default memory bound (64MiB).</p>
+
+<h2 id="ccvdraincache">ccv_drain_cache</h2>
+
+<pre><code>void ccv_drain_cache(void)
+</code></pre>
+
+<p>Drain up the cache.</p>
+
+<h2 id="ccvdisablecache">ccv_disable_cache</h2>
+
+<pre><code>void ccv_disable_cache(void)
+</code></pre>
+
+<p>Drain up and disable the application-wide cache.</p>
+
+<h2 id="ccvmatrixgeneratesignature">ccv_matrix_generate_signature</h2>
+
+<pre><code>uint64_t ccv_matrix_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
+</code></pre>
+
+<p>Generate a matrix signature based on input message and other signatures. This is the core method for ccv cache. In short, ccv does a given image processing by first generating an appropriate signature for that operation. It requires 1). an operation-specific message, which can be generated by concatenate the operation name and parameters. 2). the signature of input matrix(es). After that, ccv will look-up matrix in cache with the newly generated signature. If it exists, ccv will return that matrix and skip the whole operation.</p>
+
+<ul>
+  <li><strong>msg</strong>: the concatenated message.</li>
+  <li><strong>len</strong>: message length.</li>
+  <li><strong>sig_start</strong>: the input matrix(es) signature, end the list with 0.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

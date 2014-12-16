@@ -1,0 +1,97 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_transform.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_transform.c</h1>
+<h2 id="ccvdecimalslice">ccv_decimal_slice</h2>
+
+<pre><code>void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float y, float x, int rows, int cols)
+</code></pre>
+
+<p>Similar to ccv_slice, it will slice a given matrix into required rows / cols, but it will interpolate the value with bilinear filter if x and y is non-integer.</p>
+
+<ul>
+  <li><strong>a</strong>: the given matrix that will be sliced</li>
+  <li><strong>b</strong>: the output matrix</li>
+  <li><strong>type</strong>: the type of output matrix</li>
+  <li><strong>y</strong>: the top point to slice</li>
+  <li><strong>x</strong>: the left point to slice</li>
+  <li><strong>rows</strong>: the number of rows for destination matrix</li>
+  <li><strong>cols</strong>: the number of cols for destination matrix</li>
+</ul>
+
+<h2 id="ccvperspectivetransformapply">ccv_perspective_transform_apply</h2>
+
+<pre><code>ccv_decimal_point_t ccv_perspective_transform_apply(ccv_decimal_point_t point, ccv_size_t size, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
+</code></pre>
+
+<p>Apply a <a href="https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection">3D transform</a> against the given point in a given image size, assuming field of view is 60 (in degree).</p>
+
+<ul>
+  <li><strong>point</strong>: the point to be transformed in decimal</li>
+  <li><strong>size</strong>: the image size</li>
+  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: the transformation matrix</li>
+</ul>
+
+<h2 id="ccvperspectivetransform">ccv_perspective_transform</h2>
+
+<pre><code>void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
+</code></pre>
+
+<p>Appy a <a href="https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection">3D transform</a> on a given matrix, assuming field of view is 60 (in degree).</p>
+
+<ul>
+  <li><strong>a</strong>: the given matrix to be transformed</li>
+  <li><strong>b</strong>: the output matrix</li>
+  <li><strong>type</strong>: the type of output matrix</li>
+  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: the transformation matrix</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

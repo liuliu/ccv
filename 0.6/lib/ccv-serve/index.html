@@ -1,0 +1,159 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>serve/*.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>serve/*.c</h1>
+<h2 id="bbfdetectobjects">/bbf/detect.objects</h2>
+
+<p>Using <a href="/doc/doc-bbf">BBF</a> classifier cascade to detect objects in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what object, for now, it only supports ‘face’.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-bbf/#ccvbbfparamt">ccv_bbf.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<h2 id="convnetclassify">/convnet/classify</h2>
+
+<p>Using <a href="/doc/doc-convnet">ConvNet</a> to categorize a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what category set, for now it only supports ‘image-net’.</li>
+  <li><strong>‘top’</strong>: the number of results returned, order by confidence score.</li>
+</ul>
+
+<p>Supported methods: GET, POST</p>
+
+<h2 id="dpmdetectobjects">/dpm/detect.objects</h2>
+
+<p>Using <a href="/doc/doc-dpm">DPM</a> mixture model to detect objects in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what object, it now supports ‘pedestrian’ and ‘car’.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-dpm/#ccvdpmparamt">ccv_dpm.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<h2 id="icfdetectobjects">/icf/detect.objects</h2>
+
+<p>Using <a href="/doc/doc-icf">ICF</a> classifier cascade to detect objects in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what object, for now, it only supports ‘pedestrian’.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-icf/#ccvicfparamt">ccv_icf.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<h2 id="swtdetectwords">/swt/detect.words</h2>
+
+<p>Using <a href="/doc/doc-swt">SWT</a> to detect words / texts in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-swt/#ccvswtparamt">ccv_swt.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<h2 id="tldtrackobject">/tld/track.object</h2>
+
+<p>Create a new <a href="/doc/doc-tld">TLD</a> tracking instance with the initial frame.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the initial frame image.</li>
+  <li><strong>‘x’</strong>: the initial tracking rectangle’s top left coordinate.</li>
+  <li><strong>‘y’</strong>: the initial tracking rectangle’s top left coordinate.</li>
+  <li><strong>‘width’</strong>: the initial tracking rectangle’s width.</li>
+  <li><strong>‘height’</strong>: the initial tracking rectangle’s height.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-tld/#ccvtldparamt">ccv_tld.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<p>On success, it will return the new tracking instance with ‘Location’ header, you can also find its ID in response[‘tld’].</p>
+
+<h2 id="tldtrackobjectd">/tld/track.object/[\d+]</h2>
+
+<p>Continue a <a href="/doc/doc-tld">TLD</a> tracking instance with follow up frames.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the next frame image.</li>
+  <li><strong>‘previous’</strong>: the previous frame image, please make sure this is the exact copy of the frame you previous provided, otherwise API will return ‘false’.</li>
+</ul>
+
+<p>Supported methods: GET, POST, DELETE</p>
+
+<p>Please make sure that you DELETE the TLD tracking instance once you are done, otherwise the HTTP server cannot reclaim the memory it occupies.</p>
+
+<h2 id="sift">/sift</h2>
+
+<p>Run <a href="/doc/doc-sift">SIFT</a> feature point extraction on a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-sift/#ccvsiftparamt">ccv_sift.c</a>.</p>
+
+<p>Supported methods: GET, POST</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

@@ -1,0 +1,94 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Cache: We are Terrible Magicians</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>Cache: We are Terrible Magicians</h1>
+<p>ccv uses an application-wide transparent cache to de-duplicate matrix computations.
+In the following chapters, I will try to outline how that works, and expose you
+to the inner-working of ccv’s core functionalities.</p>
+
+<h2 id="initial-signature">Initial Signature</h2>
+
+<p><strong>ccv_make_matrix_immutable</strong> computes the SHA-1 hash on matrix raw data, and will
+use the first 64-bit as the signature for that matrix.</p>
+
+<h2 id="derived-signature">Derived Signature</h2>
+
+<p>Derived signature is computed from the specific operation that is going to perform.
+For example, matrix A and matrix B used to generate matrix C through operation X.
+C’s signature is derived from A, B and X.</p>
+
+<h2 id="a-radix-tree-lru-cache">A Radix-tree LRU Cache</h2>
+
+<p>ccv uses a custom radix-tree implementation with generation information. It imposes
+a hard limit on memory usage of 64 MiB, you can adjust this value if you like.
+The custom radix-tree data structure is specifically designed to satisfy our 64-bit
+signature design. If compile with jemalloc, it can be both fast and memory-efficient.</p>
+
+<h2 id="garbage-collection">Garbage Collection</h2>
+
+<p>The matrix signature is important. For every matrix that is freed with <strong>ccv_matrix_free</strong>
+directive, it will first check the signature. If it is a derived signature,
+<strong>ccv_matrix_free</strong> won’t free that matrix to OS immediately, instead, it will put
+that matrix back to the application-wide cache. Sparse matrix, matrix without
+signature / with initial signature will be freed immediately.</p>
+
+<h2 id="shortcut">Shortcut</h2>
+
+<p>For operation X performed with matrix A and B, it will first generate the derived
+signature. The signature will be searched in the application-wide cache in hope
+of finding a result matrix. If such matrix C is found, the operation X will take
+a shortcut and return that matrix to user. Otherwise, it will allocate such matrix,
+set proper signature on it and perform the operation honestly.</p>
+
+<p>After finish this, I found that it may not be the most interesting bit of ccv.
+But still, hope you found it otherwise :-)</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

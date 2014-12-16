@@ -1,0 +1,190 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>DPM: Deformable Parts Model</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>DPM: Deformable Parts Model</h1>
+<p><a href="/lib/ccv-dpm/">Library Reference: ccv_dpm.c</a></p>
+
+<h2 id="whats-dpm">What’s DPM?</h2>
+
+<p>The original paper refers to:
+Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan</p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>That’s a long story. In very high level, DPM assumes an object is constructed by
+its parts. Thus, the detector will first found a match of its whole, and then
+using its part models to fine-tune the result. For details, please read the
+paper. What I can show you, is how to use it:</p>
+
+<pre><code>./dpmdetect &lt;Your Image contains Pedestrians&gt; ../samples/pedestrian.m | ./dpmdraw.rb &lt;Your Image contains Pedestrians&gt; output.png
+</code></pre>
+
+<p>Checkout output.png, see what happens?</p>
+
+<h2 id="what-about-performance">What about performance?</h2>
+
+<p>DPM is not known for its speed. Its ability to identify difficult objects, is
+the selling point. However, this implementation tries to optimize for speed as
+well. For a 640x480 photo, this implementation will be done in about one second,
+without multi-thread support.</p>
+
+<p>Accuracy-wise:</p>
+
+<p>There are two off-the-shelf implementations. One is the DPM in Matlab from the inventor,
+the other is the HOG detector from OpenCV. For the task to detect pedestrians in a
+given image, we use INRIA 2008 dataset, and it provides both training and testing
+data. With OpenCV stock peopledetect sample program (scale factor changed to 1.09
+in order to match our DPM setting (interval = 8)), we get:</p>
+
+<pre><code>47.37% (133)
+</code></pre>
+
+<p>The former one is the detection rate (how many objects have been successfully
+detected), the later is the number of false alarms (the detected region doesn’t
+contain the expected object).</p>
+
+<p>The dpmvldtr.rb compares the ground truth bounding box with the detected bounding
+box by OpenCV, if the overlap area is larger than 60% of the biggest bounding box
+area among the two), it will be counted as a true positive. Otherwise, it will be
+counted as a false positive (false alarm).</p>
+
+<p>Another implementation is from the DPM inventor, it is a Matlab implementation,
+and the author has a specially trained detector for INRIA 2008 dataset (at -0.3
+threshold).</p>
+
+<pre><code>75.38% (55)
+</code></pre>
+
+<p>The DPM implementation in ccv was trained for three days using the default parameters
+with INRIA training data. Let’s see how it performs.</p>
+
+<pre><code>./dpmdetect filelist.txt ../samples/pedestrian.m &gt; result.txt
+./dpmvldtr.rb &lt;INRIA dataset&gt;/Test/annotations result.txt
+</code></pre>
+
+<p>The result is (at 0.8 threshold):</p>
+
+<pre><code>76.74% (49)
+</code></pre>
+
+<p>Speed-wise:</p>
+
+<p>Let’s time it on INRIA dataset (288 images).</p>
+
+<pre><code>time ./dpmdetect filelist.txt ../samples/pedestrian.m
+</code></pre>
+
+<p>On my laptop, it reports:</p>
+
+<pre><code>real    8m19.444s
+user    8m15.187s
+sys     0m3.332s
+</code></pre>
+
+<p>OpenCV’s HOG detector should be much faster because its algorithm is much simpler
+than DPM, but how fast it is?</p>
+
+<pre><code>real    1m55.861s
+user    1m54.171s
+sys     0m0.136s
+</code></pre>
+
+<p>Their detector is about 4.34 times faster.</p>
+
+<h2 id="how-to-train-my-own-detector">How to train my own detector?</h2>
+
+<p>Yes, this implementation comes with a tool to train your own detector too. In this
+chapter, I will go through how I trained the pedestrian.m detector that shipped
+with ccv source code. The CLI for training program is in /bin:</p>
+
+<pre><code>./dpmcreate --help
+</code></pre>
+
+<p>Will show you the options it has.</p>
+
+<p>The nice part of training pedestrian detector is that there is a good training
+dataset available today on INRIA website <a href="http://pascal.inrialpes.fr/data/human/">http://pascal.inrialpes.fr/data/human/</a>.
+I use a small script ./dpmext.rb to extract INRIA format bounding box data into
+ccv format, which takes the following form:</p>
+
+<pre><code>&lt;File Path&gt; x y width height \n
+</code></pre>
+
+<p>I extracted that into pedestrian.samples file:</p>
+
+<pre><code>./dpmext.rb &lt;INRIA dataset&gt;/Train/annotations/ &gt; pedestrian.samples
+</code></pre>
+
+<p>It comes with negative dataset too:</p>
+
+<pre><code>find &lt;INRIA dataset&gt;/Train/neg/ -name "*.png" &gt; no-pedestrian.samples
+</code></pre>
+
+<p>Make a working directory and you can start now:</p>
+
+<pre><code>./dpmcreate --positive-list pedestrian.samples --background-list no-pedestrian.samples --negative-count 12000 --model-component 1 --model-part 8 --working-dir &lt;Working directory&gt; --base-dir &lt;INRIA dataset&gt;/Train/pos/
+</code></pre>
+
+<p>It takes about 3 days on my laptop to get meaningful data, and unfortunately,
+current implementation doesn’t support OpenMP, and you have to be patient.</p>
+
+<p>Good luck!</p>
+
+<h2 id="other-models">Other models?</h2>
+
+<p>I’ve trained one more mixture model: samples/car.m</p>
+
+<p>It has been trained with VOC2011 trainval dataset, and the result on validation dataset:</p>
+
+<pre><code>46.19% (16)
+</code></pre>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

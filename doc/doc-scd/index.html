@@ -1,0 +1,195 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>SCD: SURF-Cascade Detection</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>SCD: SURF-Cascade Detection</h1>
+<p><a href="/lib/ccv-scd/">Library Reference: ccv_scd.c</a></p>
+
+<h2 id="whats-scd">What’s SCD?</h2>
+
+<p>The paper refers to:
+Learning SURF Cascade for Fast and Accurate Object Detection, Jianguo Li, Yimin Zhang, CVPR 2013</p>
+
+<p>This implementation is heavily modified, most notably, this implementation uses
+vanilla SURF feature rather than the T2 feature proposed in the paper. This
+implementation also supports color images.</p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<pre><code>&gt; cd ./bin
+&gt; ./scddetect &lt;Your Image contains Faces&gt; ../samples/face.sqlite3 | ./bbfdraw.rb &lt;Your Image contains Faces&gt; output.png
+&gt; open output.png
+</code></pre>
+
+<h2 id="what-about-the-performance">What about the performance?</h2>
+
+<p>The tests are performed with FDDB dataset (<a href="http://vis-www.cs.umass.edu/fddb/">http://vis-www.cs.umass.edu/fddb/</a>)</p>
+
+<p>After the dataset is downloaded and unzipped (<a href="http://vis-www.cs.umass.edu/fddb/index.html#download">http://vis-www.cs.umass.edu/fddb/index.html#download</a>).
+The evaluation tools are downloaded, unzipped, and compiled (<a href="http://vis-www.cs.umass.edu/fddb/results.html">http://vis-www.cs.umass.edu/fddb/results.html</a>).</p>
+
+<p>I mainly compared this implementation with the state of the art frontal face
+detector implementations and the BBF implementation as is. <code>scdfmt.rb</code> script
+is provided to convert rectangle format from BBF or SCD to ellipse format which
+seems provide a better result on FDDB dataset.</p>
+
+<p>Use the following command to convert the file list from FDDB with <code>.jpg</code> suffix:</p>
+
+<pre><code>&gt; sed 's/$/.jpg/' &lt;directory to FDDB folds&gt;/FDDB-fold-01.txt &gt; FDDB-fold-01-jpg.txt
+</code></pre>
+
+<p>The following command will generate outputs that evaluation script understands:</p>
+
+<pre><code>&gt; ./scddetect FDDB-fold-01-jpg.txt ../samples/face.sqlite3 &lt;directory to actual image&gt; | ./scdfmt.rb &gt; &lt;directory to output where evaluation script wants&gt;/fold-01-out.txt
+</code></pre>
+
+<p>After all 10 folds completed, run:</p>
+
+<pre><code>&gt; ./runEvaluate.pl
+</code></pre>
+
+<p>Please make sure the evaluation mode is ellipse format.</p>
+
+<p>The following graph will likely to be generated:</p>
+
+<p><img src="/resources/disc-roc-scd.png" alt="Discrete ROC for SCD" /></p>
+
+<p>The threshold is tuned to generate about 200~300 false positives.</p>
+
+<p>The BBF implementation can be evaluated too:</p>
+
+<pre><code>&gt; ./bbfdetect FDDB-fold-01-jpg.txt ../samples/face &lt;directory to actual image&gt; | ./scdfmt.rb &gt; &lt;directory to output where evaluation script wants&gt;/fold-01-out.txt
+</code></pre>
+
+<p>The generated graph:</p>
+
+<p><img src="/resources/disc-roc-bbf.png" alt="Discrete ROC for BBF" /></p>
+
+<p>You can compare the performance with the state of the art face detectors on
+FDDB website, at about 250 false positives, this implementation at 72.93% is 4.23%
+shorter than the best frontal face detector (SURF-Cascade Frontal, 77.16% detection
+rate). At around same false positives, OpenCV’s frontal face implemenation is at
+45.18% detection rate, and the BBF implementation is at 66.27% detection rate with
+the same false positives.</p>
+
+<h2 id="what-about-the-speed">What about the speed?</h2>
+
+<p>One reason why BBF implementation, despite its rather unimpressive accuracy,
+still provided in ccv is its speed. At the longest time, BBF implementation or
+more accurately, its derivative is the only one that can run semi-real time on
+modern JavaScript engines. Although there is no plan to port SCD implemenation
+to JavaScript, its native code performance is only twice as slow as BBF (OpenCV
+is about 3 times slower than BBF with single thread setup), thus, showing
+promising sign will eventually be on par or faster, and finally replace BBF
+implementation. This performance requires to run <code>./scddetect</code> with default
+parameters (the parameters for FDDB run from 24x24 size, whereas the default
+parameters run from 48x48 size), and operating with grayscale images (load image
+with <code>CCV_IO_GRAY | CCV_IO_ANY_FILE</code> parameter).</p>
+
+<pre><code>&gt; ./scddetect addams-family.png ../samples/face.sqlite3
+total : 7 in time 381ms
+&gt; ./bbfdetect addams-family.png ../samples/face
+total : 7 in time 182ms
+</code></pre>
+
+<p>With these parameters, we are obviously incurring some penalties elsewhere.
+At 190 false positives, SCD with 48x48 template and grayscale images has 71.41%
+detection rate, where as SCD with 24x24 template and color image has 72.11%
+detection rate. The BBF implementation has 65.11% detection rate at the same
+false positives.</p>
+
+<p><img src="/resources/disc-roc-scd-fast.png" alt="Discrete ROC for SCD in Fast Mode" /></p>
+
+<h2 id="how-to-train-my-own-detector">How to train my own detector?</h2>
+
+<p>The vision community in the past a few years has generated plenty of open
+dataset, therefore, it is now possible to train a reasonable face detector
+(as shown by <a href="https://bitbucket.org/rodrigob/doppia">HeadHunter</a>) with open
+dataset.</p>
+
+<p>This face detector is trained on AFLW dataset: http://lrs.icg.tugraz.at/research/aflw/</p>
+
+<p>A script <code>./aflw</code> is provided to generate positive images from AFLW annotated
+original photos. But first, we need to generate a list of photos =&gt; faces rectangles.</p>
+
+<p>AFLW dataset provided a SQLite file, therefore:</p>
+
+<pre><code>&gt; sqlite3 aflw.sqlite
+sqlite&gt; .output outrect.txt
+sqlite&gt; .mode tabs
+sqlite&gt; SELECT filepath, x, y, w, h, roll, pitch, yaw FROM FaceImages, Faces, FacePose, FaceRect WHERE FaceImages.file_id = Faces.file_id AND Faces.face_id = FacePose.face_id AND Faces.face_id = FaceRect.face_id;
+sqlite&gt; .exit
+</code></pre>
+
+<p>Now, run <code>./aflw</code> to generate the positive examples:</p>
+
+<pre><code>&gt; ./aflw outrect.txt &lt;directory to AFLW dataset&gt;/data/flickr/ &lt;output directory&gt;
+</code></pre>
+
+<p>It will take a while to complete, but once it is done, you will see 16444 images in the
+output directory, both in grayscale and color.</p>
+
+<p>Using <code>find</code> command to create both list of negative images for hard mining, and the list
+of positives:</p>
+
+<pre><code>&gt; find &lt;output directory for positive images&gt; -name '*.png' &gt; facepos.txt
+&gt; find &lt;negative images collected from web&gt; -name '*.jpg' &gt; faceneg.txt
+</code></pre>
+
+<p>Training with <code>scdcreate</code> is full automatic, run:</p>
+
+<pre><code>&gt; ./scdcreate --positive-list facepos.txt --background-list faceneg.txt --working-dir face.sqlite3 --negative-count 16444
+</code></pre>
+
+<p>It takes me about half day to finish training to 6-th classifier, and this is the depth
+used in ./samples/face.sqlite3.</p>
+
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

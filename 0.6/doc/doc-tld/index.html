@@ -1,0 +1,155 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>TLD: Track Learn Detect</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>TLD: Track Learn Detect</h1>
+<p><a href="/lib/ccv-tld/">Library Reference: ccv_tld.c</a></p>
+
+<h2 id="whats-tld">What’s TLD?</h2>
+
+<p>This algorithm, also known as “Predator” algorithm, developed by Zdenek Kalal. For
+more information, please visit his homepage: <a href="http://info.ee.surrey.ac.uk/Personal/Z.Kalal/tld.html">http://info.ee.surrey.ac.uk/Personal/Z.Kalal/tld.html</a></p>
+
+<h2 id="how-it-works">How it works?</h2>
+
+<p>This is a long story, please read Zdenek’s paper. Here is how it works in command-line
+if you compiled ccv with FFMPEG support:</p>
+
+<pre><code>./tld &lt;Your Video&gt; x y width height
+</code></pre>
+
+<p>It will output each tracking coordinates for each frame.</p>
+
+<h2 id="what-about-performance">What about performance?</h2>
+
+<p>TLD is implemented closely after Zdenek’s paper, but still, varies in quite a few
+aspects significantly. I’ve done excessive tests to make sure performance, in
+terms of accuracy and speed matches the original implementation.</p>
+
+<p>Accuracy-wise:</p>
+
+<p>TLD uses randomization algorithm, thus, the result can vary from time to time,
+I managed to run ccv’s TLD implementation on test videos with “rotation == 0” and
+default parameters. With 3 runs and then pick the median, I’ve able to generate
+some meaningful data to analyze on.</p>
+
+<p>On motocross.mpg:</p>
+
+<pre><code>detections : 901
+true detections : 1412
+correct detections : 833
+precision : 0.924528
+recall : 0.589943
+f-measure : 0.720277
+</code></pre>
+
+<p>The result on the same video reported in: Zdenek Kalal, Jiri Matas and Krystian Mikolajczyk, Online Learning of Robust Object Detectors during Unstable Tracking:</p>
+
+<pre><code>precision : 0.96
+recall : 0.54
+</code></pre>
+
+<p>On pedestrian3.mpg:</p>
+
+<pre><code>After 69th frame failed to recover (out of 140 frames)
+</code></pre>
+
+<p>The result on the same video reported in: Zdenek Kalal, Jiri Matas and Krystian Mikolajczyk, P-N Learning: Bootstrapping Binary Classifiers by Structural Constraints:</p>
+
+<pre><code>After 27th frame failed to recover (out of 140 frames)
+</code></pre>
+
+<p>Note that a few runs I can get outperformed results than Zdenek’s implementation
+sometimes, but choose to ignore these instead.</p>
+
+<p>All these results are obtained with alantrrs’ evaluate_vis.py script in <a href="https://github.com/alantrrs/OpenTLD/blob/master/datasets/evaluate_vis.py">https://github.com/alantrrs/OpenTLD/blob/master/datasets/evaluate_vis.py</a> and the dataset in
+that repository. Thanks alantrrs!</p>
+
+<p>Speed-wise:</p>
+
+<p>By enable “rotation” technique, you can achieve near real-time performance on QVGA
+video, with minor accuracy loss. With “rotation == 1” (default parameter), TLD
+spends around 15ms on tracking, 50ms on detecting, 50ms on learning for 320x240
+video on single thread of i7-2620M 2.7GHz.</p>
+
+<h2 id="under-the-hood">Under the hood?</h2>
+
+<p>ccv’s TLD implementation varies from Zdenek’s original Matlab implementation in
+several significant ways:</p>
+
+<p><strong>1). Tracking:</strong></p>
+
+<p>Zdenek’s implementation uses a smaller LK window for computation (5x5), whereas
+ccv’s implementation uses a 15x15 window for such.</p>
+
+<p><strong>2). Ferns Detection (Random Forest):</strong></p>
+
+<p>Zdenek’s implementation uses random forest for object detection (in short, the
+probability for each feature add up), whereas ccv’s implementation uses ferns
+for object detection (using multiplication of probabilities, A.K.A. semi-naive
+Bayes classifier). To compensate such choice, ccv’s implementation uses 40 ferns,
+and for each fern, uses 18 features (the default parameter), and the default
+ferns threshold for ccv’s implementation is 0.</p>
+
+<p><strong>3). Nearest-neighbor Classifier:</strong></p>
+
+<p>Zdenek’s implementation uses aspect-ratio normalized examples (15x15); these
+examples are normalized so that a simple multiply can yield correlation confidence.
+ccv’s implementation uses aspect-aware examples (constraint to area size of 400);
+examples are left as it is and using normalized coefficient computation to get
+confidence score.</p>
+
+<p><strong>4). Pseudo-random Number Generator:</strong></p>
+
+<p>Zdenek’s implementation uses srand() for random number generation, and seed it
+with 0. ccv’s implementation uses a Mersenne-Twister random number generator with
+an environment-dependent seed.</p>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

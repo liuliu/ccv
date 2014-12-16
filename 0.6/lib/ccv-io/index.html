@@ -1,0 +1,111 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>lib/ccv_io.c</title>
+<link rel="stylesheet" href="/stylesheets/styles.css">
+<link rel="stylesheet" href="/stylesheets/coderay.css">
+<script src="/javascripts/scale.fix.js"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<meta http-equiv="X-UA-Compatible" content="chrome=1">
+<!--[if lt IE 9]>
+<script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+<![endif]-->
+<script type="text/javascript">
+var _gaq = _gaq || [];
+_gaq.push(['_setAccount', 'UA-303081-6']);
+_gaq.push(['_trackPageview']);
+(function() {
+	var ga = document.createElement('script'); ga.type = 'text/javascript'; ga.async = true;
+	ga.src = ('https:' == document.location.protocol ? 'https://ssl' : 'http://www') + '.google-analytics.com/ga.js';
+	var s = document.getElementsByTagName('script')[0]; s.parentNode.insertBefore(ga, s);
+})();
+</script>
+</head><body><div class="wrapper">
+<header><h1><a href="/">ccv</a></h1>
+<p>A Modern Computer Vision Library</p>
+<p class="view"><a href="https://github.com/liuliu/ccv">View the Project on GitHub <small>liuliu/ccv</small></a></p>
+<ul>
+<li><a href="https://github.com/liuliu/ccv/zipball/stable">Download <strong>ZIP File</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv/tarball/stable">Download <strong>TAR Ball</strong></a></li>
+<li><a href="https://github.com/liuliu/ccv">Fork On <strong>GitHub</strong></a></li>
+</ul>
+</header>
+<section><h1>lib/ccv_io.c</h1>
+<h2 id="ccvread">ccv_read</h2>
+
+<pre><code>int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
+</code></pre>
+
+<p>Read image from a file. This function has soft dependencies on <a href="http://libjpeg.sourceforge.net/">LibJPEG</a> and <a href="http://www.libpng.org/pub/png/libpng.html">LibPNG</a>. No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).</p>
+
+<ul>
+  <li><strong>in</strong>: the file name.</li>
+  <li><strong>x</strong>: the output image.</li>
+  <li><strong>type</strong>: CCV_IO_ANY_FILE, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_COLOR, convert to color image.</li>
+</ul>
+
+<h2 id="ccvread-1">ccv_read</h2>
+
+<pre><code>int ccv_read(const void* data, ccv_dense_matrix_t** x, int type, int size)
+</code></pre>
+
+<p>Read image from a a region of memory that conforms a specific image format. This function has soft dependencies on <a href="http://libjpeg.sourceforge.net/">LibJPEG</a> and <a href="http://www.libpng.org/pub/png/libpng.html">LibPNG</a>. No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).</p>
+
+<ul>
+  <li><strong>data</strong>: the data memory.</li>
+  <li><strong>x</strong>: the output image.</li>
+  <li><strong>type</strong>: CCV_IO_ANY_STREAM, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_COLOR, convert to color image.</li>
+  <li><strong>size</strong>: the size of that data memory region.</li>
+</ul>
+
+<h2 id="ccvread-2">ccv_read</h2>
+
+<pre><code>int ccv_read(const void* data, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
+</code></pre>
+
+<p>Read image from a region of memory that assumes specific layout (RGB, GRAY, BGR, RGBA, ARGB, RGBA, ABGR, BGRA). By default, this method will create a matrix and copy data over to that matrix. With CCV_IO_NO_COPY, it will create a matrix that has data block pointing to the original data memory region. It is your responsibility to release that data memory at an appropriate time after release the matrix.</p>
+
+<ul>
+  <li><strong>data</strong>: the data memory.</li>
+  <li><strong>x</strong>: the output image.</li>
+  <li><strong>type</strong>: CCV_IO_ANY_RAW, CCV_IO_RGB_RAW, CCV_IO_BGR_RAW, CCV_IO_RGBA_RAW, CCV_IO_ARGB_RAW, CCV_IO_BGRA_RAW, CCV_IO_ABGR_RAW, CCV_IO_GRAY_RAW. These in conjunction can be used with CCV_IO_NO_COPY.</li>
+  <li><strong>rows</strong>: how many rows in the given data memory region.</li>
+  <li><strong>cols</strong>: how many columns in the given data memory region.</li>
+  <li><strong>scanline</strong>: the size of a single column in the given data memory region (or known as “bytes per row”).</li>
+</ul>
+
+<h2 id="ccvwrite">ccv_write</h2>
+
+<pre><code>int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
+</code></pre>
+
+<p>Write image to a file. This function has soft dependencies on <a href="http://libjpeg.sourceforge.net/">LibJPEG</a> and <a href="http://www.libpng.org/pub/png/libpng.html">LibPNG</a>. No these libraries, no JPEG nor PNG write support.</p>
+
+<ul>
+  <li><strong>mat</strong>: the input image.</li>
+  <li><strong>out</strong>: the file name.</li>
+  <li><strong>len</strong>: the output bytes.</li>
+  <li><strong>type</strong>: CCV_IO_PNG_FILE, save to PNG format. CCV_IO_JPEG_FILE, save to JPEG format.</li>
+  <li><strong>conf</strong>: configuration.</li>
+</ul>
+
+<h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
+<div id="disqus_thread"></div>
+<script type="text/javascript">
+	var disqus_shortname = 'libccv';
+	(function() {
+		var dsq = document.createElement('script'); dsq.type = 'text/javascript'; dsq.async = true;
+		dsq.src = 'http://' + disqus_shortname + '.disqus.com/embed.js';
+		(document.getElementsByTagName('head')[0] || document.getElementsByTagName('body')[0]).appendChild(dsq);
+	})();
+</script>
+<a href="http://disqus.com" class="dsq-brlink">comments powered by <span class="logo-disqus">Disqus</span></a>
+
+</section>
+<footer>
+<p>This project is maintained by <a href="https://liuliu.me/">liuliu</a></p>
+<p><small>Theme originated from <a href="https://github.com/orderedlist">orderedlist</a></small></p>
+</footer>
+</div>
+<!--[if !IE]><script>fixScale(document);</script><!--<![endif]-->
+</body>
+</html>

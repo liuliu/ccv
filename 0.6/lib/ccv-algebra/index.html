@@ -98,20 +98,6 @@ _gaq.push(['_trackPageview']);
   <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
 </ul>
 
-<h2 id="ccvscale">ccv_scale</h2>
-
-<pre><code>void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds)
-</code></pre>
-
-<p>Scale given matrix by factor of <strong>ds</strong>.</p>
-
-<ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-  <li><strong>ds</strong>: the scale factor, <code>b = a * ds</code></li>
-</ul>
-
 <h2 id="ccvgemm">ccv_gemm</h2>
 
 <pre><code>void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type)
