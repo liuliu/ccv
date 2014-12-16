@@ -4,7 +4,7 @@ lib: ccv
 slug: ccv-image-processing
 status: publish
 title: lib/ccv_image_processing.c
-desc: basic image processing utilities
+desc: image processing utilities
 categories:
 - lib
 ---
