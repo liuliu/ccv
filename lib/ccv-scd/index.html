@@ -70,21 +70,7 @@ _gaq.push(['_trackPageview']);
 <pre><code>void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 </code></pre>
 
-<table>
-  <tbody>
-    <tr>
-      <td>Generate 8-channel output matrix which extract SURF features (dx, dy,</td>
-      <td>dx</td>
-      <td>,</td>
-      <td>dy</td>
-      <td>, du, dv,</td>
-      <td>du</td>
-      <td>,</td>
-      <td>dv</td>
-      <td>) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.</td>
-    </tr>
-  </tbody>
-</table>
+<p>Generate 8-channel output matrix which extract SURF features (dx, dy, |dx|, |dy|, du, dv, |du|, |dv|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.</p>
 
 <ul>
   <li><strong>a</strong>: the input matrix.</li>
