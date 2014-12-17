@@ -49,7 +49,7 @@ _gaq.push(['_trackPageview']);
 
 <ul>
   <li><strong>‘source’ or HTTP body</strong>: the image.</li>
-  <li><strong>‘model’</strong>: what category set, for now it only supports ‘image-net’.</li>
+  <li><strong>‘model’</strong>: what category set, for now it supports ‘image-net-2010’ and ‘image-net-2012’.</li>
   <li><strong>‘top’</strong>: the number of results returned, order by confidence score.</li>
 </ul>
 
@@ -80,6 +80,17 @@ _gaq.push(['_trackPageview']);
 <p>You can look up the rest of parameters at <a href="/lib/ccv-icf/#ccvicfparamt">ccv_icf.c</a>.</p>
 
 <p>Supported methods: GET, POST</p>
+
+<p>/scd/detect.objects</p>
+
+<p>Using <a href="/doc/doc-scd">SCD</a> classifier cascade to detect objects in a given image.</p>
+
+<ul>
+  <li><strong>‘source’ or HTTP body</strong>: the image.</li>
+  <li><strong>‘model’</strong>: what object, for now, it only supports ‘face’.</li>
+</ul>
+
+<p>You can look up the rest of parameters at <a href="/lib/ccv-scd/#ccvscdparamt">ccv_scd.c</a>.</p>
 
 <h2 id="swtdetectwords">/swt/detect.words</h2>
 
