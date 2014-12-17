@@ -27,7 +27,7 @@ Supported methods: GET, POST
 Using [ConvNet](/doc/doc-convnet) to categorize a given image.
 
  * **'source' or HTTP body**: the image.
- * **'model'**: what category set, for now it only supports 'image-net'.
+ * **'model'**: what category set, for now it supports 'image-net-2010' and 'image-net-2012'.
  * **'top'**: the number of results returned, order by confidence score.
 
 Supported methods: GET, POST
@@ -55,6 +55,15 @@ Using [ICF](/doc/doc-icf) classifier cascade to detect objects in a given image.
 You can look up the rest of parameters at [ccv_icf.c](/lib/ccv-icf/#ccvicfparamt).
 
 Supported methods: GET, POST
+
+/scd/detect.objects
+
+Using [SCD](/doc/doc-scd) classifier cascade to detect objects in a given image.
+
+ * **'source' or HTTP body**: the image.
+ * **'model'**: what object, for now, it only supports 'face'.
+
+You can look up the rest of parameters at [ccv_scd.c](/lib/ccv-scd/#ccvscdparamt).
 
 /swt/detect.words
 -----------------
