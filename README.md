@@ -17,8 +17,8 @@ caution with dependency hygiene. The simplicity and minimalistic nature at
 then, made it much easier to integrate into any server-side deployment
 environments.
 
-Portability and Embeddable
---------------------------
+Portable and Embeddable
+-----------------------
 
 Fast forward to now, the world is quite different from then, but ccv adapts
 pretty well in this new, mobile-first environment. It now runs on Mac OSX,
