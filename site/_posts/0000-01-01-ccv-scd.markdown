@@ -46,7 +46,7 @@ ccv_scd
 
 	void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
 
-Generate 8-channel output matrix which extract SURF features (dx, dy, |dx|, |dy|, du, dv, |du|, |dv|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.
+Generate 8-channel output matrix which extract SURF features (dx, dy, \|dx\|, \|dy\|, du, dv, \|du\|, \|dv\|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.
 
  * **a**: the input matrix.
  * **b**: the output matrix.

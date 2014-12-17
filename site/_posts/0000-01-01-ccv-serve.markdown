@@ -57,6 +57,7 @@ You can look up the rest of parameters at [ccv_icf.c](/lib/ccv-icf/#ccvicfparamt
 Supported methods: GET, POST
 
 /scd/detect.objects
+-------------------
 
 Using [SCD](/doc/doc-scd) classifier cascade to detect objects in a given image.
 
