@@ -47,7 +47,7 @@ ccv_otsu
  * **outvar**: the inter-class variance.
  * **range**: the maximum range of data in the input matrix.
 
-It turns the threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.
+It returns the threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.
 
 ccv_optical_flow_lucas_kanade
 -----------------------------

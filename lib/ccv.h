@@ -215,6 +215,10 @@ ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_renew(c
 ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 void ccv_make_matrix_mutable(ccv_matrix_t* mat);
+/**
+ * Mark the current matrix as immutable. Under the hood, it will generate a signature for the matrix, and mark it as non-collectable. For the convention, if the matrix is marked as immutable, you shouldn't change the content of the matrix, otherwise it will cause surprising behavior. If you want to change the content of the matrix, mark it as mutable first.
+ * @param mat the supplied matrix that will be marked as immutable.
+ **/
 void ccv_make_matrix_immutable(ccv_matrix_t* mat);
 ccv_sparse_matrix_t* __attribute__((warn_unused_result)) ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
@@ -321,7 +325,10 @@ int ccv_read_impl(const void* in, ccv_dense_matrix_t** x, int type, int rows, in
 // notice that you can implement this with va_* functions, but that is not type-safe
 int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf);
 
-/* basic algebra algorithms ccv_algebra.c */
+/**
+ * @defgroup ccv_algebra linear algebra
+ * @{
+ */
 
 double ccv_trace(ccv_matrix_t* mat);
 
@@ -348,14 +355,73 @@ enum {
 };
 
 double ccv_norm(ccv_matrix_t* mat, int type);
+/**
+ * Normalize a matrix and return the normalize factor.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param btype The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param flag CCV_L1 or CCV_L2, for L1 or L2 normalization.
+ * @return L1 or L2 sum.
+ */
 double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
+/**
+ * Generate the [Summed Area Table](https://en.wikipedia.org/wiki/Summed_area_table).
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param padding_pattern CCV_NO_PADDING - the first row and the first column in the output matrix is the same as the input matrix. CCV_PADDING_ZERO - the first row and the first column in the output matrix is zero, thus, the output matrix size is 1 larger than the input matrix.
+ */
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
+/**
+ * Dot product of two matrix.
+ * @param a The input matrix.
+ * @param b The other input matrix.
+ * @return Dot product.
+ */
 double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
+/**
+ * Return the sum of all elements in the matrix.
+ * @param mat The input matrix.
+ * @param flag CCV_UNSIGNED - compute fabs(x) of the elements first and then sum up. CCV_SIGNED - compute the sum normally.
+ */
 double ccv_sum(ccv_matrix_t* mat, int flag);
+/**
+ * Return the sum of all elements in the matrix.
+ * @param mat The input matrix.
+ * @return Element variance of the input matrix.
+ */
 double ccv_variance(ccv_matrix_t* mat);
+/**
+ * Do element-wise matrix multiplication.
+ * @param a The input matrix.
+ * @param b The input matrix.
+ * @param c The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ */
 void ccv_multiply(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+/**
+ * Matrix addition.
+ * @param a The input matrix.
+ * @param b The input matrix.
+ * @param c The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ */
 void ccv_add(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+/**
+ * Matrix subtraction.
+ * @param a The input matrix.
+ * @param b The input matrix.
+ * @param c The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ */
 void ccv_subtract(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** c, int type);
+/**
+ * Scale given matrix by factor of **ds**.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param ds The scale factor, `b = a * ds`
+ */
 void ccv_scale(ccv_matrix_t* a, ccv_matrix_t** b, int type, double ds);
 
 enum {
@@ -364,7 +430,26 @@ enum {
 	CCV_C_TRANSPOSE = 0X04,
 };
 
+/**
+ * General purpose matrix multiplication. This function has a hard dependency on [cblas](http://www.netlib.org/blas/) library.
+ *
+ * As general as it is, it computes:
+ *
+ *   alpha * A * B + beta * C
+ *
+ * whereas A, B, C are matrix, and alpha, beta are scalar.
+ *
+ * @param a The input matrix.
+ * @param b The input matrix.
+ * @param alpha The multiplication factor.
+ * @param c The input matrix.
+ * @param beta The multiplication factor.
+ * @param transpose CCV_A_TRANSPOSE, CCV_B_TRANSPOSE to indicate if matrix A or B need to be transposed first before multiplication.
+ * @param d The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ */
 void ccv_gemm(ccv_matrix_t* a, ccv_matrix_t* b, double alpha, ccv_matrix_t* c, double beta, int transpose, ccv_matrix_t** d, int type);
+/** @} */
 
 typedef struct {
 	int left;
@@ -563,30 +648,95 @@ void ccv_distance_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int t
 void ccv_sparse_coding(ccv_matrix_t* x, int k, ccv_matrix_t** A, int typeA, ccv_matrix_t** y, int typey);
 void ccv_compressive_sensing_reconstruct(ccv_matrix_t* a, ccv_matrix_t* x, ccv_matrix_t** y, int type);
 
-/* basic computer vision algorithms / or build blocks ccv_basic.c */
+/**
+ * @defgroup ccv_basic basic image pre-processing utilities
+ * The utilities in this file provides basic pre-processing which, most-likely, are the first steps for computer vision algorithms.
+ * @{
+ */
 
+/**
+ * Compute image with [Sobel operator](https://en.wikipedia.org/wiki/Sobel_operator).
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param dx The window size of Sobel operator on x-axis, specially optimized for 1, 3
+ * @param dy The window size of Sobel operator on y-axis, specially optimized for 1, 3
+ */
 void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy);
+/**
+ * Compute the gradient (angle and magnitude) at each pixel.
+ * @param a The input matrix.
+ * @param theta The output matrix of angle at each pixel.
+ * @param ttype The type of output matrix, if 0, ccv will defaults to CCV_32F.
+ * @param m The output matrix of magnitude at each pixel.
+ * @param mtype The type of output matrix, if 0, ccv will defaults to CCV_32F.
+ * @param dx The window size of the underlying Sobel operator used on x-axis, specially optimized for 1, 3
+ * @param dy The window size of the underlying Sobel operator used on y-axis, specially optimized for 1, 3
+ */
 void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy);
 
 enum {
 	CCV_FLIP_X = 0x01,
 	CCV_FLIP_Y = 0x02,
 };
-
+/**
+ * Flip the matrix by x-axis, y-axis or both.
+ * @param a The input matrix.
+ * @param b The output matrix (it is in-place safe).
+ * @param btype The type of output matrix, if 0, ccv will use the sample type as the input matrix.
+ * @param type CCV_FLIP_X - flip around x-axis, CCV_FLIP_Y - flip around y-axis.
+ */
 void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type);
+/**
+ * Using [Gaussian blur](https://en.wikipedia.org/wiki/Gaussian_blur) on a given matrix. It implements a O(n * sqrt(m)) algorithm, n is the size of input matrix, m is the size of Gaussian filtering kernel.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param sigma The sigma factor in Gaussian filtering kernel.
+ */
 void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma);
+/** @} */
 
-/* basic image processing algorithms ccv_image_processing.c */
+/**
+ * @defgroup ccv_image_processing image processing utilities
+ * The utilities in this file provides image processing methods that are widely used for image enhancements.
+ * @{
+ */
 
 enum {
 	CCV_RGB_TO_YUV = 0x01,
 };
 
+/**
+ * Convert matrix from one color space representation to another.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will use the sample type as the input matrix.
+ * @param flag **CCV_RGB_TO_YUV** to convert from RGB color space to YUV color space.
+ */
 void ccv_color_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int flag);
+/**
+ * Manipulate image's saturation.
+ * @param a The input matrix.
+ * @param b The output matrix (it is in-place safe).
+ * @param type The type of output matrix, if 0, ccv will use the sample type as the input matrix.
+ * @param ds The coefficient (0: grayscale, 1: original).
+ */
 void ccv_saturation(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double ds);
+/**
+ * Manipulate image's contrast.
+ * @param a The input matrix.
+ * @param b The output matrix (it is in-place safe).
+ * @param type The type of output matrix, if 0, ccv will use the sample type as the input matrix.
+ * @param ds The coefficient (0: mean image, 1: original).
+ */
 void ccv_contrast(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double ds);
+/** @} */
 
-/* resample algorithms ccv_resample.c */
+/**
+ * @defgroup ccv_resample image resampling utilities
+ * @{
+ */
 
 enum {
 	CCV_INTER_AREA    = 0x01,
@@ -595,22 +745,103 @@ enum {
 	CCV_INTER_LANCZOS = 0X08,
 };
 
+/**
+ * Resample a given matrix to different size, as for now, ccv only supports either downsampling (with CCV_INTER_AREA) or upsampling (with CCV_INTER_CUBIC).
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param btype The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param rows The new row.
+ * @param cols The new column.
+ * @param type For now, ccv supports CCV_INTER_AREA, which is an extension to [bilinear resampling](https://en.wikipedia.org/wiki/Bilinear_filtering) for downsampling and CCV_INTER_CUBIC [bicubic resampling](https://en.wikipedia.org/wiki/Bicubic_interpolation) for upsampling.
+ */
 void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type);
+/**
+ * Downsample a given matrix to exactly half size with a [Gaussian filter](https://en.wikipedia.org/wiki/Gaussian_filter). The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param src_x Shift the start point by src_x.
+ * @param src_y Shift the start point by src_y.
+ */
 void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
+/**
+ * Upsample a given matrix to exactly double size with a [Gaussian filter](https://en.wikipedia.org/wiki/Gaussian_filter).
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param src_x Shift the start point by src_x.
+ * @param src_y Shift the start point by src_y.
+ */
 void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y);
+/** @} */
 
-/* transformation algorithms ccv_transform.c */
+/**
+ * @defgroup ccv_transform image transform utilities
+ * @{
+ */
 
+/**
+ * Similar to ccv_slice, it will slice a given matrix into required rows / cols, but it will interpolate the value with bilinear filter if x and y is non-integer.
+ * @param a The given matrix that will be sliced
+ * @param b The output matrix
+ * @param type The type of output matrix
+ * @param y The top point to slice
+ * @param x The left point to slice
+ * @param rows The number of rows for destination matrix
+ * @param cols The number of cols for destination matrix
+ */
 void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float y, float x, int rows, int cols);
+/**
+ * Apply a [3D transform](https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection) against the given point in a given image size, assuming field of view is 60 (in degree).
+ * @param point The point to be transformed in decimal
+ * @param size The image size
+ * @param m00, m01, m02, m10, m11, m12, m20, m21, m22 The transformation matrix
+ */
 ccv_decimal_point_t ccv_perspective_transform_apply(ccv_decimal_point_t point, ccv_size_t size, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22);
+/**
+ * Apply a [3D transform](https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection) on a given matrix, assuming field of view is 60 (in degree).
+ * @param a The given matrix to be transformed
+ * @param b The output matrix
+ * @param type The type of output matrix
+ * @param m00, m01, m02, m10, m11, m12, m20, m21, m22 The transformation matrix
+ */
 void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22);
+/** @} */
 
 /* classic computer vision algorithms ccv_classic.c */
+/**
+ * @defgroup ccv_classic classic computer vision algorithms
+ * @{
+ */
 
+/**
+ * [Histogram-of-Oriented-Gradients](https://en.wikipedia.org/wiki/Histogram_of_oriented_gradients) implementation, specifically, it implements the HOG described in *Object Detection with Discriminatively Trained Part-Based Models, Pedro F. Felzenszwalb, Ross B. Girshick, David McAllester and Deva Ramanan*.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param b_type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param sbin The number of bins for orientation (default to 9, thus, for **b**, it will have 9 * 2 + 9 + 4 = 31 channels).
+ * @param size The window size for HOG (default to 8)
+ */
 void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin, int size);
+/**
+ * [Canny edge detector](https://en.wikipedia.org/wiki/Canny_edge_detector) implementation. For performance reason, this is a clean-up reimplementation of OpenCV's Canny edge detector, it has very similar performance characteristic as the OpenCV one. As of today, ccv's Canny edge detector only works with CCV_8U or CCV_32S dense matrix type.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will create a CCV_8U | CCV_C1 matrix.
+ * @param size The underlying Sobel filter size.
+ * @param low_thresh The low threshold that makes the point interesting.
+ * @param high_thresh The high threshold that makes the point acceptable.
+ */
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
 void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
+/**
+ * [OTSU](https://en.wikipedia.org/wiki/Otsu%27s_method) implementation.
+ * @param a The input matrix.
+ * @param outvar The inter-class variance.
+ * @param range The maximum range of data in the input matrix.
+ * @return The threshold, inclusively. e.g. 5 means 0~5 is in the background, and 6~255 is in the foreground.
+ */
 int ccv_otsu(ccv_dense_matrix_t* a, double* outvar, int range);
 
 typedef struct {
@@ -618,7 +849,18 @@ typedef struct {
 	uint8_t status;
 } ccv_decimal_point_with_status_t;
 
+/**
+ * [Lucas Kanade](https://en.wikipedia.org/wiki/Lucas%E2%80%93Kanade_Optical_Flow_Method) optical flow implementation with image pyramid extension.
+ * @param a The first frame
+ * @param b The next frame
+ * @param point_a The points in first frame, of **ccv_decimal_point_t** type
+ * @param point_b The output points in the next frame, of **ccv_decimal_point_with_status_t** type
+ * @param win_size The window size to compute each optical flow, it must be a odd number
+ * @param level How many image pyramids to be used for the computation
+ * @param min_eigen The minimal eigen-value to pass optical flow computation
+ */
 void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_array_t* point_a, ccv_array_t** point_b, ccv_size_t win_size, int level, double min_eigen);
+/** @} */
 
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */

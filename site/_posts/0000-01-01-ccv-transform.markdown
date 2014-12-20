@@ -40,7 +40,7 @@ ccv_perspective_transform
 
 	void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
 
-Appy a [3D transform](https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection) on a given matrix, assuming field of view is 60 (in degree).
+Apply a [3D transform](https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection) on a given matrix, assuming field of view is 60 (in degree).
 
  * **a**: the given matrix to be transformed
  * **b**: the output matrix
