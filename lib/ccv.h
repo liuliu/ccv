@@ -37,6 +37,9 @@
 #define ccmemalign(memptr, alignment, size) (*memptr = ccmalloc(size))
 #endif
 
+/* Doxygen will ignore there, otherwise it has problem to process warn_unused_result directly. */
+#define CCV_WARN_UNUSED(x) x __attribute__((warn_unused_result))
+
 enum {
 	CCV_8U  = 0x01000,
 	CCV_32S = 0x02000,
@@ -145,9 +148,11 @@ extern int _ccv_get_sparse_prime[];
 
 typedef void ccv_matrix_t;
 
-/* the explicit cache mechanism ccv_cache.c */
-/* the new cache is radix tree based, but has a strict memory usage upper bound
- * so that you don't have to explicitly call ccv_drain_cache() every time */
+/**
+ * @defgroup ccv_cache cache mechanism
+ * This class implements a trie-based LRU cache that is then used for ccv application-wide cache in [ccv\_memory.c](/lib/ccv-memory).
+ * @{
+ */
 
 typedef void(*ccv_cache_index_free_f)(void*);
 
@@ -175,13 +180,58 @@ typedef struct {
 
 /* I made it as generic as possible */
 
+/**
+ * Setup a cache strcture to work with.
+ * @param cache The allocated cache.
+ * @param up The upper limit of cache size in bytes.
+ * @param cache_types The number of cache types in this one cache instance.
+ * @param ffree The function that will be used to free cached object.
+ */
 void ccv_cache_init(ccv_cache_t* cache, size_t up, int cache_types, ccv_cache_index_free_f ffree, ...);
+/**
+ * Get an object from cache for its signature. 0 if cannot find the object.
+ * @param cache The cache.
+ * @param sign The signature.
+ * @param type The type of the object.
+ * @return The pointer to the object.
+ */
 void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign, uint8_t* type);
+/**
+ * Put an object to cache with its signature, size, and type
+ * @param cache The cache.
+ * @param sign The signature.
+ * @param x The pointer to the object.
+ * @param size The size of the object.
+ * @param type The type of the object.
+ * @return 0 - success, 1 - replace, -1 - failure.
+ */
 int ccv_cache_put(ccv_cache_t* cache, uint64_t sign, void* x, uint32_t size, uint8_t type);
+/**
+ * Get an object from cache for its signature and then remove that object from the cache. 0 if cannot find the object.
+ * @param cache The cache.
+ * @param sign The signature.
+ * @param type The type of the object.
+ * @return The pointer to the object.
+ */
 void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign, uint8_t* type);
+/**
+ * Delete an object from cache for its signature and free it.
+ * @param cache The cache.
+ * @param sign The signature.
+ * @return -1 if cannot find the object, otherwise return 0.
+ */
 int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign);
+/**
+ * Clean up the cache, free all objects inside and other memory space occupied.
+ * @param cache The cache.
+ */
 void ccv_cache_cleanup(ccv_cache_t* cache);
+/**
+ * For current implementation (trie-based LRU cache), it is an alias for ccv_cache_cleanup.
+ * @param cache The cache.
+ */
 void ccv_cache_close(ccv_cache_t* cache);
+/** @} */
 
 /* deprecated methods, often these implemented in another way and no longer suitable for newer computer architecture */
 /* 0 */
@@ -211,8 +261,8 @@ typedef struct {
 
 /* matrix memory operations ccv_memory.c */
 #define ccv_compute_dense_matrix_size(rows, cols, type) (sizeof(ccv_dense_matrix_t) + (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4) * (rows))
-ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
-ccv_dense_matrix_t* __attribute__((warn_unused_result)) ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
+CCV_WARN_UNUSED(ccv_dense_matrix_t*) ccv_dense_matrix_renew(ccv_dense_matrix_t* x, int rows, int cols, int types, int prefer_type, uint64_t sig);
+CCV_WARN_UNUSED(ccv_dense_matrix_t*) ccv_dense_matrix_new(int rows, int cols, int type, void* data, uint64_t sig);
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig);
 void ccv_make_matrix_mutable(ccv_matrix_t* mat);
 /**
@@ -220,7 +270,7 @@ void ccv_make_matrix_mutable(ccv_matrix_t* mat);
  * @param mat the supplied matrix that will be marked as immutable.
  **/
 void ccv_make_matrix_immutable(ccv_matrix_t* mat);
-ccv_sparse_matrix_t* __attribute__((warn_unused_result)) ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
+CCV_WARN_UNUSED(ccv_sparse_matrix_t*) ccv_sparse_matrix_new(int rows, int cols, int type, int major, uint64_t sig);
 void ccv_matrix_free_immediately(ccv_matrix_t* mat);
 void ccv_matrix_free(ccv_matrix_t* mat);
 
@@ -545,7 +595,7 @@ typedef struct {
 	void* data;
 } ccv_array_t;
 
-ccv_array_t* __attribute__((warn_unused_result)) ccv_array_new(int rsize, int rnum, uint64_t sig);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_array_new(int rsize, int rnum, uint64_t sig);
 void ccv_array_push(ccv_array_t* array, const void* r);
 typedef int(*ccv_array_group_f)(const void*, const void*, void*);
 int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data);
@@ -865,9 +915,14 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 /* modern computer vision algorithms */
 /* SIFT, DAISY, SWT, MSER, DPM, BBF, SGF, SSD, FAST */
 
+/**
+ * @defgroup ccv_daisy DAISY
+ * @{
+ */
+
 /* daisy related methods */
 typedef struct {
-	double radius;
+	double radius; /** the Gaussian radius. */
 	int rad_q_no;
 	int th_q_no;
 	int hist_th_q_no;
@@ -881,7 +936,15 @@ enum {
 	CCV_DAISY_NORMAL_SIFT    = 0x03,
 };
 
+/**
+ * [DAISY](http://cvlab.epfl.ch/publications/publications/2010/TolaLF10a.pdf) implementation. For more details - DAISY: An Efficient Dense Descriptor Applied to Wide-Baseline Stereo.
+ * @param a The input matrix.
+ * @param b The output matrix.
+ * @param type The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * @param params A **ccv_daisy_param_t** structure that defines various aspect of the feature extractor.
+ */
 void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params);
+/** @} */
 
 /* sift related methods */
 typedef struct {
@@ -943,7 +1006,7 @@ enum {
 	CCV_DARK_TO_BRIGHT = 1,
 };
 
-ccv_array_t* __attribute__((warn_unused_result)) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t* h, ccv_dense_matrix_t** b, int type, ccv_mser_param_t params);
 
 /* swt related method: stroke width transform is relatively new, typically used in text detection */
 typedef struct {
@@ -979,7 +1042,7 @@ typedef struct {
 extern const ccv_swt_param_t ccv_swt_default_params;
 
 void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
 
 /* it makes sense now to include a simple data structure that encapsulate the common idiom of
  * having file name with a bounding box */
@@ -997,6 +1060,11 @@ typedef struct {
  * ~ BBF is for rigid object detection: banners, box, faces etc.
  * ~ DPM is more generalized, can detect people, car, bike (larger inner-class difference) etc.
  * ~ BBF is blazing fast (few milliseconds), DPM is relatively slow (around 1 seconds or so) */
+
+/**
+ * @defgroup ccv_dpm deformable parts model
+ * @{
+ */
 
 #define CCV_DPM_PART_MAX (10)
 
@@ -1040,32 +1108,32 @@ typedef struct {
 } ccv_dpm_mixture_model_t;
 
 typedef struct {
-	int interval;
-	int min_neighbors;
-	int flags;
-	float threshold;
+	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int flags; /** CCV_DPM_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
+	float threshold; /** The threshold the determines the acceptance of an object. */
 } ccv_dpm_param_t;
 
 typedef struct {
-	int components;
-	int parts;
-	int grayscale;
-	int symmetric;
-	int min_area; // 3000
-	int max_area; // 5000
-	int iterations;
-	int data_minings;
-	int root_relabels;
-	int relabels;
+	int components; /** The number of root filters in the mixture model. */
+	int parts; /** The number of part filters for each root filter. */
+	int grayscale; /** Whether to exploit color in a given image. */
+	int symmetric; /** Whether to exploit symmetric property of the object. */
+	int min_area; /** The minimum area that one part classifier can occupy, 3000 is a reasonable number. */
+	int max_area; /** The maximum area that one part classifier can occupy. 5000 is a reasonable number. */
+	int iterations; /** How many iterations needed for stochastic gradient descent. */
+	int data_minings; /** How many data mining procedures are needed for discovering hard examples. */
+	int root_relabels; /** How many relabel procedures for root classifier are needed. */
+	int relabels; /** How many relabel procedures are needed. */
 	int discard_estimating_constant; // 1
-	int negative_cache_size; // 1000
-	double include_overlap; // 0.7
-	double alpha;
-	double alpha_ratio; // 0.85
-	double balance; // 1.5
-	double C;
-	double percentile_breakdown; // 0.05
-	ccv_dpm_param_t detector;
+	int negative_cache_size; /** The cache size for negative examples. 1000 is a reasonable number. */
+	double include_overlap; /** The percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object. 0.7 is a reasonable number. */
+	double alpha; /** The step size for stochastic gradient descent. */
+	double alpha_ratio; /** Decrease the step size for each iteration. 0.85 is a reasonable number. */
+	double balance; /** To balance the weight of positive examples and negative examples. 1.5 is a reasonable number. */
+	double C; /** C in SVM. */
+	double percentile_breakdown; /** The percentile use for breakdown threshold. 0.05 is the default. */
+	ccv_dpm_param_t detector; /** A **ccv_dpm_params_t** structure that will be used to search positive examples and negative examples from background images. */
 } ccv_dpm_new_param_t;
 
 enum {
@@ -1074,15 +1142,48 @@ enum {
 
 extern const ccv_dpm_param_t ccv_dpm_default_params;
 
+/**
+ * Create a new DPM mixture model from given positive examples and background images. This function has hard dependencies on [GSL](http://www.gnu.org/software/gsl/) and [LibLinear](http://www.csie.ntu.edu.tw/~cjlin/liblinear/).
+ * @param posfiles An array of positive images.
+ * @param bboxes An array of bounding boxes for positive images.
+ * @param posnum Number of positive examples.
+ * @param bgfiles An array of background images.
+ * @param bgnum Number of background images.
+ * @param negnum Number of negative examples that is harvested from background images.
+ * @param dir The working directory to store/retrieve intermediate data.
+ * @param params A **ccv_dpm_new_param_t** structure that defines various aspects of the training function.
+ */
 void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
-ccv_dpm_mixture_model_t* __attribute__((warn_unused_result)) ccv_dpm_read_mixture_model(const char* directory);
+/**
+ * Using a DPM mixture model to detect objects in a given image. If you have several DPM mixture models, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.
+ * @param a The input image.
+ * @param model An array of mixture models.
+ * @param count How many mixture models you've passed in.
+ * @param params A **ccv_dpm_param_t** structure that defines various aspects of the detector.
+ * @return A **ccv_array_t** of **ccv_root_comp_t** that contains the root bounding box as well as its parts.
+ */
+CCV_WARN_UNUSED(ccv_array_t*) ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** model, int count, ccv_dpm_param_t params);
+/**
+ * Read DPM mixture model from a model file.
+ * @param directory The model file for DPM mixture model.
+ * @return A DPM mixture model, 0 if no valid DPM mixture model available.
+ */
+CCV_WARN_UNUSED(ccv_dpm_mixture_model_t*) ccv_dpm_read_mixture_model(const char* directory);
+/**
+ * Free up the memory of DPM mixture model.
+ * @param model The DPM mixture model.
+ */
 void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model);
+/** @} */
 
-/* this is open source implementation of object detection algorithm: brightness binary feature
+/**
+ * @defgroup ccv_bbf binary brightness feature
+ * this is open source implementation of object detection algorithm: brightness binary feature
  * it is an extension/modification of original HAAR-like feature with Adaboost, featured faster
  * computation and higher accuracy (current highest accuracy close-source face detector is based
- * on the same algorithm) */
+ * on the same algorithm)
+ * @{
+ */
 
 #define CCV_BBF_POINT_MAX (8)
 #define CCV_BBF_POINT_MIN (3)
@@ -1116,21 +1217,21 @@ enum {
 };
 
 typedef struct {
-	int interval;
-	int min_neighbors;
-	int flags;
-	int accurate;
-	ccv_size_t size;
+	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int flags; /** CCV_BBF_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
+	int accurate; /** BBF will generates 4 spatial scale variations for better accuracy. Set this parameter to 0 will reduce to 1 scale variation, and thus 3 times faster but lower the general accuracy of the detector. */
+	ccv_size_t size; /** The smallest object size that will be interesting to us. */
 } ccv_bbf_param_t;
 
 typedef struct {
-	double pos_crit;
-	double neg_crit;
-	double balance_k;
-	int layer;
-	int feature_number;
-	int optimizer;
-	ccv_bbf_param_t detector;
+	double pos_crit; /** Positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria. */
+	double neg_crit; /** Negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria. */
+	double balance_k; /** Weight positive examples differently from negative examples. */
+	int layer; /** The maximum layer trained for the classifier cascade. */
+	int feature_number; /** The maximum feature number for each classifier. */
+	int optimizer; /** CCV_BBF_GENETIC_OPT, using genetic algorithm to search the best weak feature; CCV_BBF_FLOAT_OPT, using float search to improve the found best weak feature. */
+	ccv_bbf_param_t detector; /** A **ccv_bbf_params_t** structure that will be used to search negative examples from background images. */
 } ccv_bbf_new_param_t;
 
 enum {
@@ -1139,12 +1240,53 @@ enum {
 
 extern const ccv_bbf_param_t ccv_bbf_default_params;
 
+/**
+ * Create a new BBF classifier cascade from given positive examples and background images. This function has a hard dependency on [GSL](http://www.gnu.org/software/gsl/).
+ * @param posimg An array of positive examples.
+ * @param posnum Number of positive examples.
+ * @param bgfiles An array of background images.
+ * @param bgnum Number of background images.
+ * @param negnum Number of negative examples that is harvested from background images.
+ * @param size The image size of positive examples.
+ * @param dir The working directory to store/retrieve intermediate data.
+ * @param params A **ccv_bbf_new_param_t** structure that defines various aspects of the training function.
+ */
 void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
-ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_read_classifier_cascade(const char* directory);
+/**
+ * Using a BBF classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.
+ * @param a The input image.
+ * @param cascade An array of classifier cascades.
+ * @param count How many classifier cascades you've passed in.
+ * @param params A **ccv_bbf_param_t** structure that defines various aspects of the detector.
+ * @return A **ccv_array_t** of **ccv_comp_t** for detection results.
+ */
+CCV_WARN_UNUSED(ccv_array_t*) ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** cascade, int count, ccv_bbf_param_t params);
+/**
+ * Read BBF classifier cascade from working directory.
+ * @param directory The working directory that trains a BBF classifier cascade.
+ * @return A classifier cascade, 0 if no valid classifier cascade available.
+ */
+CCV_WARN_UNUSED(ccv_bbf_classifier_cascade_t*) ccv_bbf_read_classifier_cascade(const char* directory);
+/**
+ * Free up the memory of BBF classifier cascade.
+ * @param cascade The BBF classifier cascade.
+ */
 void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade);
-ccv_bbf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_bbf_classifier_cascade_read_binary(char* s);
+/**
+ * Load BBF classifier cascade from a memory region.
+ * @param s The memory region of binarized BBF classifier cascade.
+ * @return A classifier cascade, 0 if no valid classifier cascade available.
+ */
+CCV_WARN_UNUSED(ccv_bbf_classifier_cascade_t*) ccv_bbf_classifier_cascade_read_binary(char* s);
+/**
+ * Write BBF classifier cascade to a memory region.
+ * @param cascade The BBF classifier cascade.
+ * @param s The designated memory region.
+ * @param slen The size of the designated memory region.
+ * @return The actual size of the binarized BBF classifier cascade, if this size is larger than **slen**, please reallocate the memory region and do it again.
+ */
 int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen);
+/** @} */
 
 /* Ferns classifier: this is a fern implementation that specifically used for TLD
  * see: http://cvlab.epfl.ch/alumni/oezuysal/ferns.html for more about ferns */
@@ -1162,7 +1304,7 @@ typedef struct {
 	ccv_point_t fern[1];
 } ccv_ferns_t;
 
-ccv_ferns_t* __attribute__((warn_unused_result)) ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes);
+CCV_WARN_UNUSED(ccv_ferns_t*) ccv_ferns_new(int structs, int features, int scales, ccv_size_t* sizes);
 void ccv_ferns_feature(ccv_ferns_t* ferns, ccv_dense_matrix_t* a, int scale, uint32_t* fern);
 void ccv_ferns_correct(ccv_ferns_t* ferns, uint32_t* fern, int c, int repeat);
 float ccv_ferns_predict(ccv_ferns_t* ferns, uint32_t* fern);
@@ -1245,7 +1387,7 @@ typedef struct {
 	int close_matches;
 } ccv_tld_info_t;
 
-ccv_tld_t* __attribute__((warn_unused_result)) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
+CCV_WARN_UNUSED(ccv_tld_t*) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
 ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info);
 void ccv_tld_free(ccv_tld_t* tld);
 
@@ -1323,20 +1465,20 @@ typedef struct {
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 
 /* ICF for single scale */
-ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
+CCV_WARN_UNUSED(ccv_icf_classifier_cascade_t*) ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params);
 void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance);
-ccv_icf_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_classifier_cascade(const char* filename);
+CCV_WARN_UNUSED(ccv_icf_classifier_cascade_t*) ccv_icf_read_classifier_cascade(const char* filename);
 void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, const char* filename);
 void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier);
 
 /* ICF for multiple scale */
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
-ccv_icf_multiscale_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_icf_read_multiscale_classifier_cascade(const char* directory);
+CCV_WARN_UNUSED(ccv_icf_multiscale_classifier_cascade_t*) ccv_icf_multiscale_classifier_cascade_new(ccv_icf_classifier_cascade_t* cascades, int octave, int interval);
+CCV_WARN_UNUSED(ccv_icf_multiscale_classifier_cascade_t*) ccv_icf_read_multiscale_classifier_cascade(const char* directory);
 void ccv_icf_write_multiscale_classifier_cascade(ccv_icf_multiscale_classifier_cascade_t* classifier, const char* directory);
 void ccv_icf_multiscale_classifier_cascade_free(ccv_icf_multiscale_classifier_cascade_t* classifier);
 
 /* polymorph function to run ICF based detector */
-ccv_array_t* __attribute__((warn_unused_result)) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_icf_detect_objects(ccv_dense_matrix_t* a, void* cascade, int count, ccv_icf_param_t params);
 
 /* SCD: SURF-Cascade Detector
  * This is a variant of VJ framework for object detection
@@ -1431,13 +1573,13 @@ typedef struct {
 
 extern const ccv_scd_param_t ccv_scd_default_params;
 
-ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params);
+CCV_WARN_UNUSED(ccv_scd_classifier_cascade_t*) ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params);
 void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename);
-ccv_scd_classifier_cascade_t* __attribute__((warn_unused_result)) ccv_scd_classifier_cascade_read(const char* filename);
+CCV_WARN_UNUSED(ccv_scd_classifier_cascade_t*) ccv_scd_classifier_cascade_read(const char* filename);
 void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade);
 
 void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
-ccv_array_t* __attribute__((warn_unused_result)) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params);
 
 /* categorization types and methods for training */
 
@@ -1467,9 +1609,10 @@ inline static ccv_categorized_t ccv_categorized(int c, ccv_dense_matrix_t* matri
 	return categorized;
 }
 
-/* ConvNet: Convolutional Neural Networks
- * This is a limited implementation of convolutional neural network for mainly for
- * image recognition and object detection.
+/**
+ * @defgroup ccv_convnet deep convolutional networks
+ * This is a implementation of deep convolutional networks mainly for image recognition and object detection.
+ * @{
  */
 
 enum {
@@ -1482,58 +1625,49 @@ enum {
 
 typedef union {
 	struct {
-		// how many kernels
-		int count;
-		// strides
-		int strides;
-		// padding for input
-		int border;
-		// rows, cols, channels and partition for the kernel
-		int rows;
-		int cols;
-		int channels;
-		int partition;
+		int count; /** The number of filters for convolutional layer. */
+		int strides; /** The strides for convolutional filter. */
+		int border; /** The padding border size for the input matrix. */
+		int rows; /** The number of rows for convolutional filter. */
+		int cols; /** The number of columns for convolutional filter. */
+		int channels; /** The number of channels for convolutional filter. */
+		int partition; /** The number of partitions for convolutional filter. */
 	} convolutional;
 	struct {
-		// strides
-		int strides;
-		// window size
-		int size;
-		// padding for input
-		int border;
+		int strides; /** The strides for pooling layer. */
+		int size; /** The window size for pooling layer. */
+		int border; /** The padding border size for the input matrix. */
 	} pool;
 	struct {
-		// cross map size
-		int size;
-		// coeffs for a[i] / (kappa + alpha * sum(a, i - size / 2, i + size / 2))^beta
-		float kappa;
-		float alpha;
-		float beta;
+		int size; /** The size of local response normalization layer. */
+		float kappa; /** As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */
+		float alpha; /** See **rnorm.kappa**. */
+		float beta; /** See **rnorm.kappa**. */
 	} rnorm;
 	struct {
-		int relu; // apply relu or not
-		int count;
+		int relu; /** 0 - ReLU, 1 - no ReLU */
+		int count; /** The number of output nodes for full connect layer. */
 	} full_connect;
 } ccv_convnet_type_t;
 
 typedef struct {
 	struct {
-		int rows;
-		int cols;
-		int channels;
-		int partition;
+		int rows; /** The number of rows of the input matrix. */
+		int cols; /** The number of columns of the input matrix. */
+		int channels; /** The number of channels of the input matrix. */
+		int partition; /** The number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels). */
 	} matrix;
 	struct {
-		int count;
+		int count; /** The number of nodes. You should either use **node** or **matrix** to specify the input structure. */
 	} node;
 } ccv_convnet_input_t;
 
 typedef struct {
-	int type;
-	float bias; // bias initialization
-	float glorot; // weight initialization with deviation from Gaussian distribution
-	ccv_convnet_input_t input;
-	ccv_convnet_type_t output;
+	int type; /** One of following value to specify the network layer type, **CCV_CONVNET_CONVOLUTIONAL**, **CCV_CONVNET_FULL_CONNECT**, **CCV_CONVNET_MAX_POOL**, **CCV_CONVNET_AVERAGE_POOL**, **CCV_CONVNET_LOCAL_RESPONSE_NORM**. */
+	float bias; /** The initialization value for bias if applicable (for convolutional layer and full connect layer). */
+	float glorot; /** The truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)). */
+	ccv_convnet_input_t input; /** A **ccv_convnet_input_t** specifies the input structure. */
+	ccv_convnet_type_t output; /** A **ccv_convnet_type_t** specifies the output parameters and structure. */
 } ccv_convnet_layer_param_t;
 
 typedef struct {
@@ -1564,9 +1698,9 @@ typedef struct {
 } ccv_convnet_t;
 
 typedef struct {
-	float decay;
-	float learn_rate;
-	float momentum;
+	float decay; /** See **learn_rate**. */
+	float learn_rate; /** New velocity = **momentum** * old velocity - **decay** * **learn_rate** * old value + **learn_rate** * delta, new value = old value + new velocity */
+	float momentum; /** See **learn_rate**. */
 } ccv_convnet_layer_sgd_param_t;
 
 typedef struct {
@@ -1574,42 +1708,100 @@ typedef struct {
 	// and drop out is happened on the input neuron (so that when the network
 	// is used in real-world, I simply need to multiply its weights to 1 - dor
 	// to get the real one)
-	float dor;
-	ccv_convnet_layer_sgd_param_t w;
-	ccv_convnet_layer_sgd_param_t bias;
+	float dor; /** The dropout rate for this layer, it is only applicable for full connect layer. */
+	ccv_convnet_layer_sgd_param_t w; /** A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for weight, it is only applicable for full connect layer and convolutional layer. */
+	ccv_convnet_layer_sgd_param_t bias; /** A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layer weight. */
 } ccv_convnet_layer_train_param_t;
 
 typedef struct {
-	int max_epoch;
-	int mini_batch;
-	int iterations;
-	int sgd_frequency;
-	int symmetric;
-	int device_count; // for now, ccv's implementation only support up to 2 GPUs
-	int peer_access; // to enable peer access
-	float image_manipulation; // the value for image brightness / contrast / saturation manipulations
-	float color_gain; // the gaussian value for color variations
+	int max_epoch; /** The number of epoch (an epoch sweeps through all the examples) to go through before end the training. */
+	int mini_batch; /** The number of examples for a batch in stochastic gradient descent. */
+	int iterations; /** The number of iterations (an iteration is for one batch) before save the progress. */
+	int sgd_frequency; /** After how many batches when we do a SGD update. */
+	int symmetric; /** Whether to exploit the symmetric property of the provided examples. */
+	int device_count; /** Use how many GPU devices, this is capped by available CUDA devices on your system. For now, ccv's implementation only support up to 4 GPUs */
+	int peer_access; /** Enable peer access for cross device communications or not, this will enable faster multiple device training. */
+	float image_manipulation; /** The value for image brightness / contrast / saturation manipulations. */
+	float color_gain; /** The color variance for data augmentation (0 means no such augmentation). */
 	struct {
-		int min_dim;
-		int max_dim;
+		int min_dim; /** The minimum dimensions for random resize of training images. */
+		int max_dim; /** The maximum dimensions for random resize of training images. */
 	} input;
-	ccv_convnet_layer_train_param_t* layer_params;
+	ccv_convnet_layer_train_param_t* layer_params; /** An C-array of **ccv_convnet_layer_train_param_t** training parameters for each layer. */
 } ccv_convnet_train_param_t;
 
 typedef struct {
-	int half_precision;
+	int half_precision; /** Use half precision float point to represent network parameters. */
 } ccv_convnet_write_param_t;
 
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
+/**
+ * Create a new (deep) convolutional network with specified parameters. ccv only supports convolutional layer (shared weights), max pooling layer, average pooling layer, full connect layer and local response normalization layer.
+ * @param use_cwc_accel Whether use CUDA-enabled GPU to accelerate various computations for convolutional network.
+ * @param input Ihe input size of the image, it is not necessarily the input size of the first convolutional layer.
+ * @param params[] The C-array of **ccv_convnet_layer_param_t** that specifies the parameters for each layer.
+ * @param count The size of params[] C-array.
+ * @return A new deep convolutional network structs
+ */
+CCV_WARN_UNUSED(ccv_convnet_t*) ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
+/**
+ * Verify the specified parameters make sense as a deep convolutional network.
+ * @param convnet A deep convolutional network to verify.
+ * @param output The output number of nodes (for the last full connect layer).
+ * @return 0 if the given deep convolutional network making sense.
+ */
 int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
+/**
+ * Start to train a deep convolutional network with given parameters and data.
+ * @param convnet A deep convolutional network that is initialized.
+ * @param categorizeds An array of images with its category information for training.
+ * @param tests An array of images with its category information for validating.
+ * @param filename The working file to save progress and the trained convolutional network.
+ * @param params The training parameters.
+ */
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
+/**
+ * Use a convolutional network to encode an image into a compact representation.
+ * @param convnet**: The given convolutional network.
+ * @param a A C-array of input images.
+ * @param b A C-array of output matrix of compact representation.
+ * @param batch The number of input images.
+ */
 void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
 void ccv_convnet_input_formation(ccv_size_t input, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
+/**
+ * Use a convolutional network to classify an image into categories.
+ * @param convnet**: The given convolutional network.
+ * @param a A C-array of input images.
+ * @param symmetric Whether the input is symmetric.
+ * @param ranks A C-array of **ccv_array_t** contains top categories by the convolutional network.
+ * @param tops The number of top categories return for each image.
+ * @param batch The number of input images.
+ */
 void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
-ccv_convnet_t* __attribute__((warn_unused_result)) ccv_convnet_read(int use_cwc_accel, const char* filename);
+/**
+ * Read a convolutional network that persisted on the disk.
+ * @param use_cwc_accel Use CUDA-enabled GPU acceleration.
+ * @param filename The file on the disk.
+ */
+CCV_WARN_UNUSED(ccv_convnet_t*) ccv_convnet_read(int use_cwc_accel, const char* filename);
+/**
+ * Write a convolutional network to a disk.
+ * @param convnet A given convolutional network.
+ * @param filename The file on the disk.
+ * @param params A **ccv_convnet_write_param_t** to specify the write parameters.
+ */
 void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
-void ccv_convnet_compact(ccv_convnet_t* convnet); // remove unused resources
+/**
+ * Free up temporary resources of a given convolutional network.
+ * @param convnet A convolutional network.
+ */
+void ccv_convnet_compact(ccv_convnet_t* convnet);
+/**
+ * Free up the memory of a given convolutional network.
+ * @param convnet A convolutional network.
+ */
 void ccv_convnet_free(ccv_convnet_t* convnet);
+/** @} */
 
 /* add for command-line outputs, b/c ccv's training steps has a ton of outputs,
  * and in the future, it can be piped into callback functions for critical information
