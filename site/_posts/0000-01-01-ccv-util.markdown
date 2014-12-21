@@ -9,276 +9,287 @@ categories:
 - lib
 ---
 
-ccv_get_dense_matrix
---------------------
+ccv\_get\_dense\_matrix
+-----------------------
 
-	ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t* mat)
+	ccv_dense_matrix_t* ccv_get_dense_matrix(ccv_matrix_t *mat)
 
 Check and get dense matrix from general matrix structure.
 
- * **mat**: a general matrix.
+ * **mat**: A general matrix.
 
-ccv_get_sparse_matrix
----------------------
+ccv\_get\_sparse\_matrix
+------------------------
 
-	ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat)
+	ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t *mat)
 
 Check and get sparse matrix from general matrix structure.
 
- * **mat**: a general matrix.
+ * **mat**: A general matrix.
 
-ccv_visualize
--------------
+ccv\_get\_sparse\_matrix\_vector
+--------------------------------
 
-	void ccv_visualize(ccv_matrix_t* a, ccv_matrix_t** b, int type)
+	ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t *mat, int index)
+
+Get vector for a sparse matrix.
+
+ * **mat**: The sparse matrix.
+ * **index**: The index of that vector.
+
+ccv\_get\_sparse\_matrix\_cell
+------------------------------
+
+	ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t *mat, int row, int col)
+
+Get cell from a sparse matrix.
+
+ * **mat**: The sparse matrix.
+ * **row**: The row index.
+ * **col**: The column index.
+
+ccv\_set\_sparse\_matrix\_cell
+------------------------------
+
+	void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t *mat, int row, int col, void *data)
+
+Set cell for a sparse matrix.
+
+ * **mat**: The sparse matrix.
+ * **row**: The row index.
+ * **col**: The column index.
+ * **data**: The data pointer.
+
+ccv\_compress\_sparse\_matrix
+-----------------------------
+
+	void ccv_compress_sparse_matrix(ccv_sparse_matrix_t *mat, ccv_compressed_sparse_matrix_t **csm)
+
+Transform a sparse matrix into compressed representation.
+
+ * **mat**: The sparse matrix.
+ * **csm**: The compressed matrix.
+
+ccv\_decompress\_sparse\_matrix
+-------------------------------
+
+	void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t *csm, ccv_sparse_matrix_t **smt)
+
+Transform a compressed matrix into a sparse matrix.
+
+ * **csm**: The compressed matrix.
+ * **smt**: The sparse matrix.
+
+ccv\_move
+---------
+
+	void ccv_move(ccv_matrix_t *a, ccv_matrix_t **b, int btype, int y, int x)
+
+Offset input matrix by x, y.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **btype**: The type of output matrix, if 0, ccv will use the input matrix type.
+ * **y**: b(0, 0) = a(x, y).
+ * **x**: b(0, 0) = a(x, y).
+
+ccv\_matrix\_eq
+---------------
+
+	int ccv_matrix_eq(ccv_matrix_t *a, ccv_matrix_t *b)
+
+Compare if two matrix are equal (with type). Return 0 if it is.
+
+ * **a**: The input matrix a.
+ * **b**: The input matrix b.
+
+ccv\_slice
+----------
+
+	void ccv_slice(ccv_matrix_t *a, ccv_matrix_t **b, int btype, int y, int x, int rows, int cols)
+
+Slice an input matrix given x, y and row, column size.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **btype**: The type of output matrix, if 0, ccv will use the input matrix type.
+ * **y**: y coordinate.
+ * **x**: x coordinate.
+ * **rows**: Row size of targeted matrix.
+ * **cols**: Column size of targeted matrix.
+
+ccv\_border
+-----------
+
+	void ccv_border(ccv_matrix_t *a, ccv_matrix_t **b, int type, ccv_margin_t margin)
+
+Add border to the input matrix.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **margin**: Left, top, right, bottom width for the border.
+
+ccv\_visualize
+--------------
+
+	void ccv_visualize(ccv_matrix_t *a, ccv_matrix_t **b, int type)
 
 Convert a input matrix into a matrix within visual range, so that one can output it into PNG file for inspection.
 
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
 
-ccv_zero
---------
+ccv\_flatten
+------------
 
-	void ccv_zero(ccv_matrix_t* mat)
+	void ccv_flatten(ccv_matrix_t *a, ccv_matrix_t **b, int type, int flag)
+
+If a given matrix has multiple channels, this function will compute a new matrix that each cell in the new matrix is the sum of all channels in the same cell of the given matrix.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **flag**: ccv reserved this for now.
+
+ccv\_zero
+---------
+
+	void ccv_zero(ccv_matrix_t *mat)
 
 Zero out a given matrix.
 
- * **mat**: the given matrix.
+ * **mat**: The given matrix.
 
-ccv_any_nan
------------
+ccv\_shift
+----------
+
+	void ccv_shift(ccv_matrix_t *a, ccv_matrix_t **b, int type, int lr, int rr)
+
+Compute a new matrix that each element is first left shifted and then right shifted.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **lr**: Left shift amount.
+ * **rr**: Right shift amount.
+
+ccv\_any\_nan
+-------------
 
 	int ccv_any_nan(ccv_matrix_t *a)
 
 Check if any nan value in the given matrix, and return its position.
 
- * **a**: the given matrix.
+ * **a**: The given matrix.
 
-ccv_reshape
------------
+ccv\_reshape
+------------
 
-	ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, int cols)
+	ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t *a, int y, int x, int rows, int cols)
 
 Return a temporary ccv\_dense\_matrix\_t matrix that is pointing to a given matrix data section but with different rows and cols. Useful to use part of the given matrix do computations without paying memory copy performance penalty.
 
- * **a**: the given matrix.
- * **y**: the y offset to the given matrix.
- * **x**: the x offset to the given matrix.
- * **rows**: the number of rows of the new matrix.
- * **cols**: the number of cols of the new matrix.
+ * **a**: The given matrix.
+ * **y**: The y offset to the given matrix.
+ * **x**: The x offset to the given matrix.
+ * **rows**: The number of rows of the new matrix.
+ * **cols**: The number of cols of the new matrix.
 
-ccv_flatten
------------
+ccv\_array\_new
+---------------
 
-	void ccv_flatten(ccv_matrix_t* a, ccv_matrix_t** b, int type, int flag)
-
-If a given matrix has multiple channels, this function will compute a new matrix that each cell in the new matrix is the sum of all channels in the same cell of the given matrix.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * **flag**: ccv reserved this for now.
-
-ccv_shift
----------
-
-	void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
-
-Compute a new matrix that each element is first left shifted and then right shifted.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * **lr**: left shift amount.
- * **rr**: right shift amount.
-
-ccv_get_sparse_matrix_vector
-----------------------------
-
-	ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index)
-
-Get vector for a sparse matrix.
-
- * **mat**: the sparse matrix.
- * **index**: the index of that vector.
-
-ccv_get_sparse_matrix_cell
---------------------------
-
-	ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
-
-Get cell from a sparse matrix.
-
- * **mat**: the sparse matrix.
- * **row**: the row index.
- * **col**: the column index.
-
-ccv_set_sparse_matrix_cell
---------------------------
-
-	void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data)
-
-Set cell for a sparse matrix.
-
- * **mat**: the sparse matrix.
- * **row**: the row index.
- * **col**: the column index.
- * **data**: the data pointer.
-
-ccv_compress_sparse_matrix
---------------------------
-
-	void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
-
-Transform a sparse matrix into compressed representation.
-
- * **mat**: the sparse matrix.
- * **csm**: the compressed matrix.
-
-ccv_decompress_sparse_matrix
-----------------------------
-
-	void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
-
-Transform a compressed matrix into a sparse matrix.
-
- * **csm**: the compressed matrix.
- * **smt**: the sparse matrix.
-
-ccv_matrix_eq
--------------
-
-	int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
-
-Compare if two matrix are equal (with type). Return 0 if it is.
-
- * **a**: the input matrix a.
- * **b**: the input matrix b.
-
-ccv_slice
----------
-
-	void ccv_slice(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x, int rows, int cols)
-
-Slice an input matrix given x, y and row, column size.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **btype**: the type of output matrix, if 0, ccv will use the input matrix type.
- * **y**: y coordinate.
- * **x**: x coordinate.
- * **rows**: row size of targeted matrix.
- * **cols**: column size of targeted matrix.
-
-ccv_border
-----------
-
-	void ccv_border(ccv_matrix_t* a, ccv_matrix_t** b, ccv_margin_t margin)
-
-Add border to the input matrix.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **margin**: left, top, right, bottom width for the border.
-
-ccv_move
---------
-
-	void ccv_move(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int y, int x)
-
-Offset input matrix by x, y.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **btype**: the type of output matrix, if 0, ccv will use the input matrix type.
- * **y**: b(0, 0) = a(x, y).
- * **x**: b(0, 0) = a(x, y).
-
-ccv_array_new
--------------
-
-	ccv_array_t* ccv_array_new(int rnum, int rsize)
+	ccv_array_new(int rsize, int rnum, uint64_t sig)
 
 Create a new, self-growing array.
 
- * **rnum**: the initial capacity of the array.
- * **rsize**: the size of each element in the array.
+ * **rnum**: The initial capacity of the array.
+ * **rsize**: The size of each element in the array.
+ * **sig**: The signature for this array.
 
-ccv_array_push
---------------
+ccv\_array\_push
+----------------
 
-	void ccv_array_push(ccv_array_t* array, void* r)
+	void ccv_array_push(ccv_array_t *array, const void *r)
 
 Push a new element into the array.
 
- * **array**: the array.
- * **r**: the pointer to new element, it will then be copied into the array.
+ * **array**: The array.
+ * **r**: The pointer to new element, it will then be copied into the array.
 
-ccv_array_zero
---------------
+ccv\_array\_group
+-----------------
 
-	void ccv_array_zero(ccv_array_t* array)
-
-Zero out the array, it won't change the array->rnum however.
-
- * **array**: the array.
-
-ccv_array_clear
----------------
-
-	void ccv_array_clear(ccv_array_t* array)
-
-Clear the array, it will reset the array->rnum to 0.
-
- * **array**: the array.
-
-ccv_array_free
---------------
-
-	void ccv_array_free(ccv_array_t* array)
-
-Free up the array.
-
- * **array**: the array.
-
-ccv_array_group
----------------
-
-	int ccv_array_group(ccv_array_t* array, ccv_array_t** index, ccv_array_group_f gfunc, void* data)
+	int ccv_array_group(ccv_array_t *array, ccv_array_t **index, ccv_array_group_f gfunc, void *data)
 
 Group elements in the array from its similarity.
 
- * **array**: the array.
- * **index**: the output index, same group element will have the same index.
+ * **array**: The array.
+ * **index**: The output index, same group element will have the same index.
  * **gfunc**: int ccv\_array\_group\_f(const void* a, const void* b, void* data). Return 1 if a and b are in the same group.
- * **data**: any extra user data.
+ * **data**: Any extra user data.
 
-ccv_contour_new
----------------
+ccv\_array\_zero
+----------------
+
+	void ccv_array_zero(ccv_array_t *array)
+
+Zero out the array, it won't change the array->rnum however.
+
+ * **array**: The array.
+
+ccv\_array\_clear
+-----------------
+
+	void ccv_array_clear(ccv_array_t *array)
+
+Clear the array, it will reset the array->rnum to 0.
+
+ * **array**: The array.
+
+ccv\_array\_free\_immediately
+-----------------------------
+
+	void ccv_array_free_immediately(ccv_array_t *array)
+
+Free up the array immediately.
+
+ * **array**: The array.
+
+ccv\_array\_free
+----------------
+
+	void ccv_array_free(ccv_array_t *array)
+
+Free up the array. If array's signature is non-zero, we may put it into cache so that later on, we can shortcut and return this array directly.
+
+ * **array**: The array.
+
+ccv\_contour\_new
+-----------------
 
 	ccv_contour_t* ccv_contour_new(int set)
 
 Create a new contour object.
 
- * **set**: the initial capacity of the contour.
+ * **set**: The initial capacity of the contour.
 
-ccv_contour_push
-----------------
+ccv\_contour\_push
+------------------
 
-	void ccv_contour_push(ccv_contour_t* contour, ccv_point_t point)
+	void ccv_contour_push(ccv_contour_t *contour, ccv_point_t point)
 
 Push a point into the contour object.
 
- * **contour**: the contour.
- * **point**: the point.
+ * **contour**: The contour.
+ * **point**: The point.
 
-ccv_contour_free
-----------------
+ccv\_contour\_free
+------------------
 
-	void ccv_contour_free(ccv_contour_t* contour)
+	void ccv_contour_free(ccv_contour_t *contour)
 
 Free up the contour object.
 
- * **contour**: the contour.
+ * **contour**: The contour.

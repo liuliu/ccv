@@ -4,97 +4,104 @@ lib: ccv
 slug: ccv-scd
 status: publish
 title: lib/ccv_scd.c
-desc: SURF-Cascade Detection
+desc: surf-cascade detection
 categories:
 - lib
 ---
 
-ccv_scd_classifier_cascade_new
-------------------------------
+ccv\_scd\_classifier\_cascade\_new
+----------------------------------
 
-	ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params)
+	ccv_scd_classifier_cascade_new(ccv_array_t *posfiles, ccv_array_t *hard_mine, int negative_count, const char *filename, ccv_scd_train_param_t params)
 
 Create a new SCD classifier cascade from given positive examples and background images. This function has a hard dependency on [GSL](http://www.gnu.org/software/gsl/).
 
- * **posfiles**: an array of **ccv\_file\_info\_t** that gives the positive examples.
- * **hard\_mine**: an array of **ccv\_file\_info\_t** that gives images don't contain any positive examples (for example, to train a face detector, these are images that doesn't contain any faces).
- * **negative\_count**: number of negative examples that is harvested from background images.
- * **filename**: the file that saves both progress and final classifier, this will be in sqlite3 database format.
- * **params**: a **ccv\_scd\_train\_param\_t** that defines various aspects of the training function.
+ * **posfiles**: An array of **ccv\_file\_info\_t** that gives the positive examples.
+ * **hard\_mine**: An array of **ccv\_file\_info\_t** that gives images don't contain any positive examples (for example, to train a face detector, these are images that doesn't contain any faces).
+ * **negative\_count**: Number of negative examples that is harvested from background images.
+ * **filename**: The file that saves both progress and final classifier, this will be in sqlite3 database format.
+ * **params**: A **ccv\_scd\_train\_param\_t** that defines various aspects of the training function.
 
-ccv_scd_train_param_t
----------------------
+**return**: The trained SCD classifier cascade.
 
- * **boosting**: how many stages of boosting should be performed.
- * **size**: what's the window size of the final classifier.
- * **feature.base**: a **ccv\_size\_t** structure defines the minimal feature dimensions.
- * **feature.range\_through**: the step size to increase feature dimensions.
- * **feature.step\_through**: the step size to move to cover the whole window size.
- * **stop\_criteria.hit\_rate**: the targeted hit rate for each stage of classifier.
- * **stop\_criteria.false\_positive\_rate**: the targeted false positive rate for each stage of classifier.
- * **stop\_criteria.accu\_false\_positive\_rate**: the targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached.
- * **stop\_criteria.auc\_crit**: the epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training.
- * **stop\_criteria.maximum\_feature**: maximum number of features one stage can have.
- * **stop\_criteria.prune\_stage**: how many stages will act as "prune" stage, which means will take minimal effort to prune as much negative areas as possible.
- * **stop\_criteria.prune\_feature**: how many features a prune stage should have, it should be a very small number to enable efficient pruning.
- * **weight\_trimming**: only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights.
- * **C**: the C parameter to train the weak linear SVM classifier.
- * **grayscale**: to train the classifier with grayscale image.
+ccv\_scd\_train\_param\_t
+-------------------------
 
-ccv_scd
--------
+ * **C**: The C parameter to train the weak linear SVM classifier.
+ * **boosting**: How many stages of boosting should be performed.
+ * **feature.base**: A **ccv\_size\_t** structure defines the minimal feature dimensions.
+ * **feature.range\_through**: The step size to increase feature dimensions.
+ * **feature.step\_through**: The step size to move to cover the whole window size.
+ * **grayscale**: To train the classifier with grayscale image.
+ * **size**: What's the window size of the final classifier.
+ * **stop\_criteria.accu\_false\_positive\_rate**: The targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached.
+ * **stop\_criteria.auc\_crit**: The epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training.
+ * **stop\_criteria.false\_positive\_rate**: The targeted false positive rate for each stage of classifier.
+ * **stop\_criteria.hit\_rate**: The targeted hit rate for each stage of classifier.
+ * **stop\_criteria.maximum\_feature**: Maximum number of features one stage can have.
+ * **stop\_criteria.prune\_feature**: How many features a prune stage should have, it should be a very small number to enable efficient pruning.
+ * **stop\_criteria.prune\_stage**: How many stages will act as "prune" stage, which means will take minimal effort to prune as much negative areas as possible.
+ * **weight\_trimming**: Only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights.
 
-	void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
+ccv\_scd\_classifier\_cascade\_write
+------------------------------------
 
-Generate 8-channel output matrix which extract SURF features (dx, dy, \|dx\|, \|dy\|, du, dv, \|du\|, \|dv\|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.
-
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **b_type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
-
-ccv_scd_detect_objects
-----------------------
-
-	ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params)
-
-Using a SCD classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.
-
- * **a**: the input image.
- * **cascade**: an array of classifier cascades.
- * **count**: how many classifier cascades you've passed in.
- * **params**: a **ccv\_scd\_param\_t** structure that defines various aspects of the detector.
-
-ccv_scd_param_t
----------------
-
- * **interval**: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.
- * **min\_neighbors**: 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min\_neighbors** intersected objects.
- * **size**: the smallest object size that will be interesting to us.
-
-ccv_scd_classifier_cascade_write
---------------------------------
-
-	void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename)
+	void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t *cascade, const char *filename)
 
 Write SCD classifier cascade to a file.
 
- * **cascade**: the BBF classifier cascade.
- * **filename**: the file that will be written to, it is in sqlite3 database format.
+ * **cascade**: The BBF classifier cascade.
+ * **filename**: The file that will be written to, it is in sqlite3 database format.
 
-ccv_scd_classifier_cascade_read
--------------------------------
+ccv\_scd\_classifier\_cascade\_read
+-----------------------------------
 
-	ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filename)
+	ccv_scd_classifier_cascade_read(const char *filename)
 
 Read SCD classifier cascade from file.
 
- * **filename**: the file that contains a SCD classifier cascade, it is in sqlite3 database format.
+ * **filename**: The file that contains a SCD classifier cascade, it is in sqlite3 database format.
 
-ccv_scd_classifier_cascade_free
--------------------------------
+**return**: A classifier cascade, 0 returned if no valid classifier cascade available.
 
-	void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade)
+ccv\_scd\_classifier\_cascade\_free
+-----------------------------------
+
+	void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t *cascade)
 
 Free up the memory of SCD classifier cascade.
 
- * **cascade**: the SCD classifier cascade.
+ * **cascade**: The SCD classifier cascade.
+
+ccv\_scd
+--------
+
+	void ccv_scd(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type)
+
+Generate 8-channel output matrix which extract SURF features (dx, dy, \|dx\|, \|dy\|, du, dv, \|du\|, \|dv\|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.
+
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+
+ccv\_scd\_detect\_objects
+-------------------------
+
+	ccv_scd_detect_objects(ccv_dense_matrix_t *a, ccv_scd_classifier_cascade_t **cascades, int count, ccv_scd_param_t params)
+
+Using a SCD classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.
+
+ * **a**: The input image.
+ * **cascades**: An array of classifier cascades.
+ * **count**: How many classifier cascades you've passed in.
+ * **params**: A **ccv\_scd\_param\_t** structure that defines various aspects of the detector.
+
+**return**: A **ccv\_array\_t** of **ccv\_comp\_t** with detection results.
+
+ccv\_scd\_param\_t
+------------------
+
+ * **interval**: Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.
+ * **min\_neighbors**: 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min\_neighbors** intersected objects.
+ * **size**: The smallest object size that will be interesting to us.
+ * **step\_through**: The step size for detection.

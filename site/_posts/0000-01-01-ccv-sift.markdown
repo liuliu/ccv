@@ -9,25 +9,25 @@ categories:
 - lib
 ---
 
-ccv_sift
---------
+ccv\_sift
+---------
 
-	void ccv_sift(ccv_dense_matrix_t* a, ccv_array_t** _keypoints, ccv_dense_matrix_t** _desc, int type, ccv_sift_param_t params)
+	void ccv_sift(ccv_dense_matrix_t *a, ccv_array_t **keypoints, ccv_dense_matrix_t **desc, int type, ccv_sift_param_t params)
 
-Compute [SIFT](https://en.wikipedia.org/wiki/Scale-invariant_feature_transform) key-points.
+Compute [SIFT](https://en.wikipedia.org/wiki/Scale-invariant\_feature\_transform) key-points.
 
- * **a**: the input matrix.
- * **keypoints**: the array of key-points, a ccv\_keypoint\_t structure.
- * **desc**: the descriptor for each key-point.
- * **type**: the type of the descriptor, if 0, ccv will default to CCV\_32F.
- * **params**: a **ccv\_sift\_param\_t** structure that defines various aspect of SIFT function.
+ * **a**: The input matrix.
+ * **keypoints**: The array of key-points, a ccv\_keypoint\_t structure.
+ * **desc**: The descriptor for each key-point.
+ * **type**: The type of the descriptor, if 0, ccv will default to CCV\_32F.
+ * **params**: A **ccv\_sift\_param\_t** structure that defines various aspect of SIFT function.
 
-ccv_sift_param_t
-----------------
+ccv\_sift\_param\_t
+-------------------
 
- * **up2x**: if upscale the image for better SIFT accuracy.
- * **noctaves**: number of octaves.
- * **nlevels**: number of levels for each octaves.
- * **edge_threshold**: above this threshold, it will be recognized as edge as be ignored.
- * **peak_threshold**: above this threshold, it will be recognized as potential feature point.
- * **norm_threshold**: if norm of the descriptor is smaller than threshold, it ill be ignored.
+ * **edge\_threshold**: Above this threshold, it will be recognized as edge otherwise be ignored.
+ * **nlevels**: Number of levels for each octaves.
+ * **noctaves**: Number of octaves.
+ * **norm\_threshold**: If norm of the descriptor is smaller than threshold, it will be ignored.
+ * **peak\_threshold**: Above this threshold, it will be recognized as potential feature point.
+ * **up2x**: If upscale the image for better SIFT accuracy.

@@ -9,90 +9,98 @@ categories:
 - lib
 ---
 
-ccv_bbf_classifier_cascade_new
-------------------------------
+This is open source implementation of object detection algorithm: brightness binary feature it is an extension/modification of original haar-like feature with adaboost, featured faster computation and higher accuracy (current highest accuracy close-source face detector is based on the same algorithm)
 
-	void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t** posimg, int posnum, char** bgfiles, int bgnum, int negnum, ccv_size_t size, const char* dir, ccv_bbf_new_param_t params)
+ccv\_bbf\_classifier\_cascade\_new
+----------------------------------
+
+	void ccv_bbf_classifier_cascade_new(ccv_dense_matrix_t **posimg, int posnum, char **bgfiles, int bgnum, int negnum, ccv_size_t size, const char *dir, ccv_bbf_new_param_t params)
 
 Create a new BBF classifier cascade from given positive examples and background images. This function has a hard dependency on [GSL](http://www.gnu.org/software/gsl/).
 
- * **posimg**: an array of positive examples.
- * **posnum**: number of positive examples.
- * **bgfiles**: an array of background images.
- * **bgnum**: number of background images.
- * **negnum**: number of negative examples that is harvested from background images.
- * **size**: the image size of positive examples.
- * **dir**: the working directory to store/retrieve intermediate data.
- * **params**: a **ccv\_bbf\_new\_param\_t** structure that defines various aspects of the training function.
+ * **posimg**: An array of positive examples.
+ * **posnum**: Number of positive examples.
+ * **bgfiles**: An array of background images.
+ * **bgnum**: Number of background images.
+ * **negnum**: Number of negative examples that is harvested from background images.
+ * **size**: The image size of positive examples.
+ * **dir**: The working directory to store/retrieve intermediate data.
+ * **params**: A **ccv\_bbf\_new\_param\_t** structure that defines various aspects of the training function.
 
-ccv_bbf_new_param_t
--------------------
+ccv\_bbf\_new\_param\_t
+-----------------------
 
- * **pos\_crit**: positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria.
- * **neg\_crit**: negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria.
- * **balance\_k**: weight positive examples differently from negative examples.
- * **layer**: the maximum layer trained for the classifier cascade.
- * **feature\_number**: the maximum feature number for each classifier.
+ * **balance\_k**: Weight positive examples differently from negative examples.
+ * **detector**: A **ccv\_bbf\_params\_t** structure that will be used to search negative examples from background images.
+ * **feature\_number**: The maximum feature number for each classifier.
+ * **layer**: The maximum layer trained for the classifier cascade.
+ * **neg\_crit**: Negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria.
  * **optimizer**: CCV\_BBF\_GENETIC\_OPT, using genetic algorithm to search the best weak feature; CCV\_BBF\_FLOAT\_OPT, using float search to improve the found best weak feature.
- * **detector**: a **ccv\_bbf\_params\_t** structure that will be used to search negative examples from background images.
+ * **pos\_crit**: Positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria.
 
-ccv_bbf_detect_objects
-----------------------
+ccv\_bbf\_detect\_objects
+-------------------------
 
-	ccv_array_t* ccv_bbf_detect_objects(ccv_dense_matrix_t* a, ccv_bbf_classifier_cascade_t** _cascade, int count, ccv_bbf_param_t params)
+	ccv_bbf_detect_objects(ccv_dense_matrix_t *a, ccv_bbf_classifier_cascade_t **cascade, int count, ccv_bbf_param_t params)
 
 Using a BBF classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.
 
- * **a**: the input image.
- * **cascade**: an array of classifier cascades.
- * **count**: how many classifier cascades you've passed in.
- * **params**: a **ccv\_bbf\_param\_t** structure that defines various aspects of the detector.
+ * **a**: The input image.
+ * **cascade**: An array of classifier cascades.
+ * **count**: How many classifier cascades you've passed in.
+ * **params**: A **ccv\_bbf\_param\_t** structure that defines various aspects of the detector.
 
-ccv_bbf_param_t
-----------------
+**return**: A **ccv\_array\_t** of **ccv\_comp\_t** for detection results.
 
- * **interval**: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.
- * **min\_neighbors**: 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min\_neighbors** intersected objects.
- * **flags**: CCV\_BBF\_NO\_NESTED, if one class of object is inside another class of object, this flag will reject the first object.
+ccv\_bbf\_param\_t
+------------------
+
  * **accurate**: BBF will generates 4 spatial scale variations for better accuracy. Set this parameter to 0 will reduce to 1 scale variation, and thus 3 times faster but lower the general accuracy of the detector.
- * **size**: the smallest object size that will be interesting to us.
+ * **flags**: CCV\_BBF\_NO\_NESTED, if one class of object is inside another class of object, this flag will reject the first object.
+ * **interval**: Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.
+ * **min\_neighbors**: 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min\_neighbors** intersected objects.
+ * **size**: The smallest object size that will be interesting to us.
 
-ccv_bbf_read_classifier_cascade
--------------------------------
+ccv\_bbf\_read\_classifier\_cascade
+-----------------------------------
 
-	ccv_bbf_classifier_cascade_t* ccv_bbf_read_classifier_cascade(const char* directory)
+	ccv_bbf_read_classifier_cascade(const char *directory)
 
 Read BBF classifier cascade from working directory.
 
- * **directory**: the working directory that trains a BBF classifier cascade.
+ * **directory**: The working directory that trains a BBF classifier cascade.
 
-ccv_bbf_classifier_cascade_read_binary
---------------------------------------
+**return**: A classifier cascade, 0 if no valid classifier cascade available.
 
-	ccv_bbf_classifier_cascade_t* ccv_bbf_classifier_cascade_read_binary(char* s)
+ccv\_bbf\_classifier\_cascade\_free
+-----------------------------------
 
-Load BBF classifier cascade from a memory region.
-
- * **s**: the memory region of binarized BBF classifier cascade.
-
-ccv_bbf_classifier_cascade_write_binary
----------------------------------------
-
-	int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t* cascade, char* s, int slen)
-
-Write BBF classifier cascade to a memory region.
-
- * **cascade**: the BBF classifier cascade.
- * **s**: the designated memory region.
- * **slen**: the size of the designated memory region.
-
-It returns the actual size of the binarized BBF classifier cascade, if this size is larger than **slen**, please reallocate the memory region and do it again.
-
-ccv_bbf_classifier_cascade_free
--------------------------------
-
-	void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t* cascade)
+	void ccv_bbf_classifier_cascade_free(ccv_bbf_classifier_cascade_t *cascade)
 
 Free up the memory of BBF classifier cascade.
 
- * **cascade**: the BBF classifier cascade.
+ * **cascade**: The BBF classifier cascade.
+
+ccv\_bbf\_classifier\_cascade\_read\_binary
+-------------------------------------------
+
+	ccv_bbf_classifier_cascade_read_binary(char *s)
+
+Load BBF classifier cascade from a memory region.
+
+ * **s**: The memory region of binarized BBF classifier cascade.
+
+**return**: A classifier cascade, 0 if no valid classifier cascade available.
+
+ccv\_bbf\_classifier\_cascade\_write\_binary
+--------------------------------------------
+
+	int ccv_bbf_classifier_cascade_write_binary(ccv_bbf_classifier_cascade_t *cascade, char *s, int slen)
+
+Write BBF classifier cascade to a memory region.
+
+ * **cascade**: The BBF classifier cascade.
+ * **s**: The designated memory region.
+ * **slen**: The size of the designated memory region.
+
+**return**: The actual size of the binarized BBF classifier cascade, if this size is larger than **slen**, please reallocate the memory region and do it again.

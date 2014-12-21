@@ -9,52 +9,52 @@ categories:
 - lib
 ---
 
-ccv_read
---------
+ccv\_write
+----------
 
-	int ccv_read(const char* in, ccv_dense_matrix_t** x, int type)
-
-Read image from a file. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
-
- * **in**: the file name.
- * **x**: the output image.
- * **type**: CCV\_IO\_ANY\_FILE, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
-
-ccv_read
---------
-
-	int ccv_read(const void* data, ccv_dense_matrix_t** x, int type, int size)
-
-Read image from a a region of memory that conforms a specific image format. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
-
- * **data**: the data memory.
- * **x**: the output image.
- * **type**: CCV\_IO\_ANY\_STREAM, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
- * **size**: the size of that data memory region.
-
-ccv_read
---------
-
-	int ccv_read(const void* data, ccv_dense_matrix_t** x, int type, int rows, int cols, int scanline)
-
-Read image from a region of memory that assumes specific layout (RGB, GRAY, BGR, RGBA, ARGB, RGBA, ABGR, BGRA). By default, this method will create a matrix and copy data over to that matrix. With CCV\_IO\_NO\_COPY, it will create a matrix that has data block pointing to the original data memory region. It is your responsibility to release that data memory at an appropriate time after release the matrix.
-
- * **data**: the data memory.
- * **x**: the output image.
- * **type**: CCV\_IO\_ANY\_RAW, CCV\_IO\_RGB\_RAW, CCV\_IO\_BGR\_RAW, CCV\_IO\_RGBA\_RAW, CCV\_IO\_ARGB\_RAW, CCV\_IO\_BGRA\_RAW, CCV\_IO\_ABGR\_RAW, CCV\_IO\_GRAY\_RAW. These in conjunction can be used with CCV\_IO\_NO\_COPY.
- * **rows**: how many rows in the given data memory region.
- * **cols**: how many columns in the given data memory region.
- * **scanline**: the size of a single column in the given data memory region (or known as "bytes per row").
-
-ccv_write
----------
-
-	int ccv_write(ccv_dense_matrix_t* mat, char* out, int* len, int type, void* conf)
+	int ccv_write(ccv_dense_matrix_t *mat, char *out, int *len, int type, void *conf)
 
 Write image to a file. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG write support.
 
- * **mat**: the input image.
- * **out**: the file name.
- * **len**: the output bytes.
+ * **mat**: The input image.
+ * **out**: The file name.
+ * **len**: The output bytes.
  * **type**: CCV\_IO\_PNG\_FILE, save to PNG format. CCV\_IO\_JPEG\_FILE, save to JPEG format.
  * **conf**: configuration.
+
+ccv\_read
+---------
+
+	int ccv_read(const char *in, ccv_dense_matrix_t **x, int type)
+
+Read image from a file. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
+
+ * **in**: The file name.
+ * **x**: The output image.
+ * **type**: CCV\_IO\_ANY\_FILE, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
+
+ccv\_read
+---------
+
+	int ccv_read(const void *data, ccv_dense_matrix_t **x, int type, int size)
+
+Read image from a a region of memory that conforms a specific image format. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
+
+ * **data**: The data memory.
+ * **x**: The output image.
+ * **type**: CCV\_IO\_ANY\_STREAM, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
+ * **size**: The size of that data memory region.
+
+ccv\_read
+---------
+
+	int ccv_read(const void *data, ccv_dense_matrix_t **x, int type, int rows, int cols, int scanline)
+
+Read image from a region of memory that assumes specific layout (RGB, GRAY, BGR, RGBA, ARGB, RGBA, ABGR, BGRA). By default, this method will create a matrix and copy data over to that matrix. With CCV\_IO\_NO\_COPY, it will create a matrix that has data block pointing to the original data memory region. It is your responsibility to release that data memory at an appropriate time after release the matrix.
+
+ * **data**: The data memory.
+ * **x**: The output image.
+ * **type**: CCV\_IO\_ANY\_RAW, CCV\_IO\_RGB\_RAW, CCV\_IO\_BGR\_RAW, CCV\_IO\_RGBA\_RAW, CCV\_IO\_ARGB\_RAW, CCV\_IO\_BGRA\_RAW, CCV\_IO\_ABGR\_RAW, CCV\_IO\_GRAY\_RAW. These in conjunction can be used with CCV\_IO\_NO\_COPY.
+ * **rows**: How many rows in the given data memory region.
+ * **cols**: How many columns in the given data memory region.
+ * **scanline**: The size of a single column in the given data memory region (or known as "bytes per row").

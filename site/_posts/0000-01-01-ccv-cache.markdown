@@ -9,63 +9,87 @@ categories:
 - lib
 ---
 
-This class implements a trie-based LRU cache that is then used for ccv application-wide cache in [ccv\_memory.c](/lib/ccv-memory).
+This class implements a trie-based lru cache that is then used for ccv application-wide cache in [ccv_memory.c](/lib/ccv-memory).
 
-ccv_cache_init
---------------
+ccv\_cache\_init
+----------------
 
-	void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up)
+	void ccv_cache_init(ccv_cache_t *cache, size_t up, int cache_types, ccv_cache_index_free_f ffree,...)
 
 Setup a cache strcture to work with.
 
- * **cache**: the allocated cache.
- * **ffree**: the function that will be used to free cached object.
- * **up**: the upper limit of cache size in bytes.
+ * **cache**: The allocated cache.
+ * **up**: The upper limit of cache size in bytes.
+ * **cache\_types**: The number of cache types in this one cache instance.
+ * **ffree**: The function that will be used to free cached object.
 
-ccv_cache_get
--------------
+ccv\_cache\_get
+---------------
 
-	void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
+	void* ccv_cache_get(ccv_cache_t *cache, uint64_t sign, uint8_t *type)
 
 Get an object from cache for its signature. 0 if cannot find the object.
 
- * **cache**: the cache.
- * **sign**: the signature.
+ * **cache**: The cache.
+ * **sign**: The signature.
+ * **type**: The type of the object.
 
-ccv_cache_out
--------------
+**return**: The pointer to the object.
 
-	void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
+ccv\_cache\_put
+---------------
+
+	int ccv_cache_put(ccv_cache_t *cache, uint64_t sign, void *x, uint32_t size, uint8_t type)
+
+Put an object to cache with its signature, size, and type
+
+ * **cache**: The cache.
+ * **sign**: The signature.
+ * **x**: The pointer to the object.
+ * **size**: The size of the object.
+ * **type**: The type of the object.
+
+**return**: 0 - success, 1 - replace, -1 - failure.
+
+ccv\_cache\_out
+---------------
+
+	void* ccv_cache_out(ccv_cache_t *cache, uint64_t sign, uint8_t *type)
 
 Get an object from cache for its signature and then remove that object from the cache. 0 if cannot find the object.
 
- * **cache**: the cache.
- * **sign**: the signature.
+ * **cache**: The cache.
+ * **sign**: The signature.
+ * **type**: The type of the object.
 
-ccv_cache_delete
-----------------
+**return**: The pointer to the object.
 
-	int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
+ccv\_cache\_delete
+------------------
 
-Delete an object from cache for its signature and free it. Return -1 if cannot find the object, otherwise return 0.
+	int ccv_cache_delete(ccv_cache_t *cache, uint64_t sign)
 
- * **cache**: the cache.
- * **sign**: the signature.
+Delete an object from cache for its signature and free it.
 
-ccv_cache_cleanup
------------------
+ * **cache**: The cache.
+ * **sign**: The signature.
 
-	void ccv_cache_cleanup(ccv_cache_t* cache)
+**return**: -1 if cannot find the object, otherwise return 0.
+
+ccv\_cache\_cleanup
+-------------------
+
+	void ccv_cache_cleanup(ccv_cache_t *cache)
 
 Clean up the cache, free all objects inside and other memory space occupied.
 
- * **cache**: the cache.
+ * **cache**: The cache.
 
-ccv_cache_close
----------------
+ccv\_cache\_close
+-----------------
 
-	void ccv_cache_close(ccv_cache_t* cache)
+	void ccv_cache_close(ccv_cache_t *cache)
 
 For current implementation (trie-based LRU cache), it is an alias for ccv\_cache\_cleanup.
 
- * **cache**: the cache.
+ * **cache**: The cache.

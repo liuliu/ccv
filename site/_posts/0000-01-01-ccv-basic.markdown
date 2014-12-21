@@ -11,54 +11,54 @@ categories:
 
 The utilities in this file provides basic pre-processing which, most-likely, are the first steps for computer vision algorithms.
 
-ccv_sobel
----------
+ccv\_sobel
+----------
 
-	void ccv_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int dx, int dy)
+	void ccv_sobel(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, int dx, int dy)
 
-Compute image with [Sobel operator](https://en.wikipedia.org/wiki/Sobel_operator).
+Compute image with [Sobel operator](https://en.wikipedia.org/wiki/Sobel\_operator).
 
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * **dx**: the window size of Sobel operator on x-axis, specially optimized for 1, 3
- * **dy**: the window size of Sobel operator on y-axis, specially optimized for 1, 3
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **dx**: The window size of Sobel operator on x-axis, specially optimized for 1, 3
+ * **dy**: The window size of Sobel operator on y-axis, specially optimized for 1, 3
 
-ccv_gradient
-------------
+ccv\_gradient
+-------------
 
-	void ccv_gradient(ccv_dense_matrix_t* a, ccv_dense_matrix_t** theta, int ttype, ccv_dense_matrix_t** m, int mtype, int dx, int dy)
+	void ccv_gradient(ccv_dense_matrix_t *a, ccv_dense_matrix_t **theta, int ttype, ccv_dense_matrix_t **m, int mtype, int dx, int dy)
 
 Compute the gradient (angle and magnitude) at each pixel.
 
- * **a**: the input matrix.
- * **theta**: the output matrix of angle at each pixel.
- * **ttype**: the type of output matrix, if 0, ccv will defaults to CCV\_32F.
- * **m**: the output matrix of magnitude at each pixel.
- * **mtype**: the type of output matrix, if 0, ccv will defaults to CCV\_32F.
- * **dx**: the window size of the underlying Sobel operator used on x-axis, specially optimized for 1, 3
- * **dy**: the window size of the underlying Sobel operator used on y-axis, specially optimized for 1, 3
+ * **a**: The input matrix.
+ * **theta**: The output matrix of angle at each pixel.
+ * **ttype**: The type of output matrix, if 0, ccv will defaults to CCV\_32F.
+ * **m**: The output matrix of magnitude at each pixel.
+ * **mtype**: The type of output matrix, if 0, ccv will defaults to CCV\_32F.
+ * **dx**: The window size of the underlying Sobel operator used on x-axis, specially optimized for 1, 3
+ * **dy**: The window size of the underlying Sobel operator used on y-axis, specially optimized for 1, 3
 
-ccv_flip
---------
+ccv\_flip
+---------
 
-	void ccv_flip(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int type)
+	void ccv_flip(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int btype, int type)
 
 Flip the matrix by x-axis, y-axis or both.
 
- * **a**: the input matrix.
- * **b**: the output matrix (it is in-place safe).
- * **btype**: the type of output matrix, if 0, ccv will use the sample type as the input matrix.
+ * **a**: The input matrix.
+ * **b**: The output matrix (it is in-place safe).
+ * **btype**: The type of output matrix, if 0, ccv will use the sample type as the input matrix.
  * **type**: CCV\_FLIP\_X - flip around x-axis, CCV\_FLIP\_Y - flip around y-axis.
 
-ccv_blur
---------
+ccv\_blur
+---------
 
-	void ccv_blur(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, double sigma)
+	void ccv_blur(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, double sigma)
 
-Using [Gaussian blur](https://en.wikipedia.org/wiki/Gaussian_blur) on a given matrix. It implements a O(n * sqrt(m)) algorithm, n is the size of input matrix, m is the size of Gaussian filtering kernel.
+Using [Gaussian blur](https://en.wikipedia.org/wiki/Gaussian\_blur) on a given matrix. It implements a O(n * sqrt(m)) algorithm, n is the size of input matrix, m is the size of Gaussian filtering kernel.
 
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * **sigma**: the sigma factor in Gaussian filtering kernel.
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **sigma**: The sigma factor in Gaussian filtering kernel.

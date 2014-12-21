@@ -9,24 +9,19 @@ categories:
 - lib
 ---
 
-ccv_daisy
----------
+ccv\_daisy
+----------
 
-	void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params)
+	void ccv_daisy(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, ccv_daisy_param_t params)
 
 [DAISY](http://cvlab.epfl.ch/publications/publications/2010/TolaLF10a.pdf) implementation. For more details - DAISY: An Efficient Dense Descriptor Applied to Wide-Baseline Stereo.
 
- * **a**: the input matrix.
- * **b**: the output matrix.
- * **type**: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
- * **params**: a **ccv\_daisy\_param\_t** structure that defines various aspect of the feature extractor.
+ * **a**: The input matrix.
+ * **b**: The output matrix.
+ * **type**: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.
+ * **params**: A **ccv\_daisy\_param\_t** structure that defines various aspect of the feature extractor.
 
-ccv_daisy_param_t
------------------
+ccv\_daisy\_param\_t
+--------------------
 
  * **radius**: the Gaussian radius.
- * **rad_q_no**:
- * **th_q_no**:
- * **hist_th_q_no**:
- * **normalize_threshold**:
- * **normalize_method**:
