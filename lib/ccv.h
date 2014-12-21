@@ -948,12 +948,12 @@ void ccv_solve(ccv_matrix_t* a, ccv_matrix_t* b, ccv_matrix_t** d, int type);
 void ccv_eigen(ccv_dense_matrix_t* a, ccv_dense_matrix_t** vector, ccv_dense_matrix_t** lambda, int type, double epsilon);
 
 typedef struct {
-	double interp;
-	double extrap;
-	int max_iter;
-	double ratio;
-	double rho;
-	double sig;
+	double interp; /**< Interpolate value. */
+	double extrap; /**< Extrapolate value. */
+	int max_iter; /**< Maximum iterations. */
+	double ratio; /**< Increase ratio. */
+	double rho; /**< Decrease ratio. */
+	double sig; /**< Sigma. */
 } ccv_minimize_param_t;
 
 extern const ccv_minimize_param_t ccv_minimize_default_params;
@@ -1342,18 +1342,29 @@ typedef struct {
 	int scale_invariant; /**< Enable scale invariant swt (to scale to different sizes and then combine the results) */
 	int direction; /**< SWT direction. (black to white or white to black). */
 	double same_word_thresh[2]; /**< Overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1) */
-	/** Canny parameters */
+	/**
+	 * @name Canny parameters
+	 * @{
+	 */
 	int size; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
 	int low_thresh; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
 	int high_thresh; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
-	/** Geometry filtering parameters */
+	/** @} */
+	/**
+	 * @name Geometry filtering parameters
+	 * @{
+	 */
 	int max_height; /**< The maximum height for a letter. */
 	int min_height; /**< The minimum height for a letter. */
 	int min_area; /**< The minimum occupied area for a letter. */
 	int letter_occlude_thresh;
 	double aspect_ratio; /**< The maximum aspect ratio for a letter. */
 	double std_ratio; /**< The inner-class standard derivation when grouping letters. */
-	/** Grouping parameters */
+	/** @} */
+	/**
+	 * @name Grouping parameters
+	 * @{
+	 */
 	double thickness_ratio; /**< The allowable thickness variance when grouping letters. */
 	double height_ratio; /**< The allowable height variance when grouping letters. */
 	int intensity_thresh; /**< The allowable intensity variance when grouping letters. */
@@ -1361,9 +1372,14 @@ typedef struct {
 	double intersect_ratio; /**< The allowable intersect variance when grouping letters. */
 	double elongate_ratio; /**< The allowable elongate variance when grouping letters. */
 	int letter_thresh; /**< The allowable letter threshold. */
-	/** Break textline into words */
+	/** @} */
+	/**
+	 * @name Break textline into words
+	 * @{
+	 */
 	int breakdown; /**< If breakdown text line into words. */
 	double breakdown_ratio; /**< Apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words. */
+	/** @} */
 } ccv_swt_param_t;
 
 extern const ccv_swt_param_t ccv_swt_default_params;
@@ -1658,22 +1674,41 @@ void ccv_ferns_free(ccv_ferns_t* ferns);
  */
 
 typedef struct {
-	/** Short-term lucas-kanade tracking parameters */
+	/**
+	 * @name Short-term lucas-kanade tracking parameters
+	 * @{
+	 */
 	ccv_size_t win_size; /**< The window size to compute optical flow. */
 	int level; /**< Level of image pyramids */
 	float min_eigen; /**< The minimal eigenvalue for a valid optical flow computation */
 	float min_forward_backward_error; /**< The minimal forward backward error */
-	/** Image pyramid generation parameters (for scale-invariant object detection) */
+	/** @} */
+	/**
+	 * @name Image pyramid generation parameters (for scale-invariant object detection)
+	 * @{
+	 */
 	int interval; /**< How many intermediate images in between each image pyramid level (from width => width / 2) */
 	float shift; /**< How much steps sliding window should move */
-	/** Samples generation parameters */
+	/** @} */
+	/**
+	 * @name Samples generation parameters
+	 * @{
+	 */
 	int min_win; /**< The minimal window size of patches for detection */
 	float include_overlap; /**< Above this threshold, a bounding box will be positively identified as overlapping with target */
 	float exclude_overlap; /**< Below this threshold, a bounding box will be positively identified as not overlapping with target */
-	/** Ferns classifier parameters */
+	/** @} */
+	/**
+	 * @name Ferns classifier parameters
+	 * @{
+	 */
 	int structs; /**< How many ferns in the classifier */
 	int features; /**< How many features for each fern */
-	/** Nearest neighbor classifier parameters */
+	/** @} */
+	/**
+	 * @name Nearest neighbor classifier parameters
+	 * @{
+	 */
 	float validate_set; /**< For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number */
 	float nnc_same; /**< Above this threshold, a given patch will be identified as the same */
 	float nnc_thres; /**< The initial threshold for positively recognize a patch */
@@ -1681,7 +1716,11 @@ typedef struct {
 	float nnc_beyond; /**< The upper bound threshold for adaptive computed threshold */
 	float nnc_collect; /**< The threshold that a negative patch above this will be collected as negative example */
 	int bad_patches; /**< How many patches should be evaluated in initialization to collect enough negative examples */
-	/** Deformation parameters to apply perspective transforms on patches for robustness */
+	/** @} */
+	/**
+	 * @name Deformation parameters to apply perspective transforms on patches for robustness
+	 * @{
+	 */
 	int new_deform; /**< Number of deformations should be applied at initialization */
 	int track_deform; /**< Number of deformations should be applied at running time */
 	float new_deform_angle; /**< The maximal angle for x, y and z axis rotation at initialization */
@@ -1690,12 +1729,17 @@ typedef struct {
 	float track_deform_scale; /**< The maximal scale for the deformation at running time */
 	float new_deform_shift; /**< The maximal shift for the deformation at initialization */
 	float track_deform_shift; /**< The maximal shift for the deformation at running time */
-	/** Speed up parameters */
+	/** @} */
+	/**
+	 * @name Speed up parameters
+	 * @{
+	 */
 	int top_n; /**< Only keep these much positive detections when applying ferns classifier */
 	/* speed up technique, instead of running slide window at
 	 * every frame, we will rotate them, for example, slide window 1
 	 * only gets examined at frame % rotation == 1 */
 	int rotation; /**< When >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames. */
+	/** @} */
 } ccv_tld_param_t;
 
 extern const ccv_tld_param_t ccv_tld_default_params;

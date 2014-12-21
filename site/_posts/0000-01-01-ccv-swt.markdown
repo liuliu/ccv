@@ -24,28 +24,39 @@ Compute the Stroke-Width-Transform image.
 ccv\_swt\_param\_t
 ------------------
 
+Canny parameters
+
+ * **high\_thresh**: Parameters for [Canny edge detector](/lib/ccv-classic).
+ * **low\_thresh**: Parameters for [Canny edge detector](/lib/ccv-classic).
+ * **size**: Parameters for [Canny edge detector](/lib/ccv-classic).
+
+Geometry filtering parameters
+
  * **aspect\_ratio**: The maximum aspect ratio for a letter.
- * **breakdown**: Break textline into words If breakdown text line into words.
- * **breakdown\_ratio**: Apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words.
- * **direction**: SWT direction. (black to white or white to black).
+ * **max\_height**: The maximum height for a letter.
+ * **min\_area**: The minimum occupied area for a letter.
+ * **min\_height**: The minimum height for a letter.
+ * **std\_ratio**: The inner-class standard derivation when grouping letters.
+
+Grouping parameters
+
  * **distance\_ratio**: The allowable distance variance when grouping letters.
  * **elongate\_ratio**: The allowable elongate variance when grouping letters.
  * **height\_ratio**: The allowable height variance when grouping letters.
- * **high\_thresh**: Parameters for [Canny edge detector](/lib/ccv-classic).
  * **intensity\_thresh**: The allowable intensity variance when grouping letters.
  * **intersect\_ratio**: The allowable intersect variance when grouping letters.
- * **interval**: Intervals for scale invariant option.
  * **letter\_thresh**: The allowable letter threshold.
- * **low\_thresh**: Parameters for [Canny edge detector](/lib/ccv-classic).
- * **max\_height**: Geometry filtering parameters The maximum height for a letter.
- * **min\_area**: The minimum occupied area for a letter.
- * **min\_height**: The minimum height for a letter.
+ * **thickness\_ratio**: The allowable thickness variance when grouping letters.
+
+Break textline into words
+
+ * **breakdown**: If breakdown text line into words.
+ * **breakdown\_ratio**: Apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words.
+ * **direction**: SWT direction. (black to white or white to black).
+ * **interval**: Intervals for scale invariant option.
  * **min\_neighbors**: Minimal neighbors to make a detection valid, this is for scale-invariant version.
  * **same\_word\_thresh**: Overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1)
  * **scale\_invariant**: Enable scale invariant swt (to scale to different sizes and then combine the results)
- * **size**: Canny parameters Parameters for [Canny edge detector](/lib/ccv-classic).
- * **std\_ratio**: The inner-class standard derivation when grouping letters.
- * **thickness\_ratio**: Grouping parameters The allowable thickness variance when grouping letters.
 
 ccv\_swt\_detect\_words
 -----------------------

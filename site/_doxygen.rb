@@ -63,41 +63,54 @@ def output_struct file, structname, doc_group
 	structs = Set.new
 	compoundname = doc_group.at('./compoundname').content.strip
 	return structs unless compoundname == structname
-	variables = doc_group.xpath ".//memberdef[@kind='variable']"
-	available_desc = false
-	variables.each do |variable|
-		para = variable.at './detaileddescription/para'
-		available_desc = true if para != nil
-		break if available_desc
-	end
-	# return if no available desc anywhere
-	return structs if !available_desc
-	compoundname = markdown_safe compoundname
-	file << "\n" + compoundname + "\n" + ('-' * compoundname.length) + "\n\n"
-	vars = Hash.new
-	variables.each do |variable|
-		paras = variable.xpath './detaileddescription/para'
-		next if paras.length == 0
-		paras.each do |para|
-			desc = para.content.strip
-			alt_name = alt_name desc
-			desc = desc.sub('[' + alt_name + ']', '').strip if alt_name != nil
-			merge_structs structs, desc
-			name =
-				if alt_name != nil
-					markdown_safe alt_name.strip
-				else
-					markdown_safe variable.at('./name').content
-				end
-			desc = markdown_safe desc
-			vars[name] = desc if !vars.has_key?(name)
+	sections = doc_group.xpath './sectiondef'
+	first_struct = true
+	sections.each do |section|
+		variables = section.xpath "./memberdef[@kind='variable']"
+		available_desc = false
+		variables.each do |variable|
+			para = variable.at './detaileddescription/para'
+			available_desc = true if para != nil
+			break if available_desc
 		end
+		# next section if no available desc anywhere
+		next if !available_desc
+		if first_struct
+			# if we haven't print the name of the struct yet, print it now
+			compoundname = markdown_safe compoundname
+			file << "\n" + compoundname + "\n" + ('-' * compoundname.length) + "\n\n"
+			header = section.at './header'
+			file << header.content.strip + "\n\n" if header != nil
+			first_struct = false
+		else
+			header = section.at './header'
+			file << "\n" + header.content.strip + "\n\n" if header != nil
+		end
+		vars = Hash.new
+		variables.each do |variable|
+			paras = variable.xpath './detaileddescription/para'
+			next if paras.length == 0
+			paras.each do |para|
+				desc = para.content.strip
+				alt_name = alt_name desc
+				desc = desc.sub('[' + alt_name + ']', '').strip if alt_name != nil
+				merge_structs structs, desc
+				name =
+					if alt_name != nil
+						markdown_safe alt_name.strip
+					else
+						markdown_safe variable.at('./name').content
+					end
+				desc = markdown_safe desc
+				vars[name] = desc if !vars.has_key?(name)
+			end
+		end
+		vars_a = Array.new
+		vars.each do |name, desc|
+			vars_a << ' * **' + name + '**: ' + desc
+		end
+		file << vars_a.sort.join("\n") + "\n"
 	end
-	vars_a = Array.new
-	vars.each do |name, desc|
-		vars_a << ' * **' + name + '**: ' + desc
-	end
-	file << vars_a.sort.join("\n") + "\n"
 	return structs
 end
 

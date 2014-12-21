@@ -25,34 +25,54 @@ Create a new TLD tracking instance from a given first frame image and the tracki
 ccv\_tld\_param\_t
 ------------------
 
- * **bad\_patches**: How many patches should be evaluated in initialization to collect enough negative examples
- * **exclude\_overlap**: Below this threshold, a bounding box will be positively identified as not overlapping with target
- * **features**: How many features for each fern
- * **include\_overlap**: Above this threshold, a bounding box will be positively identified as overlapping with target
- * **interval**: Image pyramid generation parameters (for scale-invariant object detection) How many intermediate images in between each image pyramid level (from width => width / 2)
+Short-term lucas-kanade tracking parameters
+
  * **level**: Level of image pyramids
  * **min\_eigen**: The minimal eigenvalue for a valid optical flow computation
  * **min\_forward\_backward\_error**: The minimal forward backward error
- * **min\_win**: Samples generation parameters The minimal window size of patches for detection
- * **new\_deform**: Deformation parameters to apply perspective transforms on patches for robustness Number of deformations should be applied at initialization
- * **new\_deform\_angle**: The maximal angle for x, y and z axis rotation at initialization
- * **new\_deform\_scale**: The maximal scale for the deformation at initialization
- * **new\_deform\_shift**: The maximal shift for the deformation at initialization
+ * **win\_size**: The window size to compute optical flow.
+
+Image pyramid generation parameters (for scale-invariant object detection)
+
+ * **interval**: How many intermediate images in between each image pyramid level (from width => width / 2)
+ * **shift**: How much steps sliding window should move
+
+Samples generation parameters
+
+ * **exclude\_overlap**: Below this threshold, a bounding box will be positively identified as not overlapping with target
+ * **include\_overlap**: Above this threshold, a bounding box will be positively identified as overlapping with target
+ * **min\_win**: The minimal window size of patches for detection
+
+Ferns classifier parameters
+
+ * **features**: How many features for each fern
+ * **structs**: How many ferns in the classifier
+
+Nearest neighbor classifier parameters
+
+ * **bad\_patches**: How many patches should be evaluated in initialization to collect enough negative examples
  * **nnc\_beyond**: The upper bound threshold for adaptive computed threshold
  * **nnc\_collect**: The threshold that a negative patch above this will be collected as negative example
  * **nnc\_same**: Above this threshold, a given patch will be identified as the same
  * **nnc\_thres**: The initial threshold for positively recognize a patch
  * **nnc\_verify**: The threshold for a tracking result from short-term tracker be verified as a positive detection
- * **rotation**: When >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.
- * **shift**: How much steps sliding window should move
- * **structs**: Ferns classifier parameters How many ferns in the classifier
- * **top\_n**: Speed up parameters Only keep these much positive detections when applying ferns classifier
+ * **validate\_set**: For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number
+
+Deformation parameters to apply perspective transforms on patches for robustness
+
+ * **new\_deform**: Number of deformations should be applied at initialization
+ * **new\_deform\_angle**: The maximal angle for x, y and z axis rotation at initialization
+ * **new\_deform\_scale**: The maximal scale for the deformation at initialization
+ * **new\_deform\_shift**: The maximal shift for the deformation at initialization
  * **track\_deform**: Number of deformations should be applied at running time
  * **track\_deform\_angle**: The maximal angle for x, y and z axis rotation at running time
  * **track\_deform\_scale**: The maximal scale for the deformation at running time
  * **track\_deform\_shift**: The maximal shift for the deformation at running time
- * **validate\_set**: Nearest neighbor classifier parameters For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number
- * **win\_size**: Short-term lucas-kanade tracking parameters The window size to compute optical flow.
+
+Speed up parameters
+
+ * **rotation**: When >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.
+ * **top\_n**: Only keep these much positive detections when applying ferns classifier
 
 ccv\_tld\_track\_object
 -----------------------

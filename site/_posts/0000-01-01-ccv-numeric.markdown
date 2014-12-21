@@ -23,6 +23,16 @@ Linear-search to minimize function with partial derivatives. It is formed after 
  * **params**: A **ccv\_minimize\_param\_t** structure that defines various aspect of the minimize function.
  * **data**: Any extra user data.
 
+ccv\_minimize\_param\_t
+-----------------------
+
+ * **extrap**: Extrapolate value.
+ * **interp**: Interpolate value.
+ * **max\_iter**: Maximum iterations.
+ * **ratio**: Increase ratio.
+ * **rho**: Decrease ratio.
+ * **sig**: Sigma.
+
 ccv\_filter
 -----------
 
