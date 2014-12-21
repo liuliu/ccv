@@ -150,7 +150,7 @@ typedef void ccv_matrix_t;
 
 /**
  * @defgroup ccv_cache cache mechanism
- * This class implements a trie-based LRU cache that is then used for ccv application-wide cache in [ccv\_memory.c](/lib/ccv-memory).
+ * This class implements a trie-based LRU cache that is then used for ccv application-wide cache in [ccv_memory.c](/lib/ccv-memory).
  * @{
  */
 
