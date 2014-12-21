@@ -32,48 +32,48 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_resample.c</h1>
 <h2 id="ccvresample">ccv_resample</h2>
 
-<pre><code>void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int rows, int cols, int type)
+<pre><code>void ccv_resample(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int btype, int rows, int cols, int type)
 </code></pre>
 
 <p>Resample a given matrix to different size, as for now, ccv only supports either downsampling (with CCV_INTER_AREA) or upsampling (with CCV_INTER_CUBIC).</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>btype</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-  <li><strong>rows</strong>: the new row.</li>
-  <li><strong>cols</strong>: the new column.</li>
-  <li><strong>type</strong>: for now, ccv supports CCV_INTER_AREA, which is an extension to <a href="https://en.wikipedia.org/wiki/Bilinear_filtering">bilinear resampling</a> for downsampling and CCV_INTER_CUBIC <a href="https://en.wikipedia.org/wiki/Bicubic_interpolation">bicubic resampling</a> for upsampling.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>btype</strong>: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>rows</strong>: The new row.</li>
+  <li><strong>cols</strong>: The new column.</li>
+  <li><strong>type</strong>: For now, ccv supports CCV_INTER_AREA, which is an extension to <a href="https://en.wikipedia.org/wiki/Bilinear\_filtering">bilinear resampling</a> for downsampling and CCV_INTER_CUBIC <a href="https://en.wikipedia.org/wiki/Bicubic\_interpolation">bicubic resampling</a> for upsampling.</li>
 </ul>
 
 <h2 id="ccvsampledown">ccv_sample_down</h2>
 
-<pre><code>void ccv_sample_down(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
+<pre><code>void ccv_sample_down(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, int src_x, int src_y)
 </code></pre>
 
-<p>Downsample a given matrix to exactly half size with a <a href="https://en.wikipedia.org/wiki/Gaussian_filter">Gaussian filter</a>. The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).</p>
+<p>Downsample a given matrix to exactly half size with a <a href="https://en.wikipedia.org/wiki/Gaussian\_filter">Gaussian filter</a>. The half size is approximated by floor(rows * 0.5) x floor(cols * 0.5).</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-  <li><strong>src_x</strong>: shift the start point by src_x.</li>
-  <li><strong>src_y</strong>: shift the start point by src_y.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>type</strong>: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>src_x</strong>: Shift the start point by src_x.</li>
+  <li><strong>src_y</strong>: Shift the start point by src_y.</li>
 </ul>
 
 <h2 id="ccvsampleup">ccv_sample_up</h2>
 
-<pre><code>void ccv_sample_up(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int src_x, int src_y)
+<pre><code>void ccv_sample_up(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, int src_x, int src_y)
 </code></pre>
 
-<p>Upsample a given matrix to exactly double size with a <a href="https://en.wikipedia.org/wiki/Gaussian_filter">Gaussian filter</a>.</p>
+<p>Upsample a given matrix to exactly double size with a <a href="https://en.wikipedia.org/wiki/Gaussian\_filter">Gaussian filter</a>.</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-  <li><strong>src_x</strong>: shift the start point by src_x.</li>
-  <li><strong>src_y</strong>: shift the start point by src_y.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>type</strong>: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>src_x</strong>: Shift the start point by src_x.</li>
+  <li><strong>src_y</strong>: Shift the start point by src_y.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

@@ -32,19 +32,19 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_transform.c</h1>
 <h2 id="ccvdecimalslice">ccv_decimal_slice</h2>
 
-<pre><code>void ccv_decimal_slice(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float y, float x, int rows, int cols)
+<pre><code>void ccv_decimal_slice(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, float y, float x, int rows, int cols)
 </code></pre>
 
 <p>Similar to ccv_slice, it will slice a given matrix into required rows / cols, but it will interpolate the value with bilinear filter if x and y is non-integer.</p>
 
 <ul>
-  <li><strong>a</strong>: the given matrix that will be sliced</li>
-  <li><strong>b</strong>: the output matrix</li>
-  <li><strong>type</strong>: the type of output matrix</li>
-  <li><strong>y</strong>: the top point to slice</li>
-  <li><strong>x</strong>: the left point to slice</li>
-  <li><strong>rows</strong>: the number of rows for destination matrix</li>
-  <li><strong>cols</strong>: the number of cols for destination matrix</li>
+  <li><strong>a</strong>: The given matrix that will be sliced</li>
+  <li><strong>b</strong>: The output matrix</li>
+  <li><strong>type</strong>: The type of output matrix</li>
+  <li><strong>y</strong>: The top point to slice</li>
+  <li><strong>x</strong>: The left point to slice</li>
+  <li><strong>rows</strong>: The number of rows for destination matrix</li>
+  <li><strong>cols</strong>: The number of cols for destination matrix</li>
 </ul>
 
 <h2 id="ccvperspectivetransformapply">ccv_perspective_transform_apply</h2>
@@ -52,26 +52,26 @@ _gaq.push(['_trackPageview']);
 <pre><code>ccv_decimal_point_t ccv_perspective_transform_apply(ccv_decimal_point_t point, ccv_size_t size, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
 </code></pre>
 
-<p>Apply a <a href="https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection">3D transform</a> against the given point in a given image size, assuming field of view is 60 (in degree).</p>
+<p>Apply a <a href="https://en.wikipedia.org/wiki/Perspective\_transform#Perspective\_projection">3D transform</a> against the given point in a given image size, assuming field of view is 60 (in degree).</p>
 
 <ul>
-  <li><strong>point</strong>: the point to be transformed in decimal</li>
-  <li><strong>size</strong>: the image size</li>
-  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: the transformation matrix</li>
+  <li><strong>point</strong>: The point to be transformed in decimal</li>
+  <li><strong>size</strong>: The image size</li>
+  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: The transformation matrix</li>
 </ul>
 
 <h2 id="ccvperspectivetransform">ccv_perspective_transform</h2>
 
-<pre><code>void ccv_perspective_transform(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
+<pre><code>void ccv_perspective_transform(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, float m00, float m01, float m02, float m10, float m11, float m12, float m20, float m21, float m22)
 </code></pre>
 
-<p>Appy a <a href="https://en.wikipedia.org/wiki/Perspective_transform#Perspective_projection">3D transform</a> on a given matrix, assuming field of view is 60 (in degree).</p>
+<p>Apply a <a href="https://en.wikipedia.org/wiki/Perspective\_transform#Perspective\_projection">3D transform</a> on a given matrix, assuming field of view is 60 (in degree).</p>
 
 <ul>
-  <li><strong>a</strong>: the given matrix to be transformed</li>
-  <li><strong>b</strong>: the output matrix</li>
-  <li><strong>type</strong>: the type of output matrix</li>
-  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: the transformation matrix</li>
+  <li><strong>a</strong>: The given matrix to be transformed</li>
+  <li><strong>b</strong>: The output matrix</li>
+  <li><strong>type</strong>: The type of output matrix</li>
+  <li><strong>m00, m01, m02, m10, m11, m12, m20, m21, m22</strong>: The transformation matrix</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

@@ -32,87 +32,92 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_dpm.c</h1>
 <h2 id="ccvdpmmixturemodelnew">ccv_dpm_mixture_model_new</h2>
 
-<pre><code>void ccv_dpm_mixture_model_new(char** posfiles, ccv_rect_t* bboxes, int posnum, char** bgfiles, int bgnum, int negnum, const char* dir, ccv_dpm_new_param_t params)
+<pre><code>void ccv_dpm_mixture_model_new(char **posfiles, ccv_rect_t *bboxes, int posnum, char **bgfiles, int bgnum, int negnum, const char *dir, ccv_dpm_new_param_t params)
 </code></pre>
 
 <p>Create a new DPM mixture model from given positive examples and background images. This function has hard dependencies on <a href="http://www.gnu.org/software/gsl/">GSL</a> and <a href="http://www.csie.ntu.edu.tw/~cjlin/liblinear/">LibLinear</a>.</p>
 
 <ul>
-  <li><strong>posfiles</strong>: an array of positive images.</li>
-  <li><strong>bboxes</strong>: an array of bounding boxes for positive images.</li>
-  <li><strong>posnum</strong>: number of positive examples.</li>
-  <li><strong>bgfiles</strong>: an array of background images.</li>
-  <li><strong>bgnum</strong>: number of background images.</li>
-  <li><strong>negnum</strong>: number of negative examples that is harvested from background images.</li>
-  <li><strong>dir</strong>: the working directory to store/retrieve intermediate data.</li>
-  <li><strong>params</strong>: a <strong>ccv_dpm_new_param_t</strong> structure that defines various aspects of the training function.</li>
+  <li><strong>posfiles</strong>: An array of positive images.</li>
+  <li><strong>bboxes</strong>: An array of bounding boxes for positive images.</li>
+  <li><strong>posnum</strong>: Number of positive examples.</li>
+  <li><strong>bgfiles</strong>: An array of background images.</li>
+  <li><strong>bgnum</strong>: Number of background images.</li>
+  <li><strong>negnum</strong>: Number of negative examples that is harvested from background images.</li>
+  <li><strong>dir</strong>: The working directory to store/retrieve intermediate data.</li>
+  <li><strong>params</strong>: A <strong>ccv_dpm_new_param_t</strong> structure that defines various aspects of the training function.</li>
 </ul>
 
 <h2 id="ccvdpmnewparamt">ccv_dpm_new_param_t</h2>
 
 <ul>
-  <li><strong>components</strong>: the number of root filters in the mixture model.</li>
-  <li><strong>parts</strong>: the number of part filters for each root filter.</li>
-  <li><strong>grayscale</strong>: whether to exploit color in a given image.</li>
-  <li><strong>symmetric</strong>: whether to exploit symmetric property of the object.</li>
-  <li><strong>min_area</strong>: the minimum area that one part classifier can occupy.</li>
-  <li><strong>max_area</strong>: the maximum area that one part classifier can occupy.</li>
-  <li><strong>iterations</strong>: how many iterations needed for stochastic gradient descent.</li>
-  <li><strong>data_minings</strong>: how many data mining procedures are needed for discovering hard examples.</li>
-  <li><strong>relabels</strong>: how many relabel procedures are needed.</li>
-  <li><strong>negative_cache_size</strong>: the cache size for negative examples.</li>
-  <li><strong>include_overlap</strong>: the percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object.</li>
-  <li><strong>alpha</strong>: the step size for stochastic gradient descent.</li>
-  <li><strong>alpha_ratio</strong>: decrease the step size for each iteration.</li>
-  <li><strong>balance</strong>: to balance the weight of positive examples and negative examples.</li>
   <li><strong>C</strong>: C in SVM.</li>
-  <li><strong>percentile_breakdown</strong>: the percentile use for breakdown threshold.</li>
-  <li><strong>detector</strong>: a <strong>ccv_dpm_params_t</strong> structure that will be used to search positive examples and negative examples from background images.</li>
+  <li><strong>alpha</strong>: The step size for stochastic gradient descent.</li>
+  <li><strong>alpha_ratio</strong>: Decrease the step size for each iteration. 0.85 is a reasonable number.</li>
+  <li><strong>balance</strong>: To balance the weight of positive examples and negative examples. 1.5 is a reasonable number.</li>
+  <li><strong>components</strong>: The number of root filters in the mixture model.</li>
+  <li><strong>data_minings</strong>: How many data mining procedures are needed for discovering hard examples.</li>
+  <li><strong>detector</strong>: A <strong>ccv_dpm_params_t</strong> structure that will be used to search positive examples and negative examples from background images.</li>
+  <li><strong>grayscale</strong>: Whether to exploit color in a given image.</li>
+  <li><strong>include_overlap</strong>: The percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object. 0.7 is a reasonable number.</li>
+  <li><strong>iterations</strong>: How many iterations needed for stochastic gradient descent.</li>
+  <li><strong>max_area</strong>: The maximum area that one part classifier can occupy. 5000 is a reasonable number.</li>
+  <li><strong>min_area</strong>: The minimum area that one part classifier can occupy, 3000 is a reasonable number.</li>
+  <li><strong>negative_cache_size</strong>: The cache size for negative examples. 1000 is a reasonable number.</li>
+  <li><strong>parts</strong>: The number of part filters for each root filter.</li>
+  <li><strong>percentile_breakdown</strong>: The percentile use for breakdown threshold. 0.05 is the default.</li>
+  <li><strong>relabels</strong>: How many relabel procedures are needed.</li>
+  <li><strong>root_relabels</strong>: How many relabel procedures for root classifier are needed.</li>
+  <li><strong>symmetric</strong>: Whether to exploit symmetric property of the object.</li>
 </ul>
 
 <h2 id="ccvdpmdetectobjects">ccv_dpm_detect_objects</h2>
 
-<pre><code>ccv_array_t* ccv_dpm_detect_objects(ccv_dense_matrix_t* a, ccv_dpm_mixture_model_t** _model, int count, ccv_dpm_param_t params)
+<pre><code>ccv_dpm_detect_objects(ccv_dense_matrix_t *a, ccv_dpm_mixture_model_t **model, int count, ccv_dpm_param_t params)
 </code></pre>
 
 <p>Using a DPM mixture model to detect objects in a given image. If you have several DPM mixture models, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
 
 <ul>
-  <li><strong>a</strong>: the input image.</li>
-  <li><strong>model</strong>: an array of mixture models.</li>
-  <li><strong>count</strong>: how many mixture models you’ve passed in.</li>
-  <li><strong>params</strong>: a <strong>ccv_dpm_param_t</strong> structure that defines various aspects of the detector.</li>
+  <li><strong>a</strong>: The input image.</li>
+  <li><strong>model</strong>: An array of mixture models.</li>
+  <li><strong>count</strong>: How many mixture models you’ve passed in.</li>
+  <li><strong>params</strong>: A <strong>ccv_dpm_param_t</strong> structure that defines various aspects of the detector.</li>
 </ul>
+
+<p><strong>return</strong>: A <strong>ccv_array_t</strong> of <strong>ccv_root_comp_t</strong> that contains the root bounding box as well as its parts.</p>
 
 <h2 id="ccvdpmparamt">ccv_dpm_param_t</h2>
 
 <ul>
-  <li><strong>interval</strong>: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
-  <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
   <li><strong>flags</strong>: CCV_DPM_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object.</li>
-  <li><strong>threshold</strong>: the threshold the determines the acceptance of an object.</li>
+  <li><strong>interval</strong>: Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
+  <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
+  <li><strong>threshold</strong>: The threshold the determines the acceptance of an object.</li>
 </ul>
 
 <h2 id="ccvdpmreadmixturemodel">ccv_dpm_read_mixture_model</h2>
 
-<pre><code>ccv_dpm_mixture_model_t* ccv_dpm_read_mixture_model(const char* directory)
+<pre><code>ccv_dpm_read_mixture_model(const char *directory)
 </code></pre>
 
 <p>Read DPM mixture model from a model file.</p>
 
 <ul>
-  <li><strong>directory</strong>: the model file for DPM mixture model.</li>
+  <li><strong>directory</strong>: The model file for DPM mixture model.</li>
 </ul>
+
+<p><strong>return</strong>: A DPM mixture model, 0 if no valid DPM mixture model available.</p>
 
 <h2 id="ccvdpmmixturemodelfree">ccv_dpm_mixture_model_free</h2>
 
-<pre><code>void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t* model)
+<pre><code>void ccv_dpm_mixture_model_free(ccv_dpm_mixture_model_t *model)
 </code></pre>
 
 <p>Free up the memory of DPM mixture model.</p>
 
 <ul>
-  <li><strong>model</strong>: the DPM mixture model.</li>
+  <li><strong>model</strong>: The DPM mixture model.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

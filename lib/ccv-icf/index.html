@@ -32,107 +32,111 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_icf.c</h1>
 <h2 id="ccvicfclassifiercascadenew">ccv_icf_classifier_cascade_new</h2>
 
-<pre><code>ccv_icf_classifier_cascade_t* ccv_icf_classifier_cascade_new(ccv_array_t* posfiles, int posnum, ccv_array_t* bgfiles, int negnum, ccv_array_t* testfiles, const char* dir, ccv_icf_new_param_t params)
+<pre><code>ccv_icf_classifier_cascade_new(ccv_array_t *posfiles, int posnum, ccv_array_t *bgfiles, int negnum, ccv_array_t *testfiles, const char *dir, ccv_icf_new_param_t params)
 </code></pre>
 
 <p>Create a new ICF classifier cascade from given positive examples and background images. This function has a hard dependency on <a href="http://www.gnu.org/software/gsl/">GSL</a> and better be used with <a href="http://libdispatch.macosforge.org/">libdispatch</a> for maximum efficiency.</p>
 
 <ul>
-  <li><strong>posfiles</strong>: an array of <strong>ccv_file_info_t</strong> that gives the positive examples and their locations.</li>
-  <li><strong>posnum</strong>: the number of positive examples that we want to use (with certain random distortions if so choose).</li>
-  <li><strong>bgfiles</strong>: an array of <strong>ccv_file_info_t</strong> that gives the background images.</li>
-  <li><strong>negnum</strong>: the number of negative examples will be collected during bootstrapping / initialization.</li>
-  <li><strong>testfiles</strong>: an array of <strong>ccv_file_info_t</strong> that gives the validation examples and their locations.</li>
-  <li><strong>dir</strong>: the directory that saves the progress.</li>
-  <li><strong>params</strong>: a <strong>ccv_icf_new_param_t</strong> structure that defines various aspects of the training function.</li>
+  <li><strong>posfiles</strong>: An array of <strong>ccv_file_info_t</strong> that gives the positive examples and their locations.</li>
+  <li><strong>posnum</strong>: The number of positive examples that we want to use (with certain random distortions if so choose).</li>
+  <li><strong>bgfiles</strong>: An array of <strong>ccv_file_info_t</strong> that gives the background images.</li>
+  <li><strong>negnum</strong>: The number of negative examples will be collected during bootstrapping / initialization.</li>
+  <li><strong>testfiles</strong>: An array of <strong>ccv_file_info_t</strong> that gives the validation examples and their locations.</li>
+  <li><strong>dir</strong>: The directory that saves the progress.</li>
+  <li><strong>params</strong>: A <strong>ccv_icf_new_param_t</strong> structure that defines various aspects of the training function.</li>
 </ul>
+
+<p><strong>return</strong>: A trained classifier cascade.</p>
 
 <h2 id="ccvicfnewparamt">ccv_icf_new_param_t</h2>
 
 <ul>
-  <li><strong>grayscale</strong>: whether to exploit color in a given image.</li>
-  <li><strong>min_dimension</strong>: the minimal size of a ICF feature region.</li>
-  <li><strong>size</strong>: a <strong>ccv_size_t</strong> structure that defines the width and height of the classifier.</li>
-  <li><strong>margin</strong>: a <strong>ccv_margin_t</strong> structure that extends the size so that we can includes more information for our classifier.</li>
-  <li><strong>feature_size</strong>: the number of ICF features to pool from.</li>
-  <li><strong>weak_classifier</strong>: the number of weak classifiers that will be used to construct the strong classifier.</li>
-  <li><strong>boostrap</strong>: the number of boostrap to collect negatives.</li>
-  <li><strong>deform_angle</strong>: the range of rotations to add distortion, in radius.</li>
-  <li><strong>deform_scale</strong>: the range of scale changes to add distortion.</li>
-  <li><strong>deform_shift</strong>: the range of translations to add distortion, in pixel.</li>
-  <li><strong>acceptance</strong>: the percentage of validation examples will be accepted when soft cascading the classifiers that will be sued for bootstrap.</li>
-  <li><strong>detector</strong>: a <strong>ccv_icf_param_t</strong> structure that defines various aspects of the detector.</li>
-</ul>
-
-<h2 id="ccvicfclassifiercascadesoft">ccv_icf_classifier_cascade_soft</h2>
-
-<pre><code>void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t* cascade, ccv_array_t* posfiles, double acceptance)
-</code></pre>
-
-<p>Compute soft cascade thresholds to speed up the classifier cascade performance.</p>
-
-<ul>
-  <li><strong>cascade</strong>: the trained classifier that we want to optimize soft cascade thresholds on.</li>
-  <li><strong>posfiles</strong>: an array of <strong>ccv_array_t</strong> that gives the positive examples and their locations.</li>
-  <li><strong>acceptance</strong>: the percentage of positive examples will be accepted when optimizing the soft cascade thresholds.</li>
-</ul>
-
-<h2 id="ccvicfdetectobjects">ccv_icf_detect_objects</h2>
-
-<pre><code>ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_classifier_cascade_t** cascades, int count, ccv_icf_param_t params)
-ccv_array_t* ccv_icf_detect_objects(ccv_dense_matrix_t* a, ccv_multiscale_classifier_cascade_t** cascades, int count, ccv_icf_param_t params)
-</code></pre>
-
-<p>Using a ICF classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
-
-<ul>
-  <li><strong>a</strong>: the input image.</li>
-  <li><strong>cascades</strong>: an array of classifier cascades.</li>
-  <li><strong>count</strong>: how many classifier cascades you’ve passed in.</li>
-  <li><strong>params</strong>: a <strong>ccv_icf_param_t</strong> structure that defines various aspects of the detector.</li>
+  <li><strong>acceptance</strong>: The percentage of validation examples will be accepted when soft cascading the classifiers that will be sued for bootstrap.</li>
+  <li><strong>bootstrap</strong>: The number of boostrap to collect negatives.</li>
+  <li><strong>deform_angle</strong>: The range of rotations to add distortion, in radius.</li>
+  <li><strong>deform_scale</strong>: The range of scale changes to add distortion.</li>
+  <li><strong>deform_shift</strong>: The range of translations to add distortion, in pixel.</li>
+  <li><strong>detector</strong>: A <strong>ccv_icf_param_t</strong> structure that defines various aspects of the detector.</li>
+  <li><strong>feature_size</strong>: The number of ICF features to pool from.</li>
+  <li><strong>grayscale</strong>: Whether to exploit color in a given image.</li>
+  <li><strong>min_dimension</strong>: The minimal size of a ICF feature region.</li>
+  <li><strong>size</strong>: A <strong>ccv_size_t</strong> structure that defines the width and height of the classifier.</li>
+  <li><strong>weak_classifier</strong>: The number of weak classifiers that will be used to construct the strong classifier.</li>
 </ul>
 
 <h2 id="ccvicfparamt">ccv_icf_param_t</h2>
 
 <ul>
-  <li><strong>interval</strong>: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
+  <li><strong>interval</strong>: Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
   <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
-  <li><strong>step_through</strong>: the step size for detection.</li>
+  <li><strong>step_through</strong>: The step size for detection.</li>
+</ul>
+
+<h2 id="ccvicfclassifiercascadesoft">ccv_icf_classifier_cascade_soft</h2>
+
+<pre><code>void ccv_icf_classifier_cascade_soft(ccv_icf_classifier_cascade_t *cascade, ccv_array_t *posfiles, double acceptance)
+</code></pre>
+
+<p>Compute soft cascade thresholds to speed up the classifier cascade performance.</p>
+
+<ul>
+  <li><strong>cascade</strong>: The trained classifier that we want to optimize soft cascade thresholds on.</li>
+  <li><strong>posfiles</strong>: An array of <strong>ccv_array_t</strong> that gives the positive examples and their locations.</li>
+  <li><strong>acceptance</strong>: The percentage of positive examples will be accepted when optimizing the soft cascade thresholds.</li>
 </ul>
 
 <h2 id="ccvicfreadclassifiercascade">ccv_icf_read_classifier_cascade</h2>
 
-<pre><code>ccv_icf_classifier_cascade_t* ccv_icf_read_classifier_cascade(const char* filename)
+<pre><code>ccv_icf_read_classifier_cascade(const char *filename)
 </code></pre>
 
 <p>Read a ICF classifier from a file.</p>
 
 <ul>
-  <li><strong>filename</strong>: the file path that contains the trained ICF classifier.</li>
+  <li><strong>filename</strong>: The file path that contains the trained ICF classifier.</li>
 </ul>
+
+<p><strong>return</strong>: The classifier cascade, 0 if no valid classifier cascade available.</p>
 
 <h2 id="ccvicfwriteclassifiercascade">ccv_icf_write_classifier_cascade</h2>
 
-<pre><code>void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t* classifier, const char* filename)
+<pre><code>void ccv_icf_write_classifier_cascade(ccv_icf_classifier_cascade_t *classifier, const char *filename)
 </code></pre>
 
 <p>Write a ICF classifier to a file.</p>
 
 <ul>
-  <li><strong>classifier</strong>: the classifier that we want to write to file.</li>
-  <li><strong>filename</strong>: the file path that we want to persist the ICF classifier.</li>
+  <li><strong>classifier</strong>: The classifier that we want to write to file.</li>
+  <li><strong>filename</strong>: The file path that we want to persist the ICF classifier.</li>
 </ul>
 
-<h2 id="ccvclassifiercascadefree">ccv_classifier_cascade_free</h2>
+<h2 id="ccvicfclassifiercascadefree">ccv_icf_classifier_cascade_free</h2>
 
-<pre><code>void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t* classifier)
+<pre><code>void ccv_icf_classifier_cascade_free(ccv_icf_classifier_cascade_t *classifier)
 </code></pre>
 
 <p>Free up the memory of ICF classifier cascade.</p>
 
 <ul>
-  <li><strong>cascade</strong>: the ICF classifier cascade.</li>
+  <li><strong>classifier</strong>: The ICF classifier cascade.</li>
 </ul>
+
+<h2 id="ccvicfdetectobjects">ccv_icf_detect_objects</h2>
+
+<pre><code>ccv_icf_detect_objects(ccv_dense_matrix_t *a, void *cascade, int count, ccv_icf_param_t params)
+</code></pre>
+
+<p>Using a ICF classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
+
+<ul>
+  <li><strong>a</strong>: The input image.</li>
+  <li><strong>cascade</strong>: An array of classifier cascades.</li>
+  <li><strong>count</strong>: How many classifier cascades you’ve passed in.</li>
+  <li><strong>params</strong>: A <strong>ccv_icf_param_t</strong> structure that defines various aspects of the detector.</li>
+</ul>
+
+<p><strong>return</strong>: A <strong>ccv_array_t</strong> of <strong>ccv_comp_t</strong> with detection results.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 <div id="disqus_thread"></div>

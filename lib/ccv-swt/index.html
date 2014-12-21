@@ -32,52 +32,58 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_swt.c</h1>
 <h2 id="ccvswt">ccv_swt</h2>
 
-<pre><code>void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+<pre><code>void ccv_swt(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, ccv_swt_param_t params)
 </code></pre>
 
 <p>Compute the Stroke-Width-Transform image.</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>type</strong>: the type of the output matrix, if 0, ccv will default to CCV_32S | CCV_C1.</li>
-  <li><strong>params</strong>: a <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>type</strong>: The type of the output matrix, if 0, ccv will default to CCV_32S | CCV_C1.</li>
+  <li><strong>params</strong>: A <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
 </ul>
 
 <h2 id="ccvswtparamt">ccv_swt_param_t</h2>
 
 <ul>
-  <li><strong>up2x</strong>: upscale the image for better accuracy.</li>
+  <li><strong>aspect_ratio</strong>: The maximum aspect ratio for a letter.</li>
+  <li><strong>breakdown</strong>: Break textline into words If breakdown text line into words.</li>
+  <li><strong>breakdown_ratio</strong>: Apply <a href="/lib/ccv-classic">OSTU</a> and if inter-class variance above the threshold, it will be break down into words.</li>
   <li><strong>direction</strong>: SWT direction. (black to white or white to black).</li>
-  <li><strong>size</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
-  <li><strong>low_thresh</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
-  <li><strong>high_thresh</strong>: parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
-  <li><strong>max_height</strong>: the maximum height for a letter.</li>
-  <li><strong>min_height</strong>: the minimum height for a letter.</li>
-  <li><strong>aspect_ratio</strong>: the maximum aspect ratio for a letter.</li>
-  <li><strong>variance_ratio</strong>: the inner-class variance when grouping letters.</li>
-  <li><strong>thickness_ratio</strong>: the allowable thickness variance when grouping letters.</li>
-  <li><strong>height_ratio</strong>: the allowable height variance when grouping letters.</li>
-  <li><strong>intensity_thresh</strong>: the allowable intensity variance when grouping letters.</li>
-  <li><strong>distance_ratio</strong>: the allowable distance variance when grouping letters.</li>
-  <li><strong>intersect_ratio</strong>: the allowable intersect variance when grouping letters.</li>
-  <li><strong>elongate_ratio</strong>: the allowable elongate variance when grouping letters.</li>
-  <li><strong>letter_thresh</strong>: the allowable letter threshold.</li>
-  <li><strong>breakdown</strong>: if breakdown text line into words.</li>
-  <li><strong>breakdown_ratio</strong>: apply <a href="/lib/ccv-classic">OSTU</a> and if inter-class variance above the threshold, it will be break down into words.</li>
+  <li><strong>distance_ratio</strong>: The allowable distance variance when grouping letters.</li>
+  <li><strong>elongate_ratio</strong>: The allowable elongate variance when grouping letters.</li>
+  <li><strong>height_ratio</strong>: The allowable height variance when grouping letters.</li>
+  <li><strong>high_thresh</strong>: Parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>intensity_thresh</strong>: The allowable intensity variance when grouping letters.</li>
+  <li><strong>intersect_ratio</strong>: The allowable intersect variance when grouping letters.</li>
+  <li><strong>interval</strong>: Intervals for scale invariant option.</li>
+  <li><strong>letter_thresh</strong>: The allowable letter threshold.</li>
+  <li><strong>low_thresh</strong>: Parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>max_height</strong>: Geometry filtering parameters The maximum height for a letter.</li>
+  <li><strong>min_area</strong>: The minimum occupied area for a letter.</li>
+  <li><strong>min_height</strong>: The minimum height for a letter.</li>
+  <li><strong>min_neighbors</strong>: Minimal neighbors to make a detection valid, this is for scale-invariant version.</li>
+  <li><strong>same_word_thresh</strong>: Overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1)</li>
+  <li><strong>scale_invariant</strong>: Enable scale invariant swt (to scale to different sizes and then combine the results)</li>
+  <li><strong>size</strong>: Canny parameters Parameters for <a href="/lib/ccv-classic">Canny edge detector</a>.</li>
+  <li><strong>std_ratio</strong>: The inner-class standard derivation when grouping letters.</li>
+  <li><strong>thickness_ratio</strong>: Grouping parameters The allowable thickness variance when grouping letters.</li>
 </ul>
 
 <h2 id="ccvswtdetectwords">ccv_swt_detect_words</h2>
 
-<pre><code>ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
+<pre><code>ccv_swt_detect_words(ccv_dense_matrix_t *a, ccv_swt_param_t params)
 </code></pre>
 
 <p>Return array of regions that are potentially text area.</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>params</strong>: a <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>params</strong>: A <strong>ccv_swt_param_t</strong> structure that defines various aspect of the SWT function.</li>
 </ul>
+
+<p><strong>return</strong>: A <strong>ccv_array_t</strong> of <strong>ccv_comp_t</strong> with detection results.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 <div id="disqus_thread"></div>

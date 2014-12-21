@@ -32,106 +32,113 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_scd.c</h1>
 <h2 id="ccvscdclassifiercascadenew">ccv_scd_classifier_cascade_new</h2>
 
-<pre><code>ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_new(ccv_array_t* posfiles, ccv_array_t* hard_mine, int negative_count, const char* filename, ccv_scd_train_param_t params)
+<pre><code>ccv_scd_classifier_cascade_new(ccv_array_t *posfiles, ccv_array_t *hard_mine, int negative_count, const char *filename, ccv_scd_train_param_t params)
 </code></pre>
 
 <p>Create a new SCD classifier cascade from given positive examples and background images. This function has a hard dependency on <a href="http://www.gnu.org/software/gsl/">GSL</a>.</p>
 
 <ul>
-  <li><strong>posfiles</strong>: an array of <strong>ccv_file_info_t</strong> that gives the positive examples.</li>
-  <li><strong>hard_mine</strong>: an array of <strong>ccv_file_info_t</strong> that gives images don’t contain any positive examples (for example, to train a face detector, these are images that doesn’t contain any faces).</li>
-  <li><strong>negative_count</strong>: number of negative examples that is harvested from background images.</li>
-  <li><strong>filename</strong>: the file that saves both progress and final classifier, this will be in sqlite3 database format.</li>
-  <li><strong>params</strong>: a <strong>ccv_scd_train_param_t</strong> that defines various aspects of the training function.</li>
+  <li><strong>posfiles</strong>: An array of <strong>ccv_file_info_t</strong> that gives the positive examples.</li>
+  <li><strong>hard_mine</strong>: An array of <strong>ccv_file_info_t</strong> that gives images don’t contain any positive examples (for example, to train a face detector, these are images that doesn’t contain any faces).</li>
+  <li><strong>negative_count</strong>: Number of negative examples that is harvested from background images.</li>
+  <li><strong>filename</strong>: The file that saves both progress and final classifier, this will be in sqlite3 database format.</li>
+  <li><strong>params</strong>: A <strong>ccv_scd_train_param_t</strong> that defines various aspects of the training function.</li>
 </ul>
+
+<p><strong>return</strong>: The trained SCD classifier cascade.</p>
 
 <h2 id="ccvscdtrainparamt">ccv_scd_train_param_t</h2>
 
 <ul>
-  <li><strong>boosting</strong>: how many stages of boosting should be performed.</li>
-  <li><strong>size</strong>: what’s the window size of the final classifier.</li>
-  <li><strong>feature.base</strong>: a <strong>ccv_size_t</strong> structure defines the minimal feature dimensions.</li>
-  <li><strong>feature.range_through</strong>: the step size to increase feature dimensions.</li>
-  <li><strong>feature.step_through</strong>: the step size to move to cover the whole window size.</li>
-  <li><strong>stop_criteria.hit_rate</strong>: the targeted hit rate for each stage of classifier.</li>
-  <li><strong>stop_criteria.false_positive_rate</strong>: the targeted false positive rate for each stage of classifier.</li>
-  <li><strong>stop_criteria.accu_false_positive_rate</strong>: the targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached.</li>
-  <li><strong>stop_criteria.auc_crit</strong>: the epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training.</li>
-  <li><strong>stop_criteria.maximum_feature</strong>: maximum number of features one stage can have.</li>
-  <li><strong>stop_criteria.prune_stage</strong>: how many stages will act as “prune” stage, which means will take minimal effort to prune as much negative areas as possible.</li>
-  <li><strong>stop_criteria.prune_feature</strong>: how many features a prune stage should have, it should be a very small number to enable efficient pruning.</li>
-  <li><strong>weight_trimming</strong>: only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights.</li>
-  <li><strong>C</strong>: the C parameter to train the weak linear SVM classifier.</li>
-  <li><strong>grayscale</strong>: to train the classifier with grayscale image.</li>
-</ul>
-
-<h2 id="ccvscd">ccv_scd</h2>
-
-<pre><code>void ccv_scd(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type)
-</code></pre>
-
-<p>Generate 8-channel output matrix which extract SURF features (dx, dy, |dx|, |dy|, du, dv, |du|, |dv|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.</p>
-
-<ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>b_type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-</ul>
-
-<h2 id="ccvscddetectobjects">ccv_scd_detect_objects</h2>
-
-<pre><code>ccv_array_t* ccv_scd_detect_objects(ccv_dense_matrix_t* a, ccv_scd_classifier_cascade_t** cascades, int count, ccv_scd_param_t params)
-</code></pre>
-
-<p>Using a SCD classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
-
-<ul>
-  <li><strong>a</strong>: the input image.</li>
-  <li><strong>cascade</strong>: an array of classifier cascades.</li>
-  <li><strong>count</strong>: how many classifier cascades you’ve passed in.</li>
-  <li><strong>params</strong>: a <strong>ccv_scd_param_t</strong> structure that defines various aspects of the detector.</li>
-</ul>
-
-<h2 id="ccvscdparamt">ccv_scd_param_t</h2>
-
-<ul>
-  <li><strong>interval</strong>: interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
-  <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
-  <li><strong>size</strong>: the smallest object size that will be interesting to us.</li>
+  <li><strong>C</strong>: The C parameter to train the weak linear SVM classifier.</li>
+  <li><strong>boosting</strong>: How many stages of boosting should be performed.</li>
+  <li><strong>feature.base</strong>: A <strong>ccv_size_t</strong> structure defines the minimal feature dimensions.</li>
+  <li><strong>feature.range_through</strong>: The step size to increase feature dimensions.</li>
+  <li><strong>feature.step_through</strong>: The step size to move to cover the whole window size.</li>
+  <li><strong>grayscale</strong>: To train the classifier with grayscale image.</li>
+  <li><strong>size</strong>: What’s the window size of the final classifier.</li>
+  <li><strong>stop_criteria.accu_false_positive_rate</strong>: The targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached.</li>
+  <li><strong>stop_criteria.auc_crit</strong>: The epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training.</li>
+  <li><strong>stop_criteria.false_positive_rate</strong>: The targeted false positive rate for each stage of classifier.</li>
+  <li><strong>stop_criteria.hit_rate</strong>: The targeted hit rate for each stage of classifier.</li>
+  <li><strong>stop_criteria.maximum_feature</strong>: Maximum number of features one stage can have.</li>
+  <li><strong>stop_criteria.prune_feature</strong>: How many features a prune stage should have, it should be a very small number to enable efficient pruning.</li>
+  <li><strong>stop_criteria.prune_stage</strong>: How many stages will act as “prune” stage, which means will take minimal effort to prune as much negative areas as possible.</li>
+  <li><strong>weight_trimming</strong>: Only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights.</li>
 </ul>
 
 <h2 id="ccvscdclassifiercascadewrite">ccv_scd_classifier_cascade_write</h2>
 
-<pre><code>void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t* cascade, const char* filename)
+<pre><code>void ccv_scd_classifier_cascade_write(ccv_scd_classifier_cascade_t *cascade, const char *filename)
 </code></pre>
 
 <p>Write SCD classifier cascade to a file.</p>
 
 <ul>
-  <li><strong>cascade</strong>: the BBF classifier cascade.</li>
-  <li><strong>filename</strong>: the file that will be written to, it is in sqlite3 database format.</li>
+  <li><strong>cascade</strong>: The BBF classifier cascade.</li>
+  <li><strong>filename</strong>: The file that will be written to, it is in sqlite3 database format.</li>
 </ul>
 
 <h2 id="ccvscdclassifiercascaderead">ccv_scd_classifier_cascade_read</h2>
 
-<pre><code>ccv_scd_classifier_cascade_t* ccv_scd_classifier_cascade_read(const char* filename)
+<pre><code>ccv_scd_classifier_cascade_read(const char *filename)
 </code></pre>
 
 <p>Read SCD classifier cascade from file.</p>
 
 <ul>
-  <li><strong>filename</strong>: the file that contains a SCD classifier cascade, it is in sqlite3 database format.</li>
+  <li><strong>filename</strong>: The file that contains a SCD classifier cascade, it is in sqlite3 database format.</li>
 </ul>
+
+<p><strong>return</strong>: A classifier cascade, 0 returned if no valid classifier cascade available.</p>
 
 <h2 id="ccvscdclassifiercascadefree">ccv_scd_classifier_cascade_free</h2>
 
-<pre><code>void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t* cascade)
+<pre><code>void ccv_scd_classifier_cascade_free(ccv_scd_classifier_cascade_t *cascade)
 </code></pre>
 
 <p>Free up the memory of SCD classifier cascade.</p>
 
 <ul>
-  <li><strong>cascade</strong>: the SCD classifier cascade.</li>
+  <li><strong>cascade</strong>: The SCD classifier cascade.</li>
+</ul>
+
+<h2 id="ccvscd">ccv_scd</h2>
+
+<pre><code>void ccv_scd(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type)
+</code></pre>
+
+<p>Generate 8-channel output matrix which extract SURF features (dx, dy, |dx|, |dy|, du, dv, |du|, |dv|) for input. If input is multi-channel matrix (such as RGB), will pick the strongest responses among these channels.</p>
+
+<ul>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>type</strong>: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+</ul>
+
+<h2 id="ccvscddetectobjects">ccv_scd_detect_objects</h2>
+
+<pre><code>ccv_scd_detect_objects(ccv_dense_matrix_t *a, ccv_scd_classifier_cascade_t **cascades, int count, ccv_scd_param_t params)
+</code></pre>
+
+<p>Using a SCD classifier cascade to detect objects in a given image. If you have several classifier cascades, it is better to use them in one method call. In this way, ccv will try to optimize the overall performance.</p>
+
+<ul>
+  <li><strong>a</strong>: The input image.</li>
+  <li><strong>cascades</strong>: An array of classifier cascades.</li>
+  <li><strong>count</strong>: How many classifier cascades you’ve passed in.</li>
+  <li><strong>params</strong>: A <strong>ccv_scd_param_t</strong> structure that defines various aspects of the detector.</li>
+</ul>
+
+<p><strong>return</strong>: A <strong>ccv_array_t</strong> of <strong>ccv_comp_t</strong> with detection results.</p>
+
+<h2 id="ccvscdparamt">ccv_scd_param_t</h2>
+
+<ul>
+  <li><strong>interval</strong>: Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size.</li>
+  <li><strong>min_neighbors</strong>: 0: no grouping afterwards. 1: group objects that intersects each other. &gt; 1: group objects that intersects each other, and only passes these that have at least <strong>min_neighbors</strong> intersected objects.</li>
+  <li><strong>size</strong>: The smallest object size that will be interesting to us.</li>
+  <li><strong>step_through</strong>: The step size for detection.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

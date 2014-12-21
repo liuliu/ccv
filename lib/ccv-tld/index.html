@@ -32,118 +32,79 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_tld.c</h1>
 <h2 id="ccvtldnew">ccv_tld_new</h2>
 
-<pre><code>ccv_tld_t* ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params)
+<pre><code>ccv_tld_new(ccv_dense_matrix_t *a, ccv_rect_t box, ccv_tld_param_t params)
 </code></pre>
 
 <p>Create a new TLD tracking instance from a given first frame image and the tracking rectangle.</p>
 
 <ul>
-  <li><strong>a</strong>: the first frame image.</li>
-  <li><strong>box</strong>: the initial tracking rectangle.</li>
-  <li><strong>params</strong>: a <strong>ccv_tld_param_t</strong> structure that defines various aspects of TLD tracker.</li>
+  <li><strong>a</strong>: The first frame image.</li>
+  <li><strong>box</strong>: The initial tracking rectangle.</li>
+  <li><strong>params</strong>: A <strong>ccv_tld_param_t</strong> structure that defines various aspects of TLD tracker.</li>
 </ul>
+
+<p><strong>return</strong>: A <strong>ccv_tld_t</strong> object holds temporal information about tracking.</p>
 
 <h2 id="ccvtldparamt">ccv_tld_param_t</h2>
 
-<p>TLD is complex enough that I will divide its parameters into sections:</p>
-
-<p>Short-term lucas-kanade tracking parameters</p>
-
 <ul>
-  <li><strong>win_size</strong>: the window size to compute optical flow</li>
-  <li><strong>level</strong>: level of image pyramids</li>
-  <li><strong>min_eigen</strong>: the minimal eigenvalue for a valid optical flow computation</li>
-  <li><strong>min_forward_backward_error</strong>: the minimal forward backward error</li>
-</ul>
-
-<p>Image pyramid generation parameters (for scale-invariant object detection)</p>
-
-<ul>
-  <li><strong>interval</strong>: how many intermediate images in between each image pyramid level (from width =&gt; width / 2)</li>
-  <li><strong>shift</strong>: how much steps sliding window should move</li>
-</ul>
-
-<p>Samples generation parameters</p>
-
-<ul>
-  <li><strong>min_win</strong>: the minimal window size of patches for detection</li>
-  <li><strong>include_overlap</strong>: above this threshold, a bounding box will be positively identified as overlapping with target</li>
-  <li><strong>exclude_overlap</strong>: below this threshold, a bounding box will be positively identified as not overlapping with target</li>
-</ul>
-
-<p>Ferns classifier parameters</p>
-
-<ul>
-  <li><strong>structs</strong>: how many ferns in the classifier</li>
-  <li><strong>features</strong>: how many features for each fern</li>
-</ul>
-
-<p>Nearest neighbor classifier parameters</p>
-
-<ul>
-  <li><strong>validate_set</strong>: the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be</li>
-  <li><strong>nnc_same</strong>: above this threshold, a given patch will be identified as the same</li>
-  <li><strong>nnc_thres</strong>: the initial threshold for positively recognize a patch</li>
-  <li><strong>nnc_verify</strong>: the threshold for a tracking result from short-term tracker be verified as a positive detection</li>
-  <li><strong>nnc_beyond</strong>: the upper bound threshold for adaptive computed threshold</li>
-  <li><strong>nnc_collect</strong>: the threshold that a negative patch above this will be collected as negative example</li>
-  <li><strong>bad_patches</strong>: how many patches should be evaluated in initialization to collect enough negative examples</li>
-</ul>
-
-<p>Deformation parameters to apply perspective transforms on patches for robustness</p>
-
-<ul>
-  <li><strong>new_deform</strong>: number of deformations should be applied at initialization</li>
-  <li><strong>new_deform_angle</strong>: the maximal angle for x, y and z axis rotation at initialization</li>
-  <li><strong>new_deform_scale</strong>: the maximal scale for the deformation at initialization</li>
-  <li><strong>new_deform_shift</strong>: the maximal shift for the deformation at initialization</li>
-  <li><strong>track_deform</strong>: number of deformations should be applied at running time</li>
-  <li><strong>track_deform_angle</strong>: the maximal angle for x, y and z axis rotation at running time</li>
-  <li><strong>track_deform_scale</strong>: the maximal scale for the deformation at running time</li>
-  <li><strong>track_deform_shift</strong>: the maximal shift for the deformation at running time</li>
-</ul>
-
-<p>Speed up parameters</p>
-
-<ul>
-  <li><strong>top_n</strong>: only keep these much positive detections when applying ferns classifier</li>
-  <li><strong>rotation</strong>: when &gt;= 1, using “rotation” technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.</li>
+  <li><strong>bad_patches</strong>: How many patches should be evaluated in initialization to collect enough negative examples</li>
+  <li><strong>exclude_overlap</strong>: Below this threshold, a bounding box will be positively identified as not overlapping with target</li>
+  <li><strong>features</strong>: How many features for each fern</li>
+  <li><strong>include_overlap</strong>: Above this threshold, a bounding box will be positively identified as overlapping with target</li>
+  <li><strong>interval</strong>: Image pyramid generation parameters (for scale-invariant object detection) How many intermediate images in between each image pyramid level (from width =&gt; width / 2)</li>
+  <li><strong>level</strong>: Level of image pyramids</li>
+  <li><strong>min_eigen</strong>: The minimal eigenvalue for a valid optical flow computation</li>
+  <li><strong>min_forward_backward_error</strong>: The minimal forward backward error</li>
+  <li><strong>min_win</strong>: Samples generation parameters The minimal window size of patches for detection</li>
+  <li><strong>new_deform</strong>: Deformation parameters to apply perspective transforms on patches for robustness Number of deformations should be applied at initialization</li>
+  <li><strong>new_deform_angle</strong>: The maximal angle for x, y and z axis rotation at initialization</li>
+  <li><strong>new_deform_scale</strong>: The maximal scale for the deformation at initialization</li>
+  <li><strong>new_deform_shift</strong>: The maximal shift for the deformation at initialization</li>
+  <li><strong>nnc_beyond</strong>: The upper bound threshold for adaptive computed threshold</li>
+  <li><strong>nnc_collect</strong>: The threshold that a negative patch above this will be collected as negative example</li>
+  <li><strong>nnc_same</strong>: Above this threshold, a given patch will be identified as the same</li>
+  <li><strong>nnc_thres</strong>: The initial threshold for positively recognize a patch</li>
+  <li><strong>nnc_verify</strong>: The threshold for a tracking result from short-term tracker be verified as a positive detection</li>
+  <li><strong>rotation</strong>: When &gt;= 1, using “rotation” technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames.</li>
+  <li><strong>shift</strong>: How much steps sliding window should move</li>
+  <li><strong>structs</strong>: Ferns classifier parameters How many ferns in the classifier</li>
+  <li><strong>top_n</strong>: Speed up parameters Only keep these much positive detections when applying ferns classifier</li>
+  <li><strong>track_deform</strong>: Number of deformations should be applied at running time</li>
+  <li><strong>track_deform_angle</strong>: The maximal angle for x, y and z axis rotation at running time</li>
+  <li><strong>track_deform_scale</strong>: The maximal scale for the deformation at running time</li>
+  <li><strong>track_deform_shift</strong>: The maximal shift for the deformation at running time</li>
+  <li><strong>validate_set</strong>: Nearest neighbor classifier parameters For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number</li>
+  <li><strong>win_size</strong>: Short-term lucas-kanade tracking parameters The window size to compute optical flow.</li>
 </ul>
 
 <h2 id="ccvtldtrackobject">ccv_tld_track_object</h2>
 
-<pre><code>ccv_comp_t ccv_tld_track_object(ccv_tld_t* tld, ccv_dense_matrix_t* a, ccv_dense_matrix_t* b, ccv_tld_info_t* info)
+<pre><code>ccv_comp_t ccv_tld_track_object(ccv_tld_t *tld, ccv_dense_matrix_t *a, ccv_dense_matrix_t *b, ccv_tld_info_t *info)
 </code></pre>
 
 <p>ccv doesn’t have retain / release semantics. Thus, a TLD instance cannot retain the most recent frame it tracks for future reference, you have to pass that in by yourself.</p>
 
 <ul>
-  <li><strong>tld</strong>: the TLD instance for continuous tracking</li>
-  <li><strong>a</strong>: the last frame used for tracking (ccv_tld_track_object will check signature of this against the last frame TLD instance tracked)</li>
-  <li><strong>b</strong>: the new frame will be tracked</li>
-  <li><strong>info</strong>: a <strong>ccv_tld_info_t</strong> structure that will records several aspects of current tracking</li>
+  <li><strong>tld</strong>: The TLD instance for continuous tracking</li>
+  <li><strong>a</strong>: The last frame used for tracking (ccv_tld_track_object will check signature of this against the last frame TLD instance tracked)</li>
+  <li><strong>b</strong>: The new frame will be tracked</li>
+  <li><strong>info</strong>: A <strong>ccv_tld_info_t</strong> structure that will records several aspects of current tracking</li>
 </ul>
+
+<p><strong>return</strong>: The newly predicted bounding box for the tracking object.</p>
 
 <h2 id="ccvtldinfot">ccv_tld_info_t</h2>
 
 <ul>
-  <li><strong>perform_track</strong>: whether we performed tracking or not this time</li>
-  <li><strong>perform_learn</strong>: whether we performed learning or not this time</li>
-  <li><strong>track_success</strong>: if we have a successful tracking (thus, short term tracker works)</li>
-  <li><strong>ferns_detects</strong>: how many regions passed ferns classifier</li>
-  <li><strong>nnc_detects</strong>: how many regions passed nearest neighbor classifier</li>
-  <li><strong>clustered_detects</strong>: after cluster, how many regions left</li>
-  <li><strong>confident_matches</strong>: how many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking)</li>
-  <li><strong>close_matches</strong>: how many matches we have inside the tracking (may cause a new learning event)</li>
-</ul>
-
-<h2 id="ccvtldfree">ccv_tld_free</h2>
-
-<pre><code>void ccv_tld_free(ccv_tld_t* tld)
-</code></pre>
-
-<ul>
-  <li><strong>tld</strong>: the TLD instance to be freed.</li>
+  <li><strong>close_matches</strong>: How many matches we have inside the tracking (may cause a new learning event)</li>
+  <li><strong>clustered_detects</strong>: After cluster, how many regions left</li>
+  <li><strong>confident_matches</strong>: How many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking)</li>
+  <li><strong>ferns_detects</strong>: How many regions passed ferns classifier</li>
+  <li><strong>nnc_detects</strong>: How many regions passed nearest neighbor classifier</li>
+  <li><strong>perform_learn</strong>: Whether we performed learning or not this time</li>
+  <li><strong>perform_track</strong>: Whether we performed tracking or not this time</li>
+  <li><strong>track_success</strong>: If we have a successful tracking (thus, short term tracker works)</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

@@ -32,27 +32,22 @@ _gaq.push(['_trackPageview']);
 <section><h1>lib/ccv_daisy.c</h1>
 <h2 id="ccvdaisy">ccv_daisy</h2>
 
-<pre><code>void ccv_daisy(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_daisy_param_t params)
+<pre><code>void ccv_daisy(ccv_dense_matrix_t *a, ccv_dense_matrix_t **b, int type, ccv_daisy_param_t params)
 </code></pre>
 
 <p><a href="http://cvlab.epfl.ch/publications/publications/2010/TolaLF10a.pdf">DAISY</a> implementation. For more details - DAISY: An Efficient Dense Descriptor Applied to Wide-Baseline Stereo.</p>
 
 <ul>
-  <li><strong>a</strong>: the input matrix.</li>
-  <li><strong>b</strong>: the output matrix.</li>
-  <li><strong>type</strong>: the type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
-  <li><strong>params</strong>: a <strong>ccv_daisy_param_t</strong> structure that defines various aspect of the feature extractor.</li>
+  <li><strong>a</strong>: The input matrix.</li>
+  <li><strong>b</strong>: The output matrix.</li>
+  <li><strong>type</strong>: The type of output matrix, if 0, ccv will try to match the input matrix for appropriate type.</li>
+  <li><strong>params</strong>: A <strong>ccv_daisy_param_t</strong> structure that defines various aspect of the feature extractor.</li>
 </ul>
 
 <h2 id="ccvdaisyparamt">ccv_daisy_param_t</h2>
 
 <ul>
   <li><strong>radius</strong>: the Gaussian radius.</li>
-  <li><strong>rad_q_no</strong>:</li>
-  <li><strong>th_q_no</strong>:</li>
-  <li><strong>hist_th_q_no</strong>:</li>
-  <li><strong>normalize_threshold</strong>:</li>
-  <li><strong>normalize_method</strong>:</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>

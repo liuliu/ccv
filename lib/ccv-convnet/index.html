@@ -30,75 +30,82 @@ _gaq.push(['_trackPageview']);
 </ul>
 </header>
 <section><h1>lib/ccv_convnet.c</h1>
+<p>This is a implementation of deep convolutional networks mainly for image recognition and object detection.</p>
+
 <h2 id="ccvconvnetnew">ccv_convnet_new</h2>
 
-<pre><code>ccv_convnet_t* ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count);
+<pre><code>ccv_convnet_new(int use_cwc_accel, ccv_size_t input, ccv_convnet_layer_param_t params[], int count)
 </code></pre>
 
 <p>Create a new (deep) convolutional network with specified parameters. ccv only supports convolutional layer (shared weights), max pooling layer, average pooling layer, full connect layer and local response normalization layer.</p>
 
 <ul>
-  <li><strong>use_cwc_accel</strong>: whether use CUDA-enabled GPU to accelerate various computations for convolutional network.</li>
-  <li><strong>input</strong>: the input size of the image, it is not necessarily the input size of the first convolutional layer.</li>
-  <li><strong>params[]</strong>: the C-array of <strong>ccv_convnet_layer_param_t</strong> that specifies the parameters for each layer.</li>
-  <li><strong>count</strong> the size of params[] C-array.</li>
+  <li><strong>use_cwc_accel</strong>: Whether use CUDA-enabled GPU to accelerate various computations for convolutional network.</li>
+  <li><strong>input</strong>: Ihe input size of the image, it is not necessarily the input size of the first convolutional layer.</li>
+  <li><strong>params[]</strong>: The C-array of <strong>ccv_convnet_layer_param_t</strong> that specifies the parameters for each layer.</li>
+  <li><strong>count</strong>: The size of params[] C-array.</li>
 </ul>
+
+<p><strong>return</strong>: A new deep convolutional network structs</p>
 
 <h2 id="ccvconvnetlayerparamt">ccv_convnet_layer_param_t</h2>
 
 <ul>
-  <li><strong>type</strong>: one of following value to specify the network layer type, <strong>CCV_CONVNET_CONVOLUTIONAL</strong>, <strong>CCV_CONVNET_FULL_CONNECT</strong>, <strong>CCV_CONVNET_MAX_POOL</strong>, <strong>CCV_CONVNET_AVERAGE_POOL</strong>, <strong>CCV_CONVNET_LOCAL_RESPONSE_NORM</strong>.</li>
-  <li><strong>bias</strong>: the initialization value for bias if applicable (for convolutional layer and full connect layer).</li>
-  <li><strong>glorot</strong>: the truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)).</li>
-  <li><strong>input</strong>: a <strong>ccv_convnet_input_t</strong> specifies the input structure.</li>
-  <li><strong>output</strong>: a <strong>ccv_convnet_type_t</strong> specifies the output parameters and structure.</li>
+  <li><strong>bias</strong>: The initialization value for bias if applicable (for convolutional layer and full connect layer).</li>
+  <li><strong>glorot</strong>: The truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)).</li>
+  <li><strong>input</strong>: A <strong>ccv_convnet_input_t</strong> specifies the input structure.</li>
+  <li><strong>output</strong>: A <strong>ccv_convnet_type_t</strong> specifies the output parameters and structure.</li>
+  <li><strong>type</strong>: One of following value to specify the network layer type, <strong>CCV_CONVNET_CONVOLUTIONAL</strong>, <strong>CCV_CONVNET_FULL_CONNECT</strong>, <strong>CCV_CONVNET_MAX_POOL</strong>, <strong>CCV_CONVNET_AVERAGE_POOL</strong>, <strong>CCV_CONVNET_LOCAL_RESPONSE_NORM</strong>.</li>
 </ul>
 
 <h2 id="ccvconvnetinputt">ccv_convnet_input_t</h2>
 
 <ul>
-  <li><strong>matrix.rows</strong>: the number of rows of the input matrix.</li>
-  <li><strong>matrix.cols</strong>: the number of columns of the input matrix.</li>
-  <li><strong>matrix.channels</strong>: the number of channels of the input matrix.</li>
-  <li><strong>matrix.partition</strong>: the number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels).</li>
-  <li><strong>node.count</strong>: the number of nodes. You should either use <strong>node</strong> or <strong>matrix</strong> to specify the input structure.</li>
+  <li><strong>matrix.channels</strong>: The number of channels of the input matrix.</li>
+  <li><strong>matrix.cols</strong>: The number of columns of the input matrix.</li>
+  <li><strong>matrix.partition</strong>: The number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels).</li>
+  <li><strong>matrix.rows</strong>: The number of rows of the input matrix.</li>
+  <li><strong>node.count</strong>: The number of nodes. You should either use <strong>node</strong> or <strong>matrix</strong> to specify the input structure.</li>
 </ul>
 
 <h2 id="ccvconvnettypet">ccv_convnet_type_t</h2>
 
 <ul>
-  <li><strong>convolutional.count</strong>: the number of filters for convolutional layer.</li>
-  <li><strong>convolutional.strides</strong>: the strides for convolutional filter.</li>
-  <li><strong>convolutional.border</strong>: the padding border size for the input matrix.</li>
-  <li><strong>convolutional.rows</strong>: the number of rows for convolutional filter.</li>
-  <li><strong>convolutional.cols</strong>: the number of columns for convolutional filter.</li>
-  <li><strong>convolutional.channels</strong>: the number of channels for convolutional filter.</li>
-  <li><strong>convolutional.partition</strong>: the number of partitions for convolutional filter.</li>
-  <li><strong>pool.strides</strong>: the strides for pooling layer.</li>
-  <li><strong>pool.size</strong>: the size for pooling layer.</li>
-  <li><strong>pool.border</strong>: the padding border size for the input matrix.</li>
-  <li><strong>rnorm.size</strong>: the size of local response normalization layer.</li>
-  <li><strong>rnorm.kappa</strong>: as of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta</li>
-  <li><strong>rnorm.alpha</strong>: see <strong>rnorm.kappa</strong>.</li>
-  <li><strong>rnorm.beta</strong>: see <strong>rnorm.kappa</strong>.</li>
-  <li><strong>full_connect.count</strong>: the number of output nodes for full connect layer.</li>
+  <li><strong>convolutional.border</strong>: The padding border size for the input matrix.</li>
+  <li><strong>convolutional.channels</strong>: The number of channels for convolutional filter.</li>
+  <li><strong>convolutional.cols</strong>: The number of columns for convolutional filter.</li>
+  <li><strong>convolutional.count</strong>: The number of filters for convolutional layer.</li>
+  <li><strong>convolutional.partition</strong>: The number of partitions for convolutional filter.</li>
+  <li><strong>convolutional.rows</strong>: The number of rows for convolutional filter.</li>
+  <li><strong>convolutional.strides</strong>: The strides for convolutional filter.</li>
+  <li><strong>full_connect.count</strong>: The number of output nodes for full connect layer.</li>
+  <li><strong>full_connect.relu</strong>: 0 - ReLU, 1 - no ReLU</li>
+  <li><strong>pool.border</strong>: The padding border size for the input matrix.</li>
+  <li><strong>pool.size</strong>: The window size for pooling layer.</li>
+  <li><strong>pool.strides</strong>: The strides for pooling layer.</li>
+  <li><strong>rnorm.alpha</strong>: See <strong>rnorm.kappa</strong>.</li>
+  <li><strong>rnorm.beta</strong>: See <strong>rnorm.kappa</strong>.</li>
+  <li><strong>rnorm.kappa</strong>: As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta</li>
+  <li><strong>rnorm.size</strong>: The size of local response normalization layer.</li>
 </ul>
 
 <h2 id="ccvconvnetverify">ccv_convnet_verify</h2>
 
-<pre><code>int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
+<pre><code>int ccv_convnet_verify(ccv_convnet_t *convnet, int output)
 </code></pre>
 
-<p>Verify the specified parameters make sense as a deep convolutional network. Return 0 if the given deep convolutional network making sense.</p>
+<p>Verify the specified parameters make sense as a deep convolutional network.</p>
 
 <ul>
   <li><strong>convnet</strong>: A deep convolutional network to verify.</li>
   <li><strong>output</strong>: The output number of nodes (for the last full connect layer).</li>
 </ul>
 
+<p><strong>return</strong>: 0 if the given deep convolutional network making sense.</p>
+
 <h2 id="ccvconvnetsupervisedtrain">ccv_convnet_supervised_train</h2>
 
-<pre><code>void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
+<pre><code>void ccv_convnet_supervised_train(ccv_convnet_t *convnet, ccv_array_t *categorizeds, ccv_array_t *tests, const char *filename, ccv_convnet_train_param_t params)
 </code></pre>
 
 <p>Start to train a deep convolutional network with given parameters and data.</p>
@@ -108,45 +115,45 @@ _gaq.push(['_trackPageview']);
   <li><strong>categorizeds</strong>: An array of images with its category information for training.</li>
   <li><strong>tests</strong>: An array of images with its category information for validating.</li>
   <li><strong>filename</strong>: The working file to save progress and the trained convolutional network.</li>
-  <li><strong>params</strong>: The training parameters.</li>
+  <li><strong>params</strong>: A ccv_convnet_train_param_t that specifies the training parameters.</li>
 </ul>
 
 <h2 id="ccvconvnettrainparamt">ccv_convnet_train_param_t</h2>
 
 <ul>
+  <li><strong>color_gain</strong>: The color variance for data augmentation (0 means no such augmentation).</li>
+  <li><strong>device_count</strong>: Use how many GPU devices, this is capped by available CUDA devices on your system. For now, ccv’s implementation only support up to 4 GPUs</li>
+  <li><strong>image_manipulation</strong>: The value for image brightness / contrast / saturation manipulations.</li>
+  <li><strong>input.max_dim</strong>: The maximum dimensions for random resize of training images.</li>
+  <li><strong>input.min_dim</strong>: The minimum dimensions for random resize of training images.</li>
+  <li><strong>iterations</strong>: The number of iterations (an iteration is for one batch) before save the progress.</li>
+  <li><strong>layer_params</strong>: An C-array of <strong>ccv_convnet_layer_train_param_t</strong> training parameters for each layer.</li>
   <li><strong>max_epoch</strong>: The number of epoch (an epoch sweeps through all the examples) to go through before end the training.</li>
   <li><strong>mini_batch</strong>: The number of examples for a batch in stochastic gradient descent.</li>
-  <li><strong>iterations</strong>: The number of iterations (an iteration is for one batch) before save the progress.</li>
+  <li><strong>peer_access</strong>: Enable peer access for cross device communications or not, this will enable faster multiple device training.</li>
   <li><strong>sgd_frequency</strong>: After how many batches when we do a SGD update.</li>
   <li><strong>symmetric</strong>: Whether to exploit the symmetric property of the provided examples.</li>
-  <li><strong>device_count</strong>: Use how many GPU devices, this is capped by available CUDA devices on your system.</li>
-  <li><strong>peer_access</strong>: Enable peer access for cross device communications or not, this will enable faster multiple device training.</li>
-  <li><strong>image_manipulation</strong>: Coefficient for random contrast, brightness, and saturation manipulations for training images.</li>
-  <li><strong>color_gain</strong>: The color variance for data augmentation (0 means no such augmentation).</li>
-  <li><strong>input.min_dim</strong>: The minimum dimensions for random resize of training images.</li>
-  <li><strong>input.max_dim</strong>: The maximum dimensions for random resize of training images.</li>
-  <li><strong>layer_params</strong>: An C-array of <strong>ccv_convnet_layer_train_param_t</strong> training parameters for each layer.</li>
 </ul>
 
 <h2 id="ccvconvnetlayertrainparamt">ccv_convnet_layer_train_param_t</h2>
 
 <ul>
+  <li><strong>bias</strong>: A <strong>ccv_convnet_layer_sgd_param_t</strong> specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layer weight.</li>
   <li><strong>dor</strong>: The dropout rate for this layer, it is only applicable for full connect layer.</li>
   <li><strong>w</strong>: A <strong>ccv_convnet_layer_sgd_param_t</strong> specifies the stochastic gradient descent update rule for weight, it is only applicable for full connect layer and convolutional layer.</li>
-  <li><strong>bias</strong>: A <strong>ccv_convnet_layer_sgd_param_t</strong> specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layerweight.</li>
 </ul>
 
 <h2 id="ccvconvnetlayersgdparamt">ccv_convnet_layer_sgd_param_t</h2>
 
 <ul>
-  <li><strong>learn_rate</strong>: new velocity = <strong>momentum</strong> * old velocity - <strong>decay</strong> * <strong>learn_rate</strong> * old value + <strong>learn_rate</strong> * delta, new value = old value + new velocity</li>
-  <li><strong>decay</strong>: see <strong>learn_rate</strong>.</li>
-  <li><strong>momentum</strong>: see <strong>learn_rate</strong>.</li>
+  <li><strong>decay</strong>: See <strong>learn_rate</strong>.</li>
+  <li><strong>learn_rate</strong>: New velocity = <strong>momentum</strong> * old velocity - <strong>decay</strong> * <strong>learn_rate</strong> * old value + <strong>learn_rate</strong> * delta, new value = old value + new velocity</li>
+  <li><strong>momentum</strong>: See <strong>learn_rate</strong>.</li>
 </ul>
 
 <h2 id="ccvconvnetencode">ccv_convnet_encode</h2>
 
-<pre><code>void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dense_matrix_t** b, int batch);
+<pre><code>void ccv_convnet_encode(ccv_convnet_t *convnet, ccv_dense_matrix_t **a, ccv_dense_matrix_t **b, int batch)
 </code></pre>
 
 <p>Use a convolutional network to encode an image into a compact representation.</p>
@@ -160,7 +167,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvconvnetclassify">ccv_convnet_classify</h2>
 
-<pre><code>void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int symmetric, ccv_array_t** ranks, int tops, int batch);
+<pre><code>void ccv_convnet_classify(ccv_convnet_t *convnet, ccv_dense_matrix_t **a, int symmetric, ccv_array_t **ranks, int tops, int batch)
 </code></pre>
 
 <p>Use a convolutional network to classify an image into categories.</p>
@@ -176,7 +183,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvconvnetread">ccv_convnet_read</h2>
 
-<pre><code>ccv_convnet_t* ccv_convnet_read(int use_cwc_accel, const char* filename);
+<pre><code>ccv_convnet_read(int use_cwc_accel, const char *filename)
 </code></pre>
 
 <p>Read a convolutional network that persisted on the disk.</p>
@@ -188,7 +195,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvconvnetwrite">ccv_convnet_write</h2>
 
-<pre><code>void ccv_convnet_write(ccv_convnet_t* convnet, const char* filename, ccv_convnet_write_param_t params);
+<pre><code>void ccv_convnet_write(ccv_convnet_t *convnet, const char *filename, ccv_convnet_write_param_t params)
 </code></pre>
 
 <p>Write a convolutional network to a disk.</p>
@@ -196,7 +203,7 @@ _gaq.push(['_trackPageview']);
 <ul>
   <li><strong>convnet</strong>: A given convolutional network.</li>
   <li><strong>filename</strong>: The file on the disk.</li>
-  <li><strong>params</strong>: a <strong>ccv_convnet_write_param_t</strong> to specify the write parameters.</li>
+  <li><strong>params</strong>: A <strong>ccv_convnet_write_param_t</strong> to specify the write parameters.</li>
 </ul>
 
 <h2 id="ccvconvnetwriteparamt">ccv_convnet_write_param_t</h2>
@@ -207,7 +214,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvconvnetcompact">ccv_convnet_compact</h2>
 
-<pre><code>void ccv_convnet_compact(ccv_convnet_t* convnet);
+<pre><code>void ccv_convnet_compact(ccv_convnet_t *convnet)
 </code></pre>
 
 <p>Free up temporary resources of a given convolutional network.</p>
@@ -218,7 +225,7 @@ _gaq.push(['_trackPageview']);
 
 <h2 id="ccvconvnetfree">ccv_convnet_free</h2>
 
-<pre><code>void ccv_convnet_free(ccv_convnet_t* convnet);
+<pre><code>void ccv_convnet_free(ccv_convnet_t *convnet)
 </code></pre>
 
 <p>Free up the memory of a given convolutional network.</p>

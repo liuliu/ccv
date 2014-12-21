@@ -30,77 +30,103 @@ _gaq.push(['_trackPageview']);
 </ul>
 </header>
 <section><h1>lib/ccv_cache.c</h1>
-<p>This class implements a trie-based LRU cache that is then used for ccv application-wide cache in <a href="/lib/ccv-memory">ccv_memory.c</a>.</p>
+<p>This class implements a trie-based lru cache that is then used for ccv application-wide cache in <a href="/lib/ccv-memory">ccv_memory.c</a>.</p>
 
 <h2 id="ccvcacheinit">ccv_cache_init</h2>
 
-<pre><code>void ccv_cache_init(ccv_cache_t* cache, ccv_cache_index_free_f ffree, size_t up)
+<pre><code>void ccv_cache_init(ccv_cache_t *cache, size_t up, int cache_types, ccv_cache_index_free_f ffree,...)
 </code></pre>
 
 <p>Setup a cache strcture to work with.</p>
 
 <ul>
-  <li><strong>cache</strong>: the allocated cache.</li>
-  <li><strong>ffree</strong>: the function that will be used to free cached object.</li>
-  <li><strong>up</strong>: the upper limit of cache size in bytes.</li>
+  <li><strong>cache</strong>: The allocated cache.</li>
+  <li><strong>up</strong>: The upper limit of cache size in bytes.</li>
+  <li><strong>cache_types</strong>: The number of cache types in this one cache instance.</li>
+  <li><strong>ffree</strong>: The function that will be used to free cached object.</li>
 </ul>
 
 <h2 id="ccvcacheget">ccv_cache_get</h2>
 
-<pre><code>void* ccv_cache_get(ccv_cache_t* cache, uint64_t sign)
+<pre><code>void* ccv_cache_get(ccv_cache_t *cache, uint64_t sign, uint8_t *type)
 </code></pre>
 
 <p>Get an object from cache for its signature. 0 if cannot find the object.</p>
 
 <ul>
-  <li><strong>cache</strong>: the cache.</li>
-  <li><strong>sign</strong>: the signature.</li>
+  <li><strong>cache</strong>: The cache.</li>
+  <li><strong>sign</strong>: The signature.</li>
+  <li><strong>type</strong>: The type of the object.</li>
 </ul>
+
+<p><strong>return</strong>: The pointer to the object.</p>
+
+<h2 id="ccvcacheput">ccv_cache_put</h2>
+
+<pre><code>int ccv_cache_put(ccv_cache_t *cache, uint64_t sign, void *x, uint32_t size, uint8_t type)
+</code></pre>
+
+<p>Put an object to cache with its signature, size, and type</p>
+
+<ul>
+  <li><strong>cache</strong>: The cache.</li>
+  <li><strong>sign</strong>: The signature.</li>
+  <li><strong>x</strong>: The pointer to the object.</li>
+  <li><strong>size</strong>: The size of the object.</li>
+  <li><strong>type</strong>: The type of the object.</li>
+</ul>
+
+<p><strong>return</strong>: 0 - success, 1 - replace, -1 - failure.</p>
 
 <h2 id="ccvcacheout">ccv_cache_out</h2>
 
-<pre><code>void* ccv_cache_out(ccv_cache_t* cache, uint64_t sign)
+<pre><code>void* ccv_cache_out(ccv_cache_t *cache, uint64_t sign, uint8_t *type)
 </code></pre>
 
 <p>Get an object from cache for its signature and then remove that object from the cache. 0 if cannot find the object.</p>
 
 <ul>
-  <li><strong>cache</strong>: the cache.</li>
-  <li><strong>sign</strong>: the signature.</li>
+  <li><strong>cache</strong>: The cache.</li>
+  <li><strong>sign</strong>: The signature.</li>
+  <li><strong>type</strong>: The type of the object.</li>
 </ul>
+
+<p><strong>return</strong>: The pointer to the object.</p>
 
 <h2 id="ccvcachedelete">ccv_cache_delete</h2>
 
-<pre><code>int ccv_cache_delete(ccv_cache_t* cache, uint64_t sign)
+<pre><code>int ccv_cache_delete(ccv_cache_t *cache, uint64_t sign)
 </code></pre>
 
-<p>Delete an object from cache for its signature and free it. Return -1 if cannot find the object, otherwise return 0.</p>
+<p>Delete an object from cache for its signature and free it.</p>
 
 <ul>
-  <li><strong>cache</strong>: the cache.</li>
-  <li><strong>sign</strong>: the signature.</li>
+  <li><strong>cache</strong>: The cache.</li>
+  <li><strong>sign</strong>: The signature.</li>
 </ul>
+
+<p><strong>return</strong>: -1 if cannot find the object, otherwise return 0.</p>
 
 <h2 id="ccvcachecleanup">ccv_cache_cleanup</h2>
 
-<pre><code>void ccv_cache_cleanup(ccv_cache_t* cache)
+<pre><code>void ccv_cache_cleanup(ccv_cache_t *cache)
 </code></pre>
 
 <p>Clean up the cache, free all objects inside and other memory space occupied.</p>
 
 <ul>
-  <li><strong>cache</strong>: the cache.</li>
+  <li><strong>cache</strong>: The cache.</li>
 </ul>
 
 <h2 id="ccvcacheclose">ccv_cache_close</h2>
 
-<pre><code>void ccv_cache_close(ccv_cache_t* cache)
+<pre><code>void ccv_cache_close(ccv_cache_t *cache)
 </code></pre>
 
 <p>For current implementation (trie-based LRU cache), it is an alias for ccv_cache_cleanup.</p>
 
 <ul>
-  <li><strong>cache</strong>: the cache.</li>
+  <li><strong>cache</strong>: The cache.</li>
 </ul>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
