@@ -2,11 +2,124 @@
 
 require 'nokogiri'
 
-exit unless ARGV.length == 1
+exit unless ARGV.length == 2
 
 def markdown_safe x
 	return x.gsub('_', '\_').gsub('|', '\|')
 end
+
+def merge_structs structs, para
+	structs_re = /[\w]+\_t/
+	matches = para.match structs_re
+	return unless matches != nil
+	structs.merge matches.to_a
+end
+
+def output_function file, function
+	# tries to print needed structs just down the functions, therefore, we log which structs appeared in the desc, which is in the form xxx_t
+	structs = Set.new
+	paras = function.xpath './detaileddescription/para'
+	return structs if paras.length == 0
+	desc = Array.new
+	paras.each do |para|
+		para = para.at('./text()').content.strip
+		merge_structs structs, para
+		desc << para if para.length > 0
+	end
+	return structs if desc.length == 0
+	name = markdown_safe function.at('./name').content
+	file << "\n" + name + "\n" + ('-' * name.length) + "\n\n"
+	proto = function.at('./definition').content + function.at('./argsstring').content
+	file << "\t" + proto + "\n\n" + markdown_safe(desc.join("\n\n")) + "\n"
+	params = function.xpath "./detaileddescription/para/parameterlist[@kind='param']/parameteritem"
+	file << "\n" if params.length > 0
+	params.each do |param|
+		paramnames = Array.new
+		param.xpath('./parameternamelist/parametername').each do |paramname|
+			paramnames << markdown_safe(paramname.content.strip)
+		end
+		file << " * **" << paramnames.join(", ") << "**: "
+		desc = param.at('./parameterdescription/para').content.strip
+		merge_structs structs, desc
+		file << markdown_safe(desc) << "\n"
+	end
+	retdesc = function.at "./detaileddescription/para/simplesect[@kind='return']/para"
+	if retdesc != nil
+		retdesc = retdesc.content.strip
+		merge_structs structs, retdesc
+		file << "\n**return**: " + markdown_safe(retdesc) + "\n" 
+	end
+	return structs
+end
+
+def alt_name desc
+	alt_name_re = /^\[[\w\.]+\]/
+	matches = desc.match alt_name_re
+	return nil unless matches != nil
+	return matches[0][1, matches[0].length - 2]
+end
+
+def output_struct file, structname, doc_group
+	structs = Set.new
+	compoundname = doc_group.at('./compoundname').content.strip
+	return structs unless compoundname == structname
+	variables = doc_group.xpath ".//memberdef[@kind='variable']"
+	available_desc = false
+	variables.each do |variable|
+		para = variable.at './detaileddescription/para'
+		available_desc = true if para != nil
+		break if available_desc
+	end
+	# return if no available desc anywhere
+	return structs if !available_desc
+	compoundname = markdown_safe compoundname
+	file << "\n" + compoundname + "\n" + ('-' * compoundname.length) + "\n\n"
+	vars = Hash.new
+	variables.each do |variable|
+		paras = variable.xpath './detaileddescription/para'
+		next if paras.length == 0
+		paras.each do |para|
+			desc = para.content.strip
+			alt_name = alt_name desc
+			desc = desc.sub('[' + alt_name + ']', '').strip if alt_name != nil
+			merge_structs structs, desc
+			name =
+				if alt_name != nil
+					markdown_safe alt_name.strip
+				else
+					markdown_safe variable.at('./name').content
+				end
+			desc = markdown_safe desc
+			vars[name] = desc if !vars.has_key?(name)
+		end
+	end
+	vars_a = Array.new
+	vars.each do |name, desc|
+		vars_a << ' * **' + name + '**: ' + desc
+	end
+	file << vars_a.sort.join("\n") + "\n"
+	return structs
+end
+
+def open_and_output_struct out_structs, file, structname, doc_group, dirname
+	doc_group.xpath('./innerclass').each do |innerclass|
+		if innerclass.content.strip == structname
+			doc = Nokogiri::XML(open(dirname + '/' + innerclass['refid'] + '.xml'))
+			structs = output_struct file, structname, doc.at('./doxygen/compounddef')
+			structs = structs - out_structs
+			out_structs.merge structs
+			structs.each do |struct|
+				open_and_output_struct out_structs, file, struct, doc_group, dirname
+			end
+		end
+	end
+end
+
+require 'pathname'
+require 'set'
+
+dirname = Pathname.new(ARGV[0]).dirname.to_s
+outdir = Pathname.new(ARGV[1]).dirname.to_s
 
 doc = Nokogiri::XML(open ARGV[0])
 
@@ -27,36 +140,21 @@ title = 'lib/' + compoundname.content + '.c'
 
 filename = '0000-01-01-' + slug + '.markdown'
 
-file = File.open filename, 'w+'
+file = File.open outdir + "/" + filename, 'w+'
 
 file << "---\nlayout: page\nlib: ccv\nslug: " + slug + "\nstatus: publish\ntitle: " + title + "\ndesc: " + desc + "\ncategories:\n- lib\n---\n"
 
-functions = doc_group.xpath ".//memberdef[@kind='function']"
+para = doc_group.at './detaileddescription/para'
 
+file << "\n" + para.content.strip.capitalize + "\n" if para != nil
+
+functions = doc_group.xpath ".//memberdef[@kind='function']"
+out_structs = Set.new
 functions.each do |function|
-	paras = function.xpath './detaileddescription/para'
-	next if paras.length == 0
-	desc = Array.new
-	paras.each do |para|
-		para = para.at('./text()').content.strip
-		desc << para if para.length > 0
+	structs = output_function file, function
+	structs = structs - out_structs
+	out_structs.merge structs
+	structs.each do |struct|
+		open_and_output_struct out_structs, file, struct, doc_group, dirname
 	end
-	next if desc.length == 0
-	name = markdown_safe function.at('./name').content
-	file << "\n" + name + "\n" + ('-' * name.length) + "\n\n"
-	proto = function.at('./definition').content + function.at('./argsstring').content
-	file << "\t" + proto + "\n\n" + desc.join("\n\n") + "\n"
-	params = function.xpath "./detaileddescription/para/parameterlist[@kind='param']/parameteritem"
-	file << "\n" if params.length > 0
-	params.each do |param|
-		paramnames = Array.new
-		param.xpath('./parameternamelist/parametername').each do |paramname|
-			paramnames << markdown_safe(paramname.content.strip)
-		end
-		file << " * **" << paramnames.join(", ") << "**: "
-		desc = param.at './parameterdescription/para'
-		file << markdown_safe(desc.content) << "\n"
-	end
-	retdesc = function.at "./detaileddescription/para/simplesect[@kind='return']/para"
-	file << "\n**return**: " + retdesc.content.strip + "\n" if retdesc != nil
 end

@@ -1232,7 +1232,7 @@ void ccv_optical_flow_lucas_kanade(ccv_dense_matrix_t* a, ccv_dense_matrix_t* b,
 
 /* daisy related methods */
 typedef struct {
-	double radius; /** the Gaussian radius. */
+	double radius; /**< the Gaussian radius. */
 	int rad_q_no;
 	int th_q_no;
 	int hist_th_q_no;
@@ -1278,12 +1278,12 @@ typedef struct {
 } ccv_keypoint_t;
 
 typedef struct {
-	int up2x; /** If upscale the image for better SIFT accuracy. */
-	int noctaves; /** Number of octaves. */
-	int nlevels; /** Number of levels for each octaves. */
-	float edge_threshold; /** Above this threshold, it will be recognized as edge otherwise be ignored. */
-	float peak_threshold; /** Above this threshold, it will be recognized as potential feature point. */
-	float norm_threshold; /** If norm of the descriptor is smaller than threshold, it will be ignored. */
+	int up2x; /**< If upscale the image for better SIFT accuracy. */
+	int noctaves; /**< Number of octaves. */
+	int nlevels; /**< Number of levels for each octaves. */
+	float edge_threshold; /**< Above this threshold, it will be recognized as edge otherwise be ignored. */
+	float peak_threshold; /**< Above this threshold, it will be recognized as potential feature point. */
+	float norm_threshold; /**< If norm of the descriptor is smaller than threshold, it will be ignored. */
 } ccv_sift_param_t;
 
 extern const ccv_sift_param_t ccv_sift_default_params;
@@ -1337,33 +1337,33 @@ CCV_WARN_UNUSED(ccv_array_t*) ccv_mser(ccv_dense_matrix_t* a, ccv_dense_matrix_t
  * @{
  */
 typedef struct {
-	int interval; /** Intervals for scale invariant option. */
-	int min_neighbors; /** Minimal neighbors to make a detection valid, this is for scale-invariant version. */
-	int scale_invariant; /** Enable scale invariant swt (to scale to different sizes and then combine the results) */
-	int direction; /** SWT direction. (black to white or white to black). */
-	double same_word_thresh[2]; /** Overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1) */
-	/* canny parameters */
-	int size; /** Parameters for [Canny edge detector](/lib/ccv-classic). */
-	int low_thresh; /** Parameters for [Canny edge detector](/lib/ccv-classic). */
-	int high_thresh; /** Parameters for [Canny edge detector](/lib/ccv-classic). */
-	/* geometry filtering parameters */
-	int max_height; /** The maximum height for a letter. */
-	int min_height; /** The minimum height for a letter. */
-	int min_area; /** The minimum occupied area for a letter. */
+	int interval; /**< Intervals for scale invariant option. */
+	int min_neighbors; /**< Minimal neighbors to make a detection valid, this is for scale-invariant version. */
+	int scale_invariant; /**< Enable scale invariant swt (to scale to different sizes and then combine the results) */
+	int direction; /**< SWT direction. (black to white or white to black). */
+	double same_word_thresh[2]; /**< Overlapping more than 0.1 of the bigger one (0), and 0.9 of the smaller one (1) */
+	/** Canny parameters */
+	int size; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
+	int low_thresh; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
+	int high_thresh; /**< Parameters for [Canny edge detector](/lib/ccv-classic). */
+	/** Geometry filtering parameters */
+	int max_height; /**< The maximum height for a letter. */
+	int min_height; /**< The minimum height for a letter. */
+	int min_area; /**< The minimum occupied area for a letter. */
 	int letter_occlude_thresh;
-	double aspect_ratio; /** The maximum aspect ratio for a letter. */
-	double std_ratio; /** The inner-class standard derivation when grouping letters. */
-	/* grouping parameters */
-	double thickness_ratio; /** The allowable thickness variance when grouping letters. */
-	double height_ratio; /** The allowable height variance when grouping letters. */
-	int intensity_thresh; /** The allowable intensity variance when grouping letters. */
-	double distance_ratio; /** The allowable distance variance when grouping letters. */
-	double intersect_ratio; /** The allowable intersect variance when grouping letters. */
-	double elongate_ratio; /** The allowable elongate variance when grouping letters. */
-	int letter_thresh; /** The allowable letter threshold. */
-	/* break textline into words */
-	int breakdown; /** If breakdown text line into words. */
-	double breakdown_ratio; /** Apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words. */
+	double aspect_ratio; /**< The maximum aspect ratio for a letter. */
+	double std_ratio; /**< The inner-class standard derivation when grouping letters. */
+	/** Grouping parameters */
+	double thickness_ratio; /**< The allowable thickness variance when grouping letters. */
+	double height_ratio; /**< The allowable height variance when grouping letters. */
+	int intensity_thresh; /**< The allowable intensity variance when grouping letters. */
+	double distance_ratio; /**< The allowable distance variance when grouping letters. */
+	double intersect_ratio; /**< The allowable intersect variance when grouping letters. */
+	double elongate_ratio; /**< The allowable elongate variance when grouping letters. */
+	int letter_thresh; /**< The allowable letter threshold. */
+	/** Break textline into words */
+	int breakdown; /**< If breakdown text line into words. */
+	double breakdown_ratio; /**< Apply [OSTU](/lib/ccv-classic) and if inter-class variance above the threshold, it will be break down into words. */
 } ccv_swt_param_t;
 
 extern const ccv_swt_param_t ccv_swt_default_params;
@@ -1448,32 +1448,32 @@ typedef struct {
 } ccv_dpm_mixture_model_t;
 
 typedef struct {
-	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
-	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
-	int flags; /** CCV_DPM_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
-	float threshold; /** The threshold the determines the acceptance of an object. */
+	int interval; /**< Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	int min_neighbors; /**< 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int flags; /**< CCV_DPM_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
+	float threshold; /**< The threshold the determines the acceptance of an object. */
 } ccv_dpm_param_t;
 
 typedef struct {
-	int components; /** The number of root filters in the mixture model. */
-	int parts; /** The number of part filters for each root filter. */
-	int grayscale; /** Whether to exploit color in a given image. */
-	int symmetric; /** Whether to exploit symmetric property of the object. */
-	int min_area; /** The minimum area that one part classifier can occupy, 3000 is a reasonable number. */
-	int max_area; /** The maximum area that one part classifier can occupy. 5000 is a reasonable number. */
-	int iterations; /** How many iterations needed for stochastic gradient descent. */
-	int data_minings; /** How many data mining procedures are needed for discovering hard examples. */
-	int root_relabels; /** How many relabel procedures for root classifier are needed. */
-	int relabels; /** How many relabel procedures are needed. */
+	int components; /**< The number of root filters in the mixture model. */
+	int parts; /**< The number of part filters for each root filter. */
+	int grayscale; /**< Whether to exploit color in a given image. */
+	int symmetric; /**< Whether to exploit symmetric property of the object. */
+	int min_area; /**< The minimum area that one part classifier can occupy, 3000 is a reasonable number. */
+	int max_area; /**< The maximum area that one part classifier can occupy. 5000 is a reasonable number. */
+	int iterations; /**< How many iterations needed for stochastic gradient descent. */
+	int data_minings; /**< How many data mining procedures are needed for discovering hard examples. */
+	int root_relabels; /**< How many relabel procedures for root classifier are needed. */
+	int relabels; /**< How many relabel procedures are needed. */
 	int discard_estimating_constant; // 1
-	int negative_cache_size; /** The cache size for negative examples. 1000 is a reasonable number. */
-	double include_overlap; /** The percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object. 0.7 is a reasonable number. */
-	double alpha; /** The step size for stochastic gradient descent. */
-	double alpha_ratio; /** Decrease the step size for each iteration. 0.85 is a reasonable number. */
-	double balance; /** To balance the weight of positive examples and negative examples. 1.5 is a reasonable number. */
-	double C; /** C in SVM. */
-	double percentile_breakdown; /** The percentile use for breakdown threshold. 0.05 is the default. */
-	ccv_dpm_param_t detector; /** A **ccv_dpm_params_t** structure that will be used to search positive examples and negative examples from background images. */
+	int negative_cache_size; /**< The cache size for negative examples. 1000 is a reasonable number. */
+	double include_overlap; /**< The percentage of overlap between expected bounding box and the bounding box from detection. Beyond this threshold, it is ensured to be the same object. 0.7 is a reasonable number. */
+	double alpha; /**< The step size for stochastic gradient descent. */
+	double alpha_ratio; /**< Decrease the step size for each iteration. 0.85 is a reasonable number. */
+	double balance; /**< To balance the weight of positive examples and negative examples. 1.5 is a reasonable number. */
+	double C; /**< C in SVM. */
+	double percentile_breakdown; /**< The percentile use for breakdown threshold. 0.05 is the default. */
+	ccv_dpm_param_t detector; /**< A **ccv_dpm_params_t** structure that will be used to search positive examples and negative examples from background images. */
 } ccv_dpm_new_param_t;
 
 enum {
@@ -1557,21 +1557,21 @@ enum {
 };
 
 typedef struct {
-	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
-	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
-	int flags; /** CCV_BBF_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
-	int accurate; /** BBF will generates 4 spatial scale variations for better accuracy. Set this parameter to 0 will reduce to 1 scale variation, and thus 3 times faster but lower the general accuracy of the detector. */
-	ccv_size_t size; /** The smallest object size that will be interesting to us. */
+	int interval; /**< Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	int min_neighbors; /**< 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int flags; /**< CCV_BBF_NO_NESTED, if one class of object is inside another class of object, this flag will reject the first object. */
+	int accurate; /**< BBF will generates 4 spatial scale variations for better accuracy. Set this parameter to 0 will reduce to 1 scale variation, and thus 3 times faster but lower the general accuracy of the detector. */
+	ccv_size_t size; /**< The smallest object size that will be interesting to us. */
 } ccv_bbf_param_t;
 
 typedef struct {
-	double pos_crit; /** Positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria. */
-	double neg_crit; /** Negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria. */
-	double balance_k; /** Weight positive examples differently from negative examples. */
-	int layer; /** The maximum layer trained for the classifier cascade. */
-	int feature_number; /** The maximum feature number for each classifier. */
-	int optimizer; /** CCV_BBF_GENETIC_OPT, using genetic algorithm to search the best weak feature; CCV_BBF_FLOAT_OPT, using float search to improve the found best weak feature. */
-	ccv_bbf_param_t detector; /** A **ccv_bbf_params_t** structure that will be used to search negative examples from background images. */
+	double pos_crit; /**< Positive criteria or the targeted recall ratio, BBF classifier tries to adjust the constant to meet this criteria. */
+	double neg_crit; /**< Negative criteria or the targeted reject ratio, BBF classifier tries to include more weak features until meet this criteria. */
+	double balance_k; /**< Weight positive examples differently from negative examples. */
+	int layer; /**< The maximum layer trained for the classifier cascade. */
+	int feature_number; /**< The maximum feature number for each classifier. */
+	int optimizer; /**< CCV_BBF_GENETIC_OPT, using genetic algorithm to search the best weak feature; CCV_BBF_FLOAT_OPT, using float search to improve the found best weak feature. */
+	ccv_bbf_param_t detector; /**< A **ccv_bbf_params_t** structure that will be used to search negative examples from background images. */
 } ccv_bbf_new_param_t;
 
 enum {
@@ -1659,43 +1659,43 @@ void ccv_ferns_free(ccv_ferns_t* ferns);
 
 typedef struct {
 	/** Short-term lucas-kanade tracking parameters */
-	ccv_size_t win_size; /** The window size to compute optical flow. */
-	int level; /** Level of image pyramids */
-	float min_eigen; /** The minimal eigenvalue for a valid optical flow computation */
-	float min_forward_backward_error; /** The minimal forward backward error */
+	ccv_size_t win_size; /**< The window size to compute optical flow. */
+	int level; /**< Level of image pyramids */
+	float min_eigen; /**< The minimal eigenvalue for a valid optical flow computation */
+	float min_forward_backward_error; /**< The minimal forward backward error */
 	/** Image pyramid generation parameters (for scale-invariant object detection) */
-	int interval; /** How many intermediate images in between each image pyramid level (from width => width / 2) */
-	float shift; /** How much steps sliding window should move */
+	int interval; /**< How many intermediate images in between each image pyramid level (from width => width / 2) */
+	float shift; /**< How much steps sliding window should move */
 	/** Samples generation parameters */
-	int min_win; /** The minimal window size of patches for detection */
-	float include_overlap; /** Above this threshold, a bounding box will be positively identified as overlapping with target */
-	float exclude_overlap; /** Below this threshold, a bounding box will be positively identified as not overlapping with target */
+	int min_win; /**< The minimal window size of patches for detection */
+	float include_overlap; /**< Above this threshold, a bounding box will be positively identified as overlapping with target */
+	float exclude_overlap; /**< Below this threshold, a bounding box will be positively identified as not overlapping with target */
 	/** Ferns classifier parameters */
-	int structs; /** How many ferns in the classifier */
-	int features; /** How many features for each fern */
+	int structs; /**< How many ferns in the classifier */
+	int features; /**< How many features for each fern */
 	/** Nearest neighbor classifier parameters */
-	float validate_set; /** For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number */
-	float nnc_same; /** Above this threshold, a given patch will be identified as the same */
-	float nnc_thres; /** The initial threshold for positively recognize a patch */
-	float nnc_verify; /** The threshold for a tracking result from short-term tracker be verified as a positive detection */
-	float nnc_beyond; /** The upper bound threshold for adaptive computed threshold */
-	float nnc_collect; /** The threshold that a negative patch above this will be collected as negative example */
-	int bad_patches; /** How many patches should be evaluated in initialization to collect enough negative examples */
+	float validate_set; /**< For the conservative confidence score will be only computed on a subset of all positive examples, this value gives how large that subset should be, 0.5 is a reasonable number */
+	float nnc_same; /**< Above this threshold, a given patch will be identified as the same */
+	float nnc_thres; /**< The initial threshold for positively recognize a patch */
+	float nnc_verify; /**< The threshold for a tracking result from short-term tracker be verified as a positive detection */
+	float nnc_beyond; /**< The upper bound threshold for adaptive computed threshold */
+	float nnc_collect; /**< The threshold that a negative patch above this will be collected as negative example */
+	int bad_patches; /**< How many patches should be evaluated in initialization to collect enough negative examples */
 	/** Deformation parameters to apply perspective transforms on patches for robustness */
-	int new_deform; /** Number of deformations should be applied at initialization */
-	int track_deform; /** Number of deformations should be applied at running time */
-	float new_deform_angle; /** The maximal angle for x, y and z axis rotation at initialization */
-	float track_deform_angle; /** The maximal angle for x, y and z axis rotation at running time */
-	float new_deform_scale; /** The maximal scale for the deformation at initialization */
-	float track_deform_scale; /** The maximal scale for the deformation at running time */
-	float new_deform_shift; /** The maximal shift for the deformation at initialization */
-	float track_deform_shift; /** The maximal shift for the deformation at running time */
+	int new_deform; /**< Number of deformations should be applied at initialization */
+	int track_deform; /**< Number of deformations should be applied at running time */
+	float new_deform_angle; /**< The maximal angle for x, y and z axis rotation at initialization */
+	float track_deform_angle; /**< The maximal angle for x, y and z axis rotation at running time */
+	float new_deform_scale; /**< The maximal scale for the deformation at initialization */
+	float track_deform_scale; /**< The maximal scale for the deformation at running time */
+	float new_deform_shift; /**< The maximal shift for the deformation at initialization */
+	float track_deform_shift; /**< The maximal shift for the deformation at running time */
 	/** Speed up parameters */
-	int top_n; /** Only keep these much positive detections when applying ferns classifier */
+	int top_n; /**< Only keep these much positive detections when applying ferns classifier */
 	/* speed up technique, instead of running slide window at
 	 * every frame, we will rotate them, for example, slide window 1
 	 * only gets examined at frame % rotation == 1 */
-	int rotation; /** When >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames. */
+	int rotation; /**< When >= 1, using "rotation" technique, which, only evaluate a subset of sliding windows for each frame, but after rotation + 1 frames, every sliding window will be evaluated in one of these frames. */
 } ccv_tld_param_t;
 
 extern const ccv_tld_param_t ccv_tld_default_params;
@@ -1721,14 +1721,14 @@ typedef struct {
 } ccv_tld_t;
 
 typedef struct {
-	int perform_track; /** Whether we performed tracking or not this time */
-	int perform_learn; /** Whether we performed learning or not this time */
-	int track_success; /** If we have a successful tracking (thus, short term tracker works) */
-	int ferns_detects; /** How many regions passed ferns classifier */
-	int nnc_detects; /** How many regions passed nearest neighbor classifier */
-	int clustered_detects; /** After cluster, how many regions left */
-	int confident_matches; /** How many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking) */
-	int close_matches; /** How many matches we have inside the tracking (may cause a new learning event) */
+	int perform_track; /**< Whether we performed tracking or not this time */
+	int perform_learn; /**< Whether we performed learning or not this time */
+	int track_success; /**< If we have a successful tracking (thus, short term tracker works) */
+	int ferns_detects; /**< How many regions passed ferns classifier */
+	int nnc_detects; /**< How many regions passed nearest neighbor classifier */
+	int clustered_detects; /**< After cluster, how many regions left */
+	int confident_matches; /**< How many matches we have outside of the tracking region (may cause a re-initialization of the short term tracking) */
+	int close_matches; /**< How many matches we have inside the tracking (may cause a new learning event) */
 } ccv_tld_info_t;
 
 /**
@@ -1806,28 +1806,28 @@ typedef struct {
 } ccv_icf_multiscale_classifier_cascade_t; // Type B, scale the classifier
 
 typedef struct {
-	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int min_neighbors; /**< 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
 	int flags;
-	int step_through; /** The step size for detection. */
-	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	int step_through; /**< The step size for detection. */
+	int interval; /**< Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
 	float threshold;
 } ccv_icf_param_t;
 
 extern const ccv_icf_param_t ccv_icf_default_params;
 
 typedef struct {
-	ccv_icf_param_t detector; /** A **ccv_icf_param_t** structure that defines various aspects of the detector. */
-	int grayscale; /** Whether to exploit color in a given image. */
-	int min_dimension; /** The minimal size of a ICF feature region. */
+	ccv_icf_param_t detector; /**< A **ccv_icf_param_t** structure that defines various aspects of the detector. */
+	int grayscale; /**< Whether to exploit color in a given image. */
+	int min_dimension; /**< The minimal size of a ICF feature region. */
 	ccv_margin_t margin;
-	ccv_size_t size; /** A **ccv_size_t** structure that defines the width and height of the classifier. */
-	int feature_size; /** The number of ICF features to pool from. */
-	int weak_classifier; /** The number of weak classifiers that will be used to construct the strong classifier. */
-	int bootstrap; /** The number of boostrap to collect negatives. */
-	float deform_angle; /** The range of rotations to add distortion, in radius. */
-	float deform_scale; /** The range of scale changes to add distortion. */
-	float deform_shift; /** The range of translations to add distortion, in pixel. */
-	double acceptance; /** The percentage of validation examples will be accepted when soft cascading the classifiers that will be sued for bootstrap. */
+	ccv_size_t size; /**< A **ccv_size_t** structure that defines the width and height of the classifier. */
+	int feature_size; /**< The number of ICF features to pool from. */
+	int weak_classifier; /**< The number of weak classifiers that will be used to construct the strong classifier. */
+	int bootstrap; /**< The number of boostrap to collect negatives. */
+	float deform_angle; /**< The range of rotations to add distortion, in radius. */
+	float deform_scale; /**< The range of scale changes to add distortion. */
+	float deform_shift; /**< The range of translations to add distortion, in pixel. */
+	double acceptance; /**< The percentage of validation examples will be accepted when soft cascading the classifiers that will be sued for bootstrap. */
 } ccv_icf_new_param_t;
 
 void ccv_icf(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
@@ -1954,32 +1954,32 @@ typedef struct {
 } ccv_scd_classifier_cascade_t;
 
 typedef struct {
-	int min_neighbors; /** 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
-	int step_through; /** The step size for detection. */
-	int interval; /** Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
-	ccv_size_t size; /** The smallest object size that will be interesting to us. */
+	int min_neighbors; /**< 0: no grouping afterwards. 1: group objects that intersects each other. > 1: group objects that intersects each other, and only passes these that have at least **min_neighbors** intersected objects. */
+	int step_through; /**< The step size for detection. */
+	int interval; /**< Interval images between the full size image and the half size one. e.g. 2 will generate 2 images in between full size image and half size one: image with full size, image with 5/6 size, image with 2/3 size, image with 1/2 size. */
+	ccv_size_t size; /**< The smallest object size that will be interesting to us. */
 } ccv_scd_param_t;
 
 typedef struct {
-	int boosting; /** How many stages of boosting should be performed. */
-	ccv_size_t size; /** What's the window size of the final classifier. */
+	int boosting; /**< How many stages of boosting should be performed. */
+	ccv_size_t size; /**< What's the window size of the final classifier. */
 	struct {
-		ccv_size_t base; /** A **ccv_size_t** structure defines the minimal feature dimensions. */
-		int range_through; /** The step size to increase feature dimensions. */
-		int step_through; /** The step size to move to cover the whole window size. */
+		ccv_size_t base; /**< [feature.base] A **ccv_size_t** structure defines the minimal feature dimensions. */
+		int range_through; /**< [feature.range_through] The step size to increase feature dimensions. */
+		int step_through; /**< [feature.step_through] The step size to move to cover the whole window size. */
 	} feature;
 	struct {
-		float hit_rate; /** The targeted hit rate for each stage of classifier. */
-		float false_positive_rate; /** The targeted false positive rate for each stage of classifier. */
-		float accu_false_positive_rate; /** The targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached. */
-		float auc_crit; /** The epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training. */
-		int maximum_feature; /** Maximum number of features one stage can have. */
-		int prune_stage; /** How many stages will act as "prune" stage, which means will take minimal effort to prune as much negative areas as possible. */
-		int prune_feature; /** How many features a prune stage should have, it should be a very small number to enable efficient pruning. */
+		float hit_rate; /**< [stop_criteria.hit_rate] The targeted hit rate for each stage of classifier. */
+		float false_positive_rate; /**< [stop_criteria.false_positive_rate] The targeted false positive rate for each stage of classifier. */
+		float accu_false_positive_rate; /**< [stop_criteria.accu_false_positive_rate] The targeted accumulative false positive rate for classifier cascade, the training will be terminated once the accumulative false positive rate target reached. */
+		float auc_crit; /**< [stop_criteria.auc_crit] The epsilon to decide if auc (area under curve) can no longer be improved. Once auc can no longer be improved and the targeted false positive rate reached, this stage of training will be terminated and start the next stage training. */
+		int maximum_feature; /**< [stop_criteria.maximum_feature] Maximum number of features one stage can have. */
+		int prune_stage; /**< [stop_criteria.prune_stage] How many stages will act as "prune" stage, which means will take minimal effort to prune as much negative areas as possible. */
+		int prune_feature; /**< [stop_criteria.prune_feature] How many features a prune stage should have, it should be a very small number to enable efficient pruning. */
 	} stop_criteria;
-	double weight_trimming; /** Only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights. */
-	double C; /** The C parameter to train the weak linear SVM classifier. */
-	int grayscale; /** To train the classifier with grayscale image. */
+	double weight_trimming; /**< Only consider examples with weights in this percentile for training, this avoid to consider examples with tiny weights. */
+	double C; /**< The C parameter to train the weak linear SVM classifier. */
+	int grayscale; /**< To train the classifier with grayscale image. */
 } ccv_scd_train_param_t;
 
 extern const ccv_scd_param_t ccv_scd_default_params;
@@ -2074,49 +2074,49 @@ enum {
 
 typedef union {
 	struct {
-		int count; /** The number of filters for convolutional layer. */
-		int strides; /** The strides for convolutional filter. */
-		int border; /** The padding border size for the input matrix. */
-		int rows; /** The number of rows for convolutional filter. */
-		int cols; /** The number of columns for convolutional filter. */
-		int channels; /** The number of channels for convolutional filter. */
-		int partition; /** The number of partitions for convolutional filter. */
+		int count; /**< [convolutional.count] The number of filters for convolutional layer. */
+		int strides; /**< [convolutional.strides] The strides for convolutional filter. */
+		int border; /**< [convolutional.border] The padding border size for the input matrix. */
+		int rows; /**< [convolutional.rows] The number of rows for convolutional filter. */
+		int cols; /**< [convolutional.cols] The number of columns for convolutional filter. */
+		int channels; /**< [convolutional.channels] The number of channels for convolutional filter. */
+		int partition; /**< [convolutional.partition] The number of partitions for convolutional filter. */
 	} convolutional;
 	struct {
-		int strides; /** The strides for pooling layer. */
-		int size; /** The window size for pooling layer. */
-		int border; /** The padding border size for the input matrix. */
+		int strides; /**< [pool.strides] The strides for pooling layer. */
+		int size; /**< [pool.size] The window size for pooling layer. */
+		int border; /**< [pool.border] The padding border size for the input matrix. */
 	} pool;
 	struct {
-		int size; /** The size of local response normalization layer. */
-		float kappa; /** As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */
-		float alpha; /** See **rnorm.kappa**. */
-		float beta; /** See **rnorm.kappa**. */
+		int size; /**< [rnorm.size] The size of local response normalization layer. */
+		float kappa; /**< [rnorm.kappa] As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */
+		float alpha; /**< [rnorm.alpha] See **rnorm.kappa**. */
+		float beta; /**< [rnorm.beta] See **rnorm.kappa**. */
 	} rnorm;
 	struct {
-		int relu; /** 0 - ReLU, 1 - no ReLU */
-		int count; /** The number of output nodes for full connect layer. */
+		int relu; /**< [full_connect.relu] 0 - ReLU, 1 - no ReLU */
+		int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
 	} full_connect;
 } ccv_convnet_type_t;
 
 typedef struct {
 	struct {
-		int rows; /** The number of rows of the input matrix. */
-		int cols; /** The number of columns of the input matrix. */
-		int channels; /** The number of channels of the input matrix. */
-		int partition; /** The number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels). */
+		int rows; /**< [matrix.rows] The number of rows of the input matrix. */
+		int cols; /**< [matrix.cols] The number of columns of the input matrix. */
+		int channels; /**< [matrix.channels] The number of channels of the input matrix. */
+		int partition; /**< [matrix.partition] The number of partitions of the input matrix, it must be dividable by the number of channels (it is partitioned by channels). */
 	} matrix;
 	struct {
-		int count; /** The number of nodes. You should either use **node** or **matrix** to specify the input structure. */
+		int count; /**< [node.count] The number of nodes. You should either use **node** or **matrix** to specify the input structure. */
 	} node;
 } ccv_convnet_input_t;
 
 typedef struct {
-	int type; /** One of following value to specify the network layer type, **CCV_CONVNET_CONVOLUTIONAL**, **CCV_CONVNET_FULL_CONNECT**, **CCV_CONVNET_MAX_POOL**, **CCV_CONVNET_AVERAGE_POOL**, **CCV_CONVNET_LOCAL_RESPONSE_NORM**. */
-	float bias; /** The initialization value for bias if applicable (for convolutional layer and full connect layer). */
-	float glorot; /** The truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)). */
-	ccv_convnet_input_t input; /** A **ccv_convnet_input_t** specifies the input structure. */
-	ccv_convnet_type_t output; /** A **ccv_convnet_type_t** specifies the output parameters and structure. */
+	int type; /**< One of following value to specify the network layer type, **CCV_CONVNET_CONVOLUTIONAL**, **CCV_CONVNET_FULL_CONNECT**, **CCV_CONVNET_MAX_POOL**, **CCV_CONVNET_AVERAGE_POOL**, **CCV_CONVNET_LOCAL_RESPONSE_NORM**. */
+	float bias; /**< The initialization value for bias if applicable (for convolutional layer and full connect layer). */
+	float glorot; /**< The truncated uniform distribution coefficients for weights if applicable (for convolutional layer and full connect layer, glorot / sqrt(in + out)). */
+	ccv_convnet_input_t input; /**< A **ccv_convnet_input_t** specifies the input structure. */
+	ccv_convnet_type_t output; /**< A **ccv_convnet_type_t** specifies the output parameters and structure. */
 } ccv_convnet_layer_param_t;
 
 typedef struct {
@@ -2147,9 +2147,9 @@ typedef struct {
 } ccv_convnet_t;
 
 typedef struct {
-	float decay; /** See **learn_rate**. */
-	float learn_rate; /** New velocity = **momentum** * old velocity - **decay** * **learn_rate** * old value + **learn_rate** * delta, new value = old value + new velocity */
-	float momentum; /** See **learn_rate**. */
+	float decay; /**< See **learn_rate**. */
+	float learn_rate; /**< New velocity = **momentum** * old velocity - **decay** * **learn_rate** * old value + **learn_rate** * delta, new value = old value + new velocity */
+	float momentum; /**< See **learn_rate**. */
 } ccv_convnet_layer_sgd_param_t;
 
 typedef struct {
@@ -2157,30 +2157,30 @@ typedef struct {
 	// and drop out is happened on the input neuron (so that when the network
 	// is used in real-world, I simply need to multiply its weights to 1 - dor
 	// to get the real one)
-	float dor; /** The dropout rate for this layer, it is only applicable for full connect layer. */
-	ccv_convnet_layer_sgd_param_t w; /** A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for weight, it is only applicable for full connect layer and convolutional layer. */
-	ccv_convnet_layer_sgd_param_t bias; /** A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layer weight. */
+	float dor; /**< The dropout rate for this layer, it is only applicable for full connect layer. */
+	ccv_convnet_layer_sgd_param_t w; /**< A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for weight, it is only applicable for full connect layer and convolutional layer. */
+	ccv_convnet_layer_sgd_param_t bias; /**< A **ccv_convnet_layer_sgd_param_t** specifies the stochastic gradient descent update rule for bias, it is only applicable for full connect layer and convolutional layer weight. */
 } ccv_convnet_layer_train_param_t;
 
 typedef struct {
-	int max_epoch; /** The number of epoch (an epoch sweeps through all the examples) to go through before end the training. */
-	int mini_batch; /** The number of examples for a batch in stochastic gradient descent. */
-	int iterations; /** The number of iterations (an iteration is for one batch) before save the progress. */
-	int sgd_frequency; /** After how many batches when we do a SGD update. */
-	int symmetric; /** Whether to exploit the symmetric property of the provided examples. */
-	int device_count; /** Use how many GPU devices, this is capped by available CUDA devices on your system. For now, ccv's implementation only support up to 4 GPUs */
-	int peer_access; /** Enable peer access for cross device communications or not, this will enable faster multiple device training. */
-	float image_manipulation; /** The value for image brightness / contrast / saturation manipulations. */
-	float color_gain; /** The color variance for data augmentation (0 means no such augmentation). */
+	int max_epoch; /**< The number of epoch (an epoch sweeps through all the examples) to go through before end the training. */
+	int mini_batch; /**< The number of examples for a batch in stochastic gradient descent. */
+	int iterations; /**< The number of iterations (an iteration is for one batch) before save the progress. */
+	int sgd_frequency; /**< After how many batches when we do a SGD update. */
+	int symmetric; /**< Whether to exploit the symmetric property of the provided examples. */
+	int device_count; /**< Use how many GPU devices, this is capped by available CUDA devices on your system. For now, ccv's implementation only support up to 4 GPUs */
+	int peer_access; /**< Enable peer access for cross device communications or not, this will enable faster multiple device training. */
+	float image_manipulation; /**< The value for image brightness / contrast / saturation manipulations. */
+	float color_gain; /**< The color variance for data augmentation (0 means no such augmentation). */
 	struct {
-		int min_dim; /** The minimum dimensions for random resize of training images. */
-		int max_dim; /** The maximum dimensions for random resize of training images. */
+		int min_dim; /**< [input.min_dim] The minimum dimensions for random resize of training images. */
+		int max_dim; /**< [input.max_dim] The maximum dimensions for random resize of training images. */
 	} input;
-	ccv_convnet_layer_train_param_t* layer_params; /** An C-array of **ccv_convnet_layer_train_param_t** training parameters for each layer. */
+	ccv_convnet_layer_train_param_t* layer_params; /**< An C-array of **ccv_convnet_layer_train_param_t** training parameters for each layer. */
 } ccv_convnet_train_param_t;
 
 typedef struct {
-	int half_precision; /** Use half precision float point to represent network parameters. */
+	int half_precision; /**< Use half precision float point to represent network parameters. */
 } ccv_convnet_write_param_t;
 
 /**
@@ -2205,12 +2205,12 @@ int ccv_convnet_verify(ccv_convnet_t* convnet, int output);
  * @param categorizeds An array of images with its category information for training.
  * @param tests An array of images with its category information for validating.
  * @param filename The working file to save progress and the trained convolutional network.
- * @param params The training parameters.
+ * @param params A ccv_convnet_train_param_t that specifies the training parameters.
  */
 void ccv_convnet_supervised_train(ccv_convnet_t* convnet, ccv_array_t* categorizeds, ccv_array_t* tests, const char* filename, ccv_convnet_train_param_t params);
 /**
  * Use a convolutional network to encode an image into a compact representation.
- * @param convnet**: The given convolutional network.
+ * @param convnet The given convolutional network.
  * @param a A C-array of input images.
  * @param b A C-array of output matrix of compact representation.
  * @param batch The number of input images.
@@ -2219,7 +2219,7 @@ void ccv_convnet_encode(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, ccv_dens
 void ccv_convnet_input_formation(ccv_size_t input, ccv_dense_matrix_t* a, ccv_dense_matrix_t** b);
 /**
  * Use a convolutional network to classify an image into categories.
- * @param convnet**: The given convolutional network.
+ * @param convnet The given convolutional network.
  * @param a A C-array of input images.
  * @param symmetric Whether the input is symmetric.
  * @param ranks A C-array of **ccv_array_t** contains top categories by the convolutional network.
