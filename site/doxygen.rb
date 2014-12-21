@@ -119,7 +119,9 @@ require 'pathname'
 require 'set'
 
 dirname = Pathname.new(ARGV[0]).dirname.to_s
-outdir = Pathname.new(ARGV[1]).dirname.to_s
+outdir = Pathname.new(ARGV[1])
+exit unless outdir.directory?
+outdir = outdir.to_s
 
 doc = Nokogiri::XML(open ARGV[0])
 
@@ -140,7 +142,7 @@ title = 'lib/' + compoundname.content + '.c'
 
 filename = '0000-01-01-' + slug + '.markdown'
 
-file = File.open outdir + "/" + filename, 'w+'
+file = File.open(outdir + "/" + filename, 'w+')
 
 file << "---\nlayout: page\nlib: ccv\nslug: " + slug + "\nstatus: publish\ntitle: " + title + "\ndesc: " + desc + "\ncategories:\n- lib\n---\n"
 
