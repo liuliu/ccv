@@ -293,3 +293,13 @@ ccv\_contour\_free
 Free up the contour object.
 
  * **contour**: The contour.
+
+ccv\_array\_get
+---------------
+
+	ccv_array_get(a, i)
+
+Get a specific element from an array
+
+ * **a**: The array.
+ * **i**: The index of the element in the array.

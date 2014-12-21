@@ -37,7 +37,7 @@
 #define ccmemalign(memptr, alignment, size) (*memptr = ccmalloc(size))
 #endif
 
-/* Doxygen will ignore there, otherwise it has problem to process warn_unused_result directly. */
+/* Doxygen will ignore these, otherwise it has problem to process warn_unused_result directly. */
 #define CCV_WARN_UNUSED(x) x __attribute__((warn_unused_result))
 
 enum {
@@ -447,14 +447,14 @@ enum {
  * Read image from a file. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
  * @param in The file name.
  * @param x The output image.
- * @param type CCV_IO_ANY_FILE, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_COLOR, convert to color image.
+ * @param type CCV_IO_ANY_FILE, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_RGB_COLOR, convert to color image.
  */
 /**
  * @fn int ccv_read(const void* data, ccv_dense_matrix_t** x, int type, int size)
  * Read image from a a region of memory that conforms a specific image format. This function has soft dependencies on [LibJPEG](http://libjpeg.sourceforge.net/) and [LibPNG](http://www.libpng.org/pub/png/libpng.html). No these libraries, no JPEG nor PNG read support. However, ccv does support BMP read natively (it is a simple format after all).
  * @param data The data memory.
  * @param x The output image.
- * @param type CCV_IO_ANY_STREAM, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_COLOR, convert to color image.
+ * @param type CCV_IO_ANY_STREAM, accept any file format. CCV_IO_GRAY, convert to grayscale image. CCV_IO_RGB_COLOR, convert to color image.
  * @param size The size of that data memory region.
  */
 /**

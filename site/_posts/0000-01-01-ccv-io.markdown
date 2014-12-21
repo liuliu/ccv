@@ -31,7 +31,7 @@ Read image from a file. This function has soft dependencies on [LibJPEG](http://
 
  * **in**: The file name.
  * **x**: The output image.
- * **type**: CCV\_IO\_ANY\_FILE, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
+ * **type**: CCV\_IO\_ANY\_FILE, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_RGB\_COLOR, convert to color image.
 
 ccv\_read
 ---------
@@ -42,7 +42,7 @@ Read image from a a region of memory that conforms a specific image format. This
 
  * **data**: The data memory.
  * **x**: The output image.
- * **type**: CCV\_IO\_ANY\_STREAM, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_COLOR, convert to color image.
+ * **type**: CCV\_IO\_ANY\_STREAM, accept any file format. CCV\_IO\_GRAY, convert to grayscale image. CCV\_IO\_RGB\_COLOR, convert to color image.
  * **size**: The size of that data memory region.
 
 ccv\_read
