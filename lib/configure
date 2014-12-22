@@ -3747,12 +3747,12 @@ if [ -d "$cuda_prefix" ]; then
 	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas "
 
 	if [ -d "$cuda_prefix/lib64" ]; then
-		MKLDFLAGS="$MKLDFLAGS-L\"$cuda_prefix/lib64\" "
+		MKLDFLAGS="$MKLDFLAGS-L$cuda_prefix/lib64 "
 
 		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes, x86_64" >&5
 $as_echo "yes, x86_64" >&6; }
 	else
-		MKLDFLAGS="$MKLDFLAGS-l\"$cuda_prefix/lib\" "
+		MKLDFLAGS="$MKLDFLAGS-l$cuda_prefix/lib "
 
 		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes, i386" >&5
 $as_echo "yes, i386" >&6; }
@@ -3789,6 +3789,8 @@ DISCFLAGS="${DISCFLAGS%"${DISCFLAGS##*[![:space:]]}"}"
 
 
 echo -e "\n \033[1mUSE\033[m: \033[4m$CC\033[m\n \033[1mCOMPILE FLAGS\033[m: \033[4m$DISCFLAGS\033[m\n \033[1mLINK FLAGS\033[m: \033[4m$MKLDFLAGS\033[m\n"
+
+echo $MKLDFLAGS > .deps
 
 ac_config_files="$ac_config_files config.mk"
 

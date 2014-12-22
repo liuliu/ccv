@@ -9,4 +9,4 @@ doc:
 	cd .. && doxygen .doxygen.conf && cd site && ./_doxygen.sh
 
 clean:
-	rm -f _site/* _doxygen/*
+	rm -rf _site/* _doxygen/*

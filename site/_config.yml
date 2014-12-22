@@ -2,16 +2,14 @@
 # For more see: https://github.com/mojombo/jekyll/wiki/Permalinks
 permalink: /:categories/:title 
 
-exclude: [".rbenv-version", "README.md", "Rakefile"]
-auto: false
-pygments: false
+exclude: [".rbenv-version", "README.md", "Rakefile", "makefile"]
+highlighter: null
 markdown: kramdown
 
 kramdown:
   use_coderay: true
-
-coderay:
-  coderay_css: class
+  coderay:
+    coderay_css: class
 
 # Themes are encouraged to use these universal variables 
 # so be sure to set them if your theme uses them.

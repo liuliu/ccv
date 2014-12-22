@@ -85,10 +85,10 @@ if [[ -d "$cuda_prefix" ]]; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas "])
 	if [[ -d "$cuda_prefix/lib64" ]]; then
-		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L\"$cuda_prefix/lib64\" "])
+		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
 		AC_MSG_RESULT([yes, x86_64])
 	else
-		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-l\"$cuda_prefix/lib\" "])
+		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-l$cuda_prefix/lib "])
 		AC_MSG_RESULT([yes, i386])
 	fi
 else
@@ -111,6 +111,8 @@ AC_SUBST(DISCFLAGS, ["${DISCFLAGS#"${DISCFLAGS%%@<:@!@<:@:space:@:>@@:>@*}"}"])
 AC_SUBST(DISCFLAGS, ["${DISCFLAGS%"${DISCFLAGS@%:@@%:@*@<:@!@<:@:space:@:>@@:>@}"}"])
 
 echo -e "\n \033@<:@1mUSE\033@<:@m: \033@<:@4m$CC\033@<:@m\n \033@<:@1mCOMPILE FLAGS\033@<:@m: \033@<:@4m$DISCFLAGS\033@<:@m\n \033@<:@1mLINK FLAGS\033@<:@m: \033@<:@4m$MKLDFLAGS\033@<:@m\n"
+
+echo $MKLDFLAGS > .deps
 
 AC_CONFIG_FILES(config.mk)
 

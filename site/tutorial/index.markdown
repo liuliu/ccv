@@ -5,19 +5,22 @@ title: Getting Started
 
 Install
 -------
+
 ccv is very lightweight. There is no concept of 'install'. If you want to use ccv, statically linking to it is sufficient. To the extreme, it is recommended to drop ccv source code into your project and use it directly.
 
-For old-schooler, run 'make' in /lib directory will generate the libccv.a archive. From there, you can statically link to it by -lccv. For example, you have ccv source compiled in ~/ccv/, and you want to compile ~/studies/sift.c with ccv.
+For old-schooler, run `./configure && make` in `/lib` directory will generate `libccv.a` for static linking with `-lccv`. For example, you have ccv source compiled in `~/ccv/`, and you want to compile `~/studies/sift.c` with ccv.
 
-	clang -L"~/ccv/lib" -I"~/ccv/lib" sift.c -lccv `cat ~/ccv/lib/.LN` -lm
+	clang -L"~/ccv/lib" -I"~/ccv/lib" sift.c -lccv `cat ~/ccv/lib/.deps`
 
-That it. The only magic sauce is ~/ccv/lib/.LN, which gives you all the dependencies you have to link to when you compile ccv the first time. If your ccv compiled with no dependency, it is empty (and ccv works with zero dependency).
+That it. The only magic sauce is `~/ccv/lib/.deps`, which gives you all the dependencies you have to link to when you compile ccv the first time. If your ccv compiled with no dependency, it is empty (and ccv works with zero dependency).
+
+*Remember to checkout `./serve/makefile` to see how a real-world program that uses ccv organizes.*
 
 Read a Photo
 ------------
+
 Let's start with something small.
 
-{:lang="c"}
 	#include <ccv.h>
 	int main(int argc, char** argv)
 	{
@@ -26,14 +29,15 @@ Let's start with something small.
 		ccv_write(image, argv[2], 0, CCV_IO_PNG_FILE, 0);
 		return 0;
 	}
+{:lang="c"}
 
 If your ccv build has dependency on libjpeg or libpng, the code above is sufficient to load any JPEG or PNG file into memory and save a grayscale version to the disk.
 
 Detect a Face
 -------------
+
 Yes, knowing how to read a photo is sufficient to write an application that can do, for example, face detection.
 
-{:lang="c"}
 	#include <ccv.h>
 	int main(int argc, char** argv)
 	{
@@ -52,5 +56,6 @@ Yes, knowing how to read a photo is sufficient to write an application that can 
 		ccv_matrix_free(image);
 		return 0;
 	}
+{:lang="c"}
 
 That's it.
