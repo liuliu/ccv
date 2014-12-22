@@ -32,4 +32,8 @@ Yes, knowing how to read a photo is sufficient to write an application that can 
 
 {% include_code section-001-002.c %}
 
-That's it.
+That's it! You can run it in the command-line like this:
+
+	./detect image.png ~/ccv/samples/face.sqlite3
+
+and it will output some regions of faces if there are some.
