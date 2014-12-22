@@ -2,8 +2,9 @@
 
 all: site
 
+# This makes sure all example code compiles with latest ccv
 site: doc
-	jekyll build
+	make -C _source && jekyll build
 
 doc:
 	cd .. && doxygen .doxygen.conf && cd site && ./_doxygen.sh

@@ -7,9 +7,9 @@ highlighter: null
 markdown: kramdown
 
 kramdown:
-  use_coderay: true
-  coderay:
-    coderay_css: class
+  syntax_highligher: coderay
+
+code_dir: _source
 
 # Themes are encouraged to use these universal variables 
 # so be sure to set them if your theme uses them.
