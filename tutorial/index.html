@@ -72,9 +72,9 @@ _gaq.push(['_trackPageview']);
 <span class="line-numbers"> <a href="#n3" name="n3">3</a></span><span class="predefined-type">int</span> main(<span class="predefined-type">int</span> argc, <span class="predefined-type">char</span>** argv)
 <span class="line-numbers"> <a href="#n4" name="n4">4</a></span>{
 <span class="line-numbers"> <a href="#n5" name="n5">5</a></span>        ccv_dense_matrix_t* image = <span class="integer">0</span>;
-<span class="line-numbers"> <a href="#n6" name="n6">6</a></span>        ccv_read(argv[<span class="integer">1</span>], &amp;image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
-<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>        ccv_bbf_classifier_cascade_t* cascade = ccv_bbf_read_classifier_cascade(argv[<span class="integer">2</span>]);
-<span class="line-numbers"> <a href="#n8" name="n8">8</a></span>        ccv_array_t* faces = ccv_bbf_detect_objects(image, &amp;cascade, <span class="integer">1</span>, ccv_bbf_default_params);
+<span class="line-numbers"> <a href="#n6" name="n6">6</a></span>        ccv_read(argv[<span class="integer">1</span>], &amp;image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
+<span class="line-numbers"> <a href="#n7" name="n7">7</a></span>        ccv_scd_classifier_cascade_t* cascade = ccv_scd_classifier_cascade_read(argv[<span class="integer">2</span>]);
+<span class="line-numbers"> <a href="#n8" name="n8">8</a></span>        ccv_array_t* faces = ccv_scd_detect_objects(image, &amp;cascade, <span class="integer">1</span>, ccv_scd_default_params);
 <span class="line-numbers"> <a href="#n9" name="n9">9</a></span>        <span class="predefined-type">int</span> i;
 <span class="line-numbers"><strong><a href="#n10" name="n10">10</a></strong></span>        <span class="keyword">for</span> (i = <span class="integer">0</span>; i &lt; faces-&gt;rnum; i++)
 <span class="line-numbers"><a href="#n11" name="n11">11</a></span>        {
@@ -82,14 +82,19 @@ _gaq.push(['_trackPageview']);
 <span class="line-numbers"><a href="#n13" name="n13">13</a></span>                printf(<span class="string"><span class="delimiter">&quot;</span><span class="content">%d %d %d %d</span><span class="char">\n</span><span class="delimiter">&quot;</span></span>, face-&gt;rect.x, face-&gt;rect.y, face-&gt;rect.width, face-&gt;rect.height);
 <span class="line-numbers"><a href="#n14" name="n14">14</a></span>        }
 <span class="line-numbers"><a href="#n15" name="n15">15</a></span>        ccv_array_free(faces);
-<span class="line-numbers"><a href="#n16" name="n16">16</a></span>        ccv_bbf_classifier_cascade_free(cascade);
+<span class="line-numbers"><a href="#n16" name="n16">16</a></span>        ccv_scd_classifier_cascade_free(cascade);
 <span class="line-numbers"><a href="#n17" name="n17">17</a></span>        ccv_matrix_free(image);
 <span class="line-numbers"><a href="#n18" name="n18">18</a></span>        <span class="keyword">return</span> <span class="integer">0</span>;
 <span class="line-numbers"><a href="#n19" name="n19">19</a></span>}
 </pre></div>
 </div>
 
-<p>That’s it.</p>
+<p>That’s it! You can run it in the command-line like this:</p>
+
+<pre><code>./detect image.png ~/ccv/samples/face.sqlite3
+</code></pre>
+
+<p>and it will output some regions of faces if there are some.</p>
 
 <h3><a href="/">&lsaquo;&nbsp;&nbsp;back&nbsp;</a></h3>
 <div id="disqus_thread"></div>
