@@ -35,7 +35,9 @@ def output_function file, function
 		desc << para if para.length > 0
 	end
 	return structs if desc.length == 0
-	name = markdown_safe function.at('./name').content
+	name = function.at('./name').content
+	print ' - Generating function ' + name + "\n"
+	name = markdown_safe name
 	file << "\n" + name + "\n" + ('-' * name.length) + "\n\n"
 	case function['kind']
 		when 'function'
@@ -95,6 +97,7 @@ def output_struct file, structname, doc_group
 		next if !available_desc
 		if first_struct
 			# if we haven't print the name of the struct yet, print it now
+			print ' - Generating struct ' + compoundname + "\n"
 			compoundname = markdown_safe compoundname
 			file << "\n" + compoundname + "\n" + ('-' * compoundname.length) + "\n\n"
 			header = section.at './header'
@@ -169,6 +172,8 @@ slug = compoundname.content.gsub('_', '-')
 
 title = 'lib/' + compoundname.content + '.c'
 
+print 'Generating for ' + title + "\n"
+
 filename = '0000-01-01-' + slug + '.markdown'
 
 file = File.open(outdir + "/" + filename, 'w+')
@@ -189,3 +194,5 @@ functions.each do |function|
 		open_and_output_struct out_structs, file, struct, doc_group, dirname
 	end
 end
+
+print 'Done for ' + title + "\n"
