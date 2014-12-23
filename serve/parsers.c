@@ -1,5 +1,6 @@
 #include "uri.h"
 #include "ccv.h"
+#include "ccv_internal.h"
 #include <string.h>
 #include <ctype.h>
 #include <stdio.h>
@@ -373,7 +374,10 @@ void string_parser_init(string_parser_t* parser)
 void string_parser_execute(string_parser_t* parser, const char* buf, size_t len)
 {
 	if (parser->cursor + len > sizeof(parser->string) - 1)
+	{
+		PRINT(CCV_CLI_INFO, "string parameter overflow %zu\n", sizeof(parser->string));
 		parser->state = s_string_overflow;
+	}
 	else if (parser->state == s_string_start) {
 		memcpy(parser->string + parser->cursor, buf, len);
 		parser->cursor += len;

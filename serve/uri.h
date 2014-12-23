@@ -113,7 +113,7 @@ typedef enum {
 
 typedef struct {
 	string_state_t state;
-	char string[16];
+	char string[256];
 	int cursor;
 } string_parser_t;
 

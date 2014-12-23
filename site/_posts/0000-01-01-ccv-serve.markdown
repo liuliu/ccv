@@ -27,7 +27,7 @@ Supported methods: GET, POST
 Using [ConvNet](/doc/doc-convnet) to categorize a given image.
 
  * **'source' or HTTP body**: the image.
- * **'model'**: what category set, for now it supports 'image-net-2010' and 'image-net-2012'.
+ * **'model'**: what category set, for now it supports 'image-net-2012' and 'image-net-2012-vgg-d'.
  * **'top'**: the number of results returned, order by confidence score.
 
 Supported methods: GET, POST

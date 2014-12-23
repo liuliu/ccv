@@ -56,9 +56,9 @@ static void uri_convnet_param_parser_init(convnet_param_parser_t* parser)
 static void uri_convnet_on_model_string(void* context, char* string)
 {
 	convnet_param_parser_t* parser = (convnet_param_parser_t*)context;
-	if (strcmp(string, "image-net-2010") == 0)
+	if (strcmp(string, "image-net-2012") == 0)
 		parser->convnet_and_words = &parser->context->image_net[0];
-	else if (strcmp(string, "image-net-2012") == 0)
+	else if (strcmp(string, "image-net-2012-vgg-d") == 0)
 		parser->convnet_and_words = &parser->context->image_net[1];
 }
 
@@ -95,14 +95,13 @@ static ccv_array_t* uri_convnet_words_read(char* filename)
 void* uri_convnet_classify_init(void)
 {
 	convnet_context_t* context = (convnet_context_t*)malloc(sizeof(convnet_context_t));
-	context->image_net[0].convnet = ccv_convnet_read(0, "../samples/image-net-2010.sqlite3");
+	context->image_net[0].convnet = ccv_convnet_read(0, "../samples/image-net-2012.sqlite3");
 	assert(context->image_net[0].convnet);
-	context->image_net[0].words = uri_convnet_words_read("../samples/image-net-2010.words");
+	context->image_net[0].words = uri_convnet_words_read("../samples/image-net-2012.words");
 	assert(context->image_net[0].words);
-	context->image_net[1].convnet = ccv_convnet_read(0, "../samples/image-net-2012.sqlite3");
-	assert(context->image_net[1].convnet);
 	context->image_net[1].words = uri_convnet_words_read("../samples/image-net-2012.words");
 	assert(context->image_net[1].words);
+	context->image_net[1].convnet = ccv_convnet_read(0, "../samples/image-net-2012-vgg-d.sqlite3");
 	assert(param_parser_map_alphabet(param_map, sizeof(param_map) / sizeof(param_dispatch_t)) == 0);
 	context->desc = param_parser_map_http_body(param_map, sizeof(param_map) / sizeof(param_dispatch_t),
 		"[{"
@@ -185,6 +184,13 @@ int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf)
 		free(parser);
 		return -1;
 	}
+	ccv_convnet_t* convnet = parser->convnet_and_words->convnet;
+	if (convnet == 0)
+	{
+		free(parser->source.data);
+		free(parser);
+		return -1;
+	}
 	ccv_dense_matrix_t* image = 0;
 	ccv_read(parser->source.data, &image, CCV_IO_ANY_STREAM | CCV_IO_RGB_COLOR, parser->source.written);
 	free(parser->source.data);
@@ -193,7 +199,6 @@ int uri_convnet_classify(const void* context, const void* parsed, ebb_buf* buf)
 		free(parser);
 		return -1;
 	}
-	ccv_convnet_t* convnet = parser->convnet_and_words->convnet;
 	ccv_dense_matrix_t* input = 0;
 	ccv_convnet_input_formation(convnet->input, image, &input);
 	ccv_matrix_free(image);

@@ -15,14 +15,14 @@ typedef struct {
 	uri_dispatch_t* dispatcher;
 	void* context;
 	ebb_buf response;
-	char uri[32];
+	char uri[256];
 	int cursor;
 } ebb_request_extras;
 
 static void on_request_path(ebb_request* request, const char* at, size_t length)
 {
 	ebb_request_extras* request_extras = (ebb_request_extras*)request->data;
-	if (length + request_extras->cursor < 32)
+	if (length + request_extras->cursor < 256)
 		memcpy(request_extras->uri + request_extras->cursor, at, length);
 	request_extras->cursor += length;
 }
@@ -34,7 +34,7 @@ static void on_request_headers_complete(ebb_request* request)
 	if (request_extras->cursor > 0)
 	{
 		char* uri = request_extras->uri;
-		size_t len = strnlen(request_extras->uri, 32);
+		size_t len = strnlen(request_extras->uri, 256);
 		int i;
 		int resource = 0, multiple = 1;
 		for (i = len - 1; i >= 0; i--)

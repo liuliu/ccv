@@ -6,7 +6,7 @@ NVFLAGS := -O3 $(NVFLAGS)
 
 .PHONY: all clean
 
-all: libccv.a
+all: libccv.a ../samples/image-net-2012-vgg-d.sqlite3
 
 clean:
 	rm -f *.o 3rdparty/sha1/*.o 3rdparty/sfmt/*.o 3rdparty/kissfft/*.o 3rdparty/dsfmt/*.o 3rdparty/sqlite3/*.o cuda/*.o libccv.a
@@ -19,6 +19,9 @@ ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
 
 3rdparty/sqlite3/sqlite3.o: 3rdparty/sqlite3/sqlite3.c
 	$(CC) $< -o $@ -c -O3 -D SQLITE_THREADSAFE=0 -D SQLITE_OMIT_LOAD_EXTENSION
+
+../samples/image-net-2012-vgg-d.sqlite3:
+	../samples/download-vgg-d-model.sh
 
 %.o: %.c ccv.h ccv_internal.h cuda/cwc.h cuda/cwc_helper.h
 	$(CC) $< -o $@ -c $(CFLAGS)
