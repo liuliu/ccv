@@ -129,6 +129,7 @@ int main(int argc, char** argv)
 	}
 	fclose(r1);
 	free(file);
+// #define model_params vgg_d_params
 #define model_params matt_params
 	int depth = sizeof(model_params) / sizeof(ccv_convnet_layer_param_t);
 	ccv_convnet_t* convnet = ccv_convnet_new(1, ccv_size(257, 257), model_params, depth);
