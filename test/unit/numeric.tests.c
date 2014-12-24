@@ -83,16 +83,21 @@ double gaussian(double x, double y, void* data)
 TEST_CASE("Gaussian blur with kernel size even & odd")
 {
 	ccv_dense_matrix_t* image = 0;
-	ccv_read("../../samples/street.png", &image, CCV_IO_GRAY | CCV_IO_ANY_FILE);
+	// Different versions of libpng uses different RGB => Gray transform values, therefore, operation on RGB space
+	ccv_read("../../samples/street.png", &image, CCV_IO_ANY_FILE);
 	ccv_dense_matrix_t* kernel = ccv_dense_matrix_new(100, 100, CCV_32F | CCV_GET_CHANNEL(image->type), 0, 0);
 	ccv_filter_kernel(kernel, gaussian, 0);
-	ccv_normalize(kernel, (ccv_matrix_t**)&kernel, 0, CCV_L1_NORM);
+	double sum = ccv_sum(kernel, CCV_UNSIGNED);
+	// Normalize
+	ccv_scale(kernel, (ccv_matrix_t**)&kernel, 0, CCV_GET_CHANNEL(image->type) / sum);
 	ccv_dense_matrix_t* x = 0;
 	ccv_filter(image, kernel, &x, CCV_32F, 0);
 	ccv_matrix_free(kernel);
 	kernel = ccv_dense_matrix_new(101, 101, CCV_32F | CCV_GET_CHANNEL(image->type), 0, 0);
 	ccv_filter_kernel(kernel, gaussian, 0);
-	ccv_normalize(kernel, (ccv_matrix_t**)&kernel, 0, CCV_L1_NORM);
+	sum = ccv_sum(kernel, CCV_UNSIGNED);
+	// Normalize
+	ccv_scale(kernel, (ccv_matrix_t**)&kernel, 0, CCV_GET_CHANNEL(image->type) / sum);
 	ccv_dense_matrix_t* y = 0;
 	ccv_filter(image, kernel, &y, CCV_32F, 0);
 	ccv_matrix_free(kernel);

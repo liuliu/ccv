@@ -36,7 +36,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 			for (i = 0; i < da->rows; i++) \
 			{ \
 				for (j = 0; j < da->cols; j++) \
-					sum += _for_get(a_ptr, j, 0); \
+					sum += fabs((double)_for_get(a_ptr, j, 0)); \
 				a_ptr += da->step; \
 			} \
 			inv = 1.0 / sum; \
