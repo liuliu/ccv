@@ -20,6 +20,7 @@ bin/*.samples
 bin/*.png
 bin/*.tex
 bin/*.txt
+!bin/CMakeLists.txt
 bin/*.dat
 bin/*.bin
 bin/*.json
