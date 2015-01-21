@@ -48,6 +48,7 @@ $.fn.faceDetection = function (settingsOrCallback) {
             if ($$.is('img')) {
                 source = new Image();
                 source.src = $$.attr('src');
+                source.crossOrigin = $$.attr('crossorigin');
 
                 canvas = ccv.pre(source);
             } else if ($$.is('video') || $$.is('canvas')) {

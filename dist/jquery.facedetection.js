@@ -1,12 +1,12 @@
 /*! ----------------------------------------------------------------------------
  *  A jQuery plugin to detect faces on images, videos and canvases.
- *  v2.0.1 released 2014-11-10 17:52
+ *  v2.0.1 released 2015-01-21 13:10
  *  http://facedetection.jaysalvat.com
- *  Copyright (c) 2010-2014, Jay Salvat
+ *  Copyright (c) 2010-2015, Jay Salvat
  *  http://jaysalvat.com/
  *  ----------------------------------------------------------------------------
  *  ccv.js and cascade.js
- *  Copyright (c) 2010-2014, Liu Liu
+ *  Copyright (c) 2010-2015, Liu Liu
  *  http://liuliu.me/
  *  ----------------------------------------------------------------------------
  */
@@ -16533,7 +16533,7 @@
             function detect() {
                 var source, canvas;
                 if (time = new Date().getTime(), $$.is("img")) source = new Image(), source.src = $$.attr("src"), 
-                canvas = ccv.pre(source); else if ($$.is("video") || $$.is("canvas")) {
+                source.crossOrigin = $$.attr("crossorigin"), canvas = ccv.pre(source); else if ($$.is("video") || $$.is("canvas")) {
                     var copy, context;
                     source = $$[0], copy = document.createElement("canvas"), copy.setAttribute("width", source.videoWidth || source.width), 
                     copy.setAttribute("height", source.videoHeight || source.height), context = copy.getContext("2d"), 
