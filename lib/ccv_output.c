@@ -1,6 +1,6 @@
 #include "ccv.h"
 
-static int cli_output_levels = CCV_CLI_INFO;
+static int cli_output_levels = 0xffffffff & (~CCV_CLI_VERBOSE);
 
 int ccv_cli_output_level_and_above(int level)
 {
