@@ -795,7 +795,8 @@ void ccv_convnet_classify(ccv_convnet_t* convnet, ccv_dense_matrix_t** a, int sy
 			}
 			ccv_matrix_free(b[scan + 1]);
 			memset(b + 1, 0, sizeof(ccv_dense_matrix_t*) * (scan + 1));
-			ccv_flip(b[0], &b[0], 0, CCV_FLIP_X);
+			if (t < !!symmetric)
+				ccv_flip(b[0], &b[0], 0, CCV_FLIP_X);
 		}
 		ccv_matrix_free(b[0]);
 		// now have everything in c, do the last full connect propagate
