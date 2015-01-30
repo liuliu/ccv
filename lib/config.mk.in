@@ -5,6 +5,6 @@ CUDA_OBJS := @CUDA_OBJS@
 DEFINE_MACROS := @DEFINE_MACROS@
 prefix := @prefix@
 exec_prefix := @exec_prefix@
-CFLAGS := @MKCFLAGS@ -I@includedir@
+CFLAGS := @CPPFLAGS@ @MKCFLAGS@ -I@includedir@
 NVFLAGS := --use_fast_math -arch=sm_30 $(DEFINE_MACROS)
-LDFLAGS := -L@libdir@ @MKLDFLAGS@
+LDFLAGS := @LDFLAGS@ -L@libdir@ @MKLDFLAGS@

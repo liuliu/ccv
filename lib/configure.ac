@@ -88,7 +88,7 @@ if [[ -d "$cuda_prefix" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
 		AC_MSG_RESULT([yes, x86_64])
 	else
-		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-l$cuda_prefix/lib "])
+		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib "])
 		AC_MSG_RESULT([yes, i386])
 	fi
 else
