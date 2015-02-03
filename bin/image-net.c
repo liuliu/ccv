@@ -140,10 +140,10 @@ int main(int argc, char** argv)
 		for (i = 0; i < depth; i++)
 		{
 			layer_params[i].w.decay = 0.0005;
-			layer_params[i].w.learn_rate = 0.01;
+			layer_params[i].w.learn_rate = 0.0001;
 			layer_params[i].w.momentum = 0.9;
 			layer_params[i].bias.decay = 0;
-			layer_params[i].bias.learn_rate = 0.01;
+			layer_params[i].bias.learn_rate = 0.0001;
 			layer_params[i].bias.momentum = 0.9;
 		}
 		// set the two full connect layers to last with dropout rate at 0.5

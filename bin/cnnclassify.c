@@ -72,7 +72,7 @@ int main(int argc, char** argv)
 					ccv_array_t* ranks[BATCH_SIZE] = {
 						0
 					};
-					ccv_convnet_classify(convnet, images, 1, ranks, 5, BATCH_SIZE);
+					ccv_convnet_classify(convnet, images, 1, ranks, 1000, BATCH_SIZE);
 					for (i = 0; i < BATCH_SIZE; i++)
 					{
 						for (j = 0; j < ranks[i]->rnum - 1; j++)
@@ -94,7 +94,7 @@ int main(int argc, char** argv)
 				ccv_array_t* ranks[BATCH_SIZE] = {
 					0
 				};
-				ccv_convnet_classify(convnet, images, 1, ranks, 5, BATCH_SIZE);
+				ccv_convnet_classify(convnet, images, 1, ranks, 1000, BATCH_SIZE);
 				for (i = 0; i < (k % BATCH_SIZE); i++)
 				{
 					for (j = 0; j < ranks[i]->rnum - 1; j++)
