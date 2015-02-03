@@ -264,7 +264,7 @@ int main(int argc, char** argv)
 		printf("\nAt %d / %d, lambda %lf, at accuracy %.3lf%%, accuracy lower bound %.3lf%%\n", i + 1, 25, current_lambda, accuracy * 100, accuracy_lower_bound * 100);
 		printf("accuracy at: (%d, %.3lf%%)", 0, accuracy_at_high[0] * 100 / 50000.0);
 		for (j = 1; j < max_high; j++)
-			printf(", (%d, %.3lf)", j, accuracy_at_high[j] * 100 / 50000.0);
+			printf(", (%d, %.3lf%%)", j, accuracy_at_high[j] * 100 / 50000.0);
 		printf("\n");
 	}
 	free(probs);
