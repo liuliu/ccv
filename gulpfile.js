@@ -1,4 +1,5 @@
-/*  Utlimate Jay Mega Gulpfile */
+/* Utlimate Jay Mega Gulpfile */
+/* jshint node: true */
 
 (function () {
     "use strict";
@@ -19,7 +20,9 @@
         replace = require("gulp-replace"),
         gsync   = require("gulp-sync"),
         sync    = gsync(gulp).sync;
-
+        // TODO: 
+        // Use gulp-load-plugins
+        
     var version = yargs.argv.type || "patch";
 
     var settings = {
@@ -241,7 +244,8 @@
                 'git add -A releases/latest',
                 'git commit -m "Publish release v' + version + '."',
                 'git push origin gh-pages',
-                'git checkout -'
+                'git checkout -',
+                'npm publish',
             ].join(" && "),
             function (err, output, code) {
                 if (code !== 0) {
