@@ -1,0 +1,211 @@
+0 info it worked if it ends with ok
+1 verbose cli [ 'node', '/usr/local/bin/npm', 'publish' ]
+2 info using npm@1.4.6
+3 info using node@v0.10.26
+4 verbose publish [ '.' ]
+5 verbose cache add [ '.', null ]
+6 verbose cache add name=undefined spec="." args=[".",null]
+7 verbose parsed url { protocol: null,
+7 verbose parsed url   slashes: null,
+7 verbose parsed url   auth: null,
+7 verbose parsed url   host: null,
+7 verbose parsed url   port: null,
+7 verbose parsed url   hostname: null,
+7 verbose parsed url   hash: null,
+7 verbose parsed url   search: null,
+7 verbose parsed url   query: null,
+7 verbose parsed url   pathname: '.',
+7 verbose parsed url   path: '.',
+7 verbose parsed url   href: '.' }
+8 silly lockFile 3a52ce78- .
+9 verbose lock . /Users/jay/.npm/3a52ce78-.lock
+10 verbose tar pack [ '/var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz',
+10 verbose tar pack   '.' ]
+11 verbose tarball /var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+12 verbose folder .
+13 info prepublish jquery.facedetection@2.0.1
+14 silly lockFile 1f1177db-tar tar://.
+15 verbose lock tar://. /Users/jay/.npm/1f1177db-tar.lock
+16 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+17 verbose lock tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz /Users/jay/.npm/8779ec5a-66053-0-3331173057667911-tmp-tgz.lock
+18 silly lockFile 1f1177db-tar tar://.
+19 silly lockFile 1f1177db-tar tar://.
+20 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+21 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+22 verbose tar unpack /var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+23 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+24 verbose lock tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package /Users/jay/.npm/0433f99b-66053-0-3331173057667911-package.lock
+25 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+26 verbose lock tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz /Users/jay/.npm/8779ec5a-66053-0-3331173057667911-tmp-tgz.lock
+27 silly gunzTarPerm modes [ '755', '644' ]
+28 silly gunzTarPerm extractEntry package.json
+29 silly gunzTarPerm extractEntry .npmignore
+30 silly gunzTarPerm modified mode [ '.npmignore', 436, 420 ]
+31 silly gunzTarPerm extractEntry README.md
+32 silly gunzTarPerm extractEntry gulpfile.js
+33 silly gunzTarPerm extractEntry bower.json
+34 silly gunzTarPerm extractEntry dist/jquery.facedetection.js
+35 silly gunzTarPerm extractEntry dist/jquery.facedetection.min.js
+36 silly gunzTarPerm extractEntry dist/jquery.facedetection.min.js.map
+37 silly gunzTarPerm extractEntry .travis.yml
+38 silly gunzTarPerm extractEntry LICENSE.md
+39 silly gunzTarPerm extractEntry tests/tests.js
+40 silly gunzTarPerm extractEntry tests/assets/faces.jpg
+41 silly gunzTarPerm extractEntry tests/test-runner-dist.html
+42 silly gunzTarPerm extractEntry tests/test-runner.html
+43 silly gunzTarPerm extractEntry tmp/jquery.facedetection.js
+44 silly gunzTarPerm extractEntry tmp/jquery.facedetection.min.js
+45 silly gunzTarPerm extractEntry tmp/metadata.js
+46 silly gunzTarPerm extractEntry tmp/jquery.facedetection.min.js.map
+47 silly gunzTarPerm extractEntry tmp/jquery.facedetection.zip
+48 silly gunzTarPerm extractEntry tmp/metadata.json
+49 silly gunzTarPerm extractEntry src/cascade.js
+50 silly gunzTarPerm extractEntry src/ccv.js
+51 silly gunzTarPerm extractEntry src/jquery.facedetection.js
+52 silly gunzTarPerm extractEntry examples/assets/picture.jpg
+53 silly gunzTarPerm extractEntry examples/assets/video.mp4
+54 silly gunzTarPerm extractEntry examples/assets/video.ogv
+55 silly gunzTarPerm extractEntry examples/assets/video.webm
+56 silly gunzTarPerm extractEntry examples/css/styles.css
+57 silly gunzTarPerm extractEntry examples/img/background.jpg
+58 silly gunzTarPerm extractEntry examples/img/logo.svg
+59 silly gunzTarPerm extractEntry examples/img/tryit.svg
+60 silly gunzTarPerm extractEntry examples/picture.html
+61 silly gunzTarPerm extractEntry examples/video.html
+62 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+63 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+64 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+65 silly lockFile 8779ec5a-66053-0-3331173057667911-tmp-tgz tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/tmp.tgz
+66 verbose tar pack [ '/Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz',
+66 verbose tar pack   '/var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package' ]
+67 verbose tarball /Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+68 verbose folder /var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+69 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+70 verbose lock tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package /Users/jay/.npm/0433f99b-66053-0-3331173057667911-package.lock
+71 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+72 verbose lock tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz /Users/jay/.npm/bb4769f3--facedetection-2-0-1-package-tgz.lock
+73 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+74 silly lockFile 0433f99b-66053-0-3331173057667911-package tar:///var/folders/3m/4n2nfxhd3yx6kk2c_k17nyz00000gn/T/npm-3271-5vSLwW1H/1424260566053-0.3331173057667911/package
+75 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+76 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+77 silly lockFile 63c68161-uery-facedetection-2-0-1-package /Users/jay/.npm/jquery.facedetection/2.0.1/package
+78 verbose lock /Users/jay/.npm/jquery.facedetection/2.0.1/package /Users/jay/.npm/63c68161-uery-facedetection-2-0-1-package.lock
+79 silly lockFile 63c68161-uery-facedetection-2-0-1-package /Users/jay/.npm/jquery.facedetection/2.0.1/package
+80 silly lockFile 63c68161-uery-facedetection-2-0-1-package /Users/jay/.npm/jquery.facedetection/2.0.1/package
+81 verbose tar unpack /Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+82 silly lockFile 054bbb1c-uery-facedetection-2-0-1-package tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package
+83 verbose lock tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package /Users/jay/.npm/054bbb1c-uery-facedetection-2-0-1-package.lock
+84 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+85 verbose lock tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz /Users/jay/.npm/bb4769f3--facedetection-2-0-1-package-tgz.lock
+86 silly gunzTarPerm modes [ '755', '644' ]
+87 silly gunzTarPerm extractEntry package.json
+88 silly gunzTarPerm extractEntry .npmignore
+89 silly gunzTarPerm extractEntry README.md
+90 silly gunzTarPerm extractEntry gulpfile.js
+91 silly gunzTarPerm extractEntry bower.json
+92 silly gunzTarPerm extractEntry dist/jquery.facedetection.js
+93 silly gunzTarPerm extractEntry dist/jquery.facedetection.min.js
+94 silly gunzTarPerm extractEntry dist/jquery.facedetection.min.js.map
+95 silly gunzTarPerm extractEntry .travis.yml
+96 silly gunzTarPerm extractEntry LICENSE.md
+97 silly gunzTarPerm extractEntry tmp/jquery.facedetection.js
+98 silly gunzTarPerm extractEntry tmp/jquery.facedetection.min.js
+99 silly gunzTarPerm extractEntry tmp/metadata.js
+100 silly gunzTarPerm extractEntry tmp/jquery.facedetection.min.js.map
+101 silly gunzTarPerm extractEntry tmp/jquery.facedetection.zip
+102 silly gunzTarPerm extractEntry tmp/metadata.json
+103 silly gunzTarPerm extractEntry src/cascade.js
+104 silly gunzTarPerm extractEntry src/ccv.js
+105 silly gunzTarPerm extractEntry src/jquery.facedetection.js
+106 silly gunzTarPerm extractEntry tests/tests.js
+107 silly gunzTarPerm extractEntry tests/assets/faces.jpg
+108 silly gunzTarPerm extractEntry tests/test-runner-dist.html
+109 silly gunzTarPerm extractEntry tests/test-runner.html
+110 silly gunzTarPerm extractEntry examples/assets/picture.jpg
+111 silly gunzTarPerm extractEntry examples/assets/video.mp4
+112 silly gunzTarPerm extractEntry examples/assets/video.ogv
+113 silly gunzTarPerm extractEntry examples/assets/video.webm
+114 silly gunzTarPerm extractEntry examples/css/styles.css
+115 silly gunzTarPerm extractEntry examples/img/background.jpg
+116 silly gunzTarPerm extractEntry examples/img/logo.svg
+117 silly gunzTarPerm extractEntry examples/img/tryit.svg
+118 silly gunzTarPerm extractEntry examples/picture.html
+119 silly gunzTarPerm extractEntry examples/video.html
+120 silly lockFile 054bbb1c-uery-facedetection-2-0-1-package tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package
+121 silly lockFile 054bbb1c-uery-facedetection-2-0-1-package tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package
+122 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+123 silly lockFile bb4769f3--facedetection-2-0-1-package-tgz tar:///Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz
+124 verbose chmod /Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz 644
+125 verbose chown /Users/jay/.npm/jquery.facedetection/2.0.1/package.tgz [ 501, 20 ]
+126 silly lockFile 3a52ce78- .
+127 silly lockFile 3a52ce78- .
+128 silly publish { name: 'jquery.facedetection',
+128 silly publish   version: '2.0.1',
+128 silly publish   description: 'A jQuery plugin to detect faces on images, videos and canvases.',
+128 silly publish   homepage: 'http://facedetection.jaysalvat.com',
+128 silly publish   main: './dist/jquery.facedetection.min.js',
+128 silly publish   scripts: { test: 'gulp test', build: 'gulp build' },
+128 silly publish   repository:
+128 silly publish    { type: 'git',
+128 silly publish      url: 'https://github.com/jaysalvat/jquery.facedetection' },
+128 silly publish   keywords:
+128 silly publish    [ 'jquery',
+128 silly publish      'face',
+128 silly publish      'detection',
+128 silly publish      'image',
+128 silly publish      'picture',
+128 silly publish      'video',
+128 silly publish      'canvas',
+128 silly publish      'jquery-plugin' ],
+128 silly publish   author: { name: 'Jay Salvat', url: 'http://jaysalvat.com' },
+128 silly publish   contributors: [ { name: 'Liu Liu', url: 'http://liuliu.me' } ],
+128 silly publish   license: 'MIT',
+128 silly publish   devDependencies:
+128 silly publish    { del: '^0.1.1',
+128 silly publish      exec: '^0.1.2',
+128 silly publish      gulp: '^3.8.9',
+128 silly publish      'gulp-bump': '^0.1.11',
+128 silly publish      'gulp-header': '^1.2.2',
+128 silly publish      'gulp-jshint': '^1.8.5',
+128 silly publish      'gulp-qunit': '^0.3.3',
+128 silly publish      'gulp-replace': '^0.4.0',
+128 silly publish      'gulp-sync': '^0.1.3',
+128 silly publish      'gulp-uglifyjs': '^0.4.2',
+128 silly publish      'gulp-util': '^3.0.1',
+128 silly publish      'gulp-zip': '^2.0.2',
+128 silly publish      yargs: '^1.3.2' },
+128 silly publish   readme: 'jQuery Face Detection Plugin\n============================\n\n[![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/https://travis-ci.org/jaysalvat/jquery.facedetection)\n[![NPM version](https://badge.fury.io/js/jquery.facedetection.svg)](http://badge.fury.io/js/jquery.facedetection)\n[![Bower version](https://badge.fury.io/bo/jquery.facedetection.svg)](http://badge.fury.io/bo/jquery.facedetection)\n\nA jQuery/Zepto plugin to detect faces on images, videos and canvases to get theirs coordinates.\n\n**Importante note:** This plugin uses an algorithm by [Liu Liu](http://liuliu.me/).\n\nDemos\n-----\n\nWebsite and demo here:\n\n[http://facedetection.jaysalvat.com/](http://facedetection.jaysalvat.com/)\n\nGet started\n-----------\n\nDownload the plugin with the method of your choice.\n\n- Download the [last release](jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) manually\n- Or install it with [Bower](http://bower.io/).\n\n        bower install jquery.facedetection\n\n- Or install it with [NPM](https://www.npmjs.org/package/jquery.facedetection).\n\n        npm install jquery.facedetection\n\nInclude [jQuery](http://code.jquery.com/jquery-1.11.1.min.js) and the plugin.\n\n    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> \n    <script src="path/to/dist/jquery.facedetection.min.js"></script> \n\nSet a picture with some faces in your HTML page.\n\n    <img id="picture" src="img/face.jpg">\n\nApply the plugin to this image and get the face coordinates.\n\n    <script>\n        $(\'#picture\').faceDetection({\n            complete: function (faces) {\n                console.log(faces);\n            }\n        });\n    </script> \n\nResults\n-------\n\nReturns an array of found faces object:\n\n- **x** — Y coord of the face in the picture\n- **y** — Y coord of the face in the picture\n- **width** — Width of the face\n- **height** — Height of the face\n- **positionX** — X position relative to the document\n- **positionY** — Y position relative to the document\n- **offsetX** — X position relative to the offset parent\n- **offsetY** — Y position relative to the offset parent\n- **scaleX** — Ratio between original image width and displayed width\n- **scaleY** — Ratio between original image height and displayed height\n- **confidence** — Level of confidence\n\nSettings\n--------\n- **interval** — Interval (default 4)\n- **minNeighbors** — Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)\n- **confidence** — Minimum confidence (default null)\n- **async** — Async mode if Worker available (default false). The async mode uses Workers and needs the script to be on the same domain.\n- **grayscale** — Convert to grayscale before processing (default true)\n- **complete** — Callback function trigged after the detection is completed\n\n        complete: function (faces) {\n            // ...\n        }\n    \n- **error** — Callback function trigged on errors\n\n        error: function (code, message) {\n            // ...\n        }\n        \n',
+128 silly publish   readmeFilename: 'README.md',
+128 silly publish   bugs: { url: 'https://github.com/jaysalvat/jquery.facedetection/issues' },
+128 silly publish   _id: 'jquery.facedetection@2.0.1',
+128 silly publish   dist: { shasum: 'c85eba9a7e07893573e747e3dbf2789dbdcff36b' },
+128 silly publish   _from: '.' }
+129 verbose url raw jquery.facedetection
+130 verbose url resolving [ 'https://registry.npmjs.org/', './jquery.facedetection' ]
+131 verbose url resolved https://registry.npmjs.org/jquery.facedetection
+132 info trying registry request attempt 1 at 12:56:08
+133 http PUT https://registry.npmjs.org/jquery.facedetection
+134 http 403 https://registry.npmjs.org/jquery.facedetection
+135 error publish Failed PUT 403
+136 error Error: forbidden cannot modify pre-existing version: 2.0.1
+136 error old={"name":"jquery.facedetection","version":"2.0.1","description":"A jQuery plugin to detect faces on images, videos and canvases.","homepage":"http://facedetection.jaysalvat.com","main":"./dist/jquery.facedetection.min.js","scripts":{"test":"gulp test","build":"gulp build"},"repository":{"type":"git","url":"https://github.com/jaysalvat/jquery.facedetection"},"keywords":["jquery","face","detection","image","picture","video","canvas","jquery-plugin"],"author":{"name":"Jay Salvat","url":"http://jaysalvat.com"},"contributors":[{"name":"Liu Liu","url":"http://liuliu.me"}],"license":"MIT","devDependencies":{"del":"^0.1.1","exec":"^0.1.2","gulp":"^3.8.9","gulp-bump":"^0.1.11","gulp-header":"^1.2.2","gulp-jshint":"^1.8.5","gulp-qunit":"^0.3.3","gulp-replace":"^0.4.0","gulp-sync":"^0.1.3","gulp-uglifyjs":"^0.4.2","gulp-util":"^3.0.1","gulp-zip":"^2.0.2","yargs":"^1.3.2"},"bugs":{"url":"https://github.com/jaysalvat/jquery.facedetection/issues"},"_id":"jquery.facedetection@2.0.1","dist":{"shasum":"235e619a371555e4f80a790680bb2eeaae14ea3f","tarball":"http://registry.npmjs.org/jquery.facedetection/-/jquery.facedetection-2.0.1.tgz"},"_from":".","_npmVersion":"1.4.6","_npmUser":{"name":"jaysalvat","email":"jay.salvat@gmail.com"},"maintainers":[{"name":"jaysalvat","email":"jay.salvat@gmail.com"}]}
+136 error new={"name":"jquery.facedetection","version":"2.0.1","description":"A jQuery plugin to detect faces on images, videos and canvases.","homepage":"http://facedetection.jaysalvat.com","main":"./dist/jquery.facedetection.min.js","scripts":{"test":"gulp test","build":"gulp build"},"repository":{"type":"git","url":"https://github.com/jaysalvat/jquery.facedetection"},"keywords":["jquery","face","detection","image","picture","video","canvas","jquery-plugin"],"author":{"name":"Jay Salvat","url":"http://jaysalvat.com"},"contributors":[{"name":"Liu Liu","url":"http://liuliu.me"}],"license":"MIT","devDependencies":{"del":"^0.1.1","exec":"^0.1.2","gulp":"^3.8.9","gulp-bump":"^0.1.11","gulp-header":"^1.2.2","gulp-jshint":"^1.8.5","gulp-qunit":"^0.3.3","gulp-replace":"^0.4.0","gulp-sync":"^0.1.3","gulp-uglifyjs":"^0.4.2","gulp-util":"^3.0.1","gulp-zip":"^2.0.2","yargs":"^1.3.2"},"readme":"jQuery Face Detection Plugin\u000a============================\u000a\u000a[![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/https://travis-ci.org/jaysalvat/jquery.facedetection)\u000a[![NPM version](https://badge.fury.io/js/jquery.facedetection.svg)](http://badge.fury.io/js/jquery.facedetection)\u000a[![Bower version](https://badge.fury.io/bo/jquery.facedetection.svg)](http://badge.fury.io/bo/jquery.facedetection)\u000a\u000aA jQuery/Zepto plugin to detect faces on images, videos and canvases to get theirs coordinates.\u000a\u000a**Importante note:** This plugin uses an algorithm by [Liu Liu](http://liuliu.me/).\u000a\u000aDemos\u000a-----\u000a\u000aWebsite and demo here:\u000a\u000a[http://facedetection.jaysalvat.com/](http://facedetection.jaysalvat.com/)\u000a\u000aGet started\u000a-----------\u000a\u000aDownload the plugin with the method of your choice.\u000a\u000a- Download the [last release](jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) manually\u000a- Or install it with [Bower](http://bower.io/).\u000a\u000a        bower install jquery.facedetection\u000a\u000a- Or install it with [NPM](https://www.npmjs.org/package/jquery.facedetection).\u000a\u000a        npm install jquery.facedetection\u000a\u000aInclude [jQuery](http://code.jquery.com/jquery-1.11.1.min.js) and the plugin.\u000a\u000a    <script src=\"http://code.jquery.com/jquery-1.11.1.min.js\"></script> \u000a    <script src=\"path/to/dist/jquery.facedetection.min.js\"></script> \u000a\u000aSet a picture with some faces in your HTML page.\u000a\u000a    <img id=\"picture\" src=\"img/face.jpg\">\u000a\u000aApply the plugin to this image and get the face coordinates.\u000a\u000a    <script>\u000a        $('#picture').faceDetection({\u000a            complete: function (faces) {\u000a                console.log(faces);\u000a            }\u000a        });\u000a    </script> \u000a\u000aResults\u000a-------\u000a\u000aReturns an array of found faces object:\u000a\u000a- **x** — Y coord of the face in the picture\u000a- **y** — Y coord of the face in the picture\u000a- **width** — Width of the face\u000a- **height** — Height of the face\u000a- **positionX** — X position relative to the document\u000a- **positionY** — Y position relative to the document\u000a- **offsetX** — X position relative to the offset parent\u000a- **offsetY** — Y position relative to the offset parent\u000a- **scaleX** — Ratio between original image width and displayed width\u000a- **scaleY** — Ratio between original image height and displayed height\u000a- **confidence** — Level of confidence\u000a\u000aSettings\u000a--------\u000a- **interval** — Interval (default 4)\u000a- **minNeighbors** — Minimum neighbors threshold which sets the cutoff level for discarding rectangle groups as face (default 1)\u000a- **confidence** — Minimum confidence (default null)\u000a- **async** — Async mode if Worker available (default false). The async mode uses Workers and needs the script to be on the same domain.\u000a- **grayscale** — Convert to grayscale before processing (default true)\u000a- **complete** — Callback function trigged after the detection is completed\u000a\u000a        complete: function (faces) {\u000a            // ...\u000a        }\u000a    \u000a- **error** — Callback function trigged on errors\u000a\u000a        error: function (code, message) {\u000a            // ...\u000a        }\u000a        \u000a","readmeFilename":"README.md","bugs":{"url":"https://github.com/jaysalvat/jquery.facedetection/issues"},"_id":"jquery.facedetection@2.0.1","dist":{"shasum":"c85eba9a7e07893573e747e3dbf2789dbdcff36b","tarball":"http://registry.npmjs.org/jquery.facedetection/-/jquery.facedetection-2.0.1.tgz"},"_from":".","_npmVersion":"1.4.6","_npmUser":{"name":"jaysalvat","email":"jay.salvat@gmail.com"},"maintainers":[{"name":"jaysalvat","email":"jay.salvat@gmail.com"}]}: jquery.facedetection
+136 error     at RegClient.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:254:14)
+136 error     at Request._callback (/usr/local/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:192:65)
+136 error     at Request.self.callback (/usr/local/lib/node_modules/npm/node_modules/request/request.js:123:22)
+136 error     at Request.EventEmitter.emit (events.js:98:17)
+136 error     at Request.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/request/request.js:893:14)
+136 error     at Request.EventEmitter.emit (events.js:117:20)
+136 error     at IncomingMessage.<anonymous> (/usr/local/lib/node_modules/npm/node_modules/request/request.js:844:12)
+136 error     at IncomingMessage.EventEmitter.emit (events.js:117:20)
+136 error     at _stream_readable.js:920:16
+136 error     at process._tickCallback (node.js:415:13)
+137 error If you need help, you may report this *entire* log,
+137 error including the npm and node versions, at:
+137 error     <http://github.com/npm/npm/issues>
+138 error System Darwin 14.1.0
+139 error command "node" "/usr/local/bin/npm" "publish"
+140 error cwd /Users/jay/Sites/www/personnel/facedetection
+141 error node -v v0.10.26
+142 error npm -v 1.4.6
+143 verbose exit [ 1, true ]

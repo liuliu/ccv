@@ -1,10 +1,10 @@
 FaceDetection jQuery Plugin
-Copyright (c) 2010-2014, Jay Salvat
+Copyright (c) 2010-2015, Jay Salvat
 http://www.jaysalvat.com
 All rights reserved.
 
 src/ccv.js and src/cascade.js
-Copyright (c) 2010-2014, Liu Liu
+Copyright (c) 2010-2015, Liu Liu
 http://liuliu.me/
 All rights reserved.
 
