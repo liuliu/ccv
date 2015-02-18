@@ -1,7 +1,7 @@
 jQuery Face Detection Plugin
 ============================
 
-[![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/{{project}})
+[![Build Status](https://travis-ci.org/jaysalvat/jquery.facedetection.png?branch=master)](https://travis-ci.org/jaysalvat/https://travis-ci.org/jaysalvat/jquery.facedetection)
 [![NPM version](https://badge.fury.io/js/jquery.facedetection.svg)](http://badge.fury.io/js/jquery.facedetection)
 [![Bower version](https://badge.fury.io/bo/jquery.facedetection.svg)](http://badge.fury.io/bo/jquery.facedetection)
 
