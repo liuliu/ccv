@@ -245,9 +245,18 @@
                 'git commit -m "Publish release v' + version + '."',
                 'git push origin gh-pages',
                 'git checkout -',
-                'npm publish',
             ].join(" && "),
             function (err, output, code) {
+                if (code !== 0) {
+                    return cb(err + output);
+                }
+                return cb();
+            }
+        );
+    });
+
+    gulp.task("npm-publish", function (cb) {
+        exec('npm publish', function (err, output, code) {
                 if (code !== 0) {
                     return cb(err + output);
                 }
@@ -289,7 +298,8 @@
         "git-commit",
         "git-tag",
         "git-push",
-        "publish"
+        "publish",
+        "npm-publish"
     ], 
     "releasing"));
 
