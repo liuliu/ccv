@@ -54,7 +54,7 @@ Results
 
 Returns an array of found faces object:
 
-- **x** — Y coord of the face in the picture
+- **x** — X coord of the face in the picture
 - **y** — Y coord of the face in the picture
 - **width** — Width of the face
 - **height** — Height of the face
