@@ -53,6 +53,16 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
+ccv_nnc_net_t* ccv_nnc_net_new(const void* ptr, ccv_nnc_net_param_t params, int flags)
+{
+	return 0;
+}
+
+void ccv_nnc_net_free(ccv_nnc_net_t* net)
+{
+	ccfree(net);
+}
+
 void ccv_nnc_net_inference(ccv_nnc_net_t* net, ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
 {
 	assert(net->provider < CCV_NNC_PROVIDE_COUNT);
