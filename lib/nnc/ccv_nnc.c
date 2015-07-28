@@ -1,11 +1,22 @@
 #include "ccv_nnc.h"
 
+typedef void(*ccv_nnc_init_f)(ccv_nnc_api_t api[]);
+
+typedef struct {
+	int provider;
+	ccv_nnc_init_f init;
+} ccv_nnc_init_t;
+
 #define CCV_NNC_INIT_DECL(init_func) extern void (init_func)(ccv_nnc_api_t api[])
+#define CCV_NNC_INIT_MAP_BEGIN() static ccv_nnc_init_t init_map[] = {
+#define CCV_NNC_INIT_MAP(name, init_func) { .provider = name, .init = init_func, },
+#define CCV_NNC_INIT_MAP_END() };
 
 #define CCV_NNC_INIT_EXEC(name, init_func) do { \
 		(init_func)(api_decls[name]); \
 	} while (0)
 
+// I should be able to automatically extract code below from source code.
 enum {
 	CCV_NNC_PROVIDE_CPU_REF,
 	CCV_NNC_PROVIDE_GPU_REF,
@@ -17,14 +28,22 @@ CCV_NNC_INIT_DECL(ccv_nnc_cpu_ref_init);
 CCV_NNC_INIT_DECL(ccv_nnc_gpu_ref_init);
 CCV_NNC_INIT_DECL(ccv_nnc_gpu_cudnn_init);
 
+CCV_NNC_INIT_MAP_BEGIN()
+CCV_NNC_INIT_MAP(CCV_NNC_PROVIDE_CPU_REF, ccv_nnc_cpu_ref_init)
+CCV_NNC_INIT_MAP(CCV_NNC_PROVIDE_GPU_REF, ccv_nnc_gpu_ref_init)
+CCV_NNC_INIT_MAP(CCV_NNC_PROVIDE_GPU_CUDNN, ccv_nnc_gpu_cudnn_init)
+CCV_NNC_INIT_MAP_END()
+// Above should be automatic generated.
+
 static ccv_nnc_api_t api_decls[CCV_NNC_PROVIDE_COUNT][CCV_NNC_TYPE_COUNT];
 
 void ccv_nnc_init(void)
 {
+	int i;
+	int count = sizeof(init_map) / sizeof(ccv_nnc_init_t);
 	// Init dynamic dispatch table.
-	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_CPU_REF, ccv_nnc_cpu_ref_init);
-	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_GPU_REF, ccv_nnc_gpu_ref_init);
-	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_GPU_CUDNN, ccv_nnc_gpu_cudnn_init);
+	for (i = 0; i < count; i++)
+		init_map[i].init(api_decls[init_map[i].provider]);
 }
 
 #define CCV_NNC_TENSOR_SIZE(params) (params.rows * params.cols * params.channels * 4)
