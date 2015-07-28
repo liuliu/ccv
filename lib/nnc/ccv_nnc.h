@@ -101,14 +101,6 @@ typedef struct {
 	ccv_nnc_net_backprop_f backprop;
 } ccv_nnc_api_t;
 
-typedef struct {
-	ccv_nnc_api_t convolutional;
-	ccv_nnc_api_t full_connect;
-	ccv_nnc_api_t max_pool;
-	ccv_nnc_api_t average_pool;
-	ccv_nnc_api_t local_response_nrom;
-} ccv_nnc_api_provider_t;
-
 /**
  * Level-0 API
  */

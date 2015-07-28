@@ -1,31 +1,30 @@
 #include "ccv_nnc.h"
 
+#define CCV_NNC_INIT_DECL(init_func) extern void (init_func)(ccv_nnc_api_t api[])
+
+#define CCV_NNC_INIT_EXEC(name, init_func) do { \
+		(init_func)(api_decls[name]); \
+	} while (0)
+
 enum {
-	CCV_NNC_PROVIDE_CPU_REFERENCE,
-	CCV_NNC_PROVIDE_GPU_REFERENCE,
+	CCV_NNC_PROVIDE_CPU_REF,
+	CCV_NNC_PROVIDE_GPU_REF,
 	CCV_NNC_PROVIDE_GPU_CUDNN,
 	CCV_NNC_PROVIDE_COUNT,
 };
 
-extern ccv_nnc_api_provider_t ccv_nnc_cpu_reference_provider;
-extern ccv_nnc_api_provider_t ccv_nnc_gpu_reference_provider;
-extern ccv_nnc_api_provider_t ccv_nnc_gpu_cudnn_provider;
+CCV_NNC_INIT_DECL(ccv_nnc_cpu_ref_init);
+CCV_NNC_INIT_DECL(ccv_nnc_gpu_ref_init);
+CCV_NNC_INIT_DECL(ccv_nnc_gpu_cudnn_init);
 
 static ccv_nnc_api_t api_decls[CCV_NNC_PROVIDE_COUNT][CCV_NNC_TYPE_COUNT];
 
 void ccv_nnc_init(void)
 {
-#define CCV_NNC_REGISTER_PROVIDER(name, provider) do { \
-		api_decls[name][CCV_NNC_TYPE_CONVOLUTIONAL] = (provider).convolutional; \
-		api_decls[name][CCV_NNC_TYPE_FULL_CONNECT] = (provider).full_connect; \
-		api_decls[name][CCV_NNC_TYPE_MAX_POOL] = (provider).max_pool; \
-		api_decls[name][CCV_NNC_TYPE_AVERAGE_POOL] = (provider).average_pool; \
-		api_decls[name][CCV_NNC_TYPE_LOCAL_RESPONSE_NORM] = (provider).local_response_nrom; \
-	} while (0)
 	// Init dynamic dispatch table.
-	CCV_NNC_REGISTER_PROVIDER(CCV_NNC_PROVIDE_CPU_REFERENCE, ccv_nnc_cpu_reference_provider);
-	CCV_NNC_REGISTER_PROVIDER(CCV_NNC_PROVIDE_GPU_REFERENCE, ccv_nnc_gpu_reference_provider);
-	CCV_NNC_REGISTER_PROVIDER(CCV_NNC_PROVIDE_GPU_CUDNN, ccv_nnc_gpu_cudnn_provider);
+	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_CPU_REF, ccv_nnc_cpu_ref_init);
+	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_GPU_REF, ccv_nnc_gpu_ref_init);
+	CCV_NNC_INIT_EXEC(CCV_NNC_PROVIDE_GPU_CUDNN, ccv_nnc_gpu_cudnn_init);
 }
 
 #define CCV_NNC_TENSOR_SIZE(params) (params.rows * params.cols * params.channels * 4)
