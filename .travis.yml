@@ -1,6 +1,12 @@
+sudo: false
 language: c
 compiler: clang
-before_install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -qq libpng-dev libjpeg-dev libatlas-base-dev libblas-dev libgsl0-dev
+addons:
+  apt:
+    packages:
+      - libpng-dev
+      - libjpeg-dev
+      - libatlas-base-dev
+      - libblas-dev
+      - libgsl0-dev
 script: cd lib && ./configure && make && cd ../bin && make && cd ../site && make source && cd ../test && make test
