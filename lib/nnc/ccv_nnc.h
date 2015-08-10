@@ -10,7 +10,7 @@
 #ifndef GUARD_ccv_nnc_h
 #define GUARD_ccv_nnc_h
 
-#include "../ccv.h"
+#include <ccv.h>
 
 enum {
 	CCV_TENSOR_FORMAT_NCHW = 0x01,
@@ -22,22 +22,18 @@ enum {
 	CCV_TENSOR_GPU_MEMORY = 0x2,
 };
 
+#define CCV_NNC_MAX_DIM (2)
+
 typedef struct {
 	int type;
 	int format;
-	int rows;
-	int cols;
+	int dim[CCV_NNC_MAX_DIM];
 	int channels;
-	struct {
-		int rows;
-		int cols;
-		int channels;
-	} stride;
 } ccv_nnc_tensor_param_t;
 
 typedef struct {
 	int type;
-	ccv_nnc_tensor_param_t params;
+	ccv_nnc_tensor_param_t meta;
 	union {
 		unsigned char* u8;
 		int* i32;
@@ -57,46 +53,48 @@ enum {
 };
 
 typedef struct {
+	struct {
+		int dim[CCV_NNC_MAX_DIM];
+	} size; /**< [size] The window size for the layer. For full connect layer, it is 1 because it is 1x1 convolutional layer with count of filters */
 	union {
 		struct {
 			int count; /**< [convolutional.count] The number of filters for convolutional layer. */
-			int strides; /**< [convolutional.strides] The strides for convolutional filter. */
-			int border; /**< [convolutional.border] The padding border size for the input matrix. */
-			int rows; /**< [convolutional.rows] The number of rows for convolutional filter. */
-			int cols; /**< [convolutional.cols] The number of columns for convolutional filter. */
 			int channels; /**< [convolutional.channels] The number of channels for convolutional filter. */
-			int partition; /**< [convolutional.partition] The number of partitions for convolutional filter. */
 		} convolutional;
 		struct {
-			int strides; /**< [pool.strides] The strides for pooling layer. */
-			int size; /**< [pool.size] The window size for pooling layer. */
-			int border; /**< [pool.border] The padding border size for the input matrix. */
 		} pool;
 		struct {
-			int size; /**< [rnorm.size] The size of local response normalization layer. */
 			float kappa; /**< [rnorm.kappa] As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */
 			float alpha; /**< [rnorm.alpha] See **rnorm.kappa**. */
 			float beta; /**< [rnorm.beta] See **rnorm.kappa**. */
 		} rnorm;
 		struct {
-			int relu; /**< [full_connect.relu] 0 - ReLU, 1 - no ReLU */
 			int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
 		} full_connect;
 	};
 } ccv_nnc_net_param_t;
 
 typedef struct {
-	int type;
-	int provider;
-	ccv_nnc_net_param_t params;
-} ccv_nnc_net_t;
-
-typedef void(*ccv_nnc_net_inference_f)(ccv_nnc_net_t* net, ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b);
-typedef void(*ccv_nnc_net_backprop_f)(ccv_nnc_net_t* net, ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
+	struct {
+		int dim[CCV_NNC_MAX_DIM];
+	} stride;
+	struct {
+		int front[CCV_NNC_MAX_DIM];
+		int back[CCV_NNC_MAX_DIM];
+	} border;
+} ccv_nnc_net_hint_t;
 
 typedef struct {
 	int type;
-	int formats; /**< [formats] The supported formats for this API implementation. */
+	int provide;
+	ccv_nnc_net_param_t meta;
+} ccv_nnc_net_t;
+
+typedef void(*ccv_nnc_net_inference_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
+typedef void(*ccv_nnc_net_backprop_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
+
+typedef struct {
+	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
 	ccv_nnc_net_inference_f inference;
 	ccv_nnc_net_backprop_f backprop;
 } ccv_nnc_api_t;
@@ -109,12 +107,14 @@ void ccv_nnc_init(void);
 /**
  * Level-1 API
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, ccv_nnc_tensor_param_t params, int flags);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
-CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, ccv_nnc_net_param_t params, int flags);
+CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, const int type, const ccv_nnc_net_param_t params, const int flags);
 void ccv_nnc_net_free(ccv_nnc_net_t* net);
-void ccv_nnc_net_inference(ccv_nnc_net_t* net, ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b);
-void ccv_nnc_net_backprop(ccv_nnc_net_t* net, ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
+CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_t* net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+void ccv_nnc_net_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
+void ccv_nnc_net_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
 
 /**
  * Level-2 API
