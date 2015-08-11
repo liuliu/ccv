@@ -88,10 +88,11 @@ typedef struct {
 	int type;
 	int provide;
 	ccv_nnc_net_param_t meta;
+	ccv_nnc_net_hint_t hint;
 } ccv_nnc_net_t;
 
-typedef void(*ccv_nnc_net_inference_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
-typedef void(*ccv_nnc_net_backprop_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
+typedef void(*ccv_nnc_net_inference_f)(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
+typedef void(*ccv_nnc_net_backprop_f)(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
@@ -111,10 +112,10 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
 CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, const int type, const ccv_nnc_net_param_t params, const int flags);
 void ccv_nnc_net_free(ccv_nnc_net_t* net);
-CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_t* net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-void ccv_nnc_net_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
-void ccv_nnc_net_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
+CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+void ccv_nnc_net_inference(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias);
+void ccv_nnc_net_backprop(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias);
 
 /**
  * Level-2 API

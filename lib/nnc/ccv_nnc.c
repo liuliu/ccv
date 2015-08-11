@@ -16,10 +16,6 @@ typedef struct {
 		(init_func)(api_decls[name]); \
 	} while (0)
 
-void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
-{
-}
-
 void ccv_nnc_gpu_ref_init(ccv_nnc_api_t api[])
 {
 }
@@ -104,21 +100,21 @@ void ccv_nnc_net_free(ccv_nnc_net_t* net)
 	ccfree(net);
 }
 
-int ccv_nnc_net_hint_verify(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
+int ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
-		if ((hint.border.front[i] + hint.border.back[i] + a.dim[i] - net->meta.size.dim[i]) % hint.stride.dim[i] != 0)
+		if ((hint.border.front[i] + hint.border.back[i] + a.dim[i] - net.size.dim[i]) % hint.stride.dim[i] != 0)
 			return -1;
-		int expected = (hint.border.front[i] + hint.border.back[i] + a.dim[i] - net->meta.size.dim[i]) / hint.stride.dim[i] + 1;
+		int expected = (hint.border.front[i] + hint.border.back[i] + a.dim[i] - net.size.dim[i]) / hint.stride.dim[i] + 1;
 		if (expected != b.dim[i])
 			return -1;
 	}
 	return 0;
 }
 
-ccv_nnc_net_hint_t ccv_nnc_net_hint_guess(const ccv_nnc_net_t* net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
+ccv_nnc_net_hint_t ccv_nnc_net_hint_guess(const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	ccv_nnc_net_hint_t guess;
 	int i;
@@ -127,29 +123,29 @@ ccv_nnc_net_hint_t ccv_nnc_net_hint_guess(const ccv_nnc_net_t* net, const ccv_nn
 		// This is guessed by having a stride that will approximately match the scale.
 		int stride = (a.dim[i] + b.dim[i] / 2) / b.dim[i];
 		guess.stride.dim[i] = stride;
-		int border = (b.dim[i] - 1) * stride - a.dim[i] + net->meta.size.dim[i];
+		int border = (b.dim[i] - 1) * stride - a.dim[i] + net.size.dim[i];
 		guess.border.front[i] = border / 2;
 		guess.border.back[i] = border - guess.border.front[i];
 	}
 	return guess;
 }
 
-void ccv_nnc_net_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
+void ccv_nnc_net_inference(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
 {
 	assert(net->provide < CCV_NNC_PROVIDE_COUNT);
 	assert(net->type < CCV_NNC_TYPE_COUNT);
 	ccv_nnc_api_t api_decl = api_decls[net->provide][net->type];
 	assert(api_decl.tensor_formats & a->meta.format);
 	assert(api_decl.tensor_formats & b->meta.format);
-	api_decl.inference(net, hint, a, b, w, bias);
+	api_decl.inference(net, a, b, w, bias);
 }
 
-void ccv_nnc_net_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
+void ccv_nnc_net_backprop(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
 {
 	assert(net->provide < CCV_NNC_PROVIDE_COUNT);
 	assert(net->type < CCV_NNC_TYPE_COUNT);
 	ccv_nnc_api_t api_decl = api_decls[net->provide][net->type];
 	assert(api_decl.tensor_formats & a->meta.format);
 	assert(api_decl.tensor_formats & b->meta.format);
-	api_decl.backprop(net, hint, a, b, c, d, w, bias);
+	api_decl.backprop(net, a, b, c, d, w, bias);
 }

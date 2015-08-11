@@ -1,10 +1,13 @@
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
+#ifdef USE_DISPATCH
+#include <dispatch/dispatch.h>
+#endif
 
-static void _ccv_nnc_net_conv_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_conv_inference(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
 {
-	assert(w->meta.dim[0] == net->meta.convolutional.dim[0]);
-	assert(w->meta.dim[1] == net->meta.convolutional.dim[1]);
+	assert(w->meta.dim[0] == net->meta.size.dim[0]);
+	assert(w->meta.dim[1] == net->meta.size.dim[1]);
 	parallel_for(k, net->meta.convolutional.count) {
 		/*
 		int i, j, x, y, c;
@@ -32,26 +35,27 @@ static void _ccv_nnc_net_conv_inference(const ccv_nnc_net_t* net, const ccv_nnc_
 	} parallel_endfor
 }
 
-static void _ccv_nnc_net_conv_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_conv_backprop(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
 {
 }
 
-static void _ccv_nnc_net_max_pool_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_max_pool_inference(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
 {
 }
 
-static void _ccv_nnc_net_max_pool_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_max_pool_backprop(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
 {
 }
 
-static void _ccv_nnc_net_avg_pool_inference(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_avg_pool_inference(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias)
 {
 }
 
-static void _ccv_nnc_net_avg_pool_backprop(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, const ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
+static void _ccv_nnc_net_avg_pool_backprop(const ccv_nnc_net_t* net, const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b, const ccv_nnc_tensor_t* c, ccv_nnc_tensor_t* d, ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* bias)
 {
 }
 
+//@ccv_nnc_init
 void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
 {
 	api[CCV_NNC_TYPE_CONVOLUTIONAL].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
