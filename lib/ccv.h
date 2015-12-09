@@ -6,8 +6,6 @@
 #ifndef GUARD_ccv_h
 #define GUARD_ccv_h
 
-#include <unistd.h>
-#include <stdint.h>
 #define _WITH_GETLINE
 #include <stdio.h>
 #include <stdlib.h>
@@ -37,6 +35,10 @@
 #define ccmemalign(memptr, alignment, size) (*memptr = ccmalloc(size))
 #endif
 
+// Include toll-free bridging for ccv_nnc_tensor_t
+#define CCV_NNC_TENSOR_TFB (1)
+#include "nnc/ccv_nnc_tfb.h"
+
 /* Doxygen will ignore these, otherwise it has problem to process warn_unused_result directly. */
 #define CCV_WARN_UNUSED(x) x __attribute__((warn_unused_result))
 
@@ -61,6 +63,7 @@ static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8, -
 #define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 12]
 #define CCV_MAX_CHANNEL (0xFFF)
 #define CCV_GET_CHANNEL(x) ((x) & 0xFFF)
+#define CCV_GET_STEP(cols, type) (((cols) * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4)
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F)
 
 enum {
@@ -77,32 +80,6 @@ enum {
 	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
 };
 
-typedef union {
-	unsigned char* u8;
-	int* i32;
-	float* f32;
-	int64_t* i64;
-	double* f64;
-} ccv_matrix_cell_t;
-
-typedef struct {
-	int type;
-	uint64_t sig;
-	int refcount;
-	int rows;
-	int cols;
-	int step;
-	union {
-		unsigned char u8;
-		int i32;
-		float f32;
-		int64_t i64;
-		double f64;
-		void* p;
-	} tag;
-	ccv_matrix_cell_t data;
-} ccv_dense_matrix_t;
-
 enum {
 	CCV_SPARSE_VECTOR = 0x01000000,
 	CCV_DENSE_VECTOR  = 0x02000000,
@@ -114,7 +91,7 @@ typedef struct ccv_dense_vector_t {
 	int index;
 	int prime;
 	int load_factor;
-	ccv_matrix_cell_t data;
+	ccv_numeric_data_t data;
 	int* indice;
 	struct ccv_dense_vector_t* next;
 } ccv_dense_vector_t;
@@ -126,20 +103,21 @@ enum {
 
 typedef struct {
 	int type;
-	uint64_t sig;
 	int refcount;
+	uint64_t sig;
 	int rows;
 	int cols;
 	int major;
 	int prime;
 	int load_factor;
 	union {
-		unsigned char chr;
-		int i;
-		float fl;
-		int64_t l;
-		double db;
-	} tag;
+		unsigned char u8;
+		int i32;
+		float f32;
+		int64_t i64;
+		double f64;
+		void* p;
+	} tb;
 	ccv_dense_vector_t* vector;
 } ccv_sparse_matrix_t;
 
@@ -238,21 +216,22 @@ void ccv_cache_close(ccv_cache_t* cache);
 
 typedef struct {
 	int type;
-	uint64_t sig;
 	int refcount;
+	uint64_t sig;
 	int rows;
 	int cols;
 	int nnz;
 	union {
-		unsigned char chr;
-		int i;
-		float fl;
-		int64_t l;
-		double db;
-	} tag;
+		unsigned char u8;
+		int i32;
+		float f32;
+		int64_t i64;
+		double f64;
+		void* p;
+	} tb;
 	int* index;
 	int* offset;
-	ccv_matrix_cell_t data;
+	ccv_numeric_data_t data;
 } ccv_compressed_sparse_matrix_t;
 
 #define ccv_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
@@ -657,7 +636,7 @@ ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int i
  * @param row The row index.
  * @param col The column index.
  */
-ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
+ccv_numeric_data_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
 /**
  * Set cell for a sparse matrix.
  * @param mat The sparse matrix.

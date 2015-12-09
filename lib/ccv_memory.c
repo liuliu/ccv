@@ -49,9 +49,14 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		mat->data.u8 = (unsigned char*)(mat + 1);
 	}
 	mat->sig = sig;
+#if CCV_NNC_TENSOR_TFB
+	mat->resides = CCV_TENSOR_CPU_MEMORY;
+	mat->format = CCV_TENSOR_FORMAT_NHWC;
+	mat->channels = CCV_GET_CHANNEL(type);
+#endif
 	mat->rows = rows;
 	mat->cols = cols;
-	mat->step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
+	mat->step = CCV_GET_STEP(cols, type);
 	mat->refcount = 1;
 	return mat;
 }
@@ -106,8 +111,13 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE | CCV_UNMANAGED) & ~CCV_GARBAGE;
 	mat.rows = rows;
 	mat.cols = cols;
-	mat.step = (cols * CCV_GET_DATA_TYPE_SIZE(type) * CCV_GET_CHANNEL(type) + 3) & -4;
+	mat.step = CCV_GET_STEP(cols, type);
 	mat.refcount = 1;
+#if CCV_NNC_TENSOR_TFB
+	mat.resides = CCV_TENSOR_CPU_MEMORY;
+	mat.format = CCV_TENSOR_FORMAT_NHWC;
+	mat.channels = CCV_GET_CHANNEL(type);
+#endif
 	mat.data.u8 = (unsigned char*)data;
 	return mat;
 }

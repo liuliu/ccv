@@ -190,10 +190,10 @@ ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int i
 	return 0;
 }
 
-ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
+ccv_numeric_data_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
 {
 	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row);
-	ccv_matrix_cell_t cell;
+	ccv_numeric_data_t cell;
 	cell.u8 = 0;
 	if (vector != 0 && vector->length > 0)
 	{
@@ -222,7 +222,7 @@ static void _ccv_dense_vector_expand(ccv_sparse_matrix_t* mat, ccv_dense_vector_
 	int new_length = CCV_GET_SPARSE_PRIME(vector->prime);
 	int cell_width = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
 	int new_step = (new_length * cell_width + 3) & -4;
-	ccv_matrix_cell_t new_data;
+	ccv_numeric_data_t new_data;
 	new_data.u8 = (unsigned char*)ccmalloc(new_step + sizeof(int) * new_length);
 	int* new_indice = (int*)(new_data.u8 + new_step);
 	int i;
@@ -584,7 +584,7 @@ ccv_dense_matrix_t ccv_reshape(ccv_dense_matrix_t* a, int y, int x, int rows, in
 		.step = a->step,
 		.refcount = 0,
 		.sig = 0,
-		.tag.u8 = 0,
+		.tb.u8 = 0,
 		.data.u8 = ccv_get_dense_matrix_cell(a, y, x, 0),
 	};
 	return b;

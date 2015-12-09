@@ -105,7 +105,7 @@ TEST_CASE("sparse matrix basic insertion")
 		for (i = 0; i < 1000; i++)
 			for (j = 0; j < 1000; j++)
 			{
-				ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(mat, i, j);
+				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(mat, i, j);
 				REQUIRE(cell.u8 != 0, "cell at (%d, %d) doesn't contain any valid value", i, j);
 				REQUIRE_EQ(k, cell.i32[0], "cell at (%d, %d) doesn't match inserted value", i, j);
 				k++;
@@ -147,7 +147,7 @@ TEST_CASE("compress sparse matrix")
 	for (i = 0; i < 3; i++)
 		for (j = 0; j < 3; j++)
 		{
-			ccv_matrix_cell_t cell = ccv_get_sparse_matrix_cell(smt, i, j);
+			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(smt, i, j);
 			REQUIRE_EQ_WITH_TOLERANCE(m[i][j], (cell.u8 != 0) ? cell.f32[0] : 0, 1e-6, "should have the same matrix after decompressed at row %d, col %d", i, j);
 		}
 	ccv_matrix_free(smt);

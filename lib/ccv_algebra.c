@@ -24,7 +24,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 	btype = (btype == 0) ? CCV_GET_DATA_TYPE(da->type) | CCV_C1 : CCV_GET_DATA_TYPE(btype) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, da->rows, da->cols, CCV_ALL_DATA_TYPE | CCV_C1, btype, sig);
 	assert(db);
-	ccv_object_return_if_cached(db->tag.f64, db);
+	ccv_object_return_if_cached(db->tb.f64, db);
 	double sum = 0, inv;
 	int i, j;
 	unsigned char* a_ptr = da->data.u8;
@@ -73,7 +73,7 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag)
 #undef for_block
 			break;
 	}
-	return db->tag.f64 = sum;
+	return db->tb.f64 = sum;
 }
 
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern)
