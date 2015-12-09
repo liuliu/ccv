@@ -4,7 +4,7 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
-#include "cwc_helper.h"
+#include "cwc_ext.h"
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif

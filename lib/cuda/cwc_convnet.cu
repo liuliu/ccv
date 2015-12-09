@@ -11,7 +11,7 @@ extern "C" {
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
-#include "cwc_helper.h"
+#include "cwc_ext.h"
 }
 #include "../3rdparty/sqlite3/sqlite3.h"
 #include "../inl/ccv_convnet_inl.h"
