@@ -53,6 +53,7 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->resides = CCV_TENSOR_CPU_MEMORY;
 	mat->format = CCV_TENSOR_FORMAT_NHWC;
 	mat->channels = CCV_GET_CHANNEL(type);
+	mat->reserved = 0;
 #endif
 	mat->rows = rows;
 	mat->cols = cols;
@@ -117,6 +118,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.resides = CCV_TENSOR_CPU_MEMORY;
 	mat.format = CCV_TENSOR_FORMAT_NHWC;
 	mat.channels = CCV_GET_CHANNEL(type);
+	mat.reserved = 0;
 #endif
 	mat.data.u8 = (unsigned char*)data;
 	return mat;

@@ -52,7 +52,6 @@ typedef struct {
 } ccv_nnc_tensor_param_t;
 
 #if CCV_NNC_TENSOR_TFB
-
 typedef struct {
 	int type;
 	int refcount;
