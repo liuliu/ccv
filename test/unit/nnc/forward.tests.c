@@ -68,16 +68,16 @@ TEST_CASE("convolutional network of 11x11 on 225x225 with uniform weights")
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_net_exec(net, hint, inlets, 3, outlets, 1);
-	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 55, CCV_32F | 4, 0, 0);
 	int x, y;
 	for (y = 0; y < 55; y++)
 		for (x = 0; x < 55; x++)
 			for (i = 0; i < 4; i++)
 			c->data.f32[(y * 55 + x) * 4 + i] = ((x == 0 && y == 0) || (x == 0 && y == 54) || (x == 54 && y == 0) || (x == 54 && y == 54)) ? 300 : ((x == 0 || y == 0 || x == 54 || y == 54) ? 330 : 363);
 	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly a matrix fill 363, with 300 on the corner and 330 on the border");
+	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
-	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_net_free(net);

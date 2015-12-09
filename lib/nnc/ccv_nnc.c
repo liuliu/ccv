@@ -85,6 +85,9 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 		size *= params.dim[i];
 	}
 	tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t) + size);
+	tensor->sig = 0;
+	tensor->refcount = 1;
+	tensor->info = params;
 	if (tfb)
 	{
 		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_32F | params.dim[0];
@@ -92,9 +95,6 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_32F | params.dim[0]));
 	} else
 		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_32F;
-	tensor->sig = 0;
-	tensor->refcount = 1;
-	tensor->info = params;
 	tensor->data.u8 = (uint8_t*)(tensor + 1);
 	return tensor;
 }
