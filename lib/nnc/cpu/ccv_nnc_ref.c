@@ -7,10 +7,10 @@
 
 // n[x] is the start point for the filter on y axis, so that we can avoid computing the padding.
 // m[x] shows how long we should loop for filter on y axis, avoid computing the padding too.
-#define set_n_m_dim(x) \
+#define set_n_m_dim(x, wd) \
 	do { \
 		n[x] = ccv_max(i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - (i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
-		m[x] = w->info.dim[x + 1] - n[x] - (i[x] * hint.stride.dim[x + 1] + w->info.dim[x + 1] - ccv_min(a->info.dim[x + 1] + hint.border.end[x + 1], i[x] * hint.stride.dim[x + 1] + w->info.dim[x + 1])); \
+		m[x] = wd[x + 1] - n[x] - (i[x] * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(a->info.dim[x + 1] + hint.border.end[x + 1], i[x] * hint.stride.dim[x + 1] + wd[x + 1])); \
 	} while (0)
 
 static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
@@ -38,11 +38,11 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 		int j[CCV_NNC_MAX_DIM];
 		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 		{
-			set_n_m_dim(1);
+			set_n_m_dim(1, w->info.dim);
 			float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
 			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
 			{
-				set_n_m_dim(0);
+				set_n_m_dim(0, w->info.dim);
 				float p = biasval;
 				float* wpz = wpu + n[0] * w->info.dim[0];
 				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
@@ -80,32 +80,28 @@ static void _ccv_nnc_net_max_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 	int c;
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;
-	for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 	{
-		// n[0] is the start point for the filter on y axis, so that we can avoid computing the padding.
-		n[0] = ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) - (i[0] * hint.stride.dim[1] - hint.border.begin[1]);
-		// m[0] shows how long we should loop for filter on y axis, avoid computing the padding too.
-		m[0] = dim[1] - n[0] - (i[0] * hint.stride.dim[1] + dim[1] - ccv_min(a->info.dim[1] + hint.border.end[1], i[0] * hint.stride.dim[1] + dim[1]));
-		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		set_n_m_dim(1, dim);
+		for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
 		{
-			n[1] = ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0) - (i[1] * hint.stride.dim[2] - hint.border.begin[2]);
-			m[1] = dim[2] - n[1] - (i[1] * hint.stride.dim[2] + dim[2] - ccv_min(a->info.dim[2] + hint.border.end[2], i[1] * hint.stride.dim[2] + dim[2]));
+			set_n_m_dim(0, dim);
 			for (c = 0; c < b->info.dim[0]; c++)
 			{
-				float* apz = ap + ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0) * a->info.dim[0] + c;
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
 				float v = apz[0];
-				for (j[0] = 0; j[0] < m[0]; j[0]++)
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
-					for (j[1] = 0; j[1] < m[1]; j[1]++)
-						if (apz[j[1] * a->info.dim[0]] > v)
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+						if (apz[j[0] * a->info.dim[0]] > v)
 							v = apz[j[1] * a->info.dim[0]];
 					apz += a->info.dim[1] * a->info.dim[0];
 				}
-				bp[i[1] * b->info.dim[0] + c] = v;
+				bp[i[0] * b->info.dim[0] + c] = v;
 			}
 		}
 		bp += b->info.dim[1] * b->info.dim[0];
-		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[0] + 1) * hint.stride.dim[1] - hint.border.begin[1], 0) - ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0));
+		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
@@ -127,31 +123,27 @@ static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 	int c;
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;
-	for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 	{
-		// n[0] is the start point for the filter on y axis, so that we can avoid computing the padding.
-		n[0] = ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) - (i[0] * hint.stride.dim[1] - hint.border.begin[1]);
-		// m[0] shows how long we should loop for filter on y axis, avoid computing the padding too.
-		m[0] = dim[1] - n[0] - (i[0] * hint.stride.dim[1] + dim[1] - ccv_min(a->info.dim[1] + hint.border.end[1], i[0] * hint.stride.dim[1] + dim[1]));
-		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		set_n_m_dim(1, dim);
+		for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
 		{
-			n[1] = ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0) - (i[1] * hint.stride.dim[2] - hint.border.begin[2]);
-			m[1] = dim[2] - n[1] - (i[1] * hint.stride.dim[2] + dim[2] - ccv_min(a->info.dim[2] + hint.border.end[2], i[1] * hint.stride.dim[2] + dim[2]));
+			set_n_m_dim(0, dim);
 			for (c = 0; c < b->info.dim[0]; c++)
 			{
-				float* apz = ap + ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0) * a->info.dim[0] + c;
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
 				float v = 0;
-				for (j[0] = 0; j[0] < m[0]; j[0]++)
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
-					for (j[1] = 0; j[1] < m[1]; j[1]++)
-						v += apz[j[1] * a->info.dim[0]];
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+						v += apz[j[0] * a->info.dim[0]];
 					apz += a->info.dim[1] * a->info.dim[0];
 				}
-				bp[i[1] * b->info.dim[0] + c] = v / (m[0] * m[1]);
+				bp[i[0] * b->info.dim[0] + c] = v / (m[0] * m[1]);
 			}
 		}
 		bp += b->info.dim[1] * b->info.dim[0];
-		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[0] + 1) * hint.stride.dim[1] - hint.border.begin[1], 0) - ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0));
+		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
