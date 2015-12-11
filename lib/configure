@@ -3062,7 +3062,7 @@ if test "$blas_ok" = yes; then
 
 fi
 
-# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
+# check for fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -3460,22 +3460,6 @@ fi
 done
 
 
-ac_fn_c_check_header_mongrel "$LINENO" "png.h" "ac_cv_header_png_h" "$ac_includes_default"
-if test "x$ac_cv_header_png_h" = xyes; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBPNG "
- MKLDFLAGS="$MKLDFLAGS-lpng "
-
-fi
-
-
-ac_fn_c_check_header_mongrel "$LINENO" "jpeglib.h" "ac_cv_header_jpeglib_h" "$ac_includes_default"
-if test "x$ac_cv_header_jpeglib_h" = xyes; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBJPEG "
- MKLDFLAGS="$MKLDFLAGS-ljpeg "
-
-fi
-
-
 ac_fn_c_check_header_mongrel "$LINENO" "fftw3.h" "ac_cv_header_fftw3_h" "$ac_includes_default"
 if test "x$ac_cv_header_fftw3_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_FFTW3 "
@@ -3593,6 +3577,91 @@ if test "x$ac_cv_header_xmmintrin_h" = xyes; then :
 
 fi
 
+
+fi
+
+# check for libpng, libjpeg
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for png_read_image in -lpng" >&5
+$as_echo_n "checking for png_read_image in -lpng... " >&6; }
+if ${ac_cv_lib_png_png_read_image+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-lpng  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char png_read_image ();
+int
+main ()
+{
+return png_read_image ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_png_png_read_image=yes
+else
+  ac_cv_lib_png_png_read_image=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_png_png_read_image" >&5
+$as_echo "$ac_cv_lib_png_png_read_image" >&6; }
+if test "x$ac_cv_lib_png_png_read_image" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBPNG "
+ MKLDFLAGS="$MKLDFLAGS-lpng "
+
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for jpeg_read_header in -ljpeg" >&5
+$as_echo_n "checking for jpeg_read_header in -ljpeg... " >&6; }
+if ${ac_cv_lib_jpeg_jpeg_read_header+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+  ac_check_lib_save_LIBS=$LIBS
+LIBS="-ljpeg  $LIBS"
+cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+/* Override any GCC internal prototype to avoid an error.
+   Use char because int might match the return type of a GCC
+   builtin and then its argument prototype would still apply.  */
+#ifdef __cplusplus
+extern "C"
+#endif
+char jpeg_read_header ();
+int
+main ()
+{
+return jpeg_read_header ();
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_link "$LINENO"; then :
+  ac_cv_lib_jpeg_jpeg_read_header=yes
+else
+  ac_cv_lib_jpeg_jpeg_read_header=no
+fi
+rm -f core conftest.err conftest.$ac_objext \
+    conftest$ac_exeext conftest.$ac_ext
+LIBS=$ac_check_lib_save_LIBS
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_lib_jpeg_jpeg_read_header" >&5
+$as_echo "$ac_cv_lib_jpeg_jpeg_read_header" >&6; }
+if test "x$ac_cv_lib_jpeg_jpeg_read_header" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBJPEG "
+ MKLDFLAGS="$MKLDFLAGS-ljpeg "
 
 fi
 

@@ -41,11 +41,7 @@ if test "$blas_ok" = yes; then
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$BLAS_LIBS "])
 fi
 
-# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
-AC_CHECK_HEADER(png.h,
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
-AC_CHECK_HEADER(jpeglib.h,
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
+# check for fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
 AC_CHECK_HEADER(fftw3.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
 AC_CHECK_HEADER(linear.h,
@@ -72,6 +68,11 @@ if test "$neon_support" != yes; then
 					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SSE2 "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-msse2 "])])
 fi
 
+# check for libpng, libjpeg
+AC_CHECK_LIB(png, png_read_image,
+			 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
+AC_CHECK_LIB(jpeg, jpeg_read_header,
+			 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
 # check for gsl, and I need to first check these two before I can check gsl
 AC_CHECK_LIB(m, cos)
 AC_CHECK_LIB(gslcblas, cblas_dgemm)

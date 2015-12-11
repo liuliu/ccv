@@ -20,6 +20,6 @@ clean:
 libccv.a:
 	${MAKE} -C ../../lib
 
-%.o: %.c ../../lib/ccv.h
+%.o: %.c ../../lib/ccv.h ../../lib/nnc/ccv_nnc_tfb.h
 	@echo "$(CC) $< -o $@ -c $(CFLAGS)"
 	@$(CC) $< -o $@ -c $(CFLAGS)
