@@ -23,6 +23,13 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 	ccv_nnc_tensor_t* b = outputs[0];
 	assert(w->info.dim[0] == net->info.size.dim[0]);
 	assert(w->info.dim[0] == a->info.dim[0]);
+	int i;
+	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+	{
+		if (w->info.dim[i] == 0 || net->info.size.dim[i] == 0)
+			break;
+		assert(w->info.dim[i] == net->info.size.dim[i]);
+	}
 	// kernel weight for one dim.
 	int kw_dim = w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
 	parallel_for(k, net->info.convolutional.count) {
