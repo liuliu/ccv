@@ -164,7 +164,7 @@ ccv_nnc_net_hint_t ccv_nnc_net_hint_guess(const ccv_nnc_net_param_t net, const c
 	return guess;
 }
 
-void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(net->backend < CCV_NNC_BACKEND_COUNT);
 	assert(net->compute < CCV_NNC_COMPUTE_COUNT);
@@ -178,5 +178,5 @@ void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, c
 	{
 		assert(api_decl.tensor_formats & outputs[i]->info.format);
 	}
-	api_decl.exec(net, hint, inputs, input_size, outputs, output_size);
+	api_decl.exec(net, hint, flags, inputs, input_size, outputs, output_size);
 }

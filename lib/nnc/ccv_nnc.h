@@ -26,6 +26,11 @@ enum {
 	CCV_NNC_COMPUTE_COUNT,
 };
 
+enum {
+	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // enable accumulate outputs
+	CCV_NNC_RELU = 0x02, // enable ReLU in the kernel
+};
+
 typedef struct {
 	struct {
 		int dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -63,7 +68,7 @@ typedef struct {
 	ccv_nnc_net_param_t info;
 } ccv_nnc_net_t;
 
-typedef void(*ccv_nnc_net_exec_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+typedef void(*ccv_nnc_net_exec_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
@@ -84,7 +89,7 @@ CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, const int compu
 void ccv_nnc_net_free(ccv_nnc_net_t* net);
 CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
 CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
-void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 /**
  * Level-2 API
