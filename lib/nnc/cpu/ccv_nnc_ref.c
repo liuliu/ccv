@@ -233,6 +233,66 @@ static void _ccv_nnc_net_max_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 
 static void _ccv_nnc_net_max_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(input_size == 3);
+	ccv_nnc_tensor_t* a = inputs[1];
+	ccv_nnc_tensor_t* b = inputs[2];
+	ccv_nnc_tensor_t* g = inputs[0]; // gradients
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* h = outputs[0];
+	const int *dim = net->info.size.dim;
+	int i[CCV_NNC_MAX_DIM];
+	int n[CCV_NNC_MAX_DIM];
+	int m[CCV_NNC_MAX_DIM];
+	int j[CCV_NNC_MAX_DIM];
+	int c;
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	float* gp = g->data.f32;
+	float* hp = h->data.f32;
+	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC; c++)
+	{
+		assert(a->info.dim[c] == h->info.dim[c]);
+		if (a->info.dim[c] == 0 || h->info.dim[c] == 0)
+			break;
+	}
+	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC; c++)
+	{
+		assert(b->info.dim[c] == g->info.dim[c]);
+		if (b->info.dim[c] == 0 || g->info.dim[c] == 0)
+			break;
+	}
+	int count = 1;
+	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[c] > 0; c++)
+		count *= h->info.dim[c];
+	memset(h->data.u8, 0, sizeof(float) * count);
+	// Using b->info.dim and a->info.dim directly because they equal to g->info.dim and h->info.dim
+	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+	{
+		set_n_m_dim(1, dim, a->info.dim);
+		for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+		{
+			set_n_m_dim(0, dim, a->info.dim);
+			for (c = 0; c < b->info.dim[0]; c++)
+			{
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float v = bp[i[0] * b->info.dim[0] + c];
+				float u = gp[i[0] * b->info.dim[0] + c];
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				{
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+						if (apz[j[0] * a->info.dim[0]] == v)
+							hpz[j[1] * a->info.dim[0]] += u;
+					apz += a->info.dim[1] * a->info.dim[0];
+					hpz += a->info.dim[1] * a->info.dim[0];
+				}
+			}
+		}
+		gp += b->info.dim[1] * b->info.dim[0];
+		bp += b->info.dim[1] * b->info.dim[0];
+		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		hp += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+	}
 }
 
 static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
@@ -275,6 +335,40 @@ static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 
 static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(input_size == 1);
+	const ccv_nnc_tensor_t* g = inputs[0];
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* h = outputs[0];
+	const int *dim = net->info.size.dim;
+	int i[CCV_NNC_MAX_DIM];
+	int n[CCV_NNC_MAX_DIM];
+	int m[CCV_NNC_MAX_DIM];
+	int j[CCV_NNC_MAX_DIM];
+	int c;
+	float* gp = g->data.f32;
+	float* hp = h->data.f32;
+	for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
+	{
+		set_n_m_dim(1, dim, h->info.dim);
+		for (i[0] = 0; i[0] < g->info.dim[1]; i[0]++)
+		{
+			set_n_m_dim(0, dim, h->info.dim);
+			for (c = 0; c < g->info.dim[0]; c++)
+			{
+				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * h->info.dim[0];
+				float u = gp[i[0] * g->info.dim[0] + c] / (m[0] * m[1]);
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				{
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+						hpz[j[0] * h->info.dim[0]] += u;
+					hpz += h->info.dim[1] * h->info.dim[0];
+				}
+				;
+			}
+		}
+		gp += g->info.dim[1] * g->info.dim[0];
+		hp += h->info.dim[1] * h->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+	}
 }
 
 //@ccv_nnc_init
