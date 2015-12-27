@@ -80,9 +80,8 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	// inputs: gradient, forw prop input / forw prop output, [w, bias]
-	assert(input_size == 3 && output_size == 2);
 	// outputs: weight updates, bias updates, [output gradient]
-	assert(input_size == 5 && output_size == 3);
+	assert((input_size == 3 && output_size == 2) || (input_size == 5 && output_size == 3));
 	ccv_nnc_tensor_t* a = inputs[1];
 	ccv_nnc_tensor_t* b = inputs[2];
 	ccv_nnc_tensor_t* g = inputs[0]; // gradients
@@ -347,6 +346,10 @@ static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_n
 	int c;
 	float* gp = g->data.f32;
 	float* hp = h->data.f32;
+	int count = 1;
+	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[c] > 0; c++)
+		count *= h->info.dim[c];
+	memset(h->data.u8, 0, sizeof(float) * count);
 	for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
 	{
 		set_n_m_dim(1, dim, h->info.dim);
