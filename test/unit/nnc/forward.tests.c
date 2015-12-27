@@ -2,7 +2,6 @@
 #include "case.h"
 #include "ccv_case.h"
 #include "nnc/ccv_nnc.h"
-#include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 {
