@@ -13,6 +13,7 @@
 #include <ccv.h>
 
 enum {
+	// These are the list of computation kernels.
 	CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD = 0,
 	CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD,
@@ -21,8 +22,12 @@ enum {
 	CCV_NNC_COMPUTE_MAX_POOL_BACKWARD,
 	CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD,
 	CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD,
-	CCV_NNC_COMPUTE_LOCAL_RESPONSE_NORM_FORWARD,
-	CCV_NNC_COMPUTE_LOCAL_RESPONSE_NORM_BACKWARD,
+	CCV_NNC_COMPUTE_SOFTMAX_FORWARD,
+	CCV_NNC_COMPUTE_SOFTMAX_BACKWARD,
+	CCV_NNC_COMPUTE_BATCH_NORM_FORWARD,
+	CCV_NNC_COMPUTE_BATCH_NORM_BACKWARD,
+	CCV_NNC_COMPUTE_RELU_FORWARD,
+	CCV_NNC_COMPUTE_RELU_BACKWARD,
 	CCV_NNC_COMPUTE_COUNT,
 };
 
@@ -85,6 +90,8 @@ void ccv_nnc_init(void);
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
+// Allocating on stack
+CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, const int compute, const ccv_nnc_net_param_t params, const int flags);
 void ccv_nnc_net_free(ccv_nnc_net_t* net);
 CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);

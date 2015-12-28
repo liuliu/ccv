@@ -109,7 +109,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 {
 	ccv_dense_matrix_t mat;
 	mat.sig = sig;
-	mat.type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE | CCV_UNMANAGED) & ~CCV_GARBAGE;
+	mat.type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE | CCV_NO_DATA_ALLOC | CCV_UNMANAGED) & ~CCV_GARBAGE;
 	mat.rows = rows;
 	mat.cols = cols;
 	mat.step = CCV_GET_STEP(cols, type);

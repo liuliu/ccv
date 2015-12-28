@@ -78,16 +78,14 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_t* back_inlets[] = {
 		g,
 		a,
-		b,
 		w,
-		bias,
 	};
 	ccv_nnc_tensor_t* back_outlets[] = {
 		gw,
 		gbias,
 		h,
 	};
-	ccv_nnc_net_exec(back_net, hint, 0, back_inlets, 5, back_outlets, 3);
+	ccv_nnc_net_exec(back_net, hint, 0, back_inlets, 3, back_outlets, 3);
 	ccv_dense_matrix_t* dd = ccv_dense_matrix_new(31, 21, CCV_32F | CCV_C3, 0, 0);
 	for (i = 0; i < 31; i++)
 		for (j = 0; j < 21; j++)

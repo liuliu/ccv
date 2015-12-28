@@ -79,25 +79,17 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 
 static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
-	// inputs: gradient, forw prop input / forw prop output, [w, bias]
+	// inputs: gradient, forw prop input / forw prop output, [w]
 	// outputs: weight updates, bias updates, [output gradient]
-	assert((input_size == 3 && output_size == 2) || (input_size == 5 && output_size == 3));
+	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
 	ccv_nnc_tensor_t* a = inputs[1];
-	ccv_nnc_tensor_t* b = inputs[2];
 	ccv_nnc_tensor_t* g = inputs[0]; // gradients
-	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-	{
-		assert(b->info.dim[i] == g->info.dim[i]);
-		if (b->info.dim[i] == 0 || g->info.dim[i] == 0)
-			break;
-	}
 	ccv_nnc_tensor_t* w = outputs[0];
 	ccv_nnc_tensor_t* bias = outputs[1];
 	ccv_nnc_tensor_t* h = output_size == 3 ? outputs[2] : 0; // output gradients
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
-		int count = 1;
+		int i, count = 1;
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && w->info.dim[i] > 0; i++)
 			count *= w->info.dim[i];
 		memset(w->data.u8, 0, sizeof(float) * count);
@@ -125,6 +117,8 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 			{
 				set_n_m_dim(0, w->info.dim, a->info.dim);
 				const float v = gp[i[0] * g->info.dim[0]];
+				if (v == 0) // shortcut if v is zero
+					continue;
 				biasval += v;
 				float* wpz = wpu + n[0] * w->info.dim[0];
 				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
@@ -146,12 +140,11 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 	if (h)
 	{
 		// reset it to 0.
-		int count = 1;
+		int i, count = 1;
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[i] > 0; i++)
 			count *= h->info.dim[i];
 		memset(h->data.u8, 0, sizeof(float) * count);
-		w = inputs[3];
-		bias = inputs[4];
+		w = inputs[2];
 		int k;
 		for (k = 0; k < net->info.convolutional.count; k++)
 		{
@@ -173,6 +166,8 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 				{
 					set_n_m_dim(0, w->info.dim, h->info.dim);
 					const float v = gp[i[0] * g->info.dim[0]];
+					if (v == 0) // shortcut if v is zero
+						continue;
 					float* wpz = wpu + n[0] * w->info.dim[0];
 					float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * h->info.dim[0];
 					for (j[1] = 0; j[1] < m[1]; j[1]++)
@@ -374,6 +369,90 @@ static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_n
 	}
 }
 
+static void _ccv_nnc_net_full_connect_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+	assert(input_size == 3);
+	ccv_nnc_tensor_t* w = inputs[1];
+	ccv_nnc_tensor_t* bias = inputs[2];
+	// Copy the most of parameters, but reshape the dimension of a to a vector.
+	ccv_nnc_tensor_param_t a_params = inputs[0]->info;
+	int i, count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a_params.dim[i] > 0; i++)
+		count *= a_params.dim[i];
+	ccv_dense_matrix_t a = ccv_dense_matrix(1, count, CCV_32F | CCV_C1, inputs[0]->data.u8, 0);
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* b = outputs[0];
+	assert(b->info.dim[0] == 1);
+	assert(b->info.dim[1] == bias->info.dim[1]);
+	assert(bias->info.dim[0] == 1);
+	// copy bias into each row.
+	memcpy(b->data.f32, bias->data.f32, sizeof(float) * b->info.dim[1]);
+	assert(a.info.dim[1] == w->info.dim[1]);
+	assert(b->info.dim[1] == w->info.dim[2]);
+	ccv_gemm(&a, &w, 1, b, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&b, 0); // supply b as matrix C is allowed
+}
+
+static void _ccv_nnc_net_full_connect_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+	// inputs: gradient, forw prop input / forw prop output, [w]
+	// outputs: weight updates, bias updates, [output gradient]
+	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
+	ccv_nnc_tensor_param_t g_params = inputs[0]->info;
+	ccv_nnc_tensor_param_t a_params = inputs[1]->info;
+	ccv_nnc_tensor_t* w = outputs[0];
+	ccv_nnc_tensor_t* bias = outputs[1];
+	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+	{
+		int i, count = 1;
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && w->info.dim[i] > 0; i++)
+			count *= w->info.dim[i];
+		memset(w->data.u8, 0, sizeof(float) * count);
+		count = 1;
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && bias->info.dim[i] > 0; i++)
+			count *= bias->info.dim[i];
+		memset(bias->data.u8, 0, sizeof(float) * count);
+	}
+	int i, count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g_params.dim[i] > 0; i++)
+		count *= g_params.dim[i];
+	ccv_dense_matrix_t g = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, inputs[0]->data.u8, 0);
+	ccv_dense_matrix_t bv = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, bias->data.u8, 0);
+	ccv_dense_matrix_t* dbv = &bv;
+	count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a_params.dim[i] > 0; i++)
+		count *= a_params.dim[i];
+	ccv_dense_matrix_t a = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, inputs[1]->data.u8, 0);
+	ccv_add(&g, dbv, (ccv_matrix_t**)&dbv, 0);
+	ccv_gemm(&g, &a, 1, w, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&w, 0);
+	if (output_size == 3)
+	{
+		ccv_nnc_tensor_param_t h_params = outputs[2]->info;
+		count = 1;
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && h_params.dim[i] > 0; i++)
+			count *= h_params.dim[i];
+		w = inputs[2];
+		ccv_dense_matrix_t h = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, outputs[2]->data.u8, 0);
+		ccv_dense_matrix_t* dh = &h;
+		ccv_gemm(&w, &g, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&dh, 0);
+	}
+}
+
+static void _ccv_nnc_net_softmax_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+}
+
+static void _ccv_nnc_net_softmax_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+}
+
+static void _ccv_nnc_net_relu_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+}
+
+static void _ccv_nnc_net_relu_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+{
+}
+
 //@ccv_nnc_init
 void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
 {
@@ -382,6 +461,11 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
 	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_net_conv_forw;
 	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].exec = _ccv_nnc_net_conv_back;
+	/* Full connect layer */
+	api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].exec = _ccv_nnc_net_full_connect_forw;
+	api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].exec = _ccv_nnc_net_full_connect_back;
 	/* Max pool layer */
 	api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].exec = _ccv_nnc_net_max_pool_forw;
@@ -392,4 +476,14 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
 	api[CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD].exec = _ccv_nnc_net_avg_pool_forw;
 	api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].exec = _ccv_nnc_net_avg_pool_back;
+	/* Softmax layer */
+	api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].exec = _ccv_nnc_net_softmax_forw;
+	api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].exec = _ccv_nnc_net_softmax_back;
+	/* ReLU activation */
+	api[CCV_NNC_COMPUTE_RELU_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_RELU_FORWARD].exec = _ccv_nnc_net_relu_forw;
+	api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	api[CCV_NNC_COMPUTE_RELU_BACKWARD].exec = _ccv_nnc_net_relu_back;
 }
