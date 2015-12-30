@@ -439,6 +439,28 @@ static void _ccv_nnc_net_full_connect_back(const ccv_nnc_net_t* net, const ccv_n
 
 static void _ccv_nnc_net_softmax_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(input_size == 1);
+	ccv_nnc_tensor_t* a = inputs[0];
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* b = outputs[0];
+	int i, count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+	{
+		assert(a->info.dim[i] == b->info.dim[i]);
+		count *= a->info.dim[i];
+	}
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	double maxval = ap[0];
+	for (i = 1; i < count; i++)
+		if (ap[i] > maxval)
+			maxval = ap[i];
+	double sumval = 0;
+	for (i = 0; i < count; i++)
+		sumval += (bp[i] = expf(ap[i] - maxval));
+	sumval = 1.0 / sumval;
+	for (i = 0; i < count; i++)
+		bp[i] *= sumval;
 }
 
 static void _ccv_nnc_net_softmax_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
@@ -447,15 +469,47 @@ static void _ccv_nnc_net_softmax_back(const ccv_nnc_net_t* net, const ccv_nnc_ne
 
 static void _ccv_nnc_net_relu_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(input_size == 1);
+	ccv_nnc_tensor_t* a = inputs[0];
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* b = outputs[0];
+	int i, count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+	{
+		assert(a->info.dim[i] == b->info.dim[i]);
+		count *= a->info.dim[i];
+	}
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	for (i = 0; i < count; i++)
+		bp[i] = ccv_max(ap[i], 0);
 }
 
 static void _ccv_nnc_net_relu_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(input_size == 2);
+	ccv_nnc_tensor_t* b = inputs[1];
+	ccv_nnc_tensor_t* g = inputs[0]; // gradient
+	assert(output_size == 1);
+	ccv_nnc_tensor_t* h = outputs[0];
+	int i, count = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
+	{
+		assert(b->info.dim[i] == g->info.dim[i]);
+		assert(g->info.dim[i] == h->info.dim[i]);
+		count *= g->info.dim[i];
+	}
+	float* bp = b->data.f32;
+	float* gp = g->data.f32;
+	float* hp = h->data.f32;
+	for (i = 0; i < count; i++)
+		hp[i] = (bp[i] >= 0) ? gp[i] : 0;
 }
 
 //@ccv_nnc_init
 void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
 {
+	/*TODO: I don't think any of these methods handles batch input. */
 	/* Convolutional layer */
 	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_net_conv_forw;
