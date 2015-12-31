@@ -13,7 +13,7 @@
 		m[x] = wd[x + 1] - n[x] - (i[x] * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], i[x] * hint.stride.dim[x + 1] + wd[x + 1])); \
 	} while (0)
 
-static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
 	const ccv_nnc_tensor_t* a = inputs[0];
@@ -21,25 +21,25 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 	const ccv_nnc_tensor_t* bias = inputs[2];
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
-	assert(w->info.dim[0] == net->info.size.dim[0]);
+	assert(w->info.dim[0] == node->info.size.dim[0]);
 	assert(w->info.dim[0] == a->info.dim[0]);
 	int i;
 	// Make sure the weights dimension matches the network dimension
 	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)
 	{
-		if (w->info.dim[i] == 0 || net->info.size.dim[i] == 0)
+		if (w->info.dim[i] == 0 || node->info.size.dim[i] == 0)
 			break;
-		assert(w->info.dim[i] == net->info.size.dim[i]);
+		assert(w->info.dim[i] == node->info.size.dim[i]);
 	}
 	// Make sure the weights output dimension matches the network convolutional kernels
 	for (i = CCV_NNC_MAX_DIM_ALLOC - 1; i > 0; i--)
 		if (w->info.dim[i] == 0 && w->info.dim[i])
 		{
-			assert(w->info.dim[i] == net->info.convolutional.count);
+			assert(w->info.dim[i] == node->info.convolutional.count);
 			break;
 		}
-	assert(bias->info.dim[0] == net->info.convolutional.count);
-	parallel_for(k, net->info.convolutional.count) {
+	assert(bias->info.dim[0] == node->info.convolutional.count);
+	parallel_for(k, node->info.convolutional.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
@@ -77,7 +77,7 @@ static void _ccv_nnc_net_conv_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 	} parallel_endfor
 }
 
-static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_conv_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	// inputs: gradient, forw prop input / forw prop output, [w]
 	// outputs: weight updates, bias updates, [output gradient]
@@ -98,7 +98,7 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 			count *= bias->info.dim[i];
 		memset(bias->data.u8, 0, sizeof(float) * count);
 	}
-	parallel_for(k, net->info.convolutional.count) {
+	parallel_for(k, node->info.convolutional.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* gp = g->data.f32 + k;
@@ -146,7 +146,7 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 		memset(h->data.u8, 0, sizeof(float) * count);
 		w = inputs[2];
 		int k;
-		for (k = 0; k < net->info.convolutional.count; k++)
+		for (k = 0; k < node->info.convolutional.count; k++)
 		{
 			int c;
 			float* hp = h->data.f32;
@@ -186,13 +186,13 @@ static void _ccv_nnc_net_conv_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 	}
 }
 
-static void _ccv_nnc_net_max_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_max_pool_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* a = inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
-	const int *dim = net->info.size.dim;
+	const int *dim = node->info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
 	int m[CCV_NNC_MAX_DIM];
@@ -225,7 +225,7 @@ static void _ccv_nnc_net_max_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 	}
 }
 
-static void _ccv_nnc_net_max_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_max_pool_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
 	ccv_nnc_tensor_t* a = inputs[1];
@@ -233,7 +233,7 @@ static void _ccv_nnc_net_max_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_n
 	ccv_nnc_tensor_t* g = inputs[0]; // gradients
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* h = outputs[0];
-	const int *dim = net->info.size.dim;
+	const int *dim = node->info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
 	int m[CCV_NNC_MAX_DIM];
@@ -289,13 +289,13 @@ static void _ccv_nnc_net_max_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_n
 	}
 }
 
-static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* a = inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
-	const int *dim = net->info.size.dim;
+	const int *dim = node->info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
 	int m[CCV_NNC_MAX_DIM];
@@ -327,13 +327,13 @@ static void _ccv_nnc_net_avg_pool_forw(const ccv_nnc_net_t* net, const ccv_nnc_n
 	}
 }
 
-static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* g = inputs[0];
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* h = outputs[0];
-	const int *dim = net->info.size.dim;
+	const int *dim = node->info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
 	int m[CCV_NNC_MAX_DIM];
@@ -369,7 +369,7 @@ static void _ccv_nnc_net_avg_pool_back(const ccv_nnc_net_t* net, const ccv_nnc_n
 	}
 }
 
-static void _ccv_nnc_net_full_connect_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_full_connect_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
 	ccv_nnc_tensor_t* w = inputs[1];
@@ -392,7 +392,7 @@ static void _ccv_nnc_net_full_connect_forw(const ccv_nnc_net_t* net, const ccv_n
 	ccv_gemm(&a, &w, 1, b, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&b, 0); // supply b as matrix C is allowed
 }
 
-static void _ccv_nnc_net_full_connect_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_full_connect_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	// inputs: gradient, forw prop input / forw prop output, [w]
 	// outputs: weight updates, bias updates, [output gradient]
@@ -437,7 +437,7 @@ static void _ccv_nnc_net_full_connect_back(const ccv_nnc_net_t* net, const ccv_n
 	}
 }
 
-static void _ccv_nnc_net_softmax_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_softmax_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
 	ccv_nnc_tensor_t* a = inputs[0];
@@ -463,11 +463,12 @@ static void _ccv_nnc_net_softmax_forw(const ccv_nnc_net_t* net, const ccv_nnc_ne
 		bp[i] *= sumval;
 }
 
-static void _ccv_nnc_net_softmax_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_softmax_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+	assert(0 && "This should never be called.");
 }
 
-static void _ccv_nnc_net_relu_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_relu_forw(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
 	ccv_nnc_tensor_t* a = inputs[0];
@@ -485,7 +486,7 @@ static void _ccv_nnc_net_relu_forw(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 		bp[i] = ccv_max(ap[i], 0);
 }
 
-static void _ccv_nnc_net_relu_back(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static void _ccv_nnc_net_relu_back(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 2);
 	ccv_nnc_tensor_t* b = inputs[1];
@@ -507,37 +508,37 @@ static void _ccv_nnc_net_relu_back(const ccv_nnc_net_t* net, const ccv_nnc_net_h
 }
 
 //@ccv_nnc_init
-void ccv_nnc_cpu_ref_init(ccv_nnc_api_t api[])
+void ccv_nnc_cpu_ref_init(ccv_nnc_node_api_t node_api[])
 {
 	/*TODO: I don't think any of these methods handles batch input. */
 	/* Convolutional layer */
-	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_net_conv_forw;
-	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].exec = _ccv_nnc_net_conv_back;
+	node_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_net_conv_forw;
+	node_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].exec = _ccv_nnc_net_conv_back;
 	/* Full connect layer */
-	api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].exec = _ccv_nnc_net_full_connect_forw;
-	api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].exec = _ccv_nnc_net_full_connect_back;
+	node_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].exec = _ccv_nnc_net_full_connect_forw;
+	node_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].exec = _ccv_nnc_net_full_connect_back;
 	/* Max pool layer */
-	api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].exec = _ccv_nnc_net_max_pool_forw;
-	api[CCV_NNC_COMPUTE_MAX_POOL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_MAX_POOL_BACKWARD].exec = _ccv_nnc_net_max_pool_back;
+	node_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].exec = _ccv_nnc_net_max_pool_forw;
+	node_api[CCV_NNC_COMPUTE_MAX_POOL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_MAX_POOL_BACKWARD].exec = _ccv_nnc_net_max_pool_back;
 	/* Average pool layer */
-	api[CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD].exec = _ccv_nnc_net_avg_pool_forw;
-	api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].exec = _ccv_nnc_net_avg_pool_back;
+	node_api[CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD].exec = _ccv_nnc_net_avg_pool_forw;
+	node_api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD].exec = _ccv_nnc_net_avg_pool_back;
 	/* Softmax layer */
-	api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].exec = _ccv_nnc_net_softmax_forw;
-	api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].exec = _ccv_nnc_net_softmax_back;
+	node_api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_SOFTMAX_FORWARD].exec = _ccv_nnc_net_softmax_forw;
+	node_api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_SOFTMAX_BACKWARD].exec = _ccv_nnc_net_softmax_back;
 	/* ReLU activation */
-	api[CCV_NNC_COMPUTE_RELU_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_RELU_FORWARD].exec = _ccv_nnc_net_relu_forw;
-	api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	api[CCV_NNC_COMPUTE_RELU_BACKWARD].exec = _ccv_nnc_net_relu_back;
+	node_api[CCV_NNC_COMPUTE_RELU_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_RELU_FORWARD].exec = _ccv_nnc_net_relu_forw;
+	node_api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	node_api[CCV_NNC_COMPUTE_RELU_BACKWARD].exec = _ccv_nnc_net_relu_back;
 }

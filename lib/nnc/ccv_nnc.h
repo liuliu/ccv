@@ -33,7 +33,6 @@ enum {
 
 enum {
 	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // enable accumulate outputs
-	CCV_NNC_RELU = 0x02, // enable ReLU in the kernel
 };
 
 typedef struct {
@@ -55,7 +54,7 @@ typedef struct {
 			int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
 		} full_connect;
 	};
-} ccv_nnc_net_param_t;
+} ccv_nnc_net_node_param_t;
 
 typedef struct {
 	struct {
@@ -70,15 +69,15 @@ typedef struct {
 typedef struct {
 	int compute;
 	int backend;
-	ccv_nnc_net_param_t info;
-} ccv_nnc_net_t;
+	ccv_nnc_net_node_param_t info;
+} ccv_nnc_net_node_t;
 
-typedef void(*ccv_nnc_net_exec_f)(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+typedef void(*ccv_nnc_net_node_exec_f)(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
-	ccv_nnc_net_exec_f exec;
-} ccv_nnc_api_t;
+	ccv_nnc_net_node_exec_f exec;
+} ccv_nnc_node_api_t;
 
 /**
  * Level-0 API
@@ -88,15 +87,17 @@ void ccv_nnc_init(void);
 /**
  * Level-1 API
  */
+// For tensor
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
-CCV_WARN_UNUSED(ccv_nnc_net_t*) ccv_nnc_net_new(const void* ptr, const int compute, const ccv_nnc_net_param_t params, const int flags);
-void ccv_nnc_net_free(ccv_nnc_net_t* net);
-CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_param_t net, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
-void ccv_nnc_net_exec(const ccv_nnc_net_t* net, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+// For computation node
+CCV_WARN_UNUSED(ccv_nnc_net_node_t*) ccv_nnc_net_node_new(const void* ptr, const int compute, const ccv_nnc_net_node_param_t params, const int flags);
+void ccv_nnc_net_node_free(ccv_nnc_net_node_t* node);
+CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_node_param_t node, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_node_param_t node, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
+void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 /**
  * Level-2 API

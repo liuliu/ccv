@@ -36,7 +36,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 			32,
 		},
 	};
-	ccv_nnc_net_param_t net_params = {
+	ccv_nnc_net_node_param_t node_params = {
 		.size = {
 			.dim = {
 				3, 3, 5,
@@ -46,10 +46,10 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 			.count = 32,
 		},
 	};
-	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(net_params, &a_params, 1, &b_params, 1);
+	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_t* forw_net = ccv_nnc_net_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, net_params, 0);
+	ccv_nnc_net_node_t* forw_node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	int i, j, k;
@@ -67,8 +67,8 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_t* forw_outlets[] = {
 		b,
 	};
-	ccv_nnc_net_exec(forw_net, hint, 0, forw_inlets, 3, forw_outlets, 1);
-	ccv_nnc_net_t* back_net = ccv_nnc_net_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, net_params, 0);
+	ccv_nnc_net_node_exec(forw_node, hint, 0, forw_inlets, 3, forw_outlets, 1);
+	ccv_nnc_net_node_t* back_node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, node_params, 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
@@ -85,7 +85,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 		gbias,
 		h,
 	};
-	ccv_nnc_net_exec(back_net, hint, 0, back_inlets, 3, back_outlets, 3);
+	ccv_nnc_net_node_exec(back_node, hint, 0, back_inlets, 3, back_outlets, 3);
 	ccv_dense_matrix_t* dd = ccv_dense_matrix_new(31, 21, CCV_32F | CCV_C3, 0, 0);
 	for (i = 0; i < 31; i++)
 		for (j = 0; j < 21; j++)
@@ -116,8 +116,8 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(gw);
 	ccv_nnc_tensor_free(gbias);
-	ccv_nnc_net_free(forw_net);
-	ccv_nnc_net_free(back_net);
+	ccv_nnc_net_node_free(forw_node);
+	ccv_nnc_net_node_free(back_node);
 }
 
 #include "case_main.h"

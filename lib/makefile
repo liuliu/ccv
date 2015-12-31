@@ -4,7 +4,7 @@ include config.mk
 CFLAGS := -O3 -ffast-math -Wall -I"." $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-NNC_OBJS := nnc/ccv_nnc.o nnc/cpu/ccv_nnc_ref.o
+NNC_OBJS := nnc/ccv_nnc_node.o nnc/ccv_nnc_tensor.o nnc/cpu/ccv_nnc_node_ref.o
 
 .PHONY: all lib clean
 
