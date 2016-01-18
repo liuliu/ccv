@@ -67,6 +67,7 @@ typedef struct {
 } ccv_nnc_net_hint_t;
 
 typedef struct {
+	int type;
 	int compute;
 	int backend;
 	ccv_nnc_net_node_param_t info;
@@ -103,7 +104,10 @@ void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hin
  * Level-2 API
  */
 typedef struct {
+	int type;
 } ccv_nnc_net_graph_t;
+
+CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_node_t* node);
 
 /**
  * Level-3 API

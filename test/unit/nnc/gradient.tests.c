@@ -4,21 +4,12 @@
 #include "nnc/ccv_nnc.h"
 #include "3rdparty/dsfmt/dSFMT.h"
 
-static float dsfmt_genrand_gaussian(dsfmt_t* dsfmt, float sigma)
-{
-	double rand1 = dsfmt_genrand_open_close(dsfmt);
-	rand1 = -2 * log(rand1);
-	double rand2 = dsfmt_genrand_open_close(dsfmt) * CCV_PI * 2;
-	return (float)(sqrt(sigma * rand1) * cos(rand2));
-}
-
 // five-stencil constants
-static float fs[4] = { 1, -8, 8, -1 };
-static float fsh[4] = { -2, -1, 1, 2 };
+static double fs[4] = { 1, -8, 8, -1 };
+static double fsh[4] = { -2, -1, 1, 2 };
 
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network")
 {
-	/*
 	ccv_nnc_init();
 	ccv_nnc_tensor_param_t a_params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
@@ -70,9 +61,10 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	int i, j;
 	for (i = 0; i < 2 * 3 * 5 * 4; i++)
-		w->data.f32[i] = dsfmt_genrand_gaussian(&dsfmt, 0.0001);
+		w->data.f32[i] = (dsfmt_genrand_open_close(&dsfmt) * 2 - 1) * 1.41421356237 / sqrtf(21 * 31 * 2 + 21 * 31 * 4);
+	float denom = (21 * 31 * 2 - 1) * 21 * 31 * 2;
 	for (i = 0; i < 21 * 31 * 2; i++)
-		a->data.f32[i] = i;
+		a->data.f32[i] = (float)(i - 21 * 31) / denom;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_tensor_t* forw_inlets[] = {
@@ -112,21 +104,21 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	};
 	ccv_nnc_net_node_exec(back_node, hint, 0, back_inlets, 3, back_outlets, 3);
 	// Now doing numeric gradient computation
-	static const float eps = 0.0000001;
+	static const double eps = 0.001;
 	float* dw = (float*)ccmalloc(sizeof(float) * 2 * 3 * 5 * 4); 
 	for (i = 0; i < 2 * 3 * 5 * 4; i++)
 	{
-		dw[i] = 0;
+		double vw = 0;
 		for (j = 0; j < 4; j++)
 		{
 			float old_w = w->data.f32[i];
 			w->data.f32[i] += fsh[j] * eps;
 			ccv_nnc_net_node_exec(forw_node, hint, 0, forw_inlets, 3, forw_outlets, 1);
-			ccv_nnc_net_node_exec(softmax_node, hint, 0, max_inlets, 1, forw_outlets, 1);
-			dw[i] += -logf(m->data.f32[24]) * fs[j];
+			ccv_nnc_net_node_exec(softmax_node, hint, 0, max_inlets, 1, max_outlets, 1);
+			vw += -log(m->data.f32[24]) * fs[j];
 			w->data.f32[i] = old_w;
 		}
-		dw[i] *= 1.0 / (12 * eps);
+		dw[i] = vw / (12 * eps);
 	}
 	float* dbias = (float*)ccmalloc(sizeof(float) * 4);
 	for (i = 0; i < 4; i++)
@@ -137,7 +129,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			float old_bias = bias->data.f32[i];
 			bias->data.f32[i] += fsh[j] * eps;
 			ccv_nnc_net_node_exec(forw_node, hint, 0, forw_inlets, 3, forw_outlets, 1);
-			ccv_nnc_net_node_exec(softmax_node, hint, 0, max_inlets, 1, forw_outlets, 1);
+			ccv_nnc_net_node_exec(softmax_node, hint, 0, max_inlets, 1, max_outlets, 1);
 			dbias[i] += -logf(m->data.f32[24]) * fs[j];
 			bias->data.f32[i] = old_bias;
 		}
@@ -159,7 +151,6 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(gw);
 	ccv_nnc_tensor_free(gbias);
-	*/
 }
 
 #include "case_main.h"
