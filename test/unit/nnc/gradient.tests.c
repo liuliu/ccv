@@ -54,7 +54,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* forw_node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t forw_node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	dsfmt_t dsfmt;
@@ -76,7 +76,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		b,
 	};
 	ccv_nnc_net_node_exec(forw_node, hint, 0, forw_inlets, 3, forw_outlets, 1);
-	ccv_nnc_net_node_t* softmax_node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_SOFTMAX_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t softmax_node = ccv_nnc_net_node(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_tensor_t* max_inlets[] = {
 		b,
@@ -85,7 +85,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 		m,
 	};
 	ccv_nnc_net_node_exec(softmax_node, hint, 0, max_inlets, 1, max_outlets, 1);
-	ccv_nnc_net_node_t* back_node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, node_params, 0);
+	ccv_nnc_net_node_t back_node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, node_params, 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
@@ -139,9 +139,6 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	REQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE(float, dbias, gbias->data.f32, 4, 30, 2e-1, "bias gradient from analytical method doesn't match the one from numerical method");
 	ccfree(dw);
 	ccfree(dbias);
-	ccv_nnc_net_node_free(forw_node);
-	ccv_nnc_net_node_free(softmax_node);
-	ccv_nnc_net_node_free(back_node);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(m);

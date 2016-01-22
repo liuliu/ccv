@@ -54,25 +54,14 @@ void ccv_nnc_init(void)
 		init_map[i].init(node_api_decls[init_map[i].backend]);
 }
 
-ccv_nnc_net_node_t* ccv_nnc_net_node_new(const void* ptr, const int compute, const ccv_nnc_net_node_param_t params, const int flags)
+ccv_nnc_net_node_t ccv_nnc_net_node(const int compute, const ccv_nnc_net_node_param_t params, const int flags)
 {
-	ccv_nnc_net_node_t* node;
-	if (ptr)
-	{
-		node = (ccv_nnc_net_node_t*)ptr;
-	} else {
-		node = (ccv_nnc_net_node_t*)ccmalloc(sizeof(ccv_nnc_net_node_t));
-	}
-	node->info = params;
+	ccv_nnc_net_node_t node;
+	node.info = params;
 	// TODO: auto-find a workable implementation.
-	node->backend = CCV_NNC_BACKEND_CPU_REF;
-	node->compute = compute;
+	node.backend = CCV_NNC_BACKEND_CPU_REF;
+	node.compute = compute;
 	return node;
-}
-
-void ccv_nnc_net_node_free(ccv_nnc_net_node_t* node)
-{
-	ccfree(node);
 }
 
 int ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_node_param_t node, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
@@ -114,11 +103,11 @@ ccv_nnc_net_hint_t ccv_nnc_net_hint_guess(const ccv_nnc_net_node_param_t node, c
 	return guess;
 }
 
-void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
-	assert(node->backend < CCV_NNC_BACKEND_COUNT);
-	assert(node->compute < CCV_NNC_COMPUTE_COUNT);
-	ccv_nnc_node_api_t api_decl = node_api_decls[node->backend][node->compute];
+	assert(node.backend < CCV_NNC_BACKEND_COUNT);
+	assert(node.compute < CCV_NNC_COMPUTE_COUNT);
+	ccv_nnc_node_api_t api_decl = node_api_decls[node.backend][node.compute];
 	int i;
 	for (i = 0; i < input_size; i++)
 	{

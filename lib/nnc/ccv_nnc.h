@@ -73,7 +73,7 @@ typedef struct {
 	ccv_nnc_net_node_param_t info;
 } ccv_nnc_net_node_t;
 
-typedef void(*ccv_nnc_net_node_exec_f)(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+typedef void(*ccv_nnc_net_node_exec_f)(const ccv_nnc_net_node_t node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
@@ -94,11 +94,10 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 // For computation node
-CCV_WARN_UNUSED(ccv_nnc_net_node_t*) ccv_nnc_net_node_new(const void* ptr, const int compute, const ccv_nnc_net_node_param_t params, const int flags);
-void ccv_nnc_net_node_free(ccv_nnc_net_node_t* node);
+CCV_WARN_UNUSED(ccv_nnc_net_node_t) ccv_nnc_net_node(const int compute, const ccv_nnc_net_node_param_t params, const int flags);
 CCV_WARN_UNUSED(int) ccv_nnc_net_hint_verify(const ccv_nnc_net_hint_t hint, const ccv_nnc_net_node_param_t node, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
 CCV_WARN_UNUSED(ccv_nnc_net_hint_t) ccv_nnc_net_hint_guess(const ccv_nnc_net_node_param_t node, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
-void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t* node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t node, const ccv_nnc_net_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 /**
  * Level-2 API
@@ -107,7 +106,7 @@ typedef struct {
 	int type;
 } ccv_nnc_net_graph_t;
 
-CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_node_t* node);
+CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_node_t node);
 
 /**
  * Level-3 API

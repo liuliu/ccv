@@ -47,7 +47,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
@@ -79,7 +79,6 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
@@ -126,7 +125,7 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
@@ -171,7 +170,6 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
@@ -218,7 +216,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
@@ -315,7 +313,6 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
@@ -362,7 +359,7 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
@@ -485,7 +482,6 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
@@ -517,7 +513,7 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -538,7 +534,6 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
@@ -570,7 +565,7 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -591,7 +586,6 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
@@ -623,7 +617,7 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -644,7 +638,6 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
@@ -676,7 +669,7 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -697,7 +690,6 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
@@ -729,7 +721,7 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -750,7 +742,6 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
@@ -782,7 +773,7 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(node_params, &a_params, 1, &b_params, 1);
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_node_t* node = ccv_nnc_net_node_new(0, CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
+	ccv_nnc_net_node_t node = ccv_nnc_net_node(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, node_params, 0);
 	ccv_nnc_tensor_t* inlets[] = {
 		a,
 	};
@@ -803,7 +794,6 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_matrix_free(c);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
-	ccv_nnc_net_node_free(node);
 }
 
 #include "case_main.h"
