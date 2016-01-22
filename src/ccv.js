@@ -32,7 +32,7 @@ if (parallable === undefined) {
 		"use strict";
 
 		parallable.core[funct.toString()] = funct().core;
-		
+
 		return function () {
 			var i;
 			var async, worker_num, params;
@@ -79,7 +79,8 @@ if (parallable === undefined) {
 									"name" : funct.toString(),
 									"shared" : scope.shared,
 									"id" : i,
-									"worker" : params.worker_num };
+									"worker" : params.worker_num,
+                  "from" : "jquery.facedetection" };
 						try {
 							worker.postMessage(msg);
 						} catch (e) {
@@ -481,13 +482,28 @@ var ccv = {
 	})
 }
 
+// Monkey patch to avoid overriding window's onmessage handler.
+var originalOnMessage = window.onmessage;
 onmessage = function (event) {
-	var data = (typeof event.data == "string") ? JSON.parse(event.data) : event.data;
-	var scope = { "shared" : data.shared };
-	var result = parallable.core[data.name].apply(scope, [data.input, data.id, data.worker]);
-	try {
-		postMessage(result);
-	} catch (e) {
-		postMessage(JSON.stringify(result));
-	}
+  var data;
+  try {
+    data = (typeof event.data == "string") ? JSON.parse(event.data) : event.data;
+    if (data.type === "jquery.facedetection") {
+      // This is the event that is intended for jquery.facedetection
+      var scope = { "shared" : data.shared };
+      var result = parallable.core[data.name].apply(scope, [data.input, data.id, data.worker]);
+      try {
+        postMessage(result);
+      } catch (e) {
+        postMessage(JSON.stringify(result));
+      }
+    } else {
+      // Nope. This is not the event that should be handled by jquery.facedetection
+      originalOnMessage.apply(this, argument);
+    }
+  } catch (e) {
+    // `event.data` is string, but too bad it is not in JSON format.
+    // so just pass it to window's original onmessage handler
+    originalOnMessage.apply(this, arguments);
+  }
 }

@@ -1,12 +1,12 @@
 /*! ----------------------------------------------------------------------------
  *  A jQuery plugin to detect faces on images, videos and canvases.
- *  v2.0.2 released 2015-02-18 12:57
+ *  v2.0.2 released 2016-01-22 10:34
  *  http://facedetection.jaysalvat.com
- *  Copyright (c) 2010-2015, Jay Salvat
+ *  Copyright (c) 2010-2016, Jay Salvat
  *  http://jaysalvat.com/
  *  ----------------------------------------------------------------------------
  *  ccv.js and cascade.js
- *  Copyright (c) 2010-2015, Liu Liu
+ *  Copyright (c) 2010-2016, Liu Liu
  *  http://liuliu.me/
  *  ----------------------------------------------------------------------------
  */
@@ -16242,7 +16242,7 @@
                 var scope = {
                     shared: {}
                 }, ctrl = funct.apply(scope, params);
-                return async ? function(complete) {
+                return async ? function(complete, error) {
                     var executed = 0, outputs = new Array(worker_num), inputs = ctrl.pre.apply(scope, [ worker_num ]);
                     for (i in scope.shared) "function" == typeof scope.shared[i] ? delete scope.shared[i] : void 0 !== scope.shared[i].tagName && delete scope.shared[i];
                     for (i = 0; worker_num > i; i++) {
@@ -16258,7 +16258,8 @@
                             name: funct.toString(),
                             shared: scope.shared,
                             id: i,
-                            worker: params.worker_num
+                            worker: params.worker_num,
+                            from: "jquery.facedetection"
                         };
                         try {
                             worker.postMessage(msg);
@@ -16323,8 +16324,8 @@
                 cat: class_idx
             };
         },
-        detect_objects: parallable(scriptPath, function() {
-            function pre() {
+        detect_objects: parallable(scriptPath, function(canvas, cascade, interval, min_neighbors) {
+            function pre(worker_num) {
                 var canvas = this.shared.canvas, interval = this.shared.interval, scale = this.shared.scale, next = this.shared.next, scale_upto = this.shared.scale_upto, pyr = new Array(4 * (scale_upto + 2 * next)), ret = new Array(4 * (scale_upto + 2 * next));
                 pyr[0] = canvas, ret[0] = {
                     width: pyr[0].width,
@@ -16369,7 +16370,7 @@
                 };
                 return [ ret ];
             }
-            function core(pyr) {
+            function core(pyr, id, worker_num) {
                 var i, j, k, x, y, q, cascade = this.shared.cascade, scale = (this.shared.interval, 
                 this.shared.scale), next = this.shared.next, scale_upto = this.shared.scale_upto, scale_x = 1, scale_y = 1, dx = [ 0, 1, 0, 1 ], dy = [ 0, 0, 1, 1 ], seq = [];
                 for (i = 0; scale_upto > i; i++) {
@@ -16441,10 +16442,8 @@
                 return seq;
             }
             function post(seq) {
-                {
-                    var i, j, min_neighbors = this.shared.min_neighbors, cascade = this.shared.cascade;
-                    this.shared.interval, this.shared.scale, this.shared.next, this.shared.scale_upto;
-                }
+                var i, j, min_neighbors = this.shared.min_neighbors, cascade = this.shared.cascade;
+                this.shared.interval, this.shared.scale, this.shared.next, this.shared.scale_upto;
                 for (i = 0; i < cascade.stage_classifier.length; i++) cascade.stage_classifier[i].feature = cascade.stage_classifier[i].orig_feature;
                 if (seq = seq[0], min_neighbors > 0) {
                     var result = ccv.array_group(seq, function(r1, r2) {
@@ -16507,15 +16506,23 @@
                 post: post
             };
         })
-    };
+    }, originalOnMessage = window.onmessage;
     onmessage = function(event) {
-        var data = "string" == typeof event.data ? JSON.parse(event.data) : event.data, scope = {
-            shared: data.shared
-        }, result = parallable.core[data.name].apply(scope, [ data.input, data.id, data.worker ]);
+        var data;
         try {
-            postMessage(result);
+            if (data = "string" == typeof event.data ? JSON.parse(event.data) : event.data, 
+            "jquery.facedetection" === data.type) {
+                var scope = {
+                    shared: data.shared
+                }, result = parallable.core[data.name].apply(scope, [ data.input, data.id, data.worker ]);
+                try {
+                    postMessage(result);
+                } catch (e) {
+                    postMessage(JSON.stringify(result));
+                }
+            } else originalOnMessage.apply(this, argument);
         } catch (e) {
-            postMessage(JSON.stringify(result));
+            originalOnMessage.apply(this, arguments);
         }
     }, $.fn.faceDetection = function(settingsOrCallback) {
         "use strict";
