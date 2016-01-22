@@ -483,7 +483,7 @@ var ccv = {
 }
 
 // Monkey patch to avoid overriding window's onmessage handler.
-var originalOnMessage = window.onmessage;
+var originalOnMessage = window.onmessage || function () {};
 onmessage = function (event) {
   var data;
   try {
@@ -499,11 +499,13 @@ onmessage = function (event) {
       }
     } else {
       // Nope. This is not the event that should be handled by jquery.facedetection
-      originalOnMessage.apply(this, argument);
+      var args = Array.prototype.slice.call(arguments);
+      originalOnMessage.apply(window, args);
     }
   } catch (e) {
     // `event.data` is string, but too bad it is not in JSON format.
     // so just pass it to window's original onmessage handler
-    originalOnMessage.apply(this, arguments);
+    var args = Array.prototype.slice.call(arguments);
+    originalOnMessage.apply(window, args);
   }
 }
