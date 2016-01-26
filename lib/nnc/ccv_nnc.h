@@ -105,8 +105,12 @@ void ccv_nnc_net_node_exec(const ccv_nnc_net_node_t node, const ccv_nnc_net_hint
 typedef struct {
 	int type;
 } ccv_nnc_net_graph_t;
-
-CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_node_t node);
+// Create a graph containing one node with input and output tensors allocated.
+CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_node_t node, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+// Concatenate input graph nodes with an output graph node to create a new graph.
+CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_concat(ccv_nnc_net_graph_t* const* inputs, const int input_size, const ccv_nnc_net_graph_t* output);
+void ccv_nnc_net_graph_run(const ccv_nnc_net_graph_t* graph);
+void ccv_nnc_net_graph_free(ccv_nnc_net_graph_t* graph);
 
 /**
  * Level-3 API
