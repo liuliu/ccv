@@ -105,23 +105,24 @@ void ccv_nnc_net_command_exec(const ccv_nnc_net_command_t command, const ccv_nnc
 
 typedef struct ccv_nnc_net_graph_s ccv_nnc_net_graph_t;
 
-/**
- * The biggest design principle of these methods, especially now it becomes more involved on the
- * interface level comparing to libccv's most functions (which takes some matrices, and output
- * some matrices or arrays). Therefore, ownership of these pointers are important for C interface.
- * For each of these functions, ownership of these pointers are especially called out to cause no
- * confusions at all.
- */
-// Create a graph containing one node with input and output tensors allocated.
-// In this function, no ownership of these passed tensors changed, you are responsible to
-// deallocate the tensors when it is done.
-CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(const ccv_nnc_net_command_t node, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+typedef struct {
+	int32_t i;
+	const ccv_nnc_net_graph_t* graph;
+} ccv_nnc_net_graph_node_t;
+
+// Create an empty graph.
+// Note that all graph mutation method are not thread-safe.
+// You should only operate the graph in serial fashion.
+CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_new(void);
+// Create a node with specific command execution, as well as its inputs & outputs.
+// Underlying, the graph maintains the backing object for the node, and all you get is
+// a on-stack object to index the backing object from the graph.
+CCV_WARN_UNUSED(ccv_nnc_net_graph_node_t) ccv_nnc_net_graph_node(const ccv_nnc_net_graph_t* graph, const ccv_nnc_net_command_t command, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 // Concatenate input graph nodes with an output graph node to create a new graph.
-// This method will "consume" the input graphs and output graph, that means, you don't
-// need to deallocate these graphs afterwards. You are only responsible for the new
-// graph created.
-CCV_WARN_UNUSED(ccv_nnc_net_graph_t*) ccv_nnc_net_graph_concat(ccv_nnc_net_graph_t* const* inputs, const int input_size, const ccv_nnc_net_graph_t* output);
-void ccv_nnc_net_graph_run(const ccv_nnc_net_graph_t* graph);
+// Return non-zero if cannot concat successfully.
+int ccv_nnc_net_node_concat(const ccv_nnc_net_graph_node_t source, const ccv_nnc_net_graph_node_t destination);
+// Run the graph from source nodes all the way to the destination nodes.
+void ccv_nnc_net_graph_run(const ccv_nnc_net_graph_t* graph, const ccv_nnc_net_graph_node_t* sources, const int source_size, const ccv_nnc_net_graph_t destinations, const int destination_size);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
 void ccv_nnc_net_graph_free(ccv_nnc_net_graph_t* graph);
 
