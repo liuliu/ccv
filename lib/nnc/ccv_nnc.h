@@ -117,10 +117,10 @@ CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(void);
 // Create a node with specific command execution, as well as its inputs & outputs.
 // Underlying, the graph maintains the backing object for the node, and all you get is
 // a on-stack object to index the backing object from the graph.
-CCV_WARN_UNUSED(ccv_nnc_graph_node_t) ccv_nnc_graph_node(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_node_t) ccv_nnc_graph_node(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
-int ccv_nnc_graph_node_concat(const ccv_nnc_graph_node_t source, const ccv_nnc_graph_node_t destination);
+int ccv_nnc_graph_node_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_node_t source, const ccv_nnc_graph_node_t destination);
 // Run the graph from source nodes all the way to the destination nodes.
 void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_node_t* sources, const int source_size, const ccv_nnc_graph_node_t* destinations, const int destination_size, int flags);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
