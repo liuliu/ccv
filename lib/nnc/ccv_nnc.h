@@ -122,7 +122,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_node_t) ccv_nnc_graph_node(const ccv_nnc_graph_t* 
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_node_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_node_t source, const ccv_nnc_graph_node_t destination);
 // Run the graph from source nodes all the way to the destination nodes.
-void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_node_t* sources, const int source_size, const ccv_nnc_graph_node_t* destinations, const int destination_size, int flags);
+void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_node_t* sources, const int source_size, const ccv_nnc_graph_node_t* destinations, const int destination_size);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
 void ccv_nnc_graph_free(ccv_nnc_graph_t* graph);
 

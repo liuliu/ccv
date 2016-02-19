@@ -36,7 +36,9 @@ ccv_nnc_graph_node_t ccv_nnc_graph_node(const ccv_nnc_graph_t* graph, const ccv_
 		.outgoings = 0,
 	};
 	back.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
+	memcpy(back.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
 	back.outputs = back.inputs + input_size;
+	memcpy(back.outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
 	ccv_array_push(graph->bn, &back);
 	ccv_nnc_graph_node_t node = {
 		.d = d,
@@ -59,15 +61,15 @@ int ccv_nnc_graph_node_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_
 }
 
 typedef struct {
-	int32_t d:1; // tag if this is the destination node.
-	int32_t c:31; // number of incoming edges.
+	int8_t d; // tag if this is the destination node.
+	int32_t c; // number of incoming edges.
 } ccv_nnc_incoming_t;
 
-void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_node_t* sources, const int source_size, const ccv_nnc_graph_node_t* destinations, const int destination_size, int flags)
+void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_node_t* sources, const int source_size, const ccv_nnc_graph_node_t* destinations, const int destination_size)
 {
 	// Statistics of how many incoming edges for all nodes of a graph.
 	ccv_nnc_incoming_t* incomings = (ccv_nnc_incoming_t*)alloca(sizeof(ccv_nnc_incoming_t) * graph->bn->rnum);
-	memset(incomings, 0, sizeof(int32_t) * graph->bn->rnum);
+	memset(incomings, 0, sizeof(ccv_nnc_incoming_t) * graph->bn->rnum);
 	int i, j;
 	for (i = 0; i < graph->bn->rnum; i++)
 	{
