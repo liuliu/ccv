@@ -20,4 +20,13 @@ TEST_CASE("toll-free bridging between ccv_nnc_tensor_t and ccv_dense_matrix_t")
 }
 #endif
 
+TEST_CASE("toll-free bridging between ccv_nnc_tensor_t and ccv_nnc_tensor_view_t")
+{
+	REQUIRE(offsetof(ccv_nnc_tensor_t, type) == offsetof(ccv_nnc_tensor_view_t, type), "type offset should be the same");
+	REQUIRE(offsetof(ccv_nnc_tensor_t, sig) == offsetof(ccv_nnc_tensor_view_t, sig), "sig offset should be the same");
+	REQUIRE(offsetof(ccv_nnc_tensor_t, refcount) == offsetof(ccv_nnc_tensor_view_t, refcount), "refcount offset should be the same");
+	REQUIRE(offsetof(ccv_nnc_tensor_t, data) == offsetof(ccv_nnc_tensor_view_t, data), "data offset should be the same");
+	REQUIRE(offsetof(ccv_nnc_tensor_t, info) == offsetof(ccv_nnc_tensor_view_t, info), "info offset should be the same");
+}
+
 #include "case_main.h"

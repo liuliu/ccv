@@ -34,6 +34,10 @@ enum {
 	CCV_TENSOR_GPU_MEMORY = 0x2,
 };
 
+enum {
+	CCV_TENSOR_VIEW = 0x01000000,
+};
+
 typedef union {
 	unsigned char* u8;
 	int* i32;
@@ -51,7 +55,6 @@ typedef struct {
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_tensor_param_t;
 
-#if CCV_NNC_TENSOR_TFB
 typedef struct {
 	int type;
 	int refcount;
@@ -60,6 +63,18 @@ typedef struct {
 	ccv_numeric_data_t data;
 } ccv_nnc_tensor_t;
 
+typedef struct {
+	int type;
+	int refcount;
+	uint64_t sig;
+	ccv_nnc_tensor_param_t info;
+	ccv_numeric_data_t data;
+	/* tensor view and tensor shares the same data structure besides the following two. */
+	int ofs[CCV_NNC_MAX_DIM_ALLOC]; /*< offset */
+	int len[CCV_NNC_MAX_DIM_ALLOC]; /*< length */
+} ccv_nnc_tensor_view_t;
+
+#if CCV_NNC_TENSOR_TFB
 typedef struct {
 	int type;
 	int refcount;
@@ -90,14 +105,6 @@ typedef struct {
 	ccv_numeric_data_t data;
 } ccv_dense_matrix_t;
 #else
-typedef struct {
-	int type;
-	int refcount;
-	uint64_t sig;
-	ccv_nnc_tensor_param_t info;
-	ccv_numeric_data_t data;
-} ccv_nnc_tensor_t;
-
 typedef struct {
 	int type;
 	int refcount;
