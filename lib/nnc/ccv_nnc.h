@@ -14,7 +14,8 @@
 
 enum {
 	// These are the list of computation kernels.
-	CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD = 0,
+	CCV_NNC_COMPUTE_CUSTOM = 0,
+	CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD,
 	CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD,
@@ -53,6 +54,7 @@ typedef struct {
 		struct {
 			int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
 		} full_connect;
+		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
 
@@ -66,11 +68,13 @@ typedef struct {
 	} border;
 } ccv_nnc_hint_t;
 
-typedef struct {
-	int type;
+typedef struct ccv_nnc_cmd_s {
 	int compute;
 	int backend;
 	ccv_nnc_cmd_param_t info;
+	// This has to be the same as the ccv_nnc_cmd_exec_f type.
+	// This is for type CCV_NNC_COMPUTE_CUSTOM
+	void(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 } ccv_nnc_cmd_t;
 
 typedef void(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
@@ -91,10 +95,11 @@ void ccv_nnc_init(void);
 // For tensor
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
+int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b);
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 // For computation node
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, const ccv_nnc_cmd_param_t params, const int flags);
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t node, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
 CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t node, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
 void ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);

@@ -69,3 +69,41 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 {
 	ccfree(tensor);
 }
+
+int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
+{
+	// If a is a dense matrix, just use ccv_matrix_eq
+	if (CCV_NNC_TENSOR_IS_DENSE_MATRIX(a->type))
+		return ccv_matrix_eq(a, b);
+	// Otherwise, do our own thing.
+	if (CCV_GET_DATA_TYPE(a->type) != CCV_GET_DATA_TYPE(b->type))
+		return -1;
+	// Only support 32F at this point.
+	assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
+	int i, c = 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+	{
+		if (!a->info.dim[i] && !b->info.dim[i])
+			break;
+		if (a->info.dim[i] != b->info.dim[i])
+			return -1;
+		c *= a->info.dim[i];
+	}
+	// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
+	// http://floating-point-gui.de/errors/comparison/
+	const float epsi = FLT_EPSILON;
+	const int32_t ulps = 64; // so that for 1 and 1.000005 will be treated as the same.
+	for (i = 0; i < c; i++)
+	{
+		// Although this is float point, I use integer as a way to compare.
+		int32_t i32a = a->data.i32[i];
+		if (i32a < 0)
+			i32a = 0x80000000 - i32a;
+		int32_t i32b = b->data.i32[i];
+		if (i32b < 0)
+			i32b = 0x80000000 - i32b;
+		if (abs(i32a - i32b) > ulps && fabsf(a->data.f32[i] - b->data.f32[i]) > epsi)
+			return -1;
+	}
+	return 0;
+}

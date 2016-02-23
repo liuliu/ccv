@@ -27,8 +27,8 @@ ccv_io.o: ccv_io.c ccv.h ccv_internal.h io/*.c
 ../samples/image-net-2012-vgg-d.sqlite3:
 	../samples/download-vgg-d-model.sh
 
-%.o: %.c ccv.h ccv_internal.h cuda/cwc.h cuda/cwc_ext.h nnc/ccv_nnc_tfb.h
+%.o: %.c ccv.h ccv_internal.h cuda/cwc.h cuda/cwc_ext.h nnc/ccv_nnc_tfb.h nnc/ccv_nnc.h nnc/ccv_nnc_internal.h
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu ccv.h cuda/cwc.h cuda/cwc_internal.h cuda/cwc_ext.h nnc/ccv_nnc_tfb.h
+%.o: %.cu ccv.h cuda/cwc.h cuda/cwc_internal.h cuda/cwc_ext.h nnc/ccv_nnc_tfb.h nnc/ccv_nnc.h nnc/ccv_nnc_internal.h
 	$(NVCC) $< -o $@ -c $(NVFLAGS)

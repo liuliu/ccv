@@ -54,13 +54,15 @@ void ccv_nnc_init(void)
 		init_map[i].init(cmd_api_decls[init_map[i].backend]);
 }
 
-ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, const ccv_nnc_cmd_param_t params, const int flags)
+ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
 {
 	ccv_nnc_cmd_t cmd;
 	cmd.info = params;
 	// TODO: auto-find a workable implementation.
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	assert((compute == CCV_NNC_COMPUTE_CUSTOM && exec) || (compute != CCV_NNC_COMPUTE_CUSTOM && !exec));
 	cmd.compute = compute;
+	cmd.exec = exec;
 	return cmd;
 }
 
@@ -107,6 +109,12 @@ void ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const 
 {
 	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
 	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
+	{
+		// If it is a custom command, just apply it directly.
+		cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
+		return;
+	}
 	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
 	int i;
 	for (i = 0; i < input_size; i++)

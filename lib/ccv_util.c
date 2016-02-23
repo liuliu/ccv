@@ -513,23 +513,69 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 			return -1;
 		if (da->cols != db->cols)
 			return -1;
-		float epsilon = (CCV_GET_DATA_TYPE(db->type) == CCV_8U || CCV_GET_DATA_TYPE(db->type) == CCV_32S || CCV_GET_DATA_TYPE(db->type) == CCV_64S) ? 1 : 1e-4;
 		int i, j, ch = CCV_GET_CHANNEL(da->type);
 		unsigned char* a_ptr = da->data.u8;
 		unsigned char* b_ptr = db->data.u8;
+		// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
+		// http://floating-point-gui.de/errors/comparison/
+		if (CCV_GET_DATA_TYPE(db->type) == CCV_32F)
+		{
+			const float epsi = FLT_EPSILON;
+			const int32_t ulps = 64; // So that for 1 and 1.000005 will be treated as the same.
+			for (i = 0; i < da->rows; i++)
+			{
+				int32_t* ia_ptr = (int32_t*)a_ptr;
+				int32_t* ib_ptr = (int32_t*)b_ptr;
+				for (j = 0; j < da->cols * ch; j++)
+				{
+					int32_t i32a = ia_ptr[j];
+					if (i32a < 0)
+						i32a = 0x80000000 - i32a;
+					int32_t i32b = ib_ptr[j];
+					if (i32b < 0)
+						i32b = 0x80000000 - i32b;
+					if (abs(i32a - i32b) > ulps && fabsf(((float*)a_ptr)[j] - ((float*)b_ptr)[j]) > epsi)
+						return -1;
+				}
+				a_ptr += da->step;
+				b_ptr += db->step;
+			}
+		} else if (CCV_GET_DATA_TYPE(db->type) == CCV_64F) {
+			const double epsi = FLT_EPSILON; // Using FLT_EPSILON because for most of ccv computations, we have 32-bit float point computation inside.
+			const int64_t ulps = 0x100000l; // So that for 1 and 1.000000001 will be treated as the same.
+			for (i = 0; i < da->rows; i++)
+			{
+				int64_t* ia_ptr = (int64_t*)a_ptr;
+				int64_t* ib_ptr = (int64_t*)b_ptr;
+				for (j = 0; j < da->cols * ch; j++)
+				{
+					int64_t i64a = ia_ptr[j];
+					if (i64a < 0)
+						i64a = 0x8000000000000000l - i64a;
+					int64_t i64b = ib_ptr[j];
+					if (i64b < 0)
+						i64b = 0x8000000000000000l - i64b;
+					if (labs(i64a - i64b) > ulps && fabsf(((float*)a_ptr)[j] - ((float*)b_ptr)[j]) > epsi)
+						return -1;
+				}
+				a_ptr += da->step;
+				b_ptr += db->step;
+			}
+		} else {
 #define for_block(_, _for_get) \
-		for (i = 0; i < da->rows; i++) \
-		{ \
-			for (j = 0; j < da->cols * ch; j++) \
+			for (i = 0; i < da->rows; i++) \
 			{ \
-				if (fabs((double)(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0))) > epsilon) \
-					return -1; \
-			} \
-			a_ptr += da->step; \
-			b_ptr += db->step; \
-		}
-		ccv_matrix_getter(da->type, for_block);
+				for (j = 0; j < da->cols * ch; j++) \
+				{ \
+					if (labs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1) \
+						return -1; \
+				} \
+				a_ptr += da->step; \
+				b_ptr += db->step; \
+			}
+			ccv_matrix_getter_integer_only(da->type, for_block);
 #undef for_block
+		}
 	}
 	return 0;
 }
