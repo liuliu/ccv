@@ -84,7 +84,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* forw_outlets[] = {
 		b,
 	};
-	ccv_nnc_graph_node_t forw_node = ccv_nnc_graph_node(graph, forw_cmd, hint, 0, forw_inlets, 3, forw_outlets, 1);
+	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_deferred_exec(graph, forw_cmd, hint, 0, forw_inlets, 3, forw_outlets, 1);
 	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_tensor_t* max_inlets[] = {
@@ -93,7 +93,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* max_outlets[] = {
 		m,
 	};
-	ccv_nnc_graph_node_t softmax_node = ccv_nnc_graph_node(graph, softmax_cmd, hint, 0, max_inlets, 1, max_outlets, 1);
+	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_deferred_exec(graph, softmax_cmd, hint, 0, max_inlets, 1, max_outlets, 1);
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
 	ccv_nnc_cmd_t loss_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CUSTOM, _ccv_nnc_custom_24_loss_exec, cmd_params, 0);
 	ccv_nnc_tensor_t* loss_inlets[] = {
@@ -102,7 +102,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* loss_outlets[] = {
 		g,
 	};
-	ccv_nnc_graph_node_t loss_node = ccv_nnc_graph_node(graph, loss_cmd, hint, 0, loss_inlets, 1, loss_outlets, 1);
+	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_deferred_exec(graph, loss_cmd, hint, 0, loss_inlets, 1, loss_outlets, 1);
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
@@ -117,15 +117,15 @@ TEST_CASE("run simple graph network")
 		gbias,
 		h,
 	};
-	ccv_nnc_graph_node_t back_node = ccv_nnc_graph_node(graph, back_cmd, hint, 0, back_inlets, 3, back_outlets, 3);
+	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_deferred_exec(graph, back_cmd, hint, 0, back_inlets, 3, back_outlets, 3);
 	// All nodes are created, now to concat the graph.
-	ccv_nnc_graph_node_concat(graph, forw_node, softmax_node);
-	ccv_nnc_graph_node_concat(graph, softmax_node, loss_node);
-	ccv_nnc_graph_node_concat(graph, loss_node, back_node);
-	ccv_nnc_graph_node_t source_nodes[] = {
+	ccv_nnc_graph_exec_concat(graph, forw_node, softmax_node);
+	ccv_nnc_graph_exec_concat(graph, softmax_node, loss_node);
+	ccv_nnc_graph_exec_concat(graph, loss_node, back_node);
+	ccv_nnc_graph_exec_t source_nodes[] = {
 		forw_node,
 	};
-	ccv_nnc_graph_node_t destination_nodes[] = {
+	ccv_nnc_graph_exec_t destination_nodes[] = {
 		back_node,
 	};
 	ccv_nnc_graph_run(graph, 0, source_nodes, 1, destination_nodes, 1);
