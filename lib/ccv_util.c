@@ -520,8 +520,8 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 		// http://floating-point-gui.de/errors/comparison/
 		if (CCV_GET_DATA_TYPE(db->type) == CCV_32F)
 		{
-			const float epsi = FLT_EPSILON;
-			const int32_t ulps = 64; // So that for 1 and 1.000005 will be treated as the same.
+			static const float epsi = FLT_EPSILON;
+			static const int32_t ulps = 128; // So that for 1 and 1.000015 will be treated as the same.
 			for (i = 0; i < da->rows; i++)
 			{
 				int32_t* ia_ptr = (int32_t*)a_ptr;
@@ -541,8 +541,8 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 				b_ptr += db->step;
 			}
 		} else if (CCV_GET_DATA_TYPE(db->type) == CCV_64F) {
-			const double epsi = FLT_EPSILON; // Using FLT_EPSILON because for most of ccv computations, we have 32-bit float point computation inside.
-			const int64_t ulps = 0x100000l; // So that for 1 and 1.000000001 will be treated as the same.
+			static const double epsi = FLT_EPSILON; // Using FLT_EPSILON because for most of ccv computations, we have 32-bit float point computation inside.
+			static const int64_t ulps = 0x100000l; // So that for 1 and 1.000000001 will be treated as the same.
 			for (i = 0; i < da->rows; i++)
 			{
 				int64_t* ia_ptr = (int64_t*)a_ptr;

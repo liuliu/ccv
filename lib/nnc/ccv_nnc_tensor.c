@@ -91,8 +91,8 @@ int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
 	}
 	// Read: http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
 	// http://floating-point-gui.de/errors/comparison/
-	const float epsi = FLT_EPSILON;
-	const int32_t ulps = 64; // so that for 1 and 1.000005 will be treated as the same.
+	static const float epsi = FLT_EPSILON;
+	static const int32_t ulps = 128; // so that for 1 and 1.000015 will be treated as the same.
 	for (i = 0; i < c; i++)
 	{
 		// Although this is float point, I use integer as a way to compare.
