@@ -76,48 +76,18 @@ TEST_CASE("run simple graph network")
 		a->data.f32[i] = (float)(i - 21 * 31) / denom;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_tensor_t* forw_inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* forw_outlets[] = {
-		b,
-	};
-	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_deferred_exec(graph, forw_cmd, hint, 0, forw_inlets, 3, forw_outlets, 1);
+	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_deferred_exec(graph, forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_tensor_t* max_inlets[] = {
-		b,
-	};
-	ccv_nnc_tensor_t* max_outlets[] = {
-		m,
-	};
-	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_deferred_exec(graph, softmax_cmd, hint, 0, max_inlets, 1, max_outlets, 1);
+	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_deferred_exec(graph, softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m));
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
 	ccv_nnc_cmd_t loss_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CUSTOM, _ccv_nnc_custom_24_loss_exec, cmd_params, 0);
-	ccv_nnc_tensor_t* loss_inlets[] = {
-		m,
-	};
-	ccv_nnc_tensor_t* loss_outlets[] = {
-		g,
-	};
-	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_deferred_exec(graph, loss_cmd, hint, 0, loss_inlets, 1, loss_outlets, 1);
+	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_deferred_exec(graph, loss_cmd, hint, 0, TENSOR_LIST(m), TENSOR_LIST(g));
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, h_params, 0);
-	ccv_nnc_tensor_t* back_inlets[] = {
-		g,
-		a,
-		w,
-	};
-	ccv_nnc_tensor_t* back_outlets[] = {
-		gw,
-		gbias,
-		h,
-	};
-	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_deferred_exec(graph, back_cmd, hint, 0, back_inlets, 3, back_outlets, 3);
+	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_deferred_exec(graph, back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
 	// All nodes are created, now to concat the graph.
 	ccv_nnc_graph_exec_concat(graph, forw_node, softmax_node);
 	ccv_nnc_graph_exec_concat(graph, softmax_node, loss_node);
@@ -132,19 +102,10 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_graph_free(graph);
 	/* At this point, do the computation with a different set of tensors and then compare */
 	ccv_nnc_tensor_t* vb = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_tensor_t* vforw_outlets[] = {
-		vb,
-	};
-	ccv_nnc_cmd_exec(forw_cmd, hint, 0, forw_inlets, 3, vforw_outlets, 1);
+	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(vb));
 	REQUIRE_TENSOR_EQ(b, vb, "Graph computed forward pass result should be the same.");
 	ccv_nnc_tensor_t* vm = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_tensor_t* vmax_inlets[] = {
-		vb,
-	};
-	ccv_nnc_tensor_t* vmax_outlets[] = {
-		vm,
-	};
-	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, vmax_inlets, 1, vmax_outlets, 1);
+	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(vb), TENSOR_LIST(vm));
 	REQUIRE_TENSOR_EQ(m, vm, "Graph computed softmax pass result should be the same.");
 	ccv_nnc_tensor_t* vg = ccv_nnc_tensor_new(0, g_params, 0);
 	for (i = 0; i < 21 * 31 * 4; i++)
@@ -153,17 +114,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* vgw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* vgbias = ccv_nnc_tensor_new(0, bias_params, 0);
 	ccv_nnc_tensor_t* vh = ccv_nnc_tensor_new(0, h_params, 0);
-	ccv_nnc_tensor_t* vback_inlets[] = {
-		vg,
-		a,
-		w,
-	};
-	ccv_nnc_tensor_t* vback_outlets[] = {
-		vgw,
-		vgbias,
-		vh,
-	};
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, vback_inlets, 3, vback_outlets, 3);
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(vg, a, w), TENSOR_LIST(vgw, vgbias, vh));
 	REQUIRE_TENSOR_EQ(gbias, vgbias, "Graph computed backward pass weight delta should be the same.");
 	REQUIRE_TENSOR_EQ(gw, vgw, "Graph computed backward pass bias delta should be the same.");
 	REQUIRE_TENSOR_EQ(h, vh, "Graph computed backward pass result should be the same.");

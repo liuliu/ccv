@@ -50,14 +50,6 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 11 * 11 * 3 * 4; i++)
@@ -66,7 +58,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 		a->data.f32[i] = 1;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 3, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 45, CCV_32F | 4, 0, 0);
 	int x, y;
 	for (y = 0; y < 55; y++)
@@ -128,14 +120,6 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 5 * 3 * 4; i++)
@@ -144,7 +128,7 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 		a->data.f32[i] = 1;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 3, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(17, 27, CCV_32F | 4, 0, 0);
 	int x, y;
 	for (y = 0; y < 17; y++)
@@ -219,14 +203,6 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i, x, y;
 	for (x = 0; x < 4; x++)
@@ -236,7 +212,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 		a->data.f32[i] = i + 1;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 3, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(55, 45, CCV_32F | 4, 0, 0);
 	float sum = 0;
 	// first column
@@ -362,14 +338,6 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i, x, y;
 	for (x = 0; x < 4; x++)
@@ -379,7 +347,7 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 		a->data.f32[i] = i + 1;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 3, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | 4, 0, 0);
 	// the first column
 	float sum = 0;
@@ -514,17 +482,11 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 55 * 55; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 27; y++)
@@ -566,17 +528,11 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 57 * 57; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(19, 19, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 19; y++)
@@ -618,17 +574,11 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 54 * 54; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 27; y++)
@@ -670,17 +620,11 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 55 * 55; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 27; y++)
@@ -722,17 +666,11 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 57 * 57; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(19, 19, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 19; y++)
@@ -774,17 +712,11 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* inlets[] = {
-		a,
-	};
-	ccv_nnc_tensor_t* outlets[] = {
-		b,
-	};
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 54 * 54; i++)
 		a->data.f32[i] = i + 1;
-	ccv_nnc_cmd_exec(cmd, hint, 0, inlets, 1, outlets, 1);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a), TENSOR_LIST(b));
 	ccv_dense_matrix_t* c = ccv_dense_matrix_new(27, 27, CCV_32F | CCV_C1, 0, 0);
 	int x, y;
 	for (y = 0; y < 27; y++)

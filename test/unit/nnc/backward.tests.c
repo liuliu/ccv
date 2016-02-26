@@ -59,15 +59,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 		a->data.f32[i] = 1;
 	for (i = 0; i < 32; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_tensor_t* forw_inlets[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* forw_outlets[] = {
-		b,
-	};
-	ccv_nnc_cmd_exec(forw_cmd, hint, 0, forw_inlets, 3, forw_outlets, 1);
+	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, cmd_params, 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
@@ -75,17 +67,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, h_params, 0);
 	for (i = 0; i < 21 * 31 * 32; i++)
 		g->data.f32[i] = 1;
-	ccv_nnc_tensor_t* back_inlets[] = {
-		g,
-		a,
-		w,
-	};
-	ccv_nnc_tensor_t* back_outlets[] = {
-		gw,
-		gbias,
-		h,
-	};
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, back_inlets, 3, back_outlets, 3);
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
 	ccv_dense_matrix_t* dd = ccv_dense_matrix_new(31, 21, CCV_32F | CCV_C3, 0, 0);
 	for (i = 0; i < 31; i++)
 		for (j = 0; j < 21; j++)
