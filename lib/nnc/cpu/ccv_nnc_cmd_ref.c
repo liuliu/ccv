@@ -16,11 +16,13 @@
 static void _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
-	const ccv_nnc_tensor_t* a = inputs[0];
+	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_t* w = inputs[1];
+	assert(!CCV_IS_TENSOR_VIEW(w));
 	const ccv_nnc_tensor_t* bias = inputs[2];
+	assert(!CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* b = outputs[0];
+	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(w->info.dim[0] == cmd.info.size.dim[0]);
 	assert(w->info.dim[0] == a->info.dim[0]);
 	int i;
@@ -38,6 +40,8 @@ static void _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			assert(w->info.dim[i] == cmd.info.convolutional.count);
 			break;
 		}
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
 	assert(bias->info.dim[0] == cmd.info.convolutional.count);
 	parallel_for(k, cmd.info.convolutional.count) {
 		int c;
@@ -60,19 +64,19 @@ static void _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 				set_n_m_dim(0, w->info.dim, a->info.dim);
 				float p = biasval;
 				float* wpz = wpu + n[0] * w->info.dim[0];
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
 						for (c = 0; c < a->info.dim[0]; c++)
-							p += wpz[j[0] * w->info.dim[0] + c] * apz[j[0] * a->info.dim[0] + c];
+							p += wpz[j[0] * w->info.dim[0] + c] * apz[j[0] * ainc[0] + c];
 					wpz += w->info.dim[1] * w->info.dim[0];
-					apz += a->info.dim[1] * a->info.dim[0];
+					apz += ainc[1] * ainc[0];
 				}
-				bp[i[0] * b->info.dim[0]] = p;
+				bp[i[0] * binc[0]] = p;
 			}
-			bp += b->info.dim[1] * b->info.dim[0];
-			ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+			bp += binc[1] * binc[0];
+			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 		}
 	} parallel_endfor
 }
@@ -82,11 +86,13 @@ static void _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	// inputs: gradient, forw prop input / forw prop output, [w]
 	// outputs: weight updates, bias updates, [output gradient]
 	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
-	ccv_nnc_tensor_t* a = inputs[1];
-	ccv_nnc_tensor_t* g = inputs[0]; // gradients
+	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
+	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	ccv_nnc_tensor_t* w = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(w));
 	ccv_nnc_tensor_t* bias = outputs[1];
-	ccv_nnc_tensor_t* h = output_size == 3 ? outputs[2] : 0; // output gradients
+	assert(!CCV_IS_TENSOR_VIEW(bias));
+	ccv_nnc_tensor_view_t* h = output_size == 3 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0; // output gradients
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
 		int i, count = 1;
@@ -98,6 +104,8 @@ static void _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 			count *= bias->info.dim[i];
 		memset(bias->data.u8, 0, sizeof(float) * count);
 	}
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
 	parallel_for(k, cmd.info.convolutional.count) {
 		int c;
 		float* ap = a->data.f32;
@@ -121,30 +129,29 @@ static void _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 					continue;
 				biasval += v;
 				float* wpz = wpu + n[0] * w->info.dim[0];
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
 						for (c = 0; c < a->info.dim[0]; c++)
-							wpz[j[0] * w->info.dim[0] + c] += v * apz[j[0] * a->info.dim[0] + c];
+							wpz[j[0] * w->info.dim[0] + c] += v * apz[j[0] * ainc[0] + c];
 					wpz += w->info.dim[1] * w->info.dim[0];
-					apz += a->info.dim[1] * a->info.dim[0];
+					apz += ainc[1] * ainc[0];
 				}
 			}
-			gp += g->info.dim[1] * g->info.dim[0];
-			ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+			gp += ginc[1] * ginc[0];
+			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 		}
 		bias->data.f32[k] = biasval;
 	} parallel_endfor
 	// If h is available, therefore, we need to propagate the gradients back
 	if (h)
 	{
+		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
 		// reset it to 0.
-		int i, count = 1;
-		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[i] > 0; i++)
-			count *= h->info.dim[i];
-		memset(h->data.u8, 0, sizeof(float) * count);
+		ccv_nnc_tensor_zero(h);
 		w = inputs[2];
+		assert(!CCV_IS_TENSOR_VIEW(w));
 		int k;
 		for (k = 0; k < cmd.info.convolutional.count; k++)
 		{
@@ -165,22 +172,22 @@ static void _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 				for (i[0] = 0; i[0] < g->info.dim[1]; i[0]++)
 				{
 					set_n_m_dim(0, w->info.dim, h->info.dim);
-					const float v = gp[i[0] * g->info.dim[0]];
+					const float v = gp[i[0] * ginc[0]];
 					if (v == 0) // shortcut if v is zero
 						continue;
 					float* wpz = wpu + n[0] * w->info.dim[0];
-					float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * h->info.dim[0];
+					float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[0];
 					for (j[1] = 0; j[1] < m[1]; j[1]++)
 					{
 						for (j[0] = 0; j[0] < m[0]; j[0]++)
 							for (c = 0; c < h->info.dim[0]; c++)
-								hpz[j[0] * h->info.dim[0] + c] += v * wpz[j[0] * w->info.dim[0] + c];
+								hpz[j[0] * hinc[0] + c] += v * wpz[j[0] * w->info.dim[0] + c];
 						wpz += w->info.dim[1] * w->info.dim[0];
-						hpz += h->info.dim[1] * h->info.dim[0];
+						hpz += hinc[1] * hinc[0];
 					}
 				}
-				gp += g->info.dim[1] * g->info.dim[0];
-				hp += h->info.dim[1] * h->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+				gp += ginc[1] * ginc[0];
+				hp += hinc[1] * hinc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 			}
 		}
 	}
@@ -189,9 +196,9 @@ static void _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static void _ccv_nnc_max_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
-	const ccv_nnc_tensor_t* a = inputs[0];
+	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* b = outputs[0];
+	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int *dim = cmd.info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
@@ -199,7 +206,9 @@ static void _ccv_nnc_max_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	int j[CCV_NNC_MAX_DIM];
 	int c;
 	float* ap = a->data.f32;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	float* bp = b->data.f32;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
 	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 	{
 		set_n_m_dim(1, dim, a->info.dim);
@@ -208,31 +217,31 @@ static void _ccv_nnc_max_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			set_n_m_dim(0, dim, a->info.dim);
 			for (c = 0; c < b->info.dim[0]; c++)
 			{
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
 				float v = apz[0];
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						if (apz[j[0] * a->info.dim[0]] > v)
-							v = apz[j[1] * a->info.dim[0]];
-					apz += a->info.dim[1] * a->info.dim[0];
+						if (apz[j[0] * ainc[0]] > v)
+							v = apz[j[1] * ainc[0]];
+					apz += ainc[1] * ainc[0];
 				}
-				bp[i[0] * b->info.dim[0] + c] = v;
+				bp[i[0] * binc[0] + c] = v;
 			}
 		}
-		bp += b->info.dim[1] * b->info.dim[0];
-		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		bp += binc[1] * binc[0];
+		ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
 static void _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
-	ccv_nnc_tensor_t* a = inputs[1];
-	ccv_nnc_tensor_t* b = inputs[2];
-	ccv_nnc_tensor_t* g = inputs[0]; // gradients
+	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
+	const ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[2];
+	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* h = outputs[0];
+	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int *dim = cmd.info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
@@ -240,9 +249,13 @@ static void _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	int j[CCV_NNC_MAX_DIM];
 	int c;
 	float* ap = a->data.f32;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	float* bp = b->data.f32;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
 	float* gp = g->data.f32;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
 	float* hp = h->data.f32;
+	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
 	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC; c++)
 	{
 		assert(a->info.dim[c] == h->info.dim[c]);
@@ -255,10 +268,7 @@ static void _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		if (b->info.dim[c] == 0 || g->info.dim[c] == 0)
 			break;
 	}
-	int count = 1;
-	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[c] > 0; c++)
-		count *= h->info.dim[c];
-	memset(h->data.u8, 0, sizeof(float) * count);
+	ccv_nnc_tensor_zero(h);
 	// Using b->info.dim and a->info.dim directly because they equal to g->info.dim and h->info.dim
 	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 	{
@@ -268,33 +278,33 @@ static void _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			set_n_m_dim(0, dim, a->info.dim);
 			for (c = 0; c < b->info.dim[0]; c++)
 			{
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
-				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
-				float v = bp[i[0] * b->info.dim[0] + c];
-				float u = gp[i[0] * b->info.dim[0] + c];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
+				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[0];
+				float v = bp[i[0] * binc[0] + c];
+				float u = gp[i[0] * ginc[0] + c];
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						if (apz[j[0] * a->info.dim[0]] == v)
-							hpz[j[1] * a->info.dim[0]] += u;
-					apz += a->info.dim[1] * a->info.dim[0];
-					hpz += a->info.dim[1] * a->info.dim[0];
+						if (apz[j[0] * ainc[0]] == v)
+							hpz[j[1] * hinc[0]] += u;
+					apz += ainc[1] * ainc[0];
+					hpz += hinc[1] * hinc[0];
 				}
 			}
 		}
-		gp += b->info.dim[1] * b->info.dim[0];
-		bp += b->info.dim[1] * b->info.dim[0];
-		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
-		hp += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		gp += ginc[1] * ginc[0];
+		bp += binc[1] * binc[0];
+		ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		hp += hinc[1] * hinc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
 static void _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
-	const ccv_nnc_tensor_t* a = inputs[0];
+	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* b = outputs[0];
+	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int *dim = cmd.info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
@@ -302,7 +312,9 @@ static void _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	int j[CCV_NNC_MAX_DIM];
 	int c;
 	float* ap = a->data.f32;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	float* bp = b->data.f32;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
 	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
 	{
 		set_n_m_dim(1, dim, a->info.dim);
@@ -311,28 +323,28 @@ static void _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			set_n_m_dim(0, dim, a->info.dim);
 			for (c = 0; c < b->info.dim[0]; c++)
 			{
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * a->info.dim[0];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
 				float v = 0;
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						v += apz[j[0] * a->info.dim[0]];
-					apz += a->info.dim[1] * a->info.dim[0];
+						v += apz[j[0] * ainc[0]];
+					apz += ainc[1] * ainc[0];
 				}
-				bp[i[0] * b->info.dim[0] + c] = v / (m[0] * m[1]);
+				bp[i[0] * binc[0] + c] = v / (m[0] * m[1]);
 			}
 		}
-		bp += b->info.dim[1] * b->info.dim[0];
-		ap += a->info.dim[1] * a->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		bp += binc[1] * binc[0];
+		ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
 static void _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
-	const ccv_nnc_tensor_t* g = inputs[0];
+	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0];
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* h = outputs[0];
+	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int *dim = cmd.info.size.dim;
 	int i[CCV_NNC_MAX_DIM];
 	int n[CCV_NNC_MAX_DIM];
@@ -340,11 +352,10 @@ static void _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	int j[CCV_NNC_MAX_DIM];
 	int c;
 	float* gp = g->data.f32;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
 	float* hp = h->data.f32;
-	int count = 1;
-	for (c = 0; c < CCV_NNC_MAX_DIM_ALLOC && h->info.dim[c] > 0; c++)
-		count *= h->info.dim[c];
-	memset(h->data.u8, 0, sizeof(float) * count);
+	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
+	ccv_nnc_tensor_zero(h);
 	for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
 	{
 		set_n_m_dim(1, dim, h->info.dim);
@@ -353,19 +364,18 @@ static void _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			set_n_m_dim(0, dim, h->info.dim);
 			for (c = 0; c < g->info.dim[0]; c++)
 			{
-				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * h->info.dim[0];
-				float u = gp[i[0] * g->info.dim[0] + c] / (m[0] * m[1]);
+				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[0];
+				float u = gp[i[0] * ginc[0] + c] / (m[0] * m[1]);
 				for (j[1] = 0; j[1] < m[1]; j[1]++)
 				{
 					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						hpz[j[0] * h->info.dim[0]] += u;
-					hpz += h->info.dim[1] * h->info.dim[0];
+						hpz[j[0] * hinc[0]] += u;
+					hpz += hinc[1] * hinc[0];
 				}
-				;
 			}
 		}
-		gp += g->info.dim[1] * g->info.dim[0];
-		hp += h->info.dim[1] * h->info.dim[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		gp += ginc[1] * ginc[0];
+		hp += hinc[1] * hinc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
 	}
 }
 
@@ -373,15 +383,19 @@ static void _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 {
 	assert(input_size == 3);
 	ccv_nnc_tensor_t* w = inputs[1];
+	assert(!CCV_IS_TENSOR_VIEW(w));
 	ccv_nnc_tensor_t* bias = inputs[2];
+	assert(!CCV_IS_TENSOR_VIEW(bias));
 	// Copy the most of parameters, but reshape the dimension of a to a vector.
 	ccv_nnc_tensor_param_t a_params = inputs[0]->info;
+	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
 	int i, count = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a_params.dim[i] > 0; i++)
 		count *= a_params.dim[i];
 	ccv_dense_matrix_t a = ccv_dense_matrix(1, count, CCV_32F | CCV_C1, inputs[0]->data.u8, 0);
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(b));
 	assert(b->info.dim[0] == 1);
 	assert(b->info.dim[1] == bias->info.dim[1]);
 	assert(bias->info.dim[0] == 1);
@@ -398,9 +412,13 @@ static void _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 	// outputs: weight updates, bias updates, [output gradient]
 	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
 	ccv_nnc_tensor_param_t g_params = inputs[0]->info;
+	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
 	ccv_nnc_tensor_param_t a_params = inputs[1]->info;
+	assert(!CCV_IS_TENSOR_VIEW(inputs[1]));
 	ccv_nnc_tensor_t* w = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(w));
 	ccv_nnc_tensor_t* bias = outputs[1];
+	assert(!CCV_IS_TENSOR_VIEW(bias));
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
 		int i, count = 1;
@@ -427,10 +445,12 @@ static void _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 	if (output_size == 3)
 	{
 		ccv_nnc_tensor_param_t h_params = outputs[2]->info;
+		assert(!CCV_IS_TENSOR_VIEW(outputs[2]));
 		count = 1;
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && h_params.dim[i] > 0; i++)
 			count *= h_params.dim[i];
 		w = inputs[2];
+		assert(!CCV_IS_TENSOR_VIEW(w));
 		ccv_dense_matrix_t h = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, outputs[2]->data.u8, 0);
 		ccv_dense_matrix_t* dh = &h;
 		ccv_gemm(&w, &g, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&dh, 0);
@@ -440,9 +460,11 @@ static void _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 static void _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
-	ccv_nnc_tensor_t* a = inputs[0];
+	const ccv_nnc_tensor_t* a = inputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(a));
 	int i, count = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 	{
@@ -471,9 +493,11 @@ static void _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 static void _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 1);
-	ccv_nnc_tensor_t* a = inputs[0];
+	const ccv_nnc_tensor_t* a = inputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(a));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(b));
 	int i, count = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 	{
@@ -489,10 +513,13 @@ static void _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static void _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 2);
-	ccv_nnc_tensor_t* b = inputs[1];
-	ccv_nnc_tensor_t* g = inputs[0]; // gradient
+	const ccv_nnc_tensor_t* b = inputs[1];
+	assert(!CCV_IS_TENSOR_VIEW(b));
+	const ccv_nnc_tensor_t* g = inputs[0]; // gradient
+	assert(!CCV_IS_TENSOR_VIEW(g));
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* h = outputs[0];
+	assert(!CCV_IS_TENSOR_VIEW(h));
 	int i, count = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)
 	{

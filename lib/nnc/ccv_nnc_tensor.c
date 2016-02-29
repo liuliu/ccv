@@ -70,10 +70,28 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
+void ccv_nnc_tensor_zero(void* tensor)
+{
+	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
+	const int* tvinc = CCV_IS_TENSOR_VIEW(tv) ? tv->inc : tv->info.dim;
+	// reset it to 0.
+	int i[CCV_NNC_MAX_DIM_ALLOC];
+	assert(CCV_NNC_MAX_DIM == 2);
+	for (i[2] = 0; i[2] < tv->info.dim[2]; i[2]++)
+	{
+		float* tvp = tv->data.f32 + i[2] * tvinc[1] * tvinc[0];
+		for (i[1] = 0; i[1] < tv->info.dim[1]; i[1]++)
+		{
+			memset(tvp, 0, sizeof(float) * tv->info.dim[0]);
+			tvp += tvinc[0];
+		}
+	}
+}
+
 int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
 {
 	// If a is a dense matrix, just use ccv_matrix_eq
-	if (CCV_NNC_TENSOR_IS_DENSE_MATRIX(a->type))
+	if (CCV_TENSOR_IS_DENSE_MATRIX(a->type))
 		return ccv_matrix_eq(a, b);
 	// Otherwise, do our own thing.
 	if (CCV_GET_DATA_TYPE(a->type) != CCV_GET_DATA_TYPE(b->type))
