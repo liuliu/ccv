@@ -102,13 +102,13 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, int ofs[], int dim[]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[]);
 // Allocating on stack
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, int ofs[], int dim[]);
-void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_vew);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[]);
+void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view);
 // All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
 void ccv_nnc_tensor_zero(void* tensor);
-int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b);
+int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
 // For computation node
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t node, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);

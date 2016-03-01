@@ -70,6 +70,49 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
+static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+{
+	memcpy(tv->inc, tensor->info.dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(tv->info.dim, dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
+	int i, inc = 1;
+	float* p = tensor->data.f32;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[i] > 0; i++)
+	{
+		inc *= tv->inc[i];
+		p += ofs[i] * inc;
+	}
+	tv->data.f32 = p;
+}
+
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+{
+	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
+	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
+	tv->refcount = 1;
+	tv->sig = 0;
+	tv->info = tensor->info;
+	_ccv_nnc_tensor_view_set(tv, tensor, ofs, dim);
+	return tv;
+}
+
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+{
+	assert(!CCV_IS_TENSOR_VIEW(tensor));
+	ccv_nnc_tensor_view_t tv = {
+		.type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW, // clean up the channel bits, and then add CCV_TENSOR_VIEW identifier
+		.refcount = 1,
+		.sig = 0,
+		.info = tensor->info,
+	};
+	_ccv_nnc_tensor_view_set(&tv, tensor, ofs, dim);
+	return tv;
+}
+
+void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view)
+{
+	ccfree(tensor_view);
+}
+
 void ccv_nnc_tensor_zero(void* tensor)
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
@@ -88,11 +131,11 @@ void ccv_nnc_tensor_zero(void* tensor)
 	}
 }
 
-int ccv_nnc_tensor_eq(ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
+int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b)
 {
 	// If a is a dense matrix, just use ccv_matrix_eq
 	if (CCV_TENSOR_IS_DENSE_MATRIX(a->type))
-		return ccv_matrix_eq(a, b);
+		return ccv_matrix_eq((ccv_matrix_t*)a, (ccv_matrix_t*)b);
 	// Otherwise, do our own thing.
 	if (CCV_GET_DATA_TYPE(a->type) != CCV_GET_DATA_TYPE(b->type))
 		return -1;
