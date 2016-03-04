@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+require 'shellwords'
 
 exit unless ARGV.length == 2
 
@@ -22,4 +23,4 @@ STDIN.each_line do |line|
 	end
 end
 
-%x[#{sprintf("convert %s -fill none -strokewidth 1 %s%s", ARGV[0], rect, ARGV[1])}]
+%x[#{sprintf("convert %s -fill none -strokewidth 1 %s%s", Shellwords.escape(ARGV[0]), rect, Shellwords.escape(ARGV[1]) )}]

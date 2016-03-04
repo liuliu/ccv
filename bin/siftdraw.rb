@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+require 'shellwords'
 
 exit unless ARGV.length == 3 or ARGV.length == 4
 matches = File.new("/tmp/matches.txt", "w+") if ARGV.length == 4
@@ -27,13 +28,13 @@ STDIN.each_line do |line|
 end
 
 if matches.nil?
-	%x[#{sprintf("convert %s -extent %dx%d %s", ARGV[0], object_size[:width] + image_size[:width], [object_size[:height], image_size[:height]].max, ARGV[2])}]
-	%x[#{sprintf("composite -gravity southEast %s %s %s", ARGV[1], ARGV[2], ARGV[2])}]
+	%x[#{sprintf("convert %s -extent %dx%d %s", Shellwords.escape(ARGV[0]), object_size[:width] + image_size[:width], [object_size[:height], image_size[:height]].max, Shellwords.escape(ARGV[2]) )}]
+	%x[#{sprintf("composite -gravity southEast %s %s %s", Shellwords.escape(ARGV[1]), Shellwords.escape(ARGV[2]), Shellwords.escape(ARGV[2]) )}]
 	lines = ""
 	pairs.each do |pair|
 		lines += sprintf("-draw \"line %d,%d,%d,%d\" ", pair[:object][:x], pair[:object][:y], pair[:image][:x] + object_size[:width], pair[:image][:y])
 	end
-	%x[convert #{ARGV[2]} -stroke red #{lines}#{ARGV[2]}]
+	%x[convert #{Shellwords.escape(ARGV[2])} -stroke red #{lines}#{ Shellwords.escape(ARGV[2]) }]
 else
 	matches.close
 	output = %x[#{ARGV[3] + " /tmp/matches.txt"}]
@@ -56,5 +57,5 @@ else
 		z = h[2][0] * point[:x] + h[2][1] * point[:y] + h[2][2]
 		frame << {:x => x / z, :y => y / z}
 	end
-	%x[#{sprintf("convert %s -stroke red -strokewidth 3 -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" %s", ARGV[1], frame[0][:x], frame[0][:y], frame[1][:x], frame[1][:y], frame[1][:x], frame[1][:y], frame[2][:x], frame[2][:y], frame[2][:x], frame[2][:y], frame[3][:x], frame[3][:y], frame[3][:x], frame[3][:y], frame[0][:x], frame[0][:y], ARGV[2])}]
+	%x[#{sprintf("convert %s -stroke red -strokewidth 3 -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" -draw \"line %d,%d,%d,%d\" %s", Shellwords.escape(ARGV[1]), frame[0][:x], frame[0][:y], frame[1][:x], frame[1][:y], frame[1][:x], frame[1][:y], frame[2][:x], frame[2][:y], frame[2][:x], frame[2][:y], frame[3][:x], frame[3][:y], frame[3][:x], frame[3][:y], frame[0][:x], frame[0][:y], Shellwords.escape(ARGV[2]) )}]
 end
