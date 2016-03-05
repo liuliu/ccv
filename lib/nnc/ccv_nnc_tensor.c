@@ -70,7 +70,7 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
-static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	memcpy(tv->inc, tensor->info.dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
@@ -78,13 +78,13 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv
 	float* p = tensor->data.f32;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[i] > 0; i++)
 	{
-		inc *= tv->inc[i];
 		p += ofs[i] * inc;
+		inc *= tv->inc[i];
 	}
 	tv->data.f32 = p;
 }
 
-ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
@@ -95,7 +95,7 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, c
 	return tv;
 }
 
-ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[], const int dim[])
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	ccv_nnc_tensor_view_t tv = {
@@ -118,21 +118,48 @@ void ccv_nnc_tensor_zero(void* tensor)
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
 	const int* tvinc = CCV_IS_TENSOR_VIEW(tv) ? tv->inc : tv->info.dim;
 	// reset it to 0.
-	int i[CCV_NNC_MAX_DIM_ALLOC];
-	assert(CCV_NNC_MAX_DIM == 2);
-	for (i[2] = 0; i[2] < tv->info.dim[2]; i[2]++)
+	int c, i[3];
+	int count = 1;
+	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
+	int mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
+	mod_inc[0] = tvinc[0] * tvinc[1] * tvinc[2];
+	int dim_count = 0;
+	for (c = 3; c < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[c] > 0; c++)
 	{
-		float* tvp = tv->data.f32 + i[2] * tvinc[1] * tvinc[0];
-		for (i[1] = 0; i[1] < tv->info.dim[1]; i[1]++)
+		// Compute the mod.
+		mod[c - 3] = c == 3 ? tv->info.dim[c] : mod[c - 4] * tv->info.dim[c];
+		mod_inc[c - 2] = mod_inc[c - 3] * tvinc[c];
+		count *= tv->info.dim[c];
+		dim_count = c - 2; // Keep track of the top of the dim.
+	}
+	for (c = dim_count - 1; c > 0; c--)
+		mod_inc[c] = mod_inc[c - 1] * (tvinc[c + 3] - tv->info.dim[c + 3]);
+	float* tvdf32 = tv->data.f32;
+	for (c = 0; c < count; c++)
+	{
+		for (i[2] = 0; i[2] < ccv_max(1, tv->info.dim[2]); i[2]++)
 		{
-			memset(tvp, 0, sizeof(float) * tv->info.dim[0]);
-			tvp += tvinc[0];
+			float* tvp = tvdf32 + i[2] * tvinc[1] * tvinc[0];
+			for (i[1] = 0; i[1] < ccv_max(1, tv->info.dim[1]); i[1]++)
+			{
+				memset(tvp, 0, sizeof(float) * tv->info.dim[0]);
+				tvp += tvinc[0];
+			}
 		}
+		int j;
+		tvdf32 += mod_inc[0];
+		for (j = 0; j < dim_count - 1; j++)
+			if ((c + 1) % mod[j] != 0)
+				break; // cannot be mod, break out.
+			else
+				tvdf32 += mod_inc[j + 1];
 	}
 }
 
 int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b)
 {
+	assert(!CCV_IS_TENSOR_VIEW(a));
+	assert(!CCV_IS_TENSOR_VIEW(b));
 	// If a is a dense matrix, just use ccv_matrix_eq
 	if (CCV_TENSOR_IS_DENSE_MATRIX(a->type))
 		return ccv_matrix_eq((ccv_matrix_t*)a, (ccv_matrix_t*)b);
