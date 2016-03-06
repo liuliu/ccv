@@ -1,3 +1,3 @@
 #!/bin/sh
 
-cd `dirname $0` wget -c http://static.libccv.org/image-net-2012-vgg-d.sqlite3
+cd `dirname $0` && wget -c http://static.libccv.org/image-net-2012-vgg-d.sqlite3
