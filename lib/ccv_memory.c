@@ -1,6 +1,6 @@
 #include "ccv.h"
 #include "ccv_internal.h"
-#include "3rdparty/sha1/sha1.h"
+#include "3rdparty/siphash/siphash24.h"
 
 #ifdef __APPLE__
 #include "TargetConditionals.h"
@@ -311,21 +311,22 @@ void ccv_enable_default_cache(void)
 	ccv_enable_cache(CCV_DEFAULT_CACHE_SIZE);
 }
 
+static uint8_t key_siphash[16] = "libccvky4siphash";
+
 uint64_t ccv_cache_generate_signature(const char* msg, int len, uint64_t sig_start, ...)
 {
-	blk_SHA_CTX ctx;
-	blk_SHA1_Init(&ctx);
-	uint64_t sigi;
+	uint64_t sig_out, sig_in[2]; // 1 is in, 0 is out
+	siphash((uint8_t*)&sig_out, (const uint8_t*)msg, len, key_siphash);
 	va_list arguments;
 	va_start(arguments, sig_start);
-	for (sigi = sig_start; sigi != 0; sigi = va_arg(arguments, uint64_t))
-		blk_SHA1_Update(&ctx, &sigi, 8);
+	sig_in[0] = sig_out;
+	sig_in[1] = sig_start;
+	while (sig_in[1] != 0)
+	{
+		siphash((uint8_t*)&sig_out, (const uint8_t*)sig_in, sizeof(uint64_t) * 2, key_siphash);
+		sig_in[0] = sig_out;
+		sig_in[1] = va_arg(arguments, uint64_t);
+	}
 	va_end(arguments);
-	blk_SHA1_Update(&ctx, msg, len);
-	union {
-		uint64_t u;
-		uint8_t chr[20];
-	} sig;
-	blk_SHA1_Final(sig.chr, &ctx);
-	return sig.u;
+	return sig_out;
 }
