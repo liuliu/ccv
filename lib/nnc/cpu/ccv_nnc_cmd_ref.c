@@ -537,7 +537,7 @@ static void _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 //@ccv_nnc_init
 void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 {
-	/*TODO: I don't think any of these methods handles batch input. */
+	/*TODO: I don't think any of these methods handles batch input, and I better to handle CHWN as well. */
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;

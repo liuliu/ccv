@@ -555,7 +555,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 					int64_t i64b = ib_ptr[j];
 					if (i64b < 0)
 						i64b = 0x8000000000000000l - i64b;
-					if (labs(i64a - i64b) > ulps && fabsf(((float*)a_ptr)[j] - ((float*)b_ptr)[j]) > epsi)
+					if (llabs(i64a - i64b) > ulps && fabsf(((float*)a_ptr)[j] - ((float*)b_ptr)[j]) > epsi)
 						return -1;
 				}
 				a_ptr += da->step;
@@ -567,7 +567,7 @@ int ccv_matrix_eq(ccv_matrix_t* a, ccv_matrix_t* b)
 			{ \
 				for (j = 0; j < da->cols * ch; j++) \
 				{ \
-					if (labs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1) \
+					if (llabs(_for_get(b_ptr, j, 0) - _for_get(a_ptr, j, 0)) > 1) \
 						return -1; \
 				} \
 				a_ptr += da->step; \
