@@ -60,6 +60,13 @@ AC_CHECK_HEADER([libavformat/avformat.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVFORMAT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavformat "])])
 AC_CHECK_HEADER([libswscale/swscale.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SWSCALE "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lswscale "])])
+# try to find CPU parallel libraries, OpenMP or libdispatch, we will prefer OpenMP when possible.
+AC_OPENMP
+if test -n "${OPENMP_CFLAGS}"; then
+	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_OPENMP "])
+	AC_SUBST(MKCFLAGS, ["$MKCFLAGS$OPENMP_CFLAGS "])
+	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$OPENMP_CFLAGS "])
+fi
 # only check dispatch if compiled with clang
 if test $CC = clang; then
 	AC_CHECK_HEADER([dispatch/dispatch.h],

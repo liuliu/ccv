@@ -4,6 +4,9 @@
 #include <gsl/gsl_rng.h>
 #include <gsl/gsl_randist.h>
 #endif
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif

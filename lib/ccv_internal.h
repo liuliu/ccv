@@ -14,7 +14,10 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 #define ccv_descale(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 #define conditional_assert(x, expr) if ((x)) { assert(expr); }
 
-#ifdef USE_DISPATCH
+#ifdef USE_OPENMP
+#define parallel_for(x, n) { int x; _Pragma("omp parallel for schedule(dynamic)") for (x = 0; x < n; x++) {
+#define parallel_endfor } }
+#elif defined(USE_DISPATCH)
 #define parallel_for(x, n) dispatch_apply(n, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t x) {
 #define parallel_endfor });
 #else

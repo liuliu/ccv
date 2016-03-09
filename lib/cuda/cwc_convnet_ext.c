@@ -5,6 +5,9 @@
 #include <gsl/gsl_randist.h>
 #endif
 #include "cwc_ext.h"
+#ifdef USE_OPENMP
+#include <omp.h>
+#endif
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
