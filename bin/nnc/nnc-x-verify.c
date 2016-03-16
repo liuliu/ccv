@@ -1,62 +1,168 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
+#include <inl/ccv_convnet_inl.h>
+
+static ccv_nnc_graph_t* ccv_nnc_vgg_graph(ccv_convnet_t* convnet, ccv_nnc_tensor_t* input, ccv_nnc_tensor_t* output, ccv_nnc_graph_exec_t* source, ccv_nnc_graph_exec_t* dest)
+{
+	int i;
+	// We only create the graph compute to the last fc layer.
+	ccv_nnc_graph_t* vgg = ccv_nnc_graph_new();
+	ccv_nnc_graph_exec_t previous_exec;
+	for (i = 0; i < convnet->count; i++)
+	{
+		ccv_convnet_layer_t* layer = convnet->layers + i;
+		int rows, cols, partition;
+		ccv_convnet_make_output(layer, layer->input.matrix.rows, layer->input.matrix.cols, &rows, &cols, &partition);
+		ccv_nnc_tensor_param_t tensor_params = {0};
+		if (layer->type == CCV_CONVNET_FULL_CONNECT)
+		{
+			tensor_params.type = CCV_TENSOR_CPU_MEMORY;
+			tensor_params.format = CCV_TENSOR_FORMAT_NHWC;
+			tensor_params.dim[0] = rows * cols * partition;
+		} else {
+			assert(partition == 1);
+			tensor_params.type = CCV_TENSOR_CPU_MEMORY;
+			tensor_params.format = CCV_TENSOR_FORMAT_NHWC;
+			if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
+				tensor_params.dim[0] = layer->net.convolutional.count;
+			else
+				tensor_params.dim[0] = layer->input.matrix.channels;
+			tensor_params.dim[1] = cols;
+			tensor_params.dim[2] = rows;
+		}
+		ccv_nnc_tensor_t* tensor = i < convnet->count - 1 ? ccv_nnc_tensor_new(0, tensor_params, 0) : output;
+		ccv_nnc_graph_exec_t exec = {0};
+		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
+		{
+			ccv_nnc_tensor_param_t w_params = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.dim = {
+					layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.count
+				}
+			};
+			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
+			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
+			ccv_nnc_tensor_param_t bias_params = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.dim = {
+					layer->net.convolutional.count
+				}
+			};
+			ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+			memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
+			ccv_nnc_cmd_param_t cmd_params = {
+				.size = {
+					.dim = {
+						layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows
+					}
+				},
+				.convolutional = {
+					.count = layer->net.convolutional.count
+				}
+			};
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
+			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &input->info, 1, &tensor_params, 1);
+			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
+			ccv_nnc_cmd_param_t cmd_params = {
+				.size = {
+					.dim = {
+						layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size
+					}
+				}
+			};
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
+			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &input->info, 1, &tensor_params, 1);
+			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input), TENSOR_LIST(tensor));
+		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
+			ccv_nnc_tensor_param_t w_params = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.dim = {
+					layer->input.node.count, layer->net.full_connect.count
+				}
+			};
+			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
+			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
+			ccv_nnc_tensor_param_t bias_params = {
+				.type = CCV_TENSOR_CPU_MEMORY,
+				.format = CCV_TENSOR_FORMAT_NHWC,
+				.dim = {
+					layer->net.full_connect.count
+				}
+			};
+			ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+			memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
+			ccv_nnc_cmd_param_t cmd_params = {
+				.full_connect = {
+					.count = layer->net.full_connect.count
+				}
+			};
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, cmd_params, 0);
+			ccv_nnc_hint_t hint = {};
+			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+		} else {
+			assert("unreachable");
+		}
+		if (i != 0)
+			ccv_nnc_graph_exec_concat(vgg, previous_exec, exec);
+		previous_exec = exec;
+		if (i == 0)
+			*source = exec;
+		if (i < convnet->count - 1 &&
+			(layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT))
+		{
+			// Create the ReLU layer.
+			ccv_nnc_cmd_param_t cmd_params = {};
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_RELU_FORWARD, 0, cmd_params, 0);
+			ccv_nnc_hint_t hint = {};
+			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(tensor));
+			ccv_nnc_graph_exec_concat(vgg, previous_exec, exec);
+			previous_exec = exec;
+		}
+		if (i == convnet->count - 1)
+			*dest = exec;
+		// This is the input of next layer.
+		input = tensor;
+	}
+	return vgg;
+}
 
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
-	ccv_nnc_net_param_t net_params = {
-		.size = {
+	ccv_convnet_t* convnet = ccv_convnet_read(0, argv[2]);
+	ccv_dense_matrix_t* image = 0;
+	ccv_read(argv[1], &image, CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
+	if (image != 0)
+	{
+		ccv_dense_matrix_t* input = 0;
+		ccv_convnet_input_formation(convnet->input, image, &input);
+		ccv_matrix_free(image);
+		ccv_dense_matrix_t* sliced = 0;
+		ccv_slice(input, (ccv_matrix_t**)&sliced, 0, (input->rows - 225) / 2, (input->cols - 225) / 2, 225, 225);
+		ccv_matrix_free(input);
+		ccv_dense_matrix_t* b = 0;
+		ccv_convnet_encode(convnet, &sliced, &b, 1);
+		ccv_nnc_tensor_param_t c_params = {
+			.type = CCV_TENSOR_CPU_MEMORY,
+			.format = CCV_TENSOR_FORMAT_NHWC,
 			.dim = {
-				3, 7, 7
+				1000
 			}
-		},
-		.convolutional = {
-			.count = 128,
-		}
-	};
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 225, 225
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			128, 111, 111
-		},
-	};
-	ccv_nnc_net_hint_t hint = ccv_nnc_net_hint_guess(net_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_net_t* net = ccv_nnc_net_new(0, CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, net_params, 0);
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 7, 7, 128,
-		},
-	};
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			128
-		},
-	};
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* inputs[] = {
-		a,
-		w,
-		bias,
-	};
-	ccv_nnc_tensor_t* outputs[] = {
-		b
-	};
-	ccv_nnc_net_exec(net, hint, inputs, 3, outputs, 1);
-	printf("dim %d %d, front %d, %d, back %d, %d\n", hint.stride.dim[0], hint.stride.dim[1], hint.border.front[0], hint.border.front[1], hint.border.back[0], hint.border.back[1]);
+		};
+		ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, c_params, 0);
+		ccv_nnc_graph_exec_t source, dest;
+		ccv_nnc_graph_t* graph = ccv_nnc_vgg_graph(convnet, (ccv_nnc_tensor_t*)sliced, c, &source, &dest);
+		ccv_nnc_graph_run(graph, 0, &source, 1, &dest, 1);
+		int i;
+		for (i = 0; i < 1000; i++)
+			printf("%f %f\n", b->data.f32[i], c->data.f32[i]);
+		ccv_matrix_free(sliced);
+		ccv_matrix_free(b);
+	}
+	ccv_convnet_free(convnet);
 	return 0;
 }

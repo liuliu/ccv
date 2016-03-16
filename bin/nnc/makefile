@@ -1,6 +1,6 @@
 include ../../lib/config.mk
 
-#CC += -faddress-sanitizer -fno-omit-frame-pointer
+# CC += -fno-omit-frame-pointer -fsanitize=address
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)

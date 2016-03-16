@@ -1,6 +1,6 @@
 include config.mk
 
-# CC += -g -fsanitize=address -fno-omit-frame-pointer # -fprofile-arcs -ftest-coverage
+# CC += -g -fno-omit-frame-pointer # -fsanitize=address -fprofile-arcs -ftest-coverage
 CFLAGS := -O3 -ffast-math -Wall -I"." $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
