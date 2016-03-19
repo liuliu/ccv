@@ -679,6 +679,7 @@ ac_subst_files=''
 ac_user_opts='
 enable_option_checking
 enable_neon
+with_arch
 enable_openmp
 with_cuda
 '
@@ -1306,6 +1307,7 @@ Optional Features:
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
   --without-PACKAGE       do not use PACKAGE (same as --with-PACKAGE=no)
+  --with-arch             specify a particular architecture to optimize on
   --with-cuda             CUDA installation [ARG=/usr/local/cuda]
 
 Some influential environment variables:
@@ -2131,13 +2133,33 @@ fi
 if test "$neon_support" = yes; then
 	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_NEON "
 
-	MKCFLAGS="$MKCFLAGS-mfpu=neon "
+	MKCFLAGS="$MKCFLAGS-mfpu=neon -mfloat-abi=hard "
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
 else
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking arch" >&5
+$as_echo_n "checking arch... " >&6; }
+
+# Check whether --with-arch was given.
+if test "${with_arch+set}" = set; then :
+  withval=$with_arch; arch_native=$withval
+else
+  arch_native="native"
+fi
+
+if test "$arch_native" = native; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: native" >&5
+$as_echo "native" >&6; }
+else
+	MKCFLAGS="$MKCFLAGS-march=$arch_native -mtune=$arch_native "
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $arch_native" >&5
+$as_echo "$arch_native" >&6; }
 fi
 
 # check for blas

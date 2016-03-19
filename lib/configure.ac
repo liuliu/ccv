@@ -16,10 +16,19 @@ AC_MSG_CHECKING([neon])
 AC_ARG_ENABLE(neon, [AS_HELP_STRING([--enable-neon], [optimize with NEON instruction set])], [neon_support=$enableval], [neon_support="no"])
 if test "$neon_support" = yes; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_NEON "])
-	AC_SUBST(MKCFLAGS, ["$MKCFLAGS-mfpu=neon "])
+	AC_SUBST(MKCFLAGS, ["$MKCFLAGS-mfpu=neon -mfloat-abi=hard "])
 	AC_MSG_RESULT(yes)
 else
 	AC_MSG_RESULT(no)
+fi
+
+AC_MSG_CHECKING([arch])
+AC_ARG_WITH(arch, [AS_HELP_STRING([--with-arch], [specify a particular architecture to optimize on])], [arch_native=$withval], [arch_native="native"])
+if test "$arch_native" = native; then
+	AC_MSG_RESULT(native)
+else
+	AC_SUBST(MKCFLAGS, ["$MKCFLAGS-march=$arch_native -mtune=$arch_native "])
+	AC_MSG_RESULT($arch_native)
 fi
 
 # check for blas
