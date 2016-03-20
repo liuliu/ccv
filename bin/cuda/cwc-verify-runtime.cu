@@ -1,4 +1,6 @@
 #undef USE_DISPATCH // nvcc doesn't support libdispatch
+#undef USE_OPENMP // nvcc doesn't support OpenMP
+#undef HAVE_NEON // nvcc doesn't support NEON
 extern "C" {
 #include "ccv.h"
 }
