@@ -1,5 +1,7 @@
-#include <nnc/ccv_nnc.h>
+#include <ccv.h>
 #include <ccv_internal.h>
+#include <nnc/ccv_nnc.h>
+#include <nnc/ccv_nnc_easy.h>
 #include <nnc/ccv_nnc_internal.h>
 #ifdef USE_OPENMP
 #include <omp.h>
@@ -461,11 +463,10 @@ static void _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	assert(output_size == 1);
 	ccv_nnc_tensor_t* b = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(a));
-	int i, count = 1;
+	int i, count = ccv_nnc_tensor_count(a->info);
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 	{
 		assert(a->info.dim[i] == b->info.dim[i]);
-		count *= a->info.dim[i];
 	}
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;

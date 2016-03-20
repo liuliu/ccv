@@ -1,7 +1,8 @@
-#include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
-#include "nnc/ccv_nnc.h"
+#include <ccv.h>
+#include <nnc/ccv_nnc.h>
+#include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
 // five-stencil constants
@@ -11,52 +12,12 @@ static double fsh[4] = { -2, -1, 1, 2 };
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			2, 21, 31,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4, 21, 31,
-		},
-	};
-	ccv_nnc_tensor_param_t h_params = a_params;
-	ccv_nnc_tensor_param_t g_params = b_params;
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			2, 3, 5, 4,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				2, 3, 5,
-			},
-		},
-		.convolutional = {
-			.count = 4,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 2, 3, 5), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(forw_cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3, 5, 4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	int i, j;
@@ -68,14 +29,14 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
-	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b_params, 0);
+	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m));
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
-	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, h_params, 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, CMD_CONVOLUTIONAL(4, 2, 3, 5), 0);
+	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, b->info, 0);
+	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, a->info, 0);
 	for (i = 0; i < 21 * 31 * 4; i++)
 		g->data.f32[i] = m->data.f32[i] - (i == 24);
 	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));

@@ -1,57 +1,19 @@
-#include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
-#include "nnc/ccv_nnc.h"
+#include "ccv_nnc_case.h"
+#include <ccv.h>
+#include <nnc/ccv_nnc.h>
+#include <nnc/ccv_nnc_easy.h>
 
 TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 21, 31,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			32, 21, 31,
-		},
-	};
-	ccv_nnc_tensor_param_t h_params = a_params;
-	ccv_nnc_tensor_param_t g_params = b_params;
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 3, 5, 32,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			32,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				3, 3, 5,
-			},
-		},
-		.convolutional = {
-			.count = 32,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 21, 31), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32, 21, 31), 0);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(32, 3, 3, 5), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(forw_cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 5, 32), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32), 0);
 	int i, j, k;
 	for (i = 0; i < 3 * 5 * 3 * 32; i++)
 		w->data.f32[i] = 2;
@@ -60,11 +22,11 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	for (i = 0; i < 32; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias_params, 0);
-	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, g_params, 0);
-	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, h_params, 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, CMD_CONVOLUTIONAL(32, 3, 3, 5), 0);
+	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 5, 32), 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32), 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32, 21, 31), 0);
+	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 21, 31), 0);
 	for (i = 0; i < 21 * 31 * 32; i++)
 		g->data.f32[i] = 1;
 	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
@@ -98,6 +60,43 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(gw);
 	ccv_nnc_tensor_free(gbias);
+}
+
+TEST_CASE("full connect back propagation")
+{
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	bias->data.f32[0] = 1;
+	bias->data.f32[1] = 4;
+	bias->data.f32[2] = 2;
+	bias->data.f32[3] = -1;
+	a->data.f32[0] = 5;
+	a->data.f32[1] = -3;
+	a->data.f32[2] = 10;
+	a->data.f32[3] = 11;
+	a->data.f32[4] = -1;
+	float m[] = {
+		0.5, 0.2, -0.3, 2, 4,
+		1, 8, 2, 8, -1,
+		0, 10, -1, -2, 3,
+		4, 7, 8, 10, 0
+	};
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(m, ONE_CPU_TENSOR(5, 4), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, CMD_FULL_CONNECT(4), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	float bo[] = {
+		0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4 + 1,
+		1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1 + 4,
+		-10 * 3 - 10 - 2 * 11 - 3 + 2,
+		4 * 5 - 7 * 3 + 8 * 10 + 10 * 11 - 1
+	};
+	ccv_nnc_tensor_t bot = ccv_nnc_tensor(bo, ONE_CPU_TENSOR(4), 0);
+	REQUIRE_TENSOR_EQ(b, &bot, "forward propagation result should match expected value");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
 }
 
 #include "case_main.h"

@@ -1,55 +1,18 @@
-#include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
-#include "nnc/ccv_nnc.h"
+#include <ccv.h>
+#include <nnc/ccv_nnc.h>
+#include <nnc/ccv_nnc_easy.h>
 
 TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 185, 225,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4, 45, 55,
-		},
-	};
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			3, 11, 11, 4,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				3, 11, 11,
-			},
-		},
-		.convolutional = {
-			.count = 4,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 185, 225), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 45, 55), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 3, 11, 11), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 11, 11, 4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 11 * 11 * 3 * 4; i++)
@@ -76,50 +39,12 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 17,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4, 27, 17,
-		},
-	};
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 3, 5, 4,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 3, 5,
-			},
-		},
-		.convolutional = {
-			.count = 4,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 17), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 27, 17), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 1, 3, 5), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 3, 5, 4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 5 * 3 * 4; i++)
@@ -159,50 +84,12 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 185, 225,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4, 45, 55,
-		},
-	};
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 11, 11, 4,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 11, 11,
-			},
-		},
-		.convolutional = {
-			.count = 4,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 185, 225), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 45, 55), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 1, 11, 11), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 11, 11, 4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	// configure the inlets.
 	int i, x, y;
 	for (x = 0; x < 4; x++)
@@ -294,50 +181,12 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 27,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4, 27, 27,
-		},
-	};
-	ccv_nnc_tensor_param_t w_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 5, 3, 4,
-		},
-	};
-	ccv_nnc_tensor_param_t bias_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			4,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 5, 3,
-			},
-		},
-		.convolutional = {
-			.count = 4,
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, cmd_params, 0);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, w_params, 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, bias_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 27), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 27, 27), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 1, 5, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 5, 3, 4), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	// configure the inlets.
 	int i, x, y;
 	for (x = 0; x < 4; x++)
@@ -455,33 +304,10 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 55, 55,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 27,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 3, 3,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 55, 55), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 27), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(1, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 55 * 55; i++)
@@ -501,33 +327,10 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 57, 57,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 19, 19,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 3, 3,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 57, 57), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 19, 19), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(1, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 57 * 57; i++)
@@ -547,33 +350,10 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 54, 54,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 27,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 2, 2,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 54, 54), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 27), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(1, 2, 2), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 54 * 54; i++)
@@ -593,33 +373,10 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 55, 55,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 27,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 3, 3,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 55, 55), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 27), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(1, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 55 * 55; i++)
@@ -639,33 +396,10 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 57, 57,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 19, 19,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 3, 3,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 57, 57), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 19, 19), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(1, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 57 * 57; i++)
@@ -685,33 +419,10 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_param_t a_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 54, 54,
-		},
-	};
-	ccv_nnc_tensor_param_t b_params = {
-		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
-		.dim = {
-			1, 27, 27,
-		},
-	};
-	ccv_nnc_cmd_param_t cmd_params = {
-		.size = {
-			.dim = {
-				1, 2, 2,
-			},
-		},
-		.pool = {
-		},
-	};
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd_params, &a_params, 1, &b_params, 1);
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, a_params, 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, b_params, 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, cmd_params, 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 54, 54), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 27, 27), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(1, 2, 2), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	// configure the inlets.
 	int i;
 	for (i = 0; i < 54 * 54; i++)
