@@ -127,4 +127,95 @@ TEST_CASE("full connect back propagation")
 	ccv_nnc_tensor_free(gbias);
 }
 
+TEST_CASE("full connect back propagation with batch = 2")
+{
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 2), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 2), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	bias->data.f32[0] = 1;
+	bias->data.f32[1] = 4;
+	bias->data.f32[2] = 2;
+	bias->data.f32[3] = -1;
+	a->data.f32[0] = 5;
+	a->data.f32[1] = -3;
+	a->data.f32[2] = 10;
+	a->data.f32[3] = 11;
+	a->data.f32[4] = -1;
+	a->data.f32[0 + 5] = -5;
+	a->data.f32[1 + 5] = 3;
+	a->data.f32[2 + 5] = -10;
+	a->data.f32[3 + 5] = -11;
+	a->data.f32[4 + 5] = 1;
+	float m[] = {
+		0.5, 0.2, -0.3, 2, 4,
+		1, 8, 2, 8, -1,
+		0, 10, -1, -2, 3,
+		4, 7, 8, 10, 0
+	};
+	float ho[] = {
+		-(0.5 + 4 - 4),
+		-(0.2 + 4 * 8 + 2 * 10 - 7),
+		-(-0.3 + 4 * 2 - 2 - 8),
+		-(2 + 4 * 8 - 2 * 2 - 10),
+		-(4 - 4 + 2 * 3),
+		0.5 + 4 - 4,
+		0.2 + 4 * 8 + 2 * 10 - 7,
+		-0.3 + 4 * 2 - 2 - 8,
+		2 + 4 * 8 - 2 * 2 - 10,
+		4 - 4 + 2 * 3,
+	};
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(m, ONE_CPU_TENSOR(5, 4), 0);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, CMD_FULL_CONNECT(4), 0);
+	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	float bo[] = {
+		0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4 + 1,
+		1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1 + 4,
+		-10 * 3 - 10 - 2 * 11 - 3 + 2,
+		4 * 5 - 7 * 3 + 8 * 10 + 10 * 11 - 1,
+		-(0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4) + 1,
+		-(1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1) + 4,
+		-(-10 * 3 - 10 - 2 * 11 - 3) + 2,
+		-(4 * 5 - 7 * 3 + 8 * 10 + 10 * 11) - 1
+	};
+	ccv_nnc_tensor_t bot = ccv_nnc_tensor(bo, ONE_CPU_TENSOR(4, 2), 0);
+	REQUIRE_TENSOR_EQ(b, &bot, "forward propagation result should match expected value");
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD, 0, CMD_FULL_CONNECT(4), 0);
+	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 4), 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 2), 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 2), 0);
+	int i;
+	for (i = 0; i < 4; i++)
+	{
+		g->data.f32[i] = -bias->data.f32[i];
+		g->data.f32[i + 4] = bias->data.f32[i];
+	}
+	// Pass in bias as gradient
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
+	// Therefore, gradient bias should match bias.
+	for (i = 0; i < 4; i++)
+		bias->data.f32[i] = 0;
+	REQUIRE_TENSOR_EQ(gbias, bias, "bias gradients should match expected value");
+	float go[] = {
+		5, -3, 10, 11, -1,
+		4 * 5, -4 * 3, 4 * 10, 4 * 11, -4,
+		2 * 5, -2 * 3, 2 * 10, 2 * 11, -2,
+		-5, 3, -10, -11, 1
+	};
+	for (i = 0; i < 5 * 4; i++)
+		go[i] = -go[i] * 2; // Because the gradient is negative in the first example, and the input is negative in the second example, we basically doubled the weight gradients.
+	ccv_nnc_tensor_t got = ccv_nnc_tensor(go, ONE_CPU_TENSOR(5, 4), 0);
+	REQUIRE_TENSOR_EQ(gw, &got, "weight gradients should match expected value");
+	ccv_nnc_tensor_t hot = ccv_nnc_tensor(ho, ONE_CPU_TENSOR(5, 2), 0);
+	REQUIRE_TENSOR_EQ(h, &hot, "back propagation error should match expected value");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
+	ccv_nnc_tensor_free(g);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(gw);
+	ccv_nnc_tensor_free(gbias);
+}
+
 #include "case_main.h"
