@@ -382,9 +382,9 @@ static void _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 static void _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size == 3);
-	ccv_nnc_tensor_t* w = inputs[1];
+	const ccv_nnc_tensor_t* w = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
-	ccv_nnc_tensor_t* bias = inputs[2];
+	const ccv_nnc_tensor_t* bias = inputs[2];
 	assert(!CCV_IS_TENSOR_VIEW(bias));
 	// Copy the most of parameters, but reshape the dimension of a to a vector.
 	ccv_nnc_tensor_param_t a_params = inputs[0]->info;
@@ -412,12 +412,12 @@ static void _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 
 static void _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
-	// inputs: gradient, forw prop input / forw prop output, [w]
+	// inputs: gradient, forw prop input, [w]
 	// outputs: weight updates, bias updates, [output gradient]
 	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
-	ccv_nnc_tensor_param_t g_params = inputs[0]->info;
+	const ccv_nnc_tensor_param_t g_params = inputs[0]->info;
 	assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
-	ccv_nnc_tensor_param_t a_params = inputs[1]->info;
+	const ccv_nnc_tensor_param_t a_params = inputs[1]->info;
 	assert(!CCV_IS_TENSOR_VIEW(inputs[1]));
 	ccv_nnc_tensor_t* w = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(w));
@@ -428,30 +428,39 @@ static void _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hi
 		memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
 		memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
 	}
-	int i, count = 1;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g_params.dim[i] > 0; i++)
-		count *= g_params.dim[i];
-	ccv_dense_matrix_t g = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, inputs[0]->data.u8, 0);
-	ccv_dense_matrix_t bv = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, bias->data.u8, 0);
-	ccv_dense_matrix_t* dbv = &bv;
-	count = 1;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a_params.dim[i] > 0; i++)
-		count *= a_params.dim[i];
-	ccv_dense_matrix_t a = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, inputs[1]->data.u8, 0);
-	ccv_add(&g, dbv, (ccv_matrix_t**)&dbv, 0);
-	ccv_gemm(&g, &a, 1, w, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&w, 0);
+	assert(ccv_max(1, a_params.dim[1]) == ccv_max(1, g_params.dim[1]));
+	assert(a_params.dim[2] == 0); // It is a 2-d array.
+	assert(g_params.dim[2] == 0); // It is a 2-d array.
+	ccv_dense_matrix_t g = ccv_dense_matrix(ccv_max(1, g_params.dim[1]), g_params.dim[0], CCV_32F | CCV_C1, inputs[0]->data.u8, 0);
+	assert(bias->info.dim[0] == g_params.dim[0]);
+	ccv_dense_matrix_t a = ccv_dense_matrix(ccv_max(1, a_params.dim[1]), a_params.dim[0], CCV_32F | CCV_C1, inputs[1]->data.u8, 0);
+	int i, j;
+	float* gp = inputs[0]->data.f32;
+	float* bp = bias->data.f32;
+	for (i = 0; i < ccv_max(1, g_params.dim[1]); i++)
+	{
+		for (j = 0; j < g_params.dim[0]; j++)
+			bp[j] += gp[j];
+		gp += g_params.dim[0];
+	}
+	assert(a_params.dim[0] == w->info.dim[0]);
+	assert(g_params.dim[0] == w->info.dim[1]);
+	ccv_dense_matrix_t dw = ccv_dense_matrix(g_params.dim[0], a_params.dim[0], CCV_32F | CCV_C1, w->data.u8, 0);
+	ccv_dense_matrix_t* ddw = &dw;
+	ccv_gemm(&g, &a, 1, ddw, 1, CCV_A_TRANSPOSE, (ccv_matrix_t**)&ddw, 0);
 	if (output_size == 3)
 	{
-		ccv_nnc_tensor_param_t h_params = outputs[2]->info;
+		const ccv_nnc_tensor_param_t h_params = outputs[2]->info;
 		assert(!CCV_IS_TENSOR_VIEW(outputs[2]));
-		count = 1;
-		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && h_params.dim[i] > 0; i++)
-			count *= h_params.dim[i];
 		w = inputs[2];
 		assert(!CCV_IS_TENSOR_VIEW(w));
-		ccv_dense_matrix_t h = ccv_dense_matrix(count, 1, CCV_32F | CCV_C1, outputs[2]->data.u8, 0);
+		assert(h_params.dim[0] == a_params.dim[0]);
+		assert(ccv_max(1, h_params.dim[1]) == ccv_max(1, a_params.dim[1]));
+		assert(h_params.dim[2] == 0); // It is a 2-d array.
+		ccv_dense_matrix_t dw = ccv_dense_matrix(g_params.dim[0], h_params.dim[0], CCV_32F | CCV_C1, w->data.u8, 0);
+		ccv_dense_matrix_t h = ccv_dense_matrix(ccv_max(1, h_params.dim[1]), h_params.dim[0], CCV_32F | CCV_C1, outputs[2]->data.u8, 0);
 		ccv_dense_matrix_t* dh = &h;
-		ccv_gemm(&w, &g, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&dh, 0);
+		ccv_gemm(&g, &dw, 1, 0, 0, 0 /* No transpose */, (ccv_matrix_t**)&dh, 0);
 	}
 }
 
