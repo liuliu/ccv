@@ -6,7 +6,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
-static void _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	int i;
 	assert(input_size == 1);
@@ -15,6 +15,7 @@ static void _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_
 	ccv_nnc_tensor_t* g = outputs[0];
 	for (i = 0; i < 21 * 31 * 4; i++)
 		g->data.f32[i] = m->data.f32[i] - (i == 24);
+	return CCV_NNC_EXEC_SUCCESS;
 }
 
 TEST_CASE("run simple graph network")

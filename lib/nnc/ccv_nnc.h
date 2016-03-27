@@ -36,6 +36,11 @@ enum {
 	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // enable accumulate outputs
 };
 
+enum {
+	CCV_NNC_EXEC_SUCCESS = 0,
+	CCV_NNC_EXEC_INVALID = -1,
+};
+
 typedef struct {
 	struct {
 		int dim[CCV_NNC_MAX_DIM_ALLOC];
@@ -74,10 +79,10 @@ typedef struct ccv_nnc_cmd_s {
 	ccv_nnc_cmd_param_t info;
 	// This has to be the same as the ccv_nnc_cmd_exec_f type.
 	// This is for type CCV_NNC_COMPUTE_CUSTOM
-	void(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 } ccv_nnc_cmd_t;
 
-typedef void(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
@@ -111,7 +116,7 @@ CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
-void ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 
 /**
  * Level-2 API

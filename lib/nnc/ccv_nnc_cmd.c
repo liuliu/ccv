@@ -115,16 +115,13 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	return cmd;
 }
 
-void ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
 	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	// If it is a custom command, just apply it directly.
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
-	{
-		// If it is a custom command, just apply it directly.
-		cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
-		return;
-	}
+		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
 	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
 	int i;
 	for (i = 0; i < input_size; i++)
@@ -135,5 +132,5 @@ void ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const 
 	{
 		assert(api_decl.tensor_formats & outputs[i]->info.format);
 	}
-	api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
+	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
 }
