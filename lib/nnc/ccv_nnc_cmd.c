@@ -25,22 +25,7 @@ void ccv_nnc_gpu_cudnn_init(ccv_nnc_cmd_api_t cmd_api[])
 }
 
 // I should be able to automatically extract code below from source code.
-enum {
-	CCV_NNC_BACKEND_CPU_REF = 0,
-	CCV_NNC_BACKEND_GPU_REF,
-	CCV_NNC_BACKEND_GPU_CUDNN,
-	CCV_NNC_BACKEND_COUNT,
-};
-
-CCV_NNC_INIT_DECL(ccv_nnc_cpu_ref_init);
-CCV_NNC_INIT_DECL(ccv_nnc_gpu_ref_init);
-CCV_NNC_INIT_DECL(ccv_nnc_gpu_cudnn_init);
-
-CCV_NNC_INIT_MAP_BEGIN()
-CCV_NNC_INIT_MAP(CCV_NNC_BACKEND_CPU_REF, ccv_nnc_cpu_ref_init)
-CCV_NNC_INIT_MAP(CCV_NNC_BACKEND_GPU_REF, ccv_nnc_gpu_ref_init)
-CCV_NNC_INIT_MAP(CCV_NNC_BACKEND_GPU_CUDNN, ccv_nnc_gpu_cudnn_init)
-CCV_NNC_INIT_MAP_END()
+#include "ccv_nnc_init.inc"
 // Above should be automatic generated.
 
 static ccv_nnc_cmd_api_t cmd_api_decls[CCV_NNC_BACKEND_COUNT][CCV_NNC_COMPUTE_COUNT];

@@ -1,0 +1,17 @@
+enum {<%
+	init_methods.each_with_index do |init_method, i| %>
+	<%= init_method[:name] %> = <%= i %>,<%
+	end %>
+	CCV_NNC_BACKEND_COUNT,
+};
+<%
+	init_methods.each do |init_method| %>
+CCV_NNC_INIT_DECL(<%= init_method[:decl] %>);<%
+end %>
+
+CCV_NNC_INIT_MAP_BEGIN()<%
+	init_methods.each do |init_method| %>
+CCV_NNC_INIT_MAP(<%= init_method[:name] %>, <%= init_method[:decl] %>)<%
+end %>
+CCV_NNC_INIT_MAP_END()
+

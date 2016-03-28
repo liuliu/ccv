@@ -550,7 +550,7 @@ static int _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-//@ccv_nnc_init
+//@ccv_nnc_init CCV_NNC_BACKEND_CPU_REF
 void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 {
 	/*TODO: I don't think any of these methods handles batch input, and I better to handle CHWN as well. */
