@@ -2,7 +2,7 @@
 #include "ccv_internal.h"
 #include <ctype.h>
 #include <getopt.h>
-#include "matt_models.inl"
+#include "matt_models.inc"
 
 static void exit_with_help(void)
 {

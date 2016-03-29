@@ -14,7 +14,7 @@ extern "C" {
 #include "cwc_ext.h"
 }
 #include "../3rdparty/sqlite3/sqlite3.h"
-#include "../inl/ccv_convnet_inl.h"
+#include "../inc/ccv_convnet_internal.h"
 
 #define MAX_DEVICE_SUPPORT (4)
 

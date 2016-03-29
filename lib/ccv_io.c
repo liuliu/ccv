@@ -17,18 +17,18 @@
 #include <zlib.h>
 #include <png.h>
 #endif
-#include "io/_ccv_io_libpng.c"
+#include "io/_ccv_io_libpng.inc"
 #endif
 #ifdef HAVE_LIBJPEG
 #include <jpeglib.h>
-#include "io/_ccv_io_libjpeg.c"
+#include "io/_ccv_io_libjpeg.inc"
 #endif
 #if defined(__unix__) || (defined(__APPLE__) && defined(__MACH__))
 #include <sys/param.h>
 #endif
-#include "io/_ccv_io_bmp.c"
-#include "io/_ccv_io_binary.c"
-#include "io/_ccv_io_raw.c"
+#include "io/_ccv_io_bmp.inc"
+#include "io/_ccv_io_binary.inc"
+#include "io/_ccv_io_raw.inc"
 
 static int _ccv_read_and_close_fd(FILE* fd, ccv_dense_matrix_t** x, int type)
 {

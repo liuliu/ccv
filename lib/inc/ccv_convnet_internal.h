@@ -1,5 +1,5 @@
-#ifndef GUARD_ccv_convnet_inl_h
-#define GUARD_ccv_convnet_inl_h
+#ifndef GUARD_ccv_convnet_internal_h
+#define GUARD_ccv_convnet_internal_h
 
 inline static void ccv_convnet_make_output(ccv_convnet_layer_t* layer, int input_rows, int input_cols, int* rows, int* cols, int* partition)
 {

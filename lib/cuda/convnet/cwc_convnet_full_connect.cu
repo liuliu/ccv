@@ -4,7 +4,7 @@ extern "C" {
 #include "../cwc.h"
 #include "../cwc_internal.h"
 }
-#include "../../inl/ccv_convnet_inl.h"
+#include "../../inc/ccv_convnet_internal.h"
 
 __global__ static void _cwc_kern_relu_forward_propagate(float* a)
 {

@@ -19,7 +19,7 @@
 #include "cuda/cwc.h"
 #endif
 #include "3rdparty/sqlite3/sqlite3.h"
-#include "inl/ccv_convnet_inl.h"
+#include "inc/ccv_convnet_internal.h"
 
 #ifndef CASE_TESTS
 

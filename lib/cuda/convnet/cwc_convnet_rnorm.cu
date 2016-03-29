@@ -4,7 +4,7 @@ extern "C" {
 #include "../cwc.h"
 #include "../cwc_internal.h"
 }
-#include "../../inl/ccv_convnet_inl.h"
+#include "../../inc/ccv_convnet_internal.h"
 
 template <int input_per_thread, int size>
 __global__ static void _cwc_kern_rnorm_forward_propagate(const int batch,

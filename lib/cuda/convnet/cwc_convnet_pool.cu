@@ -4,7 +4,7 @@ extern "C" {
 #include "../cwc.h"
 #include "../cwc_internal.h"
 }
-#include "../../inl/ccv_convnet_inl.h"
+#include "../../inc/ccv_convnet_internal.h"
 
 template <int input_per_thread>
 __global__ static void _cwc_kern_max_pool_forward_propagate(const int strides, const int border, const int size, const int batch,
