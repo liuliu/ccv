@@ -16,14 +16,6 @@ typedef struct {
 		(init_func)(command_api_decls[name]); \
 	} while (0)
 
-void ccv_nnc_gpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
-{
-}
-
-void ccv_nnc_gpu_cudnn_init(ccv_nnc_cmd_api_t cmd_api[])
-{
-}
-
 // I should be able to automatically extract code below from source code.
 #include "ccv_nnc_init.inc"
 // Above should be automatic generated.

@@ -3,7 +3,7 @@ include ../../../lib/config.mk
 # CC += -g -fsanitize=address -fno-omit-frame-pointer # -fprofile-arcs -ftest-coverage
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
-TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests
+TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests winograd.tests
 
 all: $(TARGETS)
 

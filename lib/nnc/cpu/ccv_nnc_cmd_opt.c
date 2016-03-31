@@ -18,46 +18,207 @@
 		m[x] = wd[x + 1] - n[x] - (i[x] * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], i[x] * hint.stride.dim[x + 1] + wd[x + 1])); \
 	} while (0)
 
+static void _ccv_nnc_winograd_2x2_3x3_gwtg(const ccv_nnc_tensor_t* w, ccv_nnc_tensor_t* gwtg)
+{
+	float* gwtgp = gwtg->data.f32;
+	float* wp = w->data.f32;
+	const int c = w->info.dim[0];
+	int i, j;
+	assert(w->info.dim[1] == 3);
+	assert(w->info.dim[2] == 3);
+	assert(gwtg->info.dim[0] == 4);
+	assert(gwtg->info.dim[1] == 4);
+	for (i = 0; i < w->info.dim[3]; i++)
+	{
+		for (j = 0; j < c; j++)
+		{
+			/* row 1 */
+			gwtgp[0] = wp[j];
+			gwtgp[1] = (wp[j] + wp[c + j] + wp[2 * c + j]) * 0.5;
+			gwtgp[2] = (wp[j] - wp[c + j] + wp[2 * c + j]) * 0.5;
+			gwtgp[3] = wp[2 * c + j];
+			/* row 2 */
+			gwtgp[4] = (wp[j] + wp[3 * c + j] + wp[6 * c + j]) * 0.5;
+			gwtgp[5] = (wp[j] + wp[c + j] + wp[2 * c + j] + wp[3 * c + j] + wp[4 * c + j] + wp[5 * c + j] + wp[6 * c + j] + wp[7 * c + j] + wp[8 * c + j]) * 0.25;
+			gwtgp[6] = (wp[j] - wp[c + j] + wp[2 * c + j] + wp[3 * c + j] - wp[4 * c + j] + wp[5 * c + j] + wp[6 * c + j] - wp[7 * c + j] + wp[8 * c + j]) * 0.25;
+			gwtgp[7] = (wp[2 * c + j] + wp[5 * c + j] + wp[8 * c + j]) * 0.5;
+			/* row 3 */
+			gwtgp[8] = (wp[j] - wp[3 * c + j] + wp[6 * c + j]) * 0.5;
+			gwtgp[9] = (wp[j] + wp[c + j] + wp[2 * c + j] - wp[3 * c + j] - wp[4 * c + j] - wp[5 * c + j] + wp[6 * c + j] + wp[7 * c + j] + wp[8 * c + j]) * 0.25;
+			gwtgp[10] = (wp[j] - wp[c + j] + wp[2 * c + j] - wp[3 * c + j] + wp[4 * c + j] - wp[5 * c + j] + wp[6 * c + j] - wp[7 * c + j] + wp[8 * c + j]) * 0.25;
+			gwtgp[11] = (wp[2 * c + j] - wp[5 * c + j] + wp[8 * c + j]) * 0.5;
+			/* row 4 */
+			gwtgp[12] = wp[6 * c + j];
+			gwtgp[13] = (wp[6 * c + j] + wp[7 * c + j] + wp[8 * c + j]) * 0.5;
+			gwtgp[14] = (wp[6 * c + j] - wp[7 * c + j] + wp[8 * c + j]) * 0.5;
+			gwtgp[15] = wp[8 * c + j];
+			gwtgp += 16;
+		}
+		wp += 9 * c;
+	}
+}
+
 static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	assert(hint.border.begin[1] == 0);
+	assert(hint.border.begin[2] == 0);
+	assert(w->info.dim[1] == 3);
+	assert(w->info.dim[2] == 3);
+	// Convert w to a 4x4 matrix, by computing G.w.T(G) // T for transpose.
+	ccv_nnc_tensor_param_t gwtg_params = w->info;
+	gwtg_params.dim[0] = gwtg_params.dim[1] = 4;
+	gwtg_params.dim[2] = w->info.dim[0];
+	ccv_nnc_tensor_t* gwtg = ccv_nnc_tensor_new(0, gwtg_params, 0);
+	_ccv_nnc_winograd_2x2_3x3_gwtg(w, gwtg);
 	parallel_for(k, w->info.dim[3]) {
 		int c;
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
-		float* wp = w->data.f32 + k * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+		float* gwtgp = gwtg->data.f32 + k * gwtg->info.dim[2] * gwtg->info.dim[1] * gwtg->info.dim[0];
 		float biasval = bias->data.f32[k];
 		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 		int i[CCV_NNC_MAX_DIM];
-		int n[CCV_NNC_MAX_DIM];
-		int m[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
-		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		for (i[1] = 0; i[1] < b->info.dim[2] - 1; i[1] += 2)
 		{
-			set_n_m_dim(1, w->info.dim, a->info.dim);
-			float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
-			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+			for (i[0] = 0; i[0] < b->info.dim[1] - 1; i[0] += 2)
 			{
-				set_n_m_dim(0, w->info.dim, a->info.dim);
-				float p = biasval;
-				float* wpz = wpu + n[0] * w->info.dim[0];
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
-				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				float b16[16];
+				float* wpz = gwtgp;
+				float p[4] = {
+					biasval, biasval, biasval, biasval
+				};
+				for (c = 0; c < a->info.dim[0]; c++)
 				{
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						for (c = 0; c < a->info.dim[0]; c++)
-							p += wpz[j[0] * w->info.dim[0] + c] * apz[j[0] * ainc[0] + c];
-					wpz += w->info.dim[1] * w->info.dim[0];
-					apz += ainc[1] * ainc[0];
+					float* apz = ap + ccv_max(i[0] - hint.border.begin[1], 0) * ainc[0] + c;
+					for (j[1] = 0; j[1] < 4; j[1]++)
+					{
+						for (j[0] = 0; j[0] < 4; j[0]++)
+								b16[j[1] * 4 + j[0]] = apz[j[0] * ainc[0]];
+						apz += ainc[1] * ainc[0];
+					}
+					/*
+					 * a0, b1, c2, d3
+					 * e4, f5, g6, h7
+					 * i8, j9, k10 l11
+					 * m12 n13 o14 p16
+					 * {{a - i, b - j, c - k, d - l},
+					 * {e + i, f + j, g + k, h + l},
+					 * {-e + i, -f + j, -g + k, -h + l},
+					 * {e - m, f - n, g - o, h - p}}
+					 */
+					float d[16];
+					/* BT.d */
+					/* row 1 */
+					d[0] = b16[0] - b16[8];
+					d[1] = b16[1] - b16[9];
+					d[2] = b16[2] - b16[10];
+					d[3] = b16[3] - b16[11];
+					/* row 2 */
+					d[4] = b16[4] + b16[8];
+					d[5] = b16[5] + b16[9];
+					d[6] = b16[6] + b16[10];
+					d[7] = b16[7] + b16[11];
+					/* row 3 */
+					d[8] = b16[8] - b16[4];
+					d[9] = b16[9] - b16[5];
+					d[10] = b16[10] - b16[6];
+					d[11] = b16[11] - b16[7];
+					/* row 4 */
+					d[12] = b16[4] - b16[12];
+					d[13] = b16[5] - b16[13];
+					d[14] = b16[6] - b16[14];
+					d[15] = b16[7] - b16[15];
+					/*
+					 * a0, b1, c2, d3
+					 * e4, f5, g6, h7
+					 * i8, j9, k10 l11
+					 * m12 n13 o14 p16
+					 * {{a - c, b + c, -b + c, b - d},
+					 * {e - g, f + g, -f + g, f - h},
+					 * {i - k, j + k, -j + k, j - l},
+					 * {m - o, n + o, -n + o, n - p}}
+					 */
+					/* BT.d.B */
+					/* row 1 */
+					b16[0] = d[0] - d[2];
+					b16[1] = d[1] + d[2];
+					b16[2] = d[2] - d[1];
+					b16[3] = d[1] - d[3];
+					/* row 2 */
+					b16[4] = d[4] - d[6];
+					b16[5] = d[5] + d[6];
+					b16[6] = d[6] - d[5];
+					b16[7] = d[5] - d[7];
+					/* row 3 */
+					b16[8] = d[8] - d[10];
+					b16[9] = d[9] + d[10];
+					b16[10] = d[10] - d[9];
+					b16[11] = d[9] - d[11];
+					/* row 4 */
+					b16[12] = d[12] - d[14];
+					b16[13] = d[13] + d[14];
+					b16[14] = d[14] - d[13];
+					b16[15] = d[13] - d[15];
+					// unroll'ed for loop for multiplication
+					b16[0] *= wpz[0];
+					b16[1] *= wpz[1];
+					b16[2] *= wpz[2];
+					b16[3] *= wpz[3];
+					b16[4] *= wpz[4];
+					b16[5] *= wpz[5];
+					b16[6] *= wpz[6];
+					b16[7] *= wpz[7];
+					b16[8] *= wpz[8];
+					b16[9] *= wpz[9];
+					b16[10] *= wpz[10];
+					b16[11] *= wpz[11];
+					b16[12] *= wpz[12];
+					b16[13] *= wpz[13];
+					b16[14] *= wpz[14];
+					b16[15] *= wpz[15];
+					/*
+					 * a0, b1, c2, d3
+					 * e4, f5, g6, h7
+					 * i8, j9, k10 l11
+					 * m12 n13 o14 p16
+					 * {{a + e + i, b + f + j, c + g + k, d + h + l},
+					 * {e - i - m, f - j - n, g - k - o, h - l - p}}
+					 */
+					/* row 1 */
+					d[0] = b16[0] + b16[4] + b16[8];
+					d[1] = b16[1] + b16[5] + b16[9];
+					d[2] = b16[2] + b16[6] + b16[10];
+					d[3] = b16[3] + b16[7] + b16[11];
+					/* row 2 */
+					d[4] = b16[4] - b16[8] - b16[12];
+					d[5] = b16[5] - b16[9] - b16[13];
+					d[6] = b16[6] - b16[10] - b16[14];
+					d[7] = b16[7] - b16[11] - b16[15];
+					/*
+					 * {{a + b + c, b - c - d},
+					 * {e + f + g, f - g - h}}
+					 */
+					p[0] += d[0] + d[1] + d[2];
+					p[1] += d[1] - d[2] - d[3];
+					p[2] += d[4] + d[5] + d[6];
+					p[3] += d[5] - d[6] - d[7];
+					// move to the next channel
+					wpz += 16;
 				}
-				bp[i[0] * binc[0]] = p;
+				bp[i[0] * binc[0]] = p[0];
+				bp[(i[0] + 1) * binc[0]] = p[1];
+				bp[(binc[1] + i[0]) * binc[0]] = p[2];
+				bp[(binc[1] + i[0] + 1) * binc[0]] = p[3];
 			}
-			bp += binc[1] * binc[0];
-			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+			bp += binc[1] * binc[0] * 2;
+			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 2) - hint.border.begin[2], 0) - ccv_max(i[1] - hint.border.begin[2], 0));
 		}
 	} parallel_endfor
+	ccv_nnc_tensor_free(gwtg);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -112,6 +273,8 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			break;
 		}
 	if (w->info.dim[1] != 3 || w->info.dim[2] != 3)
+		return CCV_NNC_EXEC_INVALID;
+	if (hint.stride.dim[1] > 1 || hint.stride.dim[2] > 1)
 		return CCV_NNC_EXEC_INVALID;
 	return _ccv_nnc_conv_forw_2x2_3x3_winograd(a, w, bias, hint, b);
 }
