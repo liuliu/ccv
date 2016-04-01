@@ -32,6 +32,15 @@ static void _ccv_nnc_winograd_2x2_3x3_gwtg(const ccv_nnc_tensor_t* w, ccv_nnc_te
 	{
 		for (j = 0; j < c; j++)
 		{
+			/*
+			 * a0, b1, c2
+			 * d3, e4, f5
+			 * g6, h7, i8
+			 * {{a, 1/2 (a + b + c), 1/2 (a - b + c), c},
+			 * {1/2 (a + d + g), 1/4 (a + b + c + d + e + f + g + h + i), 1/4 (a - b + c + d - e + f + g - h + i), 1/2 (c + f + i)},
+			 * {1/2 (a - d + g), 1/4 (a + b + c - d - e - f + g + h + i), 1/4 (a - b + c - d + e - f + g - h + i), 1/2 (c - f + i)},
+			 * {g, 1/2 (g + h + i), 1/2 (g - h + i), i}}
+			 */
 			/* row 1 */
 			gwtgp[0] = wp[j];
 			gwtgp[1] = (wp[j] + wp[c + j] + wp[2 * c + j]) * 0.5;
@@ -73,7 +82,6 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	ccv_nnc_tensor_t* gwtg = ccv_nnc_tensor_new(0, gwtg_params, 0);
 	_ccv_nnc_winograd_2x2_3x3_gwtg(w, gwtg);
 	parallel_for(k, w->info.dim[3]) {
-		int c;
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
@@ -81,12 +89,11 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 		float biasval = bias->data.f32[k];
 		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 		int i[CCV_NNC_MAX_DIM];
-		int j[CCV_NNC_MAX_DIM];
+		int j, c;
 		for (i[1] = 0; i[1] < b->info.dim[2] - 1; i[1] += 2)
 		{
 			for (i[0] = 0; i[0] < b->info.dim[1] - 1; i[0] += 2)
 			{
-				float b16[16];
 				float* wpz = gwtgp;
 				float p[4] = {
 					biasval, biasval, biasval, biasval
@@ -94,10 +101,13 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 				for (c = 0; c < a->info.dim[0]; c++)
 				{
 					float* apz = ap + ccv_max(i[0] - hint.border.begin[1], 0) * ainc[0] + c;
-					for (j[1] = 0; j[1] < 4; j[1]++)
+					float t[16];
+					for (j = 0; j < 4; j++)
 					{
-						for (j[0] = 0; j[0] < 4; j[0]++)
-								b16[j[1] * 4 + j[0]] = apz[j[0] * ainc[0]];
+						t[j * 4] = apz[0];
+						t[j * 4 + 1] = apz[ainc[0]];
+						t[j * 4 + 2] = apz[2 * ainc[0]];
+						t[j * 4 + 3] = apz[3 * ainc[0]];
 						apz += ainc[1] * ainc[0];
 					}
 					/*
@@ -113,25 +123,25 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 					float d[16];
 					/* BT.d */
 					/* row 1 */
-					d[0] = b16[0] - b16[8];
-					d[1] = b16[1] - b16[9];
-					d[2] = b16[2] - b16[10];
-					d[3] = b16[3] - b16[11];
+					d[0] = t[0] - t[8];
+					d[1] = t[1] - t[9];
+					d[2] = t[2] - t[10];
+					d[3] = t[3] - t[11];
 					/* row 2 */
-					d[4] = b16[4] + b16[8];
-					d[5] = b16[5] + b16[9];
-					d[6] = b16[6] + b16[10];
-					d[7] = b16[7] + b16[11];
+					d[4] = t[4] + t[8];
+					d[5] = t[5] + t[9];
+					d[6] = t[6] + t[10];
+					d[7] = t[7] + t[11];
 					/* row 3 */
-					d[8] = b16[8] - b16[4];
-					d[9] = b16[9] - b16[5];
-					d[10] = b16[10] - b16[6];
-					d[11] = b16[11] - b16[7];
+					d[8] = t[8] - t[4];
+					d[9] = t[9] - t[5];
+					d[10] = t[10] - t[6];
+					d[11] = t[11] - t[7];
 					/* row 4 */
-					d[12] = b16[4] - b16[12];
-					d[13] = b16[5] - b16[13];
-					d[14] = b16[6] - b16[14];
-					d[15] = b16[7] - b16[15];
+					d[12] = t[4] - t[12];
+					d[13] = t[5] - t[13];
+					d[14] = t[6] - t[14];
+					d[15] = t[7] - t[15];
 					/*
 					 * a0, b1, c2, d3
 					 * e4, f5, g6, h7
@@ -144,42 +154,42 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 					 */
 					/* BT.d.B */
 					/* row 1 */
-					b16[0] = d[0] - d[2];
-					b16[1] = d[1] + d[2];
-					b16[2] = d[2] - d[1];
-					b16[3] = d[1] - d[3];
+					t[0] = d[0] - d[2];
+					t[1] = d[1] + d[2];
+					t[2] = d[2] - d[1];
+					t[3] = d[1] - d[3];
 					/* row 2 */
-					b16[4] = d[4] - d[6];
-					b16[5] = d[5] + d[6];
-					b16[6] = d[6] - d[5];
-					b16[7] = d[5] - d[7];
+					t[4] = d[4] - d[6];
+					t[5] = d[5] + d[6];
+					t[6] = d[6] - d[5];
+					t[7] = d[5] - d[7];
 					/* row 3 */
-					b16[8] = d[8] - d[10];
-					b16[9] = d[9] + d[10];
-					b16[10] = d[10] - d[9];
-					b16[11] = d[9] - d[11];
+					t[8] = d[8] - d[10];
+					t[9] = d[9] + d[10];
+					t[10] = d[10] - d[9];
+					t[11] = d[9] - d[11];
 					/* row 4 */
-					b16[12] = d[12] - d[14];
-					b16[13] = d[13] + d[14];
-					b16[14] = d[14] - d[13];
-					b16[15] = d[13] - d[15];
+					t[12] = d[12] - d[14];
+					t[13] = d[13] + d[14];
+					t[14] = d[14] - d[13];
+					t[15] = d[13] - d[15];
 					// unroll'ed for loop for multiplication
-					b16[0] *= wpz[0];
-					b16[1] *= wpz[1];
-					b16[2] *= wpz[2];
-					b16[3] *= wpz[3];
-					b16[4] *= wpz[4];
-					b16[5] *= wpz[5];
-					b16[6] *= wpz[6];
-					b16[7] *= wpz[7];
-					b16[8] *= wpz[8];
-					b16[9] *= wpz[9];
-					b16[10] *= wpz[10];
-					b16[11] *= wpz[11];
-					b16[12] *= wpz[12];
-					b16[13] *= wpz[13];
-					b16[14] *= wpz[14];
-					b16[15] *= wpz[15];
+					t[0] *= wpz[0];
+					t[1] *= wpz[1];
+					t[2] *= wpz[2];
+					t[3] *= wpz[3];
+					t[4] *= wpz[4];
+					t[5] *= wpz[5];
+					t[6] *= wpz[6];
+					t[7] *= wpz[7];
+					t[8] *= wpz[8];
+					t[9] *= wpz[9];
+					t[10] *= wpz[10];
+					t[11] *= wpz[11];
+					t[12] *= wpz[12];
+					t[13] *= wpz[13];
+					t[14] *= wpz[14];
+					t[15] *= wpz[15];
 					/*
 					 * a0, b1, c2, d3
 					 * e4, f5, g6, h7
@@ -189,15 +199,15 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 					 * {e - i - m, f - j - n, g - k - o, h - l - p}}
 					 */
 					/* row 1 */
-					d[0] = b16[0] + b16[4] + b16[8];
-					d[1] = b16[1] + b16[5] + b16[9];
-					d[2] = b16[2] + b16[6] + b16[10];
-					d[3] = b16[3] + b16[7] + b16[11];
+					d[0] = t[0] + t[4] + t[8];
+					d[1] = t[1] + t[5] + t[9];
+					d[2] = t[2] + t[6] + t[10];
+					d[3] = t[3] + t[7] + t[11];
 					/* row 2 */
-					d[4] = b16[4] - b16[8] - b16[12];
-					d[5] = b16[5] - b16[9] - b16[13];
-					d[6] = b16[6] - b16[10] - b16[14];
-					d[7] = b16[7] - b16[11] - b16[15];
+					d[4] = t[4] - t[8] - t[12];
+					d[5] = t[5] - t[9] - t[13];
+					d[6] = t[6] - t[10] - t[14];
+					d[7] = t[7] - t[11] - t[15];
 					/*
 					 * {{a + b + c, b - c - d},
 					 * {e + f + g, f - g - h}}
