@@ -65,16 +65,13 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	// Convert w to a 4x4 matrix, by computing G.w.T(G) // T for transpose.
-	ccv_nnc_tensor_param_t gwtg_params = w->info;
-	gwtg_params.dim[0] = gwtg_params.dim[1] = 4;
-	gwtg_params.dim[2] = w->info.dim[0];
+	float* gwtg = ccmalloc(sizeof(float) * 4 * 4 * w->info.dim[0] * w->info.dim[3]);
 	parallel_for(k, w->info.dim[3]) {
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
-		float* gwtg = ccmalloc(sizeof(float) * 4 * 4 * w->info.dim[0]);
-		_ccv_nnc_winograd_2x2_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg);
-		float* gwtgp = gwtg;
+		float* gwtgp = gwtg + k * 16 * w->info.dim[0];
+		_ccv_nnc_winograd_2x2_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtgp);
 		float biasval = bias->data.f32[k];
 		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 		int x, y, i, c;
@@ -82,10 +79,8 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 		{
 			for (x = 0; x < b->info.dim[1] - 1; x += 2)
 			{
+				float q[16] = {0};
 				float* wpz = gwtgp;
-				float p[4] = {
-					biasval, biasval, biasval, biasval
-				};
 				for (c = 0; c < a->info.dim[0]; c++)
 				{
 					float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0] + c;
@@ -142,67 +137,61 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 					 */
 					/* BT.d.B */
 					/* row 1 */
-					t[0] = d[0] - d[2];
-					t[1] = d[1] + d[2];
-					t[2] = d[2] - d[1];
-					t[3] = d[1] - d[3];
+					q[0] += (d[0] - d[2]) * wpz[0];
+					q[1] += (d[1] + d[2]) * wpz[1];
+					q[2] += (d[2] - d[1]) * wpz[2];
+					q[3] += (d[1] - d[3]) * wpz[3];
 					/* row 2 */
-					t[4] = d[4] - d[6];
-					t[5] = d[5] + d[6];
-					t[6] = d[6] - d[5];
-					t[7] = d[5] - d[7];
+					q[4] += (d[4] - d[6]) * wpz[4];
+					q[5] += (d[5] + d[6]) * wpz[5];
+					q[6] += (d[6] - d[5]) * wpz[6];
+					q[7] += (d[5] - d[7]) * wpz[7];
 					/* row 3 */
-					t[8] = d[8] - d[10];
-					t[9] = d[9] + d[10];
-					t[10] = d[10] - d[9];
-					t[11] = d[9] - d[11];
+					q[8] += (d[8] - d[10]) * wpz[8];
+					q[9] += (d[9] + d[10]) * wpz[9];
+					q[10] += (d[10] - d[9]) * wpz[10];
+					q[11] += (d[9] - d[11]) * wpz[11];
 					/* row 4 */
-					t[12] = d[12] - d[14];
-					t[13] = d[13] + d[14];
-					t[14] = d[14] - d[13];
-					t[15] = d[13] - d[15];
-					// unroll'ed for loop for multiplication
-					for (i = 0; i < 16; i++)
-						t[i] *= wpz[i];
-					/*
-					 * a0, b1, c2, d3
-					 * e4, f5, g6, h7
-					 * i8, j9, k10 l11
-					 * m12 n13 o14 p16
-					 * {{a + e + i, b + f + j, c + g + k, d + h + l},
-					 * {e - i - m, f - j - n, g - k - o, h - l - p}}
-					 */
-					/* row 1 */
-					d[0] = t[0] + t[4] + t[8];
-					d[1] = t[1] + t[5] + t[9];
-					d[2] = t[2] + t[6] + t[10];
-					d[3] = t[3] + t[7] + t[11];
-					/* row 2 */
-					d[4] = t[4] - t[8] - t[12];
-					d[5] = t[5] - t[9] - t[13];
-					d[6] = t[6] - t[10] - t[14];
-					d[7] = t[7] - t[11] - t[15];
-					/*
-					 * {{a + b + c, b - c - d},
-					 * {e + f + g, f - g - h}}
-					 */
-					p[0] += d[0] + d[1] + d[2];
-					p[1] += d[1] - d[2] - d[3];
-					p[2] += d[4] + d[5] + d[6];
-					p[3] += d[5] - d[6] - d[7];
+					q[12] += (d[12] - d[14]) * wpz[12];
+					q[13] += (d[13] + d[14]) * wpz[13];
+					q[14] += (d[14] - d[13]) * wpz[14];
+					q[15] += (d[13] - d[15]) * wpz[15];
 					// move to the next channel
 					wpz += 16;
 				}
-				bp[x * binc[0]] = p[0];
-				bp[(x + 1) * binc[0]] = p[1];
-				bp[(binc[1] + x) * binc[0]] = p[2];
-				bp[(binc[1] + x + 1) * binc[0]] = p[3];
+				/*
+				 * a0, b1, c2, d3
+				 * e4, f5, g6, h7
+				 * i8, j9, k10 l11
+				 * m12 n13 o14 p16
+				 * {{a + e + i, b + f + j, c + g + k, d + h + l},
+				 * {e - i - m, f - j - n, g - k - o, h - l - p}}
+				 */
+				float d[8];
+				/* row 1 */
+				d[0] = q[0] + q[4] + q[8];
+				d[1] = q[1] + q[5] + q[9];
+				d[2] = q[2] + q[6] + q[10];
+				d[3] = q[3] + q[7] + q[11];
+				/* row 2 */
+				d[4] = q[4] - q[8] - q[12];
+				d[5] = q[5] - q[9] - q[13];
+				d[6] = q[6] - q[10] - q[14];
+				d[7] = q[7] - q[11] - q[15];
+				/*
+				 * {{a + b + c, b - c - d},
+				 * {e + f + g, f - g - h}}
+				 */
+				bp[x * binc[0]] = d[0] + d[1] + d[2] + biasval;
+				bp[(x + 1) * binc[0]] = d[1] - d[2] - d[3] + biasval;
+				bp[(binc[1] + x) * binc[0]] = d[4] + d[5] + d[6] + biasval;
+				bp[(binc[1] + x + 1) * binc[0]] = d[5] - d[6] - d[7] + biasval;
 			}
 			bp += binc[1] * binc[0] * 2;
 			ap += ainc[1] * ainc[0] * (ccv_max((y + 2) - hint.border.begin[2], 0) - ccv_max(y - hint.border.begin[2], 0));
 		}
-		ccfree(gwtg);
 	} parallel_endfor
+	ccfree(gwtg);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
