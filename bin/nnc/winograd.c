@@ -11,7 +11,7 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-#define DIM (2048)
+#define DIM (128)
 
 #define SIZE (58)
 
@@ -42,8 +42,8 @@ int main(int argc, char** argv)
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for winograd\n", elapsed_time);
-	//for (i = 0; i < DIM * SIZE; i++)
-	//	printf("%f %f\n", b->data.f32[i], c->data.f32[i]);
+	for (i = 0; i < DIM * SIZE; i++)
+		printf("%f %f\n", b->data.f32[i], c->data.f32[i]);
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
