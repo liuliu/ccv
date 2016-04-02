@@ -68,11 +68,11 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	ccv_nnc_tensor_param_t gwtg_params = w->info;
 	gwtg_params.dim[0] = gwtg_params.dim[1] = 4;
 	gwtg_params.dim[2] = w->info.dim[0];
-	float* gwtg = ccmalloc(sizeof(float) * 4 * 4 * w->info.dim[0]);
 	parallel_for(k, w->info.dim[3]) {
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
+		float* gwtg = ccmalloc(sizeof(float) * 4 * 4 * w->info.dim[0]);
 		_ccv_nnc_winograd_2x2_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg);
 		float* gwtgp = gwtg;
 		float biasval = bias->data.f32[k];
@@ -201,8 +201,8 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 			bp += binc[1] * binc[0] * 2;
 			ap += ainc[1] * ainc[0] * (ccv_max((y + 2) - hint.border.begin[2], 0) - ccv_max(y - hint.border.begin[2], 0));
 		}
+		ccfree(gwtg);
 	} parallel_endfor
-	ccfree(gwtg);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
