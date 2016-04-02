@@ -65,98 +65,137 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	// Convert w to a 4x4 matrix, by computing G.w.T(G) // T for transpose.
-	float* gwtg = ccmalloc(sizeof(float) * 4 * 4 * w->info.dim[0] * w->info.dim[3]);
+	float* const gwtg = ccmalloc(sizeof(float) * 16 * w->info.dim[0] * w->info.dim[3]);
 	parallel_for(k, w->info.dim[3]) {
-		float* ap = a->data.f32;
-		float* bp = b->data.f32 + k;
-		// kernel weight for one dim.
-		float* gwtgp = gwtg + k * 16 * w->info.dim[0];
-		_ccv_nnc_winograd_2x2_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtgp);
-		float biasval = bias->data.f32[k];
-		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
-		int x, y, i, c;
-		for (y = 0; y < b->info.dim[2] - 1; y += 2)
+		_ccv_nnc_winograd_2x2_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg + k * 16 * w->info.dim[0]);
+	} parallel_endfor
+	const int jump_dim[CCV_NNC_MAX_DIM] = {
+		b->info.dim[1] / 2, b->info.dim[2] / 2
+	};
+	float* const ws = (float*)ccmalloc(sizeof(float) * 16 * a->info.dim[0] * jump_dim[1]);
+	// kernel weight for one dim.
+	const float* const biasval = bias->data.f32;
+	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
+	parallel_for(i, jump_dim[1]) {
+		int x, k, c;
+		float* ap = a->data.f32 + i * 2 * ainc[1] * ainc[0];
+		float* bp = b->data.f32 + i * 2 * binc[1] * binc[0];
+		for (x = 0; x < b->info.dim[1] - 1; x += 2)
 		{
-			for (x = 0; x < b->info.dim[1] - 1; x += 2)
+			float* g = ws + i * 16 * a->info.dim[0];
+			for (c = 0; c < a->info.dim[0]; c++)
+			{
+				float* apz = ap + x * ainc[0] + c;
+				float t[16];
+				t[0] = apz[0];
+				t[1] = apz[ainc[0]];
+				t[2] = apz[2 * ainc[0]];
+				t[3] = apz[3 * ainc[0]];
+				apz += ainc[1] * ainc[0];
+				t[4] = apz[0];
+				t[5] = apz[ainc[0]];
+				t[6] = apz[2 * ainc[0]];
+				t[7] = apz[3 * ainc[0]];
+				apz += ainc[1] * ainc[0];
+				t[8] = apz[0];
+				t[9] = apz[ainc[0]];
+				t[10] = apz[2 * ainc[0]];
+				t[11] = apz[3 * ainc[0]];
+				apz += ainc[1] * ainc[0];
+				t[12] = apz[0];
+				t[13] = apz[ainc[0]];
+				t[14] = apz[2 * ainc[0]];
+				t[15] = apz[3 * ainc[0]];
+				/*
+				 * a0, b1, c2, d3
+				 * e4, f5, g6, h7
+				 * i8, j9, k10 l11
+				 * m12 n13 o14 p16
+				 * {{a - i, b - j, c - k, d - l},
+				 * {e + i, f + j, g + k, h + l},
+				 * {-e + i, -f + j, -g + k, -h + l},
+				 * {e - m, f - n, g - o, h - p}}
+				 */
+				float d[16];
+				/* BT.d */
+				/* row 1 */
+				d[0] = t[0] - t[8];
+				d[1] = t[1] - t[9];
+				d[2] = t[2] - t[10];
+				d[3] = t[3] - t[11];
+				/* row 2 */
+				d[4] = t[4] + t[8];
+				d[5] = t[5] + t[9];
+				d[6] = t[6] + t[10];
+				d[7] = t[7] + t[11];
+				/* row 3 */
+				d[8] = t[8] - t[4];
+				d[9] = t[9] - t[5];
+				d[10] = t[10] - t[6];
+				d[11] = t[11] - t[7];
+				/* row 4 */
+				d[12] = t[4] - t[12];
+				d[13] = t[5] - t[13];
+				d[14] = t[6] - t[14];
+				d[15] = t[7] - t[15];
+				/*
+				 * a0, b1, c2, d3
+				 * e4, f5, g6, h7
+				 * i8, j9, k10 l11
+				 * m12 n13 o14 p16
+				 * {{a - c, b + c, -b + c, b - d},
+				 * {e - g, f + g, -f + g, f - h},
+				 * {i - k, j + k, -j + k, j - l},
+				 * {m - o, n + o, -n + o, n - p}}
+				 */
+				/* BT.d.B */
+				/* row 1 */
+				g[0] = d[0] - d[2];
+				g[1] = d[1] + d[2];
+				g[2] = d[2] - d[1];
+				g[3] = d[1] - d[3];
+				/* row 2 */
+				g[4] = d[4] - d[6];
+				g[5] = d[5] + d[6];
+				g[6] = d[6] - d[5];
+				g[7] = d[5] - d[7];
+				/* row 3 */
+				g[8] = d[8] - d[10];
+				g[9] = d[9] + d[10];
+				g[10] = d[10] - d[9];
+				g[11] = d[9] - d[11];
+				/* row 4 */
+				g[12] = d[12] - d[14];
+				g[13] = d[13] + d[14];
+				g[14] = d[14] - d[13];
+				g[15] = d[13] - d[15];
+				// move to the next channel
+				g += 16;
+			}
+			float* wpz = gwtg;
+			for (k = 0; k < w->info.dim[3]; k++)
 			{
 				float q[16] = {0};
-				float* wpz = gwtgp;
+				g = ws + i * 16 * a->info.dim[0];
 				for (c = 0; c < a->info.dim[0]; c++)
 				{
-					float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0] + c;
-					float t[16];
-					for (i = 0; i < 4; i++)
-					{
-						t[i * 4] = apz[0];
-						t[i * 4 + 1] = apz[ainc[0]];
-						t[i * 4 + 2] = apz[2 * ainc[0]];
-						t[i * 4 + 3] = apz[3 * ainc[0]];
-						apz += ainc[1] * ainc[0];
-					}
-					/*
-					 * a0, b1, c2, d3
-					 * e4, f5, g6, h7
-					 * i8, j9, k10 l11
-					 * m12 n13 o14 p16
-					 * {{a - i, b - j, c - k, d - l},
-					 * {e + i, f + j, g + k, h + l},
-					 * {-e + i, -f + j, -g + k, -h + l},
-					 * {e - m, f - n, g - o, h - p}}
-					 */
-					float d[16];
-					/* BT.d */
-					/* row 1 */
-					d[0] = t[0] - t[8];
-					d[1] = t[1] - t[9];
-					d[2] = t[2] - t[10];
-					d[3] = t[3] - t[11];
-					/* row 2 */
-					d[4] = t[4] + t[8];
-					d[5] = t[5] + t[9];
-					d[6] = t[6] + t[10];
-					d[7] = t[7] + t[11];
-					/* row 3 */
-					d[8] = t[8] - t[4];
-					d[9] = t[9] - t[5];
-					d[10] = t[10] - t[6];
-					d[11] = t[11] - t[7];
-					/* row 4 */
-					d[12] = t[4] - t[12];
-					d[13] = t[5] - t[13];
-					d[14] = t[6] - t[14];
-					d[15] = t[7] - t[15];
-					/*
-					 * a0, b1, c2, d3
-					 * e4, f5, g6, h7
-					 * i8, j9, k10 l11
-					 * m12 n13 o14 p16
-					 * {{a - c, b + c, -b + c, b - d},
-					 * {e - g, f + g, -f + g, f - h},
-					 * {i - k, j + k, -j + k, j - l},
-					 * {m - o, n + o, -n + o, n - p}}
-					 */
-					/* BT.d.B */
-					/* row 1 */
-					q[0] += (d[0] - d[2]) * wpz[0];
-					q[1] += (d[1] + d[2]) * wpz[1];
-					q[2] += (d[2] - d[1]) * wpz[2];
-					q[3] += (d[1] - d[3]) * wpz[3];
-					/* row 2 */
-					q[4] += (d[4] - d[6]) * wpz[4];
-					q[5] += (d[5] + d[6]) * wpz[5];
-					q[6] += (d[6] - d[5]) * wpz[6];
-					q[7] += (d[5] - d[7]) * wpz[7];
-					/* row 3 */
-					q[8] += (d[8] - d[10]) * wpz[8];
-					q[9] += (d[9] + d[10]) * wpz[9];
-					q[10] += (d[10] - d[9]) * wpz[10];
-					q[11] += (d[9] - d[11]) * wpz[11];
-					/* row 4 */
-					q[12] += (d[12] - d[14]) * wpz[12];
-					q[13] += (d[13] + d[14]) * wpz[13];
-					q[14] += (d[14] - d[13]) * wpz[14];
-					q[15] += (d[13] - d[15]) * wpz[15];
-					// move to the next channel
+					q[0] += g[0] * wpz[0];
+					q[1] += g[1] * wpz[1];
+					q[2] += g[2] * wpz[2];
+					q[3] += g[3] * wpz[3];
+					q[4] += g[4] * wpz[4];
+					q[5] += g[5] * wpz[5];
+					q[6] += g[6] * wpz[6];
+					q[7] += g[7] * wpz[7];
+					q[8] += g[8] * wpz[8];
+					q[9] += g[9] * wpz[9];
+					q[10] += g[10] * wpz[10];
+					q[11] += g[11] * wpz[11];
+					q[12] += g[12] * wpz[12];
+					q[13] += g[13] * wpz[13];
+					q[14] += g[14] * wpz[14];
+					q[15] += g[15] * wpz[15];
+					g += 16;
 					wpz += 16;
 				}
 				/*
@@ -182,15 +221,14 @@ static int _ccv_nnc_conv_forw_2x2_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 				 * {{a + b + c, b - c - d},
 				 * {e + f + g, f - g - h}}
 				 */
-				bp[x * binc[0]] = d[0] + d[1] + d[2] + biasval;
-				bp[(x + 1) * binc[0]] = d[1] - d[2] - d[3] + biasval;
-				bp[(binc[1] + x) * binc[0]] = d[4] + d[5] + d[6] + biasval;
-				bp[(binc[1] + x + 1) * binc[0]] = d[5] - d[6] - d[7] + biasval;
+				bp[x * binc[0] + k] = d[0] + d[1] + d[2] + biasval[k];
+				bp[(x + 1) * binc[0] + k] = d[1] - d[2] - d[3] + biasval[k];
+				bp[(binc[1] + x) * binc[0] + k] = d[4] + d[5] + d[6] + biasval[k];
+				bp[(binc[1] + x + 1) * binc[0] + k] = d[5] - d[6] - d[7] + biasval[k];
 			}
-			bp += binc[1] * binc[0] * 2;
-			ap += ainc[1] * ainc[0] * (ccv_max((y + 2) - hint.border.begin[2], 0) - ccv_max(y - hint.border.begin[2], 0));
 		}
 	} parallel_endfor
+	ccfree(ws);
 	ccfree(gwtg);
 	return CCV_NNC_EXEC_SUCCESS;
 }
