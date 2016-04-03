@@ -36,9 +36,9 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg(const float* w, const int c, f
 		g[4] = -(w[c + i] + w[4 * c + i] + w[7 * c + i]) / 6;
 		g[5] = -(w[2 * c + i] + w[5 * c + i] + w[8 * c + i]) / 6;
 		/* row 3 */
-		g[6] = -(w[i] - w[3 * c + i] + w[6 * c + i]) / 6;
-		g[7] = -(w[c + i] - w[4 * c + i] + w[7 * c + i]) / 6;
-		g[8] = -(w[2 * c + i] - w[5 * c + i] + w[8 * c + i]) / 6;
+		g[6] = (-w[i] + w[3 * c + i] - w[6 * c + i]) / 6;
+		g[7] = (-w[c + i] + w[4 * c + i] - w[7 * c + i]) / 6;
+		g[8] = (-w[2 * c + i] + w[5 * c + i] - w[8 * c + i]) / 6;
 		/* row 4 */
 		g[9] = (w[i] + 2 * w[3 * c + i] + 4 * w[6 * c + i]) / 24;
 		g[10] = (w[c + i] + 2 * w[4 * c + i] + 4 * w[7 * c + i]) / 24;
@@ -68,42 +68,42 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg(const float* w, const int c, f
 		/* row 1 */
 		gwtg[0] = g[0] / 4;
 		gwtg[1] = -(g[0] + g[1] + g[2]) / 6;
-		gwtg[2] = -(g[0] - g[1] + g[2]) / 6;
+		gwtg[2] = (-g[0] + g[1] - g[2]) / 6;
 		gwtg[3] = (g[0] + 2 * g[1] + 4 * g[2]) / 24;
 		gwtg[4] = (g[0] - 2 * g[1] + 4 * g[2]) / 24;
 		gwtg[5] = g[2];
 		/* row 2 */
 		gwtg[6] = g[3] / 4;
 		gwtg[7] = -(g[3] + g[4] + g[5]) / 6;
-		gwtg[8] = -(g[3] - g[4] + g[5]) / 6;
+		gwtg[8] = (-g[3] + g[4] - g[5]) / 6;
 		gwtg[9] = (g[3] + 2 * g[4] + 4 * g[5]) / 24;
 		gwtg[10] = (g[3] - 2 * g[4] + 4 * g[5]) / 24;
 		gwtg[11] = g[5];
 		/* row 3 */
 		gwtg[12] = g[6] / 4;
 		gwtg[13] = -(g[6] + g[7] + g[8]) / 6;
-		gwtg[14] = -(g[6] - g[7] + g[8]) / 6;
+		gwtg[14] = (-g[6] + g[7] - g[8]) / 6;
 		gwtg[15] = (g[6] + 2 * g[7] + 4 * g[8]) / 24;
 		gwtg[16] = (g[6] - 2 * g[7] + 4 * g[8]) / 24;
 		gwtg[17] = g[8];
 		/* row 4 */
 		gwtg[18] = g[9] / 4;
 		gwtg[19] = -(g[9] + g[10] + g[11]) / 6;
-		gwtg[20] = -(g[9] - g[10] + g[11]) / 6;
+		gwtg[20] = (-g[9] + g[10] - g[11]) / 6;
 		gwtg[21] = (g[9] + 2 * g[10] + 4 * g[11]) / 24;
 		gwtg[22] = (g[9] - 2 * g[10] + 4 * g[11]) / 24;
 		gwtg[23] = g[11];
 		/* row 5 */
 		gwtg[24] = g[12] / 4;
 		gwtg[25] = -(g[12] + g[13] + g[14]) / 6;
-		gwtg[26] = -(g[12] - g[13] + g[14]) / 6;
+		gwtg[26] = (-g[12] + g[13] - g[14]) / 6;
 		gwtg[27] = (g[12] + 2 * g[13] + 4 * g[14]) / 24;
 		gwtg[28] = (g[12] - 2 * g[13] + 4 * g[14]) / 24;
 		gwtg[29] = g[14];
 		/* row 6 */
 		gwtg[30] = g[15] / 4;
 		gwtg[31] = -(g[15] + g[16] + g[17]) / 6;
-		gwtg[32] = -(g[15] - g[16] + g[17]) / 6;
+		gwtg[32] = (-g[15] + g[16] - g[17]) / 6;
 		gwtg[33] = (g[15] + 2 * g[16] + 4 * g[17]) / 24;
 		gwtg[34] = (g[15] - 2 * g[16] + 4 * g[17]) / 24;
 		gwtg[35] = g[17];
@@ -120,7 +120,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	// Convert w to a 6x6 matrix, by computing G.w.T(G) // T for transpose.
-	float* const gwtg = ccmalloc(sizeof(float) * 36 * w->info.dim[0] * w->info.dim[3]);
+	float* const gwtg = (float*)ccmalloc(sizeof(float) * 36 * w->info.dim[0] * w->info.dim[3]);
 	parallel_for(k, w->info.dim[3]) {
 		_ccv_nnc_winograd_4x4_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg + k * 36 * w->info.dim[0]);
 	} parallel_endfor
@@ -267,8 +267,8 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 				g[6] = 4 * d[6] - 5 * d[8] + d[10];
 				g[7] = -4 * (d[7] + d[8]) + d[9] + d[10];
 				g[8] = 4 * (d[7] - d[8]) - d[9] + d[10];
-				g[9] = 8 * (d[9] - d[7]) - d[8] + d[10];
-				g[10] = 8 * (d[7] - d[9]) - d[8] + d[10];
+				g[9] = 2 * (d[9] - d[7]) - d[8] + d[10];
+				g[10] = 2 * (d[7] - d[9]) - d[8] + d[10];
 				g[11] = 4 * d[7] - 5 * d[9] + d[11];
 				/* row 3 */
 				g[12] = 4 * d[12] - 5 * d[14] + d[16];
