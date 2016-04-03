@@ -9,7 +9,7 @@
 TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 58, 58), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(128, 128, 3, 3), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
@@ -19,7 +19,7 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 	int i;
 	for (i = 0; i < 128 * 3 * 3 * 128; i++)
 		w->data.f32[i] = (float)i / 512;
-	for (i = 0; i < 58 * 58 * 128; i++)
+	for (i = 0; i < 56 * 56 * 128; i++)
 		a->data.f32[i] = (float)i / 1024;
 	for (i = 0; i < 128; i++)
 		bias->data.f32[i] = i;

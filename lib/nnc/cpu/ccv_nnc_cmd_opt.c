@@ -10,6 +10,12 @@
 #include <dispatch/dispatch.h>
 #endif
 
+#define set_n_m_dim(i, x, wd, ad) \
+	do { \
+		n[x] = ccv_max(i * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - (i * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
+		m[x] = wd[x + 1] - n[x] - (i * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], i * hint.stride.dim[x + 1] + wd[x + 1])); \
+	} while (0)
+
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg(const float* w, const int c, float* gwtg)
 {
 	int i;
@@ -115,8 +121,8 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	assert(hint.border.begin[1] == 0);
-	assert(hint.border.begin[2] == 0);
+	assert(hint.border.begin[1] <= 1);
+	assert(hint.border.begin[2] <= 1);
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	const int jump_dim[CCV_NNC_MAX_DIM] = {
@@ -140,26 +146,35 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	} parallel_endfor
 	// kernel weight for one dim.
 	const float* const biasval = bias->data.f32;
+	const int tile_dim[CCV_NNC_MAX_DIM_ALLOC] = {
+		w->info.dim[0], 6, 6, w->info.dim[3]
+	};
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 	parallel_for(i, jump_dim[1]) {
 		int x, k, c;
-		float* ap = a->data.f32 + i * 4 * ainc[1] * ainc[0];
+		int n[CCV_NNC_MAX_DIM];
+		int m[CCV_NNC_MAX_DIM];
+		set_n_m_dim(i * 4, 1, tile_dim, a->info.dim);
+		float* ap = a->data.f32 + ccv_max(i * 4 - hint.border.begin[2], 0) * ainc[1] * ainc[0];
 		float* bp = b->data.f32 + i * 4 * binc[1] * binc[0];
 		for (x = 0; x < b->info.dim[1] - 3; x += 4)
 		{
+			set_n_m_dim(x, 0, tile_dim, a->info.dim);
 #if FOR_IS_PARALLEL
 			float* g = btdb + i * 36 * a->info.dim[0];
 #else
 			float* g = btdb;
 #endif
+			// zero g such that we can have zero-padding.
 			memset(g, 0, sizeof(float) * 36 * a->info.dim[0]);
 			int dx, dy;
-			float* apz = ap + x * ainc[0];
-			for (dy = 0; dy < 6; dy++)
+			float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
+			float* gz = g + n[1] * 6 + n[0];
+			for (dy = 0; dy < m[1]; dy++)
 			{
-				for (dx = 0; dx < 6; dx++)
+				for (dx = 0; dx < m[0]; dx++)
 					for (c = 0; c < a->info.dim[0]; c++)
-						g[c * 36 + dy * 6 + dx] = apz[dx * ainc[0] + c];
+						gz[c * 36 + dy * 6 + dx] = apz[dx * ainc[0] + c];
 				apz += ainc[1] * ainc[0];
 			}
 			for (c = 0; c < a->info.dim[0]; c++)

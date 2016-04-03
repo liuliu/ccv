@@ -18,7 +18,7 @@ static unsigned int get_current_time(void)
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE - 2, SIZE - 2), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE - 2, SIZE - 2), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(DIM, DIM, 3, 3), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 	int i;
 	for (i = 0; i < DIM * 3 * 3 * DIM; i++)
 		w->data.f32[i] = (float)i / 512;
-	for (i = 0; i < SIZE * SIZE * DIM; i++)
+	for (i = 0; i < (SIZE - 2) * (SIZE - 2) * DIM; i++)
 		a->data.f32[i] = (float)i / 1024;
 	for (i = 0; i < DIM; i++)
 		bias->data.f32[i] = i;
