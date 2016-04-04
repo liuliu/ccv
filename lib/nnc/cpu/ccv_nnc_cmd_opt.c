@@ -16,7 +16,7 @@
 		m[x] = wd[x + 1] - n[x] - (i * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], i * hint.stride.dim[x + 1] + wd[x + 1])); \
 	} while (0)
 
-inline static void _ccv_nnc_winograd_4x4_3x3_gwtg(const float* w, const int c, float* gwtg)
+inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* w, const int c, float* gwtg)
 {
 	int i;
 	for (i = 0; i < c; i++)
@@ -117,7 +117,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg(const float* w, const int c, f
 	}
 }
 
-static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -142,13 +142,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	float* const gwtg = workmem;
 	float* const btdb = workmem + 36 * w->info.dim[0] * w->info.dim[3];
 	parallel_for(k, w->info.dim[3]) {
-		_ccv_nnc_winograd_4x4_3x3_gwtg(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg + k * 36 * w->info.dim[0]);
+		_ccv_nnc_winograd_4x4_3x3_gwtg_ref(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg + k * 36 * w->info.dim[0]);
 	} parallel_endfor
 	// kernel weight for one dim.
 	const float* const biasval = bias->data.f32;
-	const int tile_dim[CCV_NNC_MAX_DIM_ALLOC] = {
+	// Workaround issues of dispatch_apply (cannot reference to on-stack array)
+	const int tile_dim_s[CCV_NNC_MAX_DIM_ALLOC] = {
 		w->info.dim[0], 6, 6, w->info.dim[3]
 	};
+	const int* const tile_dim = tile_dim_s;
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 	parallel_for(i, jump_dim[1]) {
 		int x, k, c;
@@ -422,12 +424,12 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 }
 
 /*
-static int _ccv_nnc_conv_forw_2x2_3x3_winograd_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 	return CCV_NNC_EXEC_INVALID;
 }
 
-static int _ccv_nnc_conv_forw_2x2_3x3_winograd_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 	return CCV_NNC_EXEC_INVALID;
 }
@@ -436,12 +438,57 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 {
 	return CCV_NNC_EXEC_INVALID;
 }
+*/
 
+#ifdef HAVE_SSE2
 static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	parallel_for(k, w->info.dim[3]) {
+		int c;
+		float* ap = a->data.f32;
+		float* bp = b->data.f32 + k;
+		// kernel weight for one dim.
+		float* wp = w->data.f32 + k * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+		float biasval = bias->data.f32[k];
+		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
+		int i[CCV_NNC_MAX_DIM];
+		int n[CCV_NNC_MAX_DIM];
+		int m[CCV_NNC_MAX_DIM];
+		int j[CCV_NNC_MAX_DIM];
+		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		{
+			set_n_m_dim(i[1], 1, w->info.dim, a->info.dim);
+			float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
+			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+			{
+				set_n_m_dim(i[0], 0, w->info.dim, a->info.dim);
+				float p = biasval;
+				float* wpz = wpu + n[0] * w->info.dim[0];
+				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				{
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+						for (c = 0; c < a->info.dim[0]; c++)
+							p += wpz[j[0] * w->info.dim[0] + c] * apz[j[0] * ainc[0] + c];
+					wpz += w->info.dim[1] * w->info.dim[0];
+					apz += ainc[1] * ainc[0];
+				}
+				bp[i[0] * binc[0]] = p;
+			}
+			bp += binc[1] * binc[0];
+			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		}
+	} parallel_endfor
 	return CCV_NNC_EXEC_INVALID;
 }
-*/
+#endif
+
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+{
+	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
+}
 
 static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
@@ -471,11 +518,15 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(w->info.dim[i] == cmd.info.convolutional.count);
 			break;
 		}
-	if (w->info.dim[1] != 3 || w->info.dim[2] != 3)
-		return CCV_NNC_EXEC_INVALID;
-	if (hint.stride.dim[1] > 1 || hint.stride.dim[2] > 1)
-		return CCV_NNC_EXEC_INVALID;
-	return _ccv_nnc_conv_forw_4x4_3x3_winograd(a, w, bias, hint, b);
+	if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd(a, w, bias, hint, b);
+#if defined(HAVE_SSE2)
+	return _ccv_nnc_conv_forw_sse2(a, w, bias, hint, b);
+#elif defined(HAVE_NEON)
+	return CCV_NNC_EXEC_INVALID;
+#else
+	return CCV_NNC_EXEC_INVALID;
+#endif
 }
 
 //@ccv_nnc_init CCV_NNC_BACKEND_CPU_OPT
