@@ -126,7 +126,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	const int jump_dim[CCV_NNC_MAX_DIM] = {
-		b->info.dim[1] / 4, b->info.dim[2] / 4
+		(b->info.dim[1] + 3) / 4, (b->info.dim[2] + 3) / 4
 	};
 	// allocating workspace memory for kernel reshaping and input reshaping.
 #if FOR_IS_PARALLEL
@@ -154,12 +154,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 		int x, k, c;
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
+		int z[CCV_NNC_MAX_DIM];
 		set_n_m_dim(i * 4, 1, tile_dim, a->info.dim);
+		z[1] = ccv_min((i + 1) * 4, b->info.dim[2]) - i * 4;
 		float* ap = a->data.f32 + ccv_max(i * 4 - hint.border.begin[2], 0) * ainc[1] * ainc[0];
 		float* bp = b->data.f32 + i * 4 * binc[1] * binc[0];
-		for (x = 0; x < b->info.dim[1] - 3; x += 4)
+		for (x = 0; x < b->info.dim[1]; x += 4)
 		{
 			set_n_m_dim(x, 0, tile_dim, a->info.dim);
+			z[0] = ccv_min(x + 4, b->info.dim[1]) - x;
 #if FOR_IS_PARALLEL
 			float* g = btdb + i * 36 * a->info.dim[0];
 #else
@@ -170,8 +173,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 			int dx, dy;
 			float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
 			float* gz = g + n[1] * 6 + n[0];
+			#pragma unroll 6
 			for (dy = 0; dy < m[1]; dy++)
 			{
+				#pragma unroll 6
 				for (dx = 0; dx < m[0]; dx++)
 					for (c = 0; c < a->info.dim[0]; c++)
 						gz[c * 36 + dy * 6 + dx] = apz[dx * ainc[0] + c];
@@ -394,26 +399,21 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 				 * {c12 + c13 + c14 + c15 + c16, c13 - c14 + 2 c15 - 2 c16, c13 + c14 + 4 (c15 + c16), c13 - c14 + 8 c15 - 8 c16 + c17},
 				 * {d18 + d19 + d20 + d21 + d22, d19 - d20 + 2 d21 - 2 d22, d19 + d20 + 4 (d21 + d22), d19 - d20 + 8 d21 - 8 d22 + d23}}
 				 */
-				/* row 1 */
-				bp[x * binc[0] + k] = d[0] + d[1] + d[2] + d[3] + d[4] + biasval[k];
-				bp[(x + 1) * binc[0] + k] = d[1] - d[2] + 2 * (d[3] - d[4]) + biasval[k];
-				bp[(x + 2) * binc[0] + k] = d[1] + d[2] + 4 * (d[3] + d[4]) + biasval[k];
-				bp[(x + 3) * binc[0] + k] = d[1] - d[2] + 8 * (d[3] - d[4]) + d[5] + biasval[k];
-				/* row 2 */
-				bp[(binc[1] + x) * binc[0] + k] = d[6] + d[7] + d[8] + d[9] + d[10] + biasval[k];
-				bp[(binc[1] + x + 1) * binc[0] + k] = d[7] - d[8] + 2 * (d[9] - d[10]) + biasval[k];
-				bp[(binc[1] + x + 2) * binc[0] + k] = d[7] + d[8] + 4 * (d[9] + d[10]) + biasval[k];
-				bp[(binc[1] + x + 3) * binc[0] + k] = d[7] - d[8] + 8 * (d[9] - d[10]) + d[11] + biasval[k];
-				/* row 3 */
-				bp[(2 * binc[1] + x) * binc[0] + k] = d[12] + d[13] + d[14] + d[15] + d[16] + biasval[k];
-				bp[(2 * binc[1] + x + 1) * binc[0] + k] = d[13] - d[14] + 2 * (d[15] - d[16]) + biasval[k];
-				bp[(2 * binc[1] + x + 2) * binc[0] + k] = d[13] + d[14] + 4 * (d[15] + d[16]) + biasval[k];
-				bp[(2 * binc[1] + x + 3) * binc[0] + k] = d[13] - d[14] + 8 * (d[15] - d[16]) + d[17] + biasval[k];
-				/* row 4 */
-				bp[(3 * binc[1] + x) * binc[0] + k] = d[18] + d[19] + d[20] + d[21] + d[22] + biasval[k];
-				bp[(3 * binc[1] + x + 1) * binc[0] + k] = d[19] - d[20] + 2 * (d[21] - d[22]) + biasval[k];
-				bp[(3 * binc[1] + x + 2) * binc[0] + k] = d[19] + d[20] + 4 * (d[21] + d[22]) + biasval[k];
-				bp[(3 * binc[1] + x + 3) * binc[0] + k] = d[19] - d[20] + 8 * (d[21] - d[22]) + d[23] + biasval[k];
+				float* bpz = bp + x * binc[0] + k;
+				#pragma unroll 4
+				for (dy = 0; dy < z[1]; dy++)
+				{
+					float q[] = {
+						d[dy * 6 + 0] + d[dy * 6 + 1] + d[dy * 6 + 2] + d[dy * 6 + 3] + d[dy * 6 + 4] + biasval[k],
+						d[dy * 6 + 1] - d[dy * 6 + 2] + 2 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + biasval[k],
+						d[dy * 6 + 1] + d[dy * 6 + 2] + 4 * (d[dy * 6 + 3] + d[dy * 6 + 4]) + biasval[k],
+						d[dy * 6 + 1] - d[dy * 6 + 2] + 8 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + d[dy * 6 + 5] + biasval[k],
+					};
+					#pragma unroll 4
+					for (dx = 0; dx < z[0]; dx++)
+						bpz[dx * binc[0]] = q[dx];
+					bpz += binc[1] * binc[0];
+				}
 			}
 		}
 	} parallel_endfor
