@@ -1,6 +1,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <3rdparty/dsfmt/dSFMT.h>
 #include <sys/time.h>
 #include <ctype.h>
 
@@ -13,7 +14,7 @@ static unsigned int get_current_time(void)
 
 #define DIM (512)
 
-#define SIZE (58)
+#define SIZE (56)
 
 int main(int argc, char** argv)
 {
@@ -25,13 +26,15 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, 3, 3, DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM), 0);
 	// configure the inlets.
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
 	int i;
 	for (i = 0; i < DIM * 3 * 3 * DIM; i++)
-		w->data.f32[i] = (float)i / 512;
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (3 * 3 * DIM);
 	for (i = 0; i < SIZE * SIZE * DIM; i++)
-		a->data.f32[i] = (float)i / 1024;
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < DIM; i++)
-		bias->data.f32[i] = i;
+		bias->data.f32[i] = (float)i / DIM;
 	unsigned int elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	elapsed_time = get_current_time() - elapsed_time;

@@ -30,7 +30,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 			break;
 		size *= params.dim[i];
 	}
-	tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t) + size);
+	ccmemalign((void **)&tensor, 16, sizeof(ccv_nnc_tensor_t) + size);
 	tensor->sig = 0;
 	tensor->refcount = 1;
 	tensor->info = params;

@@ -1,7 +1,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
-#include <inl/ccv_convnet_inl.h>
+#include <inc/ccv_convnet_internal.h>
 
 static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_tensor_t* input, ccv_nnc_tensor_t* output, ccv_nnc_graph_exec_t* source, ccv_nnc_graph_exec_t* dest, ccv_array_t* tensors)
 {
