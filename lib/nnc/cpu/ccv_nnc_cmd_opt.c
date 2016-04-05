@@ -446,11 +446,6 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 {
 	return CCV_NNC_EXEC_INVALID;
 }
-
-static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
-{
-	return CCV_NNC_EXEC_INVALID;
-}
 */
 
 #ifdef HAVE_SSE2
@@ -603,6 +598,107 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 }
 #endif
 
+#ifdef HAVE_NEON
+inline static void _ccv_nnc_x4w_neon(const float* const w, const int* const dim, float* x4w)
+{
+	int jump_dim = dim[3] / 4;
+	parallel_for(k, jump_dim) {
+		int i, j;
+		float* x4wz = x4w + k * dim[2] * dim[1] * dim[0] * 4;
+		const float* wz[] = {
+			w + (k * 4) * dim[2] * dim[1] * dim[0],
+			w + (k * 4 + 1) * dim[2] * dim[1] * dim[0],
+			w + (k * 4 + 2) * dim[2] * dim[1] * dim[0],
+			w + (k * 4 + 3) * dim[2] * dim[1] * dim[0],
+		};
+		for (i = 0; i < dim[2] * dim[1]; i++)
+		{
+			for (j = 0; j < dim[0]; j++)
+			{
+				x4wz[j * 4] = wz[0][j];
+				x4wz[j * 4 + 1] = wz[1][j];
+				x4wz[j * 4 + 2] = wz[2][j];
+				x4wz[j * 4 + 3] = wz[3][j];
+			}
+			x4wz += dim[0] * 4;
+			wz[0] += dim[0];
+			wz[1] += dim[0];
+			wz[2] += dim[0];
+			wz[3] += dim[0];
+		}
+	} parallel_endfor
+}
+
+static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+{
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	assert(w->info.dim[3] % 4 == 0);
+	float* x4w = 0;
+	ccmemalign((void **)&x4w, 16, sizeof(float) * w->info.dim[3] * w->info.dim[2] * w->info.dim[1] * w->info.dim[0]);
+	if (!x4w)
+		return CCV_NNC_EXEC_OOM;
+	_ccv_nnc_x4w_neon(w->data.f32, w->info.dim, x4w);
+	int jump_dim = w->info.dim[3] / 4;
+	parallel_for(k, jump_dim) {
+		int c;
+		const float* ap = a->data.f32;
+		float* bp = b->data.f32 + k * 4;
+		/* kernel weight for one dim. */
+		const float* const x4wp = x4w + k * 4 * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+		const float biasval[4] __attribute__ ((__aligned__(16))) = {
+			bias->data.f32[k * 4],
+			bias->data.f32[k * 4 + 1],
+			bias->data.f32[k * 4 + 2],
+			bias->data.f32[k * 4 + 3]
+		};
+		/* This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables. */
+		int i[CCV_NNC_MAX_DIM];
+		int n[CCV_NNC_MAX_DIM];
+		int m[CCV_NNC_MAX_DIM];
+		int j[CCV_NNC_MAX_DIM];
+		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		{
+			set_n_m_dim(i[1], 1, w->info.dim, a->info.dim);
+			const float* wpu = x4wp + n[1] * w->info.dim[1] * w->info.dim[0];
+			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+			{
+				set_n_m_dim(i[0], 0, w->info.dim, a->info.dim);
+				float32x4_t v40 = vld1q_f32(biasval);
+				float32x4_t v41 = vmovq_n_f32(0);
+				const float* wpz = wpu + n[0] * w->info.dim[0];
+				const float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
+				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				{
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
+					{
+						for (c = 0; c < a->info.dim[0] - 1; c += 2)
+						{
+							float32x2_t apz4 = vld1_f32(apz + j[0] * ainc[0] + c);
+							const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4;
+							float32x4_t apz40 = vdupq_lane_f32(apz4, 0);
+							float32x4_t apz41 = vdupq_lane_f32(apz4, 1);
+							float32x4_t w40 = vld1q_f32(wpzu);
+							float32x4_t w41 = vld1q_f32(wpzu + 4);
+							v40 = vmlaq_f32(v40, w40, apz40);
+							v41 = vmlaq_f32(v41, w41, apz41);
+						}
+					}
+					wpz += w->info.dim[1] * w->info.dim[0] * 4;
+					apz += ainc[1] * ainc[0];
+				}
+				float32x4_t v4 = vaddq_f32(v40, v41);
+				vst1q_f32(bp + i[0] * binc[0], v4);
+			}
+			bp += binc[1] * binc[0];
+			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		}
+	} parallel_endfor
+	ccfree(x4w);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+#endif
+
 static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
@@ -644,7 +740,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				return _ccv_nnc_conv_forw_sse2(a, w, bias, hint, b);
 #elif defined(HAVE_NEON)
 			if (w->info.dim[3] % 4 == 0)
-				return CCV_NNC_EXEC_INVALID;
+				return _ccv_nnc_conv_forw_neon(a, w, bias, hint, b);
 #endif
 			return CCV_NNC_EXEC_INVALID;
 		case CCV_NNC_CMD_OPT_CONV_ALGO_GEMM:
@@ -668,7 +764,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		return _ccv_nnc_conv_forw_sse2(a, w, bias, hint, b);
 #elif defined(HAVE_NEON)
 	if (w->info.dim[3] % 4 == 0)
-		return CCV_NNC_EXEC_INVALID;
+		return _ccv_nnc_conv_forw_neon(a, w, bias, hint, b);
 #endif
 	return CCV_NNC_EXEC_INVALID;
 }
