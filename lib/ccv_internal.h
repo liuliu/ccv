@@ -18,9 +18,9 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 #define parallel_for(x, n) { int x; _Pragma("omp parallel for schedule(dynamic)") for (x = 0; x < n; x++) {
 #define parallel_endfor } }
 #define FOR_IS_PARALLEL (1)
-#elif defined(USE_DISPATCH)
-#define parallel_for(x, n) dispatch_apply(n, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t x) {
-#define parallel_endfor });
+#elif defined(USE_DISPATCH) // Convert from size_t to int such that we avoid unsigned, and keep it consistent with the rest of parallel_for
+#define parallel_for(x, n) dispatch_apply(n, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t _s_##x) { int x = (int)_s_##x; {
+#define parallel_endfor }});
 #define FOR_IS_PARALLEL (1)
 #else
 #define parallel_for(x, n) { int x; for (x = 0; x < n; x++) {
