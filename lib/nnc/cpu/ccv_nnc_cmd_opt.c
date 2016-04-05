@@ -25,8 +25,8 @@ enum {
 
 #define set_n_m_dim(i, x, wd, ad) \
 	do { \
-		n[x] = ccv_max(i * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - (i * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
-		m[x] = wd[x + 1] - n[x] - (i * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], i * hint.stride.dim[x + 1] + wd[x + 1])); \
+		n[x] = ccv_max((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - ((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
+		m[x] = wd[x + 1] - n[x] - ((i) * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], (i) * hint.stride.dim[x + 1] + wd[x + 1])); \
 	} while (0)
 
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* w, const int c, float* gwtg)
@@ -166,14 +166,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 	const int* const tile_dim = tile_dim_s;
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 	parallel_for(i, jump_dim[1]) {
+		const int y = i * 4; // i is unsigned.
 		int x, k, c;
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int z[CCV_NNC_MAX_DIM];
-		set_n_m_dim(i * 4, 1, tile_dim, a->info.dim);
-		z[1] = ccv_min((i + 1) * 4, b->info.dim[2]) - i * 4;
-		float* ap = a->data.f32 + ccv_max(i * 4 - hint.border.begin[2], 0) * ainc[1] * ainc[0];
-		float* bp = b->data.f32 + i * 4 * binc[1] * binc[0];
+		set_n_m_dim(y, 1, tile_dim, a->info.dim);
+		z[1] = ccv_min(y + 4, b->info.dim[2]) - y;
+		float* ap = a->data.f32 + ccv_max(y - hint.border.begin[2], 0) * ainc[1] * ainc[0];
+		float* bp = b->data.f32 + y * binc[1] * binc[0];
 		for (x = 0; x < b->info.dim[1]; x += 4)
 		{
 			set_n_m_dim(x, 0, tile_dim, a->info.dim);
