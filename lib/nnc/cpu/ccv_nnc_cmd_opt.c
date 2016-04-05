@@ -15,6 +15,14 @@
 #include <dispatch/dispatch.h>
 #endif
 
+enum {
+	CCV_NNC_CMD_OPT_CONV_ALGO_DC, // Direct convolution
+	CCV_NNC_CMD_OPT_CONV_ALGO_GEMM, // GEMM (for 1x1)
+	CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD, // Winograd algorithm
+	CCV_NNC_CMD_OPT_CONV_ALGO_FFT, // Fast Fourier transform
+	CCV_NNC_CMD_OPT_CONV_ALGO_COUNT
+};
+
 #define set_n_m_dim(i, x, wd, ad) \
 	do { \
 		n[x] = ccv_max(i * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - (i * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
@@ -628,6 +636,31 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			assert(w->info.dim[i] == cmd.info.convolutional.count);
 			break;
 		}
+	switch (cmd.algorithm)
+	{
+		case CCV_NNC_CMD_OPT_CONV_ALGO_DC:
+#if defined(HAVE_SSE2)
+			if (w->info.dim[3] % 4 == 0)
+				return _ccv_nnc_conv_forw_sse2(a, w, bias, hint, b);
+#elif defined(HAVE_NEON)
+			if (w->info.dim[3] % 4 == 0)
+				return CCV_NNC_EXEC_INVALID;
+#endif
+			return CCV_NNC_EXEC_INVALID;
+		case CCV_NNC_CMD_OPT_CONV_ALGO_GEMM:
+			if (w->info.dim[1] == 1 && w->info.dim[1] == 1 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
+				return CCV_NNC_EXEC_INVALID; // Placeholder, for gemm call.
+			return CCV_NNC_EXEC_INVALID;
+		case CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD:
+			if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
+				return _ccv_nnc_conv_forw_4x4_3x3_winograd(a, w, bias, hint, b);
+			return CCV_NNC_EXEC_INVALID;
+		case CCV_NNC_CMD_OPT_CONV_ALGO_FFT:
+			return CCV_NNC_EXEC_INVALID; // Placeholder, for fft.
+		case -1:
+			// Pass-through
+			break;
+	}
 	if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
 		return _ccv_nnc_conv_forw_4x4_3x3_winograd(a, w, bias, hint, b);
 #if defined(HAVE_SSE2)
@@ -646,6 +679,7 @@ void ccv_nnc_cpu_opt_init(ccv_nnc_cmd_api_t cmd_api[])
 	/*TODO: I don't think any of these methods handles batch input, and I better to handle CHWN as well. */
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].algorithms = CCV_NNC_CMD_OPT_CONV_ALGO_COUNT;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;
 	/* Full connect layer */
 	/* Max pool layer */

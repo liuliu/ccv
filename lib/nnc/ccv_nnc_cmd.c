@@ -41,6 +41,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 	assert((compute == CCV_NNC_COMPUTE_CUSTOM && exec) || (compute != CCV_NNC_COMPUTE_CUSTOM && !exec));
 	cmd.compute = compute;
+	cmd.algorithm = -1; // This is default.
 	cmd.exec = exec;
 	return cmd;
 }

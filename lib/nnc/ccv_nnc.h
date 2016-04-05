@@ -77,6 +77,7 @@ typedef struct {
 typedef struct ccv_nnc_cmd_s {
 	int compute;
 	int backend;
+	int algorithm;
 	ccv_nnc_cmd_param_t info;
 	// This has to be the same as the ccv_nnc_cmd_exec_f type.
 	// This is for type CCV_NNC_COMPUTE_CUSTOM
@@ -87,6 +88,7 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
+	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
 } ccv_nnc_cmd_api_t;
 
