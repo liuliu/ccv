@@ -554,7 +554,7 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 					apz += ainc[1] * ainc[0]; \
 				} \
 				__m128 v4 = _mm_add_ps(_mm_add_ps(v40, v41), _mm_add_ps(v42, v43)); \
-				_mm_storeu_ps(bp + i[0] * binc[0], v4); \
+				_mm_stream_ps(bp + i[0] * binc[0], v4); \
 			} \
 			bp += binc[1] * binc[0]; \
 			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0)); \
