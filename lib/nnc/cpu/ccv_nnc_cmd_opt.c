@@ -341,7 +341,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				#pragma unroll 4
 				for (dy = 0; dy < z[1]; dy++)
 				{
-					float q[] = {
+					float r[] = {
 						d[dy * 6 + 0] + d[dy * 6 + 1] + d[dy * 6 + 2] + d[dy * 6 + 3] + d[dy * 6 + 4] + biasval[k],
 						d[dy * 6 + 1] - d[dy * 6 + 2] + 2 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + biasval[k],
 						d[dy * 6 + 1] + d[dy * 6 + 2] + 4 * (d[dy * 6 + 3] + d[dy * 6 + 4]) + biasval[k],
@@ -349,7 +349,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 					};
 					#pragma unroll 4
 					for (dx = 0; dx < z[0]; dx++)
-						bpz[dx * binc[0]] = q[dx];
+						bpz[dx * binc[0]] = r[dx];
 					bpz += binc[1] * binc[0];
 				}
 			}
@@ -435,22 +435,23 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 			for (j = 0; j < 6; j++)
 			{
 				const float* const gz = g + j * 12;
+				float* const gwtgzu = gwtgz + j * 24 * dim[0];
 				__m128 g0 = _mm_load_ps(gz);
 				__m128 g1 = _mm_load_ps(gz + 4);
 				__m128 g2 = _mm_load_ps(gz + 8);
-				_mm_store_ps(gwtgz, _mm_mul_ps(g0, c1_4));
-				_mm_store_ps(gwtgz + 4, _mm_mul_ps(_mm_add_ps(_mm_add_ps(g0, g2), g1), cn1_6));
-				_mm_store_ps(gwtgz + 8, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(g0, g2), g1), cn1_6));
-				_mm_store_ps(gwtgz + 20, g2);
+				_mm_store_ps(gwtgzu, _mm_mul_ps(g0, c1_4));
+				_mm_store_ps(gwtgzu + 4 * dim[0], _mm_mul_ps(_mm_add_ps(_mm_add_ps(g0, g2), g1), cn1_6));
+				_mm_store_ps(gwtgzu + 8 * dim[0], _mm_mul_ps(_mm_sub_ps(_mm_add_ps(g0, g2), g1), cn1_6));
+				_mm_store_ps(gwtgzu + 20 * dim[0], g2);
 				/* g[1] * 2 */
 				g1 = _mm_add_ps(g1, g1);
 				/* g[2] * 4 */
 				g2 = _mm_add_ps(g2, g2);
 				g2 = _mm_add_ps(g2, g2);
-				_mm_store_ps(gwtgz + 12, _mm_mul_ps(_mm_add_ps(_mm_add_ps(g0, g2), g1), c1_24));
-				_mm_store_ps(gwtgz + 16, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(g0, g2), g1), c1_24));
-				gwtgz += 6 * 4;
+				_mm_store_ps(gwtgzu + 12 * dim[0], _mm_mul_ps(_mm_add_ps(_mm_add_ps(g0, g2), g1), c1_24));
+				_mm_store_ps(gwtgzu + 16 * dim[0], _mm_mul_ps(_mm_sub_ps(_mm_add_ps(g0, g2), g1), c1_24));
 			}
+			gwtgz += 4;
 		}
 	} parallel_endfor
 }
@@ -514,14 +515,17 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 			memset(g, 0, sizeof(float) * 36 * a->info.dim[0]);
 			int dx, dy;
 			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
-			float* gz = g + n[1] * 6 + n[0];
+			float* gz = g + (n[1] * 6 + n[0]) * a->info.dim[0];
 			#pragma unroll 6
 			for (dy = 0; dy < m[1]; dy++)
 			{
 				#pragma unroll 6
 				for (dx = 0; dx < m[0]; dx++)
+				{
+					float* const gzu = gz + (dy * 6 + dx) * a->info.dim[0];
 					for (c = 0; c < a->info.dim[0]; c++)
-						gz[c * 36 + dy * 6 + dx] = apz[dx * ainc[0] + c];
+						gzu[c] = apz[dx * ainc[0] + c];
+				}
 				apz += ainc[1] * ainc[0];
 			}
 			for (c = 0; c < a->info.dim[0]; c += 4)
@@ -532,12 +536,12 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 				for (j = 0; j < 6; j++)
 				{
 					/* row 1 */
-					const float* const gz = g + j * 4;
+					const float* const gz = g + j * a->info.dim[0];
 					float* dz = d + j * 4;
 					__m128 g0 = _mm_load_ps(gz);
-					__m128 g12 = _mm_load_ps(gz + 48);
-					__m128 g18 = _mm_load_ps(gz + 72);
-					__m128 g24 = _mm_load_ps(gz + 96);
+					__m128 g12 = _mm_load_ps(gz + 12 * a->info.dim[0]);
+					__m128 g18 = _mm_load_ps(gz + 18 * a->info.dim[0]);
+					__m128 g24 = _mm_load_ps(gz + 24 * a->info.dim[0]);
 					g0 = _mm_add_ps(g0, g0);
 					g0 = _mm_add_ps(g0, g0);
 					__m128 g12x2 = _mm_add_ps(g12, g12);
@@ -545,7 +549,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					g12x2 = _mm_add_ps(g12x2, g12);
 					_mm_store_ps(dz, _mm_sub_ps(_mm_add_ps(g0, g24), g12x2));
 					/* row 2 */
-					__m128 g6 = _mm_load_ps(gz + 24);
+					__m128 g6 = _mm_load_ps(gz + 6 * a->info.dim[0]);
 					__m128 g6x12 = _mm_add_ps(g6, g12);
 					g6x12 = _mm_add_ps(g6x12, g6x12);
 					g6x12 = _mm_add_ps(g6x12, g6x12);
@@ -554,7 +558,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					g6x12 = _mm_sub_ps(g6, g12);
 					g6x12 = _mm_add_ps(g6x12, g6x12);
 					g6x12 = _mm_add_ps(g6x12, g6x12);
-					_mm_store_ps(d + 48, _mm_add_ps(_mm_sub_ps(g24, g18), g6x12));
+					_mm_store_ps(dz + 48, _mm_add_ps(_mm_sub_ps(g24, g18), g6x12));
 					/* row 4 */
 					__m128 g18x6 = _mm_sub_ps(g18, g6);
 					g18x6 = _mm_add_ps(g18x6, g18x6);
@@ -562,7 +566,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					/* row 5 */
 					_mm_store_ps(dz + 96, _mm_sub_ps(_mm_sub_ps(g24, g12), g18x6));
 					/* row 6 */
-					__m128 g30 = _mm_load_ps(gz + 120);
+					__m128 g30 = _mm_load_ps(gz + 30 * a->info.dim[0]);
 					__m128 g18x2 = _mm_add_ps(g18, g18);
 					g18x2 = _mm_add_ps(g18x2, g18x2);
 					g18x2 = _mm_add_ps(g18, g18x2);
@@ -574,7 +578,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 				#pragma unroll 6
 				for (j = 0; j < 6; j++)
 				{
-					float* gz = g + j * 24;
+					float* gz = g + j * 6 * a->info.dim[0];
 					const float* const dz = d + j * 24;
 					__m128 d0 = _mm_load_ps(dz);
 					__m128 d1 = _mm_load_ps(dz + 4);
@@ -591,29 +595,29 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					__m128 d1x2 = _mm_add_ps(d1, d2);
 					d1x2 = _mm_add_ps(d1x2, d1x2);
 					d1x2 = _mm_add_ps(d1x2, d1x2);
-					_mm_store_ps(gz + 4, _mm_sub_ps(_mm_add_ps(d3, d4), d1x2));
+					_mm_store_ps(gz + a->info.dim[0], _mm_sub_ps(_mm_add_ps(d3, d4), d1x2));
 					d1x2 = _mm_sub_ps(d1, d2);
 					d1x2 = _mm_add_ps(d1x2, d1x2);
 					d1x2 = _mm_add_ps(d1x2, d1x2);
-					_mm_store_ps(gz + 8, _mm_add_ps(_mm_sub_ps(d4, d3), d1x2));
+					_mm_store_ps(gz + 2 * a->info.dim[0], _mm_add_ps(_mm_sub_ps(d4, d3), d1x2));
 					__m128 d3x1 = _mm_sub_ps(d3, d1);
 					d3x1 = _mm_add_ps(d3x1, d3x1);
-					_mm_store_ps(gz + 12, _mm_add_ps(_mm_sub_ps(d4, d2), d3x1));
-					_mm_store_ps(gz + 16, _mm_sub_ps(_mm_sub_ps(d4, d2), d3x1));
+					_mm_store_ps(gz + 3 * a->info.dim[0], _mm_add_ps(_mm_sub_ps(d4, d2), d3x1));
+					_mm_store_ps(gz + 4 * a->info.dim[0], _mm_sub_ps(_mm_sub_ps(d4, d2), d3x1));
 					d1 = _mm_add_ps(d1, d1);
 					d1 = _mm_add_ps(d1, d1);
 					__m128 d3x5 = _mm_add_ps(d3, d3);
 					d3x5 = _mm_add_ps(d3x5, d3x5);
 					d3x5 = _mm_add_ps(d3, d3x5);
-					_mm_store_ps(gz + 20, _mm_sub_ps(_mm_add_ps(d1, d5), d3x5));
+					_mm_store_ps(gz + 5 * a->info.dim[0], _mm_sub_ps(_mm_add_ps(d1, d5), d3x5));
 				}
 				// move to the next channel
-				g += 36 * 4;
+				g += 4;
 			}
 			const float* wpz = gwtg;
 			for (k = 0; k < w->info.dim[3]; k += 4)
 			{
-				float q[36 * 4] __attribute__ ((__aligned__(16))) = {0};
+				float q[36 * 4] __attribute__ ((__aligned__(16)));
 #if FOR_IS_PARALLEL
 				g = btdb + i * 36 * a->info.dim[0];
 #else
@@ -627,12 +631,11 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					__m128 v43 = _mm_setzero_ps();
 					for (c = 0; c < a->info.dim[0]; c += 4)
 					{
-						__m128 g4 = _mm_load_ps(g + j * 4);
-						const float* const wpzu = wpz + j * 16;
-						__m128 w40 = _mm_load_ps(wpzu);
-						__m128 w41 = _mm_load_ps(wpzu + 4);
-						__m128 w42 = _mm_load_ps(wpzu + 8);
-						__m128 w43 = _mm_load_ps(wpzu + 12);
+						__m128 g4 = _mm_load_ps(g);
+						__m128 w40 = _mm_load_ps(wpz);
+						__m128 w41 = _mm_load_ps(wpz + 4);
+						__m128 w42 = _mm_load_ps(wpz + 8);
+						__m128 w43 = _mm_load_ps(wpz + 12);
 						__m128 g40 = _mm_shuffle_ps(g4, g4, 0x00);
 						__m128 g41 = _mm_shuffle_ps(g4, g4, 0x55);
 						__m128 g42 = _mm_shuffle_ps(g4, g4, 0xAA);
@@ -644,60 +647,138 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 						g += 4;
 						wpz += 16;
 					}
-					__m128 v401 = _mm_add_ps(v40, v41);
-					__m128 v423 = _mm_add_ps(v42, v43);
-					_mm_store_ps(q + j * 4, _mm_add_ps(v401, v423));
+					v40 = _mm_add_ps(v40, v41);
+					v42 = _mm_add_ps(v42, v43);
+					_mm_store_ps(q + j * 4, _mm_add_ps(v40, v42));
 				}
 				float d[24 * 4] __attribute__ ((__aligned__(16)));
-				/* row 1 */
-				d[0] = q[0] + q[6] + q[12] + q[18] + q[24];
-				d[1] = q[1] + q[7] + q[13] + q[19] + q[25];
-				d[2] = q[2] + q[8] + q[14] + q[20] + q[26];
-				d[3] = q[3] + q[9] + q[15] + q[21] + q[27];
-				d[4] = q[4] + q[10] + q[16] + q[22] + q[28];
-				d[5] = q[5] + q[11] + q[17] + q[23] + q[29];
-				/* row 2 */
-				d[6] = q[6] - q[12] + 2 * (q[18] - q[24]);
-				d[7] = q[7] - q[13] + 2 * (q[19] - q[25]);
-				d[8] = q[8] - q[14] + 2 * (q[20] - q[26]);
-				d[9] = q[9] - q[15] + 2 * (q[21] - q[27]);
-				d[10] = q[10] - q[16] + 2 * (q[22] - q[28]);
-				d[11] = q[11] - q[17] + 2 * (q[23] - q[29]);
-				/* row 3 */
-				d[12] = q[6] + q[12] + 4 * (q[18] + q[24]);
-				d[13] = q[7] + q[13] + 4 * (q[19] + q[25]);
-				d[14] = q[8] + q[14] + 4 * (q[20] + q[26]);
-				d[15] = q[9] + q[15] + 4 * (q[21] + q[27]);
-				d[16] = q[10] + q[16] + 4 * (q[22] + q[28]);
-				d[17] = q[11] + q[17] + 4 * (q[23] + q[29]);
-				/* row 4 */
-				d[18] = q[6] - q[12] + 8 * (q[18] - q[24]) + q[30];
-				d[19] = q[7] - q[13] + 8 * (q[19] - q[25]) + q[31];
-				d[20] = q[8] - q[14] + 8 * (q[20] - q[26]) + q[32];
-				d[21] = q[9] - q[15] + 8 * (q[21] - q[27]) + q[33];
-				d[22] = q[10] - q[16] + 8 * (q[22] - q[28]) + q[34];
-				d[23] = q[11] - q[17] + 8 * (q[23] - q[29]) + q[35];
-				/*
-				 * {{a0 + a1 + a2 + a3 + a4, a1 - a2 + 2 a3 - 2 a4, a1 + a2 + 4 (a3 + a4), a1 - a2 + 8 a3 - 8 a4 + a5},
-				 * {b10 + b6 + b7 + b8 + b9, -2 b10 + b7 - b8 + 2 b9, 4 b10 + b7 + b8 + 4 b9, -8 b10 + b11 + b7 - b8 + 8 b9},
-				 * {c12 + c13 + c14 + c15 + c16, c13 - c14 + 2 c15 - 2 c16, c13 + c14 + 4 (c15 + c16), c13 - c14 + 8 c15 - 8 c16 + c17},
-				 * {d18 + d19 + d20 + d21 + d22, d19 - d20 + 2 d21 - 2 d22, d19 + d20 + 4 (d21 + d22), d19 - d20 + 8 d21 - 8 d22 + d23}}
-				 */
-				float* bpz = bp + x * binc[0] + k;
-				#pragma unroll 4
-				for (dy = 0; dy < z[1]; dy++)
+				#pragma unroll 6
+				for (j = 0; j < 6; j++)
 				{
-					float q[] = {
-						d[dy * 6 + 0] + d[dy * 6 + 1] + d[dy * 6 + 2] + d[dy * 6 + 3] + d[dy * 6 + 4] + biasval[k],
-						d[dy * 6 + 1] - d[dy * 6 + 2] + 2 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + biasval[k],
-						d[dy * 6 + 1] + d[dy * 6 + 2] + 4 * (d[dy * 6 + 3] + d[dy * 6 + 4]) + biasval[k],
-						d[dy * 6 + 1] - d[dy * 6 + 2] + 8 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + d[dy * 6 + 5] + biasval[k],
-					};
-					#pragma unroll 4
-					for (dx = 0; dx < z[0]; dx++)
-						bpz[dx * binc[0]] = q[dx];
-					bpz += binc[1] * binc[0];
+					const float* const qz = q + j * 4;
+					float* const dz = d + j * 4;
+					__m128 q0 = _mm_load_ps(qz);
+					__m128 q6 = _mm_load_ps(qz + 24);
+					__m128 q12 = _mm_load_ps(qz + 48);
+					__m128 q18 = _mm_load_ps(qz + 72);
+					__m128 q24 = _mm_load_ps(qz + 96);
+					__m128 qs6x12 = _mm_add_ps(q6, q12);
+					__m128 qs18x24 = _mm_add_ps(q18, q24);
+					__m128 qss = _mm_add_ps(qs6x12, q0);
+					/* row 1 */
+					_mm_store_ps(dz, _mm_add_ps(qss, qs18x24));
+					__m128 qn6x12 = _mm_sub_ps(q6, q12);
+					__m128 qn18x24 = _mm_sub_ps(q18, q24);
+					qn18x24 = _mm_add_ps(qn18x24, qn18x24);
+					/* row 2 */
+					_mm_store_ps(dz + 24, _mm_add_ps(qn6x12, qn18x24));
+					qs18x24 = _mm_add_ps(qs18x24, qs18x24);
+					qs18x24 = _mm_add_ps(qs18x24, qs18x24);
+					/* row 3 */
+					_mm_store_ps(dz + 48, _mm_add_ps(qs6x12, qs18x24));
+					qn18x24 = _mm_add_ps(qn18x24, qn18x24);
+					qn18x24 = _mm_add_ps(qn18x24, qn18x24);
+					__m128 q30 = _mm_load_ps(qz + 120);
+					/* row 4 */
+					_mm_store_ps(dz + 72, _mm_add_ps(_mm_add_ps(qn6x12, q30), qn18x24));
 				}
+				float* bpz = bp + x * binc[0] + k;
+				__m128 bias4 = _mm_loadu_ps(biasval + k);
+				switch (z[0]) {
+					case 1:
+						#pragma unroll 4
+						for (dy = 0; dy < z[1]; dy++)
+						{
+							const float* const dz = d + dy * 24;
+							__m128 d0 = _mm_load_ps(dz);
+							__m128 d1 = _mm_load_ps(dz + 4);
+							__m128 d2 = _mm_load_ps(dz + 8);
+							__m128 d3 = _mm_load_ps(dz + 12);
+							__m128 d4 = _mm_load_ps(dz + 16);
+							__m128 ds1x2 = _mm_add_ps(d1, d2);
+							__m128 ds3x4 = _mm_add_ps(d3, d4);
+							ds1x2 = _mm_add_ps(ds1x2, bias4);
+							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
+							bpz += binc[1] * binc[0];
+						}
+						break;
+					case 2:
+						#pragma unroll 4
+						for (dy = 0; dy < z[1]; dy++)
+						{
+							const float* const dz = d + dy * 24;
+							__m128 d0 = _mm_load_ps(dz);
+							__m128 d1 = _mm_load_ps(dz + 4);
+							__m128 d2 = _mm_load_ps(dz + 8);
+							__m128 d3 = _mm_load_ps(dz + 12);
+							__m128 d4 = _mm_load_ps(dz + 16);
+							__m128 ds1x2 = _mm_add_ps(d1, d2);
+							__m128 ds3x4 = _mm_add_ps(d3, d4);
+							ds1x2 = _mm_add_ps(ds1x2, bias4);
+							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
+							__m128 dn1x2 = _mm_sub_ps(d1, d2);
+							__m128 dn3x4 = _mm_sub_ps(d3, d4);
+							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
+							dn1x2 = _mm_add_ps(dn1x2, bias4);
+							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
+							bpz += binc[1] * binc[0];
+						}
+						break;
+					case 3:
+						#pragma unroll 4
+						for (dy = 0; dy < z[1]; dy++)
+						{
+							const float* const dz = d + dy * 24;
+							__m128 d0 = _mm_load_ps(dz);
+							__m128 d1 = _mm_load_ps(dz + 4);
+							__m128 d2 = _mm_load_ps(dz + 8);
+							__m128 d3 = _mm_load_ps(dz + 12);
+							__m128 d4 = _mm_load_ps(dz + 16);
+							__m128 ds1x2 = _mm_add_ps(d1, d2);
+							__m128 ds3x4 = _mm_add_ps(d3, d4);
+							ds1x2 = _mm_add_ps(ds1x2, bias4);
+							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
+							__m128 dn1x2 = _mm_sub_ps(d1, d2);
+							__m128 dn3x4 = _mm_sub_ps(d3, d4);
+							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
+							dn1x2 = _mm_add_ps(dn1x2, bias4);
+							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
+							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
+							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
+							_mm_stream_ps(bpz + 2 * binc[0], _mm_add_ps(ds1x2, ds3x4));
+							bpz += binc[1] * binc[0];
+						}
+						break;
+					case 4:
+						#pragma unroll 4
+						for (dy = 0; dy < z[1]; dy++)
+						{
+							const float* const dz = d + dy * 24;
+							__m128 d0 = _mm_load_ps(dz);
+							__m128 d1 = _mm_load_ps(dz + 4);
+							__m128 d2 = _mm_load_ps(dz + 8);
+							__m128 d3 = _mm_load_ps(dz + 12);
+							__m128 d4 = _mm_load_ps(dz + 16);
+							__m128 ds1x2 = _mm_add_ps(d1, d2);
+							__m128 ds3x4 = _mm_add_ps(d3, d4);
+							ds1x2 = _mm_add_ps(ds1x2, bias4);
+							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
+							__m128 dn1x2 = _mm_sub_ps(d1, d2);
+							__m128 dn3x4 = _mm_sub_ps(d3, d4);
+							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
+							dn1x2 = _mm_add_ps(dn1x2, bias4);
+							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
+							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
+							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
+							_mm_stream_ps(bpz + 2 * binc[0], _mm_add_ps(ds1x2, ds3x4));
+							__m128 d5 = _mm_load_ps(dz + 20);
+							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
+							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
+							_mm_stream_ps(bpz + 3 * binc[0], _mm_add_ps(_mm_add_ps(dn1x2, d5), dn3x4));
+							bpz += binc[1] * binc[0];
+						}
+						break;
+				};
 			}
 		}
 	} parallel_endfor
@@ -982,8 +1063,8 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
 {
 #if defined(HAVE_SSE2)
-	//if (w->info.dim[0] % 4 == 0 && w->info.dim[3] % 4 == 0)
-	//	return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b);
+	if (w->info.dim[0] % 4 == 0 && w->info.dim[3] % 4 == 0)
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b);
 #elif defined(HAVE_NEON)
 #endif
 	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
