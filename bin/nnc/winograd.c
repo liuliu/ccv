@@ -22,6 +22,8 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(DIM, DIM, 3, 3), 0);
+	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
+	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, 3, 3, DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM), 0);
