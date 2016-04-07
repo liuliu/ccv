@@ -12,7 +12,7 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-#define INPUT_DIM (7)
+#define INPUT_DIM (3)
 #define OUTPUT_DIM (128)
 
 #define INPUT_SIZE (224)

@@ -1024,8 +1024,8 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 							float32x2x2_t apz4 = vld2_f32(apz + j[0] * ainc[0] + c); \
 							const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4; \
 							float32x4_t apz40 = vdupq_lane_f32(apz4.val[0], 0); \
-							float32x4_t apz41 = vdupq_lane_f32(apz4.val[0], 1); \
-							float32x4_t apz42 = vdupq_lane_f32(apz4.val[1], 0); \
+							float32x4_t apz41 = vdupq_lane_f32(apz4.val[1], 0); \
+							float32x4_t apz42 = vdupq_lane_f32(apz4.val[0], 1); \
 							float32x4_t apz43 = vdupq_lane_f32(apz4.val[1], 1); \
 							float32x4_t w40 = vld1q_f32(wpzu); \
 							float32x4_t w41 = vld1q_f32(wpzu + 4); \
