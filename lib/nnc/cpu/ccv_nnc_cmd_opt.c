@@ -26,7 +26,7 @@ enum {
 #define set_n_m_dim(i, x, wd, ad) \
 	do { \
 		n[x] = ccv_max((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - ((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
-		m[x] = wd[x + 1] - n[x] - ((i) * hint.stride.dim[x + 1] + wd[x + 1] - ccv_min(ad[x + 1] + hint.border.end[x + 1], (i) * hint.stride.dim[x + 1] + wd[x + 1])); \
+		m[x] = wd[x + 1] - n[x] - ((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1] - ccv_min(ad[x + 1], (i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1])); \
 	} while (0)
 
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* w, const int c, float* gwtg)

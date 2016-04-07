@@ -12,7 +12,7 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-#define INPUT_DIM (3)
+#define INPUT_DIM (7)
 #define OUTPUT_DIM (128)
 
 #define INPUT_SIZE (224)
@@ -27,15 +27,16 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
 	// configure the inlets.
 	dsfmt_t dsfmt;
-	dsfmt_init_gen_rand(&dsfmt, 5);
+	dsfmt_init_gen_rand(&dsfmt, 0);
 	int i;
 	for (i = 0; i < INPUT_DIM * KERNEL_SIZE * KERNEL_SIZE * OUTPUT_DIM; i++)
 		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (INPUT_DIM * KERNEL_SIZE * KERNEL_SIZE);
-	for (i = 0; i < KERNEL_SIZE * KERNEL_SIZE * INPUT_DIM; i++)
+	for (i = 0; i < INPUT_SIZE * INPUT_SIZE * INPUT_DIM; i++)
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < OUTPUT_DIM; i++)
 		bias->data.f32[i] = (float)i / OUTPUT_DIM;
