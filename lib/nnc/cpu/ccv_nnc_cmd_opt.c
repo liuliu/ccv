@@ -856,7 +856,7 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++) \
 		{ \
 			set_n_m_dim(i[1], 1, w->info.dim, a->info.dim); \
-			const float* wpu = x4wp + n[1] * w->info.dim[1] * w->info.dim[0]; \
+			const float* wpu = x4wp + n[1] * w->info.dim[1] * w->info.dim[0] * 4; \
 			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++) \
 			{ \
 				set_n_m_dim(i[0], 0, w->info.dim, a->info.dim); \
@@ -864,7 +864,7 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 				__m128 v41 = _mm_setzero_ps(); \
 				__m128 v42 = _mm_setzero_ps(); \
 				__m128 v43 = _mm_setzero_ps(); \
-				const float* wpz = wpu + n[0] * w->info.dim[0]; \
+				const float* wpz = wpu + n[0] * w->info.dim[0] * 4; \
 				const float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0]; \
 				for (j[1] = 0; j[1] < m[1]; j[1]++) \
 				{ \
@@ -1005,7 +1005,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++) \
 		{ \
 			set_n_m_dim(i[1], 1, w->info.dim, a->info.dim); \
-			const float* wpu = x4wp + n[1] * w->info.dim[1] * w->info.dim[0]; \
+			const float* wpu = x4wp + n[1] * w->info.dim[1] * w->info.dim[0] * 4; \
 			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++) \
 			{ \
 				set_n_m_dim(i[0], 0, w->info.dim, a->info.dim); \
@@ -1013,7 +1013,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 				float32x4_t v41 = vmovq_n_f32(0); \
 				float32x4_t v42 = vmovq_n_f32(0); \
 				float32x4_t v43 = vmovq_n_f32(0); \
-				const float* wpz = wpu + n[0] * w->info.dim[0]; \
+				const float* wpz = wpu + n[0] * w->info.dim[0] * 4; \
 				const float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0]; \
 				for (j[1] = 0; j[1] < m[1]; j[1]++) \
 				{ \
