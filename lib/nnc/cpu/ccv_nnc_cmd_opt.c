@@ -789,12 +789,8 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 }
 #endif
 
-/*
-static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
-{
-	return CCV_NNC_EXEC_INVALID;
-}
-*/
+#ifndef HAVE_NEON
+#endif
 
 #ifdef HAVE_SSE2
 inline static void _ccv_nnc_x4w_sse2(const float* const w, const int* const dim, float* x4w)
@@ -1015,41 +1011,77 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 				set_n_m_dim(i[0], 0, w->info.dim, a->info.dim); \
 				float32x4_t v40 = vld1q_f32(biasval); \
 				float32x4_t v41 = vmovq_n_f32(0); \
+				float32x4_t v42 = vmovq_n_f32(0); \
+				float32x4_t v43 = vmovq_n_f32(0); \
 				const float* wpz = wpu + n[0] * w->info.dim[0]; \
 				const float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0]; \
 				for (j[1] = 0; j[1] < m[1]; j[1]++) \
 				{ \
 					for (j[0] = 0; j[0] < m[0]; j[0]++) \
 					{ \
-						for (c = 0; c < a->info.dim[0] - 1; c += 2) \
+						for (c = 0; c < a->info.dim[0] - 3; c += 4) \
 						{ \
-							float32x2_t apz4 = vld1_f32(apz + j[0] * ainc[0] + c); \
+							float32x2x2_t apz4 = vld2_f32(apz + j[0] * ainc[0] + c); \
 							const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4; \
-							float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
-							float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
+							float32x4_t apz40 = vdupq_lane_f32(apz4.val[0], 0); \
+							float32x4_t apz41 = vdupq_lane_f32(apz4.val[0], 1); \
+							float32x4_t apz42 = vdupq_lane_f32(apz4.val[1], 0); \
+							float32x4_t apz43 = vdupq_lane_f32(apz4.val[1], 1); \
 							float32x4_t w40 = vld1q_f32(wpzu); \
 							float32x4_t w41 = vld1q_f32(wpzu + 4); \
+							float32x4_t w42 = vld1q_f32(wpzu + 8); \
+							float32x4_t w43 = vld1q_f32(wpzu + 12); \
 							v40 = vmlaq_f32(v40, w40, apz40); \
 							v41 = vmlaq_f32(v41, w41, apz41); \
+							v42 = vmlaq_f32(v42, w42, apz42); \
+							v43 = vmlaq_f32(v43, w43, apz43); \
 						} \
 						tail_block /* insert executions for tail partition */ \
 					} \
 					wpz += w->info.dim[1] * w->info.dim[0] * 4; \
 					apz += ainc[1] * ainc[0]; \
 				} \
-				float32x4_t v4 = vaddq_f32(v40, v41); \
-				vst1q_f32(bp + i[0] * binc[0], v4); \
+				v40 = vaddq_f32(v40, v41); \
+				v42 = vaddq_f32(v42, v43); \
+				vst1q_f32(bp + i[0] * binc[0], vaddq_f32(v40, v42)); \
 			} \
 			bp += binc[1] * binc[0]; \
 			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0)); \
 		} \
 	} parallel_endfor
-	if (w->info.dim[0] % 2 == 0)
+	if (w->info.dim[0] % 4 == 0)
 	{
 		main_for();
+	} else if (w->info.dim[0] % 4 == 3) { // unroll the last for-loops
+#define tail_block \
+		float32x2_t apz4 = vld1_f32(apz + j[0] * ainc[0] + c); \
+		const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4; \
+		float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
+		float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
+		float32x4_t apz42 = vld1q_dup_f32(apz + j[0] * ainc[0] + c + 2); \
+		float32x4_t w40 = vld1q_f32(wpzu); \
+		float32x4_t w41 = vld1q_f32(wpzu + 4); \
+		float32x4_t w42 = vld1q_f32(wpzu + 8); \
+		v40 = vmlaq_f32(v40, w40, apz40); \
+		v41 = vmlaq_f32(v41, w41, apz41); \
+		v42 = vmlaq_f32(v42, w42, apz42);
+		main_for(tail_block);
+#undef tail_block
+	} else if (w->info.dim[0] % 4 == 2) { // unroll the last for-loops
+#define tail_block \
+		float32x2_t apz4 = vld1_f32(apz + j[0] * ainc[0] + c); \
+		const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4; \
+		float32x4_t apz40 = vdupq_lane_f32(apz4, 0); \
+		float32x4_t apz41 = vdupq_lane_f32(apz4, 1); \
+		float32x4_t w40 = vld1q_f32(wpzu); \
+		float32x4_t w41 = vld1q_f32(wpzu + 4); \
+		v40 = vmlaq_f32(v40, w40, apz40); \
+		v41 = vmlaq_f32(v41, w41, apz41);
+		main_for(tail_block);
+#undef tail_block
 	} else { // unroll the last for-loops
 #define tail_block \
-		float32x4_t apz4 = vmovq_n_f32(apz[j[0] * ainc[0] + c]); \
+		float32x4_t apz4 = vld1q_dup_f32(apz + j[0] * ainc[0] + c); \
 		const float* const wpzu = wpz + (j[0] * w->info.dim[0] + c) * 4; \
 		float32x4_t w4 = vld1q_f32(wpzu); \
 		v40 = vmlaq_f32(v40, w4, apz4);
