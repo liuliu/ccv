@@ -12,43 +12,46 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-#define DIM (512)
 
-#define SIZE (56)
+#define INPUT_DIM (3)
+#define OUTPUT_DIM (512)
+
+#define INPUT_SIZE (56)
+#define OUTPUT_SIZE (56)
 
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(DIM, DIM, 3, 3), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, INPUT_SIZE, INPUT_SIZE), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(OUTPUT_DIM, INPUT_DIM, 3, 3), 0);
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, 3, 3, DIM), 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, 3, 3, OUTPUT_DIM), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
 	// configure the inlets.
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	int i;
-	for (i = 0; i < DIM * 3 * 3 * DIM; i++)
-		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (3 * 3 * DIM);
-	for (i = 0; i < SIZE * SIZE * DIM; i++)
+	for (i = 0; i < INPUT_DIM * 3 * 3 * OUTPUT_DIM; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (3 * 3 * INPUT_DIM);
+	for (i = 0; i < INPUT_SIZE * INPUT_SIZE * INPUT_DIM; i++)
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	for (i = 0; i < DIM; i++)
-		bias->data.f32[i] = (float)i / DIM;
+	for (i = 0; i < OUTPUT_DIM; i++)
+		bias->data.f32[i] = (float)i / OUTPUT_DIM;
 	unsigned int elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for ref impl\n", elapsed_time);
-	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(DIM, SIZE, SIZE), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for winograd\n", elapsed_time);
-	//for (i = 0; i < DIM * SIZE * SIZE; i++)
+	// for (i = 0; i < OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE; i++)
 	//	printf("%f %f\n", b->data.f32[i], c->data.f32[i]);
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
