@@ -13,7 +13,7 @@ static unsigned int get_current_time(void)
 }
 
 
-#define INPUT_DIM (3)
+#define INPUT_DIM (512)
 #define OUTPUT_DIM (512)
 
 #define INPUT_SIZE (56)

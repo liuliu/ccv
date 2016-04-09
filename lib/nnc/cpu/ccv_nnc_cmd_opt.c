@@ -937,67 +937,67 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 					float32x4_t g12x2 = vaddq_f32(g12, g12);
 					g12x2 = vaddq_f32(g12x2, g12x2);
 					g12x2 = vaddq_f32(g12x2, g12);
-					_mm_store_ps(dz, _mm_sub_ps(vaddq_f32(g0, g24), g12x2));
+					vst1q_f32(dz, vsubq_f32(vaddq_f32(g0, g24), g12x2));
 					/* row 2 */
-					float32x4_t g6 = _mm_load_ps(gz + 6 * dimCx4);
+					float32x4_t g6 = vld1q_f32(gz + 6 * dimCx4);
 					float32x4_t g6x12 = vaddq_f32(g6, g12);
 					g6x12 = vaddq_f32(g6x12, g6x12);
 					g6x12 = vaddq_f32(g6x12, g6x12);
-					_mm_store_ps(dz + 24, _mm_sub_ps(vaddq_f32(g18, g24), g6x12));
+					vst1q_f32(dz + 24, vsubq_f32(vaddq_f32(g18, g24), g6x12));
 					/* row 3 */
-					g6x12 = _mm_sub_ps(g6, g12);
+					g6x12 = vsubq_f32(g6, g12);
 					g6x12 = vaddq_f32(g6x12, g6x12);
 					g6x12 = vaddq_f32(g6x12, g6x12);
-					_mm_store_ps(dz + 48, vaddq_f32(_mm_sub_ps(g24, g18), g6x12));
+					vst1q_f32(dz + 48, vaddq_f32(vsubq_f32(g24, g18), g6x12));
 					/* row 4 */
-					float32x4_t g18x6 = _mm_sub_ps(g18, g6);
+					float32x4_t g18x6 = vsubq_f32(g18, g6);
 					g18x6 = vaddq_f32(g18x6, g18x6);
-					_mm_store_ps(dz + 72, vaddq_f32(_mm_sub_ps(g24, g12), g18x6));
+					vst1q_f32(dz + 72, vaddq_f32(vsubq_f32(g24, g12), g18x6));
 					/* row 5 */
-					_mm_store_ps(dz + 96, _mm_sub_ps(_mm_sub_ps(g24, g12), g18x6));
+					vst1q_f32(dz + 96, vsubq_f32(vsubq_f32(g24, g12), g18x6));
 					/* row 6 */
-					float32x4_t g30 = _mm_load_ps(gz + 30 * dimCx4);
+					float32x4_t g30 = vld1q_f32(gz + 30 * dimCx4);
 					float32x4_t g18x2 = vaddq_f32(g18, g18);
 					g18x2 = vaddq_f32(g18x2, g18x2);
 					g18x2 = vaddq_f32(g18, g18x2);
 					g6 = vaddq_f32(g6, g6);
 					g6 = vaddq_f32(g6, g6);
-					_mm_store_ps(dz + 120, _mm_sub_ps(vaddq_f32(g6, g30), g18x2));
+					vst1q_f32(dz + 120, vsubq_f32(vaddq_f32(g6, g30), g18x2));
 				} unroll_endfor
 				/* BT.d.B */
 				unroll_for(j, 6) {
 					float* gz = g + j * 6 * dimCx4;
 					const float* const dz = d + j * 24;
-					float32x4_t d0 = _mm_load_ps(dz);
-					float32x4_t d1 = _mm_load_ps(dz + 4);
-					float32x4_t d2 = _mm_load_ps(dz + 8);
-					float32x4_t d3 = _mm_load_ps(dz + 12);
-					float32x4_t d4 = _mm_load_ps(dz + 16);
-					float32x4_t d5 = _mm_load_ps(dz + 20);
+					float32x4_t d0 = vld1q_f32(dz);
+					float32x4_t d1 = vld1q_f32(dz + 4);
+					float32x4_t d2 = vld1q_f32(dz + 8);
+					float32x4_t d3 = vld1q_f32(dz + 12);
+					float32x4_t d4 = vld1q_f32(dz + 16);
+					float32x4_t d5 = vld1q_f32(dz + 20);
 					d0 = vaddq_f32(d0, d0);
 					d0 = vaddq_f32(d0, d0);
 					float32x4_t d2x5 = vaddq_f32(d2, d2);
 					d2x5 = vaddq_f32(d2x5, d2x5);
 					d2x5 = vaddq_f32(d2, d2x5);
-					_mm_store_ps(gz, _mm_sub_ps(vaddq_f32(d0, d4), d2x5));
+					vst1q_f32(gz, vsubq_f32(vaddq_f32(d0, d4), d2x5));
 					float32x4_t d1x2 = vaddq_f32(d1, d2);
 					d1x2 = vaddq_f32(d1x2, d1x2);
 					d1x2 = vaddq_f32(d1x2, d1x2);
-					_mm_store_ps(gz + dimCx4, _mm_sub_ps(vaddq_f32(d3, d4), d1x2));
-					d1x2 = _mm_sub_ps(d1, d2);
+					vst1q_f32(gz + dimCx4, vsubq_f32(vaddq_f32(d3, d4), d1x2));
+					d1x2 = vsubq_f32(d1, d2);
 					d1x2 = vaddq_f32(d1x2, d1x2);
 					d1x2 = vaddq_f32(d1x2, d1x2);
-					_mm_store_ps(gz + 2 * dimCx4, vaddq_f32(_mm_sub_ps(d4, d3), d1x2));
-					float32x4_t d3x1 = _mm_sub_ps(d3, d1);
+					vst1q_f32(gz + 2 * dimCx4, vaddq_f32(vsubq_f32(d4, d3), d1x2));
+					float32x4_t d3x1 = vsubq_f32(d3, d1);
 					d3x1 = vaddq_f32(d3x1, d3x1);
-					_mm_store_ps(gz + 3 * dimCx4, vaddq_f32(_mm_sub_ps(d4, d2), d3x1));
-					_mm_store_ps(gz + 4 * dimCx4, _mm_sub_ps(_mm_sub_ps(d4, d2), d3x1));
+					vst1q_f32(gz + 3 * dimCx4, vaddq_f32(vsubq_f32(d4, d2), d3x1));
+					vst1q_f32(gz + 4 * dimCx4, vsubq_f32(vsubq_f32(d4, d2), d3x1));
 					d1 = vaddq_f32(d1, d1);
 					d1 = vaddq_f32(d1, d1);
 					float32x4_t d3x5 = vaddq_f32(d3, d3);
 					d3x5 = vaddq_f32(d3x5, d3x5);
 					d3x5 = vaddq_f32(d3, d3x5);
-					_mm_store_ps(gz + 5 * dimCx4, _mm_sub_ps(vaddq_f32(d1, d5), d3x5));
+					vst1q_f32(gz + 5 * dimCx4, vsubq_f32(vaddq_f32(d1, d5), d3x5));
 				} unroll_endfor
 				// move to the next channel
 				g += 4;
@@ -1013,146 +1013,146 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 #endif
 				for (j = 0; j < 36; j++)
 				{
-					float32x4_t v40 = _mm_setzero_ps();
-					float32x4_t v41 = _mm_setzero_ps();
-					float32x4_t v42 = _mm_setzero_ps();
-					float32x4_t v43 = _mm_setzero_ps();
+					float32x4_t v40 = vmovq_n_f32(0);
+					float32x4_t v41 = vmovq_n_f32(0);
+					float32x4_t v42 = vmovq_n_f32(0);
+					float32x4_t v43 = vmovq_n_f32(0);
 					for (c = 0; c < a->info.dim[0]; c += 4)
 					{
-						float32x4_t g4 = _mm_load_ps(g);
-						float32x4_t w40 = _mm_load_ps(wpz);
-						float32x4_t w41 = _mm_load_ps(wpz + 4);
-						float32x4_t w42 = _mm_load_ps(wpz + 8);
-						float32x4_t w43 = _mm_load_ps(wpz + 12);
-						float32x4_t g40 = _mm_shuffle_ps(g4, g4, 0x00);
-						float32x4_t g41 = _mm_shuffle_ps(g4, g4, 0x55);
-						float32x4_t g42 = _mm_shuffle_ps(g4, g4, 0xAA);
-						float32x4_t g43 = _mm_shuffle_ps(g4, g4, 0xFF);
-						v40 = vaddq_f32(_mm_mul_ps(w40, g40), v40);
-						v41 = vaddq_f32(_mm_mul_ps(w41, g41), v41);
-						v42 = vaddq_f32(_mm_mul_ps(w42, g42), v42);
-						v43 = vaddq_f32(_mm_mul_ps(w43, g43), v43);
+						float32x2x2_t g4 = vld2_f32(g);
+						float32x4_t w40 = vld1q_f32(wpz);
+						float32x4_t w41 = vld1q_f32(wpz + 4);
+						float32x4_t w42 = vld1q_f32(wpz + 8);
+						float32x4_t w43 = vld1q_f32(wpz + 12);
+						float32x4_t g40 = vdupq_lane_f32(g4.val[0], 0);
+						float32x4_t g41 = vdupq_lane_f32(g4.val[1], 0);
+						float32x4_t g42 = vdupq_lane_f32(g4.val[0], 1);
+						float32x4_t g43 = vdupq_lane_f32(g4.val[1], 1);
+						v40 = vmlaq_f32(v40, w40, g40);
+						v41 = vmlaq_f32(v41, w41, g41);
+						v42 = vmlaq_f32(v42, w42, g42);
+						v43 = vmlaq_f32(v43, w43, g43);
 						g += 4;
 						wpz += 16;
 					}
 					v40 = vaddq_f32(v40, v41);
 					v42 = vaddq_f32(v42, v43);
-					_mm_store_ps(q + j * 4, vaddq_f32(v40, v42));
+					vst1q_f32(q + j * 4, vaddq_f32(v40, v42));
 				}
 				float d[24 * 4] __attribute__ ((__aligned__(16)));
 				unroll_for(j, 6) {
 					const float* const qz = q + j * 4;
 					float* const dz = d + j * 4;
-					float32x4_t q0 = _mm_load_ps(qz);
-					float32x4_t q6 = _mm_load_ps(qz + 24);
-					float32x4_t q12 = _mm_load_ps(qz + 48);
-					float32x4_t q18 = _mm_load_ps(qz + 72);
-					float32x4_t q24 = _mm_load_ps(qz + 96);
+					float32x4_t q0 = vld1q_f32(qz);
+					float32x4_t q6 = vld1q_f32(qz + 24);
+					float32x4_t q12 = vld1q_f32(qz + 48);
+					float32x4_t q18 = vld1q_f32(qz + 72);
+					float32x4_t q24 = vld1q_f32(qz + 96);
 					float32x4_t qs6x12 = vaddq_f32(q6, q12);
 					float32x4_t qs18x24 = vaddq_f32(q18, q24);
 					float32x4_t qss = vaddq_f32(qs6x12, q0);
 					/* row 1 */
-					_mm_store_ps(dz, vaddq_f32(qss, qs18x24));
-					float32x4_t qn6x12 = _mm_sub_ps(q6, q12);
-					float32x4_t qn18x24 = _mm_sub_ps(q18, q24);
+					vst1q_f32(dz, vaddq_f32(qss, qs18x24));
+					float32x4_t qn6x12 = vsubq_f32(q6, q12);
+					float32x4_t qn18x24 = vsubq_f32(q18, q24);
 					qn18x24 = vaddq_f32(qn18x24, qn18x24);
 					/* row 2 */
-					_mm_store_ps(dz + 24, vaddq_f32(qn6x12, qn18x24));
+					vst1q_f32(dz + 24, vaddq_f32(qn6x12, qn18x24));
 					qs18x24 = vaddq_f32(qs18x24, qs18x24);
 					qs18x24 = vaddq_f32(qs18x24, qs18x24);
 					/* row 3 */
-					_mm_store_ps(dz + 48, vaddq_f32(qs6x12, qs18x24));
+					vst1q_f32(dz + 48, vaddq_f32(qs6x12, qs18x24));
 					qn18x24 = vaddq_f32(qn18x24, qn18x24);
 					qn18x24 = vaddq_f32(qn18x24, qn18x24);
-					float32x4_t q30 = _mm_load_ps(qz + 120);
+					float32x4_t q30 = vld1q_f32(qz + 120);
 					/* row 4 */
-					_mm_store_ps(dz + 72, vaddq_f32(vaddq_f32(qn6x12, q30), qn18x24));
+					vst1q_f32(dz + 72, vaddq_f32(vaddq_f32(qn6x12, q30), qn18x24));
 				} unroll_endfor
 				float* bpz = bp + x * binc[0] + k;
-				float32x4_t bias4 = _mm_loadu_ps(biasval + k);
+				float32x4_t bias4 = vld1q_f32(biasval + k);
 				switch (z[0]) {
 					case 1:
 						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
-							float32x4_t d0 = _mm_load_ps(dz);
-							float32x4_t d1 = _mm_load_ps(dz + 4);
-							float32x4_t d2 = _mm_load_ps(dz + 8);
-							float32x4_t d3 = _mm_load_ps(dz + 12);
-							float32x4_t d4 = _mm_load_ps(dz + 16);
+							float32x4_t d0 = vld1q_f32(dz);
+							float32x4_t d1 = vld1q_f32(dz + 4);
+							float32x4_t d2 = vld1q_f32(dz + 8);
+							float32x4_t d3 = vld1q_f32(dz + 12);
+							float32x4_t d4 = vld1q_f32(dz + 16);
 							float32x4_t ds1x2 = vaddq_f32(d1, d2);
 							float32x4_t ds3x4 = vaddq_f32(d3, d4);
 							ds1x2 = vaddq_f32(ds1x2, bias4);
-							_mm_stream_ps(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
+							vst1q_f32(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
 							bpz += binc[1] * binc[0];
 						} unroll_endfor
 						break;
 					case 2:
 						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
-							float32x4_t d0 = _mm_load_ps(dz);
-							float32x4_t d1 = _mm_load_ps(dz + 4);
-							float32x4_t d2 = _mm_load_ps(dz + 8);
-							float32x4_t d3 = _mm_load_ps(dz + 12);
-							float32x4_t d4 = _mm_load_ps(dz + 16);
+							float32x4_t d0 = vld1q_f32(dz);
+							float32x4_t d1 = vld1q_f32(dz + 4);
+							float32x4_t d2 = vld1q_f32(dz + 8);
+							float32x4_t d3 = vld1q_f32(dz + 12);
+							float32x4_t d4 = vld1q_f32(dz + 16);
 							float32x4_t ds1x2 = vaddq_f32(d1, d2);
 							float32x4_t ds3x4 = vaddq_f32(d3, d4);
 							ds1x2 = vaddq_f32(ds1x2, bias4);
-							_mm_stream_ps(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
-							float32x4_t dn1x2 = _mm_sub_ps(d1, d2);
-							float32x4_t dn3x4 = _mm_sub_ps(d3, d4);
+							vst1q_f32(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
+							float32x4_t dn1x2 = vsubq_f32(d1, d2);
+							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
+							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
 							bpz += binc[1] * binc[0];
 						} unroll_endfor
 						break;
 					case 3:
 						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
-							float32x4_t d0 = _mm_load_ps(dz);
-							float32x4_t d1 = _mm_load_ps(dz + 4);
-							float32x4_t d2 = _mm_load_ps(dz + 8);
-							float32x4_t d3 = _mm_load_ps(dz + 12);
-							float32x4_t d4 = _mm_load_ps(dz + 16);
+							float32x4_t d0 = vld1q_f32(dz);
+							float32x4_t d1 = vld1q_f32(dz + 4);
+							float32x4_t d2 = vld1q_f32(dz + 8);
+							float32x4_t d3 = vld1q_f32(dz + 12);
+							float32x4_t d4 = vld1q_f32(dz + 16);
 							float32x4_t ds1x2 = vaddq_f32(d1, d2);
 							float32x4_t ds3x4 = vaddq_f32(d3, d4);
 							ds1x2 = vaddq_f32(ds1x2, bias4);
-							_mm_stream_ps(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
-							float32x4_t dn1x2 = _mm_sub_ps(d1, d2);
-							float32x4_t dn3x4 = _mm_sub_ps(d3, d4);
+							vst1q_f32(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
+							float32x4_t dn1x2 = vsubq_f32(d1, d2);
+							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
+							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
-							_mm_stream_ps(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
+							vst1q_f32(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
 							bpz += binc[1] * binc[0];
 						} unroll_endfor
 						break;
 					case 4:
 						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
-							float32x4_t d0 = _mm_load_ps(dz);
-							float32x4_t d1 = _mm_load_ps(dz + 4);
-							float32x4_t d2 = _mm_load_ps(dz + 8);
-							float32x4_t d3 = _mm_load_ps(dz + 12);
-							float32x4_t d4 = _mm_load_ps(dz + 16);
+							float32x4_t d0 = vld1q_f32(dz);
+							float32x4_t d1 = vld1q_f32(dz + 4);
+							float32x4_t d2 = vld1q_f32(dz + 8);
+							float32x4_t d3 = vld1q_f32(dz + 12);
+							float32x4_t d4 = vld1q_f32(dz + 16);
 							float32x4_t ds1x2 = vaddq_f32(d1, d2);
 							float32x4_t ds3x4 = vaddq_f32(d3, d4);
 							ds1x2 = vaddq_f32(ds1x2, bias4);
-							_mm_stream_ps(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
-							float32x4_t dn1x2 = _mm_sub_ps(d1, d2);
-							float32x4_t dn3x4 = _mm_sub_ps(d3, d4);
+							vst1q_f32(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
+							float32x4_t dn1x2 = vsubq_f32(d1, d2);
+							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
+							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
-							_mm_stream_ps(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
-							float32x4_t d5 = _mm_load_ps(dz + 20);
+							vst1q_f32(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
+							float32x4_t d5 = vld1q_f32(dz + 20);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
-							_mm_stream_ps(bpz + 3 * binc[0], vaddq_f32(vaddq_f32(dn1x2, d5), dn3x4));
+							vst1q_f32(bpz + 3 * binc[0], vaddq_f32(vaddq_f32(dn1x2, d5), dn3x4));
 							bpz += binc[1] * binc[0];
 						} unroll_endfor
 						break;
@@ -1473,6 +1473,8 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd(const ccv_nnc_tensor_view_t* a, c
 	if (w->info.dim[3] % 4 == 0)
 		return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b);
 #elif defined(HAVE_NEON)
+	if (w->info.dim[3] % 4 == 0)
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(a, w, bias, hint, b);
 #endif
 	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
 }
