@@ -189,18 +189,14 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 			int dx, dy;
 			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
 			float* gz = g + (n[1] * 6 + n[0]) * a->info.dim[0];
-			#pragma unroll 6
-			for (dy = 0; dy < m[1]; dy++)
-			{
-				#pragma unroll 6
-				for (dx = 0; dx < m[0]; dx++)
-				{
+			unroll_for(dy, m[1], 6) {
+				unroll_for(dx, m[0], 6) {
 					float* const gzu = gz + (dy * 6 + dx) * a->info.dim[0];
 					for (c = 0; c < a->info.dim[0]; c++)
 						gzu[c] = apz[dx * ainc[0] + c];
-				}
+				} unroll_endfor
 				apz += ainc[1] * ainc[0];
-			}
+			} unroll_endfor
 			for (c = 0; c < a->info.dim[0]; c++)
 			{
 				/*
@@ -219,9 +215,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				 */
 				float d[36];
 				/* BT.d */
-				#pragma unroll 6
-				for (j = 0; j < 6; j++)
-				{
+				unroll_for(j, 6) {
 					float g0 = g[j * a->info.dim[0]];
 					float g12 = g[(12 + j) * a->info.dim[0]];
 					float g24 = g[(24 + j) * a->info.dim[0]];
@@ -240,7 +234,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 					float g30 = g[(30 + j) * a->info.dim[0]];
 					/* row 6 */
 					d[30 + j] = 4 * g6 - 5 * g18 + g30;
-				}
+				} unroll_endfor
 				/*
 				 * a0, a1, a2, a3, a4, a5,
 				 * b6, b7, b8, b9, b10,l11,
@@ -256,9 +250,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				 * {4 f30 - 5 f32 + f34, -4 f31 - 4 f32 + f33 + f34, 4 f31 - 4 f32 - f33 + f34, -2 f31 - f32 + 2 f33 + f34, 2 f31 - f32 - 2 f33 + f34, 4 f31 - 5 f33 + f35}}
 				 */
 				/* BT.d.B */
-				#pragma unroll 6
-				for (j = 0; j < 6; j++)
-				{
+				unroll_for(j, 6) {
 					/* row 1 - 6 */
 					float* const gz = g + j * 6 * a->info.dim[0];
 					float* const dz = d + j * 6;
@@ -268,7 +260,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 					gz[3 * a->info.dim[0]] = 2 * (dz[3] - dz[1]) - dz[2] + dz[4];
 					gz[4 * a->info.dim[0]] = 2 * (dz[1] - dz[3]) - dz[2] + dz[4];
 					gz[5 * a->info.dim[0]] = 4 * dz[1] - 5 * dz[3] + dz[5];
-				}
+				} unroll_endfor
 				// move to the next channel
 				++g;
 			}
@@ -338,20 +330,18 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				 * {d18 + d19 + d20 + d21 + d22, d19 - d20 + 2 d21 - 2 d22, d19 + d20 + 4 (d21 + d22), d19 - d20 + 8 d21 - 8 d22 + d23}}
 				 */
 				float* bpz = bp + x * binc[0] + k;
-				#pragma unroll 4
-				for (dy = 0; dy < z[1]; dy++)
-				{
+				unroll_for(dy, z[1], 4) {
 					float r[] = {
 						d[dy * 6 + 0] + d[dy * 6 + 1] + d[dy * 6 + 2] + d[dy * 6 + 3] + d[dy * 6 + 4] + biasval[k],
 						d[dy * 6 + 1] - d[dy * 6 + 2] + 2 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + biasval[k],
 						d[dy * 6 + 1] + d[dy * 6 + 2] + 4 * (d[dy * 6 + 3] + d[dy * 6 + 4]) + biasval[k],
 						d[dy * 6 + 1] - d[dy * 6 + 2] + 8 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + d[dy * 6 + 5] + biasval[k],
 					};
-					#pragma unroll 4
-					for (dx = 0; dx < z[0]; dx++)
+					unroll_for(dx, z[0], 4) {
 						bpz[dx * binc[0]] = r[dx];
+					} unroll_endfor
 					bpz += binc[1] * binc[0];
-				}
+				} unroll_endfor
 			}
 		}
 	} parallel_endfor
@@ -376,14 +366,12 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 		for (i = 0; i < dim[0]; i++)
 		{
 			float x9w[9 * 4] __attribute__ ((__aligned__(16)));
-			#pragma unroll 9
-			for (j = 0; j < 9; j++)
-			{
+			unroll_for(j, 9) {
 				x9w[j * 4] = wz[0][j * dim[0] + i];
 				x9w[j * 4 + 1] = wz[1][j * dim[0] + i];
 				x9w[j * 4 + 2] = wz[2][j * dim[0] + i];
 				x9w[j * 4 + 3] = wz[3][j * dim[0] + i];
-			}
+			} unroll_endfor
 			float g[18 * 4] __attribute__ ((__aligned__(16)));
 			__m128 x9w0 = _mm_load_ps(x9w);
 			__m128 x9w1 = _mm_load_ps(x9w + 4);
@@ -432,9 +420,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 			_mm_store_ps(g + 48, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(x9w0, x9w6), x9w3), c1_24));
 			_mm_store_ps(g + 52, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(x9w1, x9w7), x9w4), c1_24));
 			_mm_store_ps(g + 56, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(x9w2, x9w8), x9w5), c1_24));
-			#pragma unroll 6
-			for (j = 0; j < 6; j++)
-			{
+			unroll_for(j, 6) {
 				const float* const gz = g + j * 12;
 				float* const gwtgzu = gwtgz + j * 24 * dimCx4;
 				__m128 g0 = _mm_load_ps(gz);
@@ -451,7 +437,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 				g2 = _mm_add_ps(g2, g2);
 				_mm_store_ps(gwtgzu + 12 * dimCx4, _mm_mul_ps(_mm_add_ps(_mm_add_ps(g0, g2), g1), c1_24));
 				_mm_store_ps(gwtgzu + 16 * dimCx4, _mm_mul_ps(_mm_sub_ps(_mm_add_ps(g0, g2), g1), c1_24));
-			}
+			} unroll_endfor
 			gwtgz += 4;
 		}
 	} parallel_endfor
@@ -518,25 +504,19 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 			int dx, dy;
 			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
 			float* gz = g + (n[1] * 6 + n[0]) * dimCx4;
-			#pragma unroll 6
-			for (dy = 0; dy < m[1]; dy++)
-			{
-				#pragma unroll 6
-				for (dx = 0; dx < m[0]; dx++)
-				{
+			unroll_for(dy, m[1], 6) {
+				unroll_for(dx, m[0], 6) {
 					float* const gzu = gz + (dy * 6 + dx) * dimCx4;
 					for (c = 0; c < a->info.dim[0]; c++)
 						gzu[c] = apz[dx * ainc[0] + c];
-				}
+				} unroll_endfor
 				apz += ainc[1] * ainc[0];
-			}
+			} unroll_endfor
 			for (c = 0; c < a->info.dim[0]; c += 4)
 			{
 				float d[36 * 4]  __attribute__ ((__aligned__(16)));
 				/* BT.d */
-				#pragma unroll 6
-				for (j = 0; j < 6; j++)
-				{
+				unroll_for(j, 6) {
 					/* row 1 */
 					const float* const gz = g + j * dimCx4;
 					float* dz = d + j * 4;
@@ -575,11 +555,9 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					g6 = _mm_add_ps(g6, g6);
 					g6 = _mm_add_ps(g6, g6);
 					_mm_store_ps(dz + 120, _mm_sub_ps(_mm_add_ps(g6, g30), g18x2));
-				}
+				} unroll_endfor
 				/* BT.d.B */
-				#pragma unroll 6
-				for (j = 0; j < 6; j++)
-				{
+				unroll_for(j, 6) {
 					float* gz = g + j * 6 * dimCx4;
 					const float* const dz = d + j * 24;
 					__m128 d0 = _mm_load_ps(dz);
@@ -612,7 +590,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					d3x5 = _mm_add_ps(d3x5, d3x5);
 					d3x5 = _mm_add_ps(d3, d3x5);
 					_mm_store_ps(gz + 5 * dimCx4, _mm_sub_ps(_mm_add_ps(d1, d5), d3x5));
-				}
+				} unroll_endfor
 				// move to the next channel
 				g += 4;
 			}
@@ -654,9 +632,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					_mm_store_ps(q + j * 4, _mm_add_ps(v40, v42));
 				}
 				float d[24 * 4] __attribute__ ((__aligned__(16)));
-				#pragma unroll 6
-				for (j = 0; j < 6; j++)
-				{
+				unroll_for(j, 6) {
 					const float* const qz = q + j * 4;
 					float* const dz = d + j * 4;
 					__m128 q0 = _mm_load_ps(qz);
@@ -683,14 +659,12 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					__m128 q30 = _mm_load_ps(qz + 120);
 					/* row 4 */
 					_mm_store_ps(dz + 72, _mm_add_ps(_mm_add_ps(qn6x12, q30), qn18x24));
-				}
+				} unroll_endfor
 				float* bpz = bp + x * binc[0] + k;
 				__m128 bias4 = _mm_loadu_ps(biasval + k);
 				switch (z[0]) {
 					case 1:
-						#pragma unroll 4
-						for (dy = 0; dy < z[1]; dy++)
-						{
+						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -702,12 +676,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							ds1x2 = _mm_add_ps(ds1x2, bias4);
 							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
 							bpz += binc[1] * binc[0];
-						}
+						} unroll_endfor
 						break;
 					case 2:
-						#pragma unroll 4
-						for (dy = 0; dy < z[1]; dy++)
-						{
+						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -724,12 +696,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							dn1x2 = _mm_add_ps(dn1x2, bias4);
 							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
 							bpz += binc[1] * binc[0];
-						}
+						} unroll_endfor
 						break;
 					case 3:
-						#pragma unroll 4
-						for (dy = 0; dy < z[1]; dy++)
-						{
+						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -749,12 +719,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
 							_mm_stream_ps(bpz + 2 * binc[0], _mm_add_ps(ds1x2, ds3x4));
 							bpz += binc[1] * binc[0];
-						}
+						} unroll_endfor
 						break;
 					case 4:
-						#pragma unroll 4
-						for (dy = 0; dy < z[1]; dy++)
-						{
+						unroll_for(dy, z[1], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -778,7 +746,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
 							_mm_stream_ps(bpz + 3 * binc[0], _mm_add_ps(_mm_add_ps(dn1x2, d5), dn3x4));
 							bpz += binc[1] * binc[0];
-						}
+						} unroll_endfor
 						break;
 				};
 			}

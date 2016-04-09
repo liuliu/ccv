@@ -14,12 +14,25 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 #define ccv_descale(x, n) (((x) + (1 << ((n) - 1))) >> (n))
 #define conditional_assert(x, expr) if ((x)) { assert(expr); }
 
+#define MACRO_STRINGIFY(x) #x
+
+#define UNROLL_PRAGMA0(x) MACRO_STRINGIFY(unroll x)
+#define UNROLL_FOR0(x, s, ss, ...) _Pragma(UNROLL_PRAGMA0(ss)) for ((x) = 0; (x) < (s); (x)++) {
+/* How to use this:
+ * unroll_for(i, the number of iterations, the number of unrolls)
+ * Or
+ * unroll_for(i, the number of iterations)
+ */
+#define unroll_for(x, s, ...) UNROLL_FOR0(x, s, ##__VA_ARGS__, s)
+#define unroll_endfor }
+
 #ifdef USE_OPENMP
-#define parallel_for(x, n) { int x; _Pragma("omp parallel for schedule(dynamic)") for (x = 0; x < n; x++) {
+#define OMP_PRAGMA0(x) MACRO_STRINGIFY(omp parallel for private(x) schedule(dynamic))
+#define parallel_for(x, n) { int x; _Pragma(OMP_PRAGMA0(x)) for ((x) = 0; (x) < (n); (x)++) {
 #define parallel_endfor } }
 #define FOR_IS_PARALLEL (1)
 #elif defined(USE_DISPATCH) // Convert from size_t to int such that we avoid unsigned, and keep it consistent with the rest of parallel_for
-#define parallel_for(x, n) dispatch_apply(n, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t _s_##x) { int x = (int)_s_##x; {
+#define parallel_for(x, n) dispatch_apply((n), dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^(size_t _s_##x) { int x = (int)_s_##x; {
 #define parallel_endfor }});
 #define FOR_IS_PARALLEL (1)
 #else
