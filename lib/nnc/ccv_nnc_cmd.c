@@ -101,6 +101,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
 	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
+	if (!api_decl.exec)
+		return CCV_NNC_EXEC_NO_KERNEL;
 	int i;
 	for (i = 0; i < input_size; i++)
 	{
