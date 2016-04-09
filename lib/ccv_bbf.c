@@ -209,7 +209,7 @@ static int _ccv_prepare_background_data(ccv_bbf_classifier_cascade_t* cascade, c
 							break;
 						}
 					rect = (ccv_rect_t*)ccv_array_get(detected, r);
-					if ((rect->x < 0) || (rect->y < 0) || (rect->width + rect->x >= image->cols) || (rect->height + rect->y >= image->rows))
+					if ((rect->x < 0) || (rect->y < 0) || (rect->width + rect->x > image->cols) || (rect->height + rect->y > image->rows))
 					{
 						flag = 1;
 						r = gsl_rng_uniform_int(rng, detected->rnum);
