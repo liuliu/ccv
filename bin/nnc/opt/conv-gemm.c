@@ -13,11 +13,11 @@ static unsigned int get_current_time(void)
 	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
 }
 
-#define INPUT_DIM (512)
-#define OUTPUT_DIM (256)
+#define INPUT_DIM (1024)
+#define OUTPUT_DIM (1024)
 
-#define INPUT_SIZE (224)
-#define OUTPUT_SIZE (224)
+#define INPUT_SIZE (56)
+#define OUTPUT_SIZE (56)
 
 int main(int argc, char** argv)
 {
