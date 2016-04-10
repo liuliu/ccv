@@ -1,4 +1,0 @@
-create libccv.a
-addlib libccv.a
-save
-end

@@ -8,13 +8,13 @@ NVFLAGS := -O3 $(NVFLAGS)
 
 all: lib
 
-lib: libnnc.a
+lib: libnnc.o
 
 clean:
-	rm -f *.o cpu/*.o gpu/*.o libnnc.a
+	rm -f *.o cpu/*.o gpu/*.o
 
-libnnc.a: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o
-	$(AR) rcs $@ $^
+libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o
+	ld -r $^ -o $@
 
 %.o: %.c ../ccv.h ../ccv_internal.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_internal.h
 	$(CC) $< -o $@ -c $(CFLAGS)
