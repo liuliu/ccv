@@ -13,7 +13,7 @@ lib: libnnc.o
 clean:
 	rm -f *.o cpu/*.o gpu/*.o
 
-libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o
+libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o cpu/conv/ccv_nnc_cmd_conv_opt.o cpu/conv/ccv_nnc_cmd_conv_winograd.o
 	ld -r $^ -o $@
 
 %.o: %.c ../ccv.h ../ccv_internal.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_internal.h
