@@ -4,7 +4,8 @@ include config.mk
 CFLAGS := -O3 -ffast-math -Wall -I"." $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-.PHONY: all lib clean
+# Make nnc/libnnc.o a phony target therefore it will be triggered every time.
+.PHONY: all lib clean nnc/libnnc.o
 
 all: lib ../samples/image-net-2012-vgg-d.sqlite3
 

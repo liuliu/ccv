@@ -2,6 +2,15 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <inc/ccv_convnet_internal.h>
+#include <sys/time.h>
+#include <ctype.h>
+
+static unsigned int get_current_time(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
 
 static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_tensor_t* input, ccv_nnc_tensor_t* output, ccv_nnc_graph_exec_t* source, ccv_nnc_graph_exec_t* dest, ccv_array_t* tensors)
 {
@@ -33,6 +42,8 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
+			cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
+			cmd.algorithm = -1; // AUTO_SELECT
 			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &input->info, 1, &tensor->info, 1);
 			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
@@ -47,6 +58,8 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, CMD_FULL_CONNECT(layer->net.full_connect.count), 0);
+			cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
+			cmd.algorithm = -1; // AUTO_SELECT
 			// If the input is not what I expected (array), reshape it.
 			if (input->info.dim[0] != ccv_nnc_tensor_count(input->info))
 			{
@@ -95,12 +108,16 @@ int main(int argc, char** argv)
 		ccv_slice(input, (ccv_matrix_t**)&sliced, 0, (input->rows - 225) / 2, (input->cols - 225) / 2, 225, 225);
 		ccv_matrix_free(input);
 		ccv_dense_matrix_t* b = 0;
+		unsigned int elapsed_time = get_current_time();
 		ccv_convnet_encode(convnet, &sliced, &b, 1);
+		printf("ccv_convnet_encode %u ms\n", get_current_time() - elapsed_time);
 		ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1000), 0);
 		ccv_nnc_graph_exec_t source, dest;
 		ccv_array_t* tensors = ccv_array_new(sizeof(ccv_nnc_tensor_t*), 1, 0);
 		ccv_nnc_graph_t* graph = ccv_nnc_simple_graph(convnet, (ccv_nnc_tensor_t*)sliced, c, &source, &dest, tensors);
+		elapsed_time = get_current_time();
 		ccv_nnc_graph_run(graph, 0, &source, 1, &dest, 1);
+		printf("ccv_nnc_graph_run %u ms\n", get_current_time() - elapsed_time);
 		int i;
 		for (i = 0; i < 1000; i++)
 			if (fabsf(b->data.f32[i] - c->data.f32[i]) > 1e-4)
