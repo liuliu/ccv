@@ -47,8 +47,10 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_OPT_CONV_ALGO_DC:
 			return ccv_nnc_conv_forw_opt(a, w, bias, hint, b);
 		case CCV_NNC_CMD_OPT_CONV_ALGO_GEMM:
-			if (w->info.dim[1] == 1 && w->info.dim[1] == 1 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
-				return CCV_NNC_EXEC_INVALID; // Placeholder, for gemm call.
+			if (w->info.dim[1] == 1 && w->info.dim[1] == 1 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1 &&
+				hint.border.begin[1] == 0 && hint.border.begin[2] == 0 && hint.border.end[1] == 0 && hint.border.end[2] == 0 &&
+				!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias))
+				return ccv_nnc_conv_forw_gemm(a, w, bias, hint, b);
 			return CCV_NNC_EXEC_INVALID;
 		case CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD:
 			if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
@@ -60,13 +62,21 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			// Pass-through
 			break;
 	}
+	// If the size is 3x3, and no stride, choose Winograd kernel
 	if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1)
 		return ccv_nnc_conv_forw_4x4_3x3_winograd(a, w, bias, hint, b);
+	// If the size is 1x1, and no stride, and not a tensor view object, no padding, choose GEMM kernel
+	if (w->info.dim[1] == 1 && w->info.dim[1] == 1 && hint.stride.dim[1] <= 1 && hint.stride.dim[2] <= 1 &&
+		hint.border.begin[1] == 0 && hint.border.begin[2] == 0 && hint.border.end[1] == 0 && hint.border.end[2] == 0 &&
+		!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias))
+		return ccv_nnc_conv_forw_gemm(a, w, bias, hint, b);
+	// Otherwise, use direct convolution kernel
 	return ccv_nnc_conv_forw_opt(a, w, bias, hint, b);
 }
 
 static int _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	assert(input_size == 3);
 	const ccv_nnc_tensor_t* w = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
@@ -95,10 +105,14 @@ static int _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	ccv_dense_matrix_t* db = &b;
 	ccv_gemm(&a, &dw, 1, db, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&db, 0); // supply b as matrix C is allowed
 	return CCV_NNC_EXEC_SUCCESS;
+#else
+	return CCV_NNC_EXEC_INVALID;
+#endif
 }
 
 static int _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
+#if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	// inputs: gradient, forw prop input, [w]
 	// outputs: weight updates, bias updates, [output gradient]
 	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
@@ -150,6 +164,9 @@ static int _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 		ccv_gemm(&g, &dw, 1, 0, 0, 0 /* No transpose */, (ccv_matrix_t**)&dh, 0);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
+#else
+	return CCV_NNC_EXEC_INVALID;
+#endif
 }
 
 //@ccv_nnc_init CCV_NNC_BACKEND_CPU_OPT

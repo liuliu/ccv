@@ -43,7 +43,7 @@ int main(int argc, char** argv)
 	unsigned int elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	elapsed_time = get_current_time() - elapsed_time;
-	printf("%u ms for ref impl\n", elapsed_time);
+	printf("%u ms for optimized\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
@@ -51,8 +51,9 @@ int main(int argc, char** argv)
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for winograd\n", elapsed_time);
-	// for (i = 0; i < OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE; i++)
-	//	printf("%f %f\n", b->data.f32[i], c->data.f32[i]);
+	for (i = 0; i < OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE; i++)
+		if (fabs(b->data.f32[i] - c->data.f32[i]) > 1e-5)
+			printf("%d %f %f\n", i, b->data.f32[i], c->data.f32[i]);
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
