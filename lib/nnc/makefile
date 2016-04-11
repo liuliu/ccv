@@ -11,7 +11,7 @@ all: lib
 lib: libnnc.o
 
 clean:
-	rm -f *.o cpu/*.o gpu/*.o
+	rm -f *.o cpu/*.o gpu/*.o cpu/conv/*.o cpu/fc/*.o
 
 libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o cpu/conv/ccv_nnc_cmd_conv_opt.o cpu/conv/ccv_nnc_cmd_conv_4x4_3x3_winograd.o cpu/conv/ccv_nnc_cmd_conv_gemm.o cpu/fc/ccv_nnc_cmd_fc_gemm.o cpu/fc/ccv_nnc_cmd_fc_opt.o
 	ld -r $^ -o $@
