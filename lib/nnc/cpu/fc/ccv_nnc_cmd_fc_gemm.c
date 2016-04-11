@@ -44,7 +44,7 @@ int ccv_nnc_fc_back_gemm(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_vi
 	assert(!CCV_IS_TENSOR_VIEW(bias));
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
-		memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
+		memset(dw->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
 		memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
 	}
 	assert(ccv_max(1, a->info.dim[1]) == ccv_max(1, g->info.dim[1]));

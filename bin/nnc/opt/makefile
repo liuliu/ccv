@@ -5,7 +5,7 @@ LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../../lib" -lineinfo $(NVFLAGS)
 
-all: conv-4x4-3x3-winograd conv-opt conv-gemm fc-opt
+all: conv-4x4-3x3-winograd conv-opt conv-gemm fc-opt fc-gemm
 
 clean:
 	${MAKE} clean -C ../../../lib ; rm -f *.o $(TARGETS)
@@ -20,6 +20,9 @@ conv-opt: %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)
 
 fc-opt: %: %.o libccv.a
+	$(CC) -o $@ $< $(LDFLAGS)
+
+fc-gemm: %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)
 
 libccv.a:

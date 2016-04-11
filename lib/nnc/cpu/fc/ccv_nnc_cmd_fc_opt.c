@@ -16,7 +16,8 @@
 #endif
 #include "ccv_nnc_cmd_fc_opt.h"
 
-int ccv_nnc_fc_forw_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+#ifdef HAVE_SSE2
+static int _ccv_nnc_fc_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -28,18 +29,29 @@ int ccv_nnc_fc_forw_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_vie
 		const float* const ap = a->data.f32 + i * ainc[0];
 		float* const bp = b->data.f32 + i * binc[0];
 		parallel_for(j, b->info.dim[0]) {
-			float v = bias->data.f32[j];
 			const float* const wp = w->data.f32 + j * winc[0];
 			int k;
-			for (k = 0; k < a->info.dim[0]; k++)
-				v += wp[k] * ap[k];
-			bp[j] = v;
+			__m128 v40 = _mm_set_ss(bias->data.f32[j]);
+			__m128 v41 = _mm_setzero_ps();
+			for (k = 0; k < a->info.dim[0] - 7; k += 8)
+			{
+				__m128 ap40 = _mm_load_ps(ap + k);
+				__m128 ap41 = _mm_load_ps(ap + k + 4);
+				__m128 w40 = _mm_load_ps(wp + k);
+				__m128 w41 = _mm_load_ps(wp + k + 4);
+				v40 =_mm_add_ps(_mm_mul_ps(w40, ap40), v40);
+				v41 =_mm_add_ps(_mm_mul_ps(w41, ap41), v41);
+			}
+			v40 = _mm_add_ps(v40, v41);
+			v41 = _mm_add_ps(v40, _mm_movehl_ps(v40, v40));
+			v40 = _mm_add_ss(v41, _mm_shuffle_ps(v41, v41, 1));
+			_mm_store_ss(bp + j, v40);
 		} parallel_endfor
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+static int _ccv_nnc_fc_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
 {
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -54,8 +66,12 @@ int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_vie
 	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
 	for (i = 0; i < batch_size; i++)
 	{
-		for (j = 0; j < g->info.dim[0]; j++)
-			bp[j] += gp[j];
+		for (j = 0; j < g->info.dim[0] - 3; j += 4)
+		{
+			__m128 g4 = _mm_load_ps(gp + j);
+			__m128 b4 = _mm_load_ps(bp + j);
+			_mm_stream_ps(bp + j, _mm_add_ps(b4, g4));
+		}
 		gp += ginc[0];
 	}
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
@@ -65,10 +81,14 @@ int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_vie
 		const float* const ap = a->data.f32 + i * ainc[0];
 		parallel_for(j, g->info.dim[0]) {
 			float* const dwp = dw->data.f32 + j * dwinc[0];
-			const float v = gp[j];
+			__m128 g4 = _mm_set1_ps(gp[j]);
 			int k;
-			for (k = 0; k < a->info.dim[0]; k++)
-				dwp[k] += ap[k] * v;
+			for (k = 0; k < a->info.dim[0] - 3; k+= 4)
+			{
+				__m128 a4 = _mm_load_ps(ap + k);
+				__m128 dw4 = _mm_load_ps(dwp + k);
+				_mm_stream_ps(dwp + k, _mm_add_ps(dw4, _mm_mul_ps(a4, g4)));
+			}
 		} parallel_endfor
 	}
 	if (h && w)
@@ -79,15 +99,56 @@ int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_vie
 		{
 			const float* const gp = g->data.f32 + i * ginc[0];
 			float* const hp = h->data.f32 + i * hinc[0];
-			parallel_for(j, h->info.dim[0]) {
+			parallel_for(y, h->info.dim[0] / 4) {
+				const int j = y * 4;
 				const float* const wp = w->data.f32 + j;
-				float v = 0;
+				__m128 v40 = _mm_setzero_ps();
+				__m128 v41 = _mm_setzero_ps();
+				__m128 v42 = _mm_setzero_ps();
+				__m128 v43 = _mm_setzero_ps();
 				int k;
-				for (k = 0; k < g->info.dim[0]; k++)
-					v += wp[k * winc[0]] * gp[k];
-				hp[j] = v;
+				for (k = 0; k < g->info.dim[0]; k += 4)
+				{
+					__m128 g4 = _mm_load_ps(gp + k);
+					__m128 w40 = _mm_load_ps(wp + k * winc[0]);
+					__m128 w41 = _mm_load_ps(wp + (k + 1) * winc[0]);
+					__m128 w42 = _mm_load_ps(wp + (k + 2) * winc[0]);
+					__m128 w43 = _mm_load_ps(wp + (k + 3) * winc[0]);
+					__m128 g40 = _mm_shuffle_ps(g4, g4, 0x00);
+					__m128 g41 = _mm_shuffle_ps(g4, g4, 0x55);
+					__m128 g42 = _mm_shuffle_ps(g4, g4, 0xAA);
+					__m128 g43 = _mm_shuffle_ps(g4, g4, 0xFF);
+					v40 = _mm_add_ps(_mm_mul_ps(g40, w40), v40);
+					v41 = _mm_add_ps(_mm_mul_ps(g41, w41), v41);
+					v42 = _mm_add_ps(_mm_mul_ps(g42, w42), v42);
+					v43 = _mm_add_ps(_mm_mul_ps(g43, w43), v43);
+				}
+				v40 = _mm_add_ps(v40, v41);
+				v42 = _mm_add_ps(v42, v43);
+				_mm_stream_ps(hp + j, _mm_add_ps(v40, v42));
 			} parallel_endfor
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
+}
+#endif
+
+int ccv_nnc_fc_forw_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+{
+#if defined(HAVE_SSE2)
+	if (a->info.dim[0] % 8 == 0)
+		return _ccv_nnc_fc_forw_sse2(a, w, bias, b);
+#elif defined(HAVE_NEON)
+#endif
+	return CCV_NNC_EXEC_INVALID;
+}
+
+int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+{
+#if defined(HAVE_SSE2)
+	if (g->info.dim[0] % 4 == 0 && a->info.dim[0] % 4 == 0 && (!h || h->info.dim[0] % 4 == 0))
+		return _ccv_nnc_fc_back_sse2(g, a, w, dw, bias, h, flags);
+#elif defined(HAVE_NEON)
+#endif
+	return CCV_NNC_EXEC_INVALID;
 }
