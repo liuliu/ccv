@@ -161,7 +161,7 @@ static int _ccv_nnc_fc_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_t
 			}
 			v40 = vaddq_f32(v40, v41);
 			float32x2_t v2 = vpadd_f32(vget_high_f32(v40), vget_low_f32(v40));
-			bp[j] = vget_lane_f32(v2, 0) + vget_lane_f32(v2, 1);
+			bp[j] = vget_lane_f32(vpadd_f32(v2, v2), 0);
 		} parallel_endfor
 	}
 	return CCV_NNC_EXEC_SUCCESS;
