@@ -2037,7 +2037,7 @@ DEFINE_MACROS=""
 
 MKCFLAGS=""
 
-MKLDFLAGS="-lm "
+MKLDFLAGS="-lm -lrt "
 
 CUDA_OBJS="cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"
 
