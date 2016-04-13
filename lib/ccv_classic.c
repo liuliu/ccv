@@ -303,7 +303,7 @@ void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size
 			rows[1] = rows[2];
 			rows[2] = row;
 		}
-		memset(map + map_cols * (a->rows + 1), 0, sizeof(int) * map_cols);
+		memset(map_ptr - 1, 0, sizeof(int) * map_cols);
 		int dr[] = {-1, 1, -map_cols - 1, -map_cols, -map_cols + 1, map_cols - 1, map_cols, map_cols + 1};
 		while (stack_top > stack_bottom)
 		{
