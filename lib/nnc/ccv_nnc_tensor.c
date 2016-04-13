@@ -21,7 +21,10 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 		tensor->data.u8 = (uint8_t*)ptr;
 		return tensor;
 	}
-	assert((flags & CCV_TENSOR_CPU_MEMORY) || (flags == 0));
+	if (flags & CCV_TENSOR_CPU_MEMORY)
+	{
+		assert(params.type == CCV_TENSOR_CPU_MEMORY);
+	}
 	size_t size = CCV_GET_DATA_TYPE_SIZE(CCV_32F); // Assuming 32-bit float point layout
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
@@ -54,6 +57,10 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t pa
 	tensor.sig = 0;
 	tensor.refcount = 1;
 	tensor.info = params;
+	if (flags & CCV_TENSOR_CPU_MEMORY)
+	{
+		assert(params.type == CCV_TENSOR_CPU_MEMORY);
+	}
 	if (tfb)
 	{
 		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_32F | params.dim[0];

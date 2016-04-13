@@ -1,4 +1,11 @@
 #include "ccv_nnc.h"
+#include <time.h>
+#include <sys/time.h>
+
+#ifdef __MACH__
+#include <mach/clock.h>
+#include <mach/mach.h>
+#endif
 
 typedef void(*ccv_nnc_init_f)(ccv_nnc_cmd_api_t cmd_api[]);
 
@@ -37,7 +44,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_
 {
 	ccv_nnc_cmd_t cmd;
 	cmd.info = params;
-	// TODO: auto-find a workable implementation.
+	// Default to CPU ref implementation if the type is CPU memory, otherwise use GPU ref.
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 	assert((compute == CCV_NNC_COMPUTE_CUSTOM && exec) || (compute != CCV_NNC_COMPUTE_CUSTOM && !exec));
 	cmd.compute = compute;
@@ -87,10 +94,68 @@ ccv_nnc_hint_t ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_t
 	return guess;
 }
 
+// This returns absolute time.
+uint64_t ccv_nnc_cmd_absolute_time(void)
+{
+#ifdef __MACH__
+	return mach_absolute_time();
+#else
+	struct timespec ts;
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return ts.tv_sec * 1000000000ULL + ts.tv_nsec;
+#endif
+}
+
+#define AUTO_TUNE_TRIAL_SIZE (3)
+
 ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
-	// Placeholder yet.
-	return cmd;
+	// This is a custom compute kernel, no need to autotune.
+	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
+		return cmd;
+	int i, j, k;
+	// Go through all the backends that supports the same type of memory input / output tensors support.
+	int tensor_memory = 0;
+	for (i = 0; i < input_size; i++)
+		tensor_memory |= inputs[i]->info.type;
+	for (i = 0; i < output_size; i++)
+		tensor_memory |= outputs[i]->info.type;
+	// In this case, we cannot determine the type of the tensor, skip auto-tune.
+	if (!tensor_memory)
+		return cmd;
+	// Otherwise, we are good to go.
+	ccv_nnc_cmd_t tuned_cmd = cmd;
+	int64_t best_measured = -1;
+	// We need to have trial loop through all the data.
+	for (k = 0; k < AUTO_TUNE_TRIAL_SIZE; k++)
+	{
+		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
+		{
+			// We have the exec kernel, and support all the tensor memory types.
+			ccv_nnc_cmd_api_t api_decl = cmd_api_decls[i][cmd.compute];
+			if (api_decl.exec &&
+				(api_decl.tensor_memory & tensor_memory) == tensor_memory)
+			{
+				ccv_nnc_cmd_t candid_cmd = cmd;
+				candid_cmd.backend = i;
+				for (j = 0; j < api_decl.algorithms; j++)
+				{
+					candid_cmd.algorithm = j;
+					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
+					// Ready to run.
+					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size);
+					elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
+					if (status == CCV_NNC_EXEC_SUCCESS &&
+						(best_measured == -1 || elapsed < best_measured))
+					{
+						best_measured = elapsed;
+						tuned_cmd = candid_cmd;
+					}
+				}
+			}
+		}
+	}
+	return tuned_cmd;
 }
 
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)

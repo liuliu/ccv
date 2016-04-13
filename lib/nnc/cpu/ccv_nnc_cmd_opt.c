@@ -176,13 +176,16 @@ void ccv_nnc_cpu_opt_init(ccv_nnc_cmd_api_t cmd_api[])
 	 * a set of kernels for Winograd, FFT, SIMD-optimized convolutions. */
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].algorithms = CCV_NNC_CMD_OPT_CONV_ALGO_COUNT;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;
 	/* Full connect layer */
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].algorithms = CCV_NNC_CMD_OPT_FC_ALGO_COUNT;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].exec = _ccv_nnc_full_connect_forw;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].algorithms = CCV_NNC_CMD_OPT_FC_ALGO_COUNT;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].exec = _ccv_nnc_full_connect_back;
 	/* Max pool layer */

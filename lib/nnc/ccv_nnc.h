@@ -89,6 +89,7 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
+	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
 } ccv_nnc_cmd_api_t;
@@ -113,6 +114,8 @@ void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view);
 void ccv_nnc_tensor_zero(void* tensor);
 int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
 // For computation node
+// Return high precision time unit.
+uint64_t ccv_nnc_cmd_absolute_time(void);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Guess and verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
