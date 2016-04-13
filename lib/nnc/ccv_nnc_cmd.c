@@ -3,8 +3,8 @@
 #include <sys/time.h>
 
 #ifdef __MACH__
-#include <mach/clock.h>
 #include <mach/mach.h>
+#include <mach/mach_time.h>
 #endif
 
 typedef void(*ccv_nnc_init_f)(ccv_nnc_cmd_api_t cmd_api[]);
