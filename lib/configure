@@ -633,6 +633,7 @@ LDFLAGS
 CFLAGS
 NVCC
 CC
+CUDA_TARGETS
 CUDA_OBJS
 MKLDFLAGS
 MKCFLAGS
@@ -2040,6 +2041,8 @@ MKCFLAGS=""
 MKLDFLAGS="-lm "
 
 CUDA_OBJS="cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"
+
+CUDA_TARGETS="gpu/libnnc-cuda.o"
 
 
 # check if clang exists
@@ -3901,6 +3904,8 @@ $as_echo "yes, i386" >&6; }
 	fi
 else
 	CUDA_OBJS=""
+
+	CUDA_TARGETS=""
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
