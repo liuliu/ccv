@@ -5,7 +5,7 @@ require 'erb'
 init_methods = []
 
 # Find source code in these two subdirs.
-Dir.glob('{cpu,gpu}/**/*.c').each do |fn|
+Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
 	File.open(fn, 'r') do |f|
 		parse_decl = false
 		name = nil
@@ -39,6 +39,12 @@ def rendering(init_methods)
 	return init.result binding
 end
 
-File.open('ccv_nnc_init.inc', 'w+') do |f|
-	f.write rendering(init_methods)
+rendered_init = rendering(init_methods)
+
+existing_init = File.read 'ccv_nnc_init.inc' if File.exist? 'ccv_nnc_init.inc'
+
+if existing_init != rendered_init
+	File.open('ccv_nnc_init.inc', 'w+') do |f|
+		f.write rendered_init
+	end
 end

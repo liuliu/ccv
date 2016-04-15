@@ -4,11 +4,11 @@ include ../config.mk
 CFLAGS := -O3 -ffast-math -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-.PHONY: all lib clean gpu/libnnc-cuda.o
+.PHONY: all lib clean libnnc.o gpu/libnnc-cuda.o nnc-init
 
 all: lib
 
-lib: libnnc.o
+lib: nnc-init libnnc.o
 
 clean:
 	rm -f *.o cpu/*.o gpu/*.o cpu/conv/*.o cpu/fc/*.o
@@ -24,3 +24,10 @@ libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o cpu/ccv_nnc_cmd_ref.o c
 
 gpu/libnnc-cuda.o:
 	${MAKE} -C ./gpu
+
+nnc-init:
+ifeq ($(strip $(CUDA_TARGETS)),)
+	./nnc-init.rb cpu
+else
+	./nnc-init.rb cpu gpu
+endif
