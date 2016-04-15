@@ -42,9 +42,8 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
-			cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
-			cmd.algorithm = -1; // AUTO_SELECT
 			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &input->info, 1, &tensor->info, 1);
+			cmd = ccv_nnc_cmd_autotune(cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
@@ -58,14 +57,13 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, CMD_FULL_CONNECT(layer->net.full_connect.count), 0);
-			cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
-			cmd.algorithm = -1; // AUTO_SELECT
 			// If the input is not what I expected (array), reshape it.
 			if (input->info.dim[0] != ccv_nnc_tensor_count(input->info))
 			{
 				input = ccv_nnc_tensor_new(input->data.u8, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input->info)), 0);
 				ccv_array_push(tensors, &input);
 			}
+			cmd = ccv_nnc_cmd_autotune(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else {
 			assert("unreachable");

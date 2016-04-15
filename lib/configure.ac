@@ -2,8 +2,9 @@ AC_INIT([libccv], [0.6])
 
 AC_SUBST(DEFINE_MACROS, [""])
 AC_SUBST(MKCFLAGS, [""])
-AC_SUBST(MKLDFLAGS, ["-lm -lrt "])
+AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_OBJS, ["cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"])
+AC_SUBST(CUDA_TARGETS, ["gpu/libnnc-cuda.o"])
 
 # check if clang exists
 AC_CHECK_PROG(CC, clang, clang)
@@ -49,6 +50,9 @@ if test "$blas_ok" = yes; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CBLAS "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$BLAS_LIBS "])
 fi
+
+AC_CHECK_LIB(rt, clock_gettime,
+			[AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lrt "])])
 
 # check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
 AC_CHECK_HEADER([png.h],
@@ -109,6 +113,7 @@ if [[ -d "$cuda_prefix" ]]; then
 	fi
 else
 	AC_SUBST(CUDA_OBJS, [""])
+	AC_SUBST(CUDA_TARGETS, [""])
 	AC_MSG_RESULT(no)
 fi
 

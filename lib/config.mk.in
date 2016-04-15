@@ -2,6 +2,7 @@ CC := @CC@
 AR := ar
 NVCC := @NVCC@
 CUDA_OBJS := @CUDA_OBJS@
+CUDA_TARGETS := @CUDA_TARGETS@
 DEFINE_MACROS := @DEFINE_MACROS@
 prefix := @prefix@
 exec_prefix := @exec_prefix@
