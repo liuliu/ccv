@@ -23,8 +23,12 @@ typedef struct {
 		(init_func)(command_api_decls[name]); \
 	} while (0)
 
-// I should be able to automatically extract code below from source code.
+// Below is extracted from source code: `./nnc-init.rb cpu` or `./nnc-init.rb cpu gpu`
+#ifdef HAVE_CUDA // Include the header for both CPU and GPU
 #include "ccv_nnc_init.inc"
+#else // Otherwise only include for CPU.
+#include "cpu/ccv_nnc_init.inc"
+#endif
 // Above should be automatic generated.
 
 static ccv_nnc_cmd_api_t cmd_api_decls[CCV_NNC_BACKEND_COUNT][CCV_NNC_COMPUTE_COUNT];

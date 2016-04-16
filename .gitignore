@@ -8,7 +8,6 @@ gh-pages
 lib/.CC
 lib/.DEF
 lib/.LN
-lib/nnc/ccv_nnc_init.inc
 test/*_test
 test/*.jpg
 test/*.png

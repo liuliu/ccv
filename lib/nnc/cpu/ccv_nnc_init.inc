@@ -1,0 +1,14 @@
+enum {
+	CCV_NNC_BACKEND_CPU_OPT = 0,
+	CCV_NNC_BACKEND_CPU_REF = 1,
+	CCV_NNC_BACKEND_COUNT,
+};
+
+CCV_NNC_INIT_DECL(ccv_nnc_cpu_opt_init);
+CCV_NNC_INIT_DECL(ccv_nnc_cpu_ref_init);
+
+CCV_NNC_INIT_MAP_BEGIN()
+CCV_NNC_INIT_MAP(CCV_NNC_BACKEND_CPU_OPT, ccv_nnc_cpu_opt_init)
+CCV_NNC_INIT_MAP(CCV_NNC_BACKEND_CPU_REF, ccv_nnc_cpu_ref_init)
+CCV_NNC_INIT_MAP_END()
+
