@@ -26,12 +26,14 @@
 #define TENSOR_LIST_COUNT(...) TENSOR_LIST_COUNT_N(__VA_ARGS__,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
 #define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), TENSOR_LIST_COUNT(__VA_ARGS__)
 #define ONE_CPU_TENSOR(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
+#define ONE_GPU_TENSOR(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
 
-static inline int ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
+static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {
 	if (params.dim[0] == 0)
 		return 0;
-	int i, count = 1;
+	int i;
+	size_t count = 1;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && params.dim[i] > 0; i++)
 		count *= params.dim[i];
 	return count;

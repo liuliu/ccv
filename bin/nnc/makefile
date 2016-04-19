@@ -18,6 +18,3 @@ libccv.a:
 
 %.o: %.c ../../lib/ccv.h
 	$(CC) $< -o $@ -c $(CFLAGS)
-
-%.o: %.cu ../../lib/ccv.h ../../lib/cuda/*.h ../../lib/cuda/*.cu
-	$(NVCC) $< -o $@ -c $(NVFLAGS)

@@ -13,11 +13,11 @@ lib: libnnc-cuda.o
 clean:
 	rm -f *.o
 
-libnnc-cuda.o: ccv_nnc_cmd_ref.o ccv_nnc_cmd_cudnn.o
+libnnc-cuda.o: ccv_nnc_cuda.o ccv_nnc_cmd_ref.o ccv_nnc_cmd_cudnn.o
 	ld -r $^ -o $@
 
-%.o: %.c ../../ccv.h ../../ccv_internal.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h ../ccv_nnc_init.inc
+%.o: %.c ccv_nnc_cuda.h ../../ccv.h ../../ccv_internal.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h ../ccv_nnc_init.inc
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu ../../ccv.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h ../ccv_nnc_init.inc
+%.o: %.cu ccv_nnc_cuda.h ../../ccv.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h ../ccv_nnc_init.inc
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
