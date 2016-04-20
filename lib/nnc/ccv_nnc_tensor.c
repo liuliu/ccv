@@ -102,31 +102,6 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
-void ccv_nnc_tensor_transfer(const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b)
-{
-	int i;
-	assert(!CCV_IS_TENSOR_VIEW(a));
-	assert(!CCV_IS_TENSOR_VIEW(b));
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-	{
-		if (a->info.dim[i] == 0 || b->info.dim[i] == 0)
-			break;
-		assert(a->info.dim[i] == b->info.dim[i]);
-	}
-#ifdef HAVE_CUDA
-	// Copy from CPU to GPU
-	if (a->info.type == CCV_TENSOR_CPU_MEMORY && b->info.type == CCV_TENSOR_GPU_MEMORY)
-		gcmemcpy(b->data.u8, a->data.u8, sizeof(float) * ccv_nnc_tensor_count(a->info), CCV_NNC_MEMCPY_CPU_TO_GPU);
-	// Copy from GPU to CPU
-	else if (a->info.type == CCV_TENSOR_GPU_MEMORY && b->info.type == CCV_TENSOR_CPU_MEMORY)
-		gcmemcpy(b->data.u8, a->data.u8, sizeof(float) * ccv_nnc_tensor_count(a->info), CCV_NNC_MEMCPY_GPU_TO_CPU);
-	else
-		assert(0 && "Shouldn't have the same CPU / GPU operation.");
-#else
-	assert(0 && "Should have CUDA installed to call this function.");
-#endif
-}
-
 static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	memcpy(tv->inc, tensor->info.dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);

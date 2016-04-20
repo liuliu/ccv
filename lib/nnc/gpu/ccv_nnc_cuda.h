@@ -12,13 +12,7 @@
 
 #include <stddef.h>
 
-enum {
-	CCV_NNC_MEMCPY_CPU_TO_GPU = 0x1,
-	CCV_NNC_MEMCPY_GPU_TO_CPU = 0x2,
-};
-
 void* gcmalloc(size_t size);
-void gcmemcpy(void* dst, const void* src, size_t size, int kind);
 void gcfree(void* ptr);
 
 #endif

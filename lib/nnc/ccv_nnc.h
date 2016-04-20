@@ -29,6 +29,7 @@ enum {
 	CCV_NNC_COMPUTE_BATCH_NORM_BACKWARD,
 	CCV_NNC_COMPUTE_RELU_FORWARD,
 	CCV_NNC_COMPUTE_RELU_BACKWARD,
+	CCV_NNC_COMPUTE_DATA_TRANSFER,
 	CCV_NNC_COMPUTE_COUNT,
 };
 
@@ -113,8 +114,6 @@ void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view);
 // All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
 void ccv_nnc_tensor_zero(void* tensor);
 int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
-// Transfer tensor between CPU and GPUs.
-void ccv_nnc_tensor_transfer(const ccv_nnc_tensor_t* a, ccv_nnc_tensor_t* b);
 // For computation node
 // Return high precision time unit.
 uint64_t ccv_nnc_cmd_absolute_time(void);
