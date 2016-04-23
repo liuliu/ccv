@@ -76,7 +76,7 @@ typedef struct {
 	} border;
 } ccv_nnc_hint_t;
 
-typedef struct ccv_nnc_stream_unit_s ccv_nnc_stream_unit_t;
+typedef void ccv_nnc_stream_unit_t;
 
 typedef struct ccv_nnc_cmd_s {
 	int compute;

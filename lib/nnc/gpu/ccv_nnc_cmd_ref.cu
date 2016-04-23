@@ -30,18 +30,20 @@ static int _ccv_nnc_data_move(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
 		assert(CCV_GET_DATA_TYPE(b->type) == CCV_32F);
 		size_t size = ccv_nnc_tensor_count(a->info) * sizeof(float);
-		if (a->info.type == CCV_TENSOR_CPU_MEMORY &&
-			b->info.type == CCV_TENSOR_GPU_MEMORY)
+		if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
 			cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice);
-		else if (a->info.type == CCV_TENSOR_GPU_MEMORY &&
-				 b->info.type == CCV_TENSOR_CPU_MEMORY)
+		else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
 			cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToHost);
-		else if (a->info.type == CCV_TENSOR_CPU_MEMORY &&
-				 b->info.type == CCV_TENSOR_CPU_MEMORY)
+		else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_CPU_MEMORY)
 			cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyHostToHost);
-		else if (a->info.type == CCV_TENSOR_GPU_MEMORY &&
-				 b->info.type == CCV_TENSOR_GPU_MEMORY)
-			cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice);
+		else if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY) {
+			int device_a = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
+			int device_b = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
+			if (device_a == device_b)
+				cudaMemcpy(b->data.u8, a->data.u8, size, cudaMemcpyDeviceToDevice);
+			else
+				cudaMemcpyPeer(b->data.u8, device_b, a->data.u8, device_a, size);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

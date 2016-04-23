@@ -35,14 +35,14 @@ int main(int argc, char** argv)
 	for (i = 0; i < OUTPUT_DIM; i++)
 		bias->data.f32[i] = (float)i / OUTPUT_DIM;
 	unsigned int elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("forw %u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
 	forw_cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	forw_cmd.algorithm = 0; // CCV_NNC_CMD_OPT_FC_ALGO_DIRECT = 0
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
+	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("forw %u ms for optimized\n", elapsed_time);
 	for (i = 0; i < OUTPUT_DIM; i++)
@@ -52,7 +52,7 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM), 0);
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD, 0, CMD_FULL_CONNECT(OUTPUT_DIM), 0);
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dw, bias, h));
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dw, bias, h), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("back %u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* dwc = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, OUTPUT_DIM), 0);
@@ -61,7 +61,7 @@ int main(int argc, char** argv)
 	back_cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	back_cmd.algorithm = 0; // CCV_NNC_CMD_OPT_FC_ALGO_DIRECT = 0
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc));
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("back %u ms for optimized\n", elapsed_time);
 	for (i = 0; i < OUTPUT_DIM; i++)

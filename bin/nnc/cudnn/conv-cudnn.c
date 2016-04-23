@@ -42,21 +42,21 @@ int main(int argc, char** argv)
 	for (i = 0; i < OUTPUT_DIM; i++)
 		bias->data.f32[i] = (float)i / OUTPUT_DIM;
 	// Copy generated matrix values over to GPU.
-	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(INPUT_DIM, INPUT_SIZE, INPUT_SIZE), 0);
-	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
-	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(OUTPUT_DIM), 0);
+	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(00, INPUT_DIM, INPUT_SIZE, INPUT_SIZE), 0);
+	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(00, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
+	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(00, OUTPUT_DIM), 0);
 	unsigned int elapsed_time = get_current_time();
 	ccv_nnc_cmd_t move = ccv_nnc_cmd(CCV_NNC_COMPUTE_DATA_TRANSFER, 0, ccv_nnc_default_cmd_params, 0);
 	move.backend = 3; // CCV_NNC_BACKEND_GPU_REF = 3
-	ccv_nnc_cmd_exec(move, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias));
-	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	ccv_nnc_cmd_exec(move, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias), 0);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for optimized\n", elapsed_time);
 	for (i = 0; i < OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE; i++)

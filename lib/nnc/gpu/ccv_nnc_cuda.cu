@@ -14,3 +14,17 @@ void gcfree(void* ptr)
 {
 	cudaFree(ptr);
 }
+
+typedef struct {
+} ccv_nnc_cuda_stream_unit_t;
+
+ccv_nnc_stream_unit_t* ccv_nnc_cuda_stream_unit_new(void)
+{
+	ccv_nnc_cuda_stream_unit_t* stream_unit = (ccv_nnc_cuda_stream_unit_t*)ccmalloc(sizeof(ccv_nnc_cuda_stream_unit_t));
+	return stream_unit;
+}
+
+void ccv_nnc_cuda_stream_unit_free(ccv_nnc_stream_unit_t* stream_unit)
+{
+	ccfree(stream_unit);
+}

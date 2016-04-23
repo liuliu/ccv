@@ -35,13 +35,13 @@ int main(int argc, char** argv)
 	for (i = 0; i < OUTPUT_DIM; i++)
 		bias->data.f32[i] = (float)i / OUTPUT_DIM;
 	unsigned int elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("forw %u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
-	ccv_nnc_cmd_t tuned_forw_cmd = ccv_nnc_cmd_autotune(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
+	ccv_nnc_cmd_t tuned_forw_cmd = ccv_nnc_cmd_autotune(forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(tuned_forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c));
+	ccv_nnc_cmd_exec(tuned_forw_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("forw %u ms for auto-tuned, backend %d, algorithm %d\n", elapsed_time, tuned_forw_cmd.backend, tuned_forw_cmd.algorithm);
 	for (i = 0; i < OUTPUT_DIM; i++)
@@ -51,15 +51,15 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM), 0);
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD, 0, CMD_FULL_CONNECT(OUTPUT_DIM), 0);
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dw, bias, h));
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dw, bias, h), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("back %u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* dwc = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* hc = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM), 0);
 	ccv_nnc_tensor_t* biasc = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
-	ccv_nnc_cmd_t tuned_back_cmd = ccv_nnc_cmd_autotune(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc));
+	ccv_nnc_cmd_t tuned_back_cmd = ccv_nnc_cmd_autotune(back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc), 0);
 	elapsed_time = get_current_time();
-	ccv_nnc_cmd_exec(tuned_back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc));
+	ccv_nnc_cmd_exec(tuned_back_cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dwc, biasc, hc), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("back %u ms for auto-tuned, backend %d, algorithm %d\n", elapsed_time, tuned_back_cmd.backend, tuned_back_cmd.algorithm);
 	for (i = 0; i < OUTPUT_DIM; i++)
