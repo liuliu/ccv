@@ -104,8 +104,8 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_
 		for (i = 0; i < exist_size[p]; i++)
 		{
 			ccv_nnc_graph_exec_info_t* info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->dei, exists[p][i]);
-			// exec current node.
-			ccv_nnc_cmd_exec(info->cmd, info->hint, info->flags, info->inputs, info->input_size, info->outputs, info->output_size);
+			// exec current node, for synchronous CPU execution, no stream unit.
+			ccv_nnc_cmd_exec(info->cmd, info->hint, info->flags, info->inputs, info->input_size, info->outputs, info->output_size, 0);
 			if (info->outgoings)
 				for (j = 0; j < info->outgoings->rnum; j++)
 				{
@@ -129,8 +129,8 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_
 		assert(incomings[destinations[i].d].c == 0);
 		// fetch the info for destination nodes
 		ccv_nnc_graph_exec_info_t* info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->dei, destinations[i].d);
-		// exec current node.
-		ccv_nnc_cmd_exec(info->cmd, info->hint, info->flags, info->inputs, info->input_size, info->outputs, info->output_size);
+		// exec current node, for synchronous CPU execution, no stream unit.
+		ccv_nnc_cmd_exec(info->cmd, info->hint, info->flags, info->inputs, info->input_size, info->outputs, info->output_size, 0);
 	}
 }
 

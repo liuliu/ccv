@@ -112,7 +112,7 @@ uint64_t ccv_nnc_cmd_absolute_time(void)
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
-ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit)
 {
 	// This is a custom compute kernel, no need to autotune.
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
@@ -147,7 +147,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					candid_cmd.algorithm = j;
 					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
 					// Ready to run.
-					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size);
+					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_unit);
 					elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
 					if (status == CCV_NNC_EXEC_SUCCESS &&
 						(best_measured == -1 || elapsed < best_measured))
@@ -162,13 +162,13 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	return tuned_cmd;
 }
 
-int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit)
 {
 	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
 	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
 	// If it is a custom command, just apply it directly.
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
-		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
+		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_unit);
 	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
 	if (!api_decl.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
@@ -181,5 +181,5 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	{
 		assert(api_decl.tensor_formats & outputs[i]->info.format);
 	}
-	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size);
+	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_unit);
 }
