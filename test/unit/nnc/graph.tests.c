@@ -6,7 +6,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
-static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit)
 {
 	int i;
 	assert(input_size == 1);
@@ -64,10 +64,10 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_graph_free(graph);
 	/* At this point, do the computation with a different set of tensors and then compare */
 	ccv_nnc_tensor_t* vb = ccv_nnc_tensor_new(0, b->info, 0);
-	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(vb));
+	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(vb), 0);
 	REQUIRE_TENSOR_EQ(b, vb, "Graph computed forward pass result should be the same.");
 	ccv_nnc_tensor_t* vm = ccv_nnc_tensor_new(0, b->info, 0);
-	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(vb), TENSOR_LIST(vm));
+	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(vb), TENSOR_LIST(vm), 0);
 	REQUIRE_TENSOR_EQ(m, vm, "Graph computed softmax pass result should be the same.");
 	ccv_nnc_tensor_t* vg = ccv_nnc_tensor_new(0, g->info, 0);
 	for (i = 0; i < 21 * 31 * 4; i++)
@@ -76,7 +76,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* vgw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* vgbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* vh = ccv_nnc_tensor_new(0, h->info, 0);
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(vg, a, w), TENSOR_LIST(vgw, vgbias, vh));
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(vg, a, w), TENSOR_LIST(vgw, vgbias, vh), 0);
 	REQUIRE_TENSOR_EQ(gbias, vgbias, "Graph computed backward pass weight delta should be the same.");
 	REQUIRE_TENSOR_EQ(gw, vgw, "Graph computed backward pass bias delta should be the same.");
 	REQUIRE_TENSOR_EQ(h, vh, "Graph computed backward pass result should be the same.");
