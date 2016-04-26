@@ -6,7 +6,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
-static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit)
+static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	int i;
 	assert(input_size == 1);

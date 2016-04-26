@@ -1,7 +1,7 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
-#include "gpu/ccv_nnc_cuda.h"
+#include "gpu/ccv_nnc_compat.h"
 #endif
 
 ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags)
@@ -43,7 +43,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
-		tensor->data.u8 = (uint8_t*)gcmalloc(size);
+		tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
 		ccmemalign((void **)&tensor, 16, sizeof(ccv_nnc_tensor_t) + size);
@@ -97,7 +97,7 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 {
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
-		gcfree(tensor->data.u8);
+		cufree(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), tensor->data.u8);
 #endif
 	ccfree(tensor);
 }

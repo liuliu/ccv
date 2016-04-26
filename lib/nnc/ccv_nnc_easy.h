@@ -27,7 +27,7 @@
 #define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), TENSOR_LIST_COUNT(__VA_ARGS__)
 #define ONE_CPU_TENSOR(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
 // This way, we can do error check on the device type :)
-#define ONE_GPU_TENSOR(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_TENSOR_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
+#define ONE_GPU_TENSOR(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
 
 static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {

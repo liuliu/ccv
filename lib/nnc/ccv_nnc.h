@@ -76,7 +76,7 @@ typedef struct {
 	} border;
 } ccv_nnc_hint_t;
 
-typedef void ccv_nnc_stream_unit_t;
+typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;
 
 typedef struct ccv_nnc_cmd_s {
 	int compute;
@@ -85,10 +85,10 @@ typedef struct ccv_nnc_cmd_s {
 	ccv_nnc_cmd_param_t info;
 	// This has to be the same as the ccv_nnc_cmd_exec_f type.
 	// This is for type CCV_NNC_COMPUTE_CUSTOM
-	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit);
+	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 } ccv_nnc_cmd_t;
 
-typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit);
+typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
@@ -125,8 +125,19 @@ CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nn
 CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit);
-int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_unit_t* stream_unit);
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+// Control flow constructs
+// Follow heavily along CUDA's stream / event idea.
+enum {
+	CCV_STREAM_CONTEXT_CPU = 0x1,
+	CCV_STREAM_CONTEXT_GPU = 0x2,
+};
+#define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
+#define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
+// Flag is a combination of CPU / GPU and DEVICE_ID
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(int flags);
+void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context);
 
 /**
  * Level-2 API
