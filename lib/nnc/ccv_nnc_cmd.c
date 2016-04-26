@@ -1,4 +1,7 @@
 #include "ccv_nnc.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#endif
 #include <time.h>
 #include <sys/time.h>
 
@@ -184,10 +187,27 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
 
-ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int flags)
+struct ccv_nnc_stream_context_s {
+	int type;
+	// Left for implementation yet, the CPU support for stream context.
+};
+
+ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int type)
 {
+	ccv_nnc_stream_context_t* stream_context = (ccv_nnc_stream_context_t*)ccmalloc(sizeof(ccv_nnc_stream_context_t));
+	stream_context->type = type;
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
+		stream_context = ccv_nnc_init_stream_context(stream_context);
+#endif
+	return stream_context;
 }
 
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context)
 {
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
+		ccv_nnc_deinit_stream_context(stream_context);
+#endif
+	ccfree(stream_context);
 }

@@ -133,10 +133,11 @@ enum {
 	CCV_STREAM_CONTEXT_CPU = 0x1,
 	CCV_STREAM_CONTEXT_GPU = 0x2,
 };
+#define CCV_STREAM_GET_CONTEXT(type) ((type) & 0x3)
 #define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
 // Flag is a combination of CPU / GPU and DEVICE_ID
-CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(int flags);
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(int type);
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context);
 
 /**
