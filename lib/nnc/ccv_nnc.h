@@ -34,7 +34,8 @@ enum {
 };
 
 enum {
-	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // enable accumulate outputs
+	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
+	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
 };
 
 enum {
@@ -95,6 +96,7 @@ typedef struct {
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
+	ccv_nnc_cmd_exec_f autotune;
 } ccv_nnc_cmd_api_t;
 
 /**

@@ -3891,6 +3891,16 @@ if [ -d "$cuda_prefix" ]; then
 
 	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas "
 
+	CPPFLAGS="$CPPFLAGS-I$cuda_prefix/include "
+
+	ac_fn_c_check_header_mongrel "$LINENO" "cudnn.h" "ac_cv_header_cudnn_h" "$ac_includes_default"
+if test "x$ac_cv_header_cudnn_h" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDNN "
+ MKLDFLAGS="$MKLDFLAGS-lcudnn "
+
+fi
+
+
 	if [ -d "$cuda_prefix/lib64" ]; then
 		MKLDFLAGS="$MKLDFLAGS-L$cuda_prefix/lib64 "
 

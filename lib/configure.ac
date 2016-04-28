@@ -104,6 +104,9 @@ AC_ARG_WITH(cuda, [AS_HELP_STRING([--with-cuda], [CUDA installation [ARG=/usr/lo
 if [[ -d "$cuda_prefix" ]]; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas "])
+	AC_SUBST(CPPFLAGS, ["$CPPFLAGS-I$cuda_prefix/include "])
+	AC_CHECK_HEADER([cudnn.h],
+					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDNN "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcudnn "])])
 	if [[ -d "$cuda_prefix/lib64" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
 		AC_MSG_RESULT([yes, x86_64])

@@ -28,10 +28,11 @@
 extern "C" {
 #include "../ccv_nnc.h"
 // Stream context methods to get the underlying objects, note that none of these methods are thread-safe.
-CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(ccv_nnc_stream_context_t* stream_context);
-CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* stream_context);
 #ifdef HAVE_CUDNN
-CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context);
 #endif
 }
 

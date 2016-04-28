@@ -145,9 +145,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 			{
 				ccv_nnc_cmd_t candid_cmd = cmd;
 				candid_cmd.backend = i;
-				for (j = 0; j < api_decl.algorithms; j++)
+				// If a given API exist an autotune function, use that to pick the top algorithm.
+				if (api_decl.autotune)
 				{
-					candid_cmd.algorithm = j;
+					candid_cmd.algorithm = api_decl.autotune(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
@@ -157,6 +158,22 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 					{
 						best_measured = elapsed;
 						tuned_cmd = candid_cmd;
+					}
+				} else {
+					// Otherwise loop over the existing algorithms and pick the top one.
+					for (j = 0; j < api_decl.algorithms; j++)
+					{
+						candid_cmd.algorithm = j;
+						uint64_t elapsed = ccv_nnc_cmd_absolute_time();
+						// Ready to run.
+						int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+						elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
+						if (status == CCV_NNC_EXEC_SUCCESS &&
+							(best_measured == -1 || elapsed < best_measured))
+						{
+							best_measured = elapsed;
+							tuned_cmd = candid_cmd;
+						}
 					}
 				}
 			}

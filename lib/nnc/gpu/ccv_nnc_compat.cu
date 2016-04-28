@@ -26,7 +26,7 @@ typedef struct {
 #endif
 } ccv_nnc_stream_context_compat_t;
 
-CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* stream_context)
+ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)ccrealloc(stream_context, sizeof(ccv_nnc_stream_context_compat_t));
@@ -54,13 +54,19 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* stream_context)
 #endif
 }
 
-cudaStream_t ccv_nnc_stream_context_get_stream(ccv_nnc_stream_context_t* stream_context)
+int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* stream_context)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	return CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+}
+
+cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	return stream_compat->stream;
 }
 
-cublasHandle_t ccv_nnc_stream_context_get_cublas(ccv_nnc_stream_context_t* stream_context)
+cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat->cublas)
@@ -74,7 +80,7 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(ccv_nnc_stream_context_t* strea
 }
 
 #ifdef HAVE_CUDNN
-cudnnHandle_t ccv_nnc_stream_context_get_cudnn(ccv_nnc_stream_context_t* stream_context)
+cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!strem_compat->cudnn)
