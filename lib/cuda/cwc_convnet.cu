@@ -1,8 +1,5 @@
 #include <cuda.h>
 #include <cublas_v2.h>
-#ifdef HAVE_CUDNN
-#include <cudnn.h>
-#endif
 extern "C" {
 #include "cwc.h"
 #include "cwc_internal.h"
@@ -41,10 +38,6 @@ typedef struct {
 		cudaEvent_t model_joint[2];
 		cublasHandle_t data_cublas; // the same, just cublas handle to stream
 		cublasHandle_t model_cublas[2]; // the same, just cublas handle to stream
-#ifdef HAVE_CUDNN
-		// we only use cudnn for convolution and pooling
-		cudnnHandle_t data_cudnn;
-#endif
 		float* input;
 		int* c;
 		float* out;
@@ -111,36 +104,6 @@ static void _cwc_convnet_reorder_full_connect_weights_onto_device(float* w, floa
 	ccfree(iw);
 }
 
-#ifdef HAVE_CUDNN
-// for now, ccv only uses convolutional part of cuDNN, because for pooling and softmax, libccv's implementation is slightly different (supporting padding for pooling)
-static void _cwc_convnet_alloc_cudnn(ccv_convnet_t* convnet, int device_id, int start, int length, int rows, int cols, int batch)
-{
-	int i;
-	ccv_convnet_layer_t* prior_layer = 0;
-	int out_rows, out_cols, out_partition;
-	for (i = start; i < start + length; i++)
-	{
-		ccv_convnet_layer_t* layer = GPU(convnet)->device[device_id].layers + i;
-		ccv_convnet_make_output(layer, rows, cols, &out_rows, &out_cols, &out_partition);
-		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
-		{
-			if (prior_layer)
-				EXTRA(layer)->input_descriptor = EXTRA(prior_layer)->output_descriptor;
-			else {
-				cudnnCreateTensor4dDescriptor(&EXTRA(layer)->input_descriptor);
-				cudnnSetTensor4dDescriptor(EXTRA(layer)->input_descriptor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, layer->input.convolutional.count, rows, cols);
-			}
-			cudnnCreateTensor4dDescriptor(&EXTRA(layer)->output_descriptor);
-			cudnnSetTensor4dDescriptor(EXTRA(layer)->output_descriptor, CUDNN_TENSOR_NCHW, CUDNN_DATA_FLOAT, batch, layer->net.convolutional.count, out_rows, out_cols);
-			cudnnCreateFilterDescriptor(&EXTRA(layer)->filter_descriptor);
-			cudnnSetFilterDescriptor(EXTRA(layer)->filter_descriptor);
-			prior_layer = layer;
-		} else
-			prior_layer = 0;
-		rows = out_rows, cols = out_cols;
-	}
-}
-#endif
 
 static void _cwc_convnet_alloc_layers(ccv_convnet_t* convnet, int device_id, int device_count)
 {

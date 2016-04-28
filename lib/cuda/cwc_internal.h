@@ -189,21 +189,8 @@ typedef struct {
 	} convolutional;
 } cwc_convnet_layer_vary_t;
 
-#ifdef HAVE_CUDNN
-typedef struct {
-	cudnnTensor4dDescriptor_t input_descriptor;
-	cudnnTensor4dDescriptor_t output_descriptor;
-	cudnnFilterDescriptor_t filter_descriptor;
-	cudnnConvolutionDescriptor_t convolutional_descriptor;
-} cwc_convnet_cudnn_context_t;
-#endif
-
 typedef struct {
 	cwc_convnet_layer_vary_t vary;
-#ifdef HAVE_CUDNN
-	// cudnn doesn't support partitions, however ccv's configuration could have multiple partitions
-	cwc_convnet_cudnn_context_t* partitions;
-#endif
 } cwc_convnet_layer_t;
 
 #define EXTRA(x) ((cwc_convnet_layer_t*)((x)->reserved))
