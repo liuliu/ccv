@@ -83,7 +83,7 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	if (!strem_compat->cudnn)
+	if (!stream_compat->cudnn)
 	{
 		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 		cudaSetDevice(device);
