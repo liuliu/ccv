@@ -1,4 +1,5 @@
 #!/usr/bin/env ruby
+require 'shellwords'
 
 exit unless ARGV.length == 2
 
@@ -14,4 +15,4 @@ STDIN.each_line do |line|
 	rect += sprintf("-draw \"rectangle %d,%d %d,%d\" ", x, y, x + width, y + height)
 end
 
-%x[#{sprintf("convert %s -fill none -stroke green -strokewidth 2 %s%s", ARGV[0], rect, ARGV[1])}]
+%x[#{sprintf("convert %s -fill none -stroke green -strokewidth 2 %s%s", Shellwords.escape(ARGV[0]), rect, Shellwords.escape(ARGV[1]) )}]
