@@ -33,7 +33,14 @@ CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_st
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* stream_context);
 #ifdef HAVE_CUDNN
 CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(cudnnConvolutionDescriptor_t) ccv_nnc_stream_context_get_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context);
 #endif
+// Tensor related extensions.
+#ifdef HAVE_CUDNN
+CCV_WARN_UNUSED(cudnnTensorDescriptor_t) ccv_nnc_tensor_get_descriptor(ccv_nnc_tensor_t* tensor);
+CCV_WARN_UNUSED(cudnnFilterDescriptor_t) ccv_nnc_tensor_get_filter_descriptor(ccv_nnc_tensor_t* tensor);
+#endif
+// Extended memory managements.
 void cudaFreeAsync(void* ptr, cudaStream_t stream);
 }
 

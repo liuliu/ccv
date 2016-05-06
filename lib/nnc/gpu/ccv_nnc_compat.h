@@ -24,5 +24,6 @@ void cufree(int device, void* ptr);
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* stream_context);
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* stream_context);
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* stream_context);
+void ccv_nnc_deinit_tensor(ccv_nnc_tensor_t* tensor);
 
 #endif

@@ -70,12 +70,13 @@ typedef struct {
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_tensor_param_t;
 
-typedef struct {
+typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 	ccv_numeric_data_t data;
+	void* userdata;
 } ccv_nnc_tensor_t;
 
 typedef struct {
@@ -84,7 +85,8 @@ typedef struct {
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
 	ccv_numeric_data_t data;
-	/* tensor view and tensor shares the same data structure besides the following two. */
+	void* userdata;
+	/* tensor view and tensor shares the same data structure besides the following one. */
 	int inc[CCV_NNC_MAX_DIM_ALLOC]; /**< "increment" or, length */
 } ccv_nnc_tensor_view_t;
 
@@ -92,7 +94,7 @@ typedef struct {
 
 #if CCV_NNC_TENSOR_TFB
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (((x) & 0xFFF) > 0) // has channel components
-typedef struct {
+typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
 	uint64_t sig;
@@ -120,6 +122,7 @@ typedef struct {
 		ccv_nnc_tensor_param_t info;
 	}; 
 	ccv_numeric_data_t data;
+	void* userdata;
 } ccv_dense_matrix_t;
 #else
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (0)
