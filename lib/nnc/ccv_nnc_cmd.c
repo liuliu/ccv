@@ -95,7 +95,7 @@ ccv_nnc_hint_t ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_t
 		int stride = (a.dim[i] + b.dim[i] / 2) / b.dim[i];
 		guess.stride.dim[i] = stride;
 		int border = (b.dim[i] - 1) * stride - a.dim[i] + cmd.size.dim[i];
-		guess.border.begin[i] = border / 2;
+		guess.border.begin[i] = (border + 1) / 2; // Always prefer to have more padding in the beginning, this matches CUDNN behavior.
 		guess.border.end[i] = border - guess.border.begin[i];
 	}
 	return guess;
@@ -218,6 +218,14 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int type)
 		stream_context = ccv_nnc_init_stream_context(stream_context);
 #endif
 	return stream_context;
+}
+
+void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream_context)
+{
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
+		ccv_nnc_synchronize_stream_context(stream_context);
+#endif
 }
 
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context)

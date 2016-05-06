@@ -40,6 +40,14 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
 
+void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* stream_context)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	cudaSetDevice(device);
+	cudaStreamSynchronize(stream_compat->stream);
+}
+
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
@@ -93,3 +101,13 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* s
 	return stream_compat->cudnn;
 }
 #endif
+
+static void _ccv_nnc_cufree_stream_callback(cudaStream_t stream, cudaError_t status, void* ptr)
+{
+	cudaFree(ptr);
+}
+
+void cudaFreeAsync(void* ptr, cudaStream_t stream)
+{
+	cudaStreamAddCallback(stream, _ccv_nnc_cufree_stream_callback, ptr, 0);
+}

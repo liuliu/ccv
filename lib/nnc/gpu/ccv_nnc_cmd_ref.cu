@@ -73,7 +73,7 @@ void ccv_nnc_gpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	/* Softmax layer */
 	/* ReLU activation */
 	/* Data transfer */
-	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].tensor_memory = CCV_TENSOR_CPU_MEMORY | CCV_TENSOR_GPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].exec = _ccv_nnc_data_move;

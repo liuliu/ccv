@@ -34,6 +34,7 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 #ifdef HAVE_CUDNN
 CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context);
 #endif
+void cudaFreeAsync(void* ptr, cudaStream_t stream);
 }
 
 #endif

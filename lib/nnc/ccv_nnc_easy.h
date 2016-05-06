@@ -40,6 +40,14 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 	return count;
 }
 
+static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
+{
+	int nd = 0;
+	while (nd < CCV_NNC_MAX_DIM_ALLOC && params.dim[nd] > 0)
+		++nd;
+	return nd;
+}
+
 #define CMD_CONVOLUTIONAL(_count, ...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolutional={.count=_count}})
 #define CMD_GENERIC(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})
 #define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.full_connect={.count=_count}})
