@@ -66,8 +66,8 @@ int main(int argc, char** argv)
 	cmd.backend = 2; // CCV_NNC_BACKEND_GPU_CUDNN = 0
 	cmd.algorithm = -1;
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	elapsed_time = get_current_time();
 	cmd = ccv_nnc_cmd_autotune(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gc), stream_context);
+	elapsed_time = get_current_time();
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gw, gbias), TENSOR_LIST(gc), stream_context));
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);

@@ -14,7 +14,6 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
 		tensor->sig = 0;
 		tensor->refcount = 1;
-		tensor->userdata = 0;
 		tensor->info = params;
 		if (tfb)
 		{
@@ -55,7 +54,6 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 	ccmemalign((void **)&tensor, 16, sizeof(ccv_nnc_tensor_t) + size);
 	tensor->data.u8 = (uint8_t*)(tensor + 1);
 #endif
-	tensor->userdata = 0;
 	tensor->sig = 0;
 	tensor->refcount = 1;
 	tensor->info = params;
@@ -78,7 +76,6 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t pa
 	tensor.sig = 0;
 	tensor.refcount = 1;
 	tensor.info = params;
-	tensor.userdata = 0;
 	if (flags & CCV_TENSOR_CPU_MEMORY)
 	{
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
@@ -126,7 +123,6 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, c
 	tv->refcount = 1;
 	tv->sig = 0;
 	tv->info = tensor->info;
-	tv->userdata = 0;
 	_ccv_nnc_tensor_view_set(tv, tensor, ofs, dim);
 	return tv;
 }
@@ -139,7 +135,6 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const 
 		.refcount = 1,
 		.sig = 0,
 		.info = tensor->info,
-		.userdata = 0,
 	};
 	_ccv_nnc_tensor_view_set(&tv, tensor, ofs, dim);
 	return tv;

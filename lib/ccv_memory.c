@@ -54,7 +54,6 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 	mat->format = CCV_TENSOR_FORMAT_NHWC;
 	mat->channels = CCV_GET_CHANNEL(type);
 	mat->reserved = 0;
-	mat->userdata = 0;
 #endif
 	mat->rows = rows;
 	mat->cols = cols;
