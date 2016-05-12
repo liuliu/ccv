@@ -148,10 +148,14 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 				// If a given API exist an autotune function, use that to pick the top algorithm.
 				if (api_decl.autotune)
 				{
+					// Assuming k == 0 is sufficient, and we can skip.
+					if (k > 0)
+						continue;
 					candid_cmd.algorithm = api_decl.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					ccv_nnc_stream_context_wait(stream_context);
 					elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
 					if (status == CCV_NNC_EXEC_SUCCESS &&
 						(best_measured == -1 || elapsed < best_measured))
@@ -222,6 +226,8 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int type)
 
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream_context)
 {
+	if (!stream_context)
+		return;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_synchronize_stream_context(stream_context);

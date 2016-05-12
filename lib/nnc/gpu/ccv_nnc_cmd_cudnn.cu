@@ -234,17 +234,39 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	const ccv_nnc_cudnn_tensor_view_desc_t bias = _ccv_nnc_cudnn_tensor_view_desc(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_desc_t b = _ccv_nnc_cudnn_tensor_view_desc(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_convolution_desc_t conv = _ccv_nnc_cudnn_convolution_desc(stream_context, hint);
-	int returnedAlgoCount;
-	cudnnConvolutionFwdAlgoPerf_t perfResults[CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT];
-	cudnnFindConvolutionForwardAlgorithm(cudnn, a.desc, w.desc, conv.desc, b.desc, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &returnedAlgoCount, perfResults);
-	for(int algoIndex = 0; algoIndex < returnedAlgoCount; ++algoIndex){
-		printf("^^^^ %s for Algo %d: %f time requiring %llu memory\n", cudnnGetErrorString(perfResults[algoIndex].status), perfResults[algoIndex].algo, perfResults[algoIndex].time, (unsigned long long)perfResults[algoIndex].memory);
-	}
+	int count = 0;
+	cudnnConvolutionFwdAlgoPerf_t perfs[CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT];
+	cudnnFindConvolutionForwardAlgorithm(cudnn, a.desc, w.desc, conv.desc, b.desc, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs);
+	int i;
+	cudnnConvolutionFwdAlgo_t algorithm;
+	for(i = 0; i < count; i++)
+		if ((size_t)perfs[i].memory <= max_workspace_size && perfs[i].status == CUDNN_STATUS_SUCCESS)
+		{
+			algorithm = perfs[i].algo;
+			break;
+		}
 	_ccv_nnc_cudnn_deinit_tensor_view_desc(a);
 	_ccv_nnc_cudnn_deinit_filter_desc(w);
 	_ccv_nnc_cudnn_deinit_tensor_view_desc(bias);
 	_ccv_nnc_cudnn_deinit_tensor_view_desc(b);
 	_ccv_nnc_cudnn_deinit_convolution_desc(conv);
+	switch (algorithm)
+	{
+		case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_IMPLICIT_GEMM;
+		case CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+		case CUDNN_CONVOLUTION_FWD_ALGO_GEMM:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_GEMM;
+		case CUDNN_CONVOLUTION_FWD_ALGO_DIRECT:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_DIRECT;
+		case CUDNN_CONVOLUTION_FWD_ALGO_FFT:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_FFT;
+		case CUDNN_CONVOLUTION_FWD_ALGO_FFT_TILING:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_FFT_TILING;
+		case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD:
+			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_FFT_WINOGRAD;
+	}
 	return -1; // Return the most efficient algorithm, return -1 if cannot find one.
 }
 #endif
