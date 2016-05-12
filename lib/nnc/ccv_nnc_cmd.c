@@ -115,7 +115,7 @@ uint64_t ccv_nnc_cmd_absolute_time(void)
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
-ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// This is a custom compute kernel, no need to autotune.
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
@@ -148,7 +148,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 				// If a given API exist an autotune function, use that to pick the top algorithm.
 				if (api_decl.autotune)
 				{
-					candid_cmd.algorithm = api_decl.autotune(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					candid_cmd.algorithm = api_decl.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
