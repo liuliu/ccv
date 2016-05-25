@@ -101,40 +101,40 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* s
 	return stream_compat->cudnn;
 }
 
-cudnnConvolutionDescriptor_t ccv_nnc_stream_context_deq_convolution_desc(const ccv_nnc_stream_context_t* stream_context)
+cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context)
 {
 	cudnnConvolutionDescriptor_t desc;
 	cudnnCreateConvolutionDescriptor(&desc);
 	return desc;
 }
 
-cudnnTensorDescriptor_t ccv_nnc_stream_context_deq_tensor_desc(const ccv_nnc_stream_context_t* stream_context)
+cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* stream_context)
 {
 	cudnnTensorDescriptor_t desc;
 	cudnnCreateTensorDescriptor(&desc);
 	return desc;
 }
 
-cudnnFilterDescriptor_t ccv_nnc_stream_context_deq_filter_desc(const ccv_nnc_stream_context_t* stream_context)
+cudnnFilterDescriptor_t ccv_nnc_stream_context_get_filter_descriptor(const ccv_nnc_stream_context_t* stream_context)
 {
 	cudnnFilterDescriptor_t desc;
 	cudnnCreateFilterDescriptor(&desc);
 	return desc;
 }
 
-void ccv_nnc_stream_context_enq_convolution_desc(const ccv_nnc_stream_context_t* stream_context, cudnnConvolutionDescriptor_t convolution_desc)
+void ccv_nnc_stream_context_return_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnConvolutionDescriptor_t convolution_descriptor)
 {
-	cudnnDestroyConvolutionDescriptor(convolution_desc);
+	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 }
 
-void ccv_nnc_stream_context_enq_tensor_desc(const ccv_nnc_stream_context_t* stream_context, cudnnTensorDescriptor_t tensor_desc)
+void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnTensorDescriptor_t tensor_descriptor)
 {
-	cudnnDestroyTensorDescriptor(tensor_desc);
+	cudnnDestroyTensorDescriptor(tensor_descriptor);
 }
 
-void ccv_nnc_stream_context_enq_filter_desc(const ccv_nnc_stream_context_t* stream_context, cudnnFilterDescriptor_t filter_desc)
+void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnFilterDescriptor_t filter_descriptor)
 {
-	cudnnDestroyFilterDescriptor(filter_desc);
+	cudnnDestroyFilterDescriptor(filter_descriptor);
 }
 #endif
 
