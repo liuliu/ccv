@@ -107,7 +107,7 @@ static ccv_nnc_cudnn_filter_descriptor_t _ccv_nnc_cudnn_get_filter_descriptor(co
 		dim[1] = tensor->info.dim[0];
 		for (i = 2; i < nd; i++)
 			dim[i] = tensor->info.dim[nd - i];
-		cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, nd, dim);
+		cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NHWC, nd, dim);
 	}
 	return filter_desc;
 }
