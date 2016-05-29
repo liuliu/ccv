@@ -117,6 +117,25 @@ static void _ccv_nnc_cudnn_deinit_filter_descriptor(const ccv_nnc_cudnn_filter_d
 	ccv_nnc_stream_context_return_filter_descriptor(filter_desc.stream_context, filter_desc.descriptor);
 }
 
+static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+{
+	assert(output_size == input_size);
+	int i;
+	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
+	int device = ccv_nnc_stream_context_get_device(stream_context);
+	cudaSetDevice(device);
+	for (i = 0; i < input_size; i++)
+	{
+		const ccv_nnc_cudnn_tensor_view_descriptor_t a = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[i]);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t b = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
+		const float one = 1, zero = 0;
+		cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8);
+		_ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
+		_ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 typedef struct {
 	const ccv_nnc_stream_context_t* stream_context;
 	cudnnConvolutionDescriptor_t descriptor;
@@ -208,7 +227,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// TODO: If error, return OOM
 	if (workspace_size)
 		cudaMalloc(&workspace, workspace_size);
-	float one = 1, zero = 0;
+	const float one = 1, zero = 0;
 	cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8);
 	cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8);
 	if (workspace)
@@ -275,6 +294,11 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 void ccv_nnc_gpu_cudnn_init(ccv_nnc_cmd_api_t cmd_api[])
 {
 #ifdef HAVE_CUDNN
+	/* Format transform */
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].algorithms = -1;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].exec = _ccv_nnc_format_transform;
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
