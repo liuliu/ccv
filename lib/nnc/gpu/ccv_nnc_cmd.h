@@ -23,7 +23,7 @@
 #include <cublas_v2.h>
 #ifdef HAVE_CUDNN
 #include <cudnn.h>
-#if CUDNN_VERSION < 5 // Doesn't support CUDNN with version lower than 5.
+#if CUDNN_VERSION < 5000 // Doesn't support CUDNN with version lower than 5000 (major version 5).
 #undef HAVE_CUDNN
 #endif
 #endif
