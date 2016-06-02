@@ -1,8 +1,10 @@
+extern "C" {
 #include <ccv.h>
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <nnc/ccv_nnc_internal.h>
+}
 
 // The header for CUDA related objects.
 #include "ccv_nnc_cmd.h"
