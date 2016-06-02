@@ -90,7 +90,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
-	// inputs: gradient, forw prop input / forw prop output, [w]
+	// inputs: gradient, forw prop input, [w]
 	// outputs: weight updates, bias updates, [output gradient]
 	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
@@ -146,8 +146,9 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		bias->data.f32[k] = biasval;
 	} parallel_endfor
 	// If h is available, therefore, we need to propagate the gradients back
-	if (h)
+	if (input_size == 3 && output_size == 3)
 	{
+		assert(h);
 		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
 		// reset it to 0.
 		ccv_nnc_tensor_zero(h);

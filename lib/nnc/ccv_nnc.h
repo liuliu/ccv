@@ -105,10 +105,13 @@ typedef struct {
 /**
  * Level-0 API
  */
+
 void ccv_nnc_init(void);
+
 /**
  * Level-1 API
  */
+
 // For tensor
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
 // Allocating on stack
@@ -121,9 +124,10 @@ void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view);
 // All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
 void ccv_nnc_tensor_zero(void* tensor);
 int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
+
 // For computation node
 // Return high precision time unit.
-uint64_t ccv_nnc_cmd_absolute_time(void);
+uint64_t ccv_nnc_cmd_abs_time(void);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Guess and verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
@@ -132,8 +136,9 @@ CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+
 // Control flow constructs
-// Follow heavily along CUDA's stream / event idea.
+// Follow heavily based along CUDA's stream / event idea.
 enum {
 	CCV_STREAM_CONTEXT_CPU = 0x1,
 	CCV_STREAM_CONTEXT_GPU = 0x2,

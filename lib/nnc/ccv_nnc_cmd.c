@@ -102,7 +102,7 @@ ccv_nnc_hint_t ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_t
 }
 
 // This returns absolute time.
-uint64_t ccv_nnc_cmd_absolute_time(void)
+uint64_t ccv_nnc_cmd_abs_time(void)
 {
 #ifdef __MACH__
 	return mach_absolute_time();
@@ -152,11 +152,11 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					if (k > 0)
 						continue;
 					candid_cmd.algorithm = api_decl.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-					uint64_t elapsed = ccv_nnc_cmd_absolute_time();
+					uint64_t elapsed = ccv_nnc_cmd_abs_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					ccv_nnc_stream_context_wait(stream_context);
-					elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
+					elapsed = ccv_nnc_cmd_abs_time() - elapsed;
 					if (status == CCV_NNC_EXEC_SUCCESS &&
 						(best_measured == -1 || elapsed < best_measured))
 					{
@@ -168,10 +168,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					for (j = 0; j < api_decl.algorithms; j++)
 					{
 						candid_cmd.algorithm = j;
-						uint64_t elapsed = ccv_nnc_cmd_absolute_time();
+						uint64_t elapsed = ccv_nnc_cmd_abs_time();
 						// Ready to run.
 						int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-						elapsed = ccv_nnc_cmd_absolute_time() - elapsed;
+						elapsed = ccv_nnc_cmd_abs_time() - elapsed;
 						if (status == CCV_NNC_EXEC_SUCCESS &&
 							(best_measured == -1 || elapsed < best_measured))
 						{

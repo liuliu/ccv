@@ -42,7 +42,7 @@ int main(int argc, char** argv)
 	for (i = 0; i < INPUT_SIZE * INPUT_SIZE * INPUT_DIM * ccv_max(1, BATCH_SIZE); i++)
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < OUTPUT_DIM; i++)
-		bias->data.f32[i] = 0; // (float)i / OUTPUT_DIM;
+		bias->data.f32[i] = (float)i / OUTPUT_DIM;
 	// Copy generated matrix values over to GPU.
 	ccv_nnc_tensor_t* ga = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR_NHWC(00, INPUT_DIM, INPUT_SIZE, INPUT_SIZE, BATCH_SIZE), 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR_NHWC(00, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
