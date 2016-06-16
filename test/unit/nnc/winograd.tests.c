@@ -1,5 +1,6 @@
 #include "case.h"
 #include "ccv_case.h"
+#include "ccv_nnc_case.h"
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
@@ -29,7 +30,7 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
-	REQUIRE_MATRIX_EQ(b, c, "56x56 matrix should be exactly the same from reference implementation and winograd.");
+	REQUIRE_TENSOR_EQ(b, c, "56x56 matrix should be exactly the same from reference implementation and winograd.");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
@@ -61,7 +62,7 @@ TEST_CASE("convolutional network of 3x3 on 55x55 with non-uniform weights")
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
-	REQUIRE_MATRIX_EQ(b, c, "55x55 matrix should be exactly the same from reference implementation and winograd.");
+	REQUIRE_TENSOR_EQ(b, c, "55x55 matrix should be exactly the same from reference implementation and winograd.");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);
@@ -93,7 +94,7 @@ TEST_CASE("convolutional network of 3x3 on 224x224 with non-uniform weights and 
 	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
-	REQUIRE_MATRIX_EQ(b, c, "224x224 matrix should be exactly the same from reference implementation and winograd.");
+	REQUIRE_TENSOR_EQ(b, c, "224x224 matrix should be exactly the same from reference implementation and winograd.");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);
 	ccv_nnc_tensor_free(w);

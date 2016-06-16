@@ -1,5 +1,6 @@
 #include "case.h"
 #include "ccv_case.h"
+#include "ccv_nnc_case.h"
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
@@ -45,7 +46,7 @@ TEST_CASE("data transfer between different tensor views")
 	c->data.f32[64 * 32 + 129] = 128 * 56 * (4 + 1) + 128 * (3 + 2) + 3;
 	c->data.f32[64 * 32 + 130] = 128 * 56 * (4 + 1) + 128 * (3 + 2) + 4;
 	c->data.f32[64 * 32 + 131] = 128 * 56 * (4 + 1) + 128 * (3 + 2) + 5;
-	REQUIRE_MATRIX_EQ(b, c, "64x32x24 tensor should be exactly the same.");
+	REQUIRE_TENSOR_EQ(b, c, "64x32x24 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);
@@ -86,10 +87,10 @@ TEST_CASE("format transform between NHWC and NCHW tensors")
 	c->data.f32[21] = 19;
 	c->data.f32[22] = 21;
 	c->data.f32[23] = 23;
-	REQUIRE_MATRIX_EQ(b, c, "3x4x2 tensor should be exactly the same.");
+	REQUIRE_TENSOR_EQ(b, c, "3x4x2 tensor should be exactly the same.");
 	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(2, 3, 4), 0);
 	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(c), TENSOR_LIST(d), 0);
-	REQUIRE_MATRIX_EQ(d, a, "2x3x4 tensor should be exactly the same.");
+	REQUIRE_TENSOR_EQ(d, a, "2x3x4 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);
@@ -113,6 +114,7 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 				a->data.f32[(i + 3) * 5 * 6 + (j + 2) * 5 + (k + 1)] = k + j * 2 + i * 3 * 2;
 	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 10, 8), 0);
+	memset(c->data.f32, 0, sizeof(float) * 8 * 10 * 8);
 	c->data.f32[0] = 0;
 	c->data.f32[1] = 2;
 	c->data.f32[2] = 4;
@@ -137,13 +139,13 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 	c->data.f32[104] = 19;
 	c->data.f32[105] = 21;
 	c->data.f32[106] = 23;
-	REQUIRE_MATRIX_EQ(b, c, "3x4x2 tensor view should be exactly the same.");
+	REQUIRE_TENSOR_EQ(b, c, "3x4x2 tensor view should be exactly the same.");
 	ccv_nnc_tensor_view_t c_view = ccv_nnc_tensor_view(c, DIM_ALLOC(0, 0, 0), DIM_ALLOC(3, 4, 2));
 	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(5, 6, 7), 0);
 	memset(d->data.f32, 0, sizeof(float) * 5 * 6 * 7);
 	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, DIM_ALLOC(1, 2, 3), DIM_ALLOC(2, 3, 4));
 	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&c_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
-	REQUIRE_MATRIX_EQ(d, a, "2x3x4 tensor should be exactly the same.");
+	REQUIRE_TENSOR_EQ(d, a, "2x3x4 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);
