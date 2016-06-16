@@ -33,6 +33,8 @@
 #define GPU_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.dim={__VA_ARGS__}})
 #define ONE_GPU_TENSOR GPU_TENSOR_NHWC // The default is NHWC
 
+#define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}
+
 static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {
 	if (params.dim[0] == 0)

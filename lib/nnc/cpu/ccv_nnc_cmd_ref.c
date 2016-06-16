@@ -125,14 +125,65 @@ static void _ccv_nnc_tensor_nhwc_nchw(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 			for (i[2] = 0; i[2] < hw[1]; i[2]++)
 			{
 				for (i[1] = 0; i[1] < hw[0]; i[1]++)
-					bp[i[1]] = apu[i[1] * c];
-				bp += binc[0];
+					bp[i[1]] = apu[i[1] * ainc[0]];
 				apu += ainc[0] * ainc[1];
+				bp += binc[0];
 			}
 			bp += (binc[1] - hw[1]) * binc[0];
 		}
-		bp += (binc[2] - c) * binc[1] * binc[0];
 		ap += ainc[2] * ainc[1] * ainc[0];
+		bp += (binc[2] - c) * binc[1] * binc[0];
+	}
+}
+
+static void _ccv_nnc_tensor_nchw_nhwc(const ccv_nnc_tensor_view_t* a, ccv_nnc_tensor_view_t* b)
+{
+	// Assuming this is float 32.
+	int ainc[CCV_NNC_MAX_DIM + 2];
+	int binc[CCV_NNC_MAX_DIM + 2];
+	int k;
+	// In case it is Toll-free bridged matrix object (NHWC format is possible).
+	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0 || b->info.dim[CCV_NNC_MAX_DIM + 1] == 0);
+	for (k = 0; k < CCV_NNC_MAX_DIM + 2; k++)
+	{
+		ainc[k] = ccv_max(1, CCV_IS_TENSOR_VIEW(a) ? a->inc[k] : a->info.dim[k]);
+		binc[k] = ccv_max(1, CCV_IS_TENSOR_VIEW(b) ? b->inc[k] : b->info.dim[k]);
+	}
+	// Comparing N
+	assert(ccv_max(1, a->info.dim[CCV_NNC_MAX_DIM + 1]) == ccv_max(1, b->info.dim[CCV_NNC_MAX_DIM + 1]));
+	const int n = ccv_max(1, a->info.dim[CCV_NNC_MAX_DIM + 1]);
+	// Comparing C
+	assert(a->info.dim[CCV_NNC_MAX_DIM] == b->info.dim[0]);
+	const int c = a->info.dim[CCV_NNC_MAX_DIM];
+	// Comparing HW
+	int hw[CCV_NNC_MAX_DIM];
+	for (k = 0; k < CCV_NNC_MAX_DIM; k++)
+	{
+		assert(a->info.dim[k] == b->info.dim[k + 1]);
+		hw[k] = a->info.dim[k];
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int i[CCV_NNC_MAX_DIM + 2];
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	// Non-optimal case, need to do skip copy.
+	for (i[3] = 0; i[3] < n; i[3]++)
+	{
+		for (i[0] = 0; i[0] < c; i[0]++)
+		{
+			float* bpu = bp + i[0];
+			for (i[2] = 0; i[2] < hw[1]; i[2]++)
+			{
+				for (i[1] = 0; i[1] < hw[0]; i[1]++)
+					bpu[i[1] * binc[0]] = ap[i[1]];
+				ap += ainc[0];
+				bpu += binc[0] * binc[1];
+			}
+			ap += (ainc[1] - hw[1]) * ainc[0];
+		}
+		ap += (ainc[2] - c) * ainc[1] * ainc[0];
+		bp += binc[2] * binc[1] * binc[0];
 	}
 }
 
@@ -152,6 +203,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 			_ccv_nnc_tensor_nhwc_nchw(a, b);
 		} else if (a->info.format == CCV_TENSOR_FORMAT_NHWC && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
 		} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
+			_ccv_nnc_tensor_nchw_nhwc(a, b);
 		} else if (a->info.format == CCV_TENSOR_FORMAT_NCHW && b->info.format == CCV_TENSOR_FORMAT_CHWN) {
 		} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		} else if (a->info.format == CCV_TENSOR_FORMAT_CHWN && b->info.format == CCV_TENSOR_FORMAT_NCHW) {
