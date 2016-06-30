@@ -1,7 +1,7 @@
 include config.mk
 
 #CC += -g -fno-omit-frame-pointer -fsanitize=address# -fprofile-arcs -ftest-coverage
-CFLAGS := -O3 -ffast-math -Wall -I"." $(CFLAGS)
+CFLAGS := -O3 -Wall -I"." $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
 # Make nnc/libnnc.o a phony target therefore it will be triggered every time.
