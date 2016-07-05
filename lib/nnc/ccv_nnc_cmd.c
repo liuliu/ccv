@@ -14,12 +14,14 @@ typedef void(*ccv_nnc_init_f)(ccv_nnc_cmd_api_t cmd_api[]);
 
 typedef struct {
 	int backend;
+	const char* name;
+	size_t name_size;
 	ccv_nnc_init_f init;
 } ccv_nnc_init_t;
 
 #define CCV_NNC_INIT_DECL(init_func) extern void (init_func)(ccv_nnc_cmd_api_t cmd_api[])
 #define CCV_NNC_INIT_MAP_BEGIN() static ccv_nnc_init_t init_map[] = {
-#define CCV_NNC_INIT_MAP(name, init_func) { .backend = name, .init = init_func, },
+#define CCV_NNC_INIT_MAP(_name, _init) { .backend = _name, .name = #_name, .name_size = sizeof(#_name), .init = _init, },
 #define CCV_NNC_INIT_MAP_END() };
 
 #define CCV_NNC_INIT_EXEC(name, init_func) do { \
@@ -43,6 +45,17 @@ void ccv_nnc_init(void)
 	// Init dynamic dispatch table.
 	for (i = 0; i < count; i++)
 		init_map[i].init(cmd_api_decls[init_map[i].backend]);
+}
+
+int ccv_nnc_cmd_backend(const char* name)
+{
+	int i;
+	int count = sizeof(init_map) / sizeof(ccv_nnc_init_t);
+	// Do simple linear scan across the dynamic dispatch table.
+	for (i = 0; i < count; i++)
+		if (strncmp(init_map[i].name, name, init_map[i].name_size) == 0)
+			return init_map[i].backend;
+	return -1;
 }
 
 const ccv_nnc_cmd_param_t ccv_nnc_default_cmd_params = {{{0}}};
@@ -102,7 +115,7 @@ ccv_nnc_hint_t ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_t
 }
 
 // This returns absolute time.
-uint64_t ccv_nnc_cmd_abs_time(void)
+uint64_t ccv_nnc_cmd_mono_time(void)
 {
 #ifdef __MACH__
 	return mach_absolute_time();
@@ -152,11 +165,11 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					if (k > 0)
 						continue;
 					candid_cmd.algorithm = api_decl.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-					uint64_t elapsed = ccv_nnc_cmd_abs_time();
+					uint64_t elapsed = ccv_nnc_cmd_mono_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					ccv_nnc_stream_context_wait(stream_context);
-					elapsed = ccv_nnc_cmd_abs_time() - elapsed;
+					elapsed = ccv_nnc_cmd_mono_time() - elapsed;
 					if (status == CCV_NNC_EXEC_SUCCESS &&
 						(best_measured == -1 || elapsed < best_measured))
 					{
@@ -168,10 +181,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					for (j = 0; j < api_decl.algorithms; j++)
 					{
 						candid_cmd.algorithm = j;
-						uint64_t elapsed = ccv_nnc_cmd_abs_time();
+						uint64_t elapsed = ccv_nnc_cmd_mono_time();
 						// Ready to run.
 						int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-						elapsed = ccv_nnc_cmd_abs_time() - elapsed;
+						elapsed = ccv_nnc_cmd_mono_time() - elapsed;
 						if (status == CCV_NNC_EXEC_SUCCESS &&
 							(best_measured == -1 || elapsed < best_measured))
 						{

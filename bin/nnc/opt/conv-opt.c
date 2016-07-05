@@ -46,7 +46,8 @@ int main(int argc, char** argv)
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
-	cmd.backend = 0; // CCV_NNC_BACKEND_CPU_OPT = 0
+	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_OPT");
+	assert(cmd.backend >= 0);
 	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
 	elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);

@@ -127,7 +127,8 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
 
 // For computation node
 // Return high precision time unit.
-uint64_t ccv_nnc_cmd_abs_time(void);
+uint64_t ccv_nnc_cmd_mono_time(void);
+int ccv_nnc_cmd_backend(const char* name);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Guess and verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
@@ -163,13 +164,13 @@ typedef struct {
 } ccv_nnc_graph_exec_t;
 
 // Create an empty graph.
-// Note that all graph mutation method are not thread-safe.
+// Note that all graph mutation methods are not thread-safe.
 // You should only operate the graph in serial fashion.
 CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(void);
 // Create a node with specific command execution, as well as its inputs & outputs.
 // Underlying, the graph maintains the backing object for the node, and all you get is
 // a on-stack object to index the backing object from the graph.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_deferred_exec(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
@@ -180,6 +181,33 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* graph);
 
 /**
  * Level-3 API
+ */
+
+typedef struct ccv_nnc_symbolic_graph_s ccv_nnc_symbolic_graph_t;
+
+typedef struct {
+	ccv_nnc_tensor_param_t info;
+	int32_t d;
+	const ccv_nnc_graph_t* graph;
+} ccv_nnc_tensor_symbol_t;
+
+typedef struct {
+	int32_t d;
+	const ccv_nnc_graph_t* graph;
+} ccv_nnc_symbolic_graph_exec_t;
+
+// Create an empty symbolic graph.
+// Note that all graph mutation methods are not thread-safe.
+// You should only operate the graph in serial fashion.
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_symbolic_graph_tensor_symbol(ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_param_t info);
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_exec_t) ccv_nnc_symbolic_graph_exec(void);
+void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
+
+// Create an tensor symbol (thus, with no actual memory space allocation).
+
+/**
+ * Level-4 API
  */
 typedef struct {
 } ccv_nnc_graph_solver_t;
