@@ -200,8 +200,8 @@ typedef struct {
 // Note that all graph mutation methods are not thread-safe.
 // You should only operate the graph in serial fashion.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_symbolic_graph_tensor_symbol(ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_param_t info);
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_exec_t) ccv_nnc_symbolic_graph_exec(void);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_symbolic_graph_tensor_symbol(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_param_t info);
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_exec_t) ccv_nnc_symbolic_graph_exec(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t const* inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
 
 // Create an tensor symbol (thus, with no actual memory space allocation).

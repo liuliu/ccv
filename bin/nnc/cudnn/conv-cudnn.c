@@ -29,6 +29,8 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(INPUT_DIM, INPUT_SIZE, INPUT_SIZE, BATCH_SIZE), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE, BATCH_SIZE), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
+	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_REF");
+	assert(cmd.backend >= 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
 	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
@@ -69,7 +71,7 @@ int main(int argc, char** argv)
 	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_GPU_CUDNN");
 	assert(cmd.backend >= 0);
 	cmd.algorithm = -1;
-	// cmd = ccv_nnc_cmd_autotune(cmd, 2 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
+	cmd = ccv_nnc_cmd_autotune(cmd, 2 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
 	elapsed_time = get_current_time();
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context));
 	ccv_nnc_stream_context_wait(stream_context);
