@@ -42,13 +42,13 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
-			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &input->info, 1, &tensor->info, 1);
-			cmd = ccv_nnc_cmd_autotune(cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
-			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &input->info, 1, &tensor->info, 1);
+			cmd = ccv_nnc_cmd_autotune(cmd, 0, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
+			exec = ccv_nnc_graph_exec(vgg, cmd, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
-			ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &input->info, 1, &tensor->info, 1);
-			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, hint, 0, TENSOR_LIST(input), TENSOR_LIST(tensor));
+			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &input->info, 1, &tensor->info, 1);
+			exec = ccv_nnc_graph_exec(vgg, cmd, hint, 0, TENSOR_LIST(input), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
 			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->input.node.count, layer->net.full_connect.count), 0);
 			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
@@ -63,8 +63,8 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 				input = ccv_nnc_tensor_new(input->data.u8, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input->info)), 0);
 				ccv_array_push(tensors, &input);
 			}
-			cmd = ccv_nnc_cmd_autotune(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
-			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+			cmd = ccv_nnc_cmd_autotune(cmd, 0, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
+			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else {
 			assert("unreachable");
 		}

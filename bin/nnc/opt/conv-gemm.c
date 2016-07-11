@@ -28,7 +28,7 @@ int main(int argc, char** argv)
 	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_OPT");
 	assert(cmd.backend >= 0);
 	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
 	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, 1, 1, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);

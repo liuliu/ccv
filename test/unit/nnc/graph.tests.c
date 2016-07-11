@@ -25,7 +25,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);
 	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 2, 3, 5), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(forw_cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, &a->info, 1, &b->info, 1);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3, 5, 4), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	dsfmt_t dsfmt;

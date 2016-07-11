@@ -5,12 +5,15 @@ LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../../lib" -lineinfo $(NVFLAGS)
 
-all: conv-cudnn
+all: conv-cudnn-forw conv-cudnn-back
 
 clean:
 	${MAKE} clean -C ../../../lib ; rm -f *.o $(TARGETS)
 
-conv-cudnn: %: %.o libccv.a
+conv-cudnn-forw: %: %.o libccv.a
+	$(CC) -o $@ $< $(LDFLAGS)
+
+conv-cudnn-back: %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)
 
 libccv.a:

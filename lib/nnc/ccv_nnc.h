@@ -130,9 +130,10 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
 uint64_t ccv_nnc_cmd_mono_time(void);
 int ccv_nnc_cmd_backend(const char* name);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
-// Guess and verify the hint
+// Verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_guess(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
+// Auto find the best hint for a given inputs / outputs.
+CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
@@ -185,6 +186,9 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* graph);
 
 typedef struct ccv_nnc_symbolic_graph_s ccv_nnc_symbolic_graph_t;
 
+// Opaque pointer to an arena of allocated tensors.
+typedef struct ccv_nnc_tensor_arena_s ccv_nnc_tensor_arena_t;
+
 typedef struct {
 	ccv_nnc_tensor_param_t info;
 	int32_t d;
@@ -194,17 +198,32 @@ typedef struct {
 typedef struct {
 	int32_t d;
 	const ccv_nnc_graph_t* graph;
-} ccv_nnc_symbolic_graph_exec_t;
+} ccv_nnc_graph_exec_symbol_t;
 
 // Create an empty symbolic graph.
 // Note that all graph mutation methods are not thread-safe.
 // You should only operate the graph in serial fashion.
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_symbolic_graph_tensor_symbol(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_param_t info);
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_exec_t) ccv_nnc_symbolic_graph_exec(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t const* inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
-void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
 
-// Create an tensor symbol (thus, with no actual memory space allocation).
+// Create a new symbolic graph. It is an opaque data structure that maintains the whole graph of computation in its symbolic form.
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
+// Create an tensor symbol (thus, with no actual memory space allocation) in a symbolic graph.
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_param_t info);
+// Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t const* inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
+// The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
+// However, you can also set your own hints. Return non-zero if cannot set successfully.
+int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_hint_t hint);
+// Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
+int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+// Concatenate input graph nodes with an output graph node to create a new graph.
+// Return non-zero if cannot concat successfully.
+int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+// Compile a symbolic graph into a graph that can be executed, and a set of tensors (opaque data structure tensor arena) are allocated based on which tensor symbols are the input and which are the outputs. The tensor allocation is done to minimize the required storage.
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref);
+// Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
+void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
+// Free the opaque tensor arena structure.
+void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena);
 
 /**
  * Level-4 API
