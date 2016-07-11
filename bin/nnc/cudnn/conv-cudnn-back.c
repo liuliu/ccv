@@ -31,7 +31,7 @@ int main(int argc, char** argv)
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
 	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_REF");
 	assert(cmd.backend >= 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_guess(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
 	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(OUTPUT_DIM), 0);
@@ -51,20 +51,20 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_t* gwo = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(00, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(00, OUTPUT_DIM), 0);
 	unsigned int elapsed_time = get_current_time();
-	ccv_nnc_cmd_t move = ccv_nnc_cmd(CCV_NNC_COMPUTE_DATA_TRANSFER, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_cmd_t move = ccv_nnc_cmd(CCV_NNC_COMPUTE_DATA_TRANSFER, 0, ccv_nnc_cmd_auto, 0);
 	move.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_GPU_REF");
 	assert(move.backend >= 0);
-	ccv_nnc_cmd_exec(move, ccv_nnc_default_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias), 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias), 0);
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for ref\n", elapsed_time);
 	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(00, OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE, BATCH_SIZE), 0);
 
-	ccv_nnc_cmd_t transform = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_cmd_t transform = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_cmd_auto, 0);
 	transform.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_GPU_CUDNN");
 	assert(transform.backend >= 0);
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_cmd_exec(transform, ccv_nnc_default_hint, 0, TENSOR_LIST(gw), TENSOR_LIST(gwo), stream_context);
+	ccv_nnc_cmd_exec(transform, ccv_nnc_no_hint, 0, TENSOR_LIST(gw), TENSOR_LIST(gwo), stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_tensor_free(gw);
 
@@ -79,7 +79,7 @@ int main(int argc, char** argv)
 	elapsed_time = get_current_time() - elapsed_time;
 	printf("%u ms for optimized\n", elapsed_time);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE, BATCH_SIZE), 0);
-	ccv_nnc_cmd_exec(move, ccv_nnc_default_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(gc), TENSOR_LIST(c), 0);
 	for (i = 0; i < OUTPUT_DIM * OUTPUT_SIZE * OUTPUT_SIZE; i++)
 		if (fabs(b->data.f32[i] - c->data.f32[i]) > 1e-5)
 			printf("%d %f %f\n", i, b->data.f32[i], c->data.f32[i]);

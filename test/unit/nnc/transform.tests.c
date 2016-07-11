@@ -11,7 +11,7 @@ TEST_CASE("data transfer between different tensor views")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(64, 32, 24), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_DATA_TRANSFER, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_DATA_TRANSFER, 0, ccv_nnc_cmd_auto, 0);
 	int i;
 	for (i = 0; i < 128 * 56 * 56; i++)
 		a->data.f32[i] = i;
@@ -19,7 +19,7 @@ TEST_CASE("data transfer between different tensor views")
 	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, DIM_ALLOC(2, 3, 4), DIM_ALLOC(4, 3, 2));
 	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, DIM_ALLOC(0, 0, 0), DIM_ALLOC(4, 3, 2));
 	memset(b->data.f32, 0, sizeof(float) * 64 * 32 * 24);
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(64, 32, 24), 0);
 	memset(c->data.f32, 0, sizeof(float) * 64 * 32 * 24);
 	c->data.f32[0] = 128 * 56 * 4 + 128 * 3 + 2;
@@ -57,11 +57,11 @@ TEST_CASE("format transform between NHWC and NCHW tensors")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(2, 3, 4), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(3, 4, 2), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_cmd_auto, 0);
 	int i;
 	for (i = 0; i < 2 * 3 * 4; i++)
 		a->data.f32[i] = i;
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(3, 4, 2), 0);
 	c->data.f32[0] = 0;
 	c->data.f32[1] = 2;
@@ -89,7 +89,7 @@ TEST_CASE("format transform between NHWC and NCHW tensors")
 	c->data.f32[23] = 23;
 	REQUIRE_TENSOR_EQ(b, c, "3x4x2 tensor should be exactly the same.");
 	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(2, 3, 4), 0);
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(c), TENSOR_LIST(d), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(c), TENSOR_LIST(d), 0);
 	REQUIRE_TENSOR_EQ(d, a, "2x3x4 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
@@ -106,13 +106,13 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 10, 8), 0);
 	memset(b->data.f32, 0, sizeof(float) * 8 * 10 * 8);
 	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, DIM_ALLOC(0, 0, 0), DIM_ALLOC(3, 4, 2));
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_default_cmd_params, 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FORMAT_TRANSFORM, 0, ccv_nnc_cmd_auto, 0);
 	int i, j, k;
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 3; j++)
 			for (k = 0; k < 2; k++)
 				a->data.f32[(i + 3) * 5 * 6 + (j + 2) * 5 + (k + 1)] = k + j * 2 + i * 3 * 2;
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 10, 8), 0);
 	memset(c->data.f32, 0, sizeof(float) * 8 * 10 * 8);
 	c->data.f32[0] = 0;
@@ -144,7 +144,7 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(5, 6, 7), 0);
 	memset(d->data.f32, 0, sizeof(float) * 5 * 6 * 7);
 	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, DIM_ALLOC(1, 2, 3), DIM_ALLOC(2, 3, 4));
-	ccv_nnc_cmd_exec(cmd, ccv_nnc_default_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&c_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
+	ccv_nnc_cmd_exec(cmd, ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&c_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
 	REQUIRE_TENSOR_EQ(d, a, "2x3x4 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);

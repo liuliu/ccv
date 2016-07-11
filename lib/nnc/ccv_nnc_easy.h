@@ -58,7 +58,8 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 #define CMD_GENERIC(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})
 #define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.full_connect={.count=_count}})
 
-extern const ccv_nnc_hint_t ccv_nnc_default_hint;
-extern const ccv_nnc_cmd_param_t ccv_nnc_default_cmd_params;
+extern const ccv_nnc_hint_t ccv_nnc_no_hint;
+extern const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto;
+extern const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto;
 
 #endif

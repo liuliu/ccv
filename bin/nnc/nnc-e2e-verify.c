@@ -63,8 +63,8 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 				input = ccv_nnc_tensor_new(input->data.u8, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input->info)), 0);
 				ccv_array_push(tensors, &input);
 			}
-			cmd = ccv_nnc_cmd_autotune(cmd, 0, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
-			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+			cmd = ccv_nnc_cmd_autotune(cmd, 0, ccv_nnc_no_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
+			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else {
 			assert("unreachable");
 		}
@@ -79,7 +79,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			// Create the ReLU layer.
 			ccv_nnc_cmd_param_t cmd_params = {};
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_RELU_FORWARD, 0, cmd_params, 0);
-			exec = ccv_nnc_graph_deferred_exec(vgg, cmd, ccv_nnc_default_hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(tensor));
+			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(tensor), TENSOR_LIST(tensor));
 			ccv_nnc_graph_exec_concat(vgg, previous_exec, exec);
 			previous_exec = exec;
 		}

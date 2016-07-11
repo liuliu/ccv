@@ -58,7 +58,7 @@ int ccv_nnc_cmd_backend(const char* name)
 	return -1;
 }
 
-const ccv_nnc_cmd_param_t ccv_nnc_default_cmd_params = {{{0}}};
+const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
 
 ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
 {
@@ -73,7 +73,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_
 	return cmd;
 }
 
-const ccv_nnc_hint_t ccv_nnc_default_hint = {{{0}}};
+const ccv_nnc_hint_t ccv_nnc_no_hint = {{{0}}};
 
 int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
