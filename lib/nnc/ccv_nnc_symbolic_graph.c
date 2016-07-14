@@ -126,4 +126,5 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph)
 
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena)
 {
+	ccfree(tensor_arena);
 }
