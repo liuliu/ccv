@@ -52,10 +52,10 @@ int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_
 	assert(graph == source.graph);
 	assert(graph == destination.graph);
 	assert(source.d < graph->exec_info->rnum);
+	assert(destination.d < graph->exec_info->rnum);
 	ccv_nnc_graph_exec_info_t* src_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, source.d);
 	if (src_info->outgoings == 0)
 		src_info->outgoings = ccv_array_new(sizeof(int32_t), 1, 0);
-	assert(destination.d < graph->exec_info->rnum);
 	ccv_array_push(src_info->outgoings, &destination.d);
 	return 0;
 }

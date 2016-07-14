@@ -192,12 +192,12 @@ typedef struct ccv_nnc_tensor_arena_s ccv_nnc_tensor_arena_t;
 typedef struct {
 	ccv_nnc_tensor_param_t info;
 	int32_t d;
-	const ccv_nnc_graph_t* graph;
+	const ccv_nnc_symbolic_graph_t* graph;
 } ccv_nnc_tensor_symbol_t;
 
 typedef struct {
 	int32_t d;
-	const ccv_nnc_graph_t* graph;
+	const ccv_nnc_symbolic_graph_t* graph;
 } ccv_nnc_graph_exec_symbol_t;
 
 // Create an empty symbolic graph.
@@ -209,7 +209,7 @@ CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
 // Create an tensor symbol (thus, with no actual memory space allocation) in a symbolic graph.
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_param_t info);
 // Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t const* inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
 // The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
 // However, you can also set your own hints. Return non-zero if cannot set successfully.
 int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_hint_t hint);
