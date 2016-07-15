@@ -500,16 +500,16 @@ void ccv_nnc_gpu_cudnn_init(ccv_nnc_cmd_api_t cmd_api[])
 	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].algorithms = -1;
 	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].exec = _ccv_nnc_format_transform;
 	/* Convolutional layer */
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].algorithms = CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].autotune = _ccv_nnc_conv_forw_autotune;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].algorithms = CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT * CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].exec = _ccv_nnc_conv_back;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].autotune = _ccv_nnc_conv_back_autotune;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].algorithms = CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].exec = _ccv_nnc_conv_forw;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].autotune = _ccv_nnc_conv_forw_autotune;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].algorithms = CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT * CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].exec = _ccv_nnc_conv_back;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].autotune = _ccv_nnc_conv_back_autotune;
 	/* Full connect layer */
 	/* Max pool layer */
 	/* Average pool layer */

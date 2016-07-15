@@ -3,6 +3,7 @@
 #include "ccv_case.h"
 #include "ccv_nnc_case.h"
 #include "nnc/ccv_nnc.h"
+#include "nnc/ccv_nnc_easy.h"
 
 TEST_CASE("zero out a tensor")
 {
@@ -83,6 +84,25 @@ TEST_CASE("zero out a tensor view")
 	REQUIRE_TENSOR_EQ(a_tensor, b_tensor, "zero'ed tensor view should be equal");
 	ccv_nnc_tensor_free(a_tensor);
 	ccv_nnc_tensor_free(b_tensor);
+}
+
+TEST_CASE("hint tensor")
+{
+	ccv_nnc_tensor_param_t a = ONE_CPU_TENSOR(3, 128, 234);
+	ccv_nnc_hint_t hint = {
+		.border = {
+			.begin = {0, 1, 1},
+			.end = {0, 2, 1}
+		},
+		.stride = {
+			.dim = {0, 7, 8}
+		}
+	};
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 5, 4), 0);
+	ccv_nnc_tensor_param_t b = ccv_nnc_hint_tensor_auto(cmd, a, hint);
+	REQUIRE_EQ(b.dim[0], 128, "channel should be the convolution filter count");
+	REQUIRE_EQ(b.dim[1], 19, "width should be 19");
+	REQUIRE_EQ(b.dim[2], 30, "height should be 30");
 }
 
 #include "case_main.h"

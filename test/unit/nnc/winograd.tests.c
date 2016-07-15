@@ -11,8 +11,8 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(128, 128, 3, 3), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
 	// configure the inlets.
@@ -43,8 +43,8 @@ TEST_CASE("convolutional network of 3x3 on 55x55 with non-uniform weights")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 55, 55), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 55, 55), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(128, 128, 3, 3), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
 	// configure the inlets.
@@ -75,8 +75,8 @@ TEST_CASE("convolutional network of 3x3 on 224x224 with non-uniform weights and 
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 224, 224), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 224, 224), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(128, 3, 3, 3), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
 	// configure the inlets.

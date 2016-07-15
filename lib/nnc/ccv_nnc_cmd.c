@@ -90,16 +90,12 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 	return 0;
 }
 
-ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size)
+ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	ccv_nnc_hint_t guess;
 	guess.stride.dim[0] = 0;
 	guess.border.begin[0] = 0;
 	guess.border.end[0] = 0;
-	assert(input_size == 1);
-	assert(output_size == 1);
-	const ccv_nnc_tensor_param_t a = inputs[0];
-	const ccv_nnc_tensor_param_t b = outputs[0];
 	int i;
 	// 0-dim is reserved for channels
 	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
@@ -112,6 +108,26 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 		guess.border.end[i] = border - guess.border.begin[i];
 	}
 	return guess;
+}
+
+ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint)
+{
+	int i;
+	ccv_nnc_tensor_param_t b;
+	b.type = a.type;
+	b.format = a.format;
+	switch (cmd.compute)
+	{
+		case CCV_NNC_COMPUTE_CONVOLUTION_FORWARD:
+		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
+			b.dim[0] = cmd.info.convolution.count;
+			break;
+		default:
+			b.dim[0] = a.dim[0];
+	}
+	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i] + hint.stride.dim[i] - 1) / hint.stride.dim[i];
+	return b;
 }
 
 // This returns absolute time.

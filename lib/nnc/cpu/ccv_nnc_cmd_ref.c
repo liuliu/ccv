@@ -232,7 +232,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(w->info.dim[0] == cmd.info.size.dim[0]);
 	assert(w->info.dim[0] == a->info.dim[0]);
-	assert(b->info.dim[0] == cmd.info.convolutional.count);
+	assert(b->info.dim[0] == cmd.info.convolution.count);
 	int i;
 	// Make sure the weights dimension matches the network dimension
 	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)
@@ -241,17 +241,17 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			break;
 		assert(w->info.dim[i] == cmd.info.size.dim[i]);
 	}
-	// Make sure the weights output dimension matches the network convolutional kernels
+	// Make sure the weights output dimension matches the network convolution kernels
 	for (i = CCV_NNC_MAX_DIM_ALLOC - 1; i > 0; i--)
 		if (w->info.dim[i] == 0 && w->info.dim[i])
 		{
-			assert(w->info.dim[i] == cmd.info.convolutional.count);
+			assert(w->info.dim[i] == cmd.info.convolution.count);
 			break;
 		}
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	assert(bias->info.dim[0] == cmd.info.convolutional.count);
-	parallel_for(k, cmd.info.convolutional.count) {
+	assert(bias->info.dim[0] == cmd.info.convolution.count);
+	parallel_for(k, cmd.info.convolution.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
@@ -309,7 +309,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	}
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
-	parallel_for(k, cmd.info.convolutional.count) {
+	parallel_for(k, cmd.info.convolution.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* gp = g->data.f32 + k;
@@ -357,7 +357,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		w = inputs[2];
 		assert(!CCV_IS_TENSOR_VIEW(w));
 		int k;
-		for (k = 0; k < cmd.info.convolutional.count; k++)
+		for (k = 0; k < cmd.info.convolution.count; k++)
 		{
 			int c;
 			float* hp = h->data.f32;
@@ -792,14 +792,14 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].algorithms = -1;
 	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].exec = _ccv_nnc_format_transform;
 	/* Convolutional layer */
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD].exec = _ccv_nnc_conv_back;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].exec = _ccv_nnc_conv_forw;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].exec = _ccv_nnc_conv_back;
 	/* Full connect layer */
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;

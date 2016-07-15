@@ -15,8 +15,8 @@
 enum {
 	// These are the list of computation kernels.
 	CCV_NNC_COMPUTE_CUSTOM = 0,
-	CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD,
-	CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD,
+	CCV_NNC_COMPUTE_CONVOLUTION_FORWARD,
+	CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD,
 	CCV_NNC_COMPUTE_MAX_POOL_FORWARD,
@@ -52,8 +52,8 @@ typedef struct {
 	} size; /**< [size] The window size for the layer. For full connect layer, it is 1 because it is 1x1 convolutional layer with count of filters */
 	union {
 		struct {
-			int count; /**< [convolutional.count] The number of filters for convolutional layer. */
-		} convolutional;
+			int count; /**< [convolution.count] The number of filters for convolutional layer. */
+		} convolution;
 		struct {
 		} pool;
 		struct {
@@ -132,8 +132,10 @@ int ccv_nnc_cmd_backend(const char* name);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-// Auto find the best hint for a given inputs / outputs.
-CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_tensor_param_t* outputs, const int output_size);
+// Auto find the best hint for a given input / output.
+CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+// Auto find the output for a given input / hint.
+CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint);
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);

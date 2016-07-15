@@ -28,10 +28,10 @@ int main(int argc, char** argv)
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(INPUT_DIM, INPUT_SIZE, INPUT_SIZE, BATCH_SIZE), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE, BATCH_SIZE), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
 	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_REF");
 	assert(cmd.backend >= 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	assert(ccv_nnc_hint_verify(hint, cmd.info, a->info, b->info) == 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(OUTPUT_DIM), 0);

@@ -33,7 +33,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(w->info.dim[0] == cmd.info.size.dim[0]);
 	assert(w->info.dim[0] == a->info.dim[0]);
-	assert(b->info.dim[0] == cmd.info.convolutional.count);
+	assert(b->info.dim[0] == cmd.info.convolution.count);
 	int i;
 	// Make sure the weights dimension matches the network dimension
 	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)
@@ -42,11 +42,11 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			break;
 		assert(w->info.dim[i] == cmd.info.size.dim[i]);
 	}
-	// Make sure the weights output dimension matches the network convolutional kernels
+	// Make sure the weights output dimension matches the network convolution kernels
 	for (i = CCV_NNC_MAX_DIM_ALLOC - 1; i > 0; i--)
 		if (w->info.dim[i] == 0 && w->info.dim[i])
 		{
-			assert(w->info.dim[i] == cmd.info.convolutional.count);
+			assert(w->info.dim[i] == cmd.info.convolution.count);
 			break;
 		}
 	switch (cmd.algorithm)
@@ -175,10 +175,10 @@ void ccv_nnc_cpu_opt_init(ccv_nnc_cmd_api_t cmd_api[])
 	/* These are optimized kernels for the task, specifically,
 	 * a set of kernels for Winograd, FFT, SIMD-optimized convolutions. */
 	/* Convolutional layer */
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].algorithms = CCV_NNC_CMD_OPT_CONV_ALGO_COUNT;
-	cmd_api[CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD].exec = _ccv_nnc_conv_forw;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].algorithms = CCV_NNC_CMD_OPT_CONV_ALGO_COUNT;
+	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].exec = _ccv_nnc_conv_forw;
 	/* Full connect layer */
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;

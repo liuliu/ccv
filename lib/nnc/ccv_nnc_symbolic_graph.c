@@ -22,6 +22,7 @@ struct ccv_nnc_symbolic_graph_s {
 };
 
 struct ccv_nnc_tensor_arena_s {
+	ccv_array_t* tensor_info;
 };
 
 const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {0};

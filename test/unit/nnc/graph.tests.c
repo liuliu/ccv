@@ -24,8 +24,8 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(4, 2, 3, 5), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3, 5, 4), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	dsfmt_t dsfmt;
@@ -45,7 +45,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_cmd_t loss_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CUSTOM, _ccv_nnc_custom_24_loss_exec, ccv_nnc_cmd_auto, 0);
 	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_exec(graph, loss_cmd, hint, 0, TENSOR_LIST(m), TENSOR_LIST(g));
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, CMD_CONVOLUTIONAL(4, 2, 3, 5), 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, a->info, 0);

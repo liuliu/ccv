@@ -10,8 +10,8 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32, 21, 31), 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_FORWARD, 0, CMD_CONVOLUTIONAL(32, 3, 3, 5), 0);
-	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, &a->info, 1, &b->info, 1);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(32, 3, 3, 5), 0);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 5, 32), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32), 0);
 	int i, j, k;
@@ -22,7 +22,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	for (i = 0; i < 32; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTIONAL_BACKWARD, 0, CMD_CONVOLUTIONAL(32, 3, 3, 5), 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD, 0, CMD_CONVOLUTION(32, 3, 3, 5), 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 5, 32), 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32), 0);
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32, 21, 31), 0);
