@@ -126,7 +126,10 @@ ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const c
 			b.dim[0] = a.dim[0];
 	}
 	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
-		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i] + hint.stride.dim[i] - 1) / hint.stride.dim[i];
+	{
+		int stride = ccv_max(1, hint.stride.dim[i]);
+		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i] + stride - 1) / stride;
+	}
 	return b;
 }
 

@@ -125,6 +125,11 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph)
 	ccfree(graph);
 }
 
+ccv_nnc_tensor_t* ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol)
+{
+	return 0;
+}
+
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena)
 {
 	ccfree(tensor_arena);

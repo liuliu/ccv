@@ -40,6 +40,10 @@ enum {
 };
 
 enum {
+	CCV_NNC_COMPUTE_SUPPORT_INPLACE = 0x01, // Is it a inplace operation? (Thus, the input tensor can be the same as the output tensor). This is actually a stronger assumption than it seems. It says that the input tensors can be the same as any of the output tensors. Thus, input tensors of [a, b] and output tensors of [b, a] or [a, a] or [b, b] are perfectly supported if your compute node supports this flag.
+};
+
+enum {
 	CCV_NNC_EXEC_SUCCESS = 0,
 	CCV_NNC_EXEC_INVALID = -1,
 	CCV_NNC_EXEC_NO_KERNEL = -2,
@@ -97,6 +101,7 @@ typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_w
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
+	int compute_supports; /**< [compute_supports] The supported computing features (such as in-place op). */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
 	ccv_nnc_cmd_autotune_f autotune;
@@ -224,6 +229,8 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref);
 // Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
+// Find corresponding tensor by a symbol from the tensor arena.
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol);
 // Free the opaque tensor arena structure.
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena);
 
