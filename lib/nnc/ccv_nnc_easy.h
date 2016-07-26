@@ -59,7 +59,85 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 #define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.full_connect={.count=_count}})
 
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
+int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);
+
 extern const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto;
+int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params);
+
 extern const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto;
+int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params);
+
+// Defines common graph visit macro
+// The visitor function / macro takes parameter visitor(node_type* node, int index);
+#define CCV_NNC_GRAPH_VISIT(graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
+	do { \
+		/* Use the same data structure to do topological ordering. */ \
+		typedef struct { \
+			int8_t d; /* tag if this is the destination node. */ \
+			int32_t c; /* number of incoming edges. */ \
+		} ccv_nnc_incoming_t; \
+		/* Statistics of how many incoming edges for all nodes of a graph. */ \
+		ccv_nnc_incoming_t* incomings = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * node_size + sizeof(int32_t) * node_size * 2); \
+		memset(incomings, 0, sizeof(ccv_nnc_incoming_t) * node_size); \
+		int i, j; \
+		for (i = 0; i < node_size; i++) \
+		{ \
+			if ((nodes)[i].outgoings) \
+				for (j = 0; j < (nodes)[i].outgoings->rnum; j++) \
+					++incomings[*(int*)ccv_array_get((nodes)[i].outgoings, j)].c; \
+		} \
+		/* After we have that statistics, we can do topsort and run the command. */ \
+		int32_t* exists[2] = { \
+			(int32_t*)(incomings + node_size), \
+			(int32_t*)(incomings + node_size) + node_size, \
+		}; \
+		for (i = 0; i < destination_size; i++) \
+		{ \
+			assert(destinations[i].graph == graph); \
+			/* tagging destination nodes. */ \
+			incomings[destinations[i].d].d = 1; \
+		} \
+		for (i = 0; i < source_size; i++) \
+		{ \
+			assert(sources[i].graph == graph); \
+			exists[0][i] = sources[i].d; \
+		} \
+		int exist_size[2] = { \
+			source_size, \
+			0, \
+		}; \
+		int p = 0, q = 1; /* ping, pong swap. */ \
+		while (exist_size[p] > 0) \
+		{ \
+			exist_size[q] = 0; \
+			for (i = 0; i < exist_size[p]; i++) \
+			{ \
+				visitor(((nodes) + exists[p][i]), exists[p][i]); \
+				if ((nodes)[exists[p][i]].outgoings) \
+					for (j = 0; j < (nodes)[exists[p][i]].outgoings->rnum; j++) \
+					{ \
+						int d = *(int*)ccv_array_get((nodes)[exists[p][i]].outgoings, j); \
+						--incomings[d].c; \
+						/* If all incoming edges are consumed, and this is not the destination node, push it into next round */ \
+						if (incomings[d].c == 0 && !incomings[d].d) \
+						{ \
+							exists[q][exist_size[q]] = d; \
+							++exist_size[q]; \
+						} \
+					} \
+			} \
+			/* swap p and q. */ \
+			CCV_SWAP(p, q, i /* using i as temp holder */); \
+		} \
+		ccfree(incomings); \
+		for (i = 0; i < destination_size; i++) \
+		{ \
+			assert(destinations[i].graph == graph); \
+			/* tagging destination nodes. */ \
+			assert(incomings[destinations[i].d].c == 0); \
+			/* fetch the info for destination node and exec current node. */ \
+			visitor(((nodes) + destinations[i].d), exists[p][i]); \
+		} \
+	} while (0)
 
 #endif

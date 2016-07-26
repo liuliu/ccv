@@ -27,6 +27,11 @@ struct ccv_nnc_tensor_arena_s {
 
 const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {0};
 
+int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params)
+{
+	return (memcmp(&params, &ccv_nnc_tensor_auto, sizeof(ccv_nnc_tensor_param_t)) == 0);
+}
+
 ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_new(void)
 {
 	ccv_nnc_symbolic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_symbolic_graph_t));
@@ -106,6 +111,32 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref)
 {
+	// First, fill all the "auto" holes.
+	// This is the symbol table that with "auto" info filled up.
+	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * graph->tensor_symbol_info->rnum);
+	memcpy(tensor_symbol_info, graph->tensor_symbol_info->data, sizeof(ccv_nnc_tensor_symbol_info_t) * graph->tensor_symbol_info->rnum);
+	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * graph->exec_symbol_info->rnum);
+	memcpy(exec_symbol_info, graph->exec_symbol_info->data, sizeof(ccv_nnc_graph_exec_symbol_info_t) * graph->exec_symbol_info->rnum);
+
+	int i;
+	// Materialize auto hints.
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		// If there is no hint and we have input and output tensor specified.
+		if (ccv_nnc_is_no_hint(exec_symbol_info[i].hint) &&
+				exec_symbol_info[i].input_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
+				exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
+			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
+
+	// Materialize auto tensors. This need to go with the topological order.
+#define visitor(node, _) \
+	do { \
+		if (node->input_size > 0 && node->output_size > 0) \
+			tensor_symbol_info[node->outputs[0]].info = ccv_nnc_hint_tensor_auto(node->cmd, tensor_symbol_info[node->inputs[0]].info, node->hint); \
+	} while (0)
+	CCV_NNC_GRAPH_VISIT(graph, exec_symbol_info, graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
+	ccfree(tensor_symbol_info);
+	ccfree(exec_symbol_info);
 }
 
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph)

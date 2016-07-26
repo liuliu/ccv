@@ -60,6 +60,11 @@ int ccv_nnc_cmd_backend(const char* name)
 
 const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
 
+int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params)
+{
+	return (memcmp(&params, &ccv_nnc_cmd_auto, sizeof(ccv_nnc_cmd_param_t)) == 0);
+}
+
 ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
 {
 	ccv_nnc_cmd_t cmd;
@@ -74,6 +79,11 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_
 }
 
 const ccv_nnc_hint_t ccv_nnc_no_hint = {{{0}}};
+
+int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint)
+{
+	return (memcmp(&hint, &ccv_nnc_no_hint, sizeof(ccv_nnc_hint_t)) == 0);
+}
 
 int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
@@ -92,22 +102,22 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 
 ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
-	ccv_nnc_hint_t guess;
-	guess.stride.dim[0] = 0;
-	guess.border.begin[0] = 0;
-	guess.border.end[0] = 0;
+	ccv_nnc_hint_t hint_auto;
+	hint_auto.stride.dim[0] = 0;
+	hint_auto.border.begin[0] = 0;
+	hint_auto.border.end[0] = 0;
 	int i;
 	// 0-dim is reserved for channels
 	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
 	{
 		// This is guessed by having a stride that will approximately match the scale.
 		int stride = (a.dim[i] + b.dim[i] / 2) / b.dim[i];
-		guess.stride.dim[i] = stride;
+		hint_auto.stride.dim[i] = stride;
 		int border = (b.dim[i] - 1) * stride - a.dim[i] + cmd.size.dim[i];
-		guess.border.begin[i] = (border + 1) / 2; // Always prefer to have more padding in the beginning, this matches CUDNN behavior.
-		guess.border.end[i] = border - guess.border.begin[i];
+		hint_auto.border.begin[i] = (border + 1) / 2; // Always prefer to have more padding in the beginning, this matches CUDNN behavior.
+		hint_auto.border.end[i] = border - hint_auto.border.begin[i];
 	}
-	return guess;
+	return hint_auto;
 }
 
 ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint)
