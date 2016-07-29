@@ -1,5 +1,6 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_easy.h"
+#include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
 
 typedef struct {
@@ -128,13 +129,40 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
 
 	// Materialize auto tensors. This need to go with the topological order.
-#define visitor(node, _) \
+#define visitor(node, ...) \
 	do { \
 		if (node->input_size > 0 && node->output_size > 0) \
 			tensor_symbol_info[node->outputs[0]].info = ccv_nnc_hint_tensor_auto(node->cmd, tensor_symbol_info[node->inputs[0]].info, node->hint); \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(graph, exec_symbol_info, graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
+
+	// Now, collect information about the tensor liveness.
+	typedef struct {
+		int s;
+		int t;
+	} ccv_tensor_liveness_t;
+	ccv_tensor_liveness_t* tensor_liveness = (ccv_tensor_liveness_t*)ccmalloc(sizeof(ccv_tensor_liveness_t) * graph->tensor_symbol_info->rnum);
+	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
+		tensor_liveness[i].s = -1;
+#define visitor(node, _, level) \
+	do { \
+		for (i = 0; i < node->input_size; i++) \
+		{ \
+			if (tensor_liveness[node->inputs[i]].s < 0) \
+				tensor_liveness[node->inputs[i]].s = level; \
+			tensor_liveness[node->inputs[i]].t = level; \
+		} \
+		for (i = 0; i < node->output_size; i++) \
+		{ \
+			if (tensor_liveness[node->outputs[i]].s < 0) \
+				tensor_liveness[node->outputs[i]].s = level; \
+			tensor_liveness[node->outputs[i]].t = level; \
+		} \
+	} while (0)
+	CCV_NNC_GRAPH_VISIT(graph, exec_symbol_info, graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
+	ccfree(tensor_liveness);
 	ccfree(tensor_symbol_info);
 	ccfree(exec_symbol_info);
 }

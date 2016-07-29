@@ -1,6 +1,7 @@
 #include "ccv_nnc.h"
-#include "ccv_internal.h"
 #include "ccv_nnc_easy.h"
+#include "ccv_nnc_internal.h"
+#include "ccv_internal.h"
 
 typedef struct {
 	int input_size;
@@ -64,9 +65,9 @@ int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_
 void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size)
 {
 	// exec current node, for synchronous CPU execution, no stream unit.
-#define visitor(node, _) \
+#define visitor(node, ...) \
 	ccv_nnc_cmd_exec(node->cmd, node->hint, node->flags, node->inputs, node->input_size, node->outputs, node->output_size, 0)
-	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)graph->exec_info->data, graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
 }
 

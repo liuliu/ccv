@@ -21,10 +21,15 @@
  * others.
  */
 // c99 only, make sure your compiler supports that.
+#define LIST_COUNT_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) (_63)
+#define LIST_COUNT(...) LIST_COUNT_N(__VA_ARGS__,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
+
 #define TENSOR_LIST_X(...) (ccv_nnc_tensor_t* []){__VA_ARGS__}
-#define TENSOR_LIST_COUNT_N(_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) (_63)
-#define TENSOR_LIST_COUNT(...) TENSOR_LIST_COUNT_N(__VA_ARGS__,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1)
-#define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), TENSOR_LIST_COUNT(__VA_ARGS__)
+#define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
+#define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
+#define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
 #define CPU_TENSOR_NHWC(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
 #define CPU_TENSOR_NCHW(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.dim={__VA_ARGS__}})
 #define ONE_CPU_TENSOR CPU_TENSOR_NHWC // The default is NHWC
@@ -34,6 +39,12 @@
 #define ONE_GPU_TENSOR GPU_TENSOR_NHWC // The default is NHWC
 
 #define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}
+
+#define ESCAPE_X(...) __VA_ARGS__
+#define HINT_X_2(_stride_, _border_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _border_},.end={0, ESCAPE_X _border_}}})
+#define HINT_X_3(_stride_, _begin_, _end_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _begin_},.end={0, ESCAPE_X _end_}}})
+#define HINT_X_SEL(_1, _2, _3, _FX, ...) _FX
+#define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2)(__VA_ARGS__)
 
 static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {
@@ -66,78 +77,5 @@ int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params);
 
 extern const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto;
 int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params);
-
-// Defines common graph visit macro
-// The visitor function / macro takes parameter visitor(node_type* node, int index);
-#define CCV_NNC_GRAPH_VISIT(graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
-	do { \
-		/* Use the same data structure to do topological ordering. */ \
-		typedef struct { \
-			int8_t d; /* tag if this is the destination node. */ \
-			int32_t c; /* number of incoming edges. */ \
-		} ccv_nnc_incoming_t; \
-		/* Statistics of how many incoming edges for all nodes of a graph. */ \
-		ccv_nnc_incoming_t* incomings = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * node_size + sizeof(int32_t) * node_size * 2); \
-		memset(incomings, 0, sizeof(ccv_nnc_incoming_t) * node_size); \
-		int i, j; \
-		for (i = 0; i < node_size; i++) \
-		{ \
-			if ((nodes)[i].outgoings) \
-				for (j = 0; j < (nodes)[i].outgoings->rnum; j++) \
-					++incomings[*(int*)ccv_array_get((nodes)[i].outgoings, j)].c; \
-		} \
-		/* After we have that statistics, we can do topsort and run the command. */ \
-		int32_t* exists[2] = { \
-			(int32_t*)(incomings + node_size), \
-			(int32_t*)(incomings + node_size) + node_size, \
-		}; \
-		for (i = 0; i < destination_size; i++) \
-		{ \
-			assert(destinations[i].graph == graph); \
-			/* tagging destination nodes. */ \
-			incomings[destinations[i].d].d = 1; \
-		} \
-		for (i = 0; i < source_size; i++) \
-		{ \
-			assert(sources[i].graph == graph); \
-			exists[0][i] = sources[i].d; \
-		} \
-		int exist_size[2] = { \
-			source_size, \
-			0, \
-		}; \
-		int p = 0, q = 1; /* ping, pong swap. */ \
-		while (exist_size[p] > 0) \
-		{ \
-			exist_size[q] = 0; \
-			for (i = 0; i < exist_size[p]; i++) \
-			{ \
-				visitor(((nodes) + exists[p][i]), exists[p][i]); \
-				if ((nodes)[exists[p][i]].outgoings) \
-					for (j = 0; j < (nodes)[exists[p][i]].outgoings->rnum; j++) \
-					{ \
-						int d = *(int*)ccv_array_get((nodes)[exists[p][i]].outgoings, j); \
-						--incomings[d].c; \
-						/* If all incoming edges are consumed, and this is not the destination node, push it into next round */ \
-						if (incomings[d].c == 0 && !incomings[d].d) \
-						{ \
-							exists[q][exist_size[q]] = d; \
-							++exist_size[q]; \
-						} \
-					} \
-			} \
-			/* swap p and q. */ \
-			CCV_SWAP(p, q, i /* using i as temp holder */); \
-		} \
-		ccfree(incomings); \
-		for (i = 0; i < destination_size; i++) \
-		{ \
-			assert(destinations[i].graph == graph); \
-			/* tagging destination nodes. */ \
-			assert(incomings[destinations[i].d].c == 0); \
-			/* fetch the info for destination node and exec current node. */ \
-			visitor(((nodes) + destinations[i].d), exists[p][i]); \
-		} \
-	} while (0)
 
 #endif
