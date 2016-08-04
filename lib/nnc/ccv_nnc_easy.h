@@ -41,10 +41,11 @@
 #define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}
 
 #define ESCAPE_X(...) __VA_ARGS__
+#define HINT_X_1(_stride_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0},.end={0}}})
 #define HINT_X_2(_stride_, _border_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _border_},.end={0, ESCAPE_X _border_}}})
 #define HINT_X_3(_stride_, _begin_, _end_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _begin_},.end={0, ESCAPE_X _end_}}})
 #define HINT_X_SEL(_1, _2, _3, _FX, ...) _FX
-#define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2)(__VA_ARGS__)
+#define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2, HINT_X_1)(__VA_ARGS__)
 
 static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {
@@ -65,9 +66,10 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 	return nd;
 }
 
+#define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1}},.blas={.a={__VA_ARGS__}}})
 #define CMD_CONVOLUTION(_count, ...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count}})
 #define CMD_GENERIC(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})
-#define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.full_connect={.count=_count}})
+#define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.size={.dim={1}},.full_connect={.count=_count}})
 
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
 int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);

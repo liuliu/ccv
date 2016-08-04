@@ -110,8 +110,9 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 	return 0;
 }
 
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref)
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t* tensor_symbol_bindings, const int tensor_symbol_binding_size, const ccv_nnc_tensor_t** tensor_bindings, const int tensor_binding_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref)
 {
+	assert(tensor_symbol_binding_size == tensor_binding_size);
 	// First, fill all the "auto" holes.
 	// This is the symbol table that with "auto" info filled up.
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * graph->tensor_symbol_info->rnum);
@@ -143,25 +144,74 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 		int t;
 	} ccv_tensor_liveness_t;
 	ccv_tensor_liveness_t* tensor_liveness = (ccv_tensor_liveness_t*)ccmalloc(sizeof(ccv_tensor_liveness_t) * graph->tensor_symbol_info->rnum);
+	static const int CONST_TENSOR = -2;
+	static const int UNASSIGNED = -1;
 	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
-		tensor_liveness[i].s = -1;
+	{
+		// Check no tensor info is auto now.
+		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
+		tensor_liveness[i].s = UNASSIGNED;
+	}
+	int high = 0;
 #define visitor(node, _, level) \
 	do { \
 		for (i = 0; i < node->input_size; i++) \
 		{ \
-			if (tensor_liveness[node->inputs[i]].s < 0) \
-				tensor_liveness[node->inputs[i]].s = level; \
-			tensor_liveness[node->inputs[i]].t = level; \
+			if (tensor_liveness[node->inputs[i]].s == UNASSIGNED) \
+				tensor_liveness[node->inputs[i]].s = CONST_TENSOR; /* input starts this node first, therefore, its liveness starts at -2. */ \
+			else if (tensor_liveness[node->inputs[i]].s >= 0) \
+				tensor_liveness[node->inputs[i]].t = level; \
 		} \
 		for (i = 0; i < node->output_size; i++) \
 		{ \
-			if (tensor_liveness[node->outputs[i]].s < 0) \
+			if (tensor_liveness[node->outputs[i]].s == UNASSIGNED) /* Only deal with ordinary start point. */ \
 				tensor_liveness[node->outputs[i]].s = level; \
 			tensor_liveness[node->outputs[i]].t = level; \
 		} \
+		high = ccv_max(high, level); \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(graph, exec_symbol_info, graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
+	// For symbols starts with input (taking it as constant), the start point is 0 and end point is highest.
+	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
+		if (tensor_liveness[i].s == CONST_TENSOR)
+			tensor_liveness[i].s = 0, tensor_liveness[i].t = high;
+
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		// Remove tensor symbols that is for in-place operations (and it matches the start, end tensor).
+		if (ccv_nnc_cmd_support(exec_symbol_info[i].cmd, CCV_NNC_COMPUTE_SUPPORT_INPLACE))
+		{
+			const ccv_nnc_graph_exec_symbol_info_t exec_symbol = exec_symbol_info[i];
+			int x, y;
+			for (x = 0; x < exec_symbol.input_size; x++)
+			{
+				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[exec_symbol.inputs[x]];
+				for (y = 0; y < exec_symbol.output_size; y++)
+					// Only proceed if the input symbol is different from the output symbol,
+					// and the input symbol meets the output symbol exactly at the same spot.
+					if (exec_symbol.inputs[x] != exec_symbol.outputs[y] &&
+						tensor_liveness[exec_symbol.inputs[x]].t == tensor_liveness[exec_symbol.outputs[y]].s)
+					{
+						const ccv_nnc_tensor_symbol_info_t y_symbol = tensor_symbol_info[exec_symbol.outputs[y]];
+						// If dimension matches perfectly, then we can assign y_symbol to x.
+						if (memcmp(x_symbol.info.dim, y_symbol.info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+						{
+							// Make the exec_symbol_info[i]'s output reference to the same tensor symbol, extends the liveness.
+							tensor_liveness[exec_symbol.inputs[x]].t = tensor_liveness[exec_symbol.outputs[y]].t;
+							// Mark the original as unassigned.
+							tensor_liveness[exec_symbol.outputs[y]].s = UNASSIGNED;
+							exec_symbol_info[i].outputs[y] = exec_symbol.inputs[x];
+						}
+					}
+			}
+		}
+	// Ignore tensors that are already binded.
+	for (i = 0; i < tensor_symbol_binding_size; i++)
+		tensor_liveness[tensor_symbol_bindings[i].d].s = UNASSIGNED;
+
+	// Now, everything is prepared, tensor liveness is analyzed, inplace operations are collapsed, all tensor symbols and hints
+	// are automatically filled in. It is time to guess what's the best tensor placement and create the opaque tensor arena.
+
 	ccfree(tensor_liveness);
 	ccfree(tensor_symbol_info);
 	ccfree(exec_symbol_info);

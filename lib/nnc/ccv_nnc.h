@@ -15,6 +15,7 @@
 enum {
 	// These are the list of computation kernels.
 	CCV_NNC_COMPUTE_CUSTOM = 0,
+	// For neural networks
 	CCV_NNC_COMPUTE_CONVOLUTION_FORWARD,
 	CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD,
 	CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD,
@@ -29,6 +30,9 @@ enum {
 	CCV_NNC_COMPUTE_BATCH_NORM_BACKWARD,
 	CCV_NNC_COMPUTE_RELU_FORWARD,
 	CCV_NNC_COMPUTE_RELU_BACKWARD,
+	// BLAS
+	CCV_NNC_COMPUTE_AXPY,
+	// Other transforms
 	CCV_NNC_COMPUTE_DATA_TRANSFER,
 	CCV_NNC_COMPUTE_FORMAT_TRANSFORM,
 	CCV_NNC_COMPUTE_COUNT,
@@ -68,6 +72,9 @@ typedef struct {
 		struct {
 			int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
 		} full_connect;
+		struct {
+			float a[3]; /**< BLAS scalars. */
+		} blas;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
@@ -101,7 +108,7 @@ typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_w
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
-	int compute_supports; /**< [compute_supports] The supported computing features (such as in-place op). */
+	int supports; /**< [supports] The supported computing features (such as in-place op). */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
 	ccv_nnc_cmd_autotune_f autotune;
@@ -145,6 +152,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_hint_tensor_auto(const ccv_nnc_c
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+int ccv_nnc_cmd_support(const ccv_nnc_cmd_t cmd, const int flags);
 
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.
@@ -226,7 +234,7 @@ int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_ten
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
 // Compile a symbolic graph into a graph that can be executed, and a set of tensors (opaque data structure tensor arena) are allocated based on which tensor symbols are the input and which are the outputs. The tensor allocation is done to minimize the required storage.
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref);
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t* tensor_symbol_bindings, const int tensor_symbol_binding_size, const ccv_nnc_tensor_t** tensor_bindings, const int tensor_binding_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref);
 // Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
 // Find corresponding tensor by a symbol from the tensor arena.

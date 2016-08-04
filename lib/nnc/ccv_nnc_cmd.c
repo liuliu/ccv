@@ -250,6 +250,16 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
 
+int ccv_nnc_cmd_support(const ccv_nnc_cmd_t cmd, const int flags)
+{
+	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
+	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	// If it is a custom command, just apply it directly.
+	assert(cmd.compute != CCV_NNC_COMPUTE_CUSTOM);
+	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
+	return !!(api_decl.supports & flags);
+}
+
 struct ccv_nnc_stream_context_s {
 	int type;
 	// Left for implementation yet, the CPU support for stream context.
