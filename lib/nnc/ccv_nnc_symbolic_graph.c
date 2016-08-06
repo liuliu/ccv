@@ -23,7 +23,9 @@ struct ccv_nnc_symbolic_graph_s {
 };
 
 struct ccv_nnc_tensor_arena_s {
-	ccv_array_t* tensor_info;
+	int tensor_count;
+	ccv_nnc_tensor_t** vtensor;
+	ccv_nnc_tensor_t tensor[1];
 };
 
 const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {0};
@@ -110,6 +112,16 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 	return 0;
 }
 
+typedef struct {
+	int s;
+	int t;
+} ccv_nnc_tensor_liveness_t;
+
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info, const int exec_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_nnc_tensor_liveness_t* tensor_liveness)
+{
+	return 0;
+}
+
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t* tensor_symbol_bindings, const int tensor_symbol_binding_size, const ccv_nnc_tensor_t** tensor_bindings, const int tensor_binding_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref)
 {
 	assert(tensor_symbol_binding_size == tensor_binding_size);
@@ -139,11 +151,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 #undef visitor
 
 	// Now, collect information about the tensor liveness.
-	typedef struct {
-		int s;
-		int t;
-	} ccv_tensor_liveness_t;
-	ccv_tensor_liveness_t* tensor_liveness = (ccv_tensor_liveness_t*)ccmalloc(sizeof(ccv_tensor_liveness_t) * graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_liveness_t* tensor_liveness = (ccv_nnc_tensor_liveness_t*)ccmalloc(sizeof(ccv_nnc_tensor_liveness_t) * graph->tensor_symbol_info->rnum);
 	static const int CONST_TENSOR = -2;
 	static const int UNASSIGNED = -1;
 	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
@@ -211,6 +219,9 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 
 	// Now, everything is prepared, tensor liveness is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in. It is time to guess what's the best tensor placement and create the opaque tensor arena.
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(exec_symbol_info, graph->exec_symbol_info->rnum, tensor_symbol_info, graph->tensor_symbol_info->rnum, tensor_liveness);
+	if (tensor_arena_ref)
+		*tensor_arena_ref = tensor_arena;
 
 	ccfree(tensor_liveness);
 	ccfree(tensor_symbol_info);
