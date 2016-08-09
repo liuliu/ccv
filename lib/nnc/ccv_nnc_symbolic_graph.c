@@ -23,8 +23,13 @@ struct ccv_nnc_symbolic_graph_s {
 };
 
 struct ccv_nnc_tensor_arena_s {
-	int tensor_count;
-	ccv_nnc_tensor_t** vtensor;
+	// This is a table of tensor references to real allocated tensors.
+	ccv_nnc_tensor_t** vt_tensor;
+	// This is the allocated non-continuous buffers.
+	int buffer_size;
+	void** buffer;
+	// Real allocated tensor headers.
+	int tensor_size;
 	ccv_nnc_tensor_t tensor[1];
 };
 
@@ -117,8 +122,74 @@ typedef struct {
 	int t;
 } ccv_nnc_tensor_liveness_t;
 
+static const int CONST_TENSOR = -2;
+static const int UNASSIGNED = -1;
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info, const int exec_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_nnc_tensor_liveness_t* tensor_liveness)
 {
+	// Compute how many dis-continuous buffers are needed.
+	// We prefer to have several dis-continuous buffers instead of one big buffer because
+	// in this way, we can rely on system memory allocators (jemalloc, tcmalloc, or CUDA's allocator)
+	// to fully utilize memory.
+	int i, j;
+	// The interference matrix. We can only use 1-bit on the matrix to denote if a tensor interferes with another or not.
+	uint32_t* itf = (uint32_t*)ccmalloc((sizeof(uint32_t) * tensor_symbol_info_size * (tensor_symbol_info_size + 1) / 2 + 31) / 32);
+#define IDX(x, y) (((x) <= (y)) ? (x) * tensor_symbol_info_size - ((x) - 1) * (x) / 2 + (y) - (x) : (y) * tensor_symbol_info_size - ((y) - 1) * (y) / 2 + (x) - (y))
+#define GET_ITF(x, y) { \
+		int idx = IDX(x, y); \
+		(itf[(idx >> 4)] & (1u << (idx & 0x31))); \
+	}
+#define SET_ITF(x, y, z) do { \
+		int idx = IDX(x, y); \
+		if (z) \
+			itf[(idx >> 4)] |= (1u << (idx & 0x31)); \
+		else \
+			itf[(idx >> 4)] &= (~(1u << (idx & 0x31))); \
+	} while(0)
+	// Overlap count.
+	int avaliable_tensor_size = 0;
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		if (tensor_liveness[i].s != UNASSIGNED)
+			++avaliable_tensor_size;
+	uint32_t* oc = (uint32_t*)cccalloc(tensor_symbol_info_size, sizeof(uint32_t));
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		for (j = i + 1; j < tensor_symbol_info_size; j++)
+			// If these two tensors are still alive, analyze them.
+			if (tensor_liveness[i].s != UNASSIGNED && tensor_liveness[j].s != UNASSIGNED)
+			{
+				int flag = (ccv_max(tensor_liveness[i].s, tensor_liveness[j].s) <= ccv_min(tensor_liveness[i].t, tensor_liveness[j].t));
+				// If their life time overlaps, then set the ITF.
+				SET_ITF(i, j, flag);
+				// Compute how many tensors it overlap.
+				oc[i] += flag;
+			}
+	// Allocation graph (assuming there is a source node, and a destination node, which is 0, and (tensor_symbol_info_size + 1)
+	uint64_t* alloc = (uint64_t*)cccalloc((tensor_symbol_info_size + 2) * (tensor_symbol_info_size + 2), sizeof(uint64_t));
+	uint32_t* assigned = (uint32_t*)cccalloc((tensor_symbol_info_size + 31) / 32, sizeof(uint32_t));
+	uint32_t* assignment = (uint32_t*)ccmalloc(sizeof(uint32_t) * tensor_symbol_info_size);
+	// Extract one symbol at a time.
+	for (j = 0; j < avaliable_tensor_size; j++)
+	{
+		// Find the one with largest overlap.
+		int moc = 0, k = -1;
+		for (i = 0; i < tensor_symbol_info_size; i++)
+			if (oc[i] > moc)
+				moc = oc[i], k = i;
+		if (k == -1) // Cannot find overlaps for the rest of the tensors, insert them all in this one batch and then exit.
+		{
+			break;
+		} else {
+			// Otherwise, select the best insertion location for k.
+		}
+	}
+#undef SET_ITF
+#undef GET_ITF
+#undef IDX
+	ccfree(assignment);
+	ccfree(assigned);
+	ccfree(alloc);
+	ccfree(oc);
+	ccfree(itf);
 	return 0;
 }
 
@@ -152,8 +223,6 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 
 	// Now, collect information about the tensor liveness.
 	ccv_nnc_tensor_liveness_t* tensor_liveness = (ccv_nnc_tensor_liveness_t*)ccmalloc(sizeof(ccv_nnc_tensor_liveness_t) * graph->tensor_symbol_info->rnum);
-	static const int CONST_TENSOR = -2;
-	static const int UNASSIGNED = -1;
 	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.

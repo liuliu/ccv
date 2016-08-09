@@ -14,7 +14,6 @@ TEST_CASE("compute eigenvectors and eigenvalues of a symmetric matrix")
 {
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0xdead);
-	dsfmt_genrand_close_open(&dsfmt);
 	ccv_dense_matrix_t* a = ccv_dense_matrix_new(4, 4, CCV_64F | CCV_C1, 0, 0);
 	int i, j, k;
 	for (i = 0; i < 4; i++)

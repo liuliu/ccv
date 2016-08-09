@@ -1,6 +1,8 @@
 #include "ccv.h"
 #include "case.h"
 #include "ccv_case.h"
+#include "3rdparty/dsfmt/dSFMT.h"
+#include "3rdparty/sfmt/SFMT.h"
 
 TEST_CASE("type size macro")
 {
@@ -153,6 +155,87 @@ TEST_CASE("compress sparse matrix")
 	ccv_matrix_free(smt);
 	ccv_matrix_free(mat);
 	ccv_matrix_free(csm);
+}
+
+TEST_CASE("loop over sparse matrix")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32F | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(a);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(b);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0xdead);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, 0xbeef);
+	int i;
+	for (i = 0; i < 50; i++)
+	{
+		int x = sfmt_genrand_uint32(&sfmt) % 1000;
+		int y = sfmt_genrand_uint32(&sfmt) % 1000;
+		float v = dsfmt_genrand_close_open(&dsfmt);
+		a->data.f32[y * 1000 + x] = v;
+		ccv_set_sparse_matrix_cell(mat, y, x, &v);
+	}
+#define block(y, x, v) { b->data.f32[y * 1000 + x] = ((float*)v)[0]; }
+	CCV_SPARSE_FOREACH(mat, block);
+#undef block
+	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
+	ccv_matrix_free(mat);
+}
+
+TEST_CASE("loop over column major sparse matrix")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32F | CCV_C1, CCV_SPARSE_COL_MAJOR, 0);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(a);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(b);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0xdead);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, 0xbeef);
+	int i;
+	for (i = 0; i < 200; i++)
+	{
+		int x = sfmt_genrand_uint32(&sfmt) % 1000;
+		int y = sfmt_genrand_uint32(&sfmt) % 1000;
+		float v = dsfmt_genrand_close_open(&dsfmt);
+		a->data.f32[y * 1000 + x] = v;
+		ccv_set_sparse_matrix_cell(mat, y, x, &v);
+	}
+#define block(y, x, v) { b->data.f32[y * 1000 + x] = ((float*)v)[0]; }
+	CCV_SPARSE_FOREACH(mat, block);
+#undef block
+	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
+	ccv_matrix_free(mat);
+}
+
+TEST_CASE("loop over sparse matrix with dense vector")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32F | CCV_C1 | CCV_DENSE_VECTOR, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(a);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(1000, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(b);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0xdead);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, 0xbeef);
+	int i;
+	for (i = 0; i < 200; i++)
+	{
+		int x = sfmt_genrand_uint32(&sfmt) % 1000;
+		int y = sfmt_genrand_uint32(&sfmt) % 1000;
+		float v = dsfmt_genrand_close_open(&dsfmt);
+		a->data.f32[y * 1000 + x] = v;
+		ccv_set_sparse_matrix_cell(mat, y, x, &v);
+	}
+#define block(y, x, v) { b->data.f32[y * 1000 + x] = ((float*)v)[0]; }
+	CCV_SPARSE_FOREACH(mat, block);
+#undef block
+	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
+	ccv_matrix_free(mat);
 }
 
 TEST_CASE("matrix slice")
