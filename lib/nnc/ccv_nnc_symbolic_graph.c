@@ -178,22 +178,20 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exe
 		const ccv_nnc_tensor_liveness_t k_liveness = tensor_liveness[k];
 		int min_y = 0, min_x = tensor_symbol_info_size + 1, min_g = high + 2;
 #define for_block(y, x, val) do { \
-			/* y is always smaller than x. */ \
-			assert(y < x); \
 			/* Get liveness, including phony source and destination one */ \
-			ccv_nnc_tensor_liveness_t x_liveness, y_liveness; \
-			if (x > 0 && x < tensor_symbol_info_size + 1) \
-				x_liveness = tensor_liveness[x - 1]; \
-			else if (x == 0) \
-				x_liveness.s = x_liveness.t = -1; \
-			else if (x == tensor_symbol_info_size + 1) \
-				x_liveness.s = x_liveness.t = high + 1; \
+			ccv_nnc_tensor_liveness_t y_liveness, x_liveness; \
 			if (y > 0 && y < tensor_symbol_info_size + 1) \
 				y_liveness = tensor_liveness[y - 1]; \
 			else if (y == 0) \
 				y_liveness.s = y_liveness.t = -1; \
-			else if (y == tensor_symbol_info_size + 1) \
-				y_liveness.s = y_liveness.t = high + 1; \
+			assert(y != tensor_symbol_info_size + 1); \
+			if (x > 0 && x < tensor_symbol_info_size + 1) \
+				x_liveness = tensor_liveness[x - 1]; \
+			else if (x == tensor_symbol_info_size + 1) \
+				x_liveness.s = x_liveness.t = high + 1; \
+			assert(x != 0); \
+			/* y is always earlier than x. */ \
+			assert(y_liveness.s < x_liveness.s); \
 			/* If this edge satisfy the requirement, now we need to find the ones with tightest possible bounds. */ \
 			/* Thus, the gap between y and x (in terms of its life time) should be smallest ones. */ \
 			if (((uint64_t*)val)[0] >= size && \
@@ -201,21 +199,19 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exe
 				ccv_max(y_liveness.s, k_liveness.s) > ccv_min(y_liveness.t, k_liveness.t) && \
 				/* k doesn't overlap with x */ \
 				ccv_max(x_liveness.s, k_liveness.s) > ccv_min(x_liveness.t, k_liveness.t) && \
-				/* k is either after y, and before x or, after x and before y (no overlapping, we can just compare s. */ \
-				k_liveness.s > ccv_min(y_liveness.s, x_liveness.s) && \
-				k_liveness.s < ccv_max(y_liveness.s, x_liveness.s)) \
+				/* k is after y, and before x or (no overlapping, we can just compare s). */ \
+				k_liveness.s > y_liveness.s && k_liveness.s < x_liveness.s) \
 			{ \
-				int g = ccv_max(y_liveness.s, x_liveness.s) - ccv_min(y_liveness.t, x_liveness.t); \
+				int g = x_liveness.s - y_liveness.t; \
 				if (g < min_g) \
 					min_g = g, min_y = y, min_x = x; \
 			} \
 		} while (0)
 		CCV_SPARSE_FOREACH(alloc, for_block);
 #undef for_block
-		// Now I find greedy y and x, set it!
-		ccv_set_sparse_matrix_cell(alloc, ccv_min(min_y, k + 1), ccv_max(min_y, k + 1), &size);
-		ccv_set_sparse_matrix_cell(alloc, ccv_min(min_x, k + 1), ccv_max(min_x, k + 1), &size);
-		assert(min_y < min_x);
+		// Now I find greedy y and x, set it! Note that based on the rules, k's life is between min_y and min_x.
+		ccv_set_sparse_matrix_cell(alloc, min_y, k + 1, &size);
+		ccv_set_sparse_matrix_cell(alloc, k + 1, min_x, &size);
 		// If min_y is source and min_x is destination, we don't need to do anything, otherwise, decrease the weight on that edge.
 		if (min_y != 0 || min_x != tensor_symbol_info_size + 1)
 		{
