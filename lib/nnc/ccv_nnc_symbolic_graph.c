@@ -191,16 +191,12 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exe
 				x_liveness.s = x_liveness.t = high + 1; \
 			assert(x != 0); \
 			/* y is always earlier than x. */ \
-			assert(y_liveness.s < x_liveness.s); \
+			assert(y_liveness.t < x_liveness.s); \
 			/* If this edge satisfy the requirement, now we need to find the ones with tightest possible bounds. */ \
 			/* Thus, the gap between y and x (in terms of its life time) should be smallest ones. */ \
 			if (((uint64_t*)val)[0] >= size && \
-				/* k doesn't overlap with y */ \
-				ccv_max(y_liveness.s, k_liveness.s) > ccv_min(y_liveness.t, k_liveness.t) && \
-				/* k doesn't overlap with x */ \
-				ccv_max(x_liveness.s, k_liveness.s) > ccv_min(x_liveness.t, k_liveness.t) && \
-				/* k is after y, and before x or (no overlapping, we can just compare s). */ \
-				k_liveness.s > y_liveness.s && k_liveness.s < x_liveness.s) \
+				/* k doesn't overlap with y and x (in between) */ \
+				y_liveness.t < k_liveness.s && k_liveness.t < x_liveness.s) \
 			{ \
 				int g = x_liveness.s - y_liveness.t; \
 				if (g < min_g) \
