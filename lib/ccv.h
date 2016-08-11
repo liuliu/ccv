@@ -317,7 +317,9 @@ void ccv_matrix_free(ccv_matrix_t* mat);
 				while (_v_->index >= 0) \
 				{ \
 					for (_j_ = 0; _j_ < _v_->length; _j_++) \
-						block(_v_->index, _j_, _j_ * _c_, _v_, for_block) \
+					{ \
+						block(_v_->index, _j_, _j_ * _c_, _v_, for_block); \
+					} \
 					if (!_v_->next) \
 						break; \
 					_v_ = _v_->next; \
@@ -332,7 +334,7 @@ void ccv_matrix_free(ccv_matrix_t* mat);
 					for (_j_ = 0; _j_ < _v_->length; _j_++) \
 						if (_v_->indice[_j_] >= 0) \
 						{ \
-							block(_v_->index, _v_->indice[_j_], _j_ * _c_, _v_, for_block) \
+							block(_v_->index, _v_->indice[_j_], _j_ * _c_, _v_, for_block); \
 						} \
 					if (!_v_->next) \
 						break; \
@@ -369,6 +371,44 @@ void ccv_matrix_free(ccv_matrix_t* mat);
 			case CCV_64S: { CCV_SPARSE_FOREACH_X(mat, _ccv_sparse_get_64s_vector_rmj, block); break; } \
 			case CCV_64F: { CCV_SPARSE_FOREACH_X(mat, _ccv_sparse_get_64f_vector_rmj, block); break; } \
 			default: { CCV_SPARSE_FOREACH_X(mat, _ccv_sparse_get_8u_vector_rmj, block); } } } \
+	} while (0)
+
+#define CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, block, for_block) \
+	do { \
+		int _i_; \
+		__attribute__((unused)) const size_t _c_ = CCV_GET_CHANNEL((mat)->type); \
+		if ((mat)->type & CCV_DENSE_VECTOR) \
+		{ \
+			for (_i_ = 0; _i_ < (vector)->length; _i_++) \
+			{ \
+				block(_i_, _i_ * _c_, vector, for_block); \
+			} \
+		} else { \
+			for (_i_ = 0; _i_ < (vector)->length; _i_++) \
+				if ((vector)->indice[_i_] >= 0) \
+				{ \
+					block((vector)->indice[_i_], _i_ * _c_, (vector), for_block); \
+				} \
+		} \
+	} while (0)
+#define _ccv_sparse_get_32s_cell(_i_, _k_, vector, block) block((_i_), ((vector)->data.i32 + (_k_)))
+#define _ccv_sparse_get_32f_cell(_i_, _k_, vector, block) block((_i_), ((vector)->data.f32 + (_k_)))
+#define _ccv_sparse_get_64s_cell(_i_, _k_, vector, block) block((_i_), ((vector)->data.i64 + (_k_)))
+#define _ccv_sparse_get_64f_cell(_i_, _k_, vector, block) block((_i_), ((vector)->data.f64 + (_k_)))
+#define _ccv_sparse_get_8u_cell(_i_, _k_, vector, block) block((_i_), ((vector)->data.u8 + (_k_)))
+/**
+ * This method enables you to loop over non-zero (or assigned) positions in one vector of a sparse matrix (you can use ccv_get_sparse_matrix_vector method)
+ * @param mat The sparse matrix.
+ * @param vector The vector within the sparse matrix.
+ * @param block(index, value) a macro to loop over, index is the position (depends on if it is row major or col major), value is the typed array.
+ */
+#define CCV_SPARSE_VECTOR_FOREACH(mat, vector, block) \
+	do { switch (CCV_GET_DATA_TYPE((mat)->type)) { \
+			case CCV_32S: { CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, _ccv_sparse_get_32s_cell, block); break; } \
+			case CCV_32F: { CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, _ccv_sparse_get_32f_cell, block); break; } \
+			case CCV_64S: { CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, _ccv_sparse_get_64s_cell, block); break; } \
+			case CCV_64F: { CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, _ccv_sparse_get_64f_cell, block); break; } \
+			default: { CCV_SPARSE_VECTOR_FOREACH_X(mat, vector, _ccv_sparse_get_8u_cell, block); } } \
 	} while (0)
 
 /**

@@ -238,6 +238,60 @@ TEST_CASE("loop over sparse matrix with dense vector")
 	ccv_matrix_free(mat);
 }
 
+TEST_CASE("loop over sparse matrix vector")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32F | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(a);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(1, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(b);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0xdead);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, 0xbeef);
+	int i;
+	for (i = 0; i < 50; i++)
+	{
+		int x = sfmt_genrand_uint32(&sfmt) % 1000;
+		float v = dsfmt_genrand_close_open(&dsfmt);
+		a->data.f32[x] = v;
+		ccv_set_sparse_matrix_cell(mat, 38, x, &v);
+	}
+	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
+#define block(x, v) { b->data.f32[x] = ((float*)v)[0]; }
+	CCV_SPARSE_VECTOR_FOREACH(mat, vector, block);
+#undef block
+	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
+	ccv_matrix_free(mat);
+}
+
+TEST_CASE("loop over sparse matrix dense vector")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32F | CCV_C1 | CCV_DENSE_VECTOR, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_dense_matrix_t* a = ccv_dense_matrix_new(1, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(a);
+	ccv_dense_matrix_t* b = ccv_dense_matrix_new(1, 1000, CCV_32F | CCV_C1, 0, 0);
+	ccv_zero(b);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0xdead);
+	sfmt_t sfmt;
+	sfmt_init_gen_rand(&sfmt, 0xbeef);
+	int i;
+	for (i = 0; i < 200; i++)
+	{
+		int x = sfmt_genrand_uint32(&sfmt) % 1000;
+		float v = dsfmt_genrand_close_open(&dsfmt);
+		a->data.f32[x] = v;
+		ccv_set_sparse_matrix_cell(mat, 38, x, &v);
+	}
+	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
+#define block(x, v) { b->data.f32[x] = ((float*)v)[0]; }
+	CCV_SPARSE_VECTOR_FOREACH(mat, vector, block);
+#undef block
+	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
+	ccv_matrix_free(mat);
+}
+
 TEST_CASE("matrix slice")
 {
 	ccv_dense_matrix_t* image = 0;

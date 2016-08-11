@@ -125,71 +125,106 @@ typedef struct {
 static const int CONST_TENSOR = -2;
 static const int UNASSIGNED = -1;
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info, const int exec_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_nnc_tensor_liveness_t* tensor_liveness)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info, const int exec_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_nnc_tensor_liveness_t* tensor_liveness, const int high)
 {
 	// Compute how many dis-continuous buffers are needed.
 	// We prefer to have several dis-continuous buffers instead of one big buffer because
 	// in this way, we can rely on system memory allocators (jemalloc, tcmalloc, or CUDA's allocator)
 	// to fully utilize memory.
-	int i, j;
-	// The interference matrix. We can only use 1-bit on the matrix to denote if a tensor interferes with another or not.
-	uint32_t* itf = (uint32_t*)ccmalloc((sizeof(uint32_t) * tensor_symbol_info_size * (tensor_symbol_info_size + 1) / 2 + 31) / 32);
-#define IDX(x, y) (((x) <= (y)) ? (x) * tensor_symbol_info_size - ((x) - 1) * (x) / 2 + (y) - (x) : (y) * tensor_symbol_info_size - ((y) - 1) * (y) / 2 + (x) - (y))
-#define GET_ITF(x, y) { \
-		int idx = IDX(x, y); \
-		(itf[(idx >> 4)] & (1u << (idx & 0x31))); \
-	}
-#define SET_ITF(x, y, z) do { \
-		int idx = IDX(x, y); \
-		if (z) \
-			itf[(idx >> 4)] |= (1u << (idx & 0x31)); \
-		else \
-			itf[(idx >> 4)] &= (~(1u << (idx & 0x31))); \
-	} while(0)
+	int i, j, k;
 	// Overlap count.
 	int avaliable_tensor_size = 0;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (tensor_liveness[i].s != UNASSIGNED)
 			++avaliable_tensor_size;
-	uint32_t* oc = (uint32_t*)cccalloc(tensor_symbol_info_size, sizeof(uint32_t));
+	// Allocate workspace memory.
+	uint32_t* oc = (uint32_t*)cccalloc(tensor_symbol_info_size + ((tensor_symbol_info_size + 31) / 32), sizeof(uint32_t));
+	uint32_t* assigned = oc + tensor_symbol_info_size;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		for (j = i + 1; j < tensor_symbol_info_size; j++)
 			// If these two tensors are still alive, analyze them.
-			if (tensor_liveness[i].s != UNASSIGNED && tensor_liveness[j].s != UNASSIGNED)
-			{
-				int flag = (ccv_max(tensor_liveness[i].s, tensor_liveness[j].s) <= ccv_min(tensor_liveness[i].t, tensor_liveness[j].t));
-				// If their life time overlaps, then set the ITF.
-				SET_ITF(i, j, flag);
-				// Compute how many tensors it overlap.
-				oc[i] += flag;
-			}
+			if (tensor_liveness[i].s != UNASSIGNED && tensor_liveness[j].s != UNASSIGNED &&
+			// If their life time overlaps, compute how many tensors it overlap.
+				ccv_max(tensor_liveness[i].s, tensor_liveness[j].s) <= ccv_min(tensor_liveness[i].t, tensor_liveness[j].t))
+					++oc[i];
 	// Allocation graph (assuming there is a source node, and a destination node, which is 0, and (tensor_symbol_info_size + 1)
-	uint64_t* alloc = (uint64_t*)cccalloc((tensor_symbol_info_size + 2) * (tensor_symbol_info_size + 2), sizeof(uint64_t));
-	uint32_t* assigned = (uint32_t*)cccalloc((tensor_symbol_info_size + 31) / 32, sizeof(uint32_t));
-	uint32_t* assignment = (uint32_t*)ccmalloc(sizeof(uint32_t) * tensor_symbol_info_size);
+	ccv_sparse_matrix_t* alloc = ccv_sparse_matrix_new(tensor_symbol_info_size + 2, tensor_symbol_info_size + 2, CCV_64S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	// Extract one symbol at a time.
 	for (j = 0; j < avaliable_tensor_size; j++)
 	{
 		// Find the one with largest overlap.
-		int moc = 0, k = -1;
+		int max_oc = 0, max_i = -1;
 		for (i = 0; i < tensor_symbol_info_size; i++)
-			if (oc[i] > moc)
-				moc = oc[i], k = i;
-		if (k == -1) // Cannot find overlaps for the rest of the tensors, insert them all in this one batch and then exit.
-		{
-			break;
-		} else {
-			// Otherwise, select the best insertion location for k.
-		}
+			if (oc[i] > max_oc)
+				max_oc = oc[i], max_i = i;
+		// Cannot find overlaps for the rest of the tensors, insert them all in this one batch and then exit.
+		for (k = (max_i == -1 ? 0 : max_i); k <= (max_i == -1 ? tensor_symbol_info_size - 1 : max_i); k++)
+			if (tensor_liveness[k].s != UNASSIGNED && !(assigned[k / 32] & (1 << (k & 31))))
+			{
+				// Otherwise, select the best insertion location for k.
+				for (i = 0; i < tensor_symbol_info_size; i++)
+					// If this one is not k, and is alive, and not assigned out yet, and interfere with k
+					// Decrease the oc count on that symbol.
+					if (i != k && tensor_liveness[i].s != UNASSIGNED && !(assigned[i / 32] & (1 << (i & 31))) &&
+						ccv_max(tensor_liveness[i].s, tensor_liveness[k].s) <= ccv_min(tensor_liveness[i].t, tensor_liveness[k].t))
+						--oc[i];
+				// Assign out k.
+				assigned[k / 32] |= (1 << (k & 31));
+				// Assuming all tensors has the same data format (32F), therefore, we only need to consider the dimensional size.
+				uint64_t size = ccv_nnc_tensor_count(tensor_symbol_info[k].info);
+				const ccv_nnc_tensor_liveness_t k_liveness = tensor_liveness[k];
+				int min_y = 0, min_x = tensor_symbol_info_size + 1, min_g = high;
+#define for_block(y, x, val) { \
+					/* y is always smaller than x. */ \
+					assert(y < x); \
+					/* Get liveness, including phony source and destination one */ \
+					ccv_nnc_tensor_liveness_t x_liveness, y_liveness; \
+					if (x > 0 && x < tensor_symbol_info_size + 1) \
+						x_liveness = tensor_liveness[x - 1]; \
+					else if (x == 0) \
+						x_liveness.s = x_liveness.t = 0; \
+					else if (x == tensor_symbol_info_size + 1) \
+						x_liveness.s = x_liveness.t = high; \
+					if (y > 0 && y < tensor_symbol_info_size + 1) \
+						y_liveness = tensor_liveness[y - 1]; \
+					else if (y == 0) \
+						y_liveness.s = y_liveness.t = 0; \
+					else if (y == tensor_symbol_info_size + 1) \
+						y_liveness.s = y_liveness.t = high; \
+					/* If this edge satisfy the requirement, now we need to find the ones with tightest possible bounds. */ \
+					/* Thus, the gap between y and x (in terms of its life time) should be smallest ones. */ \
+					if (((uint64_t*)val)[0] >= size && \
+						/* k doesn't overlap with y */ \
+						ccv_max(y_liveness.s, k_liveness.s) > ccv_min(y_liveness.t, k_liveness.t) && \
+						/* k doesn't overlap with x */ \
+						ccv_max(x_liveness.s, k_liveness.s) > ccv_min(x_liveness.t, k_liveness.t)) \
+					{ \
+						int g = ccv_max(y_liveness.s, x_liveness.s) - ccv_min(y_liveness.t, x_liveness.t); \
+						if (g < min_g) \
+							min_g = g, min_y = y, min_x = x; \
+					} \
+				}
+				CCV_SPARSE_FOREACH(alloc, for_block);
+#undef for_block
+				// Now I find greedy y and x, set it!
+				ccv_set_sparse_matrix_cell(alloc, ccv_min(min_y, k + 1), ccv_max(min_y, k + 1), &size);
+				ccv_set_sparse_matrix_cell(alloc, ccv_min(min_x, k + 1), ccv_max(min_x, k + 1), &size);
+				assert(min_y < min_x);
+				// If min_y is source and min_x is destination, we don't need to do anything, otherwise, decrease the weight on that edge.
+				if (min_y != 0 || min_x != tensor_symbol_info_size + 1)
+				{
+					uint64_t curr_size = ccv_get_sparse_matrix_cell(alloc, min_y, min_x).i64[0];
+					assert(curr_size >= size);
+					curr_size -= size;
+					ccv_set_sparse_matrix_cell(alloc, min_y, min_x, &curr_size);
+				}
+			}
 	}
-#undef SET_ITF
-#undef GET_ITF
-#undef IDX
-	ccfree(assignment);
-	ccfree(assigned);
-	ccfree(alloc);
+	// Now I have the allocation graph, The total size of outgoing edge of source is the total size of our allocation.
+	// It is still interesting to find how many distinctive buffers we can have.
+	// (it is smaller than min(outgoing edges of source, incoming edges of destination).
+	ccv_matrix_free(alloc);
 	ccfree(oc);
-	ccfree(itf);
 	return 0;
 }
 
@@ -288,7 +323,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const
 
 	// Now, everything is prepared, tensor liveness is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in. It is time to guess what's the best tensor placement and create the opaque tensor arena.
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(exec_symbol_info, graph->exec_symbol_info->rnum, tensor_symbol_info, graph->tensor_symbol_info->rnum, tensor_liveness);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(exec_symbol_info, graph->exec_symbol_info->rnum, tensor_symbol_info, graph->tensor_symbol_info->rnum, tensor_liveness, high);
 	if (tensor_arena_ref)
 		*tensor_arena_ref = tensor_arena;
 
