@@ -89,7 +89,7 @@
 			_exist_size_[_q_] = 0; \
 			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
 			{ \
-				visitor(((nodes) + _exists_[_p_][_i_]), _exists_[_p_][_i_], _k_); \
+				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), _k_); \
 				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
 					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
 					{ \
@@ -113,7 +113,7 @@
 			/* tagging destination nodes. */ \
 			assert(_incomings_[(destinations)[_i_].d].c == 0); \
 			/* fetch the info for destination node and exec current node. */ \
-			visitor(((nodes) + (destinations)[_i_].d), _exists_[_p_][_i_], _k_); \
+			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_); \
 		} \
 		ccfree(_incomings_); \
 	} while (0)

@@ -10,6 +10,7 @@ int main(int argc, char** argv)
 	ccv_nnc_symbolic_graph_t* graph = ccv_nnc_symbolic_graph_new();
 	// Input tensor
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol(graph, ONE_CPU_TENSOR(3, 223, 223));
+	ccv_nnc_tensor_t* tensor_a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 223, 223), 0);
 	// conv1
 	ccv_nnc_tensor_symbol_t conv1w = ccv_nnc_tensor_symbol(graph, ONE_CPU_TENSOR(3, 7, 7, 64));
 	ccv_nnc_tensor_symbol_t conv1b = ccv_nnc_tensor_symbol(graph, ONE_CPU_TENSOR(64));
@@ -52,7 +53,9 @@ int main(int argc, char** argv)
 	}
 	ccv_nnc_graph_t* run_graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
-	ccv_nnc_symbolic_graph_compile(graph, 0, 0, 0, 0, &conv1, 1, &relu2[2], 1, &run_graph, &tensor_arena);
+	ccv_nnc_symbolic_graph_compile(graph, TENSOR_SYMBOL_LIST(a), TENSOR_LIST(tensor_a), &conv1, 1, &relu2[2], 1, &run_graph, &tensor_arena);
 	ccv_nnc_symbolic_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_tensor_free(tensor_a);
 	return 0;
 }

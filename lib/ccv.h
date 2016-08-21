@@ -735,14 +735,14 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
  * @param mat The sparse matrix.
  * @param index The index of that vector.
  */
-ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index);
+ccv_dense_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix_t* mat, int index);
 /**
  * Get cell from a sparse matrix.
  * @param mat The sparse matrix.
  * @param row The row index.
  * @param col The column index.
  */
-ccv_numeric_data_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col);
+ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t* mat, int row, int col);
 /**
  * Set cell for a sparse matrix.
  * @param mat The sparse matrix.
@@ -750,19 +750,19 @@ ccv_numeric_data_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row,
  * @param col The column index.
  * @param data The data pointer.
  */
-void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data);
+void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, const void* data);
 /**
  * Transform a sparse matrix into compressed representation.
  * @param mat The sparse matrix.
  * @param csm The compressed matrix.
  */
-void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
+void ccv_compress_sparse_matrix(const ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm);
 /**
  * Transform a compressed matrix into a sparse matrix.
  * @param csm The compressed matrix.
  * @param smt The sparse matrix.
  */
-void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
+void ccv_decompress_sparse_matrix(const ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt);
 /**
  * Offset input matrix by x, y.
  * @param a The input matrix.

@@ -178,7 +178,7 @@ void ccv_shift(ccv_matrix_t* a, ccv_matrix_t** b, int type, int lr, int rr)
 #undef for_block
 }
 
-ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int index)
+ccv_dense_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix_t* mat, int index)
 {
 	if (mat->vector[(index * 33) % CCV_GET_SPARSE_PRIME(mat->prime)].index != -1)
 	{
@@ -190,11 +190,10 @@ ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t* mat, int i
 	return 0;
 }
 
-ccv_numeric_data_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col)
+ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t* mat, int row, int col)
 {
 	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row);
-	ccv_numeric_data_t cell;
-	cell.u8 = 0;
+	ccv_numeric_data_t cell = {0}; // zero-init.
 	if (vector != 0 && vector->length > 0)
 	{
 		int cell_width = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
@@ -296,7 +295,7 @@ static void _ccv_sparse_matrix_expand(ccv_sparse_matrix_t* mat)
 	mat->vector = new_vector;
 }
 
-void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, void* data)
+void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t* mat, int row, int col, const void* data)
 {
 	int i;
 	int index = (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row;
@@ -390,7 +389,7 @@ static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_int_sort, int, _ccv_indice_less_than, 
 static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_float_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_float_data, float*);
 static CCV_IMPLEMENT_QSORT_EX(_ccv_indice_double_sort, int, _ccv_indice_less_than, _ccv_swap_indice_and_double_data, double*);
 
-void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
+void ccv_compress_sparse_matrix(const ccv_sparse_matrix_t* mat, ccv_compressed_sparse_matrix_t** csm)
 {
 	int i, j;
 	int nnz = 0;
@@ -485,7 +484,7 @@ void ccv_compress_sparse_matrix(ccv_sparse_matrix_t* mat, ccv_compressed_sparse_
 	}
 }
 
-void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
+void ccv_decompress_sparse_matrix(const ccv_compressed_sparse_matrix_t* csm, ccv_sparse_matrix_t** smt)
 {
 	ccv_sparse_matrix_t* mat = *smt = ccv_sparse_matrix_new(csm->rows, csm->cols, csm->type & ~CCV_MATRIX_CSR & ~CCV_MATRIX_CSC, (csm->type & CCV_MATRIX_CSR) ? CCV_SPARSE_ROW_MAJOR : CCV_SPARSE_COL_MAJOR, 0);
 	int i, j;
