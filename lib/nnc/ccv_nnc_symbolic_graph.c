@@ -168,8 +168,6 @@ static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* exe
 	return 0;
 }
 
-#define REUSABLE_HOP(hop) ((hop) > 0)
-
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_sparse_matrix_t* exec_dep, const ccv_nnc_tensor_expect_t* tensor_expect)
 {
 	// Compute how many dis-continuous buffers are needed.
@@ -204,7 +202,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 					int j_hop_i = _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[j], tensor_expect[i]);
 					// It cannot be that both i can hop to j can j can hop to i.
 					assert(!(i_hop_j > 0 && j_hop_i > 0));
-					if (!REUSABLE_HOP(i_hop_j) && !REUSABLE_HOP(j_hop_i))
+					if (!i_hop_j && !j_hop_i)
 						ccv_set_sparse_matrix_cell(tensor_itf, i, j, &one);
 				}
 			}
@@ -303,7 +301,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 						int a_hop_x = (x == tensor_symbol_info_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[x - 1], tensor_expect[a.index]); \
 						int hop = y_hop_a + a_hop_x; \
 						/* a.index doesn't overlap with y and x (in between) */ \
-						if ((y == 0 || REUSABLE_HOP(y_hop_a)) && (x == tensor_symbol_info_size + 1 || REUSABLE_HOP(a_hop_x)) && hop < min_hop) \
+						if ((y == 0 || y_hop_a) && (x == tensor_symbol_info_size + 1 || a_hop_x) && hop < min_hop) \
 							min_y = y, min_x = x, min_hop = hop, \
 							min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
 					} else { \
@@ -316,14 +314,14 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 							int y_hop_a = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[a.index], tensor_expect[y - 1]); \
 							int c_hop_x = (x == tensor_symbol_info_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[x - 1], tensor_expect[a.companion]); \
 							int hop = y_hop_a + c_hop_x; \
-							if ((y == 0 || REUSABLE_HOP(y_hop_a)) && (x == tensor_symbol_info_size + 1 || REUSABLE_HOP(c_hop_x)) && hop < min_hop) \
+							if ((y == 0 || y_hop_a) && (x == tensor_symbol_info_size + 1 || c_hop_x) && hop < min_hop) \
 								min_y = y, min_x = x, min_hop = hop, \
 								min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
 						} else { \
 							int y_hop_c = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[a.companion], tensor_expect[y - 1]); \
 							int a_hop_x = (x == tensor_symbol_info_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_expect_head_after_tail(exec_dep, tensor_expect[x - 1], tensor_expect[a.index]); \
 							int hop = y_hop_c + a_hop_x; \
-							if ((y == 0 || REUSABLE_HOP(y_hop_c)) && (x == tensor_symbol_info_size + 1 || REUSABLE_HOP(a_hop_x)) && hop < min_hop) \
+							if ((y == 0 || y_hop_c) && (x == tensor_symbol_info_size + 1 || a_hop_x) && hop < min_hop) \
 								min_y = y, min_x = x, min_hop = hop, \
 								min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
 						} \
