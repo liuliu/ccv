@@ -72,10 +72,15 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 	return nd;
 }
 
-#define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1}},.blas={.a={__VA_ARGS__}}})
+#define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
 #define CMD_CONVOLUTION(_count, ...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count}})
-#define CMD_GENERIC(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})
-#define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.size={.dim={1}},.full_connect={.count=_count}})
+#define CMD_FULL_CONNECT(_count) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.full_connect={.count=_count}})
+#define CMD_GENERIC_X_0() ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}})
+#define CMD_GENERIC_X_F(...) ("This should not be used, you should have either 0 parameter or 3 parameters for CMD_GENERIC")
+#define CMD_GENERIC_X_3(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})
+#define CMD_GENERIC_X_SEL(_0, _1, _2, _3, _FX, ...) _FX
+// Using ## so that if it is empty, we omit one comma.
+#define CMD_GENERIC(...) CMD_GENERIC_X_SEL(CMD_GENERIC_X_F, ##__VA_ARGS__, CMD_GENERIC_X_3, CMD_GENERIC_X_F, CMD_GENERIC_X_F, CMD_GENERIC_X_0)(__VA_ARGS__)
 
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
 int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);

@@ -521,10 +521,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
+		if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 		{
 			tensor_arena->vt_tensor[i] = &tensor_arena->tensor[j];
 			// Also, set its allocations.
+			assert(assigned[i] > 0);
 			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
 			assert(allocated_offset[i] + (((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16) <= tensor_arena->buffer_size[assigned[i] - 1]);
 			++j;
@@ -549,6 +550,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			int alias_ref = tensor_symbol_info[i].alias_ref - 1;
 			// It referenced to is not an alias.
 			assert(tensor_arena->vt_tensor[alias_ref]);
+			tensor_arena->vt_tensor[i] = &tensor_arena->tensor[j];
 			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
 			++j;
 		}
@@ -648,8 +650,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		// If there is no hint and we have input and output tensor specified.
 		if (ccv_nnc_is_no_hint(exec_symbol_info[i].hint) &&
-				exec_symbol_info[i].input_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
-				exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
+			exec_symbol_info[i].input_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
+			exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
 
 	// Materialize auto tensors. This need to go with the topological order.
@@ -827,6 +829,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
 	*graph_ref = graph;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = (ccv_nnc_graph_exec_arena_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_arena_t) + sizeof(ccv_nnc_graph_exec_t) * (symbolic_graph->exec_symbol_info->rnum - 1));
+	graph_exec_arena->graph_exec_rnum = symbolic_graph->exec_symbol_info->rnum;
 	*graph_exec_arena_ref = graph_exec_arena;
 	ccv_nnc_graph_exec_t* graph_exec = graph_exec_arena->graph_exec;
 	int max_input_size = 0, max_output_size = 0;
@@ -846,7 +849,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 				max_inputs[i] = tensor_arena->vt_tensor[node->inputs[i]]; \
 			for (i = 0; i < node->output_size; i++) \
 				max_outputs[i] = tensor_arena->vt_tensor[node->outputs[i]]; \
-			graph_exec[idx] = ccv_nnc_graph_exec(graph, node->cmd, node->hint, max_inputs, max_input_size, max_outputs, max_output_size); \
+			graph_exec[idx] = ccv_nnc_graph_exec(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size); \
 		} \
 		if (!node->outgoings) \
 			break; \
@@ -855,11 +858,11 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			int outgoing = *(int*)ccv_array_get(node->outgoings, i); \
 			if (CCV_NO_GRAPH_EXEC(graph_exec[outgoing])) \
 			{ \
-				for (i = 0; i < node->input_size; i++) \
-					max_inputs[i] = tensor_arena->vt_tensor[node->inputs[i]]; \
-				for (i = 0; i < node->output_size; i++) \
-					max_outputs[i] = tensor_arena->vt_tensor[node->outputs[i]]; \
-				graph_exec[outgoing] = ccv_nnc_graph_exec(graph, node->cmd, node->hint, max_inputs, max_input_size, max_outputs, max_output_size); \
+				for (j = 0; j < node->input_size; j++) \
+					max_inputs[j] = tensor_arena->vt_tensor[node->inputs[j]]; \
+				for (j = 0; j < node->output_size; j++) \
+					max_outputs[j] = tensor_arena->vt_tensor[node->outputs[j]]; \
+				graph_exec[outgoing] = ccv_nnc_graph_exec(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size); \
 			} \
 			ccv_nnc_graph_exec_concat(graph, graph_exec[idx], graph_exec[outgoing]); \
 		} \

@@ -102,11 +102,19 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 
 ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
-	ccv_nnc_hint_t hint_auto;
-	hint_auto.stride.dim[0] = 0;
-	hint_auto.border.begin[0] = 0;
-	hint_auto.border.end[0] = 0;
 	int i;
+	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+		if (!a.dim[i] || !b.dim[i]) // If one of the dim is zero, we cannot auto the hint, return no hint.
+			return ccv_nnc_no_hint;
+	ccv_nnc_hint_t hint_auto = {
+		.stride = {
+			.dim = {0}
+		},
+		.border = {
+			.begin = {0},
+			.end = {0}
+		}
+	};
 	// 0-dim is reserved for channels
 	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
 	{
@@ -134,13 +142,17 @@ ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const c
 		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
 			b.dim[0] = cmd.info.convolution.count;
 			break;
+		case CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD:
+		case CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD:
+			b.dim[0] = cmd.info.full_connect.count;
+			break;
 		default:
 			b.dim[0] = a.dim[0];
 	}
 	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
-		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i] + stride - 1) / stride;
+		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i]) / stride + 1;
 	}
 	return b;
 }

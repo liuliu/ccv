@@ -192,6 +192,8 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec(const ccv_nnc_graph_t* 
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+// Run the autotune function for all the inputs / outputs, afterwards, assigning the optimized cmd back.
+void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
 // Run the graph from source nodes all the way to the destination nodes.
 void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
