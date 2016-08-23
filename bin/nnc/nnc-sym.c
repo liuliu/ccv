@@ -20,7 +20,7 @@ int main(int argc, char** argv)
 	ccv_nnc_graph_exec_symbol_set_hint(graph, conv1, HINT((2, 2), (3, 3)));
 	// max1
 	b[1] = ccv_nnc_tensor_symbol(graph, ccv_nnc_tensor_auto);
-	ccv_nnc_graph_exec_symbol_t max1 = ccv_nnc_graph_exec_symbol(graph, ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(2, 2), 0), TENSOR_SYMBOL_LIST(b[0]), TENSOR_SYMBOL_LIST(b[1]));
+	ccv_nnc_graph_exec_symbol_t max1 = ccv_nnc_graph_exec_symbol(graph, ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(64, 2, 2), 0), TENSOR_SYMBOL_LIST(b[0]), TENSOR_SYMBOL_LIST(b[1]));
 	ccv_nnc_graph_exec_symbol_set_hint(graph, max1, HINT((2, 2)));
 	ccv_nnc_graph_exec_symbol_concat(graph, conv1, max1);
 	b[2] = ccv_nnc_tensor_symbol(graph, ccv_nnc_tensor_auto);

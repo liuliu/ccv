@@ -402,7 +402,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 		{
 			assigned[a.companion] = assign_group;
 			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
-			allocated_offset[a.index] = min_val[1];
+			allocated_offset[a.companion] = min_val[1];
 			for (i = 0; i < tensor_symbol_info_size; i++)
 				if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 				{
@@ -858,11 +858,12 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			int outgoing = *(int*)ccv_array_get(node->outgoings, i); \
 			if (CCV_NO_GRAPH_EXEC(graph_exec[outgoing])) \
 			{ \
-				for (j = 0; j < node->input_size; j++) \
-					max_inputs[j] = tensor_arena->vt_tensor[node->inputs[j]]; \
-				for (j = 0; j < node->output_size; j++) \
-					max_outputs[j] = tensor_arena->vt_tensor[node->outputs[j]]; \
-				graph_exec[outgoing] = ccv_nnc_graph_exec(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size); \
+				ccv_nnc_graph_exec_symbol_info_t* outgoing_node = exec_symbol_info + outgoing; \
+				for (j = 0; j < outgoing_node->input_size; j++) \
+					max_inputs[j] = tensor_arena->vt_tensor[outgoing_node->inputs[j]]; \
+				for (j = 0; j < outgoing_node->output_size; j++) \
+					max_outputs[j] = tensor_arena->vt_tensor[outgoing_node->outputs[j]]; \
+				graph_exec[outgoing] = ccv_nnc_graph_exec(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size); \
 			} \
 			ccv_nnc_graph_exec_concat(graph, graph_exec[idx], graph_exec[outgoing]); \
 		} \
