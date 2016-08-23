@@ -7,6 +7,7 @@
 #endif
 
 typedef struct {
+	int alias_ref;
 	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_symbol_info_t;
 
@@ -67,10 +68,28 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* gr
 		.graph = graph
 	};
 	ccv_nnc_tensor_symbol_info_t symbol_info = {
+		.alias_ref = 0,
 		.info = info
 	};
 	ccv_array_push(graph->tensor_symbol_info, &symbol_info);
 	return symbol;
+}
+
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_param_t info)
+{
+	assert(tensor_symbol.graph == graph);
+	assert(tensor_symbol.d >= 0 && tensor_symbol.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_t alias = {
+		.info = info,
+		.d = graph->tensor_symbol_info->rnum,
+		.graph = graph
+	};
+	ccv_nnc_tensor_symbol_info_t alias_info = {
+		.alias_ref = tensor_symbol.d + 1,
+		.info = info
+	};
+	ccv_array_push(graph->tensor_symbol_info, &alias_info);
+	return alias;
 }
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size)
@@ -142,10 +161,13 @@ typedef struct {
 } ccv_nnc_tensor_expect_t;
 
 static const int UNASSIGNED = 0x1;
-static const int CONST_TENSOR = 0x2;
+static const int ALIAS = 0x2;
+static const int CONST_TENSOR = 0x3;
 
 #define TENSOR_EXPECT_UNASSIGNED(t) (t.flag == UNASSIGNED)
+#define TENSOR_EXPECT_ALIAS(t) (t.flag == ALIAS)
 #define TENSOR_EXPECT_CONST(t) (t.flag == CONST_TENSOR)
+#define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 
 typedef struct {
 	int index;
@@ -181,19 +203,25 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	// to fully utilize memory.
 	int i, j, k;
 	uint64_t* tensor_size = (uint64_t*)ccmalloc(sizeof(uint64_t) * tensor_symbol_info_size);
-	int available_tensor_size = 0;
+	int computable_tensor_size = 0, available_tensor_size = 0;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
 		{
+			// Tensors that we need the header info.
 			++available_tensor_size;
-			// Cache tensor size (assuming it is 32F, and align to 16 bytes).
-			tensor_size[i] = ((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16;
+			if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
+			{
+				// Tensors that we actually need to compute (exclude the alias).
+				++computable_tensor_size;
+				// Cache tensor size (assuming it is 32F, and align to 16 bytes).
+				tensor_size[i] = ((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16;
+			}
 		}
 	ccv_sparse_matrix_t* tensor_itf = ccv_sparse_matrix_new(tensor_symbol_info_size, tensor_symbol_info_size, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	// Overlap count.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		for (j = i + 1; j < tensor_symbol_info_size; j++)
-			if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]) && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[j]))
+			if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]) && TENSOR_EXPECT_COMPUTABLE(tensor_expect[j]))
 			{
 				// If either of the tensor is const, it must interfere with each other.
 				const uint8_t one = 1;
@@ -215,7 +243,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		for (j = 0; j < tensor_symbol_info_size; j++)
 			// If these two tensors are still alive, analyze them.
-			if (i != j && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]) && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[j]))
+			if (i != j && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]) && TENSOR_EXPECT_COMPUTABLE(tensor_expect[j]))
 			{
 				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, j), ccv_max(i, j));
 				// If their life time overlaps, compute how many tensors it overlap.
@@ -232,13 +260,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	// the second channel denotes the offset available for the allocation,
 	ccv_sparse_matrix_t* alloc = ccv_sparse_matrix_new(tensor_symbol_info_size + 2, tensor_symbol_info_size + 2, CCV_64S | CCV_C2, CCV_SPARSE_ROW_MAJOR, 0);
 	ccv_array_t* opt = ccv_array_new(sizeof(ccv_nnc_tensor_opt_t), 1, 0);
-	for (j = 0; j < available_tensor_size;)
+	for (j = 0; j < computable_tensor_size;)
 	{
 		// Find the one with largest overlap, and it is not assigned.
 		int max_oc = 0;
 		ccv_array_clear(opt);
 		for (i = 0; i < tensor_symbol_info_size; i++)
-			if (oc[i] >= max_oc && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]) && !assigned[i])
+			if (oc[i] >= max_oc && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]) && !assigned[i])
 			{
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_size[i],
@@ -260,7 +288,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
 			for (k = 0; k < tensor_symbol_info_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned).
-				if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[k]) && !assigned[k] && tensor_size[k] > a.size)
+				if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[k]) && !assigned[k] && tensor_size[k] > a.size)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
@@ -363,7 +391,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 		// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
 		allocated_offset[a.index] = min_val[1];
 		for (i = 0; i < tensor_symbol_info_size; i++)
-			if (!assigned[i] && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
+			if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 			{
 				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, a.index), ccv_max(i, a.index));
 				if (cell.u8 && cell.u8[0] == 1)
@@ -376,7 +404,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
 			allocated_offset[a.index] = min_val[1];
 			for (i = 0; i < tensor_symbol_info_size; i++)
-				if (!assigned[i] && !TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
+				if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, a.companion), ccv_max(i, a.companion));
 					if (cell.u8 && cell.u8[0] == 1)
@@ -500,7 +528,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
 			assert(allocated_offset[i] + (((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16) <= tensor_arena->buffer_size[assigned[i] - 1]);
 			++j;
-		} else
+		} else if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
 			tensor_arena->vt_tensor[i] = 0;
 	ccfree(allocated_offset);
 	ccfree(assigned);
@@ -509,9 +537,20 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]) && tensor_expect[i].ref)
 		{
 			// It must be available.
-			assert(!TENSOR_EXPECT_UNASSIGNED(tensor_expect[tensor_expect[i].ref - 1]));
+			assert(TENSOR_EXPECT_COMPUTABLE(tensor_expect[tensor_expect[i].ref - 1]));
 			assert(tensor_arena->vt_tensor[tensor_expect[i].ref - 1]);
 			tensor_arena->vt_tensor[i] = tensor_arena->vt_tensor[tensor_expect[i].ref - 1];
+		}
+	// Now assigning out the tensor aliases.
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		if (TENSOR_EXPECT_ALIAS(tensor_expect[i]))
+		{
+			assert(tensor_symbol_info[i].alias_ref);
+			int alias_ref = tensor_symbol_info[i].alias_ref - 1;
+			// It referenced to is not an alias.
+			assert(tensor_arena->vt_tensor[alias_ref]);
+			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
+			++j;
 		}
 	return tensor_arena;
 }
@@ -679,8 +718,14 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	{
 		// Check no tensor info is auto now.
 		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
+		if (tensor_symbol_info[i].alias_ref)
+		{
+			// An alias cannot ref to another alias.
+			assert(!tensor_symbol_info[tensor_symbol_info[i].alias_ref - 1].alias_ref);
+			tensor_expect[i].flag = ALIAS;
+		}
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
-		if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
+		if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 		{
 			tensor_expect[i].head = ccv_array_new(sizeof(int), 0, 0);
 			tensor_expect[i].tail = ccv_array_new(sizeof(int), 0, 0);
@@ -691,7 +736,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	do { \
 		for (i = 0; i < node->input_size; i++) \
 		{ \
-			if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[node->inputs[i]])) \
+			if (!TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->inputs[i]])) \
 				continue; \
 			if (tensor_expect[node->inputs[i]].head->rnum == 0) \
 				tensor_expect[node->inputs[i]].flag = CONST_TENSOR; \
@@ -702,7 +747,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 		{ \
 			/* If it is recognized as a const tensor, we can find it in the output pool because it may be in a RNN. */ \
 			if (TENSOR_EXPECT_CONST(tensor_expect[node->outputs[i]]) || \
-				TENSOR_EXPECT_UNASSIGNED(tensor_expect[node->outputs[i]])) \
+				!TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->outputs[i]])) \
 				continue; \
 			_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[node->outputs[i]]); \
 		} \
@@ -719,18 +764,18 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			{ \
 				/* If the input is not assigned, it can be referenced, find the referenced one */ \
 				int ref = node->inputs[x]; \
-				while (TENSOR_EXPECT_UNASSIGNED(tensor_expect[ref]) && tensor_expect[ref].ref) \
+				while (!TENSOR_EXPECT_COMPUTABLE(tensor_expect[ref]) && tensor_expect[ref].ref) \
 					ref = tensor_expect[ref].ref - 1; \
 				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref]; \
 				if (!TENSOR_EXPECT_CONST(tensor_expect[ref]) && \
-					!TENSOR_EXPECT_UNASSIGNED(tensor_expect[ref]) && \
+					TENSOR_EXPECT_COMPUTABLE(tensor_expect[ref]) && \
 					tensor_expect[ref].tail->rnum == 1) \
 					for (y = 0; y < node->output_size; y++) \
 						/* Only proceed if the input symbol is different from the output symbol, */ \
 						/* and the input symbol meets the output symbol exactly at the same spot. */ \
 						if (ref != node->outputs[y] && \
 							!TENSOR_EXPECT_CONST(tensor_expect[node->outputs[y]]) && \
-							!TENSOR_EXPECT_UNASSIGNED(tensor_expect[node->outputs[y]]) && \
+							TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->outputs[y]]) && \
 							tensor_expect[node->outputs[y]].head->rnum == 1 && \
 							*(int*)ccv_array_get(tensor_expect[ref].tail, 0) == *(int*)ccv_array_get(tensor_expect[node->outputs[y]].head, 0)) \
 						{ \
