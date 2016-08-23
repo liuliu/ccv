@@ -123,9 +123,11 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint)
 {
 	int i;
-	ccv_nnc_tensor_param_t b;
-	b.type = a.type;
-	b.format = a.format;
+	ccv_nnc_tensor_param_t b = {
+		.type = a.type,
+		.format = a.format,
+		.dim = {0}
+	};
 	switch (cmd.compute)
 	{
 		case CCV_NNC_COMPUTE_CONVOLUTION_FORWARD:
