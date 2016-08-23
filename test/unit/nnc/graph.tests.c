@@ -38,18 +38,18 @@ TEST_CASE("run simple graph network")
 		a->data.f32[i] = (float)(i - 21 * 31) / denom;
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
-	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_exec(graph, forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
+	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_exec(graph, forw_cmd, hint, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
 	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
-	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_exec(graph, softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m));
+	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_exec(graph, softmax_cmd, hint, TENSOR_LIST(b), TENSOR_LIST(m));
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_cmd_t loss_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CUSTOM, _ccv_nnc_custom_24_loss_exec, ccv_nnc_cmd_auto, 0);
-	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_exec(graph, loss_cmd, hint, 0, TENSOR_LIST(m), TENSOR_LIST(g));
+	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_exec(graph, loss_cmd, hint, TENSOR_LIST(m), TENSOR_LIST(g));
 	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, a->info, 0);
-	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_exec(graph, back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
+	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_exec(graph, back_cmd, hint, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h));
 	// All nodes are created, now to concat the graph.
 	ccv_nnc_graph_exec_concat(graph, forw_node, softmax_node);
 	ccv_nnc_graph_exec_concat(graph, softmax_node, loss_node);

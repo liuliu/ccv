@@ -46,7 +46,7 @@
 
 // Defines common graph visit macro
 // The visitor function / macro takes parameter visitor(node_type* node, int index, int level);
-#define CCV_NNC_GRAPH_VISIT(graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
+#define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
 	do { \
 		/* Use the same data structure to do topological ordering. */ \
 		typedef struct { \
@@ -70,13 +70,13 @@
 		}; \
 		for (_i_ = 0; _i_ < (destination_size); _i_++) \
 		{ \
-			assert((destinations)[_i_].graph == graph); \
+			assert((destinations)[_i_].graph == _graph); \
 			/* tagging destination nodes. */ \
 			_incomings_[(destinations)[_i_].d].d = 1; \
 		} \
 		for (_i_ = 0; _i_ < (source_size); _i_++) \
 		{ \
-			assert((sources)[_i_].graph == graph); \
+			assert((sources)[_i_].graph == _graph); \
 			_exists_[0][_i_] = (sources)[_i_].d; \
 		} \
 		int _exist_size_[2] = { \
@@ -109,7 +109,7 @@
 		} \
 		for (_i_ = 0; _i_ < (destination_size); _i_++) \
 		{ \
-			assert((destinations)[_i_].graph == graph); \
+			assert((destinations)[_i_].graph == _graph); \
 			/* tagging destination nodes. */ \
 			assert(_incomings_[(destinations)[_i_].d].c == 0); \
 			/* fetch the info for destination node and exec current node. */ \

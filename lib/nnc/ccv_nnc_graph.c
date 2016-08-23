@@ -6,7 +6,6 @@
 typedef struct {
 	int input_size;
 	int output_size;
-	int flags;
 	ccv_nnc_tensor_t** inputs;
 	ccv_nnc_tensor_t** outputs;
 	ccv_array_t* outgoings; // outgoing nodes
@@ -25,14 +24,13 @@ ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 	return graph;
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	assert(input_size > 0 || output_size > 0);
 	int d = graph->exec_info->rnum;
 	ccv_nnc_graph_exec_info_t info = {
 		.cmd = cmd,
 		.hint = hint,
-		.flags = flags,
 		.input_size = input_size,
 		.output_size = output_size,
 		.outgoings = 0,
@@ -66,7 +64,7 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_
 {
 	// exec current node, for synchronous CPU execution, no stream unit.
 #define visitor(node, ...) \
-	ccv_nnc_cmd_exec(node->cmd, node->hint, node->flags, node->inputs, node->input_size, node->outputs, node->output_size, 0)
+	ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0)
 	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
 }
