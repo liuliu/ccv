@@ -168,6 +168,13 @@ CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(int type);
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream);
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context);
 
+typedef struct ccv_nnc_stream_signal_s ccv_nnc_stream_signal_t;
+
+CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(int type);
+void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* stream, const ccv_nnc_stream_signal_t* signal);
+void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* stream, const ccv_nnc_stream_signal_t* signal);
+void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* signal);
+
 /**
  * Level-2 API
  */

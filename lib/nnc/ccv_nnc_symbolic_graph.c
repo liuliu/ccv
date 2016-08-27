@@ -738,20 +738,28 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	do { \
 		for (i = 0; i < node->input_size; i++) \
 		{ \
-			if (!TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->inputs[i]])) \
+			int d = node->inputs[i]; \
+			if (TENSOR_EXPECT_ALIAS(tensor_expect[d])) \
+				d = tensor_symbol_info[d].alias_ref - 1; \
+			if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[d])) \
 				continue; \
-			if (tensor_expect[node->inputs[i]].head->rnum == 0) \
-				tensor_expect[node->inputs[i]].flag = CONST_TENSOR; \
+			assert(TENSOR_EXPECT_COMPUTABLE(tensor_expect[d])); \
+			if (tensor_expect[d].head->rnum == 0) \
+				tensor_expect[d].flag = CONST_TENSOR; \
 			else \
-				_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[node->inputs[i]]); \
+				_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[d]); \
 		} \
 		for (i = 0; i < node->output_size; i++) \
 		{ \
+			int d = node->outputs[i]; \
+			if (TENSOR_EXPECT_ALIAS(tensor_expect[d])) \
+				d = tensor_symbol_info[d].alias_ref - 1; \
 			/* If it is recognized as a const tensor, we can find it in the output pool because it may be in a RNN. */ \
-			if (TENSOR_EXPECT_CONST(tensor_expect[node->outputs[i]]) || \
-				!TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->outputs[i]])) \
+			if (TENSOR_EXPECT_CONST(tensor_expect[d]) || \
+				TENSOR_EXPECT_UNASSIGNED(tensor_expect[d])) \
 				continue; \
-			_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[node->outputs[i]]); \
+			assert(TENSOR_EXPECT_COMPUTABLE(tensor_expect[d])); \
+			_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[d]); \
 		} \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
