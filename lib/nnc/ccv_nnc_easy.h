@@ -82,6 +82,8 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 // Using ## so that if it is empty, we omit one comma.
 #define CMD_GENERIC(...) CMD_GENERIC_X_SEL(CMD_GENERIC_X_F, ##__VA_ARGS__, CMD_GENERIC_X_3, CMD_GENERIC_X_F, CMD_GENERIC_X_F, CMD_GENERIC_X_0)(__VA_ARGS__)
 
+extern const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC];
+
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
 int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);
 

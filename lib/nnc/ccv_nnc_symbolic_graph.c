@@ -8,6 +8,7 @@
 
 typedef struct {
 	int alias_ref;
+	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_symbol_info_t;
 
@@ -37,7 +38,7 @@ struct ccv_nnc_tensor_arena_s {
 	uint8_t** buffer;
 	uint64_t* buffer_size;
 	// Real allocated tensor headers.
-	ccv_nnc_tensor_t tensor[1];
+	ccv_nnc_tensor_view_t tensor[1];
 };
 
 struct ccv_nnc_graph_exec_arena_s {
@@ -75,7 +76,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* gr
 	return symbol;
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_param_t info)
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info)
 {
 	assert(tensor_symbol.graph == graph);
 	assert(tensor_symbol.d >= 0 && tensor_symbol.d < graph->tensor_symbol_info->rnum);
@@ -485,7 +486,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	ccfree(oc);
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(uint8_t*) * num_assigned + sizeof(uint64_t) * num_assigned + sizeof(ccv_nnc_tensor_t) * (available_tensor_size - 1));
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(uint8_t*) * num_assigned + sizeof(uint64_t) * num_assigned + sizeof(ccv_nnc_tensor_view_t) * (available_tensor_size - 1));
 	tensor_arena->vt_tensor = (ccv_nnc_tensor_t**)(tensor_arena->tensor + available_tensor_size);
 	tensor_arena->buffer = (uint8_t**)(tensor_arena->vt_tensor + tensor_symbol_info_size);
 	tensor_arena->buffer_size = (uint64_t*)(tensor_arena->buffer + num_assigned);
@@ -523,10 +524,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]))
 		{
-			tensor_arena->vt_tensor[i] = &tensor_arena->tensor[j];
+			tensor_arena->vt_tensor[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensor[j];
 			// Also, set its allocations.
 			assert(assigned[i] > 0);
-			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
+			// Since tensor view is bit compatible with tensor, we can just cast.
+			*(ccv_nnc_tensor_t*)(tensor_arena->tensor + j) = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
 			assert(allocated_offset[i] + (((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16) <= tensor_arena->buffer_size[assigned[i] - 1]);
 			++j;
 		} else if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
@@ -550,8 +552,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			int alias_ref = tensor_symbol_info[i].alias_ref - 1;
 			// It referenced to is not an alias.
 			assert(tensor_arena->vt_tensor[alias_ref]);
-			tensor_arena->vt_tensor[i] = &tensor_arena->tensor[j];
-			tensor_arena->tensor[j] = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
+			assert(!CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensor[alias_ref]));
+			tensor_arena->vt_tensor[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensor[j];
+			// If there is no ofs, we take a shortcut and just init a normal tensor.
+			if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[i].ofs, sizeof(ccv_nnc_no_ofs)) == 0)
+				*(ccv_nnc_tensor_t*)(tensor_arena->tensor + j) = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
+			else // Otherwise initialize a tensor view.
+				tensor_arena->tensor[j] = ccv_nnc_tensor_view(tensor_arena->vt_tensor[alias_ref], tensor_symbol_info[i].ofs, tensor_symbol_info[i].info.dim);
 			++j;
 		}
 	return tensor_arena;

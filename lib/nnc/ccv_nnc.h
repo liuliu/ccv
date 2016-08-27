@@ -35,6 +35,7 @@ enum {
 	// Other transforms
 	CCV_NNC_COMPUTE_DATA_TRANSFER,
 	CCV_NNC_COMPUTE_FORMAT_TRANSFORM,
+	CCV_NNC_COMPUTE_NOOP,
 	CCV_NNC_COMPUTE_COUNT,
 };
 
@@ -237,8 +238,8 @@ typedef struct {
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
 // Create an tensor symbol (thus, with no actual memory space allocation) in a symbolic graph.
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_param_t info);
-// Create an alias to the tensor symbol (thus, pointing to the same memory region, but with a different header info).
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_param_t info);
+// Create an alias to the tensor symbol as tensor view (thus, pointing to the same memory region, but with a different header info and offset).
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 // Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size);
 // The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.

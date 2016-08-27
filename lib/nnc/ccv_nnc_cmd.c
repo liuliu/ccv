@@ -246,6 +246,9 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 {
 	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
 	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	// If it is no-op, return as if succeed already.
+	if (cmd.compute == CCV_NNC_COMPUTE_NOOP)
+		return 0;
 	// If it is a custom command, just apply it directly.
 	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
