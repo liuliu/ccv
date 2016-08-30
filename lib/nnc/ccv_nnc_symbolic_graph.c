@@ -150,7 +150,42 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 
 int ccv_nnc_graph_exec_symbol_autoconcat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size)
 {
-	// Not implemented.
+	int i, j, x, y;
+	for (i = 0; i < exec_size; i++)
+	{
+		assert(execs[i].graph == graph);
+		assert(execs[i].d >= 0);
+		assert(execs[i].d < graph->exec_symbol_info->rnum);
+	}
+	for (i = 0; i < exec_size; i++)
+	{
+		int a_idx = execs[i].d;
+		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
+		for (j = i + 1; j < exec_size;j++)
+		{
+			int b_idx = execs[j].d;
+			// Skip if they are the same.
+			if (a_idx == b_idx)
+				continue;
+			ccv_nnc_graph_exec_symbol_info_t* b_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, b_idx);
+			int b_to_a = 0;
+			for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
+				for (y = 0; y < b_symbol_info->output_size && !b_to_a; y++)
+					if (a_symbol_info->inputs[x] == b_symbol_info->outputs[y])
+						// This two have matching inputs and outputs, thus, you can concat b to a.
+						b_to_a = 1;
+			if (b_to_a)
+				ccv_nnc_graph_exec_symbol_concat(graph, execs[j], execs[i]);
+			int a_to_b = 0;
+			for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
+				for (y = 0; y < b_symbol_info->input_size && !a_to_b; y++)
+					if (a_symbol_info->outputs[x] == b_symbol_info->inputs[y])
+						// This two have matching inputs and outputs, thus, you can concat b to a.
+						a_to_b = 1;
+			if (a_to_b)
+				ccv_nnc_graph_exec_symbol_concat(graph, execs[i], execs[j]);
+		}
+	}
 	return 0;
 }
 
