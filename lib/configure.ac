@@ -1,3 +1,5 @@
+AC_ARG_WITH([png], AS_HELP_STRING([--with-png], [Build with the PNG reading (requires libpng)]))
+
 AC_INIT([libccv], [0.6])
 
 AC_SUBST(DEFINE_MACROS, [""])
@@ -41,9 +43,16 @@ if test "$blas_ok" = yes; then
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS$BLAS_LIBS "])
 fi
 
-# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
-AC_CHECK_HEADER(png.h,
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
+# check for libpng
+AS_IF([test "x$with_png" != "xno"], [
+   PKG_CHECK_MODULES([libpng], [libpng])
+	 AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "])
+	 AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS`pkg-config --libs libpng` "])
+	 AC_SUBST(MKCFLAGS, ["$MKCFLAGS`pkg-config --cflags libpng` "])
+
+])
+
+# check for libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
 AC_CHECK_HEADER(jpeglib.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
 AC_CHECK_HEADER(fftw3.h,
