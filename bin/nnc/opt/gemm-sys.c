@@ -21,7 +21,7 @@ int main(int argc, char** argv)
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD, 0, CMD_FULL_CONNECT(OUTPUT_DIM), 0);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_GEMM_FORWARD, 0, CMD_GEMM(OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM), 0);
 	// configure the inlets.
@@ -51,7 +51,7 @@ int main(int argc, char** argv)
 			printf("forw output[%d]: %f %f\n", i, b->data.f32[i], c->data.f32[i]);
 	ccv_nnc_tensor_t* dw = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, OUTPUT_DIM), 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM), 0);
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD, 0, CMD_FULL_CONNECT(OUTPUT_DIM), 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_GEMM_BACKWARD, 0, CMD_GEMM(OUTPUT_DIM), 0);
 	elapsed_time = get_current_time();
 	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(b, a, w), TENSOR_LIST(dw, bias, h), 0);
 	elapsed_time = get_current_time() - elapsed_time;

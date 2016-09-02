@@ -588,7 +588,7 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	assert(input_size == 3);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
@@ -626,7 +626,7 @@ static int _ccv_nnc_full_connect_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_full_connect_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// inputs: gradient, forw prop input, [w]
 	// outputs: weight updates, bias updates, [output gradient]
@@ -782,15 +782,15 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 {
 	/*TODO: I don't think any of these methods handles batch input, and I better to handle CHWN as well. */
 	/* Data transfer */
-	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].algorithms = -1;
-	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER].exec = _ccv_nnc_data_transfer;
+	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD].algorithms = -1;
+	cmd_api[CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD].exec = _ccv_nnc_data_transfer;
 	/* Format transform */
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].algorithms = -1;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].exec = _ccv_nnc_format_transform;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].algorithms = -1;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].exec = _ccv_nnc_format_transform;
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -800,15 +800,15 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].exec = _ccv_nnc_conv_back;
-	/* Full connect layer */
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD].exec = _ccv_nnc_full_connect_forw;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD].exec = _ccv_nnc_full_connect_back;
+	/* GEMM layer */
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].exec = _ccv_nnc_gemm_forw;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].exec = _ccv_nnc_gemm_back;
 	/* Max pool layer */
 	cmd_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;

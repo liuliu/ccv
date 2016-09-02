@@ -15,11 +15,10 @@
 enum {
 	// These are the list of computation kernels.
 	CCV_NNC_COMPUTE_CUSTOM = 0,
+	CCV_NNC_COMPUTE_NOOP,
 	// For neural networks
 	CCV_NNC_COMPUTE_CONVOLUTION_FORWARD,
 	CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD,
-	CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD,
-	CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD,
 	CCV_NNC_COMPUTE_MAX_POOL_FORWARD,
 	CCV_NNC_COMPUTE_MAX_POOL_BACKWARD,
 	CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD,
@@ -31,11 +30,15 @@ enum {
 	CCV_NNC_COMPUTE_RELU_FORWARD,
 	CCV_NNC_COMPUTE_RELU_BACKWARD,
 	// BLAS
-	CCV_NNC_COMPUTE_AXPY,
+	CCV_NNC_COMPUTE_AXPY_FORWARD,
+	CCV_NNC_COMPUTE_AXPY_BACKWARD,
+	CCV_NNC_COMPUTE_GEMM_FORWARD,
+	CCV_NNC_COMPUTE_GEMM_BACKWARD,
 	// Other transforms
-	CCV_NNC_COMPUTE_DATA_TRANSFER,
-	CCV_NNC_COMPUTE_FORMAT_TRANSFORM,
-	CCV_NNC_COMPUTE_NOOP,
+	CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD,
+	CCV_NNC_COMPUTE_DATA_TRANSFER_BACKWARD,
+	CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD,
+	CCV_NNC_COMPUTE_FORMAT_TRANSFORM_BACKWARD,
 	CCV_NNC_COMPUTE_COUNT,
 };
 
@@ -71,10 +74,8 @@ typedef struct {
 			float beta; /**< [rnorm.beta] See **rnorm.kappa**. */
 		} rnorm;
 		struct {
-			int count; /**< [full_connect.count] The number of output nodes for full connect layer. */
-		} full_connect;
-		struct {
 			float a[3]; /**< BLAS scalars. */
+			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
 		void* userdata;
 	};
@@ -269,7 +270,6 @@ void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena)
 /**
  * Level-4 API
  */
-typedef struct {
-} ccv_nnc_graph_solver_t;
+void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph);
 
 #endif

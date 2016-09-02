@@ -495,10 +495,10 @@ void ccv_nnc_gpu_cudnn_init(ccv_nnc_cmd_api_t cmd_api[])
 {
 #ifdef HAVE_CUDNN
 	/* Format transform */
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].tensor_memory = CCV_TENSOR_GPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].algorithms = -1;
-	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM].exec = _ccv_nnc_format_transform;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].algorithms = -1;
+	cmd_api[CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD].exec = _ccv_nnc_format_transform;
 	/* Convolutional layer */
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_FORWARD].tensor_memory = CCV_TENSOR_GPU_MEMORY;

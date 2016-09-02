@@ -14,10 +14,10 @@
 #ifdef USE_DISPATCH
 #include <dispatch/dispatch.h>
 #endif
-#include "ccv_nnc_cmd_fc_opt.h"
+#include "ccv_nnc_cmd_gemm_opt.h"
 
 #ifdef HAVE_SSE2
-static int _ccv_nnc_fc_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_gemm_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -51,7 +51,7 @@ static int _ccv_nnc_fc_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_t
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_fc_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+static int _ccv_nnc_gemm_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
 {
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -134,7 +134,7 @@ static int _ccv_nnc_fc_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc_t
 #endif
 
 #ifdef HAVE_NEON
-static int _ccv_nnc_fc_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_gemm_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -167,7 +167,7 @@ static int _ccv_nnc_fc_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_t
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_fc_back_neon(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+static int _ccv_nnc_gemm_back_neon(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
 {
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -249,26 +249,26 @@ static int _ccv_nnc_fc_back_neon(const ccv_nnc_tensor_view_t* g, const ccv_nnc_t
 }
 #endif
 
-int ccv_nnc_fc_forw_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+int ccv_nnc_gemm_forw_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
 {
 #if defined(HAVE_SSE2)
 	if (a->info.dim[0] % 8 == 0)
-		return _ccv_nnc_fc_forw_sse2(a, w, bias, b);
+		return _ccv_nnc_gemm_forw_sse2(a, w, bias, b);
 #elif defined(HAVE_NEON)
 	if (a->info.dim[0] % 8 == 0)
-		return _ccv_nnc_fc_forw_neon(a, w, bias, b);
+		return _ccv_nnc_gemm_forw_neon(a, w, bias, b);
 #endif
 	return CCV_NNC_EXEC_INVALID;
 }
 
-int ccv_nnc_fc_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+int ccv_nnc_gemm_back_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
 {
 #if defined(HAVE_SSE2)
 	if (g->info.dim[0] % 4 == 0 && a->info.dim[0] % 4 == 0 && (!h || h->info.dim[0] % 4 == 0))
-		return _ccv_nnc_fc_back_sse2(g, a, w, dw, bias, h, flags);
+		return _ccv_nnc_gemm_back_sse2(g, a, w, dw, bias, h, flags);
 #elif defined(HAVE_NEON)
 	if (g->info.dim[0] % 4 == 0 && a->info.dim[0] % 4 == 0 && (!h || h->info.dim[0] % 4 == 0))
-		return _ccv_nnc_fc_back_neon(g, a, w, dw, bias, h, flags);
+		return _ccv_nnc_gemm_back_neon(g, a, w, dw, bias, h, flags);
 #endif
 	return CCV_NNC_EXEC_INVALID;
 }

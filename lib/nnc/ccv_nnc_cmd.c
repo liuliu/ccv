@@ -142,9 +142,9 @@ ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const c
 		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
 			b.dim[0] = cmd.info.convolution.count;
 			break;
-		case CCV_NNC_COMPUTE_FULL_CONNECT_FORWARD:
-		case CCV_NNC_COMPUTE_FULL_CONNECT_BACKWARD:
-			b.dim[0] = cmd.info.full_connect.count;
+		case CCV_NNC_COMPUTE_GEMM_FORWARD:
+		case CCV_NNC_COMPUTE_GEMM_BACKWARD:
+			b.dim[0] = cmd.info.blas.count;
 			break;
 		default:
 			b.dim[0] = a.dim[0];
