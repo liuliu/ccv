@@ -98,8 +98,11 @@ TEST_CASE("hint tensor")
 			.dim = {0, 7, 8}
 		}
 	};
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 5, 4), 0);
-	ccv_nnc_tensor_param_t b = ccv_nnc_hint_tensor_auto(cmd, a, hint);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 5, 4), 0);
+	ccv_nnc_tensor_param_t b;
+	ccv_nnc_tensor_param_t w = ONE_CPU_TENSOR(3, 5, 4, 128);
+	ccv_nnc_tensor_param_t bias = ONE_CPU_TENSOR(128);
+	ccv_nnc_hint_tensor_auto(cmd, TENSOR_PARAM_LIST(a, w, bias), hint, &b, 1);
 	REQUIRE_EQ(b.dim[0], 128, "channel should be the convolution filter count");
 	REQUIRE_EQ(b.dim[1], 19, "width should be 19");
 	REQUIRE_EQ(b.dim[2], 30, "height should be 30");

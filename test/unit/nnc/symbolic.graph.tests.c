@@ -28,8 +28,7 @@ TEST_CASE("compile a simple symbolic graph with autoconcat")
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	ccv_nnc_tensor_t* m_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, m);
 	REQUIRE(a_tensor->data.u8 != b_tensor->data.u8, "tensor a and b shouldn't share the memory.");
-	REQUIRE(b_tensor->data.u8 != m_tensor->data.u8, "tensor b and m shouldn't share the memory.");
-	REQUIRE(a_tensor->data.u8 != m_tensor->data.u8, "tensor a and m shouldn't share the memory.");
+	REQUIRE(b_tensor->data.u8 == m_tensor->data.u8, "tensor b and m should share the memory because softmax is an inplace op.");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);

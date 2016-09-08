@@ -27,6 +27,9 @@
 #define TENSOR_LIST_X(...) (ccv_nnc_tensor_t* []){__VA_ARGS__}
 #define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
+#define TENSOR_PARAM_LIST_X(...) (ccv_nnc_tensor_param_t []){__VA_ARGS__}
+#define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
 #define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
 #define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
@@ -70,6 +73,63 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 	while (nd < CCV_NNC_MAX_DIM_ALLOC && params.dim[nd] > 0)
 		++nd;
 	return nd;
+}
+
+static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
+{
+	switch (params.format)
+	{
+		case CCV_TENSOR_FORMAT_NHWC:
+		case CCV_TENSOR_FORMAT_NCHW:
+			return params.dim[CCV_NNC_MAX_DIM + 1];
+		case CCV_TENSOR_FORMAT_CHWN:
+			return params.dim[0];
+	}
+	return 0;
+}
+
+static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
+{
+	switch (params.format)
+	{
+		case CCV_TENSOR_FORMAT_NHWC:
+			return params.dim[0];
+		case CCV_TENSOR_FORMAT_NCHW:
+			return params.dim[CCV_NNC_MAX_DIM];
+		case CCV_TENSOR_FORMAT_CHWN:
+			return params.dim[CCV_NNC_MAX_DIM + 1];
+	}
+	return 0;
+}
+
+static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* params, const int n)
+{
+	switch (params->format)
+	{
+		case CCV_TENSOR_FORMAT_NHWC:
+		case CCV_TENSOR_FORMAT_NCHW:
+			params->dim[CCV_NNC_MAX_DIM + 1] = n;
+			break;
+		case CCV_TENSOR_FORMAT_CHWN:
+			params->dim[0] = n;
+			break;
+	}
+}
+
+static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* params, const int c)
+{
+	switch (params->format)
+	{
+		case CCV_TENSOR_FORMAT_NHWC:
+			params->dim[0] = c;
+			break;
+		case CCV_TENSOR_FORMAT_NCHW:
+			params->dim[CCV_NNC_MAX_DIM] = c;
+			break;
+		case CCV_TENSOR_FORMAT_CHWN:
+			params->dim[CCV_NNC_MAX_DIM + 1] = c;
+			break;
+	}
 }
 
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})

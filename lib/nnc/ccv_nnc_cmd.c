@@ -1,4 +1,5 @@
 #include "ccv_nnc.h"
+#include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
@@ -36,6 +37,42 @@ typedef struct {
 #endif
 // Above should be automatic generated.
 
+static ccv_nnc_compute_attr_t compute_attrs[CCV_NNC_COMPUTE_COUNT];
+
+// We support up to 4 bit patterns.
+#define CCV_NNC_ATTR_BIT_PATTERNS(_v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, ...) \
+	{ \
+		.input = (_v1), \
+		.output = (_v2) \
+	}, \
+	{ \
+		.input = (_v3), \
+		.output = (_v4) \
+	}, \
+	{ \
+		.input = (_v5), \
+		.output = (_v6) \
+	}, \
+	{ \
+		.input = (_v7), \
+		.output = (_v8) \
+	} \
+
+#define CCV_NNC_ATTR_DEF_X(_cmd, _attrs, ...) { \
+		const ccv_nnc_compute_attr_t attr = { \
+			.attrs = _attrs, \
+			.bit_patterns = { \
+				CCV_NNC_ATTR_BIT_PATTERNS(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0, 0) \
+			} \
+		}; \
+		compute_attrs[_cmd] = attr; \
+	}
+
+// Only allow even number of parameters.
+#define CCV_NNC_ATTR_DEF_SEL(_0, _1, _2, _3, _4, _5, _6, _7, _8, _FX, ...) _FX
+
+#define CCV_NNC_ATTR_DEF(_cmd, _attrs, ...) CCV_NNC_ATTR_DEF_SEL(CCV_NNC_ATTR_DEF_NOT_ALLOWED, ##__VA_ARGS__, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_NOT_ALLOWED)(_cmd, _attrs, __VA_ARGS__)
+
 static ccv_nnc_cmd_api_t cmd_api_decls[CCV_NNC_BACKEND_COUNT][CCV_NNC_COMPUTE_COUNT];
 
 void ccv_nnc_init(void)
@@ -45,6 +82,7 @@ void ccv_nnc_init(void)
 	// Init dynamic dispatch table.
 	for (i = 0; i < count; i++)
 		init_map[i].init(cmd_api_decls[init_map[i].backend]);
+#include "ccv_nnc_attr.inc"
 }
 
 int ccv_nnc_cmd_backend(const char* name)
@@ -63,6 +101,34 @@ const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
 int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params)
 {
 	return (memcmp(&params, &ccv_nnc_cmd_auto, sizeof(ccv_nnc_cmd_param_t)) == 0);
+}
+
+int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd)
+{
+	assert(cmd.compute >= 0);
+	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	switch (cmd.compute)
+	{
+		case CCV_NNC_COMPUTE_CUSTOM:
+		case CCV_NNC_COMPUTE_NOOP:
+			return 0;
+		default:
+			return !(cmd.compute & 0x1); // If it is even, it is forward
+	}
+}
+
+int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd)
+{
+	assert(cmd.compute >= 0);
+	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
+	switch (cmd.compute)
+	{
+		case CCV_NNC_COMPUTE_CUSTOM:
+		case CCV_NNC_COMPUTE_NOOP:
+			return 0;
+		default:
+			return !!(cmd.compute & 0x1); // If it is odd, it is backward
+	}
 }
 
 ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
@@ -88,8 +154,9 @@ int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint)
 int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
-	// 0-dim is reserved for channels
-	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+	assert(a.format == b.format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		if ((hint.border.begin[i] + hint.border.end[i] + a.dim[i] - cmd.size.dim[i]) % hint.stride.dim[i] != 0)
 			return -1;
@@ -103,7 +170,9 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
-	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+	assert(a.format == b.format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 		if (!a.dim[i] || !b.dim[i]) // If one of the dim is zero, we cannot auto the hint, return no hint.
 			return ccv_nnc_no_hint;
 	ccv_nnc_hint_t hint_auto = {
@@ -116,7 +185,7 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 		}
 	};
 	// 0-dim is reserved for channels
-	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		// This is guessed by having a stride that will approximately match the scale.
 		int stride = (a.dim[i] + b.dim[i] / 2) / b.dim[i];
@@ -128,33 +197,141 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 	return hint_auto;
 }
 
-ccv_nnc_tensor_param_t ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint)
+static void _ccv_nnc_hint_tensor_dim_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
-	ccv_nnc_tensor_param_t b = {
-		.type = a.type,
-		.format = a.format,
-		.dim = {0}
-	};
-	switch (cmd.compute)
-	{
-		case CCV_NNC_COMPUTE_CONVOLUTION_FORWARD:
-		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
-			b.dim[0] = cmd.info.convolution.count;
-			break;
-		case CCV_NNC_COMPUTE_GEMM_FORWARD:
-		case CCV_NNC_COMPUTE_GEMM_BACKWARD:
-			b.dim[0] = cmd.info.blas.count;
-			break;
-		default:
-			b.dim[0] = a.dim[0];
-	}
-	for (i = 1; i < CCV_NNC_MAX_DIM + 1; i++)
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
-		b.dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i]) / stride + 1;
+		b->dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i]) / stride + 1;
 	}
-	return b;
+}
+
+static void _ccv_nnc_hint_tensor_dim_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
+{
+	int i;
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
+	{
+		int stride = ccv_max(1, hint.stride.dim[i]);
+		b->dim[i] = (a.dim[i] - 1) * stride - hint.border.begin[i] - hint.border.end[i] + cmd.info.size.dim[i];
+	}
+}
+
+void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+{
+	// zero out the parameters
+	const ccv_nnc_tensor_param_t z = {
+		.type = 0,
+		.format = 0,
+		.dim = {0}
+	};
+	int i;
+	for (i = 0; i < output_size; i++)
+		outputs[i] = z; // Reset the outputs.
+	switch (cmd.compute)
+	{
+		// For neural networks
+		case CCV_NNC_COMPUTE_CONVOLUTION_FORWARD: {
+			assert(output_size == 1);
+			outputs[0].type = inputs[0].type;
+			outputs[0].format = inputs[0].format;
+			// Get the channel output from the weight matrix.
+			int count = ccv_nnc_tensor_get_n(inputs[1]);
+			assert(count == cmd.info.convolution.count);
+			assert(count == inputs[2].dim[0]); // from the bias matrix.
+			ccv_nnc_tensor_set_c(outputs, count);
+			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
+			break;
+		}
+		case CCV_NNC_COMPUTE_GEMM_FORWARD: {
+			assert(output_size == 1);
+			outputs[0].type = inputs[0].type;
+			outputs[0].format = inputs[0].format;
+			outputs[0].dim[1] = inputs[0].dim[1]; // batch size.
+			outputs[0].dim[0] = inputs[1].dim[1]; // from the weight matrix.
+			assert(inputs[1].dim[1] == cmd.info.blas.count);
+			assert(inputs[1].dim[1] == inputs[2].dim[0]); // from the bias matrix.
+			break;
+		}
+		case CCV_NNC_COMPUTE_MAX_POOL_FORWARD:
+		case CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD: {
+			assert(output_size == 1);
+			outputs[0].type = inputs[0].type;
+			outputs[0].format = inputs[0].format;
+			// Get channels from the original input.
+			int count = ccv_nnc_tensor_get_c(inputs[0]);
+			ccv_nnc_tensor_set_c(outputs, count);
+			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
+			break;
+		}
+		case CCV_NNC_COMPUTE_SOFTMAX_FORWARD:
+		case CCV_NNC_COMPUTE_BATCH_NORM_FORWARD:
+		case CCV_NNC_COMPUTE_RELU_FORWARD:
+		// BLAS
+		case CCV_NNC_COMPUTE_AXPY_FORWARD:
+		// Element-wise computation
+		case CCV_NNC_COMPUTE_EWSUM_FORWARD:
+		case CCV_NNC_COMPUTE_EWPROD_FORWARD:
+		case CCV_NNC_COMPUTE_EWINV_FORWARD:
+		case CCV_NNC_COMPUTE_EWEXP_FORWARD:
+		case CCV_NNC_COMPUTE_EWLOG_FORWARD: {
+			assert(output_size == 1);
+			// All above have 1 output, therefore, it just copy from the first input.
+			outputs[0] = inputs[0];
+			break;
+		}
+		// For neural networks
+		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
+		case CCV_NNC_COMPUTE_GEMM_BACKWARD: {
+			// For both cases, we just copy from inputs.
+			assert(output_size < input_size);
+			for (i = 0; i < output_size; i++)
+				outputs[i] = inputs[i + 1];
+			break;
+		}
+		case CCV_NNC_COMPUTE_MAX_POOL_BACKWARD:
+		case CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD: {
+			assert(output_size == 1);
+			outputs[0].type = inputs[0].type;
+			outputs[0].format = inputs[0].format;
+			// Get channels from the original input.
+			int count = ccv_nnc_tensor_get_c(inputs[0]);
+			ccv_nnc_tensor_set_c(outputs, count);
+			_ccv_nnc_hint_tensor_dim_back(cmd, inputs[0], hint, outputs);
+			break;
+		}
+		case CCV_NNC_COMPUTE_SOFTMAX_BACKWARD:
+		case CCV_NNC_COMPUTE_BATCH_NORM_BACKWARD:
+		case CCV_NNC_COMPUTE_RELU_BACKWARD:
+		// BLAS
+		case CCV_NNC_COMPUTE_AXPY_BACKWARD:
+		// Element-wise computation
+		case CCV_NNC_COMPUTE_EWSUM_BACKWARD:
+		case CCV_NNC_COMPUTE_EWPROD_BACKWARD:
+		case CCV_NNC_COMPUTE_EWINV_BACKWARD:
+		case CCV_NNC_COMPUTE_EWEXP_BACKWARD:
+		case CCV_NNC_COMPUTE_EWLOG_BACKWARD: {
+			assert(input_size == 1);
+			// All above have 1 input, therefore, outputs just copy from the input.
+			for (i = 0; i < output_size; i++)
+				outputs[i] = inputs[0];
+			break;
+		}
+		// Other transforms
+		case CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD:
+		case CCV_NNC_COMPUTE_DATA_TRANSFER_BACKWARD:
+		case CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD:
+		case CCV_NNC_COMPUTE_FORMAT_TRANSFORM_BACKWARD: {
+			assert(output_size == input_size);
+			for (i = 0; i < input_size; i++)
+				outputs[i] = inputs[i];
+			break;
+		}
+	}
 }
 
 // This returns absolute time.
@@ -267,14 +444,14 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
 
-int ccv_nnc_cmd_support(const ccv_nnc_cmd_t cmd, const int flags)
+int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 {
 	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
 	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
 	// If it is a custom command, just apply it directly.
 	assert(cmd.compute != CCV_NNC_COMPUTE_CUSTOM);
-	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
-	return !!(api_decl.supports & flags);
+	ccv_nnc_compute_attr_t compute_attr = compute_attrs[cmd.compute];
+	return !!(compute_attr.attrs & flags);
 }
 
 struct ccv_nnc_stream_context_s {

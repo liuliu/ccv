@@ -839,12 +839,10 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	/* ReLU activation */
 	cmd_api[CCV_NNC_COMPUTE_RELU_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_RELU_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_RELU_FORWARD].supports = CCV_NNC_COMPUTE_SUPPORT_INPLACE;
 	cmd_api[CCV_NNC_COMPUTE_RELU_FORWARD].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_RELU_FORWARD].exec = _ccv_nnc_relu_forw;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].supports = CCV_NNC_COMPUTE_SUPPORT_INPLACE;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].exec = _ccv_nnc_relu_back;
 }

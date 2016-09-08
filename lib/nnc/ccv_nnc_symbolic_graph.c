@@ -696,11 +696,21 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
 
+	ccv_nnc_tensor_param_t input_params[32], output_params[32];
+
 	// Materialize auto tensors. This need to go with the topological order.
 #define visitor(node, ...) \
 	do { \
 		if (node->input_size > 0 && node->output_size > 0) \
-			tensor_symbol_info[node->outputs[0]].info = ccv_nnc_hint_tensor_auto(node->cmd, tensor_symbol_info[node->inputs[0]].info, node->hint); \
+		{ \
+			assert(node->input_size <= 32); \
+			assert(node->output_size <= 32); \
+			for (i = 0; i < node->input_size; i++) \
+				input_params[i] = tensor_symbol_info[node->inputs[i]].info; \
+			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size); \
+			for (i = 0; i < node->output_size; i++) \
+				tensor_symbol_info[node->outputs[i]].info = output_params[i]; \
+		} \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
@@ -809,7 +819,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 #define visitor(node, idx, _) \
 	do { \
 		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */ \
-		if (ccv_nnc_cmd_support(node->cmd, CCV_NNC_COMPUTE_SUPPORT_INPLACE)) \
+		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_COMPUTE_ATTR_INPLACE)) \
 		{ \
 			int x, y; \
 			for (x = 0; x < node->input_size; x++) \
@@ -978,4 +988,17 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_are
 void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena)
 {
 	ccfree(graph_exec_arena);
+}
+
+/**
+ * Level-4 API
+ */
+
+void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* wrt_symbols, const int wrt_symbol_size)
+{
+}
+
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol)
+{
+	return symbol;
 }

@@ -34,6 +34,17 @@ enum {
 	CCV_NNC_COMPUTE_AXPY_BACKWARD,
 	CCV_NNC_COMPUTE_GEMM_FORWARD,
 	CCV_NNC_COMPUTE_GEMM_BACKWARD,
+	// Element-wise computation
+	CCV_NNC_COMPUTE_EWSUM_FORWARD,
+	CCV_NNC_COMPUTE_EWSUM_BACKWARD,
+	CCV_NNC_COMPUTE_EWPROD_FORWARD,
+	CCV_NNC_COMPUTE_EWPROD_BACKWARD,
+	CCV_NNC_COMPUTE_EWINV_FORWARD,
+	CCV_NNC_COMPUTE_EWINV_BACKWARD,
+	CCV_NNC_COMPUTE_EWEXP_FORWARD,
+	CCV_NNC_COMPUTE_EWEXP_BACKWARD,
+	CCV_NNC_COMPUTE_EWLOG_FORWARD,
+	CCV_NNC_COMPUTE_EWLOG_BACKWARD,
 	// Other transforms
 	CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD,
 	CCV_NNC_COMPUTE_DATA_TRANSFER_BACKWARD,
@@ -43,12 +54,25 @@ enum {
 };
 
 enum {
-	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
-	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
+	// Attributes that enable tensor allocation optimization
+	CCV_NNC_COMPUTE_ATTR_INPLACE      = 0x01, // Is it a inplace operation? (Thus, the input tensor can be the same as the output tensor). This is actually a stronger assumption than it seems. It says that the input tensors can be the same as any of the output tensors. Thus, input tensors of [a, b] and output tensors of [b, a] or [a, a] or [b, b] are perfectly supported if your compute node supports this flag.
+	// Attributes that enable symbolic graph simplification
+	CCV_NNC_COMPUTE_ATTR_PASSTHROUGH  = 0x02, // This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical).
+	CCV_NNC_COMPUTE_ATTR_OUTPUT_ONES  = 0x04, // All the output tensors are 1s (unit).
+	CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES = 0x08, // Accept nullptr input as if these are tensors with 1s (unit).
 };
 
+typedef struct {
+	int attrs; // List of attributes for this computation. These attributes enables some of the symbolic graph / tensor allocation optimizations, it needs to be implemented exactly the same cross different backends.
+	struct {
+		uint64_t input;
+		uint64_t output;
+	} bit_patterns[4]; // Maximum allow 4 patterns for input / output pairs, if this is not enough, we can always add more.
+} ccv_nnc_compute_attr_t;
+
 enum {
-	CCV_NNC_COMPUTE_SUPPORT_INPLACE = 0x01, // Is it a inplace operation? (Thus, the input tensor can be the same as the output tensor). This is actually a stronger assumption than it seems. It says that the input tensors can be the same as any of the output tensors. Thus, input tensors of [a, b] and output tensors of [b, a] or [a, a] or [b, b] are perfectly supported if your compute node supports this flag.
+	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
+	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
 };
 
 enum {
@@ -103,6 +127,11 @@ typedef struct ccv_nnc_cmd_s {
 	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 } ccv_nnc_cmd_t;
 
+// For forward functions, the input tensors and output tensors can be arbitrary.
+// However, for backward functions (backpropagation, or gradient functions in other libs),
+// the input is: 0~m-1: gradient for output tensors, 1~n: input tensors for forward functions, n+1~n+m: output tensors for forward functions,
+// the output is: 0~n-1: output gradients w.r.t. input tensors.
+// Which input / output tensors can be ignored can be specified in the compute config structs.
 typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
@@ -110,7 +139,6 @@ typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_w
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
-	int supports; /**< [supports] The supported computing features (such as in-place op). */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
 	ccv_nnc_cmd_autotune_f autotune;
@@ -146,15 +174,17 @@ int ccv_nnc_cmd_backend(const char* name);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-// Auto find the best hint for a given input / output.
+// Auto find the best hint for a given input / output (on forward pass only).
 CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-// Auto find the output for a given input / hint.
-CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint);
+// Auto find the outputs for the given inputs / hint.
+void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
-int ccv_nnc_cmd_support(const ccv_nnc_cmd_t cmd, const int flags);
+int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
+int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
+int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
 
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.
@@ -270,6 +300,14 @@ void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena)
 /**
  * Level-4 API
  */
-void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph);
+// Compute the backward graph, assuming the provided symbolic graph only contain the "forward" part from sources to destinations.
+// This effectively is called the "autograd" or automatic differentiation process (specifically, "reverse AD") in other libs.
+void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* wrt_symbols, const int wrt_symbol_size);
+// Get the symbol that contains the gradient. The list will be flushed if the ccv_nnc_symbolic_graph_backward function is called again.
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol);
+// TODO: A function to run while loop for RNN (need to figure out how to do book-keeping for bidirectional dynamic RNN).
+// In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
+// versions of the tensors (thus, the tensor is versioned, so you can "backpropagate through time".
+void ccv_nnc_graph_while(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_arena_t* tensor_arena, const int version, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
 
 #endif
