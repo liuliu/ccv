@@ -120,13 +120,13 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// inputs: gradient, forw prop input, [w]
-	// outputs: weight updates, bias updates, [output gradient]
-	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
+	// outputs: [output gradient], weight updates, bias updates
+	assert((input_size == 2 && output_size == 3) || (input_size == 3 && output_size == 3));
 	const ccv_nnc_tensor_view_t* g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
-	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[2];
 	assert(bias->info.dim[1] == 0); // It is a 1-d array.
 	assert(ccv_max(1, a->info.dim[1]) == ccv_max(1, g->info.dim[1]));
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
@@ -135,14 +135,14 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a->info.dim[0] == dw->info.dim[0]);
 	assert(g->info.dim[0] == dw->info.dim[1]);
 	const ccv_nnc_tensor_view_t* w = (input_size == 3) ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
-	ccv_nnc_tensor_view_t* h = (output_size == 3) ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
-	if (output_size == 3)
+	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
+	if (h)
 	{
 		assert(h->info.dim[0] == a->info.dim[0]);
 		assert(ccv_max(1, h->info.dim[1]) == ccv_max(1, a->info.dim[1]));
 		assert(h->info.dim[2] == 0); // It is a 2-d array.
 	}
-	if (input_size == 3)
+	if (w)
 	{
 		assert(w->info.dim[2] == 0); // It is a 2-d array.
 		assert(w->info.dim[0] == dw->info.dim[0]);
@@ -154,7 +154,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			return ccv_nnc_gemm_back_opt(g, a, w, dw, bias, h, flags);
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
 			if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && !CCV_IS_TENSOR_VIEW(bias) &&
-				(input_size == 2 || !CCV_IS_TENSOR_VIEW(w)) && (output_size == 2 || !CCV_IS_TENSOR_VIEW(h)))
+				(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
 				return ccv_nnc_gemm_back_sys(g, a, w, dw, bias, h, flags);
 			return CCV_NNC_EXEC_INVALID;
 		case -1:
@@ -163,7 +163,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	}
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && !CCV_IS_TENSOR_VIEW(bias) &&
-		(input_size == 2 || !CCV_IS_TENSOR_VIEW(w)) && (output_size == 2 || !CCV_IS_TENSOR_VIEW(h)))
+		(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
 		return ccv_nnc_gemm_back_sys(g, a, w, dw, bias, h, flags);
 #endif
 	return ccv_nnc_gemm_back_opt(g, a, w, dw, bias, h, flags);

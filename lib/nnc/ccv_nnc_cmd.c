@@ -432,7 +432,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
 	if (!api_decl.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
-	int i;
+	int i, j;
 	for (i = 0; i < input_size; i++)
 	{
 		assert(api_decl.tensor_formats & inputs[i]->info.format);
@@ -441,6 +441,48 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	{
 		assert(api_decl.tensor_formats & outputs[i]->info.format);
 	}
+	// bit_patterns is a c-array, we can size it out.
+	// To verify if the input matches the suggested pattern.
+	int find = 0;
+	ccv_nnc_compute_attr_t compute_attr = compute_attrs[cmd.compute];
+	for (i = 0; i < sizeof(compute_attr.bit_patterns) / sizeof(compute_attr.bit_patterns[0]) && !find; i++)
+	{
+		if (!compute_attr.bit_patterns[i].input && !compute_attr.bit_patterns[i].output)
+			break;
+		uint64_t v = compute_attr.bit_patterns[i].input;
+		int expected_input_size;
+		if (v > 0)
+		{
+			expected_input_size = 1;
+			while (v >>= 1)
+				++expected_input_size;
+		} else
+			expected_input_size = 0;
+		v = compute_attr.bit_patterns[i].output;
+		int expected_output_size;
+		if (v > 0)
+		{
+			expected_output_size = 1;
+			while (v >>= 1)
+				++expected_output_size;
+		} else
+			expected_output_size = 0;
+		if (expected_input_size <= input_size && expected_output_size <= output_size)
+		{
+			find = 1;
+			v = compute_attr.bit_patterns[i].input;
+			for (j = 0; j < expected_input_size && find; j++)
+				if (((1u << j) & v) && !inputs[j]) // If this parameter is required but the tensor is empty, we cannot match this pattern, skip.
+					find = 0;
+			v = compute_attr.bit_patterns[i].output;
+			for (j = 0; j < expected_output_size && find; j++)
+				if (((1u << j) & v) && !outputs[j]) // If this parameter is required but the tensor is empty, we cannot match this pattern, skip.
+					find = 0;
+		}
+	}
+	if (!find)
+		return CCV_NNC_EXEC_INVALID; // Return invalid input.
+	// Everything is out, call the underlying implementation.
 	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
 

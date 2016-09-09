@@ -315,17 +315,17 @@ enum {
 static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// inputs: gradient, forw prop input, [w]
-	// outputs: weight updates, bias updates, [output gradient]
-	assert((input_size == 2 && output_size == 2) || (input_size == 3 && output_size == 3));
+	// outputs: [output gradient], weight updates, bias updates
+	assert((input_size == 2 && output_size == 3) || (input_size == 3 && output_size == 3));
 	assert(stream_context);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t a = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
-	const ccv_nnc_cudnn_filter_descriptor_t dw = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[0]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t a = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
+	const ccv_nnc_cudnn_filter_descriptor_t dw = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = _ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 
 	cudnnConvolutionBwdFilterAlgo_t filter_algo;
@@ -366,10 +366,11 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (workspace)
 		cudaFreeAsync(workspace, stream);
 	// If h is available, therefore, we need to propagate the gradients back
-	if (input_size == 3 && output_size == 3)
+	if (outputs[0])
 	{
+		assert(input_size == 3);
 		const ccv_nnc_cudnn_filter_descriptor_t w = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
-		const ccv_nnc_cudnn_tensor_view_descriptor_t h = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t h = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 		cudnnConvolutionBwdDataAlgo_t data_algo;
 		switch (cmd.algorithm / CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT)
 		{
@@ -414,17 +415,17 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// inputs: gradient, forw prop input, w
-	// outputs: weight updates, bias updates [unused], output gradient
+	// outputs:  output gradient, weight updates, bias updates [unused]
 	assert(input_size == 3 && output_size == 3);
 	assert(stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t a = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t a = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
-	const ccv_nnc_cudnn_filter_descriptor_t dw = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[0]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t h = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+	const ccv_nnc_cudnn_tensor_view_descriptor_t h = _ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
+	const ccv_nnc_cudnn_filter_descriptor_t dw = _ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = _ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 	int count = 0;
 	cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];

@@ -77,7 +77,7 @@ enum {
 
 enum {
 	CCV_NNC_EXEC_SUCCESS = 0,
-	CCV_NNC_EXEC_INVALID = -1,
+	CCV_NNC_EXEC_INVALID = -1, // Invalid input.
 	CCV_NNC_EXEC_NO_KERNEL = -2,
 	CCV_NNC_EXEC_OOM = -3,
 };

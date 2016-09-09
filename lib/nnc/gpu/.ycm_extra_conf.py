@@ -25,7 +25,7 @@ flags = [
         '-x',
         'cuda',
         '-include',
-        '~/.vim/fake_host_cuda.h'
+        '/home/liu/.vim/fake_host_cuda.h'
 ]
 
 def DirectoryOfThisScript():

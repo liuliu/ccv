@@ -39,7 +39,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, a->info, 0);
 	for (i = 0; i < 21 * 31 * 4; i++)
 		g->data.f32[i] = m->data.f32[i] - (i == 24);
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h), 0);
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(h, gw, gbias), 0);
 	// Now doing numeric gradient computation
 	static const double eps = 0.001;
 	float* dw = (float*)ccmalloc(sizeof(float) * 2 * 3 * 5 * 4); 

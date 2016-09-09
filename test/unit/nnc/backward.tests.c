@@ -29,7 +29,7 @@ TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation"
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 21, 31), 0);
 	for (i = 0; i < 21 * 31 * 32; i++)
 		g->data.f32[i] = 1;
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h), 0);
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(h, gw, gbias), 0);
 	ccv_dense_matrix_t* dd = ccv_dense_matrix_new(31, 21, CCV_32F | CCV_C3, 0, 0);
 	for (i = 0; i < 31; i++)
 		for (j = 0; j < 21; j++)
@@ -105,7 +105,7 @@ TEST_CASE("full connect back propagation")
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5), 0);
 	// Pass in bias as gradient
-	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(bias, a, w), TENSOR_LIST(gw, gbias, h), 0);
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(bias, a, w), TENSOR_LIST(h, gw, gbias), 0);
 	// Therefore, gradient bias should match bias.
 	REQUIRE_TENSOR_EQ(gbias, bias, "bias gradients should match expected value");
 	float go[] = {
@@ -191,7 +191,7 @@ TEST_CASE("full connect back propagation with batch = 2")
 		g->data.f32[i + 4] = bias->data.f32[i];
 	}
 	// Pass in bias as gradient
-	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(gw, gbias, h), 0);
+	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(h, gw, gbias), 0);
 	// Therefore, gradient bias should match bias.
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
