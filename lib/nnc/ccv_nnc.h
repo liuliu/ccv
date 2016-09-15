@@ -46,6 +46,8 @@ enum {
 	CCV_NNC_COMPUTE_EWLOG_FORWARD,
 	CCV_NNC_COMPUTE_EWLOG_BACKWARD,
 	// Other transforms
+	CCV_NNC_COMPUTE_SET_FORWARD,
+	CCV_NNC_COMPUTE_SET_BACKWARD,
 	CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD,
 	CCV_NNC_COMPUTE_DATA_TRANSFER_BACKWARD,
 	CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD,
@@ -308,6 +310,6 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(cons
 // TODO: A function to run while loop for RNN (need to figure out how to do book-keeping for bidirectional dynamic RNN).
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors (thus, the tensor is versioned, so you can "backpropagate through time".
-void ccv_nnc_graph_while(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_arena_t* tensor_arena, const int version, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
+int ccv_nnc_graph_while(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_arena_t* tensor_arena, const int version, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
 
 #endif

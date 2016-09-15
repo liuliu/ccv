@@ -51,14 +51,17 @@ int main(int argc, char** argv)
 		relu2[i] = ccv_nnc_graph_exec_symbol(graph, ccv_nnc_cmd(CCV_NNC_COMPUTE_RELU_FORWARD, 0, ccv_nnc_cmd_auto, 0), TENSOR_SYMBOL_LIST(b[3 + i * 2]), TENSOR_SYMBOL_LIST(b[4 + i * 2]));
 		ccv_nnc_graph_exec_symbol_concat(graph, conv2[i], relu2[i]);
 	}
+	/*
 	ccv_nnc_graph_t* run_graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(graph, TENSOR_SYMBOL_LIST(a), TENSOR_LIST(tensor_a), GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]), &run_graph, &tensor_arena, &graph_exec_arena);
-	ccv_nnc_symbolic_graph_free(graph);
 	ccv_nnc_graph_free(run_graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	*/
+	ccv_nnc_symbolic_graph_backward(graph, GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]), TENSOR_SYMBOL_LIST(b[8]), TENSOR_SYMBOL_LIST(conv1w));
+	ccv_nnc_symbolic_graph_free(graph);
 	ccv_nnc_tensor_free(tensor_a);
 	return 0;
 }

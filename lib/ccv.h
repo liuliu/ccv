@@ -946,7 +946,7 @@ void ccv_array_free(ccv_array_t* array);
  * @param a The array.
  * @param i The index of the element in the array.
  */
-#define ccv_array_get(a, i) (((char*)((a)->data)) + (size_t)(a)->rsize * (size_t)(i))
+#define ccv_array_get(a, i) ((void*)(((char*)((a)->data)) + (size_t)(a)->rsize * (size_t)(i)))
 
 typedef struct {
 	int x, y;
