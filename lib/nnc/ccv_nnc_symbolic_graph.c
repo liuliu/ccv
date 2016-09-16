@@ -1277,6 +1277,32 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccv_array_free(symbols);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
+		ccv_nnc_graph_autograd_exec_t* exec = autograd_exec + i;
+		if (exec->outgoings)
+			for (j = 0; j < exec->outgoings->rnum; j++)
+			{
+				int d = *(int*)ccv_array_get(exec->outgoings, j);
+				if (d < exec_symbol_size)
+					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, autograd_exec[d].symbol);
+				else
+					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, d - exec_symbol_size))->symbol);
+			}
+	}
+	for (i = 0; i < sum_or_zero_exec->rnum; i++)
+	{
+		ccv_nnc_graph_sum_or_zero_exec_t* exec = (ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, i);
+		if (exec->outgoings)
+			for (j = 0; j < exec->outgoings->rnum; j++)
+			{
+				int d = *(int*)ccv_array_get(exec->outgoings, j);
+				if (d < exec_symbol_size)
+					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, autograd_exec[d].symbol);
+				else
+					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, d - exec_symbol_size))->symbol);
+			}
+	}
+	for (i = 0; i < exec_symbol_size; i++)
+	{
 		if (autograd_exec[i].inputs)
 			ccfree(autograd_exec[i].inputs);
 		if (autograd_exec[i].outgoings)
