@@ -276,7 +276,7 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 		// Element-wise computation
 		case CCV_NNC_COMPUTE_EWSUM_FORWARD:
 		case CCV_NNC_COMPUTE_EWPROD_FORWARD:
-		case CCV_NNC_COMPUTE_EWINV_FORWARD:
+		case CCV_NNC_COMPUTE_EWDIV_FORWARD:
 		case CCV_NNC_COMPUTE_EWEXP_FORWARD:
 		case CCV_NNC_COMPUTE_EWLOG_FORWARD: {
 			assert(output_size == 1);
@@ -312,7 +312,7 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 		// Element-wise computation
 		case CCV_NNC_COMPUTE_EWSUM_BACKWARD:
 		case CCV_NNC_COMPUTE_EWPROD_BACKWARD:
-		case CCV_NNC_COMPUTE_EWINV_BACKWARD:
+		case CCV_NNC_COMPUTE_EWDIV_BACKWARD:
 		case CCV_NNC_COMPUTE_EWEXP_BACKWARD:
 		case CCV_NNC_COMPUTE_EWLOG_BACKWARD: {
 			assert(input_size == 1);
