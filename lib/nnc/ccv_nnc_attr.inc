@@ -31,13 +31,19 @@ CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWPROD_FORWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, 1
 																			   (1u << 0) | (1u << 1), 1,
 																			   (1u << 0) | (1u << 1) | (1u << 2), 1,
 																			   (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3), 1)
-CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWPROD_BACKWARD, 0, 1, 1)
-CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWINV_FORWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, 1, 1)
-CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWINV_BACKWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, (1u << 0) | (1u << 1), 1)
+CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWPROD_BACKWARD, CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES,
+	(1u << 0) | (1u << 1) | (1u << 2) | (1u << 3), (1u << 0) | (1u << 1),
+	(1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4), (1u << 0) | (1u << 1) | (1u << 2),
+	(1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5), (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3),
+	(1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 5) | (1u << 6), (1u << 0) | (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4))
+CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWDIV_FORWARD, CCV_NNC_COMPUTE_ATTR_INPLACE | CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES, (1u << 0) | (1u << 1), 1,
+																												  (0u << 0) | (1u << 1), 1)
+CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWDIV_BACKWARD, CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES, (1u << 0) | (0u << 1) | (1u << 2) | (1u << 3), (1u << 0) | (1u << 1),
+																					(1u << 0) | (0u << 1) | (1u << 2) | (0u << 3), (1u << 0) | (0u << 1))
 CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWEXP_FORWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, 1, 1)
-CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWEXP_BACKWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, (1u << 0) | (1u << 1), 1)
+CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWEXP_BACKWARD, CCV_NNC_COMPUTE_ATTR_INPLACE | CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES, (1u << 0) | (0u << 1) | (1u << 2), 1)
 CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWLOG_FORWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, 1, 1)
-CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWLOG_BACKWARD, CCV_NNC_COMPUTE_ATTR_INPLACE, (1u << 0) | (1u << 1), 1)
+CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_EWLOG_BACKWARD, CCV_NNC_COMPUTE_ATTR_INPLACE | CCV_NNC_COMPUTE_ATTR_NULL_IS_ONES, (1u << 0) | (1u << 1), 1)
 // Other transforms
 CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_SET_FORWARD, 0, 0, 1)
 CCV_NNC_ATTR_DEF(CCV_NNC_COMPUTE_SET_BACKWARD, 0, 0, 1)

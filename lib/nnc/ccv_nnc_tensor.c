@@ -143,7 +143,12 @@ void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view)
 void ccv_nnc_tensor_zero(void* tensor)
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
-	const int* tvinc = CCV_IS_TENSOR_VIEW(tv) ? tv->inc : tv->info.dim;
+	if (!CCV_IS_TENSOR_VIEW(tv))
+	{
+		memset(tv->data.f32, 0, sizeof(float) * ccv_nnc_tensor_count(tv->info));
+		return;
+	}
+	const int* tvinc = tv->inc;
 	// reset it to 0.
 	int c, i[3];
 	int count = 1;
