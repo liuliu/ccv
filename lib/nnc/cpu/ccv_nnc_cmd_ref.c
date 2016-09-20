@@ -806,7 +806,7 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	{
 		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
 		ccv_nnc_tensor_view_t* a = z > 0 ? c : (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z > k ? inputs[z + 1] : inputs[z]);
+		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z >= k ? inputs[z + 1] : inputs[z]);
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -977,7 +977,7 @@ static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	{
 		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
 		ccv_nnc_tensor_view_t* a = z > 0 ? c : (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z > k ? inputs[z + 1] : inputs[z]);
+		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z >= k ? inputs[z + 1] : inputs[z]);
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);

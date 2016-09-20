@@ -1077,7 +1077,7 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 		ccv_array_push(sum_exec.outgoings, &idx);
 	}
 	ccv_array_push(sum_or_zero_exec, &sum_exec);
-	const int outgoing = sum_or_zero_exec->rnum - 1;
+	const int outgoing = exec_symbol_size + sum_or_zero_exec->rnum - 1;
 	for (i = tensor_ver->c; i < tensor_ver->ref_version->rnum; i++)
 	{
 		const int x = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, i))->x;
@@ -1095,7 +1095,7 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 	}
 	const ccv_nnc_tensor_ref_t tensor_ref = {
 		.d = autograd_tensor_symbol->rnum - 1,
-		.x = exec_symbol_size + outgoing
+		.x = outgoing
 	};
 	ccv_array_push(tensor_ver->ref_version, &tensor_ref);
 	/* Move the c pointer up to the latest summed result. */
@@ -1179,6 +1179,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			// Copy over the outgoing bits.
 			autograd_exec[i].outgoings = ccv_array_new(sizeof(int), backward_info[i].outgoings->rnum, 0);
 			memcpy(ccv_array_get(autograd_exec[i].outgoings, 0), ccv_array_get(backward_info[i].outgoings, 0), sizeof(int) * backward_info[i].outgoings->rnum);
+			autograd_exec[i].outgoings->rnum = backward_info[i].outgoings->rnum;
 		}
 	ccv_nnc_autograd_tensor_version_t* autograd_tensor_version = (ccv_nnc_autograd_tensor_version_t*)cccalloc(tensor_symbol_size, sizeof(ccv_nnc_autograd_tensor_version_t));
 	for (i = 0; i < tensor_symbol_size; i++)
@@ -1226,12 +1227,15 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 				const int d = forw_exec->outputs[i]; \
 				const int alias_ref = tensor_symbol_info[d].alias_ref; \
 				ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d; \
-				/* Initialization tensor, have d = -1, x = -1 */ \
+				/* Initialization tensor, should corresponding to f symbols */ \
 				if (!tensor_ver->ref_version) \
 				{ \
+					ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0}; \
+					tensor_sym.d = d; \
+					ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
 					const ccv_nnc_tensor_ref_t tensor_ref = { \
-						.d = -1, \
-						.x = -1 \
+						.d = autograd_tensor_symbol->rnum - 1, \
+						.x = idx \
 					}; \
 					tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
 					ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
@@ -1269,20 +1273,42 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	{
 		ccv_nnc_autograd_tensor_symbol_t* symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, i);
 		assert(symbol->d >= 0);
-		assert(symbol->d < graph->tensor_symbol_info->rnum);
+		assert(symbol->d < tensor_symbol_size);
 		ccv_nnc_tensor_symbol_info_t* forw_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol->d);
 		symbol->symbol = ccv_nnc_tensor_symbol(graph, forw_symbol->info);
 	}
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
-		ccv_nnc_graph_autograd_exec_t* exec = autograd_exec + i;
+		ccv_nnc_graph_autograd_exec_t* back_exec = autograd_exec + i;
 		ccv_array_clear(symbols);
-		for (j = 0; j < exec->input_size; j++)
-			ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, exec->inputs[j]))->symbol));
-		for (j = 0; j < exec->output_size; j++)
-			ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, exec->outputs[j]))->symbol));
-		exec->symbol = ccv_nnc_graph_exec_symbol(graph, autograd_exec[i].cmd, ccv_array_get(symbols, 0), exec->input_size, ccv_array_get(symbols, exec->input_size), exec->output_size);
+		// Gradient inputs.
+		for (j = 0; j < back_exec->input_size; j++)
+			ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, back_exec->inputs[j]))->symbol));
+		ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + i;
+		// Inputs from forward function.
+		for (j = 0; j < forw_exec->input_size; j++)
+		{
+			ccv_nnc_tensor_symbol_t symbol = {
+				.info = tensor_symbol_info[forw_exec->inputs[j]].info,
+				.d = forw_exec->inputs[j],
+				.graph = graph
+			};
+			ccv_array_push(symbols, &symbol);
+		}
+		// Outputs from forward function.
+		for (j = 0; j < forw_exec->output_size; j++)
+		{
+			ccv_nnc_tensor_symbol_t symbol = {
+				.info = tensor_symbol_info[forw_exec->outputs[j]].info,
+				.d = forw_exec->outputs[j],
+				.graph = graph
+			};
+			ccv_array_push(symbols, &symbol);
+		}
+		for (j = 0; j < back_exec->output_size; j++)
+			ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, back_exec->outputs[j]))->symbol));
+		back_exec->symbol = ccv_nnc_graph_exec_symbol(graph, autograd_exec[i].cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size);
 	}
 	for (i = 0; i < sum_or_zero_exec->rnum; i++)
 	{
@@ -1304,15 +1330,20 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccv_array_free(symbols);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
-		ccv_nnc_graph_autograd_exec_t* exec = autograd_exec + i;
-		if (exec->outgoings)
-			for (j = 0; j < exec->outgoings->rnum; j++)
+		ccv_nnc_graph_exec_symbol_t forw_exec = {
+			.d = i,
+			.graph = graph
+		};
+		ccv_nnc_graph_autograd_exec_t* back_exec = autograd_exec + i;
+		ccv_nnc_graph_exec_symbol_concat(graph, forw_exec, back_exec->symbol);
+		if (back_exec->outgoings)
+			for (j = 0; j < back_exec->outgoings->rnum; j++)
 			{
-				int d = *(int*)ccv_array_get(exec->outgoings, j);
+				int d = *(int*)ccv_array_get(back_exec->outgoings, j);
 				if (d < exec_symbol_size)
-					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, autograd_exec[d].symbol);
+					ccv_nnc_graph_exec_symbol_concat(graph, back_exec->symbol, autograd_exec[d].symbol);
 				else
-					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, d - exec_symbol_size))->symbol);
+					ccv_nnc_graph_exec_symbol_concat(graph, back_exec->symbol, ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, d - exec_symbol_size))->symbol);
 			}
 	}
 	for (i = 0; i < sum_or_zero_exec->rnum; i++)
@@ -1336,7 +1367,8 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_size;
 	graph->backward_symbol_size = tensor_symbol_size;
 	for (i = 0; i < tensor_symbol_size; i++)
-		graph->backward_exec_symbols[i] = graph->backward_exec_symbols[i] = -1;
+		graph->backward_exec_symbols[i] = graph->backward_tensor_symbols[i] = -1;
+	// Assigning for wrt symbols.
 	for (i = 0; i < wrt_symbol_size; i++)
 	{
 		const int d = wrt_symbols[i].d;
@@ -1351,6 +1383,18 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			graph->backward_exec_symbols[d] = autograd_exec[x].symbol.d;
 		else
 			graph->backward_exec_symbols[d] = ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, x - exec_symbol_size))->symbol.d;
+	}
+	// Assigning for f symbols.
+	for (i = 0; i < f_symbol_size; i++)
+	{
+		const int d = f_symbols[i].d;
+		assert(d >= 0);
+		assert(d < tensor_symbol_size);
+		ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d;
+		ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
+		ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
+		graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
+		// Cannot find relevant backward exec symbols for f.
 	}
 	for (i = 0; i < exec_symbol_size; i++)
 	{

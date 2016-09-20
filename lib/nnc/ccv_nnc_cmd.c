@@ -315,7 +315,7 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 		case CCV_NNC_COMPUTE_EWDIV_BACKWARD:
 		case CCV_NNC_COMPUTE_EWEXP_BACKWARD:
 		case CCV_NNC_COMPUTE_EWLOG_BACKWARD: {
-			assert(input_size == 1);
+			assert(input_size >= 1);
 			// All above have 1 input, therefore, outputs just copy from the input.
 			for (i = 0; i < output_size; i++)
 				outputs[i] = inputs[0];
