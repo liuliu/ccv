@@ -31,7 +31,7 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_graph_exec_symbol_t dxexec = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, x);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, TENSOR_SYMBOL_LIST(z), GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxexec), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxexec, sum), &graph, &tensor_arena, &graph_exec_arena);
 	ccv_nnc_tensor_t* tone = ccv_nnc_tensor_from_symbol(tensor_arena, one);
 	tone->data.f32[0] = 1;
 	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
@@ -43,7 +43,7 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	tdz->data.f32[0] = 1;
 	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
-	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxexec)));
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxexec), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, sum)));
 	REQUIRE_EQ_WITH_TOLERANCE(tz->data.f32[0], 0.84 * 0.84 + logf(1.0 / 0.84), 1e-6, "computed result of x * x + Log[1 / x] should be the same");
 	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * 0.84 - (1.0 / 0.84), 1e-6, "computed result of D[x * x + Log[1 / x], x] should be the same");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);

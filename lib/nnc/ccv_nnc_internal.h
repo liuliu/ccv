@@ -45,12 +45,13 @@
 	}
 
 // Defines common graph visit macro
-// The visitor function / macro takes parameter visitor(node_type* node, int index, int level);
+// The visitor function / macro takes parameter visitor(node_type* node, int index, int level, int term);
 #define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
 	do { \
 		/* Use the same data structure to do topological ordering. */ \
 		typedef struct { \
 			int8_t d; /* tag if this is the destination node. */ \
+			int8_t r; /* tag if this is reached as destination node. */ \
 			int32_t c; /* number of incoming edges. */ \
 		} ccv_nnc_incoming_t; \
 		/* Statistics of how many incoming edges for all nodes of a graph. */ \
@@ -83,20 +84,26 @@
 			(source_size), \
 			0, \
 		}; \
-		int _p_ = 0, _q_ = 1, _k_ = 0; /* ping, pong swap. */ \
+		int _p_ = 0, _q_ = 1, _k_ = 0, _d_ = 0; /* ping, pong swap. */ \
 		while (_exist_size_[_p_] > 0) \
 		{ \
 			_exist_size_[_q_] = 0; \
 			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
 			{ \
-				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), _k_); \
+				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), _k_, (_incomings_[_exists_[_p_][_i_]].d)); \
+				/* mark as reached */ \
+				if (_incomings_[_exists_[_p_][_i_]].d) \
+				{ \
+					++_d_; \
+					_incomings_[_exists_[_p_][_i_]].r = 1; \
+				} \
 				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
 					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
 					{ \
 						int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
 						--_incomings_[d].c; \
-						/* If all incoming edges are consumed, and this is not the destination node, push it into next round */ \
-						if (_incomings_[d].c == 0 && !_incomings_[d].d) \
+						/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
+						if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
 						{ \
 							_exists_[_q_][_exist_size_[_q_]] = d; \
 							++_exist_size_[_q_]; \
@@ -110,10 +117,13 @@
 		for (_i_ = 0; _i_ < (destination_size); _i_++) \
 		{ \
 			assert((destinations)[_i_].graph == _graph); \
-			/* tagging destination nodes. */ \
+			/* skip if this is already reached. */ \
+			if (_incomings_[(destinations)[_i_].d].r) \
+				continue; \
+			/* this destination node should have every incoming nodes consumed. */ \
 			assert(_incomings_[(destinations)[_i_].d].c == 0); \
 			/* fetch the info for destination node and exec current node. */ \
-			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_); \
+			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_, (_incomings_[(destinations)[_i_].d].d)); \
 		} \
 		ccfree(_incomings_); \
 	} while (0)

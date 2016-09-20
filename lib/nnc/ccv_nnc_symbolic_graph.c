@@ -223,7 +223,7 @@ typedef struct {
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sortby_size, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
-// If a's head is deterministically after b's tail.
+// If every a's head is deterministically after b's tail
 static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* exec_dep, const ccv_nnc_tensor_expect_t a, const ccv_nnc_tensor_expect_t b)
 {
 	assert(a.head);
@@ -233,10 +233,11 @@ static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* exe
 		for (y = 0; y < b.tail->rnum; y++)
 		{
 			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a.head, x), *(int*)ccv_array_get(b.tail, y));
-			if (cell.i32 && cell.i32[0] > 0)
-				return cell.i32[0];
+			if (!cell.i32 || cell.i32[0] == 0)
+				return 0;
 		}
-	return 0;
+	// We've entered this nested-for loop, therefore, it must be verifiably, deterministically after b's tail now.
+	return (a.head->rnum > 0 && b.tail->rnum > 0);
 }
 
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_sparse_matrix_t* exec_dep, const ccv_nnc_tensor_expect_t* tensor_expect)
@@ -715,7 +716,7 @@ static void _ccv_nnc_symbolic_graph_auto_symbols(const ccv_nnc_symbolic_graph_t*
 #undef visitor
 }
 
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* tensor_symbol_consts, const int tensor_symbol_const_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
 {
 	assert(graph_ref);
 	assert(tensor_arena_ref);
@@ -740,7 +741,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			++buf_size; \
 		} \
 	} while (0)
-#define visitor(node, idx, _) \
+#define visitor(node, idx, _, term) \
 	do { \
 		buf_size = 0; /* save all its parent deps to this buffer */ \
 		ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx); \
@@ -753,8 +754,9 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			int outgoing = *(int*)ccv_array_get(node->outgoings, i); \
 			const int32_t one = 1; \
 			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, idx); \
-			/* If not found, set */ \
-			if (!cell.i32 || cell.i32[0] == 0) \
+			/* If not found, set, if the current node is the destination node, no need to
+			 * set itself as parent of subsequent nodes because its terminal nature. */ \
+			if (!term && (!cell.i32 || cell.i32[0] == 0)) \
 				ccv_set_sparse_matrix_cell(exec_dep, outgoing, idx, &one); \
 			for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */ \
 			{ \
@@ -780,8 +782,6 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	// Ignore tensors that are already binded.
 	for (i = 0; i < tensor_bind_size; i++)
 		tensor_expect[tensor_binds[i].symbol.d].flag = UNASSIGNED;
-	for (i = 0; i < tensor_symbol_const_size; i++)
-		tensor_expect[tensor_symbol_consts[i].d].flag = CONST_TENSOR;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -799,8 +799,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			tensor_expect[i].tail = ccv_array_new(sizeof(int), 0, 0);
 		}
 	}
-	// Collet head nodes and tail nodes for each tensor.
-#define visitor(node, idx, _) \
+	// Collect head nodes and tail nodes for each tensor.
+#define visitor(node, idx, ...) \
 	do { \
 		for (i = 0; i < node->input_size; i++) \
 		{ \
@@ -830,7 +830,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */ \
 		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_COMPUTE_ATTR_INPLACE)) \
@@ -915,7 +915,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	}
 	ccv_nnc_tensor_t** max_inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_input_size);
 	ccv_nnc_tensor_t** max_outputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_output_size);
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		if (CCV_NO_GRAPH_EXEC(graph_exec[idx])) \
 		{ \
@@ -1115,7 +1115,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	// Now, for each one of these, find a reverse graph.
 	ccv_nnc_graph_backward_info_t* backward_info = (ccv_nnc_graph_backward_info_t*)cccalloc(exec_symbol_size, sizeof(ccv_nnc_graph_backward_info_t));
 	int i, j;
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		assert(ccv_nnc_cmd_is_forward(node->cmd)); \
 		if (node->outgoings) \
@@ -1130,7 +1130,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	CCV_NNC_GRAPH_VISIT(graph, exec_symbol_info, exec_symbol_size, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
 	// Find the f_symbols, and tag its flows.
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		int f = node->f_wrt & 0x1; \
 		for (i = 0; i < exec_symbol_info[idx].output_size && !f; i++) \
@@ -1151,7 +1151,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	CCV_NNC_GRAPH_VISIT(graph, backward_info, exec_symbol_size, destinations, destination_size, sources, source_size, visitor);
 #undef visitor
 	// Find the wrt_symbols, and tag its flows.
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		int wrt = backward_info[idx].f_wrt & 0x2; \
 		for (i = 0; i < node->input_size && !wrt; i++) \
@@ -1194,7 +1194,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		}
 	ccv_array_t* autograd_tensor_symbol = ccv_array_new(sizeof(ccv_nnc_autograd_tensor_symbol_t), tensor_symbol_size, 0);
 	ccv_array_t* sum_or_zero_exec = ccv_array_new(sizeof(ccv_nnc_graph_sum_or_zero_exec_t), 0, 0);
-#define visitor(node, idx, _) \
+#define visitor(node, idx, ...) \
 	do { \
 		/* This is required by both f flow and wrt flow, therefore, an interest to us */ \
 		if (node->f_wrt == 0x3) \
