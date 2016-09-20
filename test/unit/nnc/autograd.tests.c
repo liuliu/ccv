@@ -31,13 +31,13 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_graph_exec_symbol_t dxexec = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, x);
-	ccv_nnc_tensor_t* tz = ccv_nnc_tensor_new(0, z.info, 0);
-	ccv_nnc_symbolic_graph_compile(symbolic_graph, TENSOR_SYMBOL_LIST(z), TENSOR_LIST(tz), GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxexec), &graph, &tensor_arena, &graph_exec_arena);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, TENSOR_SYMBOL_LIST(z), GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(dxexec), &graph, &tensor_arena, &graph_exec_arena);
 	ccv_nnc_tensor_t* tone = ccv_nnc_tensor_from_symbol(tensor_arena, one);
 	tone->data.f32[0] = 1;
 	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	tx->data.f32[0] = 0.84;
 	ccv_nnc_tensor_symbol_t dz = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, z);
+	ccv_nnc_tensor_t* tz = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	ccv_nnc_tensor_t* tdz = ccv_nnc_tensor_from_symbol(tensor_arena, dz);
 	// Seed the initialization vector.
 	tdz->data.f32[0] = 1;
@@ -50,7 +50,6 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
-	ccv_nnc_tensor_free(tz);
 }
 
 #include "case_main.h"

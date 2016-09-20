@@ -715,12 +715,11 @@ static void _ccv_nnc_symbolic_graph_auto_symbols(const ccv_nnc_symbolic_graph_t*
 #undef visitor
 }
 
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_symbol_t* tensor_symbol_bindings, const int tensor_symbol_binding_size, ccv_nnc_tensor_t* const* tensor_bindings, const int tensor_binding_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* tensor_symbol_consts, const int tensor_symbol_const_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
 {
 	assert(graph_ref);
 	assert(tensor_arena_ref);
 	assert(graph_exec_arena_ref);
-	assert(tensor_symbol_binding_size == tensor_binding_size);
 	// First, fill all the "auto" holes.
 	// This is the symbol table that with "auto" info filled up.
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
@@ -779,8 +778,10 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	// Now, collect information about the tensor's expected start / end execs.
 	ccv_nnc_tensor_expect_t* tensor_expect = (ccv_nnc_tensor_expect_t*)cccalloc(symbolic_graph->tensor_symbol_info->rnum, sizeof(ccv_nnc_tensor_expect_t));
 	// Ignore tensors that are already binded.
-	for (i = 0; i < tensor_symbol_binding_size; i++)
-		tensor_expect[tensor_symbol_bindings[i].d].flag = UNASSIGNED;
+	for (i = 0; i < tensor_bind_size; i++)
+		tensor_expect[tensor_binds[i].symbol.d].flag = UNASSIGNED;
+	for (i = 0; i < tensor_symbol_const_size; i++)
+		tensor_expect[tensor_symbol_consts[i].d].flag = CONST_TENSOR;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -878,12 +879,12 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	// are automatically filled in. It is time to guess what's the best tensor placement and create the opaque tensor arena.
 	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_dep, tensor_expect);
 	// Handle binded tensors.
-	for (i = 0; i < tensor_symbol_binding_size; i++)
+	for (i = 0; i < tensor_bind_size; i++)
 	{
 		// For binded tensors, it shouldn't be assigned yet.
-		assert(tensor_arena->vt_tensor[tensor_symbol_bindings[i].d] == 0);
+		assert(tensor_arena->vt_tensor[tensor_binds[i].symbol.d] == 0);
 		// I have to cast this, unfortunately.
-		tensor_arena->vt_tensor[tensor_symbol_bindings[i].d] = (ccv_nnc_tensor_t*)tensor_bindings[i];
+		tensor_arena->vt_tensor[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
 	}
 	*tensor_arena_ref = tensor_arena;
 
