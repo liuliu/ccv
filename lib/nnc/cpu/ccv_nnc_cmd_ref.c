@@ -948,6 +948,208 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+{
+	if (input_size == 1 || inputs[1] == 0)
+	{
+		// It cannot be set otherwise we have trouble.
+		assert(cmd.info.blas.a[1] == 0);
+		if (cmd.info.blas.a[0] == 1)
+		{
+			_ccv_nnc_tensor_transfer((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[0]);
+			return CCV_NNC_EXEC_SUCCESS;
+		} else if (cmd.info.blas.a[0] == 0) {
+			ccv_nnc_tensor_zero(outputs[0]);
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+		// Assuming this is float 32.
+		int dim[CCV_NNC_MAX_DIM + 2];
+		int ainc[CCV_NNC_MAX_DIM + 2];
+		int binc[CCV_NNC_MAX_DIM + 2];
+		ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
+		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
+		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+		const float p = cmd.info.blas.a[0];
+		int x;
+		for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+		{
+			assert(ccv_max(1, a->info.dim[x]) == ccv_max(1, b->info.dim[x]));
+			dim[x] = ccv_max(1, a->info.dim[x]);
+			ainc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(a) ? a->inc[x] : a->info.dim[x]);
+			binc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(b) ? b->inc[x] : b->info.dim[x]);
+		}
+		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
+		{
+			// Super optimal case, just do one for-loop for sum.
+			const int tensor_count = ccv_nnc_tensor_count(a->info);
+			for (x = 0; x < tensor_count; x++)
+				b->data.f32[x] = p * a->data.f32[x];
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+		assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+		int i[CCV_NNC_MAX_DIM + 2];
+		float* ap = a->data.f32;
+		float* bp = b->data.f32;
+		const int count = dim[1] * dim[0];
+		if (ainc[0] == dim[0] && binc[0] == dim[0])
+		{
+			// Special casing if the ainc[0] is the same as dim[0]
+			for (i[3] = 0; i[3] < dim[3]; i[3]++)
+			{
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					for (x = 0; x < count; x++)
+						bp[x] = p * ap[x];
+					ap += ainc[1] * ainc[0];
+					bp += binc[1] * binc[0];
+				}
+				ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
+				bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+			}
+			return CCV_NNC_EXEC_SUCCESS;
+		}
+		// Non-optimal case, need to do skip copy.
+		for (i[3] = 0; i[3] < dim[3]; i[3]++)
+		{
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			{
+				for (i[1] = 0; i[1] < dim[1]; i[1]++)
+				{
+					for (x = 0; x < dim[0]; x++)
+						bp[x] = p * ap[x];
+					ap += ainc[0];
+					bp += binc[0];
+				}
+				ap += (ainc[1] - dim[1]) * ainc[0];
+				bp += (binc[1] - dim[1]) * binc[0];
+			}
+			ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
+			bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
+	if (cmd.info.blas.a[0] == 1 && cmd.info.blas.a[1] == 1)
+	{
+		ccv_nnc_cmd_t forw_cmd = cmd;
+		forw_cmd.compute = CCV_NNC_COMPUTE_EWSUM_FORWARD;
+		return _ccv_nnc_ewsum_forw(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	} else if (cmd.info.blas.a[0] == 1 && cmd.info.blas.a[1] == 0) {
+		_ccv_nnc_tensor_transfer((const ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[0]);
+		return CCV_NNC_EXEC_SUCCESS;
+	} else if (cmd.info.blas.a[0] == 0 && cmd.info.blas.a[1] == 1) {
+		_ccv_nnc_tensor_transfer((const ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
+		return CCV_NNC_EXEC_SUCCESS;
+	} else if (cmd.info.blas.a[0] == 0 && cmd.info.blas.a[1] == 0) {
+		ccv_nnc_tensor_zero(outputs[0]);
+		return CCV_NNC_EXEC_SUCCESS;
+	}
+	// Assuming this is float 32.
+	int dim[CCV_NNC_MAX_DIM + 2];
+	int ainc[CCV_NNC_MAX_DIM + 2];
+	int binc[CCV_NNC_MAX_DIM + 2];
+	int cinc[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)inputs[1];
+	ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
+	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	const float p = cmd.info.blas.a[0];
+	const float q = cmd.info.blas.a[1];
+	int x;
+	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+	{
+		assert(ccv_max(1, a->info.dim[x]) == ccv_max(1, b->info.dim[x]));
+		assert(ccv_max(1, b->info.dim[x]) == ccv_max(1, c->info.dim[x]));
+		dim[x] = ccv_max(1, a->info.dim[x]);
+		ainc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(a) ? a->inc[x] : a->info.dim[x]);
+		binc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(b) ? b->inc[x] : b->info.dim[x]);
+		cinc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(c) ? c->inc[x] : c->info.dim[x]);
+	}
+	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
+	{
+		// Super optimal case, just do one for-loop for sum.
+		const int tensor_count = ccv_nnc_tensor_count(a->info);
+		for (x = 0; x < tensor_count; x++)
+			c->data.f32[x] = p * a->data.f32[x] + q * b->data.f32[x];
+		return CCV_NNC_EXEC_SUCCESS;
+	}
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int i[CCV_NNC_MAX_DIM + 2];
+	float* ap = a->data.f32;
+	float* bp = b->data.f32;
+	float* cp = c->data.f32;
+	const int count = dim[1] * dim[0];
+	if (ainc[0] == dim[0] && binc[0] == dim[0] && cinc[0] == dim[0])
+	{
+		// Special casing if the ainc[0] is the same as dim[0]
+		for (i[3] = 0; i[3] < dim[3]; i[3]++)
+		{
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			{
+				for (x = 0; x < count; x++)
+					cp[x] = p * ap[x] + q * bp[x];
+				ap += ainc[1] * ainc[0];
+				bp += binc[1] * binc[0];
+				cp += cinc[1] * cinc[0];
+			}
+			ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
+			bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+			cp += (cinc[2] - dim[2]) * cinc[1] * cinc[0];
+		}
+		return CCV_NNC_EXEC_SUCCESS;
+	}
+	// Non-optimal case, need to do skip copy.
+	for (i[3] = 0; i[3] < dim[3]; i[3]++)
+	{
+		for (i[2] = 0; i[2] < dim[2]; i[2]++)
+		{
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				for (x = 0; x < dim[0]; x++)
+					cp[x] = p * ap[x] + q * bp[x];
+				ap += ainc[0];
+				bp += binc[0];
+				cp += cinc[0];
+			}
+			ap += (ainc[1] - dim[1]) * ainc[0];
+			bp += (binc[1] - dim[1]) * binc[0];
+			cp += (cinc[1] - dim[1]) * cinc[0];
+		}
+		ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
+		bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+		cp += (cinc[2] - dim[2]) * cinc[1] * cinc[0];
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+{
+	if (inputs[0] == 0)
+	{
+		if (outputs[0])
+			_ccv_nnc_tensor_set((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
+		if (output_size > 1 && outputs[1])
+			_ccv_nnc_tensor_set((ccv_nnc_tensor_view_t*)outputs[1], cmd.info.blas.a[1]);
+	} else {
+		ccv_nnc_cmd_t forw_cmd = cmd;
+		forw_cmd.compute = CCV_NNC_COMPUTE_AXPY_FORWARD;
+		memset(forw_cmd.info.blas.a, 0, sizeof(forw_cmd.info.blas.a));
+		if (outputs[0])
+		{
+			forw_cmd.info.blas.a[0] = cmd.info.blas.a[0];
+			_ccv_nnc_axpy_forw(cmd, hint, flags, inputs, 1, outputs, 1, stream_context);
+		}
+		if (output_size > 1 && outputs[1])
+		{
+			forw_cmd.info.blas.a[0] = cmd.info.blas.a[1];
+			_ccv_nnc_axpy_forw(cmd, hint, flags, inputs, 1, outputs + 1, 1, stream_context);
+		}
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
 static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	if (input_size == 1 && output_size == 1)
@@ -1766,15 +1968,6 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD].exec = _ccv_nnc_conv_back;
-	/* GEMM layer */
-	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].exec = _ccv_nnc_gemm_forw;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].algorithms = 1;
-	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].exec = _ccv_nnc_gemm_back;
 	/* Max pool layer */
 	cmd_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	cmd_api[CCV_NNC_COMPUTE_MAX_POOL_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -1811,6 +2004,24 @@ void ccv_nnc_cpu_ref_init(ccv_nnc_cmd_api_t cmd_api[])
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].algorithms = 1;
 	cmd_api[CCV_NNC_COMPUTE_RELU_BACKWARD].exec = _ccv_nnc_relu_back;
+	/* GEMM layer */
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_FORWARD].exec = _ccv_nnc_gemm_forw;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_GEMM_BACKWARD].exec = _ccv_nnc_gemm_back;
+	/* axpy layer */
+	cmd_api[CCV_NNC_COMPUTE_AXPY_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_FORWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_FORWARD].exec = _ccv_nnc_axpy_forw;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_BACKWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_BACKWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_BACKWARD].algorithms = 1;
+	cmd_api[CCV_NNC_COMPUTE_AXPY_BACKWARD].exec = _ccv_nnc_axpy_back;
 	// Element-wise computation
 	cmd_api[CCV_NNC_COMPUTE_EWSUM_FORWARD].tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	cmd_api[CCV_NNC_COMPUTE_EWSUM_FORWARD].tensor_memory = CCV_TENSOR_CPU_MEMORY;
