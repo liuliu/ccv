@@ -25,8 +25,9 @@ typedef struct {
 struct ccv_nnc_symbolic_graph_s {
 	ccv_array_t* tensor_symbol_info;
 	ccv_array_t* exec_symbol_info;
-	int backward_symbol_size;
+	int forward_symbol_size;
 	int* backward_tensor_symbols;
+	int backward_symbol_size;
 	int* backward_exec_symbols;
 };
 
@@ -61,8 +62,9 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_new(void)
 	ccv_nnc_symbolic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_symbolic_graph_t));
 	graph->tensor_symbol_info = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_info_t), 5, 0);
 	graph->exec_symbol_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_info_t), 5, 0);
-	graph->backward_symbol_size = 0;
+	graph->forward_symbol_size = 0;
 	graph->backward_tensor_symbols = 0;
+	graph->backward_symbol_size = 0;
 	graph->backward_exec_symbols = 0;
 	return graph;
 }
@@ -1362,11 +1364,12 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	}
 	// Now, everything is done, set the metadata on graph so that we can lookup later for backward symbols
 	if (graph->backward_tensor_symbols)
-		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * tensor_symbol_size * 2);
+		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * graph->tensor_symbol_info->rnum);
 	else
-		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * tensor_symbol_size * 2);
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * graph->tensor_symbol_info->rnum);
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_size;
-	graph->backward_symbol_size = tensor_symbol_size;
+	graph->forward_symbol_size = tensor_symbol_size;
+	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - tensor_symbol_size;
 	for (i = 0; i < tensor_symbol_size; i++)
 		graph->backward_exec_symbols[i] = graph->backward_tensor_symbols[i] = -1;
 	// Assigning for wrt symbols.
@@ -1379,11 +1382,13 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
 		ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
 		graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
+		assert(autograd_symbol->symbol.d >= tensor_symbol_size);
+		const int dd = autograd_symbol->symbol.d - tensor_symbol_size;
 		const int x = tensor_ref->x;
 		if (x < exec_symbol_size)
-			graph->backward_exec_symbols[d] = autograd_exec[x].symbol.d;
+			graph->backward_exec_symbols[dd] = autograd_exec[x].symbol.d;
 		else
-			graph->backward_exec_symbols[d] = ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, x - exec_symbol_size))->symbol.d;
+			graph->backward_exec_symbols[dd] = ((ccv_nnc_graph_sum_or_zero_exec_t*)ccv_array_get(sum_or_zero_exec, x - exec_symbol_size))->symbol.d;
 	}
 	// Assigning for f symbols.
 	for (i = 0; i < f_symbol_size; i++)
@@ -1434,7 +1439,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol)
 {
 	assert(symbol.d >= 0);
-	assert(symbol.d < graph->backward_symbol_size);
+	assert(symbol.d < graph->forward_symbol_size);
 	assert(graph->backward_tensor_symbols[symbol.d] >= 0);
 	ccv_nnc_tensor_symbol_t tensor = {
 		.d = graph->backward_tensor_symbols[symbol.d],
@@ -1446,11 +1451,12 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symboli
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol)
 {
-	assert(symbol.d >= 0);
-	assert(symbol.d < graph->backward_symbol_size);
-	assert(graph->backward_exec_symbols[symbol.d] >= 0);
+	assert(symbol.d >= graph->forward_symbol_size);
+	assert(symbol.d < graph->forward_symbol_size + graph->backward_symbol_size);
+	const int dd = symbol.d - graph->forward_symbol_size;
+	assert(graph->backward_exec_symbols[dd] >= 0);
 	ccv_nnc_graph_exec_symbol_t exec = {
-		.d = graph->backward_exec_symbols[symbol.d],
+		.d = graph->backward_exec_symbols[dd],
 		.graph = graph
 	};
 	return exec;

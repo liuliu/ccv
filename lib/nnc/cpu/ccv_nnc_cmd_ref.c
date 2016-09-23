@@ -1139,12 +1139,12 @@ static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		if (outputs[0])
 		{
 			forw_cmd.info.blas.a[0] = cmd.info.blas.a[0];
-			_ccv_nnc_axpy_forw(cmd, hint, flags, inputs, 1, outputs, 1, stream_context);
+			_ccv_nnc_axpy_forw(forw_cmd, hint, flags, inputs, 1, outputs, 1, stream_context);
 		}
 		if (output_size > 1 && outputs[1])
 		{
 			forw_cmd.info.blas.a[0] = cmd.info.blas.a[1];
-			_ccv_nnc_axpy_forw(cmd, hint, flags, inputs, 1, outputs + 1, 1, stream_context);
+			_ccv_nnc_axpy_forw(forw_cmd, hint, flags, inputs, 1, outputs + 1, 1, stream_context);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
