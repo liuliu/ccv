@@ -915,8 +915,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 		max_output_size = ccv_max(max_input_size, exec_symbol_info[i].output_size);
 		graph_exec[i].graph = 0;
 	}
-	ccv_nnc_tensor_t** max_inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_input_size);
-	ccv_nnc_tensor_t** max_outputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_output_size);
+	ccv_nnc_tensor_t** max_inputs = max_input_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_input_size) : 0;
+	ccv_nnc_tensor_t** max_outputs = max_output_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_output_size) : 0;
 #define visitor(node, idx, ...) \
 	do { \
 		if (CCV_NO_GRAPH_EXEC(graph_exec[idx])) \
@@ -1045,12 +1045,12 @@ typedef struct {
 typedef struct {
 	int d; // The tensor symbol ref.
 	int x; // The exec symbol ref.
+	ccv_array_t* alias_registry; // int point to all the alias (if this is not an alias).
 } ccv_nnc_tensor_ref_t;
 
 typedef struct {
 	int c; // The start non-accumulated version.
 	ccv_array_t* ref_version; // tensor ref point to the reverse tensor symbol.
-	ccv_array_t* alias_registry; // int point to all the alias (if this is not an alias).
 } ccv_nnc_autograd_tensor_version_t;
 
 typedef struct {
@@ -1185,15 +1185,6 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			autograd_exec[i].outgoings->rnum = backward_info[i].outgoings->rnum;
 		}
 	ccv_nnc_autograd_tensor_version_t* autograd_tensor_version = (ccv_nnc_autograd_tensor_version_t*)cccalloc(tensor_symbol_size, sizeof(ccv_nnc_autograd_tensor_version_t));
-	for (i = 0; i < tensor_symbol_size; i++)
-		if (tensor_symbol_info[i].alias_ref > 0)
-		{
-			ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + (tensor_symbol_info[i].alias_ref - 1);
-			if (!tensor_ver->alias_registry)
-				tensor_ver->alias_registry = ccv_array_new(sizeof(int), 1, 0);
-			// i is alias_ref's alias.
-			ccv_array_push(tensor_ver->alias_registry, &i);
-		}
 	ccv_array_t* autograd_tensor_symbol = ccv_array_new(sizeof(ccv_nnc_autograd_tensor_symbol_t), tensor_symbol_size, 0);
 	ccv_array_t* sum_or_zero_exec = ccv_array_new(sizeof(ccv_nnc_graph_sum_or_zero_exec_t), 0, 0);
 #define visitor(node, idx, ...) \
@@ -1212,18 +1203,25 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			back_exec->outputs = back_exec->inputs + back_exec->input_size; \
 			for (i = 0; i < forw_exec->input_size; i++) \
 			{ \
+				const int d = forw_exec->inputs[i]; \
+				const int alias_ref = tensor_symbol_info[d].alias_ref; \
 				ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0}; \
-				tensor_sym.d = forw_exec->inputs[i]; \
-				ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
-				const ccv_nnc_tensor_ref_t tensor_ref = { \
-					.d = autograd_tensor_symbol->rnum - 1, \
-					.x = idx \
-				}; \
-				ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + tensor_sym.d; \
-				if (!tensor_ver->ref_version) \
-					tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
-				ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
-				back_exec->outputs[i] = tensor_ref.d; \
+				tensor_sym.d = d; \
+				/* The simplest case (most common), it is not an alias. */ \
+				if (!alias_ref) \
+				{ \
+					ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
+					const ccv_nnc_tensor_ref_t tensor_ref = { \
+						.d = autograd_tensor_symbol->rnum - 1, \
+						.x = idx, \
+						.alias_registry = 0 \
+					}; \
+					ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + tensor_sym.d; \
+					if (!tensor_ver->ref_version) \
+						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
+					ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
+					back_exec->outputs[i] = tensor_ref.d; \
+				} \
 			} \
 			for (i = 0; i < forw_exec->output_size; i++) \
 			{ \
@@ -1243,8 +1241,8 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 					tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
 					ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
 				} \
-				/* The simplest case (most common), it doesn't have aliases, and it is not an alias. */ \
-				if (!tensor_ver->alias_registry && !alias_ref) \
+				/* The simplest case (most common), it is not an alias. */ \
+				if (!alias_ref) \
 				{ \
 					/* Even simpler, this only have one reference tensor, thus, pass this as input. */ \
 					if (tensor_ver->c == tensor_ver->ref_version->rnum - 1) \
@@ -1412,10 +1410,16 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccfree(autograd_exec);
 	for (i = 0; i < tensor_symbol_size; i++)
 	{
-		if (autograd_tensor_version[i].alias_registry)
-			ccv_array_free(autograd_tensor_version[i].alias_registry);
 		if (autograd_tensor_version[i].ref_version)
+		{
+			for (j = 0; j < autograd_tensor_version[i].ref_version->rnum; j++)
+			{
+				ccv_nnc_tensor_ref_t* ref_version = (ccv_nnc_tensor_ref_t*)ccv_array_get(autograd_tensor_version[i].ref_version, j);
+				if (ref_version->alias_registry)
+					ccv_array_free(ref_version->alias_registry);
+			}
 			ccv_array_free(autograd_tensor_version[i].ref_version);
+		}
 	}
 	ccfree(autograd_tensor_version);
 	ccv_array_free(autograd_tensor_symbol);
