@@ -60,15 +60,20 @@
 #define HINT_X_SEL(_1, _2, _3, _FX, ...) _FX
 #define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2, HINT_X_1)(__VA_ARGS__)
 
-static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
+static inline size_t ccv_nnc_dimension_count(const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
-	if (params.dim[0] == 0)
+	if (dim[0] == 0)
 		return 0;
 	int i;
 	size_t count = 1;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && params.dim[i] > 0; i++)
-		count *= params.dim[i];
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0; i++)
+		count *= dim[i];
 	return count;
+}
+
+static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
+{
+	return ccv_nnc_dimension_count(params.dim);
 }
 
 static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
