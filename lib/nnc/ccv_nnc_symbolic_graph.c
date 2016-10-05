@@ -584,7 +584,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			// Also, set its allocations.
 			assert(assigned[i] > 0);
 			// Since tensor view is bit compatible with tensor, we can just cast.
-			*(ccv_nnc_tensor_t*)(tensor_arena->tensor + j) = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
+			ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->buffer[assigned[i] - 1] + allocated_offset[i], tensor_symbol_info[i].info, 0);
+			memset(tensor_arena->tensor + j, 0, sizeof(ccv_nnc_tensor_view_t));
+			memcpy(tensor_arena->tensor + j, &tensor, sizeof(ccv_nnc_tensor_t));
 			assert(allocated_offset[i] + (((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16) <= tensor_arena->buffer_size[assigned[i] - 1]);
 			++j;
 		} else if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
@@ -612,8 +614,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			tensor_arena->vt_tensor[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensor[j];
 			// If there is no ofs, we take a shortcut and just init a normal tensor.
 			if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[i].ofs, sizeof(ccv_nnc_no_ofs)) == 0)
-				*(ccv_nnc_tensor_t*)(tensor_arena->tensor + j) = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
-			else {
+			{
+				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
+				memset(tensor_arena->tensor + j, 0, sizeof(ccv_nnc_tensor_view_t));
+				memcpy(tensor_arena->tensor + j, &tensor, sizeof(ccv_nnc_tensor_t));
+			} else {
 				// Otherwise initialize a tensor view
 				// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
 				if (memcmp(tensor_arena->vt_tensor[alias_ref]->info.dim, tensor_symbol_info[i].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
