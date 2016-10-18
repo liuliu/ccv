@@ -1510,11 +1510,11 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 					if (tensor_ver->c == tensor_ver->ref_version->rnum - 1) \
 					{ \
 						ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c); \
-						/* Doesn't have any alias associated with this tensor ref. */ \
-						if (!tensor_ref->alias_registry) \
-							back_exec->inputs[i] = tensor_ref->d; \
-						else { /* TODO: Check if I need to insert any zero'ing ops here. */ \
+						/* TODO: Have any alias associated with this tensor ref, check if I need to insert any zero'ing ops here. */ \
+						if (tensor_ref->alias_registry) \
+						{ \
 						} \
+						back_exec->inputs[i] = tensor_ref->d; \
 					} else { \
 						/* Otherwise, we need to sum them up, and then pass the summed result to the computation. */ \
 						_ccv_nnc_graph_sum_autograd_tensor_versions(idx, d, exec_symbol_size, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec); \
