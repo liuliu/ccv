@@ -41,9 +41,10 @@
 
     <a class="button-visit" href="http://facedetection.jaysalvat.com">Visit the website</a>
 
-    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
     <script src="../dist/jquery.facedetection.js"></script> 
     <script>
+        /* global $ */
         $(function () {
             "use strict";
             
@@ -53,9 +54,7 @@
                 $('.face').remove();
 
                 $('#picture').faceDetection({
-                    complete: function (faces) {
-                        console.log(faces);
-                        
+                    complete: function (faces) {                        
                         for (var i = 0; i < faces.length; i++) {
                             $('<div>', {
                                 'class':'face',
