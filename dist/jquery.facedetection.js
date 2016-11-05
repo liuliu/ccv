@@ -1,15 +1,3 @@
-/*! ----------------------------------------------------------------------------
- *  A jQuery plugin to detect faces on images, videos and canvases.
- *  v2.0.2 released 2015-02-18 12:57
- *  http://facedetection.jaysalvat.com
- *  Copyright (c) 2010-2015, Jay Salvat
- *  http://jaysalvat.com/
- *  ----------------------------------------------------------------------------
- *  ccv.js and cascade.js
- *  Copyright (c) 2010-2015, Liu Liu
- *  http://liuliu.me/
- *  ----------------------------------------------------------------------------
- */
 !function($) {
     function get_named_arguments(params, names) {
         if (params.length > 1) {
@@ -16242,10 +16230,10 @@
                 var scope = {
                     shared: {}
                 }, ctrl = funct.apply(scope, params);
-                return async ? function(complete) {
+                return async ? function(complete, error) {
                     var executed = 0, outputs = new Array(worker_num), inputs = ctrl.pre.apply(scope, [ worker_num ]);
                     for (i in scope.shared) "function" == typeof scope.shared[i] ? delete scope.shared[i] : void 0 !== scope.shared[i].tagName && delete scope.shared[i];
-                    for (i = 0; worker_num > i; i++) {
+                    for (i = 0; i < worker_num; i++) {
                         var worker = new Worker(file);
                         worker.onmessage = function(i) {
                             return function(event) {
@@ -16295,15 +16283,15 @@
                 rank: 0
             };
             for (i = 0; i < seq.length; i++) if (node[i].element) {
-                for (var root = i; -1 != node[root].parent; ) root = node[root].parent;
+                for (var root = i; node[root].parent != -1; ) root = node[root].parent;
                 for (j = 0; j < seq.length; j++) if (i != j && node[j].element && gfunc(node[i].element, node[j].element)) {
-                    for (var root2 = j; -1 != node[root2].parent; ) root2 = node[root2].parent;
+                    for (var root2 = j; node[root2].parent != -1; ) root2 = node[root2].parent;
                     if (root2 != root) {
                         node[root].rank > node[root2].rank ? node[root2].parent = root : (node[root].parent = root2, 
                         node[root].rank == node[root2].rank && node[root2].rank++, root = root2);
-                        for (var temp, node2 = j; -1 != node[node2].parent; ) temp = node2, node2 = node[node2].parent, 
+                        for (var temp, node2 = j; node[node2].parent != -1; ) temp = node2, node2 = node[node2].parent, 
                         node[temp].parent = root;
-                        for (node2 = i; -1 != node[node2].parent; ) temp = node2, node2 = node[node2].parent, 
+                        for (node2 = i; node[node2].parent != -1; ) temp = node2, node2 = node[node2].parent, 
                         node[temp].parent = root;
                     }
                 }
@@ -16313,7 +16301,7 @@
                 j = -1;
                 var node1 = i;
                 if (node[node1].element) {
-                    for (;-1 != node[node1].parent; ) node1 = node[node1].parent;
+                    for (;node[node1].parent != -1; ) node1 = node[node1].parent;
                     node[node1].rank >= 0 && (node[node1].rank = ~class_idx++), j = ~node[node1].rank;
                 }
                 idx[i] = j;
@@ -16323,8 +16311,8 @@
                 cat: class_idx
             };
         },
-        detect_objects: parallable(scriptPath, function() {
-            function pre() {
+        detect_objects: parallable(scriptPath, function(canvas, cascade, interval, min_neighbors) {
+            function pre(worker_num) {
                 var canvas = this.shared.canvas, interval = this.shared.interval, scale = this.shared.scale, next = this.shared.next, scale_upto = this.shared.scale_upto, pyr = new Array(4 * (scale_upto + 2 * next)), ret = new Array(4 * (scale_upto + 2 * next));
                 pyr[0] = canvas, ret[0] = {
                     width: pyr[0].width,
@@ -16332,14 +16320,14 @@
                     data: pyr[0].getContext("2d").getImageData(0, 0, pyr[0].width, pyr[0].height).data
                 };
                 var i;
-                for (i = 1; interval >= i; i++) pyr[4 * i] = document.createElement("canvas"), pyr[4 * i].width = Math.floor(pyr[0].width / Math.pow(scale, i)), 
+                for (i = 1; i <= interval; i++) pyr[4 * i] = document.createElement("canvas"), pyr[4 * i].width = Math.floor(pyr[0].width / Math.pow(scale, i)), 
                 pyr[4 * i].height = Math.floor(pyr[0].height / Math.pow(scale, i)), pyr[4 * i].getContext("2d").drawImage(pyr[0], 0, 0, pyr[0].width, pyr[0].height, 0, 0, pyr[4 * i].width, pyr[4 * i].height), 
                 ret[4 * i] = {
                     width: pyr[4 * i].width,
                     height: pyr[4 * i].height,
                     data: pyr[4 * i].getContext("2d").getImageData(0, 0, pyr[4 * i].width, pyr[4 * i].height).data
                 };
-                for (i = next; scale_upto + 2 * next > i; i++) pyr[4 * i] = document.createElement("canvas"), 
+                for (i = next; i < scale_upto + 2 * next; i++) pyr[4 * i] = document.createElement("canvas"), 
                 pyr[4 * i].width = Math.floor(pyr[4 * i - 4 * next].width / 2), pyr[4 * i].height = Math.floor(pyr[4 * i - 4 * next].height / 2), 
                 pyr[4 * i].getContext("2d").drawImage(pyr[4 * i - 4 * next], 0, 0, pyr[4 * i - 4 * next].width, pyr[4 * i - 4 * next].height, 0, 0, pyr[4 * i].width, pyr[4 * i].height), 
                 ret[4 * i] = {
@@ -16347,7 +16335,7 @@
                     height: pyr[4 * i].height,
                     data: pyr[4 * i].getContext("2d").getImageData(0, 0, pyr[4 * i].width, pyr[4 * i].height).data
                 };
-                for (i = 2 * next; scale_upto + 2 * next > i; i++) pyr[4 * i + 1] = document.createElement("canvas"), 
+                for (i = 2 * next; i < scale_upto + 2 * next; i++) pyr[4 * i + 1] = document.createElement("canvas"), 
                 pyr[4 * i + 1].width = Math.floor(pyr[4 * i - 4 * next].width / 2), pyr[4 * i + 1].height = Math.floor(pyr[4 * i - 4 * next].height / 2), 
                 pyr[4 * i + 1].getContext("2d").drawImage(pyr[4 * i - 4 * next], 1, 0, pyr[4 * i - 4 * next].width - 1, pyr[4 * i - 4 * next].height, 0, 0, pyr[4 * i + 1].width - 2, pyr[4 * i + 1].height), 
                 ret[4 * i + 1] = {
@@ -16369,10 +16357,10 @@
                 };
                 return [ ret ];
             }
-            function core(pyr) {
+            function core(pyr, id, worker_num) {
                 var i, j, k, x, y, q, cascade = this.shared.cascade, scale = (this.shared.interval, 
                 this.shared.scale), next = this.shared.next, scale_upto = this.shared.scale_upto, scale_x = 1, scale_y = 1, dx = [ 0, 1, 0, 1 ], dy = [ 0, 0, 1, 1 ], seq = [];
-                for (i = 0; scale_upto > i; i++) {
+                for (i = 0; i < scale_upto; i++) {
                     var qw = pyr[4 * i + 8 * next].width - Math.floor(cascade.width / 4), qh = pyr[4 * i + 8 * next].height - Math.floor(cascade.height / 4), step = [ 4 * pyr[4 * i].width, 4 * pyr[4 * i + 4 * next].width, 4 * pyr[4 * i + 8 * next].width ], paddings = [ 16 * pyr[4 * i].width - 16 * qw, 8 * pyr[4 * i + 4 * next].width - 8 * qw, 4 * pyr[4 * i + 8 * next].width - 4 * qw ];
                     for (j = 0; j < cascade.stage_classifier.length; j++) {
                         var orig_feature = cascade.stage_classifier[j].orig_feature, feature = cascade.stage_classifier[j].feature = new Array(cascade.stage_classifier[j].count);
@@ -16386,22 +16374,22 @@
                         feature[k].pz[q] = orig_feature[k].pz[q], feature[k].nx[q] = 4 * orig_feature[k].nx[q] + orig_feature[k].ny[q] * step[orig_feature[k].nz[q]], 
                         feature[k].nz[q] = orig_feature[k].nz[q];
                     }
-                    for (q = 0; 4 > q; q++) {
+                    for (q = 0; q < 4; q++) {
                         var u8 = [ pyr[4 * i].data, pyr[4 * i + 4 * next].data, pyr[4 * i + 8 * next + q].data ], u8o = [ 8 * dx[q] + dy[q] * pyr[4 * i].width * 8, 4 * dx[q] + dy[q] * pyr[4 * i + 4 * next].width * 4, 0 ];
-                        for (y = 0; qh > y; y++) {
-                            for (x = 0; qw > x; x++) {
+                        for (y = 0; y < qh; y++) {
+                            for (x = 0; x < qw; x++) {
                                 var sum = 0, flag = !0;
                                 for (j = 0; j < cascade.stage_classifier.length; j++) {
                                     sum = 0;
                                     var alpha = cascade.stage_classifier[j].alpha, feature = cascade.stage_classifier[j].feature;
                                     for (k = 0; k < cascade.stage_classifier[j].count; k++) {
                                         var p, n, feature_k = feature[k], pmin = u8[feature_k.pz[0]][u8o[feature_k.pz[0]] + feature_k.px[0]], nmax = u8[feature_k.nz[0]][u8o[feature_k.nz[0]] + feature_k.nx[0]];
-                                        if (nmax >= pmin) sum += alpha[2 * k]; else {
+                                        if (pmin <= nmax) sum += alpha[2 * k]; else {
                                             var f, shortcut = !0;
                                             for (f = 0; f < feature_k.size; f++) {
                                                 if (feature_k.pz[f] >= 0 && (p = u8[feature_k.pz[f]][u8o[feature_k.pz[f]] + feature_k.px[f]], 
-                                                pmin > p)) {
-                                                    if (nmax >= p) {
+                                                p < pmin)) {
+                                                    if (p <= nmax) {
                                                         shortcut = !1;
                                                         break;
                                                     }
@@ -16409,7 +16397,7 @@
                                                 }
                                                 if (feature_k.nz[f] >= 0 && (n = u8[feature_k.nz[f]][u8o[feature_k.nz[f]] + feature_k.nx[f]], 
                                                 n > nmax)) {
-                                                    if (n >= pmin) {
+                                                    if (pmin <= n) {
                                                         shortcut = !1;
                                                         break;
                                                     }
@@ -16441,10 +16429,8 @@
                 return seq;
             }
             function post(seq) {
-                {
-                    var i, j, min_neighbors = this.shared.min_neighbors, cascade = this.shared.cascade;
-                    this.shared.interval, this.shared.scale, this.shared.next, this.shared.scale_upto;
-                }
+                var i, j, min_neighbors = this.shared.min_neighbors, cascade = this.shared.cascade;
+                this.shared.interval, this.shared.scale, this.shared.next, this.shared.scale_upto;
                 for (i = 0; i < cascade.stage_classifier.length; i++) cascade.stage_classifier[i].feature = cascade.stage_classifier[i].orig_feature;
                 if (seq = seq[0], min_neighbors > 0) {
                     var result = ccv.array_group(seq, function(r1, r2) {
@@ -16466,7 +16452,7 @@
                         comps[idx].confidence = Math.max(comps[idx].confidence, r1.confidence);
                     }
                     var seq2 = [];
-                    for (i = 0; ncomp > i; i++) {
+                    for (i = 0; i < ncomp; i++) {
                         var n = comps[i].neighbors;
                         n >= min_neighbors && seq2.push({
                             x: (2 * comps[i].x + n) / (2 * n),
@@ -16559,7 +16545,7 @@
                 }
             }
             function done(faces) {
-                for (var n = faces.length, data = [], i = 0; n > i; ++i) null !== options.confidence && faces[i].confidence <= options.confidence || (faces[i].positionX = position.left + faces[i].x, 
+                for (var n = faces.length, data = [], i = 0; i < n; ++i) null !== options.confidence && faces[i].confidence <= options.confidence || (faces[i].positionX = position.left + faces[i].x, 
                 faces[i].positionY = position.top + faces[i].y, faces[i].offsetX = offset.left + faces[i].x, 
                 faces[i].offsetY = offset.top + faces[i].y, faces[i].scaleX = scaleX, faces[i].scaleY = scaleY, 
                 data.push(faces[i]));

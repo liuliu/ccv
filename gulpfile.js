@@ -196,6 +196,7 @@
         settings.banner.vars.pkg = getPackageJson();
 
         return gulp.src(settings.files.in)
+            .pipe(header(settings.banner.content, settings.banner.vars ))
             .pipe(uglify(settings.files.out + '.min.js', {
                 enclose: settings.enclose,
                 compress: {
@@ -208,7 +209,10 @@
     });
 
     gulp.task("beautify", function () {
+        settings.banner.vars.pkg = getPackageJson();
+
         return gulp.src(settings.files.in)
+            .pipe(header(settings.banner.content, settings.banner.vars ))
             .pipe(uglify(settings.files.out + '.js', {
                 enclose: settings.enclose,
                 compress: {
@@ -222,13 +226,13 @@
             .pipe(gulp.dest('./dist/'));
     });
 
-    gulp.task("header", function () {
-        settings.banner.vars.pkg = getPackageJson();
+    // gulp.task("header", function () {
+    //     settings.banner.vars.pkg = getPackageJson();
 
-        return gulp.src('./dist/*.js')
-            .pipe(header(settings.banner.content, settings.banner.vars ))
-            .pipe(gulp.dest('./dist/'));
-    });
+    //     return gulp.src('./dist/*.js')
+    //         .pipe(header(settings.banner.content, settings.banner.vars ))
+    //         .pipe(gulp.dest('./dist/'));
+    // });
 
     gulp.task("gh-pages", function (cb) {
         version = getPackageJson().version;
@@ -277,7 +281,6 @@
         "clean", 
         "beautify", 
         "uglify",
-        "header",
         "test-dist"
     ], 
     "building"));
@@ -292,7 +295,6 @@
         "clean",
         "beautify",
         "uglify",
-        "header",
         "test-dist",
         "git-add",
         "git-commit",
