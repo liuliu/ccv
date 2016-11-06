@@ -84,6 +84,13 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol(const ccv_nnc_symbolic_graph_t* gr
 		.info = info,
 		.name = 0
 	};
+	if (name)
+	{
+		size_t n = strnlen(name, 63) + 1;
+		symbol_info.name = (char*)ccmalloc(n);
+		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+		strncpy(symbol_info.name, name, n);
+	}
 	ccv_array_push(graph->tensor_symbol_info, &symbol_info);
 	return symbol;
 }
@@ -118,6 +125,13 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias(const ccv_nnc_symbolic_graph
 		.info = info,
 		.name = 0
 	};
+	if (name)
+	{
+		size_t n = strnlen(name, 63) + 1;
+		alias_info.name = (char*)ccmalloc(n);
+		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+		strncpy(alias_info.name, name, n);
+	}
 	memcpy(alias_info.ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(alias_info.inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	ccv_array_push(graph->tensor_symbol_info, &alias_info);
@@ -138,6 +152,13 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol(const ccv_nnc_symbolic_gra
 		.hint = ccv_nnc_no_hint,
 		.name = 0
 	};
+	if (name)
+	{
+		size_t n = strnlen(name, 63) + 1;
+		symbol_info.name = (char*)ccmalloc(n);
+		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+		strncpy(symbol_info.name, name, n);
+	}
 	symbol_info.inputs = ccmalloc(sizeof(int) * (input_size + output_size));
 	int i;
 	for (i = 0; i < input_size; i++)
@@ -219,6 +240,59 @@ int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const 
 		}
 	}
 	return 0;
+}
+
+void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, FILE* out)
+{
+	fprintf(out, "digraph G {\n");
+	int i, j;
+	// Output styles.
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		fprintf(out, "node%d [shape=Mrecord,label=\"{", i);
+		if (exec_symbol_info->name)
+			fprintf(out, "%s", exec_symbol_info->name);
+		else
+			fprintf(out, "node%d", i);
+		fprintf(out, "|Compute: %s}", ccv_nnc_cmd_compute_name(exec_symbol_info->cmd.compute));
+		if (exec_symbol_info->input_size > 0)
+		{
+			fprintf(out, "|{Input");
+			for (j = 0; j < exec_symbol_info->input_size; j++)
+			{
+				ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->inputs[j]);
+				if (tensor_symbol_info->name)
+					fprintf(out, "|%s", tensor_symbol_info->name);
+				else
+					fprintf(out, "|tensor%d", exec_symbol_info->inputs[j]);
+			}
+			fprintf(out, "}");
+		}
+		if (exec_symbol_info->output_size > 0)
+		{
+			fprintf(out, "|{Output");
+			for (j = 0; j < exec_symbol_info->output_size; j++)
+			{
+				ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->outputs[j]);
+				if (tensor_symbol_info->name)
+					fprintf(out, "|%s", tensor_symbol_info->name);
+				else
+					fprintf(out, "|tensor%d", exec_symbol_info->outputs[j]);
+			}
+			fprintf(out, "}");
+		}
+		fprintf(out, "\"];\n");
+	}
+	// Output connections.
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		if (exec_symbol_info->outgoings)
+			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)
+				fprintf(out, "node%d -> node%d;\n", i, *(int*)ccv_array_get(exec_symbol_info->outgoings, j));
+	}
+	fprintf(out, "}\n");
 }
 
 typedef struct {
@@ -996,11 +1070,19 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph)
 	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
 	{
 		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		if (symbol_info->name)
+			ccfree(symbol_info->name);
 		ccv_array_t* outgoings = symbol_info->outgoings;
 		if (outgoings)
 			ccv_array_free(outgoings);
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
 		ccfree(symbol_info->inputs);
+	}
+	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
+	{
+		ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
+		if (symbol_info->name)
+			ccfree(symbol_info->name);
 	}
 	ccv_array_free(graph->tensor_symbol_info);
 	ccv_array_free(graph->exec_symbol_info);

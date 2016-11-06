@@ -65,6 +65,7 @@ enum {
 };
 
 typedef struct {
+	const char* name;
 	int attrs; // List of attributes for this computation. These attributes enables some of the symbolic graph / tensor allocation optimizations, it needs to be implemented exactly the same cross different backends.
 	struct {
 		uint64_t input;
@@ -173,6 +174,8 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
 // Return high precision time unit.
 uint64_t ccv_nnc_cmd_mono_time(void);
 int ccv_nnc_cmd_backend(const char* name);
+CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_compute_name(const int compute);
+CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_backend_name(const int backend);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
@@ -287,6 +290,8 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
 int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
+// Generate output that can be parsed by GraphViz (DOT language).
+void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, FILE* out);
 
 typedef struct {
 	ccv_nnc_tensor_t* tensor;

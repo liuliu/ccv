@@ -36,6 +36,7 @@ typedef struct {
 #include "cpu/ccv_nnc_init.inc"
 #endif
 // Above should be automatic generated.
+static int init_map_ref[CCV_NNC_BACKEND_COUNT];
 
 static ccv_nnc_compute_attr_t compute_attrs[CCV_NNC_COMPUTE_COUNT];
 
@@ -59,7 +60,10 @@ static ccv_nnc_compute_attr_t compute_attrs[CCV_NNC_COMPUTE_COUNT];
 	} \
 
 #define CCV_NNC_ATTR_DEF_X(_cmd, _attrs, ...) { \
+		/* Have to allocate the string on static (globally) first. */ \
+		static const char* _cmd ## _NAME = # _cmd; \
 		const ccv_nnc_compute_attr_t attr = { \
+			.name = _cmd ## _NAME, \
 			.attrs = _attrs, \
 			.bit_patterns = { \
 				CCV_NNC_ATTR_BIT_PATTERNS(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0, 0) \
@@ -81,7 +85,10 @@ void ccv_nnc_init(void)
 	int count = sizeof(init_map) / sizeof(ccv_nnc_init_t);
 	// Init dynamic dispatch table.
 	for (i = 0; i < count; i++)
+	{
 		init_map[i].init(cmd_api_decls[init_map[i].backend]);
+		init_map_ref[init_map[i].backend] = i;
+	}
 #include "ccv_nnc_attr.inc"
 }
 
@@ -94,6 +101,20 @@ int ccv_nnc_cmd_backend(const char* name)
 		if (strncmp(init_map[i].name, name, init_map[i].name_size) == 0)
 			return init_map[i].backend;
 	return -1;
+}
+
+const char* ccv_nnc_cmd_compute_name(const int compute)
+{
+	assert(compute >= 0);
+	assert(compute < CCV_NNC_COMPUTE_COUNT);
+	return compute_attrs[compute].name;
+}
+
+const char* ccv_nnc_cmd_backend_name(const int backend)
+{
+	assert(backend >= 0);
+	assert(backend < CCV_NNC_BACKEND_COUNT);
+	return init_map[init_map_ref[backend]].name;
 }
 
 const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
