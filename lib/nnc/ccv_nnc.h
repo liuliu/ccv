@@ -291,7 +291,11 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
 int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
 // Generate output that can be parsed by GraphViz (DOT language).
-void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, FILE* out);
+enum {
+	CCV_NNC_SHORT_DOT_GRAPH = 0x0,
+	CCV_NNC_LONG_DOT_GRAPH = 0x1,
+};
+void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int flags, FILE* out);
 
 typedef struct {
 	ccv_nnc_tensor_t* tensor;
