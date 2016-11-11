@@ -316,7 +316,7 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int
 				ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->outputs[j]);
 				fputc('|', out);
 				ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
-				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
 			}
 			fputc('}', out);
 		}
@@ -1592,65 +1592,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			back_exec->input_size = forw_exec->output_size; \
 			back_exec->inputs = ccmalloc(sizeof(int) * (back_exec->input_size + back_exec->output_size)); \
 			back_exec->outputs = back_exec->inputs + back_exec->input_size; \
-			for (i = 0; i < forw_exec->input_size; i++) \
-			{ \
-				const int d = forw_exec->inputs[i]; \
-				const int alias_ref = tensor_symbol_info[d].alias_ref; \
-				ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0}; \
-				tensor_sym.d = d; \
-				/* The simplest case (most common), it is not an alias. */ \
-				if (!alias_ref) \
-				{ \
-					ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
-					const ccv_nnc_tensor_ref_t tensor_ref = { \
-						.d = autograd_tensor_symbol->rnum - 1, \
-						.x = idx, \
-						.alias_registry = 0 \
-					}; \
-					ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d; \
-					if (!tensor_ver->ref_version) \
-						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
-					ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
-					back_exec->outputs[i] = tensor_ref.d; \
-				} else { \
-					/* Otherwise, in case that this is an alias, we try to find the existing one (in tensor_ver),
-					 * see if can meet the need (thus, for the tensor info / ofs, it fits). */ \
-					ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + (alias_ref - 1); \
-					if (!tensor_ver->ref_version) \
-						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
-					/* If already exists a ref version, check if any of these not-sealed tensors have free space. */ \
-					int found = 0; \
-					for (j = tensor_ver->c; j < tensor_ver->ref_version->rnum; j++) \
-					{ \
-						ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, j); \
-						if (!_ccv_nnc_tensor_ref_version_involve_alias(tensor_ref, autograd_tensor_symbol, tensor_symbol_info, tensor_symbol_info + d)) \
-						{ \
-							tensor_sym.alias_ref = tensor_ref->d + 1; \
-							ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
-							const int ad = autograd_tensor_symbol->rnum - 1; \
-							ccv_array_push(tensor_ref->alias_registry, &ad); \
-							found = 1; \
-							break; \
-						} \
-					} \
-					if (!found) /* Cannot find an tensor ref to insert, create one first */ \
-					{ \
-						tensor_sym.d = alias_ref - 1; /* Reference back to the non-alias. */ \
-						ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
-						const ccv_nnc_tensor_ref_t tensor_ref = { \
-							.d = autograd_tensor_symbol->rnum - 1, \
-							.x = idx, \
-							.alias_registry = ccv_array_new(sizeof(int), 1, 0) \
-						}; \
-						ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
-						tensor_sym.d = d; /* set back */ \
-						tensor_sym.alias_ref = tensor_ref.d + 1; \
-						ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
-						const int ad = autograd_tensor_symbol->rnum - 1; \
-						ccv_array_push(tensor_ref.alias_registry, &ad); \
-					} \
-				} \
-			} \
+			/* Need to compute input before we compute output */ \
 			for (i = 0; i < forw_exec->output_size; i++) \
 			{ \
 				const int d = forw_exec->outputs[i]; \
@@ -1711,6 +1653,65 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 				} else \
 					/* If this is an alias, go through all available tensor ref versions */ \
 					back_exec->inputs[i] = _ccv_nnc_graph_sum_autograd_tensor_versions_alias(idx, d, tensor_symbol_info, exec_symbol_size, tensor_symbol_info + d, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec); \
+			} \
+			for (i = 0; i < forw_exec->input_size; i++) \
+			{ \
+				const int d = forw_exec->inputs[i]; \
+				const int alias_ref = tensor_symbol_info[d].alias_ref; \
+				ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0}; \
+				tensor_sym.d = d; \
+				/* The simplest case (most common), it is not an alias. */ \
+				if (!alias_ref) \
+				{ \
+					ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
+					const ccv_nnc_tensor_ref_t tensor_ref = { \
+						.d = autograd_tensor_symbol->rnum - 1, \
+						.x = idx, \
+						.alias_registry = 0 \
+					}; \
+					ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d; \
+					if (!tensor_ver->ref_version) \
+						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
+					ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
+					back_exec->outputs[i] = tensor_ref.d; \
+				} else { \
+					/* Otherwise, in case that this is an alias, we try to find the existing one (in tensor_ver),
+					 * see if can meet the need (thus, for the tensor info / ofs, it fits). */ \
+					ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + (alias_ref - 1); \
+					if (!tensor_ver->ref_version) \
+						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
+					/* If already exists a ref version, check if any of these not-sealed tensors have free space. */ \
+					int found = 0; \
+					for (j = tensor_ver->c; j < tensor_ver->ref_version->rnum; j++) \
+					{ \
+						ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, j); \
+						if (!_ccv_nnc_tensor_ref_version_involve_alias(tensor_ref, autograd_tensor_symbol, tensor_symbol_info, tensor_symbol_info + d)) \
+						{ \
+							tensor_sym.alias_ref = tensor_ref->d + 1; \
+							ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
+							const int ad = autograd_tensor_symbol->rnum - 1; \
+							ccv_array_push(tensor_ref->alias_registry, &ad); \
+							found = 1; \
+							break; \
+						} \
+					} \
+					if (!found) /* Cannot find an tensor ref to insert, create one first */ \
+					{ \
+						tensor_sym.d = alias_ref - 1; /* Reference back to the non-alias. */ \
+						ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
+						const ccv_nnc_tensor_ref_t tensor_ref = { \
+							.d = autograd_tensor_symbol->rnum - 1, \
+							.x = idx, \
+							.alias_registry = ccv_array_new(sizeof(int), 1, 0) \
+						}; \
+						ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
+						tensor_sym.d = d; /* set back */ \
+						tensor_sym.alias_ref = tensor_ref.d + 1; \
+						ccv_array_push(autograd_tensor_symbol, &tensor_sym); \
+						const int ad = autograd_tensor_symbol->rnum - 1; \
+						ccv_array_push(tensor_ref.alias_registry, &ad); \
+					} \
+				} \
 			} \
 		} \
 	} while (0)
