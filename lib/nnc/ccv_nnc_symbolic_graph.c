@@ -195,8 +195,15 @@ int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, cons
 	assert(source.d < graph->exec_symbol_info->rnum);
 	assert(destination.d < graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* src_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, source.d);
-	if (src_symbol_info->outgoings == 0)
+	if (!src_symbol_info->outgoings)
 		src_symbol_info->outgoings = ccv_array_new(sizeof(int32_t), 1, 0);
+	else {
+		int i;
+		// Check if this is already connected, if so, skip.
+		for (i = 0; i < src_symbol_info->outgoings->rnum; i++)
+			if (*(int*)ccv_array_get(src_symbol_info->outgoings, i) == destination.d)
+				return 0;
+	}
 	ccv_array_push(src_symbol_info->outgoings, &destination.d);
 	return 0;
 }
