@@ -1,4 +1,5 @@
 #include "ccv_nnc.h"
+#include "ccv_nnc_internal.h"
 #include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
@@ -11,110 +12,40 @@
 #include <mach/mach_time.h>
 #endif
 
-typedef void(*ccv_nnc_init_f)(ccv_nnc_cmd_api_t cmd_api[]);
+typedef struct {
+	const uint32_t cmd;
+	const char* name;
+	ccv_nnc_cmd_registry_t registry;
+	ccv_nnc_cmd_backend_registry_t backends[CCV_NNC_BACKEND_COUNT];
+} ccv_nnc_cmd_init_t;
 
 typedef struct {
-	int backend;
+	const uint32_t backend;
 	const char* name;
-	size_t name_size;
-	ccv_nnc_init_f init;
-} ccv_nnc_init_t;
+} ccv_nnc_cmd_backend_init_t;
 
-#define CCV_NNC_INIT_DECL(init_func) extern void (init_func)(ccv_nnc_cmd_api_t cmd_api[])
-#define CCV_NNC_INIT_MAP_BEGIN() static ccv_nnc_init_t init_map[] = {
-#define CCV_NNC_INIT_MAP(_name, _init) { .backend = _name, .name = #_name, .name_size = sizeof(#_name), .init = _init, },
-#define CCV_NNC_INIT_MAP_END() };
-
-#define CCV_NNC_INIT_EXEC(name, init_func) do { \
-		(init_func)(command_api_decls[name]); \
-	} while (0)
-
-// Below is extracted from source code: `./nnc-init.rb cpu` or `./nnc-init.rb cpu gpu`
-#ifdef HAVE_CUDA // Include the header for both CPU and GPU
-#include "ccv_nnc_init.inc"
-#else // Otherwise only include for CPU.
-#include "cpu/ccv_nnc_init.inc"
-#endif
-// Above should be automatic generated.
-static int init_map_ref[CCV_NNC_BACKEND_COUNT];
-
-static ccv_nnc_compute_attr_t compute_attrs[CCV_NNC_COMPUTE_COUNT];
-
-// We support up to 4 bit patterns.
-#define CCV_NNC_ATTR_BIT_PATTERNS(_v1, _v2, _v3, _v4, _v5, _v6, _v7, _v8, ...) \
-	{ \
-		.input = (_v1), \
-		.output = (_v2) \
-	}, \
-	{ \
-		.input = (_v3), \
-		.output = (_v4) \
-	}, \
-	{ \
-		.input = (_v5), \
-		.output = (_v6) \
-	}, \
-	{ \
-		.input = (_v7), \
-		.output = (_v8) \
-	} \
-
-#define CCV_NNC_ATTR_DEF_X(_cmd, _attrs, ...) { \
-		/* Have to allocate the string on static (globally) first. */ \
-		static const char* _cmd ## _NAME = # _cmd; \
-		const ccv_nnc_compute_attr_t attr = { \
-			.name = _cmd ## _NAME, \
-			.attrs = _attrs, \
-			.bit_patterns = { \
-				CCV_NNC_ATTR_BIT_PATTERNS(__VA_ARGS__, 0, 0, 0, 0, 0, 0, 0, 0) \
-			} \
-		}; \
-		compute_attrs[_cmd] = attr; \
-	}
-
-// Only allow even number of parameters.
-#define CCV_NNC_ATTR_DEF_SEL(_0, _1, _2, _3, _4, _5, _6, _7, _8, _FX, ...) _FX
-
-#define CCV_NNC_ATTR_DEF(_cmd, _attrs, ...) CCV_NNC_ATTR_DEF_SEL(CCV_NNC_ATTR_DEF_NOT_ALLOWED, ##__VA_ARGS__, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_X, CCV_NNC_ATTR_DEF_NOT_ALLOWED, CCV_NNC_ATTR_DEF_NOT_ALLOWED)(_cmd, _attrs, __VA_ARGS__)
-
-static ccv_nnc_cmd_api_t cmd_api_decls[CCV_NNC_BACKEND_COUNT][CCV_NNC_COMPUTE_COUNT];
+// The generated code configures command and its mapping.
+#include "cmd/ccv_nnc_cmd.inc"
 
 void ccv_nnc_init(void)
 {
-	int i;
-	int count = sizeof(init_map) / sizeof(ccv_nnc_init_t);
-	// Init dynamic dispatch table.
-	for (i = 0; i < count; i++)
-	{
-		init_map[i].init(cmd_api_decls[init_map[i].backend]);
-		init_map_ref[init_map[i].backend] = i;
-	}
-#include "ccv_nnc_attr.inc"
+	_ccv_nnc_cmd_init();
 }
 
-int ccv_nnc_cmd_backend(const char* name)
+const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
-	int i;
-	int count = sizeof(init_map) / sizeof(ccv_nnc_init_t);
-	// Do simple linear scan across the dynamic dispatch table.
-	for (i = 0; i < count; i++)
-		if (strncmp(init_map[i].name, name, init_map[i].name_size) == 0)
-			return init_map[i].backend;
-	return -1;
+	const int idx = _ccv_nnc_cmd_hash(cmd);
+	assert(idx >= 0);
+	assert(idx < CCV_NNC_COUNT - 2);
+	return init_map[idx].name;
 }
 
-const char* ccv_nnc_cmd_compute_name(const int compute)
+const char* ccv_nnc_cmd_backend_name(const uint32_t backend)
 {
-	assert(compute >= 0);
-	assert(compute < CCV_NNC_COMPUTE_COUNT);
-	return compute_attrs[compute].name;
-}
-
-const char* ccv_nnc_cmd_backend_name(const int backend)
-{
-	assert(backend >= 0);
-	assert(backend < CCV_NNC_BACKEND_COUNT);
-	return init_map[init_map_ref[backend]].name;
+	const int idx = _ccv_nnc_cmd_backend_hash(backend);
+	assert(idx >= 0);
+	assert(idx < CCV_NNC_BACKEND_COUNT);
+	return backend_init_map[idx].name;
 }
 
 const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
@@ -126,40 +57,36 @@ int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params)
 
 int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd)
 {
-	assert(cmd.compute >= 0);
-	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
-	switch (cmd.compute)
+	switch (cmd.cmd)
 	{
-		case CCV_NNC_COMPUTE_CUSTOM:
-		case CCV_NNC_COMPUTE_NOOP:
+		case CCV_NNC_CUSTOM:
+		case CCV_NNC_NOOP:
 			return 0;
 		default:
-			return !(cmd.compute & 0x1); // If it is even, it is forward
+			return !(cmd.cmd & 0x1); // If it is even, it is forward
 	}
 }
 
 int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd)
 {
-	assert(cmd.compute >= 0);
-	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
-	switch (cmd.compute)
+	switch (cmd.cmd)
 	{
-		case CCV_NNC_COMPUTE_CUSTOM:
-		case CCV_NNC_COMPUTE_NOOP:
+		case CCV_NNC_CUSTOM:
+		case CCV_NNC_NOOP:
 			return 0;
 		default:
-			return !!(cmd.compute & 0x1); // If it is odd, it is backward
+			return !!(cmd.cmd & 0x1); // If it is odd, it is backward
 	}
 }
 
-ccv_nnc_cmd_t ccv_nnc_cmd(const int compute, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
+ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
 {
 	ccv_nnc_cmd_t cmd;
 	cmd.info = params;
 	// Default to CPU ref implementation if the type is CPU memory, otherwise use GPU ref.
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
-	assert((compute == CCV_NNC_COMPUTE_CUSTOM && exec) || (compute != CCV_NNC_COMPUTE_CUSTOM && !exec));
-	cmd.compute = compute;
+	assert((_cmd == CCV_NNC_CUSTOM && exec) || (_cmd != CCV_NNC_CUSTOM && !exec));
+	cmd.cmd = _cmd;
 	cmd.algorithm = -1; // This is default.
 	cmd.exec = exec;
 	return cmd;
@@ -253,10 +180,10 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 	int i;
 	for (i = 0; i < output_size; i++)
 		outputs[i] = z; // Reset the outputs.
-	switch (cmd.compute)
+	switch (cmd.cmd)
 	{
 		// For neural networks
-		case CCV_NNC_COMPUTE_CONVOLUTION_FORWARD: {
+		case CCV_NNC_CONVOLUTION_FORWARD: {
 			assert(output_size == 1);
 			outputs[0].type = inputs[0].type;
 			outputs[0].format = inputs[0].format;
@@ -268,7 +195,7 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
 			break;
 		}
-		case CCV_NNC_COMPUTE_GEMM_FORWARD: {
+		case CCV_NNC_GEMM_FORWARD: {
 			assert(output_size == 1);
 			outputs[0].type = inputs[0].type;
 			outputs[0].format = inputs[0].format;
@@ -278,8 +205,8 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 			assert(inputs[1].dim[1] == inputs[2].dim[0]); // from the bias matrix.
 			break;
 		}
-		case CCV_NNC_COMPUTE_MAX_POOL_FORWARD:
-		case CCV_NNC_COMPUTE_AVERAGE_POOL_FORWARD: {
+		case CCV_NNC_MAX_POOL_FORWARD:
+		case CCV_NNC_AVERAGE_POOL_FORWARD: {
 			assert(output_size == 1);
 			outputs[0].type = inputs[0].type;
 			outputs[0].format = inputs[0].format;
@@ -289,33 +216,32 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
 			break;
 		}
-		case CCV_NNC_COMPUTE_SOFTMAX_FORWARD:
-		case CCV_NNC_COMPUTE_BATCH_NORM_FORWARD:
-		case CCV_NNC_COMPUTE_RELU_FORWARD:
+		case CCV_NNC_SOFTMAX_FORWARD:
+		case CCV_NNC_RELU_FORWARD:
 		// BLAS
-		case CCV_NNC_COMPUTE_AXPY_FORWARD:
+		case CCV_NNC_AXPY_FORWARD:
 		// Element-wise computation
-		case CCV_NNC_COMPUTE_EWSUM_FORWARD:
-		case CCV_NNC_COMPUTE_EWPROD_FORWARD:
-		case CCV_NNC_COMPUTE_EWDIV_FORWARD:
-		case CCV_NNC_COMPUTE_EWEXP_FORWARD:
-		case CCV_NNC_COMPUTE_EWLOG_FORWARD: {
+		case CCV_NNC_EWSUM_FORWARD:
+		case CCV_NNC_EWPROD_FORWARD:
+		case CCV_NNC_EWDIV_FORWARD:
+		case CCV_NNC_EWEXP_FORWARD:
+		case CCV_NNC_EWLOG_FORWARD: {
 			assert(output_size == 1);
 			// All above have 1 output, therefore, it just copy from the first input.
 			outputs[0] = inputs[0];
 			break;
 		}
 		// For neural networks
-		case CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD:
-		case CCV_NNC_COMPUTE_GEMM_BACKWARD: {
+		case CCV_NNC_CONVOLUTION_BACKWARD:
+		case CCV_NNC_GEMM_BACKWARD: {
 			// For both cases, we just copy from inputs.
 			assert(output_size < input_size);
 			for (i = 0; i < output_size; i++)
 				outputs[i] = inputs[i + 1];
 			break;
 		}
-		case CCV_NNC_COMPUTE_MAX_POOL_BACKWARD:
-		case CCV_NNC_COMPUTE_AVERAGE_POOL_BACKWARD: {
+		case CCV_NNC_MAX_POOL_BACKWARD:
+		case CCV_NNC_AVERAGE_POOL_BACKWARD: {
 			assert(output_size == 1);
 			outputs[0].type = inputs[0].type;
 			outputs[0].format = inputs[0].format;
@@ -325,17 +251,16 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 			_ccv_nnc_hint_tensor_dim_back(cmd, inputs[0], hint, outputs);
 			break;
 		}
-		case CCV_NNC_COMPUTE_SOFTMAX_BACKWARD:
-		case CCV_NNC_COMPUTE_BATCH_NORM_BACKWARD:
-		case CCV_NNC_COMPUTE_RELU_BACKWARD:
+		case CCV_NNC_SOFTMAX_BACKWARD:
+		case CCV_NNC_RELU_BACKWARD:
 		// BLAS
-		case CCV_NNC_COMPUTE_AXPY_BACKWARD:
+		case CCV_NNC_AXPY_BACKWARD:
 		// Element-wise computation
-		case CCV_NNC_COMPUTE_EWSUM_BACKWARD:
-		case CCV_NNC_COMPUTE_EWPROD_BACKWARD:
-		case CCV_NNC_COMPUTE_EWDIV_BACKWARD:
-		case CCV_NNC_COMPUTE_EWEXP_BACKWARD:
-		case CCV_NNC_COMPUTE_EWLOG_BACKWARD: {
+		case CCV_NNC_EWSUM_BACKWARD:
+		case CCV_NNC_EWPROD_BACKWARD:
+		case CCV_NNC_EWDIV_BACKWARD:
+		case CCV_NNC_EWEXP_BACKWARD:
+		case CCV_NNC_EWLOG_BACKWARD: {
 			assert(input_size >= 1);
 			// All above have 1 input, therefore, outputs just copy from the input.
 			for (i = 0; i < output_size; i++)
@@ -343,10 +268,10 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 			break;
 		}
 		// Other transforms
-		case CCV_NNC_COMPUTE_DATA_TRANSFER_FORWARD:
-		case CCV_NNC_COMPUTE_DATA_TRANSFER_BACKWARD:
-		case CCV_NNC_COMPUTE_FORMAT_TRANSFORM_FORWARD:
-		case CCV_NNC_COMPUTE_FORMAT_TRANSFORM_BACKWARD: {
+		case CCV_NNC_DATA_TRANSFER_FORWARD:
+		case CCV_NNC_DATA_TRANSFER_BACKWARD:
+		case CCV_NNC_FORMAT_TRANSFORM_FORWARD:
+		case CCV_NNC_FORMAT_TRANSFORM_BACKWARD: {
 			assert(output_size == input_size);
 			for (i = 0; i < input_size; i++)
 				outputs[i] = inputs[i];
@@ -371,41 +296,44 @@ uint64_t ccv_nnc_cmd_mono_time(void)
 
 ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
-	// This is a custom compute kernel, no need to autotune.
-	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
+	// This is a custom cmd kernel, no need to autotune.
+	if (cmd.cmd == CCV_NNC_CUSTOM)
 		return cmd;
 	int i, j, k;
 	// Go through all the backends that supports the same type of memory input / output tensors support.
 	int tensor_memory = 0;
 	for (i = 0; i < input_size; i++)
-		tensor_memory |= inputs[i]->info.type;
+		if (inputs[i])
+			tensor_memory |= inputs[i]->info.type;
 	for (i = 0; i < output_size; i++)
-		tensor_memory |= outputs[i]->info.type;
+		if (outputs[i])
+			tensor_memory |= outputs[i]->info.type;
 	// In this case, we cannot determine the type of the tensor, skip auto-tune.
 	if (!tensor_memory)
 		return cmd;
 	// Otherwise, we are good to go.
 	ccv_nnc_cmd_t tuned_cmd = cmd;
 	int64_t best_measured = -1;
+	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
 	// We need to have trial loop through all the data.
 	for (k = 0; k < AUTO_TUNE_TRIAL_SIZE; k++)
 	{
 		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
 		{
+			const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
 			// We have the exec kernel, and support all the tensor memory types.
-			ccv_nnc_cmd_api_t api_decl = cmd_api_decls[i][cmd.compute];
-			if (api_decl.exec &&
-				(api_decl.tensor_memory & tensor_memory) == tensor_memory)
+			if (api_registry.exec &&
+				(api_registry.tensor_memory & tensor_memory) == tensor_memory)
 			{
 				ccv_nnc_cmd_t candid_cmd = cmd;
-				candid_cmd.backend = i;
+				candid_cmd.backend = backend_init_map[i].backend;
 				// If a given API exist an autotune function, use that to pick the top algorithm.
-				if (api_decl.autotune)
+				if (api_registry.autotune)
 				{
 					// Assuming k == 0 is sufficient, and we can skip.
 					if (k > 0)
 						continue;
-					candid_cmd.algorithm = api_decl.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					candid_cmd.algorithm = api_registry.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_mono_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
@@ -419,7 +347,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					}
 				} else {
 					// Otherwise loop over the existing algorithms and pick the top one.
-					for (j = 0; j < api_decl.algorithms; j++)
+					for (j = 0; j < api_registry.algorithms; j++)
 					{
 						candid_cmd.algorithm = j;
 						uint64_t elapsed = ccv_nnc_cmd_mono_time();
@@ -442,79 +370,53 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
-	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
-	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
 	// If it is no-op, return as if succeed already.
-	if (cmd.compute == CCV_NNC_COMPUTE_NOOP)
+	if (cmd.cmd == CCV_NNC_NOOP)
 		return 0;
 	// If it is a custom command, just apply it directly.
-	if (cmd.compute == CCV_NNC_COMPUTE_CUSTOM)
+	if (cmd.cmd == CCV_NNC_CUSTOM)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-	ccv_nnc_cmd_api_t api_decl = cmd_api_decls[cmd.backend][cmd.compute];
-	if (!api_decl.exec)
+	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
+	const int backend_idx = _ccv_nnc_cmd_backend_hash(cmd.backend);
+	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
+	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
+	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
+	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
+	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
-	int i, j;
+	int i;
+	uint64_t input_bitmask = 0;
+	uint64_t output_bitmask = 0;
 	for (i = 0; i < input_size; i++)
-	{
-		assert(api_decl.tensor_formats & inputs[i]->info.format);
-	}
-	for (i = 0; i < output_size; i++)
-	{
-		assert(api_decl.tensor_formats & outputs[i]->info.format);
-	}
-	// bit_patterns is a c-array, we can size it out.
-	// To verify if the input matches the suggested pattern.
-	int find = 0;
-	ccv_nnc_compute_attr_t compute_attr = compute_attrs[cmd.compute];
-	for (i = 0; i < sizeof(compute_attr.bit_patterns) / sizeof(compute_attr.bit_patterns[0]) && !find; i++)
-	{
-		if (!compute_attr.bit_patterns[i].input && !compute_attr.bit_patterns[i].output)
-			break;
-		uint64_t v = compute_attr.bit_patterns[i].input;
-		int expected_input_size;
-		if (v > 0)
+		if (inputs[i])
 		{
-			expected_input_size = 1;
-			while (v >>= 1)
-				++expected_input_size;
-		} else
-			expected_input_size = 0;
-		v = compute_attr.bit_patterns[i].output;
-		int expected_output_size;
-		if (v > 0)
-		{
-			expected_output_size = 1;
-			while (v >>= 1)
-				++expected_output_size;
-		} else
-			expected_output_size = 0;
-		if (expected_input_size <= input_size && expected_output_size <= output_size)
-		{
-			find = 1;
-			v = compute_attr.bit_patterns[i].input;
-			for (j = 0; j < expected_input_size && find; j++)
-				if (((1u << j) & v) && !inputs[j]) // If this parameter is required but the tensor is empty, we cannot match this pattern, skip.
-					find = 0;
-			v = compute_attr.bit_patterns[i].output;
-			for (j = 0; j < expected_output_size && find; j++)
-				if (((1u << j) & v) && !outputs[j]) // If this parameter is required but the tensor is empty, we cannot match this pattern, skip.
-					find = 0;
+			assert(api_registry.tensor_formats & inputs[i]->info.format);
+			input_bitmask |= (uint64_t)1 << i;
 		}
-	}
-	if (!find)
-		return CCV_NNC_EXEC_INVALID; // Return invalid input.
+	for (i = 0; i < output_size; i++)
+		if (outputs[i])
+		{
+			assert(api_registry.tensor_formats & outputs[i]->info.format);
+			output_bitmask |= (uint64_t)1 << i;
+		}
+	if (cmd_registry.bitmask)
+		// If cannot pass the bitmask check.
+		if (!cmd_registry.bitmask(input_bitmask, output_bitmask))
+			return CCV_NNC_EXEC_INVALID; // Return invalid input.
 	// Everything is out, call the underlying implementation.
-	return api_decl.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	return api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
 
 int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 {
-	assert(cmd.backend < CCV_NNC_BACKEND_COUNT);
-	assert(cmd.compute < CCV_NNC_COMPUTE_COUNT);
 	// If it is a custom command, just apply it directly.
-	assert(cmd.compute != CCV_NNC_COMPUTE_CUSTOM);
-	ccv_nnc_compute_attr_t compute_attr = compute_attrs[cmd.compute];
-	return !!(compute_attr.attrs & flags);
+	assert(cmd.cmd != CCV_NNC_CUSTOM);
+	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
+	const int backend_idx = _ccv_nnc_cmd_backend_hash(cmd.backend);
+	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
+	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
+	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
+	return !!(cmd_registry.flags & flags);
 }
 
 struct ccv_nnc_stream_context_s {

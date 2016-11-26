@@ -14,7 +14,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
+	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3, 5, 4), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
@@ -29,10 +29,10 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m), 0);
-	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_BACKWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
+	ccv_nnc_cmd_t back_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_BACKWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, b->info, 0);

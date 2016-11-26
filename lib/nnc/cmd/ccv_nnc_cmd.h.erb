@@ -1,0 +1,6 @@
+enum {
+	CCV_NNC_CUSTOM = 0,
+	CCV_NNC_NOOP,
+	<%= commands.join ",\n\t" %>,
+	CCV_NNC_COUNT = <%= commands.count + 2 %>,
+};

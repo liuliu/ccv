@@ -11,7 +11,7 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
@@ -27,7 +27,7 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with non-uniform weights")
 		bias->data.f32[i] = (float)i / 128;
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
-	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_OPT");
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	REQUIRE_TENSOR_EQ(b, c, "56x56 matrix should be exactly the same from reference implementation and winograd.");
@@ -43,7 +43,7 @@ TEST_CASE("convolutional network of 3x3 on 55x55 with non-uniform weights")
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 55, 55), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 55, 55), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 128, 3, 3), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
@@ -59,7 +59,7 @@ TEST_CASE("convolutional network of 3x3 on 55x55 with non-uniform weights")
 		bias->data.f32[i] = (float)i / 128;
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 55, 55), 0);
-	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_OPT");
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	REQUIRE_TENSOR_EQ(b, c, "55x55 matrix should be exactly the same from reference implementation and winograd.");
@@ -75,7 +75,7 @@ TEST_CASE("convolutional network of 3x3 on 224x224 with non-uniform weights and 
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 224, 224), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 224, 224), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0);
+	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 3, 128), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128), 0);
@@ -91,7 +91,7 @@ TEST_CASE("convolutional network of 3x3 on 224x224 with non-uniform weights and 
 		bias->data.f32[i] = (float)i / 128;
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 224, 224), 0);
-	cmd.backend = ccv_nnc_cmd_backend("CCV_NNC_BACKEND_CPU_OPT");
+	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(c), 0);
 	REQUIRE_TENSOR_EQ(b, c, "224x224 matrix should be exactly the same from reference implementation and winograd.");

@@ -1,0 +1,38 @@
+static ccv_nnc_cmd_init_t init_map[] = {<% init_map.each do |init| %>
+	{.name = "<%= init[:name] %>", .cmd = 0x<%= init[:cmd] %>},<% end %>
+};
+
+static ccv_nnc_cmd_backend_init_t backend_init_map[] = {<% backend_init_map.each do |init| %>
+	{.name = "<%= init[:name] %>", .backend = 0x<%= init[:backend] %>},<% end %>
+};
+
+static inline int _ccv_nnc_cmd_hash(const uint32_t cmd)
+{
+	switch ((cmd >> <%= command_chd[:top_level_params][:idx] + 1 %>) % <%= command_chd[:top_level_params][:n] %>)
+	{<% command_chd[:bucket_params].each_with_index do |bucket_params, i| %>
+		case <%= i %>:
+			return ((((cmd >> <%= bucket_params[:idx] + 1 %>) % <%= bucket_params[:n] %>) + <%= bucket_params[:off] %>) << 1) | (cmd & 1);<% end %>
+	}
+	return -1;
+}
+
+static inline int _ccv_nnc_cmd_backend_hash(const uint32_t backend)
+{
+	switch ((backend >> <%= backend_chd[:top_level_params][:idx] %>) % <%= backend_chd[:top_level_params][:n] %>)
+	{<% backend_chd[:bucket_params].each_with_index do |bucket_params, i| %>
+		case <%= i %>:
+			return ((backend >> <%= bucket_params[:idx] %>) % <%= bucket_params[:n] %>) + <%= bucket_params[:off] %>;<% end %>
+	}
+	return -1;
+}
+
+<% init_map.each do |init| %>void _register_command_<%= init[:name] %>(ccv_nnc_cmd_registry_t* registry);
+<% end %>
+<% command_backends.each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* registry);
+<% end %>
+static inline void _ccv_nnc_cmd_init(void)
+{<% init_map.each_with_index do |init, i| %>
+	_register_command_<%= init[:name] %>(&init_map[<%= i%>].registry);<% end %>
+<% command_backends.each do |command_backend| %>
+	_register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(&(init_map[<%= command_idx[command_backend.command] %>].backends[<%= backend_idx[command_backend.backend] %>]));<% end %>
+}

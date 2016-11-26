@@ -4,7 +4,7 @@ include ../config.mk
 CFLAGS := -O3 -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-.PHONY: all lib clean libnnc.o gpu/libnnc-cuda.o nnc-init
+.PHONY: all lib clean libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
 
 all: lib
 
@@ -13,19 +13,18 @@ lib: libnnc.o
 clean:
 	rm -f *.o cpu/*.o gpu/*.o cpu/conv/*.o cpu/gemm/*.o
 
-libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o ccv_nnc_symbolic_graph.o cpu/ccv_nnc_cmd_ref.o cpu/ccv_nnc_cmd_opt.o cpu/conv/ccv_nnc_cmd_conv_opt.o cpu/conv/ccv_nnc_cmd_conv_4x4_3x3_winograd.o cpu/conv/ccv_nnc_cmd_conv_fft.o cpu/conv/ccv_nnc_cmd_conv_gemm.o cpu/gemm/ccv_nnc_cmd_gemm_sys.o cpu/gemm/ccv_nnc_cmd_gemm_opt.o $(CUDA_TARGETS)
+libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o ccv_nnc_symbolic_graph.o cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB)
 	ld -r $^ -o $@
 
-%.o: %.c gpu/ccv_nnc_cuda.h ../ccv.h ../ccv_internal.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h ccv_nnc_init.inc
+%.o: %.c gpu/ccv_nnc_cuda.h ../ccv.h ../ccv_internal.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu gpu/ccv_nnc_cuda.h ../ccv.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h ccv_nnc_init.inc
+%.o: %.cu gpu/ccv_nnc_cuda.h ../ccv.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
 
-gpu/libnnc-cuda.o:
+cmd/libnnc-cmd.o:
+	${MAKE} -C ./cmd
+
+gpu/libnnc-compat-cuda.o:
 	${MAKE} -C ./gpu
 
-nnc-init:
-	./nnc-init.rb cpu
-	mv ccv_nnc_init.inc cpu/ccv_nnc_init.inc
-	./nnc-init.rb cpu gpu

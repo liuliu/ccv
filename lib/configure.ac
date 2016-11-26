@@ -4,7 +4,8 @@ AC_SUBST(DEFINE_MACROS, [""])
 AC_SUBST(MKCFLAGS, [""])
 AC_SUBST(MKLDFLAGS, ["-lm "])
 AC_SUBST(CUDA_OBJS, ["cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"])
-AC_SUBST(CUDA_TARGETS, ["gpu/libnnc-cuda.o"])
+AC_SUBST(CUDA_COMPAT_LIB, ["gpu/libnnc-compat-cuda.o"])
+AC_SUBST(CUDA_CMD_LIB, ["libnnc-cmd-cuda.o"])
 
 # check if clang exists
 AC_CHECK_PROG(CC, clang, clang)
@@ -116,7 +117,8 @@ if [[ -d "$cuda_prefix" ]]; then
 	fi
 else
 	AC_SUBST(CUDA_OBJS, [""])
-	AC_SUBST(CUDA_TARGETS, [""])
+	AC_SUBST(CUDA_COMPAT_LIB, [""])
+	AC_SUBST(CUDA_CMD_LIB, [""])
 	AC_MSG_RESULT(no)
 fi
 

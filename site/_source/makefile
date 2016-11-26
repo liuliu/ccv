@@ -4,14 +4,14 @@ include ../../lib/config.mk
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 
-TARGETS = section-001-001 section-001-002
+TARGETS = section-001-001.out section-001-002.out
 
 all: libccv.a $(TARGETS)
 
 clean:
 	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
 
-$(TARGETS): %: %.o libccv.a
+$(TARGETS).out: %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)
 
 libccv.a:

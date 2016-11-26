@@ -10,6 +10,42 @@
 #ifndef GUARD_ccv_nnc_internal_h
 #define GUARD_ccv_nnc_internal_h
 
+#include <ccv.h>
+#include <ccv_internal.h>
+#include <nnc/ccv_nnc.h>
+
+typedef struct {
+	int flags;
+	int(*bitmask)(const uint64_t input_bitmask, const uint64_t output_bitmask);
+} ccv_nnc_cmd_registry_t;
+
+typedef struct {
+	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
+	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
+	int algorithms; /**< [algorithms] Number of algorithms variation. */
+	ccv_nnc_cmd_exec_f exec;
+	ccv_nnc_cmd_autotune_f autotune;
+} ccv_nnc_cmd_backend_registry_t;
+
+#ifdef __cplusplus
+#define REGISTER_COMMAND_BACKEND(x, y) extern "C" void _register_command_ ## x ## _backend_ ## y
+#define REGISTER_COMMAND(x) extern "C" void _register_command_ ## x
+#else
+#define REGISTER_COMMAND_BACKEND(x, y) void _register_command_ ## x ## _backend_ ## y
+#define REGISTER_COMMAND(x) void _register_command_ ## x
+#endif
+#define FIND_BACKEND(...)
+#define FIND_FILE(...)
+
+// x is the dimension.
+// n[x] is the start point for the filter on y axis, so that we can avoid computing the padding.
+// m[x] shows how long we should loop for filter on y axis, avoid computing the padding too.
+#define SET_BORDER_OFFSET_SIZE_FOR(x, i, hint, wd, ad, n, m) \
+	do { \
+		n[x] = ccv_max(i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - (i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
+		m[x] = wd[x + 1] - n[x] - (i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1] - ccv_min(ad[x + 1], i[x] * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1])); \
+	} while (0)
+
 // Defines common graph visit macro
 // The visitor function / macro takes parameter visitor(node_type* node, int index, int level, int term);
 #define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \

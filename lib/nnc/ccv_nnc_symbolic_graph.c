@@ -259,8 +259,8 @@ static void _ccv_nnc_symbolic_graph_dot_exec_symbol(const int index, const ccv_n
 		fprintf(out, "node%d", index);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
-		fputs("|Compute: ", out);
-		fputs(ccv_nnc_cmd_compute_name(symbol_info->cmd.compute), out);
+		fputs("|Command: ", out);
+		fputs(ccv_nnc_cmd_name(symbol_info->cmd.cmd), out);
 		fputc('}', out);
 	}
 }
@@ -993,7 +993,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 #define visitor(node, idx, ...) \
 	do { \
 		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */ \
-		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_COMPUTE_ATTR_INPLACE)) \
+		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_CMD_ATTR_INPLACE)) \
 		{ \
 			int x, y; \
 			for (x = 0; x < node->input_size; x++) \
@@ -1593,7 +1593,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx; \
 			ccv_nnc_graph_autograd_exec_t* back_exec = autograd_exec + idx; \
 			back_exec->cmd = forw_exec->cmd; \
-			back_exec->cmd.compute += 1; /* Backward command is the one after forward command. */ \
+			back_exec->cmd.cmd += 1; /* Backward command is the one after forward command. */ \
 			assert(ccv_nnc_cmd_is_backward(back_exec->cmd)); \
 			back_exec->output_size = forw_exec->input_size; \
 			back_exec->input_size = forw_exec->output_size; \
@@ -1786,11 +1786,11 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			// This is to sum.
 			for (j = 0; j < exec->input_size; j++)
 				ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, exec->inputs[j]))->symbol));
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_EWSUM_FORWARD, 0, CMD_GENERIC(), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0);
 			exec->symbol = ccv_nnc_graph_exec_symbol(graph, cmd, ccv_array_get(symbols, 0), exec->input_size, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, exec->output))->symbol), 1, 0);
 		} else {
 			// This is to zero.
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_SET_FORWARD, 0, CMD_BLAS(0), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0);
 			exec->symbol = ccv_nnc_graph_exec_symbol(graph, cmd, 0, 0, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, exec->output))->symbol), 1, 0);
 		}
 	}

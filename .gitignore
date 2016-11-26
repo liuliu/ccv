@@ -1,10 +1,13 @@
 *.[oda]
 *.~
 *.swp
+*.gcno
+*.out
 tags
 gh-pages
 *.tests
 *.pyc
+out/
 lib/.CC
 lib/.DEF
 lib/.LN
@@ -31,3 +34,4 @@ tool/*
 config.mk
 build
 site/_site
+site/_doxygen

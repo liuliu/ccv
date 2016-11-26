@@ -44,10 +44,10 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol(symbolic_vgg, ONE_CPU_TENSOR(layer->net.convolutional.count), 0);
 			bias_symbols[i] = bias_symbol;
 			// memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
 			exec_symbol = ccv_nnc_graph_exec_symbol(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol, w_symbol, bias_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
 			exec_symbol = ccv_nnc_graph_exec_symbol(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
 			ccv_nnc_tensor_symbol_t w_symbol = ccv_nnc_tensor_symbol(symbolic_vgg, ONE_CPU_TENSOR(layer->input.node.count, layer->net.full_connect.count), 0);
@@ -56,7 +56,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol(symbolic_vgg, ONE_CPU_TENSOR(layer->net.full_connect.count), 0);
 			bias_symbols[i] = bias_symbol;
 			// memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_GEMM_FORWARD, 0, CMD_GEMM(layer->net.full_connect.count), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(layer->net.full_connect.count), 0);
 			// If the input is not what I expected (array), reshape it.
 			if (input_symbol.info.dim[0] != ccv_nnc_tensor_count(input_symbol.info))
 				input_symbol = ccv_nnc_tensor_symbol_alias(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input_symbol.info)).dim, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input_symbol.info)), 0);
@@ -73,7 +73,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			(layer->type == CCV_CONVNET_CONVOLUTIONAL || layer->type == CCV_CONVNET_FULL_CONNECT))
 		{
 			// Create the ReLU layer.
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_COMPUTE_RELU_FORWARD, 0, CMD_GENERIC(), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0);
 			ccv_nnc_tensor_symbol_t next_symbol = ccv_nnc_tensor_symbol(symbolic_vgg, tensor_symbol.info, 0);
 			exec_symbol = ccv_nnc_graph_exec_symbol(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(tensor_symbol), TENSOR_SYMBOL_LIST(next_symbol), 0);
 			ccv_nnc_graph_exec_symbol_concat(symbolic_vgg, previous_exec_symbol, exec_symbol);
