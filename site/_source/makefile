@@ -4,7 +4,7 @@ include ../../lib/config.mk
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 
-TARGETS = section-001-001.out section-001-002.out
+TARGETS = section-001-001 section-001-002
 
 all: libccv.a $(TARGETS)
 

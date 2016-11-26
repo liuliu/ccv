@@ -11,7 +11,7 @@ all: lib
 lib: libnnc.o
 
 clean:
-	rm -f *.o cpu/*.o gpu/*.o cpu/conv/*.o cpu/gemm/*.o
+	rm -f *.o gpu/*.o cmd/*.o
 
 libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o ccv_nnc_symbolic_graph.o cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB)
 	ld -r $^ -o $@
