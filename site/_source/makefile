@@ -11,7 +11,7 @@ all: libccv.a $(TARGETS)
 clean:
 	${MAKE} clean -C ../../lib ; rm -f *.o $(TARGETS)
 
-$(TARGETS).out: %: %.o libccv.a
+$(TARGETS): %: %.o libccv.a
 	$(CC) -o $@ $< $(LDFLAGS)
 
 libccv.a:
