@@ -3147,7 +3147,7 @@ if test "x$ac_cv_lib_rt_clock_gettime" = xyes; then :
 fi
 
 
-# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
+# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, avutil, swscale
 ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -3605,6 +3605,14 @@ ac_fn_c_check_header_mongrel "$LINENO" "libavformat/avformat.h" "ac_cv_header_li
 if test "x$ac_cv_header_libavformat_avformat_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_AVFORMAT "
  MKLDFLAGS="$MKLDFLAGS-lavformat "
+
+fi
+
+
+ac_fn_c_check_header_mongrel "$LINENO" "libavutil/avutil.h" "ac_cv_header_libavutil_avutil_h" "$ac_includes_default"
+if test "x$ac_cv_header_libavutil_avutil_h" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_AVUTIL "
+ MKLDFLAGS="$MKLDFLAGS-lavutil "
 
 fi
 

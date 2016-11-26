@@ -55,7 +55,7 @@ fi
 AC_CHECK_LIB(rt, clock_gettime,
 			[AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lrt "])])
 
-# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, swscale
+# check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, avutil, swscale
 AC_CHECK_HEADER([png.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
 AC_CHECK_HEADER([jpeglib.h],
@@ -72,6 +72,8 @@ AC_CHECK_HEADER([libavcodec/avcodec.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVCODEC "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavcodec "])])
 AC_CHECK_HEADER([libavformat/avformat.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVFORMAT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavformat "])])
+AC_CHECK_HEADER([libavutil/avutil.h],
+				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVUTIL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavutil "])])
 AC_CHECK_HEADER([libswscale/swscale.h],
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SWSCALE "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lswscale "])])
 # try to find CPU parallel libraries, OpenMP or libdispatch, we will prefer OpenMP when possible.
