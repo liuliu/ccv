@@ -31,7 +31,7 @@ bin/*.diff
 bin/data/*
 data/*
 tool/*
-config.mk
+lib/config.mk
 build
 site/_site
 site/_doxygen

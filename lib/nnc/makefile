@@ -4,7 +4,7 @@ include ../config.mk
 CFLAGS := -O3 -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-.PHONY: all lib clean libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
+.PHONY: all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
 
 all: lib
 
@@ -24,6 +24,9 @@ libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o ccv_nnc_symbolic_graph.
 
 cmd/libnnc-cmd.o:
 	${MAKE} -C ./cmd
+
+cmd:
+	${MAKE} -C ./cmd cmd
 
 gpu/libnnc-compat-cuda.o:
 	${MAKE} -C ./gpu

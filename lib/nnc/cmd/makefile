@@ -5,7 +5,7 @@ include config.mk
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
-.PHONY: all lib clean libnnc-cmd.o $(CUDA_CMD_LIB)
+.PHONY: all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
 
 all: lib
 
@@ -13,6 +13,9 @@ lib: libnnc-cmd.o
 
 clean:
 	rm -f *.o
+
+cmd:
+	./build-cmd.rb .
 
 libnnc-cmd.o: $(CMD_OBJS) $(CUDA_CMD_LIB)
 	ld -r $^ -o $@
