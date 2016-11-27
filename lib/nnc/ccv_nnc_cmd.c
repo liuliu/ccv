@@ -36,7 +36,7 @@ const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
 	const int idx = _ccv_nnc_cmd_ph(cmd);
 	assert(idx >= 0);
-	assert(idx < CCV_NNC_COUNT - 2);
+	assert(idx < sizeof(init_map) / sizeof(init_map[0]));
 	return init_map[idx].name;
 }
 
@@ -287,7 +287,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
-	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
+	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
@@ -322,7 +322,7 @@ int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 	assert(cmd.cmd != CCV_NNC_CUSTOM);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
-	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
+	assert(cmd_idx >= 0 && cmd_idx <sizeof(init_map) / sizeof(init_map[0]));
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	return !!(cmd_registry.flags & flags);
