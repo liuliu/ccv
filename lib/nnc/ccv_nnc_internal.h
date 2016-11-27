@@ -14,14 +14,12 @@
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 
-typedef ccv_nnc_hint_t (*ccv_nnc_cmd_hint_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
 typedef void (*ccv_nnc_cmd_tensor_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
 typedef int (*ccv_nnc_cmd_bitmask_f)(const uint64_t input_bitmask, const uint64_t output_bitmask);
 
 typedef struct {
 	int flags;
 	ccv_nnc_cmd_bitmask_f bitmask;
-	ccv_nnc_cmd_hint_auto_f hint_auto;
 	ccv_nnc_cmd_tensor_auto_f tensor_auto;
 } ccv_nnc_cmd_registry_t;
 
