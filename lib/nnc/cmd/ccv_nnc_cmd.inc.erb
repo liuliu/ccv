@@ -6,7 +6,7 @@ static ccv_nnc_cmd_backend_init_t backend_init_map[] = {<% backend_init_map.each
 	{.name = "<%= init[:name] %>", .backend = 0x<%= init[:backend] %>},<% end %>
 };
 
-static inline int _ccv_nnc_cmd_hash(const uint32_t cmd)
+static inline int _ccv_nnc_cmd_ph(const uint32_t cmd)
 {
 	switch ((cmd >> <%= command_chd[:top_level_params][:idx] + 1 %>) % <%= command_chd[:top_level_params][:n] %>)
 	{<% command_chd[:bucket_params].each_with_index do |bucket_params, i| %>
@@ -16,7 +16,7 @@ static inline int _ccv_nnc_cmd_hash(const uint32_t cmd)
 	}
 }
 
-static inline int _ccv_nnc_cmd_backend_hash(const uint32_t backend)
+static inline int _ccv_nnc_cmd_backend_ph(const uint32_t backend)
 {
 	switch ((backend >> <%= backend_chd[:top_level_params][:idx] %>) % <%= backend_chd[:top_level_params][:n] %>)
 	{<% backend_chd[:bucket_params].each_with_index do |bucket_params, i| %>

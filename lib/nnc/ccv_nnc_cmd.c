@@ -34,7 +34,7 @@ void ccv_nnc_init(void)
 
 const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
-	const int idx = _ccv_nnc_cmd_hash(cmd);
+	const int idx = _ccv_nnc_cmd_ph(cmd);
 	assert(idx >= 0);
 	assert(idx < CCV_NNC_COUNT - 2);
 	return init_map[idx].name;
@@ -42,7 +42,7 @@ const char* ccv_nnc_cmd_name(const uint32_t cmd)
 
 const char* ccv_nnc_cmd_backend_name(const uint32_t backend)
 {
-	const int idx = _ccv_nnc_cmd_backend_hash(backend);
+	const int idx = _ccv_nnc_cmd_backend_ph(backend);
 	assert(idx >= 0);
 	assert(idx < CCV_NNC_BACKEND_COUNT);
 	return backend_init_map[idx].name;
@@ -179,7 +179,7 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 	int i;
 	for (i = 0; i < output_size; i++)
 		outputs[i] = z; // Reset the outputs.
-	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.tensor_auto)
 		registry.tensor_auto(cmd.info, inputs, input_size, hint, outputs, output_size);
@@ -223,7 +223,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	// Otherwise, we are good to go.
 	ccv_nnc_cmd_t tuned_cmd = cmd;
 	int64_t best_measured = -1;
-	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	// We need to have trial loop through all the data.
 	for (k = 0; k < AUTO_TUNE_TRIAL_SIZE; k++)
 	{
@@ -285,8 +285,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
-	const int backend_idx = _ccv_nnc_cmd_backend_hash(cmd.backend);
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
@@ -320,8 +320,8 @@ int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 {
 	// If it is a custom command, just apply it directly.
 	assert(cmd.cmd != CCV_NNC_CUSTOM);
-	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
-	const int backend_idx = _ccv_nnc_cmd_backend_hash(cmd.backend);
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx < CCV_NNC_COUNT - 2);
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;

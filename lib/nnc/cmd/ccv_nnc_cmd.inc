@@ -38,7 +38,7 @@ static ccv_nnc_cmd_backend_init_t backend_init_map[] = {
 	{.name = "CCV_NNC_BACKEND_GPU_CUDNN", .backend = 0x854b679a},
 };
 
-static inline int _ccv_nnc_cmd_hash(const uint32_t cmd)
+static inline int _ccv_nnc_cmd_ph(const uint32_t cmd)
 {
 	switch ((cmd >> 7) % 2)
 	{
@@ -50,7 +50,7 @@ static inline int _ccv_nnc_cmd_hash(const uint32_t cmd)
 	}
 }
 
-static inline int _ccv_nnc_cmd_backend_hash(const uint32_t backend)
+static inline int _ccv_nnc_cmd_backend_ph(const uint32_t backend)
 {
 	switch ((backend >> 0) % 1)
 	{
