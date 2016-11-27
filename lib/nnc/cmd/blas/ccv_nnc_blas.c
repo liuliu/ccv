@@ -20,16 +20,29 @@ static int _ccv_nnc_gemm_back_bitmask(const uint64_t input_bitmask, const uint64
 	return 0;
 }
 
+static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+{
+	assert(output_size == 1);
+	outputs[0].type = inputs[0].type;
+	outputs[0].format = inputs[0].format;
+	outputs[0].dim[1] = inputs[0].dim[1]; // batch size.
+	outputs[0].dim[0] = inputs[1].dim[1]; // from the weight matrix.
+	assert(inputs[1].dim[1] == cmd.blas.count);
+	assert(inputs[1].dim[1] == inputs[2].dim[0]); // from the bias matrix.
+}
+
 REGISTER_COMMAND(CCV_NNC_GEMM_FORWARD)(ccv_nnc_cmd_registry_t* registry)
 	FIND_BACKEND(ccv_nnc_gemm_cpu_ref.c, ccv_nnc_gemm_cpu_opt.c)
 {
 	registry->bitmask = _ccv_nnc_gemm_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_gemm_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_GEMM_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
 	FIND_BACKEND(ccv_nnc_gemm_cpu_ref.c, ccv_nnc_gemm_cpu_opt.c)
 {
 	registry->bitmask = _ccv_nnc_gemm_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
 }
 
 static int _ccv_nnc_axpy_forw_bitmask(const uint64_t input_bitmask, const uint64_t output_bitmask)
@@ -61,6 +74,7 @@ REGISTER_COMMAND(CCV_NNC_AXPY_FORWARD)(ccv_nnc_cmd_registry_t* registry)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_axpy_forw_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
 
 REGISTER_COMMAND(CCV_NNC_AXPY_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
@@ -68,4 +82,5 @@ REGISTER_COMMAND(CCV_NNC_AXPY_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_axpy_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }

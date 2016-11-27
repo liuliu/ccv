@@ -21,6 +21,7 @@ REGISTER_COMMAND(CCV_NNC_SOFTMAX_FORWARD)(ccv_nnc_cmd_registry_t* registry)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_softmax_forw_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
 
 REGISTER_COMMAND(CCV_NNC_SOFTMAX_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
@@ -28,4 +29,5 @@ REGISTER_COMMAND(CCV_NNC_SOFTMAX_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_softmax_back_bitmask;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }

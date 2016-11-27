@@ -145,28 +145,27 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 	return hint_auto;
 }
 
-static void _ccv_nnc_hint_tensor_dim_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
+void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
 {
 	int i;
-	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
-	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
-	{
-		int stride = ccv_max(1, hint.stride.dim[i]);
-		b->dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.info.size.dim[i]) / stride + 1;
-	}
+	assert(output_size <= input_size);
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[i];
 }
 
-static void _ccv_nnc_hint_tensor_dim_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
+void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
 {
 	int i;
-	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
-	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
-	{
-		int stride = ccv_max(1, hint.stride.dim[i]);
-		b->dim[i] = (a.dim[i] - 1) * stride - hint.border.begin[i] - hint.border.end[i] + cmd.info.size.dim[i];
-	}
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[0];
+}
+
+void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+{
+	int i;
+	assert(output_size < input_size);
+	for (i = 0; i < output_size; i++)
+		outputs[i] = inputs[i + 1];
 }
 
 void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
@@ -180,104 +179,14 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 	int i;
 	for (i = 0; i < output_size; i++)
 		outputs[i] = z; // Reset the outputs.
-	switch (cmd.cmd)
-	{
-		// For neural networks
-		case CCV_NNC_CONVOLUTION_FORWARD: {
-			assert(output_size == 1);
-			outputs[0].type = inputs[0].type;
-			outputs[0].format = inputs[0].format;
-			// Get the channel output from the weight matrix.
-			int count = ccv_nnc_tensor_get_n(inputs[1]);
-			assert(count == cmd.info.convolution.count);
-			assert(count == inputs[2].dim[0]); // from the bias matrix.
-			ccv_nnc_tensor_set_c(outputs, count);
-			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
-			break;
-		}
-		case CCV_NNC_GEMM_FORWARD: {
-			assert(output_size == 1);
-			outputs[0].type = inputs[0].type;
-			outputs[0].format = inputs[0].format;
-			outputs[0].dim[1] = inputs[0].dim[1]; // batch size.
-			outputs[0].dim[0] = inputs[1].dim[1]; // from the weight matrix.
-			assert(inputs[1].dim[1] == cmd.info.blas.count);
-			assert(inputs[1].dim[1] == inputs[2].dim[0]); // from the bias matrix.
-			break;
-		}
-		case CCV_NNC_MAX_POOL_FORWARD:
-		case CCV_NNC_AVERAGE_POOL_FORWARD: {
-			assert(output_size == 1);
-			outputs[0].type = inputs[0].type;
-			outputs[0].format = inputs[0].format;
-			// Get channels from the original input.
-			int count = ccv_nnc_tensor_get_c(inputs[0]);
-			ccv_nnc_tensor_set_c(outputs, count);
-			_ccv_nnc_hint_tensor_dim_forw(cmd, inputs[0], hint, outputs);
-			break;
-		}
-		case CCV_NNC_SOFTMAX_FORWARD:
-		case CCV_NNC_RELU_FORWARD:
-		// BLAS
-		case CCV_NNC_AXPY_FORWARD:
-		// Element-wise computation
-		case CCV_NNC_EWSUM_FORWARD:
-		case CCV_NNC_EWPROD_FORWARD:
-		case CCV_NNC_EWDIV_FORWARD:
-		case CCV_NNC_EWEXP_FORWARD:
-		case CCV_NNC_EWLOG_FORWARD: {
-			assert(output_size == 1);
-			// All above have 1 output, therefore, it just copy from the first input.
-			outputs[0] = inputs[0];
-			break;
-		}
-		// For neural networks
-		case CCV_NNC_CONVOLUTION_BACKWARD:
-		case CCV_NNC_GEMM_BACKWARD: {
-			// For both cases, we just copy from inputs.
-			assert(output_size < input_size);
-			for (i = 0; i < output_size; i++)
-				outputs[i] = inputs[i + 1];
-			break;
-		}
-		case CCV_NNC_MAX_POOL_BACKWARD:
-		case CCV_NNC_AVERAGE_POOL_BACKWARD: {
-			assert(output_size == 1);
-			outputs[0].type = inputs[0].type;
-			outputs[0].format = inputs[0].format;
-			// Get channels from the original input.
-			int count = ccv_nnc_tensor_get_c(inputs[0]);
-			ccv_nnc_tensor_set_c(outputs, count);
-			_ccv_nnc_hint_tensor_dim_back(cmd, inputs[0], hint, outputs);
-			break;
-		}
-		case CCV_NNC_SOFTMAX_BACKWARD:
-		case CCV_NNC_RELU_BACKWARD:
-		// BLAS
-		case CCV_NNC_AXPY_BACKWARD:
-		// Element-wise computation
-		case CCV_NNC_EWSUM_BACKWARD:
-		case CCV_NNC_EWPROD_BACKWARD:
-		case CCV_NNC_EWDIV_BACKWARD:
-		case CCV_NNC_EWEXP_BACKWARD:
-		case CCV_NNC_EWLOG_BACKWARD: {
-			assert(input_size >= 1);
-			// All above have 1 input, therefore, outputs just copy from the input.
-			for (i = 0; i < output_size; i++)
-				outputs[i] = inputs[0];
-			break;
-		}
-		// Other transforms
-		case CCV_NNC_DATA_TRANSFER_FORWARD:
-		case CCV_NNC_DATA_TRANSFER_BACKWARD:
-		case CCV_NNC_FORMAT_TRANSFORM_FORWARD:
-		case CCV_NNC_FORMAT_TRANSFORM_BACKWARD: {
-			assert(output_size == input_size);
-			for (i = 0; i < input_size; i++)
-				outputs[i] = inputs[i];
-			break;
-		}
-	}
+	const int cmd_idx = _ccv_nnc_cmd_hash(cmd.cmd);
+	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
+	if (registry.tensor_auto)
+		registry.tensor_auto(cmd.info, inputs, input_size, hint, outputs, output_size);
+	else if (ccv_nnc_cmd_is_forward(cmd)) // For forward, the default auto is forward_from_inputs
+		ccv_nnc_hint_tensor_auto_forward_from_inputs(cmd.info, inputs, input_size, hint, outputs, output_size);
+	else // For backward, the default auto is backward_from_inputs
+		ccv_nnc_hint_tensor_auto_backward_from_inputs(cmd.info, inputs, input_size, hint, outputs, output_size);
 }
 
 // This returns absolute time.

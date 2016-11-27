@@ -25,15 +25,6 @@ enum {
 	CCV_NNC_CMD_ATTR_NULL_IS_ONES = 0x08, // Accept nullptr input as if these are tensors with 1s (unit).
 };
 
-typedef struct {
-	const char* name;
-	int attrs; // List of attributes for this computation. These attributes enables some of the symbolic graph / tensor allocation optimizations, it needs to be implemented exactly the same cross different backends.
-	struct {
-		uint64_t input;
-		uint64_t output;
-	} bit_patterns[4]; // Maximum allow 4 patterns for input / output pairs, if this is not enough, we can always add more.
-} ccv_nnc_compute_attr_t;
-
 enum {
 	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
 	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
@@ -99,14 +90,6 @@ typedef struct ccv_nnc_cmd_s {
 typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
-
-typedef struct {
-	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
-	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
-	int algorithms; /**< [algorithms] Number of algorithms variation. */
-	ccv_nnc_cmd_exec_f exec;
-	ccv_nnc_cmd_autotune_f autotune;
-} ccv_nnc_cmd_api_t;
 
 /**
  * Level-0 API

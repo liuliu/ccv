@@ -12,7 +12,7 @@ all: lib
 lib: libnnc-cmd.o
 
 clean:
-	rm -f *.o
+	find . -type f -name '*.o' -exec rm {} +
 
 cmd:
 	./build-cmd.rb .

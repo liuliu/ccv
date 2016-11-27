@@ -14,9 +14,15 @@
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 
+typedef ccv_nnc_hint_t (*ccv_nnc_cmd_hint_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
+typedef void (*ccv_nnc_cmd_tensor_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
+typedef int (*ccv_nnc_cmd_bitmask_f)(const uint64_t input_bitmask, const uint64_t output_bitmask);
+
 typedef struct {
 	int flags;
-	int(*bitmask)(const uint64_t input_bitmask, const uint64_t output_bitmask);
+	ccv_nnc_cmd_bitmask_f bitmask;
+	ccv_nnc_cmd_hint_auto_f hint_auto;
+	ccv_nnc_cmd_tensor_auto_f tensor_auto;
 } ccv_nnc_cmd_registry_t;
 
 typedef struct {
@@ -26,6 +32,34 @@ typedef struct {
 	ccv_nnc_cmd_exec_f exec;
 	ccv_nnc_cmd_autotune_f autotune;
 } ccv_nnc_cmd_backend_registry_t;
+
+static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
+{
+	int i;
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
+	{
+		int stride = ccv_max(1, hint.stride.dim[i]);
+		b->dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.size.dim[i]) / stride + 1;
+	}
+}
+
+static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
+{
+	int i;
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
+	{
+		int stride = ccv_max(1, hint.stride.dim[i]);
+		b->dim[i] = (a.dim[i] - 1) * stride - hint.border.begin[i] - hint.border.end[i] + cmd.size.dim[i];
+	}
+}
+
+void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
+void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
+void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
 
 #ifdef __cplusplus
 #define REGISTER_COMMAND_BACKEND(x, y) extern "C" void _register_command_ ## x ## _backend_ ## y
