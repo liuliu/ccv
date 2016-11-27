@@ -1,3 +1,6 @@
+debug:
+	${MAKE} -C unit debug ; ${MAKE} -C regression debug ; ${MAKE} -C unit/nnc debug
+
 all:
 	${MAKE} -C unit ; ${MAKE} -C regression ; ${MAKE} -C unit/nnc
 
