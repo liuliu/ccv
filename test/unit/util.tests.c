@@ -182,6 +182,8 @@ TEST_CASE("loop over sparse matrix")
 #undef block
 	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
 	ccv_matrix_free(mat);
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
 }
 
 TEST_CASE("loop over column major sparse matrix")
@@ -209,6 +211,8 @@ TEST_CASE("loop over column major sparse matrix")
 #undef block
 	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
 	ccv_matrix_free(mat);
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
 }
 
 TEST_CASE("loop over sparse matrix with dense vector")
@@ -236,6 +240,8 @@ TEST_CASE("loop over sparse matrix with dense vector")
 #undef block
 	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
 	ccv_matrix_free(mat);
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
 }
 
 TEST_CASE("loop over sparse matrix vector")
@@ -263,6 +269,8 @@ TEST_CASE("loop over sparse matrix vector")
 #undef block
 	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
 	ccv_matrix_free(mat);
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
 }
 
 TEST_CASE("loop over sparse matrix dense vector")
@@ -290,6 +298,8 @@ TEST_CASE("loop over sparse matrix dense vector")
 #undef block
 	REQUIRE_MATRIX_EQ(a, b, "matrix should be exactly equal when looped over the sparse one");
 	ccv_matrix_free(mat);
+	ccv_matrix_free(a);
+	ccv_matrix_free(b);
 }
 
 TEST_CASE("matrix slice")

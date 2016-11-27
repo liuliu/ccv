@@ -1,13 +1,20 @@
 include ../../../lib/config.mk
 
-#CC += -g -fsanitize=address -fno-omit-frame-pointer # -fprofile-arcs -ftest-coverage
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
 TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests winograd.tests transform.tests symbolic.graph.tests autograd.tests
 
+.PHONY: release debug all test clean
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
+
 all: $(TARGETS)
 
-test: all
+test:
 	@for test in $(TARGETS) ; do ./"$$test" || exit ; done
 
 clean:

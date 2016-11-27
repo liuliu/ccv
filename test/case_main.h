@@ -45,11 +45,15 @@ int main(int argc, char** argv)
 	assert(test_size % case_size == 0);
 	int total = test_size / case_size;
 	int i, pass = 0, fail = 0;
+	if (__test_case_setup)
+		__test_case_setup();
 	for (i = 0; i < total; i++)
 	{
 		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 		case_run(test_case, i, total, &pass, &fail);
 	}
+	if (__test_case_teardown)
+		__test_case_teardown();
 	case_conclude(pass, fail);
 	return fail;
 }
@@ -368,6 +372,8 @@ int main(int argc, char** argv)
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
 			total++;
 	}
+	if (__test_case_setup)
+		__test_case_setup();
 	int j = 0, pass = 0, fail = 0;
 	for (i = 0; i < len; i++)
 	{
@@ -375,6 +381,8 @@ int main(int argc, char** argv)
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
 			case_run(test_case, j++, total, &pass, &fail);
 	}
+	if (__test_case_teardown)
+		__test_case_teardown();
 	case_conclude(pass, fail);
 	return fail;
 }

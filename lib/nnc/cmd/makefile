@@ -1,11 +1,15 @@
 include ../../config.mk
 include config.mk
 
-#CC += -g -fno-omit-frame-pointer -fsanitize=address# -fprofile-arcs -ftest-coverage
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
-.PHONY: all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
+.PHONY: release debug all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
 
 all: lib
 

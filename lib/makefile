@@ -1,11 +1,15 @@
 include config.mk
 
-#CC += -g -fno-omit-frame-pointer -fsanitize=address# -fprofile-arcs -ftest-coverage
 CFLAGS := -O3 -Wall -I"." $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
 # Make nnc/libnnc.o a phony target therefore it will be triggered every time.
-.PHONY: all lib clean nnc/libnnc.o
+.PHONY: release debug all lib clean nnc/libnnc.o
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
 
 all: lib ../samples/image-net-2012-vgg-d.sqlite3
 

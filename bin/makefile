@@ -1,10 +1,17 @@
 include ../lib/config.mk
 
-# CC += -g -fsanitize=address -fno-omit-frame-pointer # -fprofile-arcs -ftest-coverage
 LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../lib" $(CFLAGS)
 
 TARGETS = bbffmt msermatch siftmatch bbfcreate bbfdetect scdcreate scddetect swtcreate swtdetect dpmcreate dpmdetect tld icfcreate icfdetect icfoptimize cifar-10 image-net cnnclassify aflw
+
+.PHONY: release debug all clean
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
 
 all: libccv.a $(TARGETS) .gitignore
 

@@ -1,10 +1,14 @@
 include ../../config.mk
 
-#CC += -g -fno-omit-frame-pointer -fsanitize=address# -fprofile-arcs -ftest-coverage
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
-.PHONY: all lib clean libnnc-compat-cuda.o
+.PHONY: release debug all lib clean libnnc-compat-cuda.o
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
 
 all: lib
 

@@ -43,6 +43,12 @@
 
 typedef void (*case_f)(char*, int*);
 
+void __attribute__((weak)) __test_case_setup(void);
+void __attribute__((weak)) __test_case_teardown(void);
+
+#define TEST_SETUP() void __test_case_setup(void)
+#define TEST_TEARDOWN() void __test_case_teardown(void)
+
 #ifdef __ELF__
 // in ELF object format, we can simply query custom section rather than scan through the whole binary memory
 // to find function pointer. We do this whenever possible because in this way, we don't have access error

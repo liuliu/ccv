@@ -1,9 +1,16 @@
 include ../../../lib/config.mk
 
-#CC += -fno-omit-frame-pointer -fsanitize=address
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../../lib" -lineinfo $(NVFLAGS)
+
+.PHONY: release debug all clean
+
+release: all
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: all
 
 all: conv-cudnn-forw conv-cudnn-back
 
