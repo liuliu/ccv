@@ -1,3 +1,5 @@
+release: all
+
 debug:
 	${MAKE} -C unit debug ; ${MAKE} -C regression debug ; ${MAKE} -C unit/nnc debug
 
