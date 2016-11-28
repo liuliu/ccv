@@ -7,6 +7,7 @@ tags
 gh-pages
 *.tests
 *.pyc
+.dep.mk
 out/
 lib/.CC
 lib/.DEF

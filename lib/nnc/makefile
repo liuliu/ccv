@@ -3,6 +3,10 @@ include ../config.mk
 CFLAGS := -O3 -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
+SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c
+
+SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
+
 .PHONY: release debug all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
 
 release: all
@@ -17,13 +21,13 @@ lib: libnnc.o
 clean:
 	rm -f *.o gpu/*.o && ${MAKE} -C ./gpu clean && ${MAKE} -C ./cmd clean
 
-libnnc.o: ccv_nnc_cmd.o ccv_nnc_tensor.o ccv_nnc_graph.o ccv_nnc_symbolic_graph.o cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB)
+libnnc.o: $(SRC_OBJS) cmd/libnnc-cmd.o $(CUDA_COMPAT_LIB)
 	ld -r $^ -o $@
 
-%.o: %.c gpu/ccv_nnc_cuda.h ../ccv.h ../ccv_internal.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h
+%.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu gpu/ccv_nnc_cuda.h ../ccv.h ccv_nnc_tfb.h ccv_nnc.h ccv_nnc_easy.h ccv_nnc_internal.h
+%.o: %.cu
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
 
 cmd/libnnc-cmd.o:
@@ -35,3 +39,8 @@ cmd:
 gpu/libnnc-compat-cuda.o:
 	${MAKE} -C ./gpu
 
+dep: .dep.mk
+.dep.mk: $(SRCS)
+	$(CC) $(CFLAGS) -MM $^ > .dep.mk
+
+-include .dep.mk

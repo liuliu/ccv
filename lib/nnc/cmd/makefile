@@ -1,6 +1,9 @@
 include ../../config.mk
 include config.mk
 
+CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CMD_SRCS)))
+CUDA_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_CMD_SRCS)))
+
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
@@ -27,8 +30,17 @@ libnnc-cmd.o: $(CMD_OBJS) $(CUDA_CMD_LIB)
 libnnc-cmd-cuda.o: $(CUDA_CMD_OBJS)
 	ld -r $^ -o $@
 
-%.o: %.c ../../ccv.h ../../ccv_internal.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h
+%.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
 
-%.o: %.cu ../../ccv.h ../ccv_nnc_tfb.h ../ccv_nnc.h ../ccv_nnc_easy.h ../ccv_nnc_internal.h
+%.o: %.cu
 	$(NVCC) $< -o $@ -c $(NVFLAGS)
+
+dep: .dep.mk
+.dep.mk: $(CMD_SRCS) $(CUDA_CMD_SRCS)
+	$(CC) $(CFLAGS) -MM $(patsubst %.cu,,$^) > .dep.mk
+ifneq ($(CUDA_CMD_SRCS),)
+	$(NVCC) $(NVFLAGS) -M $(patsubst %.c,,$^) >> .dep.mk
+endif
+
+-include .dep.mk

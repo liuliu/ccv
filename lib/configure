@@ -635,7 +635,7 @@ NVCC
 CC
 CUDA_CMD_LIB
 CUDA_COMPAT_LIB
-CUDA_OBJS
+CUDA_SRCS
 MKLDFLAGS
 MKCFLAGS
 DEFINE_MACROS
@@ -2053,7 +2053,7 @@ MKCFLAGS=""
 
 MKLDFLAGS="-lm "
 
-CUDA_OBJS="cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"
+CUDA_SRCS="cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_convolutional.cu cuda/convnet/cwc_convnet_rnorm.cu cuda/convnet/cwc_convnet_pool.cu cuda/convnet/cwc_convnet_full_connect.cu"
 
 CUDA_COMPAT_LIB="gpu/libnnc-compat-cuda.o"
 
@@ -3936,7 +3936,7 @@ $as_echo "yes, x86_64" >&6; }
 $as_echo "yes, i386" >&6; }
 	fi
 else
-	CUDA_OBJS=""
+	CUDA_SRCS=""
 
 	CUDA_COMPAT_LIB=""
 

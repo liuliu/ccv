@@ -3,7 +3,7 @@ AC_INIT([libccv], [0.6])
 AC_SUBST(DEFINE_MACROS, [""])
 AC_SUBST(MKCFLAGS, [""])
 AC_SUBST(MKLDFLAGS, ["-lm "])
-AC_SUBST(CUDA_OBJS, ["cuda/cwc_convnet.o cuda/cwc_convnet_ext.o cuda/convnet/cwc_convnet_convolutional.o cuda/convnet/cwc_convnet_rnorm.o cuda/convnet/cwc_convnet_pool.o cuda/convnet/cwc_convnet_full_connect.o"])
+AC_SUBST(CUDA_SRCS, ["cuda/cwc_convnet.cu cuda/cwc_convnet_ext.c cuda/convnet/cwc_convnet_convolutional.cu cuda/convnet/cwc_convnet_rnorm.cu cuda/convnet/cwc_convnet_pool.cu cuda/convnet/cwc_convnet_full_connect.cu"])
 AC_SUBST(CUDA_COMPAT_LIB, ["gpu/libnnc-compat-cuda.o"])
 AC_SUBST(CUDA_CMD_LIB, ["libnnc-cmd-cuda.o"])
 
@@ -118,7 +118,7 @@ if [[ -d "$cuda_prefix" ]]; then
 		AC_MSG_RESULT([yes, i386])
 	fi
 else
-	AC_SUBST(CUDA_OBJS, [""])
+	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])
 	AC_SUBST(CUDA_CMD_LIB, [""])
 	AC_MSG_RESULT(no)
