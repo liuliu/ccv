@@ -1,0 +1,11 @@
+algebra.tests
+util.tests
+numeric.tests
+basic.tests
+image_processing.tests
+memory.tests
+io.tests
+transform.tests
+convnet.tests
+3rdparty.tests
+output.tests

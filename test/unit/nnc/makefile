@@ -4,7 +4,11 @@ LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
 TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests winograd.tests transform.tests symbolic.graph.tests autograd.tests
 
-.PHONY: release debug all test clean
+TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
+
+.PRECIOUS: $(patsubst %,%.o,$(TARGETS))
+
+.PHONY: release debug all test clean dep
 
 release: all
 
@@ -26,5 +30,14 @@ clean:
 libccv.a:
 	${MAKE} -C ../../../lib
 
-%.o: %.c ../../../lib/ccv.h ../../../lib/nnc/ccv_nnc_tfb.h
+%.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
+
+.gitignore:
+	echo $(TARGETS) | tr ' ' '\n' > .gitignore
+
+dep: .dep.mk
+.dep.mk: $(TARGET_SRCS)
+	$(CC) $(CFLAGS) -MM $^ > .dep.mk
+
+-include .dep.mk

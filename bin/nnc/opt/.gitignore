@@ -1,0 +1,7 @@
+auto-tune-conv
+auto-tune-gemm
+conv-4x4-3x3-winograd
+conv-gemm
+conv-opt
+gemm-opt
+gemm-sys

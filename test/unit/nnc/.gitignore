@@ -1,0 +1,10 @@
+tfb.tests
+tensor.tests
+forward.tests
+backward.tests
+gradient.tests
+graph.tests
+winograd.tests
+transform.tests
+symbolic.graph.tests
+autograd.tests
