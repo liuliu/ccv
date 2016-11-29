@@ -1924,6 +1924,8 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			for (j = 0; j < autograd_tensor_version[i].ref_version->rnum; j++)
 			{
 				ccv_nnc_tensor_ref_t* ref_version = (ccv_nnc_tensor_ref_t*)ccv_array_get(autograd_tensor_version[i].ref_version, j);
+				if (ref_version->exec_registry)
+					ccv_array_free(ref_version->exec_registry);
 				if (ref_version->alias_registry)
 					ccv_array_free(ref_version->alias_registry);
 			}
