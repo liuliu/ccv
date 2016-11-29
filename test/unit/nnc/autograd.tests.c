@@ -5,9 +5,13 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 
-TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
+TEST_SETUP()
 {
 	ccv_nnc_init();
+}
+
+TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
+{
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t one = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "1");
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "x");
@@ -52,7 +56,6 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 
 TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.38")
 {
-	ccv_nnc_init();
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t one = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "1");
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "x");

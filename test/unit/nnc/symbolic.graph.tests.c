@@ -6,9 +6,13 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
-TEST_CASE("compile a simple symbolic graph with flow")
+TEST_SETUP()
 {
 	ccv_nnc_init();
+}
+
+TEST_CASE("compile a simple symbolic graph with flow")
+{
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(2, 21, 31), "a");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(4, 21, 31), "b");

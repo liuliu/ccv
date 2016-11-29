@@ -5,13 +5,17 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
+TEST_SETUP()
+{
+	ccv_nnc_init();
+}
+
 // five-stencil constants
 static double fs[4] = { 1, -8, 8, -1 };
 static double fsh[4] = { -2, -1, 1, 2 };
 
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network")
 {
-	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);
 	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);

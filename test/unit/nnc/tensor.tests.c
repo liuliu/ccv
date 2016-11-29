@@ -5,6 +5,11 @@
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
 
+TEST_SETUP()
+{
+	ccv_nnc_init();
+}
+
 TEST_CASE("zero out a tensor")
 {
 	ccv_nnc_tensor_param_t params = {
@@ -88,7 +93,6 @@ TEST_CASE("zero out a tensor view")
 
 TEST_CASE("hint tensor")
 {
-	ccv_nnc_init();
 	ccv_nnc_tensor_param_t a = ONE_CPU_TENSOR(3, 128, 234);
 	ccv_nnc_hint_t hint = {
 		.border = {

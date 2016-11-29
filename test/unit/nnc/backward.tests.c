@@ -5,9 +5,13 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 
-TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation")
+TEST_SETUP()
 {
 	ccv_nnc_init();
+}
+
+TEST_CASE("convolutional network of 3x5 on 21x31 for error backward propagation")
+{
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(32, 21, 31), 0);
 	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(32, 3, 3, 5), 0);

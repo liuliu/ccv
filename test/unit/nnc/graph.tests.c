@@ -6,6 +6,11 @@
 #include <nnc/ccv_nnc_easy.h>
 #include "3rdparty/dsfmt/dSFMT.h"
 
+TEST_SETUP()
+{
+	ccv_nnc_init();
+}
+
 static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	int i;
@@ -20,7 +25,6 @@ static int _ccv_nnc_custom_24_loss_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_h
 
 TEST_CASE("run simple graph network")
 {
-	ccv_nnc_init();
 	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 21, 31), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 21, 31), 0);

@@ -6,9 +6,13 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 
-TEST_CASE("data transfer between different tensor views")
+TEST_SETUP()
 {
 	ccv_nnc_init();
+}
+
+TEST_CASE("data transfer between different tensor views")
+{
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(128, 56, 56), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(64, 32, 24), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, ccv_nnc_cmd_auto, 0);
@@ -54,7 +58,6 @@ TEST_CASE("data transfer between different tensor views")
 
 TEST_CASE("format transform between NHWC and NCHW tensors")
 {
-	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(2, 3, 4), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(3, 4, 2), 0);
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0);
@@ -99,7 +102,6 @@ TEST_CASE("format transform between NHWC and NCHW tensors")
 
 TEST_CASE("format transform between NHWC and NCHW tensor views")
 {
-	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(5, 6, 7), 0);
 	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, DIM_ALLOC(1, 2, 3), DIM_ALLOC(2, 3, 4));
 	memset(a->data.f32, 0, sizeof(float) * 5 * 6 * 7);

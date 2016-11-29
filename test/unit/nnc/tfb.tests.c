@@ -5,6 +5,11 @@
 #include "ccv_case.h"
 #include "nnc/ccv_nnc.h"
 
+TEST_SETUP()
+{
+	ccv_nnc_init();
+}
+
 #if CCV_NNC_TENSOR_TFB
 TEST_CASE("toll-free bridging between ccv_nnc_tensor_t and ccv_dense_matrix_t")
 {
