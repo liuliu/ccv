@@ -1767,29 +1767,22 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		// The tensor version should have ref_version, and only one now (after sum up).
 		assert(tensor_ver->c == tensor_ver->ref_version->rnum - 1);
 	}
-	// Generate required symbols based on the information gathered above. First, generate real symbols.
+	// Generate required symbols based on the information gathered above.
 	for (i = 0; i < autograd_tensor_symbol->rnum; i++)
 	{
 		ccv_nnc_autograd_tensor_symbol_t* symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, i);
 		assert(symbol->d >= 0);
 		assert(symbol->d < tensor_symbol_size);
+		ccv_nnc_tensor_symbol_info_t* forw_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol->d);
 		if (!symbol->alias_ref)
 		{
-			ccv_nnc_tensor_symbol_info_t* forw_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol->d);
 			assert(!forw_symbol->alias_ref);
 			symbol->symbol = ccv_nnc_tensor_symbol(graph, forw_symbol->info, 0);
-		}
-	}
-	// Second, generate alias symbols.
-	for (i = 0; i < autograd_tensor_symbol->rnum; i++)
-	{
-		ccv_nnc_autograd_tensor_symbol_t* alias = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, i);
-		if (alias->alias_ref)
-		{
-			ccv_nnc_tensor_symbol_info_t* forw_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, alias->d);
+		} else {
 			assert(forw_symbol->alias_ref);
-			ccv_nnc_autograd_tensor_symbol_t* symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, alias->alias_ref - 1);
-			alias->symbol = ccv_nnc_tensor_symbol_alias(graph, symbol->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0);
+			// Due to our generation order, this must be after the original symbol is created.
+			ccv_nnc_autograd_tensor_symbol_t* ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, symbol->alias_ref - 1);
+			symbol->symbol = ccv_nnc_tensor_symbol_alias(graph, ref->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0);
 		}
 	}
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
