@@ -1412,7 +1412,7 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 	// Otherwise, we need to create the sum operation out of these.
 	const int input_size = j;
 	int has_this_alias_exclusively = 1;
-	int* inputs = (int*)ccmalloc(sizeof(int) * input_size);
+	int* inputs = input_size > 0 ? (int*)ccmalloc(sizeof(int) * input_size) : 0;
 	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, kd[i].i);
