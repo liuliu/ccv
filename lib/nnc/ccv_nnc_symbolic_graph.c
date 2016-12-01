@@ -296,7 +296,7 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 	{
 		int i;
 		fprintf(out, "|%d", symbol_info->info.dim[0]);
-		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && symbol_info->info.dim[i]; i++)
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && symbol_info->info.dim[i]; i++)
 			fprintf(out, "x%d", symbol_info->info.dim[i]);
 	}
 	if (flags == CCV_NNC_LONG_DOT_GRAPH || alias_info)

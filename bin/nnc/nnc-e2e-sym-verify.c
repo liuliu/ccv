@@ -135,6 +135,12 @@ int main(int argc, char** argv)
 				memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
 			}
 		}
+		FILE* fw0 = fopen("sym-graph.dot", "w+");
+		ccv_nnc_symbolic_graph_dot(graph, CCV_NNC_LONG_DOT_GRAPH, fw0);
+		fclose(fw0);
+		FILE* fw1 = fopen("graph.dot", "w+");
+		ccv_nnc_graph_dot(run_graph, CCV_NNC_LONG_DOT_GRAPH, fw1);
+		fclose(fw1);
 		elapsed_time = get_current_time();
 		ccv_nnc_graph_autotune(run_graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
 		printf("ccv_nnc_graph_autotune %u ms\n", get_current_time() - elapsed_time);
