@@ -11,6 +11,7 @@ typedef struct {
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	int inc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_param_t info;
+	int flags;
 	char* name;
 } ccv_nnc_tensor_symbol_info_t;
 
@@ -185,6 +186,15 @@ int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_ten
 	assert(tensor.d < graph->tensor_symbol_info->rnum);
 	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
 	symbol_info->info = info;
+	return 0;
+}
+
+int ccv_nnc_tensor_symbol_set_flags(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	symbol_info->flags = flags;
 	return 0;
 }
 
@@ -847,33 +857,42 @@ static void _ccv_nnc_symbolic_graph_auto_symbols(const ccv_nnc_symbolic_graph_t*
 {
 	memcpy(tensor_symbol_info, symbolic_graph->tensor_symbol_info->data, sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	memcpy(exec_symbol_info, symbolic_graph->exec_symbol_info->data, sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
-	int i;
+	int i, max_input_size = 0, max_output_size = 0;
 	// Materialize auto hints.
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+	{
+		max_input_size = ccv_max(max_input_size, exec_symbol_info[i].input_size);
+		max_output_size = ccv_max(max_output_size, exec_symbol_info[i].output_size);
 		// If there is no hint and we have input and output tensor specified.
 		if (ccv_nnc_is_no_hint(exec_symbol_info[i].hint) &&
 			exec_symbol_info[i].input_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
 			exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
+	}
 
-	ccv_nnc_tensor_param_t input_params[32], output_params[32];
+	ccv_nnc_tensor_param_t* input_params = max_input_size > 0 ? (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t) * max_input_size) : 0;
+	ccv_nnc_tensor_param_t* output_params = max_output_size > 0 ? (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t) * max_output_size) : 0;
 
 	// Materialize auto tensors. This need to go with the topological order.
 #define visitor(node, ...) \
 	do { \
 		if (node->input_size > 0 && node->output_size > 0) \
 		{ \
-			assert(node->input_size <= 32); \
-			assert(node->output_size <= 32); \
 			for (i = 0; i < node->input_size; i++) \
 				input_params[i] = tensor_symbol_info[node->inputs[i]].info; \
 			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size); \
 			for (i = 0; i < node->output_size; i++) \
-				tensor_symbol_info[node->outputs[i]].info = output_params[i]; \
+				/* Only assign the output parameters if the symbol itself is auto. */ \
+				if (ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info)) \
+					tensor_symbol_info[node->outputs[i]].info = output_params[i]; \
 		} \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
+	if (input_params)
+		ccfree(input_params);
+	if (output_params)
+		ccfree(output_params);
 }
 
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
@@ -1104,8 +1123,10 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
-	ccfree(max_inputs);
-	ccfree(max_outputs);
+	if (max_inputs)
+		ccfree(max_inputs);
+	if (max_outputs)
+		ccfree(max_outputs);
 	ccfree(exec_symbol_info);
 }
 

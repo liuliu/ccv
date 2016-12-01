@@ -159,6 +159,11 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* signal);
  * Level-2 API
  */
 
+enum {
+	CCV_NNC_SHORT_DOT_GRAPH = 0x0,
+	CCV_NNC_LONG_DOT_GRAPH = 0x1,
+};
+
 typedef struct ccv_nnc_graph_s ccv_nnc_graph_t;
 
 typedef struct {
@@ -179,6 +184,11 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec(const ccv_nnc_graph_t* 
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+// Disconnect input graph nodes with an output graph nodes in this graph.
+// Return non-zero if cannot disjoin successfully.
+int ccv_nnc_graph_exec_disjoin(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+// Generate output that can be parsed by GraphViz (DOT language).
+void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out);
 // Run the autotune function for all the inputs / outputs, afterwards, assigning the optimized cmd back.
 void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
 // Run the graph from source nodes all the way to the destination nodes.
@@ -209,6 +219,10 @@ typedef struct {
 	const ccv_nnc_symbolic_graph_t* graph;
 } ccv_nnc_graph_exec_symbol_t;
 
+enum {
+	CCV_NNC_SYM_TENSOR_INIT_ZEROS = 0x01, // Initialize underlying tensor for the symbol with zeros
+};
+
 // Create an empty symbolic graph.
 // Note that all graph mutation methods are not thread-safe.
 // You should only operate the graph in serial fashion.
@@ -226,18 +240,19 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol(const ccv
 int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_hint_t hint);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
 int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+// Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
+int ccv_nnc_tensor_symbol_set_flags(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags);
 // Manually concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+// Manually disconnect input graph nodes with an output graph node for this graph.
+// Return non-zero if cannot disjoin successfully.
+int ccv_nnc_graph_exec_symbol_disjoin(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
 // Automatic concatenate these nodes together based on its inputs / outputs.
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
 int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
 // Generate output that can be parsed by GraphViz (DOT language).
-enum {
-	CCV_NNC_SHORT_DOT_GRAPH = 0x0,
-	CCV_NNC_LONG_DOT_GRAPH = 0x1,
-};
 void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int flags, FILE* out);
 
 typedef struct {
