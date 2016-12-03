@@ -91,7 +91,7 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* t
 		// For the last one, we don't extend to full ainc.
 		size_t ainc_size = (ccv_nnc_dimension_count(ainc) - ainc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
 		// Print out the range as well.
-		fprintf(out, "|{%#010x|%#010x}", (uint32_t)aptr, (uint32_t)(aptr + ainc_size));
+		fprintf(out, "|{%#010x|%#010x}", (uint32_t)aptr, (uint32_t)(aptr + ainc_size - 1));
 		int i;
 		fprintf(out, "|%d", tensor->info.dim[0]);
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && tensor->info.dim[i]; i++)
@@ -102,23 +102,17 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* t
 
 typedef struct {
 	int index;
+	int name;
+	int zone;
 	ccv_nnc_tensor_t* tensor;
+	uintptr_t start_ptr;
+	uintptr_t end_ptr;
 } ccv_nnc_tensor_dot_t;
 
-static int _ccv_nnc_tensor_zoning(const void* a, const void* b, void* data)
-{
-	ccv_nnc_tensor_dot_t* dot_a = (ccv_nnc_tensor_dot_t*)a;
-	ccv_nnc_tensor_dot_t* dot_b = (ccv_nnc_tensor_dot_t*)b;
-	if (dot_a->tensor == dot_b->tensor)
-		return 1;
-	uintptr_t aptr = (uintptr_t)dot_a->tensor->data.u8;
-	const int* ainc = CCV_IS_TENSOR_VIEW(dot_a->tensor) ? ((ccv_nnc_tensor_view_t*)(dot_a->tensor))->inc : dot_a->tensor->info.dim;
-	size_t ainc_size = (ccv_nnc_dimension_count(ainc) - ainc[0] + dot_a->tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(dot_a->tensor->type);
-	uintptr_t bptr = (uintptr_t)dot_b->tensor->data.u8;
-	const int* binc = CCV_IS_TENSOR_VIEW(dot_b->tensor) ? ((ccv_nnc_tensor_view_t*)(dot_b->tensor))->inc : dot_b->tensor->info.dim;
-	size_t binc_size = (ccv_nnc_dimension_count(binc) - binc[0] + dot_b->tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(dot_a->tensor->type);
-	return ccv_max(aptr, bptr) < ccv_min(aptr + ainc_size, bptr + binc_size);
-}
+// First sort by start_ptr, then sort by tensor ptr (so that we will have the same tensor sorted to one cluster).
+#define less_than(i1, i2, aux) ((i1).start_ptr < (i2).start_ptr || ((i1).start_ptr == (i2).start_ptr && (i1).tensor < (i2).tensor))
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_dot_sort_by_ptr, ccv_nnc_tensor_dot_t, less_than)
+#undef less_than
 
 void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 {
@@ -132,46 +126,86 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 	// if we want to present the graph visually (also, we don't want to put this
 	// information into the tensor or execution graph to avoid overhead, thus,
 	// recovering is the best we can do).
-	ccv_array_t* tensor_dots = ccv_array_new(sizeof(ccv_nnc_tensor_dot_t), graph->exec_info->rnum * 2, 0);
+	int tensor_count = 0;
+	for (i = 0; i < graph->exec_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+		tensor_count += exec_info->input_size + exec_info->output_size;
+	}
+	ccv_nnc_tensor_dot_t* tensor_dots = (ccv_nnc_tensor_dot_t*)ccmalloc(sizeof(ccv_nnc_tensor_dot_t) * tensor_count);
+	int k = 0;
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
 		for (j = 0; j < exec_info->input_size; j++)
 		{
-			ccv_nnc_tensor_dot_t tensor_dot = {
-				.index = -1,
-				.tensor = exec_info->inputs[j]
-			};
-			ccv_array_push(tensor_dots, &tensor_dot);
+			ccv_nnc_tensor_t* tensor = exec_info->inputs[j];
+			tensor_dots[k].name = k;
+			tensor_dots[k].tensor = tensor;
+			tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
+			const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
+			const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+			tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+			++k;
 		}
 		for (j = 0; j < exec_info->output_size; j++)
 		{
-			ccv_nnc_tensor_dot_t tensor_dot = {
-				.index = -1,
-				.tensor = exec_info->outputs[j]
-			};
-			ccv_array_push(tensor_dots, &tensor_dot);
+			ccv_nnc_tensor_t* tensor = exec_info->outputs[j];
+			tensor_dots[k].name = k;
+			tensor_dots[k].tensor = tensor;
+			tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
+			const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
+			const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+			tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+			++k;
 		}
 	}
-	int k = 0;
-	// Using a simple double for loop to find duplicate tensors, and assign index to these.
-	for (i = 0; i < tensor_dots->rnum; i++)
+	// To group overlap memory into one zone, we sort it by start ptr first (secondary by the tensor pointer).
+	_ccv_nnc_tensor_dot_sort_by_ptr(tensor_dots, tensor_count, 0);
+	int index = 0, zone = 0;
+	ccv_nnc_tensor_t* tensor = tensor_dots[0].tensor;
+	uintptr_t end_ptr = tensor_dots[0].end_ptr;
+	// Then, it is trivial, we go by end ptr. If the next start ptr is still within the end ptr (start ptr <= end ptr),
+	// they are the same zone.
+	for (i = 0; i < tensor_count; i++)
 	{
-		ccv_nnc_tensor_dot_t* tensor_dot_i = (ccv_nnc_tensor_dot_t*)ccv_array_get(tensor_dots, i);
-		if (tensor_dot_i->index == -1)
-			tensor_dot_i->index = k++; // Assign out the new index.
-		for (j = i + 1; j < tensor_dots->rnum; j++)
+		if (tensor_dots[i].tensor != tensor)
 		{
-			ccv_nnc_tensor_dot_t* tensor_dot_j = (ccv_nnc_tensor_dot_t*)ccv_array_get(tensor_dots, j);
-			// They are the same, because tensor_dot_j is later than tensor_dot_i, it will take tensor_dot_i's index.
-			if (tensor_dot_j->tensor == tensor_dot_i->tensor)
-				tensor_dot_j->index = tensor_dot_i->index;
+			tensor = tensor_dots[i].tensor;
+			++index;
 		}
+		if (tensor_dots[i].start_ptr > end_ptr)
+		{
+			end_ptr = ccv_max(end_ptr, tensor_dots[i].end_ptr);
+			++zone;
+		}
+		tensor_dots[i].index = index;
+		tensor_dots[i].zone = zone;
 	}
-	ccv_array_t* tensor_zones = 0;
-	// We may not need this if we don't need LONG_GRAPH
-	if (flags & CCV_NNC_LONG_DOT_GRAPH)
-		ccv_array_group(tensor_dots, &tensor_zones, _ccv_nnc_tensor_zoning, 0);
+	// We already have index and zone assigned, but the problem is that these are not very human interpretable (because
+	// it follows the pointer from low to high, not the tensor creation order). The following code renamed both the index
+	// and the zone so that it is much more understandable.
+	const int index_count = index + 1;
+	const int zone_count = zone + 1;
+	int* remap = (int*)ccmalloc(sizeof(int) * (tensor_count + index_count + zone_count));
+	int* rename_index = remap + tensor_count;
+	int* rename_zone = rename_index + index_count;
+	for (i = 0; i < tensor_count; i++)
+		remap[tensor_dots[i].name] = i;
+	for (i = 0; i < index_count; i++)
+		rename_index[i] = -1;
+	for (i = 0; i < zone_count; i++)
+		rename_zone[i] = -1;
+	index = 0;
+	zone = 0;
+	for (i = 0; i < tensor_count; i++)
+	{
+		ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[i];
+		if (rename_index[tensor_dot->index] == -1)
+			rename_index[tensor_dot->index] = index++;
+		if (rename_zone[tensor_dot->zone] == -1)
+			rename_zone[tensor_dot->zone] = zone++;
+	}
 	k = 0;
 	// Output styles.
 	for (i = 0; i < graph->exec_info->rnum; i++)
@@ -185,9 +219,8 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 			for (j = 0; j < exec_info->input_size; j++)
 			{
 				fputc('|', out);
-				ccv_nnc_tensor_dot_t* tensor_dot = (ccv_nnc_tensor_dot_t*)ccv_array_get(tensor_dots, k);
-				int zone = tensor_zones ? *(int*)ccv_array_get(tensor_zones, k) : 0;
-				_ccv_nnc_graph_dot_tensor(tensor_dot->index, exec_info->inputs[j], zone, flags, out);
+				ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
+				_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->inputs[j], rename_zone[tensor_dot->zone], flags, out);
 				++k;
 			}
 			fputc('}', out);
@@ -198,9 +231,8 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 			for (j = 0; j < exec_info->output_size; j++)
 			{
 				fputc('|', out);
-				ccv_nnc_tensor_dot_t* tensor_dot = (ccv_nnc_tensor_dot_t*)ccv_array_get(tensor_dots, k);
-				int zone = tensor_zones ? *(int*)ccv_array_get(tensor_zones, k) : 0;
-				_ccv_nnc_graph_dot_tensor(tensor_dot->index, exec_info->outputs[j], zone, flags, out);
+				ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
+				_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->outputs[j], rename_zone[tensor_dot->zone], flags, out);
 				++k;
 			}
 			fputc('}', out);
@@ -216,9 +248,8 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 				fprintf(out, "node%d -> node%d;\n", i, *(int*)ccv_array_get(exec_info->outgoings, j));
 	}
 	fputs("}\n", out);
-	ccv_array_free(tensor_dots);
-	if (tensor_zones)
-		ccv_array_free(tensor_zones);
+	ccfree(tensor_dots);
+	ccfree(remap);
 }
 
 void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size)

@@ -59,8 +59,8 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] when x = [0
 	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * (0.44 + 1), 1e-6, "computed result of D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] for x_1 should be the same");
 	// This cannot pass yet (need to zero out the tensor before sum up).
 	// REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], expf(-1.18 + 1.5), 1e-6, "computed result of D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] for x_2 should be the same");
-	// FILE* fw = fopen("autograd-graph.dot", "w+");
-	// ccv_nnc_graph_dot(graph, CCV_NNC_SHORT_DOT_GRAPH, fw);
+	// FILE* fw = fopen("autograd-graph-1.dot", "w+");
+	// ccv_nnc_graph_dot(graph, CCV_NNC_LONG_DOT_GRAPH, fw);
 	// fclose(fw);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_free(graph);

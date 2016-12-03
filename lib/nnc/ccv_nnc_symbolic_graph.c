@@ -373,7 +373,7 @@ typedef struct {
 } ccv_nnc_tensor_opt_t;
 
 #define more_than(i1, i2, aux) ((i1).size >= (i2).size)
-static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sortby_size, ccv_nnc_tensor_opt_t, more_than)
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
 // If every a's head is deterministically after b's tail
@@ -500,7 +500,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 				}
 		}
 		// Order opt array by the size.
-		_ccv_nnc_tensor_opt_sortby_size((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
+		_ccv_nnc_tensor_opt_sort_by_size((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Assuming all tensors has the same data format (32F), therefore, we only need to consider the dimensional size.
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
 		int min_y = 0, min_x = tensor_symbol_info_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;

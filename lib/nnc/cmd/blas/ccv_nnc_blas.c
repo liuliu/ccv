@@ -80,7 +80,6 @@ REGISTER_COMMAND(CCV_NNC_AXPY_FORWARD)(ccv_nnc_cmd_registry_t* registry)
 REGISTER_COMMAND(CCV_NNC_AXPY_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
 	FIND_BACKEND(ccv_nnc_axpy_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_axpy_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
