@@ -56,7 +56,39 @@ int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_
 	ccv_nnc_graph_exec_info_t* src_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, source.d);
 	if (src_info->outgoings == 0)
 		src_info->outgoings = ccv_array_new(sizeof(int32_t), 1, 0);
+	else {
+		int i;
+		// Check if this is already connected, if so, skip.
+		for (i = 0; i < src_info->outgoings->rnum; i++)
+			if (*(int*)ccv_array_get(src_info->outgoings, i) == destination.d)
+				return -1;
+	}
 	ccv_array_push(src_info->outgoings, &destination.d);
+	return 0;
+}
+
+int ccv_nnc_graph_exec_disjoin(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
+{
+	assert(graph == source.graph);
+	assert(graph == destination.graph);
+	assert(source.d < graph->exec_info->rnum);
+	assert(destination.d < graph->exec_info->rnum);
+	ccv_nnc_graph_exec_info_t* src_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, source.d);
+	if (!src_info->outgoings)
+		return -1;
+	int i, j = -1;
+	// Check if this is already connected, if so, skip.
+	for (i = 0; i < src_info->outgoings->rnum; i++)
+		if (*(int*)ccv_array_get(src_info->outgoings, i) == destination.d)
+		{
+			j = i;
+			break;
+		}
+	if (j < 0)
+		return -1;
+	if (j < src_info->outgoings->rnum - 1)
+		*(int*)ccv_array_get(src_info->outgoings, j) = *(int*)ccv_array_get(src_info->outgoings, src_info->outgoings->rnum - 1);
+	--src_info->outgoings->rnum;
 	return 0;
 }
 

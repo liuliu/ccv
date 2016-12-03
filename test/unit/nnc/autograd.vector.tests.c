@@ -10,7 +10,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-TEST_CASE("autograd with D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] when x = [0.44 -1.18]")
+TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when x = [0.44 -1.18]")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t one = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(2), "[1 1.5]");
@@ -19,6 +19,7 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] when x = [0
 	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	inc[0] = 2;
+	ccv_nnc_tensor_symbol_t x_1 = ccv_nnc_tensor_symbol_alias(symbolic_graph, x, ofs, inc, ONE_CPU_TENSOR(1), "x_1");
 	ccv_nnc_tensor_symbol_t y_1 = ccv_nnc_tensor_symbol_alias(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_1");
 	ofs[0] = 1;
 	ccv_nnc_tensor_symbol_t y_2 = ccv_nnc_tensor_symbol_alias(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_2");
@@ -28,7 +29,7 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] when x = [0
 	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, one), TENSOR_SYMBOL_LIST(y), "plus");
 	ccv_nnc_graph_exec_symbol_t sqr = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_1, y_1), TENSOR_SYMBOL_LIST(w_1), "sqr");
 	ccv_nnc_graph_exec_symbol_t exp_ = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWEXP_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_2), TENSOR_SYMBOL_LIST(u_2), "exp");
-	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w_1, u_2), TENSOR_SYMBOL_LIST(v), "sum");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_1, w_1, u_2), TENSOR_SYMBOL_LIST(v), "sum");
 	ccv_nnc_graph_exec_symbol_concat(symbolic_graph, plus, sqr);
 	ccv_nnc_graph_exec_symbol_concat(symbolic_graph, plus, exp_);
 	ccv_nnc_graph_exec_symbol_flow(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(sqr, exp_, sum));
@@ -55,8 +56,8 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] when x = [0
 	// fclose(fw);
 	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
-	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], (0.44 + 1) * (0.44 + 1) + expf(-1.18 + 1.5), 1e-6, "computed result of y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2] should be the same");
-	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * (0.44 + 1), 1e-6, "computed result of D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] for x_1 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], 0.44 + (0.44 + 1) * (0.44 + 1) + expf(-1.18 + 1.5), 1e-6, "computed result of y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2] should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 1 + 2 * (0.44 + 1), 1e-6, "computed result of D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] for x_1 should be the same");
 	// This cannot pass yet (need to zero out the tensor before sum up).
 	// REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], expf(-1.18 + 1.5), 1e-6, "computed result of D[y = x + [1 1.5] => y_1 ^ 2 + Exp[y_2], x] for x_2 should be the same");
 	// FILE* fw = fopen("autograd-graph-1.dot", "w+");
