@@ -251,7 +251,7 @@ int ccv_nnc_graph_exec_symbol_disjoin(const ccv_nnc_symbolic_graph_t* graph, con
 // Automatic concatenate these nodes together based on its inputs / outputs.
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
-int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
+int ccv_nnc_graph_exec_symbol_autogen(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
 // Generate output that can be parsed by GraphViz (DOT language).
 void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int flags, FILE* out);
 
@@ -261,18 +261,21 @@ typedef struct {
 } ccv_nnc_tensor_bind_t;
 
 // Compile a symbolic graph into a graph that can be executed, and a set of tensors (opaque data structure tensor arena) are allocated based on which tensor symbols are the input and which are the outputs. The tensor allocation is done to minimize the required storage.
-// tensor_binds provide custom binding for these tensors
-// tensor_symbol_consts provide a list of "protected" tensors that is const to us.
+// tensor_binds provide custom binding for these tensors. You still responsible to manage the life-time of these tensors.
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_binds_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref);
 // Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
 // Find corresponding tensor by a symbol from the tensor arena.
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol);
+// Bind a tensor to a symbol. You still responsible to manage the life-time of the tensor to make sure it is not freed until everything is done.
+int ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* tensor);
 // Free the opaque tensor arena structure.
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena);
 // Find corresponding graph exec by a exec symbol from graph exec arena.
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol);
+// Return the node that can drive all the source nodes from the compilation.
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
+// Return the node that can drain all the destination nodes from the compilation.
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
 // Free the opaque graph exec arena structure.
 void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena);

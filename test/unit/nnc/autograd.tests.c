@@ -27,7 +27,7 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_graph_exec_symbol_t inv = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWDIV_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(one, x), TENSOR_SYMBOL_LIST(u), "inv");
 	ccv_nnc_graph_exec_symbol_t log = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(u), TENSOR_SYMBOL_LIST(v), "log");
 	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, v), TENSOR_SYMBOL_LIST(z), "sum");
-	ccv_nnc_graph_exec_symbol_flow(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv, log, sum));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv, log, sum));
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(z), TENSOR_SYMBOL_LIST(x));
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -69,7 +69,7 @@ TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.3
 	ccv_nnc_graph_exec_symbol_t minus = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AXPY_FORWARD, 0, CMD_BLAS(1, -1), 0), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(w), "minus");
 	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AXPY_FORWARD, 0, CMD_BLAS(1, 1), 0), TENSOR_SYMBOL_LIST(y, one), TENSOR_SYMBOL_LIST(u), "plus");
 	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, u), TENSOR_SYMBOL_LIST(v), "prod");
-	ccv_nnc_graph_exec_symbol_flow(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus, prod));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus, prod));
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus), GRAPH_EXEC_SYMBOL_LIST(prod), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x, y));
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;

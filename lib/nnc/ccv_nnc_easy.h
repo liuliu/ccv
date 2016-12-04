@@ -33,7 +33,8 @@
 #define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
 #define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
-#define TENSOR_PAIR(_x, _y) {.tensor=(_y), .symbol=(_x)}
+#define TENSOR_PAIR_X(_x, _y, ...) {.tensor=(_y), .symbol=(_x)}
+#define TENSOR_PAIR(...) TENSOR_PAIR_X(__VA_ARGS__, 0)
 #define TENSOR_BIND_LIST_X(...) (ccv_nnc_tensor_bind_t []){__VA_ARGS__}
 #define TENSOR_BIND_LIST(...) TENSOR_BIND_LIST_X(__VA_ARGS__), (sizeof(TENSOR_BIND_LIST_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_bind_t))
 

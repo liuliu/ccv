@@ -245,7 +245,7 @@ int ccv_nnc_graph_exec_symbol_disjoin(const ccv_nnc_symbolic_graph_t* graph, con
 	return 0;
 }
 
-int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size)
+int ccv_nnc_graph_exec_symbol_autogen(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size)
 {
 	int i, j, x, y;
 	for (i = 0; i < exec_size; i++)
@@ -267,18 +267,44 @@ int ccv_nnc_graph_exec_symbol_flow(const ccv_nnc_symbolic_graph_t* graph, const 
 			ccv_nnc_graph_exec_symbol_info_t* b_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, b_idx);
 			int b_to_a = 0;
 			for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
+			{
+				int a = a_symbol_info->inputs[x];
+				// Handle alias as well.
+				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
+				if (a_tensor_info->alias_ref)
+					a = a_tensor_info->alias_ref - 1;
 				for (y = 0; y < b_symbol_info->output_size && !b_to_a; y++)
-					if (a_symbol_info->inputs[x] == b_symbol_info->outputs[y])
+				{
+					int b = b_symbol_info->outputs[y];
+					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
+					if (b_tensor_info->alias_ref)
+						b = b_tensor_info->alias_ref - 1;
+					if (a == b)
 						// This two have matching inputs and outputs, thus, you can concat b to a.
 						b_to_a = 1;
+				}
+			}
 			if (b_to_a)
 				ccv_nnc_graph_exec_symbol_concat(graph, execs[j], execs[i]);
 			int a_to_b = 0;
 			for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
+			{
+				int a = a_symbol_info->outputs[x];
+				// Handle alias as well.
+				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
+				if (a_tensor_info->alias_ref)
+					a = a_tensor_info->alias_ref - 1;
 				for (y = 0; y < b_symbol_info->input_size && !a_to_b; y++)
-					if (a_symbol_info->outputs[x] == b_symbol_info->inputs[y])
+				{
+					int b = b_symbol_info->inputs[y];
+					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
+					if (b_tensor_info->alias_ref)
+						b = b_tensor_info->alias_ref - 1;
+					if (a == b)
 						// This two have matching inputs and outputs, thus, you can concat b to a.
 						a_to_b = 1;
+				}
+			}
 			if (a_to_b)
 				ccv_nnc_graph_exec_symbol_concat(graph, execs[i], execs[j]);
 		}

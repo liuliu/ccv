@@ -23,7 +23,7 @@ TEST_CASE("compile a simple symbolic graph with flow")
 	ccv_nnc_tensor_symbol_t m = ccv_nnc_tensor_symbol(symbolic_graph, b.info, "m");
 	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
 	ccv_nnc_graph_exec_symbol_t softmax_symbol = ccv_nnc_graph_exec_symbol(symbolic_graph, softmax_cmd, TENSOR_SYMBOL_LIST(b), TENSOR_SYMBOL_LIST(m), "softmax");
-	ccv_nnc_graph_exec_symbol_flow(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(forw_symbol, softmax_symbol));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(forw_symbol, softmax_symbol));
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
