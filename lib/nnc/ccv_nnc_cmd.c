@@ -34,6 +34,10 @@ void ccv_nnc_init(void)
 
 const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
+	if (cmd == CCV_NNC_NOOP)
+		return "CCV_NNC_NOOP";
+	if (cmd == CCV_NNC_CUSTOM)
+		return "CCV_NNC_CUSTOM";
 	const int idx = _ccv_nnc_cmd_ph(cmd);
 	assert(idx >= 0);
 	assert(idx < sizeof(init_map) / sizeof(init_map[0]));

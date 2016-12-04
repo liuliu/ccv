@@ -272,6 +272,8 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tens
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena);
 // Find corresponding graph exec by a exec symbol from graph exec arena.
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
 // Free the opaque graph exec arena structure.
 void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena);
 
