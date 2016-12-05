@@ -2022,6 +2022,9 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
+		// This is not going to be an interesting node. Skip.
+		if (backward_info[i].f_wrt != 0x3)
+			continue;
 		ccv_nnc_graph_autograd_exec_t* back_exec = autograd_exec + i;
 		ccv_array_clear(symbols);
 		// Gradient inputs.
@@ -2072,6 +2075,9 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccv_array_free(symbols);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
+		// This is not going to be an interesting node. Skip.
+		if (backward_info[i].f_wrt != 0x3)
+			continue;
 		ccv_nnc_graph_exec_symbol_t forw_exec = {
 			.d = i,
 			.graph = graph
