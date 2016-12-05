@@ -414,13 +414,16 @@ typedef struct {
 	ccv_array_t* tail; // The tail nodes (it could be multiple if from the graph, one cannot determine which is the last).
 } ccv_nnc_tensor_expect_t;
 
-static const int UNASSIGNED = 0x1;
-static const int ALIAS = 0x2;
-static const int CONST_TENSOR = 0x3;
+enum {
+	UNASSIGNED = 0x1,
+	ALIAS = 0x2,
+	CONST_TENSOR = 0x3,
+};
 
 #define TENSOR_EXPECT_UNASSIGNED(t) (t.flag == UNASSIGNED)
 #define TENSOR_EXPECT_ALIAS(t) (t.flag == ALIAS)
 #define TENSOR_EXPECT_CONST(t) (t.flag == CONST_TENSOR)
+#define TENSOR_EXPECT_UNUSED(t) (t.flag == UNUSED)
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 
 static void _ccv_array_replace_or_insert_int(ccv_array_t* ints, const int idx, const int outgoing)
@@ -809,12 +812,12 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			memcpy(tensor_arena->tensor + j, &tensor, sizeof(ccv_nnc_tensor_t));
 			assert(allocated_offset[i] + (((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16) <= tensor_arena->buffer_size[assigned[i] - 1]);
 			++j;
-		} else if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
+		} else // Clean it out.
 			tensor_arena->vt_tensor[i] = 0;
 	ccfree(allocated_offset);
 	ccfree(assigned);
 	for (i = 0; i < tensor_symbol_info_size; i++)
-		// It could be binded tensor, in that case, it doesn't have a ref.
+		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]) && tensor_expect[i].ref)
 		{
 			// It must be available.
@@ -1058,10 +1061,22 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 #undef for_block
 #undef visitor
 	ccfree(buf);
-
-	// Now, collect information about the tensor's expected start / end execs.
+	// This struct is allocated earlier to collect information about the tensor's expected start / end execs.
 	ccv_nnc_tensor_expect_t* tensor_expect = (ccv_nnc_tensor_expect_t*)cccalloc(symbolic_graph->tensor_symbol_info->rnum, sizeof(ccv_nnc_tensor_expect_t));
-	// Ignore tensors that are already binded.
+	// The reason is that I need to make everyone of them to be unassigned unless it is used somewhere. It
+	// happens that I have to loop through all relevant node to find out if one is used or not.
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		tensor_expect[i].flag = UNASSIGNED;
+#define visitor(node, idx, ...) \
+	do { \
+		for (i = 0; i < node->input_size; i++) \
+			tensor_expect[node->inputs[i]].flag = 0; \
+		for (i = 0; i < node->output_size; i++) \
+			tensor_expect[node->outputs[i]].flag = 0; \
+	} while (0)
+	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
+	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
 		tensor_expect[tensor_binds[i].symbol.d].flag = UNASSIGNED;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)

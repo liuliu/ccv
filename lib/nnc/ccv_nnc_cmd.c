@@ -281,6 +281,22 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	return tuned_cmd;
 }
 
+int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size)
+{
+	// If it is no-op, return true, it can deal with any number of parameters.
+	if (cmd.cmd == CCV_NNC_NOOP)
+		return 1;
+	// If it is a custom command, I cannot check it at all, return true.
+	if (cmd.cmd == CCV_NNC_CUSTOM)
+		return 1;
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
+	if (cmd_registry.bitmask)
+		return cmd_registry.bitmask(input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size);
+	// If there is not checking, all can pass.
+	return 1;
+}
+
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
 {
 	// If it is no-op, return as if succeed already.
