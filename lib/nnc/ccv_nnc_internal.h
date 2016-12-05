@@ -14,8 +14,12 @@
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 
+// Define some internal constraints
+
+#define CCV_NNC_STACK_BITMASK_ALLOC (2)
+
 typedef void (*ccv_nnc_cmd_tensor_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
-typedef int (*ccv_nnc_cmd_bitmask_f)(const uint64_t input_bitmask, const uint64_t output_bitmask);
+typedef int (*ccv_nnc_cmd_bitmask_f)(const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size);
 
 typedef struct {
 	int flags;

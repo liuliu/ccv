@@ -2,9 +2,9 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_internal.h>
 
-static int _ccv_nnc_set_bitmask(const uint64_t input_bitmask, const uint64_t output_bitmask)
+static int _ccv_nnc_set_bitmask(const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size)
 {
-	if (output_bitmask == 1u)
+	if (output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
@@ -23,24 +23,46 @@ REGISTER_COMMAND(CCV_NNC_SET_BACKWARD)(ccv_nnc_cmd_registry_t* registry)
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
 
-static int _ccv_nnc_data_transfer_bitmask(const uint64_t input_bitmask, const uint64_t output_bitmask)
+static int _ccv_nnc_data_transfer_bitmask(const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size)
 {
-	int i;
-	for (i = 1; i < 64; i++)
-		if (!(input_bitmask & (uint64_t)1 << i))
-			break;
-	const int input_bitcount = i;
-	// Always like 1111100000, no 1110010101
-	for (; i < 64; i++)
-		if (input_bitmask & (uint64_t)1 << i)
-			return 0;
-	for (i = 0; i < 64; i++)
-		if (!(output_bitmask & (uint64_t)1 << i))
-			break;
-	const int output_bitcount = i;
-	for (; i < 64; i++)
-		if (output_bitmask & (uint64_t)1 << i)
-			return 0;
+	int i, j;
+	int input_flag = 0;
+	int input_bitcount = 0;
+	for (i = 0; i < input_bitmask_size; i++)
+	{
+		for (j = 0; j < 64; j++)
+			if (input_bitmasks[i] & (uint64_t)1 << j)
+			{
+				if (input_flag)
+					return 0;
+			} else
+				break;
+		input_bitcount += j;
+		if (j < 64)
+			input_flag = 1;
+		// Always like 1111100000, no 1110010101
+		for (; j < 64; j++)
+			if (input_bitmasks[i] & (uint64_t)1 << j)
+				return 0;
+	}
+	int output_flag = 0;
+	int output_bitcount = 0;
+	for (i = 0; i < output_bitmask_size; i++)
+	{
+		for (j = 0; j < 64; j++)
+			if (output_bitmasks[i] & (uint64_t)1 << j)
+			{
+				if (output_flag)
+					return 0;
+			} else
+				break;
+		output_bitcount += j;
+		if (j < 64)
+			output_flag = 1;
+		for (; j < 64; j++)
+			if (output_bitmasks[i] & (uint64_t)1 << j)
+				return 0;
+	}
 	return output_bitcount == input_bitcount;
 }
 

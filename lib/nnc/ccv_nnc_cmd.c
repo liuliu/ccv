@@ -298,24 +298,38 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
 	int i;
-	uint64_t input_bitmask = 0;
-	uint64_t output_bitmask = 0;
+	uint64_t stack_input_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {0};
+	uint64_t stack_output_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {0};
+	assert(CCV_NNC_STACK_BITMASK_ALLOC > 0);
+	uint64_t* input_bitmasks = (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_input_bitmasks;
+	uint64_t* output_bitmasks = (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_output_bitmasks;
 	for (i = 0; i < input_size; i++)
 		if (inputs[i])
 		{
 			assert(api_registry.tensor_formats & inputs[i]->info.format);
-			input_bitmask |= (uint64_t)1 << i;
+			input_bitmasks[i / 64] |= (uint64_t)1 << i;
 		}
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
 		{
 			assert(api_registry.tensor_formats & outputs[i]->info.format);
-			output_bitmask |= (uint64_t)1 << i;
+			output_bitmasks[i / 64] |= (uint64_t)1 << i;
 		}
 	if (cmd_registry.bitmask)
 		// If cannot pass the bitmask check.
-		if (!cmd_registry.bitmask(input_bitmask, output_bitmask))
+		if (!cmd_registry.bitmask(input_bitmasks, (input_size + 63) / 64, output_bitmasks, (output_size + 63) / 64))
+		{
+			if (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
+				ccfree(input_bitmasks);
+			if (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
+				ccfree(output_bitmasks);
 			return CCV_NNC_EXEC_INVALID; // Return invalid input.
+		}
+	// TODO: Print out warning message.
+	if (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
+		ccfree(input_bitmasks);
+	if (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
+		ccfree(output_bitmasks);
 	// Everything is out, call the underlying implementation.
 	return api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
