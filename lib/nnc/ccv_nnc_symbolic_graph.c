@@ -1829,8 +1829,13 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		{
 			// Copy over the outgoing bits.
 			autograd_exec[i].outgoings = ccv_array_new(sizeof(int), backward_info[i].outgoings->rnum, 0);
-			memcpy(ccv_array_get(autograd_exec[i].outgoings, 0), ccv_array_get(backward_info[i].outgoings, 0), sizeof(int) * backward_info[i].outgoings->rnum);
-			autograd_exec[i].outgoings->rnum = backward_info[i].outgoings->rnum;
+			for (j = 0; j < backward_info[i].outgoings->rnum; j++)
+			{
+				const int d = *(int*)ccv_array_get(backward_info[i].outgoings, j);
+				// Only push the outgoing node if it is in the f_wrt path.
+				if (backward_info[d].f_wrt == 0x3)
+					ccv_array_push(autograd_exec[i].outgoings, &d);
+			}
 		}
 	ccv_nnc_autograd_tensor_version_t* autograd_tensor_version = (ccv_nnc_autograd_tensor_version_t*)cccalloc(tensor_symbol_size, sizeof(ccv_nnc_autograd_tensor_version_t));
 	ccv_array_t* autograd_tensor_symbol = ccv_array_new(sizeof(ccv_nnc_autograd_tensor_symbol_t), tensor_symbol_size, 0);
@@ -2053,7 +2058,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		}
 		for (j = 0; j < back_exec->output_size; j++)
 			ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, back_exec->outputs[j]))->symbol));
-		back_exec->symbol = ccv_nnc_graph_exec_symbol(graph, autograd_exec[i].cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
+		back_exec->symbol = ccv_nnc_graph_exec_symbol(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
 	}
 	for (i = 0; i < sum_or_set_exec->rnum; i++)
 	{
@@ -2115,8 +2120,10 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_size;
 	graph->forward_symbol_size = tensor_symbol_size;
 	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - tensor_symbol_size;
-	for (i = 0; i < tensor_symbol_size; i++)
-		graph->backward_exec_symbols[i] = graph->backward_tensor_symbols[i] = -1;
+	for (i = 0; i < graph->forward_symbol_size; i++)
+		graph->backward_tensor_symbols[i] = -1;
+	for (i = 0; i < graph->backward_symbol_size; i++)
+		graph->backward_exec_symbols[i] = -1;
 	// Assigning for wrt symbols.
 	for (i = 0; i < wrt_symbol_size; i++)
 	{
@@ -2132,8 +2139,11 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		const int dd = autograd_symbol->symbol.d - tensor_symbol_size;
 		const int x = tensor_ref->x;
 		if (x < exec_symbol_size)
+		{
+			// At this point, we summed up everything, it is not going to be a tensor with exec_registry.
+			assert(!tensor_ref->exec_registry || tensor_ref->exec_registry->rnum == 0);
 			graph->backward_exec_symbols[dd] = autograd_exec[x].symbol.d;
-		else
+		} else
 			graph->backward_exec_symbols[dd] = ((ccv_nnc_graph_sum_or_set_exec_t*)ccv_array_get(sum_or_set_exec, x - exec_symbol_size))->symbol.d;
 	}
 	// Assigning for f symbols.
