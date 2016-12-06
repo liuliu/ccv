@@ -46,8 +46,17 @@ AC_CHECK_HEADER(png.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
 AC_CHECK_HEADER(jpeglib.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
+
+AC_MSG_CHECKING([fftw3])				
+AC_ARG_ENABLE(fftw3, [AS_HELP_STRING([--enable-fftw3], [Enable FFTW3 (GPL license)])], [fftw3_enable=$enableval], [fftw3_enable="yes"])
+if test "$fftw3_enable" != no; then
 AC_CHECK_HEADER(fftw3.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
+AC_MSG_RESULT([yes])
+else
+AC_MSG_RESULT([disabled])
+fi
+
 AC_CHECK_HEADER(linear.h,
 				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBLINEAR "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-llinear "])])
 AC_CHECK_HEADER(tesseract/capi.h,
@@ -74,9 +83,17 @@ fi
 
 # check for gsl, and I need to first check these two before I can check gsl
 AC_CHECK_LIB(m, cos)
+
+AC_MSG_CHECKING([GSL])
+AC_ARG_ENABLE(gsl, [AS_HELP_STRING([--enable-gsl], [Enable GSL (GPL license)])], [gsl_enable=$enableval], [gsl_enable="yes"])
+if test "$gsl_enable" != no; then
 AC_CHECK_LIB(gslcblas, cblas_dgemm)
 AC_CHECK_LIB(gsl, gsl_blas_dgemm,
 			 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_GSL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lgsl -lgslcblas "])])
+AC_MSG_RESULT([yes])
+else
+AC_MSG_RESULT([disabled])
+fi
 
 # prepare for cuda
 AC_MSG_CHECKING([cuda])
