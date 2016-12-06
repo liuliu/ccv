@@ -7,11 +7,17 @@ CUDA_CMD_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_CMD_SRCS)))
 CFLAGS := -O3 -Wall -I"../../" $(CFLAGS)
 NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PHONY: release debug all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: lib

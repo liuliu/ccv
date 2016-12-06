@@ -8,12 +8,18 @@ TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PHONY: release debug all clean dep
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: $(TARGETS)

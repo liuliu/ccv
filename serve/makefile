@@ -9,11 +9,17 @@ SRCS = serve.c uri.c parsers.c bbf.c dpm.c icf.c scd.c sift.c swt.c tld.c convne
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PHONY: release debug all clean dep
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: libccv.a $(TARGETS)

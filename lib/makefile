@@ -9,12 +9,18 @@ SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
 CUDA_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_SRCS)))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 # Make nnc/libnnc.o a phony target therefore it will be triggered every time.
 .PHONY: release debug all lib clean dep nnc/libnnc.o
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: lib ../samples/image-net-2012-vgg-d.sqlite3

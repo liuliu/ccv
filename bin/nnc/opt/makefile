@@ -8,12 +8,18 @@ TARGETS = auto-tune-conv auto-tune-gemm conv-4x4-3x3-winograd conv-gemm conv-opt
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PHONY: release debug all clean dep
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: $(TARGETS)

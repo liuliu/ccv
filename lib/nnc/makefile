@@ -7,11 +7,17 @@ SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PHONY: release debug all lib clean cmd libnnc.o cmd/libnnc-cmd.o gpu/libnnc-compat-cuda.o
 
 release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: lib

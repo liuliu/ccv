@@ -6,6 +6,11 @@ TARGETS = defects.l0.1.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+endif
+
 .PRECIOUS: $(patsubst %,%.o,$(TARGETS))
 
 .PHONY: release debug all test clean dep
@@ -14,6 +19,7 @@ release: all
 
 debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: export DEBUG = 1
 debug: all
 
 all: $(TARGETS)
