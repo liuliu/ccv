@@ -835,8 +835,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			assert(tensor_arena->vt_tensor[alias_ref]);
 			assert(!CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensor[alias_ref]));
 			tensor_arena->vt_tensor[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensor[j];
-			// If there is no ofs, we take a shortcut and just init a normal tensor.
-			if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[i].ofs, sizeof(ccv_nnc_no_ofs)) == 0)
+			// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
+			if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[i].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
+				memcmp(tensor_symbol_info[i].inc, tensor_symbol_info[i].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 			{
 				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensor[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
 				memset(tensor_arena->tensor + j, 0, sizeof(ccv_nnc_tensor_view_t));
@@ -1430,7 +1431,85 @@ typedef struct {
 	int alias_ref;
 } ccv_nnc_sum_variable_t;
 
-static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int d, const int exec_symbol_size, ccv_nnc_autograd_tensor_version_t* tensor_ver, ccv_nnc_graph_autograd_exec_t* autograd_exec, ccv_array_t* autograd_tensor_symbol, ccv_array_t* sum_or_set_exec)
+// This method tries to figure out if a set of aliases can cover the whole tensor dim.
+// This is not a precise implementation though, it does some guesses, the important
+// thing is that it never answers yes but the given set of aliases actually doesn't cover.
+// It is OK for it to answer no but in fact all dims are covered.
+
+typedef struct {
+	int ofs;
+	int dim;
+} ccv_nnc_tensor_ofs_dim_t;
+
+#define less_than(i1, i2, aux) ((i1).ofs < (i2).ofs)
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_ofs_dim_sort_by_ofs, ccv_nnc_tensor_ofs_dim_t, less_than)
+#undef less_than
+
+static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info)
+{
+	// Only work with tensor_ref of aliases.
+	assert(tensor_ref->alias_registry);
+	const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
+	const ccv_nnc_tensor_symbol_info_t* tensor_sym = tensor_symbol_info + autograd->d;
+	assert(tensor_symbol_info[autograd->d].alias_ref == 0);
+	int i, j;
+	int c[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
+	{
+		const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, i);
+		assert(d < autograd_tensor_symbol->rnum);
+		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
+		assert(tensor_symbol_info[autograd->d].alias_ref);
+		const int* inc = tensor_symbol_info[autograd->d].inc;
+		const int* ofs = tensor_symbol_info[autograd->d].ofs;
+		const int* dim = tensor_symbol_info[autograd->d].info.dim;
+		if (memcmp(inc, tensor_sym->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
+			return 0;
+		for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC && inc[j]; j++)
+			if (ofs[j] > 0 || dim[j] + ofs[j] < inc[j])
+				c[j] = 1; // Mark this dimension as not fully stretched.
+	}
+	j = 0;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		if (c[i] && ++j == 2) // If there are more than 1 dimension that is not fully stretched, we are in trouble.
+			return 0;
+	if (!j)
+		return 1; // Every dimension is fully stretched.
+	ccv_nnc_tensor_ofs_dim_t* ofs_dim = (tensor_ref->alias_registry->rnum <= 256) ? (ccv_nnc_tensor_ofs_dim_t*)alloca(sizeof(ccv_nnc_tensor_ofs_dim_t) * tensor_ref->alias_registry->rnum) : (ccv_nnc_tensor_ofs_dim_t*)malloc(sizeof(ccv_nnc_tensor_ofs_dim_t) * tensor_ref->alias_registry->rnum);
+	int max_dim = 0;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		if (c[i])
+		{
+			// Loop over this specific dimension to see if it is fully assigned.
+			for (j = 0; j < tensor_ref->alias_registry->rnum; j++)
+			{
+				const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, j);
+				assert(d < autograd_tensor_symbol->rnum);
+				const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
+				ofs_dim[j].ofs = tensor_symbol_info[autograd->d].ofs[i];
+				ofs_dim[j].dim = tensor_symbol_info[autograd->d].info.dim[i];
+			}
+			max_dim = tensor_sym->info.dim[i];
+			break;
+		}
+	_ccv_nnc_tensor_ofs_dim_sort_by_ofs(ofs_dim, tensor_ref->alias_registry->rnum, 0);
+	int ofs = 0;
+	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
+	{
+		if (ofs_dim[i].ofs > ofs) // There is a gap.
+		{
+			if (tensor_ref->alias_registry->rnum > 256)
+				ccfree(ofs_dim);
+			return 0;
+		}
+		ofs = ccv_max(ofs, ofs_dim[i].ofs + ofs_dim[i].dim);
+	}
+	if (tensor_ref->alias_registry->rnum > 256)
+		ccfree(ofs_dim);
+	return ofs >= max_dim; // Can fully occupy.
+}
+
+static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int d, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, ccv_nnc_autograd_tensor_version_t* tensor_ver, ccv_nnc_graph_autograd_exec_t* autograd_exec, ccv_array_t* autograd_tensor_symbol, ccv_array_t* sum_or_set_exec)
 {
 	int i, j;
 	assert(tensor_ver->c < tensor_ver->ref_version->rnum);
@@ -1466,9 +1545,10 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 			_ccv_array_replace_or_insert_int(back_exec->outgoings, idx, outgoing);
 			// If this tensor have associated alias, we need to init it to zeros when it is allocated (we only need to set a flag here)
 			// it is handled at compilation phase.
-			if (tensor_ref->alias_registry)
+			if (tensor_ref->alias_registry &&
+				// Loop over to see if this tensor is fully occupied to avoid extra zero step.
+				!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbol, tensor_symbol_info))
 			{
-				// TODO: I can alternatively loop over all the alias registry to see if it is covered.
 				ccv_nnc_autograd_tensor_symbol_t* tensor_sym = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
 				// By having alias_registry, what this symbol represents must not by an alias.
 				assert(tensor_sym->alias_ref == 0);
@@ -1618,11 +1698,14 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 		// Otherwise, need to create a new alias.
 		ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, kd[0].i);
 		// Since we create new alias, we need to set the referenced one to be allocated with 0s.
-		// TODO: I can alternatively see if the alias is a superset of what we want, and avoid the zero step.
-		ccv_nnc_autograd_tensor_symbol_t* ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
-		if (ref->alias_ref)
-			ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, ref->alias_ref - 1);
-		ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+		// Loop over to see if this tensor is fully occupied to avoid extra zero step.
+		if (!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbol, tensor_symbol_info))
+		{
+			ccv_nnc_autograd_tensor_symbol_t* ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
+			if (ref->alias_ref)
+				ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, ref->alias_ref - 1);
+			ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+		}
 		ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
 		tensor_sym.d = d;
 		tensor_sym.alias_ref = tensor_ref->d + 1;
@@ -1905,9 +1988,10 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 						/* This is is required. Consider the case that we have an alias of this tensor used somehwere */ \
 						/* on forward pass, when we compute backward, we have that alias computed first, however, its */ \
 						/* underlying tensor is not zero initialized, and we will end up with garbage values here. */ \
-						if (tensor_ref->alias_registry) \
+						if (tensor_ref->alias_registry && \
+							/* Loop over to see if this tensor is fully occupied to avoid extra zero step. */ \
+							!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbol, tensor_symbol_info)) \
 						{ \
-							/* TODO: I can alternatively, loop over all the alias in the registry to see if I need to zero it out. */ \
 							ccv_nnc_autograd_tensor_symbol_t* tensor_sym = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d); \
 							assert(tensor_sym->alias_ref == 0); \
 							tensor_sym->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS; \
@@ -1915,7 +1999,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 						back_exec->inputs[i] = tensor_ref->d; \
 					} else { \
 						/* Otherwise, we need to sum them up, and then pass the summed result to the computation. */ \
-						_ccv_nnc_graph_sum_autograd_tensor_versions(idx, d, exec_symbol_size, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec); \
+						_ccv_nnc_graph_sum_autograd_tensor_versions(idx, d, exec_symbol_size, tensor_symbol_info, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec); \
 						ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c); \
 						back_exec->inputs[i] = tensor_ref->d; \
 					} \
@@ -2000,7 +2084,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 		ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d;
 		// If there are more than one tensor in the list, it is possible to sum them up.
 		if (tensor_ver->c < tensor_ver->ref_version->rnum - 1)
-			_ccv_nnc_graph_sum_autograd_tensor_versions(-1, d, exec_symbol_size, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec);
+			_ccv_nnc_graph_sum_autograd_tensor_versions(-1, d, exec_symbol_size, tensor_symbol_info, tensor_ver, autograd_exec, autograd_tensor_symbol, sum_or_set_exec);
 		// The tensor version should have ref_version, and only one now (after sum up).
 		assert(tensor_ver->c == tensor_ver->ref_version->rnum - 1);
 	}
