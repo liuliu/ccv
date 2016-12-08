@@ -1432,28 +1432,81 @@ typedef struct {
 } ccv_nnc_sum_variable_t;
 
 // This method tries to figure out if a set of aliases can cover the whole tensor dim.
-// This is not a precise implementation though, it does some guesses, the important
-// thing is that it never answers yes but the given set of aliases actually doesn't cover.
-// It is OK for it to answer no but in fact all dims are covered.
+// This is not a precise implementation though. The requirement is to answer this question
+// with a given memory constraint, therefore, only allow up to 65536 different tensor locations.
+// If you have more than that, it will assume that it doesn't have fully assigned aliases,
+// and will return 0.
 
-typedef struct {
-	int ofs;
-	int dim;
-} ccv_nnc_tensor_ofs_dim_t;
+// Return 1 if inserted successfully.
+static inline int _ccv_nnc_try_mix(int* md, const int ins, const int c)
+{
+	if (!c)
+	{
+		md[0] = ins;
+		return 1;
+	}
+	int ll = 0, uu = c - 1;
+	int mm;
+	do {
+		mm = ll + ((uu - ll) >> 1);
+		if (ins == md[mm])
+			return 0;
+		else if (ins < md[mm])
+			uu = mm - 1;
+		else if (ins > md[mm])
+			ll = mm + 1;
+	} while (ll <= uu);
+	if (ll < c)
+		memmove(md + ll + 1, md + ll, sizeof(int) * (c - ll));
+	md[ll] = ins;
+	return 1;
+}
 
-#define less_than(i1, i2, aux) ((i1).ofs < (i2).ofs)
-static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_ofs_dim_sort_by_ofs, ccv_nnc_tensor_ofs_dim_t, less_than)
-#undef less_than
+static inline int _ccv_nnc_mix_idx(const int* md, const int ins, const int c)
+{
+	if (c <= 1)
+		return 0;
+	int ll = 0, uu = c - 1;
+	int mm;
+	do {
+		mm = ll + ((uu - ll) >> 1);
+		if (ins == md[mm])
+			return mm;
+		else if (ins < md[mm])
+			uu = mm - 1;
+		else if (ins > md[mm])
+			ll = mm + 1;
+	} while (ll <= uu);
+	assert(0 && "Shouldn't reach here");
+	return -1;
+}
+
+static inline void _ccv_nnc_try_set_pix(const int* ofs, const int* dim, const int* tensor_dim, int* const* mdc, const int* mc, const int* mcc, uint8_t* mb, int offset, const int dim_idx)
+{
+	const int s = (ofs[dim_idx] == 0) ? 0 : _ccv_nnc_mix_idx(mdc[dim_idx], ofs[dim_idx], mc[dim_idx]) + 1;
+	const int d = ((ofs[dim_idx] + dim[dim_idx] == tensor_dim[dim_idx]) ? mc[dim_idx] : _ccv_nnc_mix_idx(mdc[dim_idx], ofs[dim_idx] + ccv_max(1, dim[dim_idx]), mc[dim_idx])) + 1;
+	assert(s >= 0);
+	assert(d >= 0);
+	int i;
+	if (dim_idx == 0)
+	{
+		for (i = s; i < d; i++)
+			// Fill this pix.
+			mb[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
+		return;
+	}
+	for (i = s; i < d; i++)
+		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, mdc, mc, mcc, mb, offset + i * mcc[dim_idx], dim_idx - 1);
+}
 
 static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info)
 {
 	// Only work with tensor_ref of aliases.
 	assert(tensor_ref->alias_registry);
 	const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
-	const ccv_nnc_tensor_symbol_info_t* tensor_sym = tensor_symbol_info + autograd->d;
 	assert(tensor_symbol_info[autograd->d].alias_ref == 0);
+	const int* tensor_dim = tensor_symbol_info[autograd->d].info.dim;
 	int i, j;
-	int c[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, i);
@@ -1461,52 +1514,88 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
 		assert(tensor_symbol_info[autograd->d].alias_ref);
 		const int* inc = tensor_symbol_info[autograd->d].inc;
-		const int* ofs = tensor_symbol_info[autograd->d].ofs;
-		const int* dim = tensor_symbol_info[autograd->d].info.dim;
-		if (memcmp(inc, tensor_sym->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
+		if (memcmp(inc, tensor_dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
 			return 0;
-		for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC && inc[j]; j++)
-			if (ofs[j] > 0 || dim[j] + ofs[j] < inc[j])
-				c[j] = 1; // Mark this dimension as not fully stretched.
 	}
-	j = 0;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		if (c[i] && ++j == 2) // If there are more than 1 dimension that is not fully stretched, we are in trouble.
-			return 0;
-	if (!j)
-		return 1; // Every dimension is fully stretched.
-	ccv_nnc_tensor_ofs_dim_t* ofs_dim = (tensor_ref->alias_registry->rnum <= 256) ? (ccv_nnc_tensor_ofs_dim_t*)alloca(sizeof(ccv_nnc_tensor_ofs_dim_t) * tensor_ref->alias_registry->rnum) : (ccv_nnc_tensor_ofs_dim_t*)malloc(sizeof(ccv_nnc_tensor_ofs_dim_t) * tensor_ref->alias_registry->rnum);
-	int max_dim = 0;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		if (c[i])
+	int md[1024]; // Having 1024 int scratch space for mapping dimensions.
+	int mc[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Mapping dimension size.
+	int mbc = 1;
+	int* mdp = md;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
+	{
+		int head = 0, tail = 0; // Note that we touched both the head and tail (otherwise this dimension is not fully covered).
+		int c = 0;
+		for (j = 0; j < tensor_ref->alias_registry->rnum; j++)
 		{
-			// Loop over this specific dimension to see if it is fully assigned.
-			for (j = 0; j < tensor_ref->alias_registry->rnum; j++)
-			{
-				const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, j);
-				assert(d < autograd_tensor_symbol->rnum);
-				const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
-				ofs_dim[j].ofs = tensor_symbol_info[autograd->d].ofs[i];
-				ofs_dim[j].dim = tensor_symbol_info[autograd->d].info.dim[i];
-			}
-			max_dim = tensor_sym->info.dim[i];
-			break;
+			const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, j);
+			assert(d < autograd_tensor_symbol->rnum);
+			const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
+			assert(tensor_symbol_info[autograd->d].alias_ref);
+			const int* ofs = tensor_symbol_info[autograd->d].ofs;
+			const int* dim = tensor_symbol_info[autograd->d].info.dim;
+			head = head || (ofs[i] == 0);
+			tail = tail || (ofs[i] + ccv_max(1, dim[i]) == tensor_dim[i]);
+			if (ofs[i] != 0)
+				c += _ccv_nnc_try_mix(mdp, ofs[i], c);
+			if (mdp - md + c >= 1024) // Cannot handle that much, abort.
+				return 0;
+			if (ofs[i] + ccv_max(1, dim[i]) < tensor_dim[i])
+				c += _ccv_nnc_try_mix(mdp, ofs[i] + ccv_max(1, dim[i]), c);
+			if (mdp - md + c >= 1024) // Cannot handle that much, abort.
+				return 0;
 		}
-	_ccv_nnc_tensor_ofs_dim_sort_by_ofs(ofs_dim, tensor_ref->alias_registry->rnum, 0);
-	int ofs = 0;
+		if (!head || !tail)
+			return 0;
+		mbc *= (c + 1);
+		mc[i] = c;
+		mdp += c; // Moving to next level.
+	}
+	// binary map to see if it fills up.
+	uint8_t* mb = (mbc <= 8192) ? (uint8_t*)alloca(sizeof(uint8_t) * ((mbc + 7) >> 3)) : (uint8_t*)ccmalloc(sizeof(uint8_t) * ((mbc + 7) >> 3));
+	memset(mb, 0, sizeof(uint8_t) * ((mbc + 7) >> 3));
+	int* mdc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int mcc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
+	{
+		mcc[i] = (i > 0) ? mcc[i - 1] * (mc[i] + 1) : (mc[i] + 1);
+		mdc[i] = (i > 0) ? mdc[i - 1] + mc[i - 1] : md;
+	}
+	const int max_dim = i;
 	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
 	{
-		if (ofs_dim[i].ofs > ofs) // There is a gap.
+		const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, i);
+		assert(d < autograd_tensor_symbol->rnum);
+		const ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, d);
+		assert(tensor_symbol_info[autograd->d].alias_ref);
+		const int* ofs = tensor_symbol_info[autograd->d].ofs;
+		const int* dim = tensor_symbol_info[autograd->d].info.dim;
+		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, mdc, mc, mcc, mb, 0, max_dim - 1);
+	}
+	// Compare to see now if the binary map filled up. If it filled up, we know it is fully assigned.
+	for (i = 0; i < (mbc >> 3); i++)
+		if (mb[i] < 0xff)
 		{
-			if (tensor_ref->alias_registry->rnum > 256)
-				ccfree(ofs_dim);
+			if (mbc > 8192)
+				ccfree(mb);
 			return 0;
 		}
-		ofs = ccv_max(ofs, ofs_dim[i].ofs + ofs_dim[i].dim);
+	if ((mbc & 0x7) > 0)
+	{
+		// Fetch the rest.
+		uint8_t r = 0;
+		for (i = 0; i < (mbc & 0x7); i++)
+			r |= (1 << i);
+		assert(mb[((mbc + 7) >> 3) - 1] <= r);
+		if (mb[((mbc + 7) >> 3) - 1] < r)
+		{
+			if (mbc > 8192)
+				ccfree(mb);
+			return 0;
+		}
 	}
-	if (tensor_ref->alias_registry->rnum > 256)
-		ccfree(ofs_dim);
-	return ofs >= max_dim; // Can fully occupy.
+	if (mbc > 8192)
+		ccfree(mb);
+	return 1;
 }
 
 static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int d, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, ccv_nnc_autograd_tensor_version_t* tensor_ver, ccv_nnc_graph_autograd_exec_t* autograd_exec, ccv_array_t* autograd_tensor_symbol, ccv_array_t* sum_or_set_exec)
