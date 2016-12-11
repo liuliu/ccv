@@ -44,11 +44,11 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows), 0);
 			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, input->info, tensor->info);
 			cmd = ccv_nnc_cmd_autotune(cmd, 0, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
-			exec = ccv_nnc_graph_exec(vgg, cmd, hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+			exec = ccv_nnc_graph_exec_new(vgg, cmd, hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
 			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, input->info, tensor->info);
-			exec = ccv_nnc_graph_exec(vgg, cmd, hint, TENSOR_LIST(input), TENSOR_LIST(tensor));
+			exec = ccv_nnc_graph_exec_new(vgg, cmd, hint, TENSOR_LIST(input), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
 			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->input.node.count, layer->net.full_connect.count), 0);
 			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
@@ -64,7 +64,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 				ccv_array_push(tensors, &input);
 			}
 			cmd = ccv_nnc_cmd_autotune(cmd, 0, ccv_nnc_no_hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
-			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_no_hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
+			exec = ccv_nnc_graph_exec_new(vgg, cmd, ccv_nnc_no_hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else {
 			assert("unreachable");
 		}
@@ -79,7 +79,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			// Create the ReLU layer.
 			ccv_nnc_cmd_param_t cmd_params = {};
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, cmd_params, 0);
-			exec = ccv_nnc_graph_exec(vgg, cmd, ccv_nnc_no_hint, TENSOR_LIST(tensor), TENSOR_LIST(tensor));
+			exec = ccv_nnc_graph_exec_new(vgg, cmd, ccv_nnc_no_hint, TENSOR_LIST(tensor), TENSOR_LIST(tensor));
 			ccv_nnc_graph_exec_concat(vgg, previous_exec, exec);
 			previous_exec = exec;
 		}

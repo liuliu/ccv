@@ -24,7 +24,7 @@ ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 	return graph;
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
 {
 	int d = graph->exec_info->rnum;
 	ccv_nnc_graph_exec_info_t info = {

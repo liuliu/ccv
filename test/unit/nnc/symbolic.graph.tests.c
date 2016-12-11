@@ -14,18 +14,18 @@ TEST_SETUP()
 TEST_CASE("compile a simple symbolic graph with autogen")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(2, 21, 31), "a");
-	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(4, 21, 31), "b");
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2, 21, 31), "a");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(4, 21, 31), "b");
 	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
-	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(2, 3, 5, 4), "w");
-	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(4), "bias");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2, 3, 5, 4), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(4), "bias");
 	// See what we compile to when have unused tensors.
-	ccv_nnc_tensor_symbol_t unused0 = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "unused0");
-	ccv_nnc_tensor_symbol_t unused1 = ccv_nnc_tensor_symbol(symbolic_graph, ONE_CPU_TENSOR(1), "unused1");
-	ccv_nnc_graph_exec_symbol_t forw_symbol = ccv_nnc_graph_exec_symbol(symbolic_graph, forw_cmd, TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "forw");
-	ccv_nnc_tensor_symbol_t m = ccv_nnc_tensor_symbol(symbolic_graph, b.info, "m");
+	ccv_nnc_tensor_symbol_t unused0 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "unused0");
+	ccv_nnc_tensor_symbol_t unused1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "unused1");
+	ccv_nnc_graph_exec_symbol_t forw_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_graph, forw_cmd, TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "forw");
+	ccv_nnc_tensor_symbol_t m = ccv_nnc_tensor_symbol_new(symbolic_graph, b.info, "m");
 	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
-	ccv_nnc_graph_exec_symbol_t softmax_symbol = ccv_nnc_graph_exec_symbol(symbolic_graph, softmax_cmd, TENSOR_SYMBOL_LIST(b), TENSOR_SYMBOL_LIST(m), "softmax");
+	ccv_nnc_graph_exec_symbol_t softmax_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_graph, softmax_cmd, TENSOR_SYMBOL_LIST(b), TENSOR_SYMBOL_LIST(m), "softmax");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(forw_symbol, softmax_symbol));
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
