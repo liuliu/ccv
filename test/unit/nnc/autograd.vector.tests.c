@@ -67,8 +67,109 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 }
 
-TEST_CASE("Autograd with sliced tensors for convolution (similar to Inception module)")
+TEST_CASE("Autograd with sliced tensors for convolution doesn't require zeros (similar to Inception module)")
 {
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 3, 3, 128), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128), "bias");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "b");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "c");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 128;
+	inc[1] = 100;
+	inc[2] = 100;
+	ccv_nnc_tensor_symbol_t b0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b0");
+	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c0");
+	ofs[0] = 64;
+	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b1");
+	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c1");
+	ofs[0] = 0;
+	ofs[2] = 50;
+	ccv_nnc_tensor_symbol_t b2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b2");
+	ccv_nnc_tensor_symbol_t c2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c2");
+	ofs[0] = 64;
+	ofs[2] = 50;
+	ccv_nnc_tensor_symbol_t b3 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b3");
+	ccv_nnc_tensor_symbol_t c3 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c3");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
+	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
+	ccv_nnc_graph_exec_symbol_t relu2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b2), TENSOR_SYMBOL_LIST(c2), "relu2");
+	ccv_nnc_graph_exec_symbol_t relu3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b3), TENSOR_SYMBOL_LIST(c3), "relu3");
+	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 1, 1), "d");
+	ccv_nnc_graph_exec_symbol_t pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(128, 100, 100), 0), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(d), "pool");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1, relu2, relu3, pool));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv), GRAPH_EXEC_SYMBOL_LIST(pool), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(w, bias, b, c));
+	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
+	ccv_nnc_tensor_symbol_t dc = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, c);
+	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, db, CCV_NNC_SYM_TENSOR_INIT_ZEROS), "The gradient for b doesn't need to be zero init");
+	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, dc, CCV_NNC_SYM_TENSOR_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
+TEST_CASE("Autograd with sliced tensors for convolution require zeros")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 3, 3, 128), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128), "bias");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "b");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "c");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 128;
+	inc[1] = 100;
+	inc[2] = 100;
+	ccv_nnc_tensor_symbol_t b0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b0");
+	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c0");
+	ofs[0] = 64;
+	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b1");
+	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c1");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
+	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
+	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 1, 1), "d");
+	ccv_nnc_graph_exec_symbol_t pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(128, 100, 100), 0), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(d), "pool");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1, pool));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv), GRAPH_EXEC_SYMBOL_LIST(pool), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(w, bias, b, c));
+	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
+	ccv_nnc_tensor_symbol_t dc = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, c);
+	REQUIRE(ccv_nnc_tensor_symbol_flag(symbolic_graph, db, CCV_NNC_SYM_TENSOR_INIT_ZEROS), "The gradient for b needs to be zero init");
+	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, dc, CCV_NNC_SYM_TENSOR_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
+TEST_CASE("Autograd with sliced tensors for convolution that are over-subscribed")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 3, 3, 128), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128), "bias");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "b");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 100, 100), "c");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 128;
+	inc[1] = 100;
+	inc[2] = 100;
+	ccv_nnc_tensor_symbol_t b0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b0");
+	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c0");
+	ofs[0] = 32;
+	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "b1");
+	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(64, 100, 50), "c1");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
+	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
+	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 1, 1), "d");
+	ccv_nnc_graph_exec_symbol_t pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(128, 100, 100), 0), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(d), "pool");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1, pool));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv), GRAPH_EXEC_SYMBOL_LIST(pool), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(w, bias, b0, b1, b));
+	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
+	ccv_nnc_graph_exec_symbol_t dbx = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, db);
+	REQUIRE(ccv_nnc_graph_exec_symbol_cmd(symbolic_graph, dbx).cmd == CCV_NNC_EWSUM_FORWARD, "Since gradient of b is overlapped, it has to be summed up");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
 #include "case_main.h"

@@ -234,8 +234,12 @@ CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_param_t info, const char* name);
 // Create an alias to the tensor symbol as tensor view (thus, pointing to the same memory region, but with a different header info and offset).
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* name);
+// For a given alias, this method resolve to referenced tensor symbol.
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_alias);
 // Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size, const char* name);
+// Return the command on this exec symbol
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t exec);
 // The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
 // However, you can also set your own hints. Return non-zero if cannot set successfully.
 int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_hint_t hint);
