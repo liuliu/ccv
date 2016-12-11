@@ -200,6 +200,14 @@ int ccv_nnc_tensor_symbol_set_flags(const ccv_nnc_symbolic_graph_t* graph, ccv_n
 	return 0;
 }
 
+int ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	return !!(symbol_info->flags & flags);
+}
+
 int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)
 {
 	assert(graph == source.graph);
@@ -1481,22 +1489,58 @@ static inline int _ccv_nnc_mix_idx(const int* md, const int ins, const int c)
 	return -1;
 }
 
-static inline void _ccv_nnc_try_set_pix(const int* ofs, const int* dim, const int* tensor_dim, int* const* mdc, const int* mc, const int* mcc, uint8_t* mb, int offset, const int dim_idx)
+static inline void _ccv_nnc_try_set_pix_0(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset)
 {
-	const int s = (ofs[dim_idx] == 0) ? 0 : _ccv_nnc_mix_idx(mdc[dim_idx], ofs[dim_idx], mc[dim_idx]) + 1;
-	const int d = ((ofs[dim_idx] + dim[dim_idx] == tensor_dim[dim_idx]) ? mc[dim_idx] : _ccv_nnc_mix_idx(mdc[dim_idx], ofs[dim_idx] + ccv_max(1, dim[dim_idx]), mc[dim_idx])) + 1;
-	assert(s >= 0);
-	assert(d >= 0);
+	const int s = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
+	const int d = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
+	assert(s >= 0 && d > s);
 	int i;
-	if (dim_idx == 0)
-	{
-		for (i = s; i < d; i++)
-			// Fill this pix.
-			mb[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
-		return;
-	}
 	for (i = s; i < d; i++)
-		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, mdc, mc, mcc, mb, offset + i * mcc[dim_idx], dim_idx - 1);
+		// Fill this pix. I can make this faster by loop through full ones (divided by 8), but too lazy.
+		cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
+}
+
+static inline void _ccv_nnc_try_set_pix_1(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset)
+{
+	const int s0 = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
+	const int d0 = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
+	assert(s0 >= 0 && d0 > s0);
+	const int s1 = (ofs[1] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[1], ofs[1], cube_dim[1]) + 1;
+	const int d1 = ((ofs[1] + dim[1] == tensor_dim[1]) ? cube_dim[1] : _ccv_nnc_mix_idx(scmd[1], ofs[1] + ccv_max(1, dim[1]), cube_dim[1])) + 1;
+	assert(s1 >= 0 && d1 > s1);
+	int i, j;
+	const int step1 = cube_step[1];
+	if (step1 == d0 - s0)
+	{
+		// Faster one, we can simply loop through.
+		const int len = d1 + (d1 - s1) * step1;
+		for (i = s1; i < len; i++)
+			cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
+	} else {
+		// There are gaps, slow one.
+		for (i = s1; i < d1; i++, offset += step1)
+			for (j = s0; j < d0; j++)
+				cube[(offset + j) >> 3] |= (1 << ((offset + j) & 0x7));
+	}
+}
+
+static inline void _ccv_nnc_try_set_pix(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset, const int dim_idx)
+{
+	switch (dim_idx)
+	{
+		case 1:
+			_ccv_nnc_try_set_pix_1(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, offset);
+			return;
+		case 0:
+			_ccv_nnc_try_set_pix_0(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, offset);
+			return;
+	}
+	int i;
+	const int s = (ofs[dim_idx] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[dim_idx], ofs[dim_idx], cube_dim[dim_idx]) + 1;
+	const int d = ((ofs[dim_idx] + dim[dim_idx] == tensor_dim[dim_idx]) ? cube_dim[dim_idx] : _ccv_nnc_mix_idx(scmd[dim_idx], ofs[dim_idx] + ccv_max(1, dim[dim_idx]), cube_dim[dim_idx])) + 1;
+	assert(s >= 0 && d > s);
+	for (i = s; i < d; i++)
+		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, offset + i * cube_step[dim_idx], dim_idx - 1);
 }
 
 static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info)
@@ -1517,14 +1561,28 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		if (memcmp(inc, tensor_dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
 			return 0;
 	}
-	int md[1024]; // Having 1024 int scratch space for mapping dimensions.
-	int mc[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Mapping dimension size.
-	int mbc = 1;
-	int* mdp = md;
+	/* We need a solid cube (potentially hyper dimensional) to compute if there are overlaps.
+	 * To make this cube as small as possible, we need to map the actual tensor dimension
+	 * (therefore, we don't actually allocate the whole tensor to compute overlaps) to a smaller
+	 * cube given the ofs and dim size of its aliases.
+	 *
+	 * The following code generated the dimension mapping (using scratch space) with binary search + insertion
+	 * and then we fill the cube with a given tensor alias's dimensional information (ofs, dim).
+	 * Afterwards, we simply need to check if the cube is totally filled up to know if this tensor
+	 * is fully assigned with its aliases (if that is the case, we can skip zeroing for this tensor).
+	 *
+	 * There are several restrictions though to make this faster: 1). I cannot handle any cube that all side
+	 * lengths combined larger than 1023 (scm only have 1024 scratch space). 2). I cannot handle any cube
+	 * that the total volume is larger than 2048 * 8 (I only allocate 2K on stack for this).
+	 * */
+	int scm[1024]; // Having 1024 int scratch space for mapping dimensions. (Or sparse coordinate mapping).
+	int cube_dim[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Mapping dimension size.
+	int cube_size = 1;
+	int* scmptr = scm;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
 	{
 		int head = 0, tail = 0; // Note that we touched both the head and tail (otherwise this dimension is not fully covered).
-		int c = 0;
+		int len = 0;
 		for (j = 0; j < tensor_ref->alias_registry->rnum; j++)
 		{
 			const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, j);
@@ -1536,29 +1594,32 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 			head = head || (ofs[i] == 0);
 			tail = tail || (ofs[i] + ccv_max(1, dim[i]) == tensor_dim[i]);
 			if (ofs[i] != 0)
-				c += _ccv_nnc_try_mix(mdp, ofs[i], c);
-			if (mdp - md + c >= 1024) // Cannot handle that much, abort.
+				len += _ccv_nnc_try_mix(scmptr, ofs[i], len);
+			if (scmptr - scm + len >= 1024) // Cannot handle that much, abort.
 				return 0;
 			if (ofs[i] + ccv_max(1, dim[i]) < tensor_dim[i])
-				c += _ccv_nnc_try_mix(mdp, ofs[i] + ccv_max(1, dim[i]), c);
-			if (mdp - md + c >= 1024) // Cannot handle that much, abort.
+				len += _ccv_nnc_try_mix(scmptr, ofs[i] + ccv_max(1, dim[i]), len);
+			if (scmptr - scm + len >= 1024) // Cannot handle that much, abort.
 				return 0;
 		}
 		if (!head || !tail)
 			return 0;
-		mbc *= (c + 1);
-		mc[i] = c;
-		mdp += c; // Moving to next level.
+		cube_size *= (len + 1);
+		cube_dim[i] = len;
+		scmptr += len; // Moving to next level.
 	}
+	// The cube map is too large, cannot do the computation, assume it is not fully assigned.
+	if (cube_size > 2048 * 8)
+		return 0;
 	// binary map to see if it fills up.
-	uint8_t* mb = (mbc <= 8192) ? (uint8_t*)alloca(sizeof(uint8_t) * ((mbc + 7) >> 3)) : (uint8_t*)ccmalloc(sizeof(uint8_t) * ((mbc + 7) >> 3));
-	memset(mb, 0, sizeof(uint8_t) * ((mbc + 7) >> 3));
-	int* mdc[CCV_NNC_MAX_DIM_ALLOC] = {0};
-	int mcc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	uint8_t* cube = (uint8_t*)alloca(sizeof(uint8_t) * ((cube_size + 7) >> 3));
+	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 7) >> 3));
+	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Sparse coordinate map at dimension x.
+	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
 	{
-		mcc[i] = (i > 0) ? mcc[i - 1] * (mc[i] + 1) : (mc[i] + 1);
-		mdc[i] = (i > 0) ? mdc[i - 1] + mc[i - 1] : md;
+		cube_step[i] = (i > 0) ? cube_step[i - 1] * (cube_dim[i - 1] + 1) : 1;
+		scmd[i] = (i > 0) ? scmd[i - 1] + cube_dim[i - 1] : scm;
 	}
 	const int max_dim = i;
 	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
@@ -1569,32 +1630,22 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		assert(tensor_symbol_info[autograd->d].alias_ref);
 		const int* ofs = tensor_symbol_info[autograd->d].ofs;
 		const int* dim = tensor_symbol_info[autograd->d].info.dim;
-		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, mdc, mc, mcc, mb, 0, max_dim - 1);
+		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, 0, max_dim - 1);
 	}
 	// Compare to see now if the binary map filled up. If it filled up, we know it is fully assigned.
-	for (i = 0; i < (mbc >> 3); i++)
-		if (mb[i] < 0xff)
-		{
-			if (mbc > 8192)
-				ccfree(mb);
+	for (i = 0; i < (cube_size >> 3); i++)
+		if (cube[i] < 0xff)
 			return 0;
-		}
-	if ((mbc & 0x7) > 0)
+	if ((cube_size & 0x7) > 0)
 	{
 		// Fetch the rest.
 		uint8_t r = 0;
-		for (i = 0; i < (mbc & 0x7); i++)
+		for (i = 0; i < (cube_size & 0x7); i++)
 			r |= (1 << i);
-		assert(mb[((mbc + 7) >> 3) - 1] <= r);
-		if (mb[((mbc + 7) >> 3) - 1] < r)
-		{
-			if (mbc > 8192)
-				ccfree(mb);
+		assert(cube[((cube_size + 7) >> 3) - 1] <= r);
+		if (cube[((cube_size + 7) >> 3) - 1] < r)
 			return 0;
-		}
 	}
-	if (mbc > 8192)
-		ccfree(mb);
 	return 1;
 }
 

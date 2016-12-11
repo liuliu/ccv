@@ -129,11 +129,11 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
-int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
-int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
-int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
-int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
 
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.
@@ -243,6 +243,7 @@ int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, cc
 int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
 int ccv_nnc_tensor_symbol_set_flags(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags);
+CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags);
 // Manually concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);

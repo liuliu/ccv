@@ -38,9 +38,9 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
 	ccv_nnc_graph_exec_symbol_t dxc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, GRAPH_EXEC_SYMBOL_LIST(plus), GRAPH_EXEC_SYMBOL_LIST(dxc, sum), &graph, &tensor_arena, &graph_exec_arena);
-	// FILE *fw = fopen("autograd-vector.dot", "w+");
-	// ccv_nnc_symbolic_graph_dot(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH, fw);
-	// fclose(fw);
+	FILE *fw = fopen("autograd-vector.dot", "w+");
+	ccv_nnc_symbolic_graph_dot(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH, fw);
+	fclose(fw);
 	// fw = fopen("autograd-graph-1.dot", "w+");
 	// ccv_nnc_graph_dot(graph, CCV_NNC_LONG_DOT_GRAPH, fw);
 	// fclose(fw);
@@ -65,6 +65,10 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+}
+
+TEST_CASE("Autograd with sliced tensors for convolution (similar to Inception module)")
+{
 }
 
 #include "case_main.h"
