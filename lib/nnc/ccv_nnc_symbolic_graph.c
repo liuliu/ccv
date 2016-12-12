@@ -357,10 +357,14 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int
 			fputs("|{Input", out);
 			for (j = 0; j < exec_symbol_info->input_size; j++)
 			{
-				ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->inputs[j]);
-				fputc('|', out);
-				ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
-				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
+				if (exec_symbol_info->inputs[j] >= 0)
+				{
+					fputc('|', out);
+					ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->inputs[j]);
+					ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
+					_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
+				} else
+					fputs("|-", out);
 			}
 			fputc('}', out);
 		}
@@ -369,10 +373,14 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int
 			fputs("|{Output", out);
 			for (j = 0; j < exec_symbol_info->output_size; j++)
 			{
-				ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->outputs[j]);
-				fputc('|', out);
-				ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
-				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
+				if (exec_symbol_info->outputs[j] >= 0)
+				{
+					fputc('|', out);
+					ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->outputs[j]);
+					ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
+					_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
+				} else
+					fputs("|-", out);
 			}
 			fputc('}', out);
 		}
@@ -428,8 +436,8 @@ void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* symb
 		max_output_size = ccv_max(max_output_size, exec_symbol_info[i].output_size);
 		// If there is no hint and we have input and output tensor specified.
 		if (ccv_nnc_is_no_hint(exec_symbol_info[i].hint) &&
-			exec_symbol_info[i].input_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
-			exec_symbol_info[i].output_size > 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
+			exec_symbol_info[i].input_size > 0 && exec_symbol_info[i].inputs[0] >= 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].inputs[0]].info) &&
+			exec_symbol_info[i].output_size > 0 && exec_symbol_info[i].outputs[0] >= 0 && !ccv_nnc_is_tensor_auto(tensor_symbol_info[exec_symbol_info[i].outputs[0]].info))
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
 	}
 
@@ -442,11 +450,11 @@ void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* symb
 		if (node->input_size > 0 && node->output_size > 0) \
 		{ \
 			for (i = 0; i < node->input_size; i++) \
-				input_params[i] = tensor_symbol_info[node->inputs[i]].info; \
+				input_params[i] = node->inputs[i] >= 0 ? tensor_symbol_info[node->inputs[i]].info : ccv_nnc_tensor_auto; \
 			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size); \
 			for (i = 0; i < node->output_size; i++) \
 				/* Only assign the output parameters if the symbol itself is auto. */ \
-				if (ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info)) \
+				if (node->outputs[i] >= 0 && ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info)) \
 					tensor_symbol_info[node->outputs[i]].info = output_params[i]; \
 		} \
 	} while (0)

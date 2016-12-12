@@ -617,9 +617,11 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 #define visitor(node, idx, ...) \
 	do { \
 		for (i = 0; i < node->input_size; i++) \
-			tensor_expect[node->inputs[i]].flag = 0; \
+			if (node->inputs[i] >= 0) \
+				tensor_expect[node->inputs[i]].flag = 0; \
 		for (i = 0; i < node->output_size; i++) \
-			tensor_expect[node->outputs[i]].flag = 0; \
+			if (node->outputs[i] >= 0) \
+				tensor_expect[node->outputs[i]].flag = 0; \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
@@ -649,6 +651,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 		for (i = 0; i < node->input_size; i++) \
 		{ \
 			int d = node->inputs[i]; \
+			if (d < 0) \
+				continue; \
 			if (TENSOR_EXPECT_ALIAS(tensor_expect[d])) \
 				d = tensor_symbol_info[d].alias_ref - 1; \
 			if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[d])) \
@@ -662,6 +666,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 		for (i = 0; i < node->output_size; i++) \
 		{ \
 			int d = node->outputs[i]; \
+			if (d < 0) \
+				continue; \
 			if (TENSOR_EXPECT_ALIAS(tensor_expect[d])) \
 				d = tensor_symbol_info[d].alias_ref - 1; \
 			/* If it is recognized as a const tensor, we can find it in the output pool because it may be in a RNN. */ \
@@ -684,6 +690,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			{ \
 				/* If the input is not assigned, it can be referenced, find the referenced one */ \
 				int ref = node->inputs[x]; \
+				if (ref < 0) \
+					continue; \
 				while (!TENSOR_EXPECT_COMPUTABLE(tensor_expect[ref]) && tensor_expect[ref].ref) \
 					ref = tensor_expect[ref].ref - 1; \
 				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref]; \
@@ -693,7 +701,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 					for (y = 0; y < node->output_size; y++) \
 						/* Only proceed if the input symbol is different from the output symbol, */ \
 						/* and the input symbol meets the output symbol exactly at the same spot. */ \
-						if (ref != node->outputs[y] && \
+						if (node->outputs[y] >= 0 && \
+							ref != node->outputs[y] && \
 							!TENSOR_EXPECT_CONST(tensor_expect[node->outputs[y]]) && \
 							TENSOR_EXPECT_COMPUTABLE(tensor_expect[node->outputs[y]]) && \
 							tensor_expect[node->outputs[y]].head->rnum == 1 && \
@@ -757,9 +766,9 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 		if (CCV_NO_GRAPH_EXEC(graph_exec[idx])) \
 		{ \
 			for (i = 0; i < node->input_size; i++) \
-				max_inputs[i] = tensor_arena->vt_tensor[node->inputs[i]]; \
+				max_inputs[i] = node->inputs[i] >= 0 ? tensor_arena->vt_tensor[node->inputs[i]] : 0; \
 			for (i = 0; i < node->output_size; i++) \
-				max_outputs[i] = tensor_arena->vt_tensor[node->outputs[i]]; \
+				max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensor[node->outputs[i]] : 0; \
 			graph_exec[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size); \
 		} \
 		if (!node->outgoings) \
@@ -771,9 +780,9 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 			{ \
 				ccv_nnc_graph_exec_symbol_info_t* outgoing_node = exec_symbol_info + outgoing; \
 				for (j = 0; j < outgoing_node->input_size; j++) \
-					max_inputs[j] = tensor_arena->vt_tensor[outgoing_node->inputs[j]]; \
+					max_inputs[j] = outgoing_node->inputs[j] >= 0 ? tensor_arena->vt_tensor[outgoing_node->inputs[j]] : 0; \
 				for (j = 0; j < outgoing_node->output_size; j++) \
-					max_outputs[j] = tensor_arena->vt_tensor[outgoing_node->outputs[j]]; \
+					max_outputs[j] = outgoing_node->outputs[j] >= 0 ? tensor_arena->vt_tensor[outgoing_node->outputs[j]] : 0; \
 				graph_exec[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size); \
 			} \
 			ccv_nnc_graph_exec_concat(graph, graph_exec[idx], graph_exec[outgoing]); \

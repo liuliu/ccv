@@ -117,14 +117,17 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	// D[x + y + z, x] = 1
 	int i;
 	if (inputs[0] == 0)
+	{
 		// Set them to 1.
 		for (i = 0; i < output_size; i++)
-			_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[i], 1);
-	else
+			if (outputs[i])
+				_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[i], 1);
+	} else {
 		// Copy over the gradient (If they are not pointing to the same tensor already).
 		for (i = 0; i < output_size; i++)
-			if (inputs[0] != outputs[i])
+			if (inputs[0] != outputs[i] && outputs[i])
 				_ccv_nnc_tensor_transfer_cpu_ref((ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[i]);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
