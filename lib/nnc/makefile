@@ -3,7 +3,7 @@ include ../config.mk
 CFLAGS := -O3 -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c
+SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c ccv_nnc_symbolic_graph_compile.c ccv_nnc_symbolic_graph_backward.c
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
