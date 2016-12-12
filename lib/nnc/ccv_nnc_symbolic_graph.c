@@ -2023,7 +2023,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	}
 #define visitor(node, idx, ...) \
 	do { \
-		assert(ccv_nnc_cmd_is_forward(node->cmd)); \
+		assert(ccv_nnc_cmd_is_forward(node->cmd) || node->cmd.cmd == CCV_NNC_NOOP); \
 		if (node->outgoings) \
 			for (i = 0; i < node->outgoings->rnum; i++) \
 			{ \
@@ -2109,8 +2109,9 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx; \
 			ccv_nnc_graph_autograd_exec_t* back_exec = autograd_exec + idx; \
 			back_exec->cmd = forw_exec->cmd; \
-			back_exec->cmd.cmd += 1; /* Backward command is the one after forward command. */ \
-			assert(ccv_nnc_cmd_is_backward(back_exec->cmd)); \
+			if (back_exec->cmd.cmd != CCV_NNC_NOOP) \
+				back_exec->cmd.cmd += 1; /* Backward command is the one after forward command. */ \
+			assert(ccv_nnc_cmd_is_backward(back_exec->cmd) || back_exec->cmd.cmd == CCV_NNC_NOOP); \
 			back_exec->output_size = forw_exec->input_size; \
 			back_exec->input_size = forw_exec->output_size; \
 			back_exec->inputs = ccmalloc(sizeof(int) * (back_exec->input_size + back_exec->output_size)); \
