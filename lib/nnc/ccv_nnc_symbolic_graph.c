@@ -2364,14 +2364,19 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, ((ccv_nnc_graph_sum_or_set_exec_t*)ccv_array_get(sum_or_set_exec, d - exec_symbol_size))->symbol);
 			}
 	}
+	int alias_size = 0;
+	for (i = 0; i < wrt_symbol_size; i++)
+		if (tensor_symbol_info[wrt_symbols[i].d].alias_ref)
+			// I need to create alias for these, therefore, add to alias_size count.
+			++alias_size;
 	// Now, everything is done, set the metadata on graph so that we can lookup later for backward symbols
 	if (graph->backward_tensor_symbols)
-		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * graph->tensor_symbol_info->rnum);
+		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum + alias_size));
 	else
-		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * graph->tensor_symbol_info->rnum);
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum + alias_size));
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_size;
 	graph->forward_symbol_size = tensor_symbol_size;
-	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - tensor_symbol_size;
+	graph->backward_symbol_size = (graph->tensor_symbol_info->rnum + alias_size) - tensor_symbol_size;
 	for (i = 0; i < graph->forward_symbol_size; i++)
 		graph->backward_tensor_symbols[i] = -1;
 	for (i = 0; i < graph->backward_symbol_size; i++)
