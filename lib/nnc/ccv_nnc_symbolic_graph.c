@@ -2016,6 +2016,11 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	// Now, for each one of these, find a reverse graph.
 	ccv_nnc_graph_backward_info_t* backward_info = (ccv_nnc_graph_backward_info_t*)cccalloc(exec_symbol_size, sizeof(ccv_nnc_graph_backward_info_t));
 	int i, j;
+	for (i = 0; i < f_symbol_size; i++)
+	{
+		// f symbols cannot be alias.
+		assert(!tensor_symbol_info[f_symbols[i].d].alias_ref);
+	}
 #define visitor(node, idx, ...) \
 	do { \
 		assert(ccv_nnc_cmd_is_forward(node->cmd)); \
@@ -2035,9 +2040,14 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	do { \
 		int f = node->f_wrt & 0x1; \
 		for (i = 0; i < exec_symbol_info[idx].output_size && !f; i++) \
+		{ \
+			int d = exec_symbol_info[idx].outputs[i]; \
+			if (tensor_symbol_info[d].alias_ref) \
+				d = tensor_symbol_info[d].alias_ref - 1; \
 			for (j = 0; j < f_symbol_size && !f; j++) \
-				if (exec_symbol_info[idx].outputs[i] == f_symbols[j].d) \
+				if (d == f_symbols[j].d) \
 					f = 1; \
+		} \
 		if (f) \
 		{ \
 			node->f_wrt |= f; \
@@ -2134,8 +2144,6 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 							.x = idx, \
 							.alias_registry = ccv_array_new(sizeof(int), 1, 0) \
 						}; \
-						/* This is f symbols, must be the same size as the original for this alias to be anywhere usable. */ \
-						assert(ccv_nnc_tensor_count(tensor_symbol_info[alias_ref - 1].info) == ccv_nnc_tensor_count(tensor_symbol_info[d].info)); \
 						tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0); \
 						ccv_array_push(tensor_ver->ref_version, &tensor_ref); \
 						tensor_sym.d = d; /* set back */ \

@@ -162,10 +162,8 @@ TEST_CASE("Autograd with sliced tensors for convolution that are over-subscribed
 	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 3, 3), 0), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
 	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
 	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
-	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(128, 1, 1), "d");
-	ccv_nnc_graph_exec_symbol_t pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(128, 100, 100), 0), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(d), "pool");
-	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1, pool));
-	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv), GRAPH_EXEC_SYMBOL_LIST(pool), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(w, bias, b0, b1, b));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv), GRAPH_EXEC_SYMBOL_LIST(relu0, relu1), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(w, bias, b));
 	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
 	ccv_nnc_graph_exec_symbol_t dbx = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, db);
 	REQUIRE(ccv_nnc_graph_exec_symbol_cmd(symbolic_graph, dbx).cmd == CCV_NNC_EWSUM_FORWARD, "Since gradient of b is overlapped, it has to be summed up");
