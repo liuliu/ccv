@@ -163,7 +163,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
 		tensor_count += exec_info->input_size + exec_info->output_size;
 	}
-	ccv_nnc_tensor_dot_t* tensor_dots = (ccv_nnc_tensor_dot_t*)ccmalloc(sizeof(ccv_nnc_tensor_dot_t) * tensor_count);
+	ccv_nnc_tensor_dot_t* tensor_dots = tensor_count > 0 ? (ccv_nnc_tensor_dot_t*)ccmalloc(sizeof(ccv_nnc_tensor_dot_t) * tensor_count) : 0;
 	int k = 0;
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
