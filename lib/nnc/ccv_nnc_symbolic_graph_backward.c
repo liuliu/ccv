@@ -698,12 +698,16 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 				backward_info[i].output_bitmasks = backward_info[i].input_bitmasks + backward_info[i].input_bitmask_size;
 		}
 	}
+	enum {
+		WRT_SYMBOL_USE = 1,
+		F_SYMBOL_USE = 2
+	};
 	uint8_t* used = (uint8_t*)cccalloc(tensor_symbol_size, sizeof(uint8_t));
 	// First, all f_symbols and wrt_symbols are used.
 	for (i = 0; i < f_symbol_size; i++)
-		used[tensor_symbol_info[f_symbols[i].d].alias_ref ? tensor_symbol_info[f_symbols[i].d].alias_ref - 1 : f_symbols[i].d] = 1;
+		used[tensor_symbol_info[f_symbols[i].d].alias_ref ? tensor_symbol_info[f_symbols[i].d].alias_ref - 1 : f_symbols[i].d] |= F_SYMBOL_USE;
 	for (i = 0; i < wrt_symbol_size; i++)
-		used[tensor_symbol_info[wrt_symbols[i].d].alias_ref ? tensor_symbol_info[wrt_symbols[i].d].alias_ref - 1 : wrt_symbols[i].d] = 1;
+		used[tensor_symbol_info[wrt_symbols[i].d].alias_ref ? tensor_symbol_info[wrt_symbols[i].d].alias_ref - 1 : wrt_symbols[i].d] |= WRT_SYMBOL_USE;
 #define visitor(_, idx, ...) \
 	do { \
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx; \
@@ -722,7 +726,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 			int maybe_noop = 1; \
 			for (i = 0; i < forw_exec->input_size; i++) \
 				/* See if it is used. */ \
-				if (used[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]]) \
+				if (used[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE) \
 				{ \
 					maybe_noop = 0; \
 					break; \
@@ -739,7 +743,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 					/* Check if the output first */ \
 					for (i = 0; i < forw_exec->input_size; i++) \
 						/* Only try to eliminate the one that is not used. */ \
-						if (!used[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] && \
+						if (!(used[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE) && \
 							(node->output_bitmasks[i >> 6] & ((uint64_t)1 << i))) \
 						{ \
 							node->output_bitmasks[i >> 6] &= ~((uint64_t)1 << i); \
@@ -751,7 +755,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 						} \
 					for (i = 0; i < forw_exec->output_size * 2 + forw_exec->input_size; i++) \
 						if ((i >= forw_exec->output_size || \
-							 !used[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]]) && \
+							 !(used[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] & F_SYMBOL_USE)) && \
 							node->input_bitmasks[i >> 6] & ((uint64_t)1 << i)) \
 						{ /* Try to eliminate one of the input. */ \
 							node->input_bitmasks[i >> 6] &= ~((uint64_t)1 << i); \
@@ -765,7 +769,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 				for (i = 0; i < forw_exec->output_size; i++) \
 					if (node->input_bitmasks[i >> 6] & ((uint64_t)1 << i)) \
 						/* Mark it as used. */ \
-						used[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] = 1; \
+						used[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] |= WRT_SYMBOL_USE; \
 			} \
 		} \
 	} while (0)
