@@ -683,7 +683,9 @@ ac_user_opts='
 enable_option_checking
 enable_neon
 with_arch
+enable_fftw3
 enable_openmp
+enable_gsl
 with_cuda
 '
       ac_precious_vars='build_alias
@@ -1316,7 +1318,9 @@ Optional Features:
   --disable-FEATURE       do not include FEATURE (same as --enable-FEATURE=no)
   --enable-FEATURE[=ARG]  include FEATURE [ARG=yes]
   --enable-neon           optimize with NEON instruction set
+  --disable-fftw3         disable FFTW3 (GPL License)
   --disable-openmp        do not use OpenMP
+  --disable-gsl           disable GSL (GPL License)
 
 Optional Packages:
   --with-PACKAGE[=ARG]    use PACKAGE [ARG=yes]
@@ -3561,13 +3565,29 @@ if test "x$ac_cv_header_jpeglib_h" = xyes; then :
 fi
 
 
-ac_fn_c_check_header_mongrel "$LINENO" "fftw3.h" "ac_cv_header_fftw3_h" "$ac_includes_default"
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking fftw3" >&5
+$as_echo_n "checking fftw3... " >&6; }
+# Check whether --enable-fftw3 was given.
+if test "${enable_fftw3+set}" = set; then :
+  enableval=$enable_fftw3; fftw3_enable=$enableval
+else
+  fftw3_enable="yes"
+fi
+
+if test "$fftw3_enable" != no; then
+	ac_fn_c_check_header_mongrel "$LINENO" "fftw3.h" "ac_cv_header_fftw3_h" "$ac_includes_default"
 if test "x$ac_cv_header_fftw3_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_FFTW3 "
  MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "
 
 fi
 
+
+else
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: disabled" >&5
+$as_echo "disabled" >&6; }
+fi
 
 ac_fn_c_check_header_mongrel "$LINENO" "linear.h" "ac_cv_header_linear_h" "$ac_includes_default"
 if test "x$ac_cv_header_linear_h" = xyes; then :
@@ -3765,7 +3785,17 @@ fi
 fi
 
 # check for gsl, and I need to first check these two before I can check gsl
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for cos in -lm" >&5
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking gsl" >&5
+$as_echo_n "checking gsl... " >&6; }
+# Check whether --enable-gsl was given.
+if test "${enable_gsl+set}" = set; then :
+  enableval=$enable_gsl; gsl_enable=$enableval
+else
+  gsl_enable="yes"
+fi
+
+if test "$gsl_enable" != no; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for cos in -lm" >&5
 $as_echo_n "checking for cos in -lm... " >&6; }
 if ${ac_cv_lib_m_cos+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -3810,7 +3840,7 @@ _ACEOF
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for cblas_dgemm in -lgslcblas" >&5
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for cblas_dgemm in -lgslcblas" >&5
 $as_echo_n "checking for cblas_dgemm in -lgslcblas... " >&6; }
 if ${ac_cv_lib_gslcblas_cblas_dgemm+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -3855,7 +3885,7 @@ _ACEOF
 
 fi
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for gsl_blas_dgemm in -lgsl" >&5
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for gsl_blas_dgemm in -lgsl" >&5
 $as_echo_n "checking for gsl_blas_dgemm in -lgsl... " >&6; }
 if ${ac_cv_lib_gsl_gsl_blas_dgemm+:} false; then :
   $as_echo_n "(cached) " >&6
@@ -3897,6 +3927,10 @@ if test "x$ac_cv_lib_gsl_gsl_blas_dgemm" = xyes; then :
 
 fi
 
+else
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: disabled" >&5
+$as_echo "disabled" >&6; }
+fi
 
 # prepare for cuda
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking cuda" >&5
