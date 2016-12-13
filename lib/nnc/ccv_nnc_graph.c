@@ -171,26 +171,33 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 		for (j = 0; j < exec_info->input_size; j++)
 		{
 			ccv_nnc_tensor_t* tensor = exec_info->inputs[j];
-			tensor_dots[k].name = k;
-			tensor_dots[k].tensor = tensor;
-			tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
-			const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
-			const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
-			tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
-			++k;
+			if (tensor)
+			{
+				tensor_dots[k].name = k;
+				tensor_dots[k].tensor = tensor;
+				tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
+				const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
+				const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+				++k;
+			}
 		}
 		for (j = 0; j < exec_info->output_size; j++)
 		{
 			ccv_nnc_tensor_t* tensor = exec_info->outputs[j];
-			tensor_dots[k].name = k;
-			tensor_dots[k].tensor = tensor;
-			tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
-			const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
-			const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
-			tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
-			++k;
+			if (tensor)
+			{
+				tensor_dots[k].name = k;
+				tensor_dots[k].tensor = tensor;
+				tensor_dots[k].start_ptr = (uintptr_t)tensor->data.u8;
+				const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? ((ccv_nnc_tensor_view_t*)tensor)->inc : tensor->info.dim;
+				const size_t inc_size = (ccv_nnc_dimension_count(inc) - inc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
+				tensor_dots[k].end_ptr = tensor_dots[k].start_ptr + inc_size - 1;
+				++k;
+			}
 		}
 	}
+	tensor_count = k; // We may over count, now shrink.
 	// To group overlap memory into one zone, we sort it by start ptr first (secondary by the tensor pointer).
 	_ccv_nnc_tensor_dot_sort_by_ptr(tensor_dots, tensor_count, 0);
 	int index = 0, zone = 0;
@@ -248,24 +255,28 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 		{
 			fputs("|{Input", out);
 			for (j = 0; j < exec_info->input_size; j++)
-			{
-				fputc('|', out);
-				ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
-				_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->inputs[j], rename_zone[tensor_dot->zone], flags, out);
-				++k;
-			}
+				if (exec_info->inputs[j])
+				{
+					fputc('|', out);
+					ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
+					_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->inputs[j], rename_zone[tensor_dot->zone], flags, out);
+					++k;
+				} else
+					fputs("|-", out);
 			fputc('}', out);
 		}
 		if (exec_info->output_size > 0)
 		{
 			fputs("|{Output", out);
 			for (j = 0; j < exec_info->output_size; j++)
-			{
-				fputc('|', out);
-				ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
-				_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->outputs[j], rename_zone[tensor_dot->zone], flags, out);
-				++k;
-			}
+				if (exec_info->inputs[j])
+				{
+					fputc('|', out);
+					ccv_nnc_tensor_dot_t* tensor_dot = tensor_dots + remap[k];
+					_ccv_nnc_graph_dot_tensor(rename_index[tensor_dot->index], exec_info->outputs[j], rename_zone[tensor_dot->zone], flags, out);
+					++k;
+				} else
+					fputs("|-", out);
 			fputc('}', out);
 		}
 		fputs("\"];\n", out);
