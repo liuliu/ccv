@@ -95,8 +95,8 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* s
 	{
 		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 		cudaSetDevice(device);
-		cudnnCreate(&stream_compat->cudnn);
-		cudnnSetStream(stream_compat->cudnn, stream_compat->stream);
+		assert_cudnn(cudnnCreate(&stream_compat->cudnn));
+		assert_cudnn(cudnnSetStream(stream_compat->cudnn, stream_compat->stream));
 	}
 	return stream_compat->cudnn;
 }
