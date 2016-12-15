@@ -16,7 +16,7 @@ TEST_CASE("compile a simple symbolic graph with autogen")
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2, 21, 31), "a");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(4, 21, 31), "b");
-	ccv_nnc_cmd_t forw_cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(4, 2, 3, 5), 0);
+	ccv_nnc_cmd_t forw_cmd = CMD_CONVOLUTION_FORWARD(4, 2, 3, 5);
 	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2, 3, 5, 4), "w");
 	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(4), "bias");
 	// See what we compile to when have unused tensors.

@@ -2,6 +2,7 @@
 
 require 'pathname'
 require 'erb'
+require 'set'
 require 'digest'
 
 abort "build-cmd.rb [PATHS]\n" unless ARGV.length > 0
@@ -108,6 +109,7 @@ end
 $command_files = []
 $command_configs = []
 $command_backends = []
+$command_easy_macros = []
 
 def register_command_backend filename, which_command, which_backend
 	print filename + ":" + which_command + ":" + which_backend + "\n"
@@ -157,15 +159,27 @@ Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
 		command_parser = MacroParser.new 'REGISTER_COMMAND'
 		find_backend_parser = MacroParser.new 'FIND_BACKEND'
 		find_file_parser = MacroParser.new 'FIND_FILE'
-		parsers = [ command_parser, find_backend_parser ]
+		new_macro_parser = MacroParser.new '//@REGISTER_EASY_COMMAND_MACRO'
+		parsers = [ command_parser, find_backend_parser, new_macro_parser ]
 		which_command = nil
+		command_macro = nil
+		available_commands = Set.new
+		register_easy_command_macros = []
 		f.each_line do |line|
 			find_file_parser.parse line
+			unless command_macro.nil?
+				command_macro[:macro] = line
+				register_easy_command_macros << command_macro
+				command_macro = nil
+			end
 			parsers.each do |parser|
 				break if line.nil?
 				line = parser.parse line
 			end
-			which_command = command_parser.parameters if command_parser.done
+			if command_parser.done
+				which_command = command_parser.parameters
+				available_commands << which_command
+			end
 			if find_file_parser.done
 				register_command_file fn, find_file_parser.parameters
 			end
@@ -174,6 +188,16 @@ Dir.glob("{#{ARGV.join(',')}}/**/*.{c,cu}").each do |fn|
 				register_command_config fn, which_command
 				parse_find_backend fn, which_command, find_backend_parser.parameters
 			end
+			if new_macro_parser.done
+				abort "REGISTER_EASY_COMMAND_MACRO contains illegal parameters, aborting." if new_macro_parser.parameters.nil?
+				# Grab the next line no matter what.
+				command_macro = { :command => new_macro_parser.parameters }
+			end
+		end
+		# Finished looking through the file, emit errors if the macro doesn't have corresponding command.
+		register_easy_command_macros.each do |register_easy_command_macro|
+			abort "REGSITER_EASY_COMMAND_MACRO refers to command #{register_easy_command_macro[:command]} that is not available in this file." if not available_commands.include? register_easy_command_macro[:command]
+			$command_easy_macros << register_easy_command_macro
 		end
 	end
 end
@@ -192,6 +216,11 @@ def ccv_nnc_cmd_h command_map
 		commands << "#{command}_BACKWARD = 0x#{(index + 1).to_s(16)}"
 	end
 	ccv_nnc_cmd_h = ERB.new File.read('ccv_nnc_cmd.h.erb')
+	ccv_nnc_cmd_h.result binding
+end
+
+def ccv_nnc_cmd_easy_h command_easy_macros
+	ccv_nnc_cmd_h = ERB.new File.read('ccv_nnc_cmd_easy.h.erb')
 	ccv_nnc_cmd_h.result binding
 end
 
@@ -243,6 +272,10 @@ end
 
 File.open('ccv_nnc_cmd.h', 'w+') do |f|
 	f.write ccv_nnc_cmd_h(command_map)
+end
+
+File.open('ccv_nnc_cmd_easy.h', 'w+') do |f|
+	f.write ccv_nnc_cmd_easy_h($command_easy_macros)
 end
 
 # Compute hash parameters and mapping.

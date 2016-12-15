@@ -103,7 +103,7 @@ TEST_CASE("hint tensor")
 			.dim = {0, 7, 8}
 		}
 	};
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(128, 3, 5, 4), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(128, 3, 5, 4);
 	ccv_nnc_tensor_param_t b;
 	ccv_nnc_tensor_param_t w = ONE_CPU_TENSOR(3, 5, 4, 128);
 	ccv_nnc_tensor_param_t bias = ONE_CPU_TENSOR(128);

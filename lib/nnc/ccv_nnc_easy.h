@@ -143,7 +143,6 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* params, const in
 }
 
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
-#define CMD_CONVOLUTION(_count, ...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count}})
 #define CMD_GEMM(_count) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.count=_count}}) // We default to alpha = 1 and beta = 1
 #define CMD_GENERIC_X_0() ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}})
 #define CMD_GENERIC_X_F(...) ("This should not be used, you should have either 0 parameter or 3 parameters for CMD_GENERIC")
@@ -162,5 +161,8 @@ int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params);
 
 extern const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto;
 int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params);
+
+// Generated command flags for easy creation of ccv_nnc_cmd_t objects.
+#include "cmd/ccv_nnc_cmd_easy.h"
 
 #endif
