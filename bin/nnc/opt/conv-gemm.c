@@ -24,7 +24,7 @@ int main(int argc, char** argv)
 	ccv_nnc_init();
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(INPUT_DIM, INPUT_SIZE, INPUT_SIZE), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(OUTPUT_DIM, OUTPUT_SIZE, OUTPUT_SIZE), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, CMD_CONVOLUTION(OUTPUT_DIM, INPUT_DIM, 1, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(OUTPUT_DIM, INPUT_DIM, 1, 1);
 	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
 	assert(cmd.backend >= 0);
 	cmd.algorithm = 0; // CCV_NNC_CMD_OPT_CONV_ALGO_DC
