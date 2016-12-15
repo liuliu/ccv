@@ -7,11 +7,17 @@ SRCS := ccv_nnc_compat.cu
 
 SRC_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(SRCS)))
 
+DEBUG ?= 0
+ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
+endif
+
 .PHONY: release debug all lib clean libnnc-compat-cuda.o
 
 release: all
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
+debug: export DEBUG = 1
 debug: all
 
 all: lib

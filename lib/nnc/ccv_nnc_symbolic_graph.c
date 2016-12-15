@@ -128,11 +128,14 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(const ccv_nnc_symbolic
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
 		strncpy(symbol_info.name, name, n);
 	}
-	symbol_info.inputs = ccmalloc(sizeof(int) * (input_size + output_size));
+	if (input_size > 0 || output_size > 0)
+	{
+		symbol_info.inputs = ccmalloc(sizeof(int) * (input_size + output_size));
+		symbol_info.outputs = symbol_info.inputs + input_size;
+	}
 	int i;
 	for (i = 0; i < input_size; i++)
 		symbol_info.inputs[i] = inputs[i].d;
-	symbol_info.outputs = symbol_info.inputs + input_size;
 	for (i = 0; i < output_size; i++)
 		symbol_info.outputs[i] = outputs[i].d;
 	ccv_array_push(graph->exec_symbol_info, &symbol_info);

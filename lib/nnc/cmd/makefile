@@ -9,14 +9,14 @@ NVFLAGS := -O3 -I"../../" $(NVFLAGS)
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
-	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 endif
 
 .PHONY: release debug all lib clean cmd libnnc-cmd.o $(CUDA_CMD_LIB)
 
 release: all
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 debug: export DEBUG = 1
 debug: all
 

@@ -11,7 +11,7 @@ CUDA_OBJS := $(patsubst %.c,%.o,$(patsubst %.cu,%.o,$(CUDA_SRCS)))
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
-	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 endif
 
 # Make nnc/libnnc.o a phony target therefore it will be triggered every time.
@@ -19,7 +19,7 @@ endif
 
 release: all
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 debug: export DEBUG = 1
 debug: all
 

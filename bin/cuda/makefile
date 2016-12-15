@@ -6,15 +6,15 @@ NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
-	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 endif
 
 .PHONY: release debug all clean
 
 release: all
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
+debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
 debug: export DEBUG = 1
 debug: all
 

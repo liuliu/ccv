@@ -34,10 +34,17 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(const ccv_nnc_graph_t* graph, const 
 		.output_size = output_size,
 		.outgoings = 0,
 	};
-	info.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
-	memcpy(info.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
-	info.outputs = info.inputs + input_size;
-	memcpy(info.outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
+	assert(inputs || input_size == 0);
+	assert(outputs || output_size == 0);
+	if (input_size > 0 || output_size > 0)
+	{
+		info.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
+		info.outputs = info.inputs + input_size;
+		if (inputs)
+			memcpy(info.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
+		if (outputs)
+			memcpy(info.outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
+	}
 	ccv_array_push(graph->exec_info, &info);
 	ccv_nnc_graph_exec_t exec = {
 		.d = d,
