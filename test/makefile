@@ -13,4 +13,4 @@ test:
 	${MAKE} -C unit test && ${MAKE} -C regression test && ${MAKE} -C unit/nnc test
 
 clean:
-	${MAKE} clean -C ../lib ; ${MAKE} clean -C unit ; ${MAKE} clean -C regression
+	${MAKE} clean -C ../lib ; ${MAKE} clean -C unit ; ${MAKE} clean -C regression ; ${MAKE} clean -C unit/nnc
