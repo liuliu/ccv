@@ -6,6 +6,7 @@
 tags
 gh-pages
 *.tests
+*.sancov
 *.pyc
 .dep.mk
 out/
