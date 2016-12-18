@@ -7,17 +7,9 @@ TARGETS = section-001-001 section-001-002
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
-DEBUG ?= 0
-ifeq ($(DEBUG), 1)
-	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-endif
-
 release: all
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-debug: export DEBUG = 1
-debug: all
+include ../../lib/scheme.mk
 
 all: libccv.a $(TARGETS)
 
