@@ -19,11 +19,11 @@ debug: all
 COVER ?= 0
 ifeq ($(COVER), 1)
 	# -O0 need to be last because the default is -O3
-	CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize-coverage=edge
-	LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize-coverage=edge
+	CFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcoverage-mapping
+	LDFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcoverage-mapping
 endif
 
-cover: CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize-coverage=edge
-cover: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize-coverage=edge
+cover: CFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcoverage-mapping
+cover: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fprofile-instr-generate -fcoverage-mapping
 cover: export COVER = 1
 cover: all

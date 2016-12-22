@@ -17,7 +17,7 @@ include ../../../lib/scheme.mk
 all: $(TARGETS)
 
 test:
-	@for test in $(TARGETS) ; do ./"$$test" || exit ; done
+	@for test in $(TARGETS) ; do LLVM_PROFILE_FILE="$$test.profraw" ./"$$test" || exit ; done
 
 clean:
 	${MAKE} clean -C ../../../lib ; rm -f *.o $(TARGETS)
