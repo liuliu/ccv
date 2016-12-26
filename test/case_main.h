@@ -74,9 +74,9 @@ int main(int argc, char** argv)
 		__test_case_setup();
 	for (i = 0; i < total; i++)
 	{
-		chdir(cur_dir);
 		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 		case_run(test_case, i, total, &pass, &fail);
+		chdir(cur_dir);
 	}
 	if (__test_case_teardown)
 		__test_case_teardown();
@@ -408,8 +408,8 @@ int main(int argc, char** argv)
 		case_t* test_case = (case_t*)(start_pointer + i);
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
 		{
-			chdir(cur_dir);
 			case_run(test_case, j++, total, &pass, &fail);
+			chdir(cur_dir);
 		}
 	}
 	if (__test_case_teardown)
