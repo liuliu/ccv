@@ -11,7 +11,7 @@
  * Level-4 API
  */
 
-int ccv_nnc_symbolic_graph_while(const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_t body_params, const int body_param_size)
+int ccv_nnc_symbolic_graph_while(const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size)
 {
 	return 0;
 }

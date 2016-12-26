@@ -1,0 +1,22 @@
+include ../lib/config.mk
+
+LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
+CFLAGS := -O3 -Wall -I"../lib" -I"." $(CFLAGS)
+
+SRCS := <%= tests.map{ |v| v[:filename] }.join ' ' %>
+
+SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
+
+include ../lib/scheme.mk
+
+all.tests: all.tests.o $(SRC_OBJS) libccv.a
+	$(CC) -o $@ all.tests.o $(SRC_OBJS) $(LDFLAGS)
+
+all.tests.o: all.tests.c
+	$(CC) $< -o $@ -c $(CFLAGS)
+<% tests.each do |test| %>
+<%= test[:objname] %>: <%= test[:filename] %>
+	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR="\"<%= test[:dir] %>\"" -D CASE_UNIQUE_NAME_PREFIX=<%= test[:prefix] %> -o $@ -c $(CFLAGS)
+<% end %>
+libccv.a:
+	${MAKE} -C ../lib

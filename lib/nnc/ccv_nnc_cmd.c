@@ -34,10 +34,17 @@ void ccv_nnc_init(void)
 
 const char* ccv_nnc_cmd_name(const uint32_t cmd)
 {
-	if (cmd == CCV_NNC_NOOP)
-		return "CCV_NNC_NOOP";
-	if (cmd == CCV_NNC_CUSTOM)
-		return "CCV_NNC_CUSTOM";
+	switch (cmd)
+	{
+		case CCV_NNC_NOOP:
+			return "CCV_NNC_NOOP";
+		case CCV_NNC_CUSTOM:
+			return "CCV_NNC_CUSTOM";
+		case CCV_NNC_GRAPH_FORWARD:
+			return "CCV_NNC_GRAPH_FORWARD";
+		case CCV_NNC_GRAPH_BACKWARD:
+			return "CCV_NNC_GRAPH_BACKWARD";
+	}
 	const int idx = _ccv_nnc_cmd_ph(cmd);
 	assert(idx >= 0);
 	assert(idx < sizeof(init_map) / sizeof(init_map[0]));
@@ -66,6 +73,8 @@ int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd)
 		case CCV_NNC_CUSTOM:
 		case CCV_NNC_NOOP:
 			return 0;
+		case CCV_NNC_GRAPH_FORWARD:
+		case CCV_NNC_GRAPH_BACKWARD:
 		default:
 			return !(cmd.cmd & 0x1); // If it is even, it is forward
 	}
@@ -78,6 +87,8 @@ int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd)
 		case CCV_NNC_CUSTOM:
 		case CCV_NNC_NOOP:
 			return 0;
+		case CCV_NNC_GRAPH_FORWARD:
+		case CCV_NNC_GRAPH_BACKWARD:
 		default:
 			return !!(cmd.cmd & 0x1); // If it is odd, it is backward
 	}
@@ -305,6 +316,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));

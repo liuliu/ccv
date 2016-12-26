@@ -1,28 +1,51 @@
-#ifndef _GUARD_case_main_h_
+#if !defined(_GUARD_case_main_h_) && !defined(CASE_DISABLE_MAIN)
 #define _GUARD_case_main_h_
+
+#include <string.h>
+#include <assert.h>
 
 static void case_run(case_t* test_case, int i, int total, int* pass, int* fail)
 {
-	printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", i + 1, total, test_case->name);
+	// Change the current directory.
+	if (test_case->dir && test_case->dir[0] != 0 && strcmp(test_case->dir, ".") != 0)
+		chdir(test_case->dir);
+	if (isatty(fileno(stdout)))
+		printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", i + 1, total, test_case->name);
+	else
+		printf("[%d/%d] [RUN] %s ...", i + 1, total, test_case->name);
 	fflush(stdout);
 	int result = 0;
 	test_case->func(test_case->name, &result);
 	if (result == 0)
 	{
 		(*pass)++;
-		printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", i + 1, total, test_case->name);
+		if (isatty(fileno(stdout)))
+			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", i + 1, total, test_case->name);
+		else
+			printf("\r[%d/%d] [PASS] %s    \n", i + 1, total, test_case->name);
 	} else {
 		(*fail)++;
-		printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", i + 1, total, test_case->name);
+		if (isatty(fileno(stdout)))
+			printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", i + 1, total, test_case->name);
+		else
+			printf("\n[%d/%d] [FAIL] %s\n", i + 1, total, test_case->name);
 	}
 }
 
 static void case_conclude(int pass, int fail)
 {
-	if (fail == 0)
-		printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
-	else
-		printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+	if (isatty(fileno(stdout)))
+	{
+		if (fail == 0)
+			printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
+		else
+			printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+	} else {
+		if (fail == 0)
+			printf("all test case(s) passed, congratulations!\n");
+		else
+			printf("%d of %d test case(s) passed\n", pass, fail + pass);
+	}
 }
 
 #ifdef __ELF__
@@ -45,10 +68,13 @@ int main(int argc, char** argv)
 	assert(test_size % case_size == 0);
 	int total = test_size / case_size;
 	int i, pass = 0, fail = 0;
+	char buf[1024];
+	char* cur_dir = getcwd(buf, 1024);
 	if (__test_case_setup)
 		__test_case_setup();
 	for (i = 0; i < total; i++)
 	{
+		chdir(cur_dir);
 		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 		case_run(test_case, i, total, &pass, &fail);
 	}
@@ -372,6 +398,8 @@ int main(int argc, char** argv)
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
 			total++;
 	}
+	char buf[1024];
+	char* cur_dir = getcwd(buf, 1024);
 	if (__test_case_setup)
 		__test_case_setup();
 	int j = 0, pass = 0, fail = 0;
@@ -379,7 +407,10 @@ int main(int argc, char** argv)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
+		{
+			chdir(cur_dir);
 			case_run(test_case, j++, total, &pass, &fail);
+		}
 	}
 	if (__test_case_teardown)
 		__test_case_teardown();

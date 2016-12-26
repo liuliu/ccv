@@ -363,8 +363,14 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
 // 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed, we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes (OK if end nodes are condition true output nodes as well);
 //
 // Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs and outputs. Besides that, the loop body needs to be parameterized to be SSA compliant (see: https://www.cs.cmu.edu/~fp/courses/15411-f13/lectures/06-ssa.pdf). Thus, a list of body parameters need to be provided.
+
+typedef struct {
+	ccv_nnc_tensor_symbol_t source;
+	ccv_nnc_tensor_symbol_t destination;
+} ccv_nnc_tensor_symbol_map_t;
+
 typedef int(*ccv_nnc_graph_while_f)(const int counter, const ccv_nnc_tensor_t* tensors, const int tensor_size);
-int ccv_nnc_symbolic_graph_while(const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_t body_params, const int body_param_size);
+int ccv_nnc_symbolic_graph_while(const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
