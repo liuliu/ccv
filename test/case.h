@@ -63,14 +63,16 @@ void __attribute__((weak)) __test_case_teardown(void);
 // to find function pointer. We do this whenever possible because in this way, we don't have access error
 // when hooking up with memory checkers such as address sanitizer or valgrind
 typedef struct {
+	uint64_t sig_head;
 	case_f func;
 	char* name;
 	char* dir;
+	uint64_t sig_tail;
 } case_t;
 
 #define TEST_CASE(desc) \
 static void __attribute__((used)) INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__); \
-static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used)) __attribute__((section("case_data"))) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .name = desc, .dir = CASE_TEST_DIR }; \
+static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used, section("case_data"), aligned(8))) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .sig_head = 0x883253372849284B, .name = desc, .dir = CASE_TEST_DIR, .sig_tail = 0x883253372849284B + 2 }; \
 static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__) 
 #else
 typedef struct {
@@ -83,7 +85,7 @@ typedef struct {
 
 #define TEST_CASE(desc) \
 static void __attribute__((used)) INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__); \
-static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used)) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .sig_head = 0x883253372849284B, .name = desc, .dir = CASE_TEST_DIR, .sig_tail = 0x883253372849284B }; \
+static case_t INTERNAL_CATCH_UNIQUE_NAME(__test_case_ctx__) __attribute__((used, aligned(8))) = { .func = INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__), .sig_head = 0x883253372849284B, .name = desc, .dir = CASE_TEST_DIR, .sig_tail = 0x883253372849284B + 2 }; \
 static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__, int* __case_result__) 
 #endif
 

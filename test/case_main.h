@@ -53,7 +53,7 @@ static void case_conclude(int pass, int fail)
 // to find function pointer. We do this whenever possible because in this way, we don't have access error
 // when hooking up with memory checkers such as address sanitizer or valgrind
 
-static case_t __test_case_ctx_assessment__ __attribute__((used)) __attribute__((section("case_data_assessment"))) = {0};
+static case_t __test_case_ctx_assessment__ __attribute__((used, section("case_data_assessment"), aligned(8))) = {0};
 
 extern case_t __start_case_data[];
 extern case_t __stop_case_data[];
@@ -63,20 +63,60 @@ extern case_t __stop_case_data_assessment[];
 
 int main(int argc, char** argv)
 {
-	int case_size = (unsigned char*)__stop_case_data_assessment - (unsigned char*)__start_case_data_assessment;
-	int test_size = (unsigned char*)__stop_case_data - (unsigned char*)__start_case_data;
-	assert(test_size % case_size == 0);
-	int total = test_size / case_size;
-	int i, pass = 0, fail = 0;
+	int case_size = (intptr_t)__stop_case_data_assessment - (intptr_t)__start_case_data_assessment;
+	int test_size = (intptr_t)__stop_case_data - (intptr_t)__start_case_data;
 	char buf[1024];
 	char* cur_dir = getcwd(buf, 1024);
-	if (__test_case_setup)
-		__test_case_setup();
+	static uint64_t the_sig = 0x883253372849284B;
+	int scan_mode = (test_size % case_size != 0);
+	int i, total = 0;
+	if (!scan_mode)
+		total = test_size / case_size;
 	for (i = 0; i < total; i++)
 	{
 		case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
-		case_run(test_case, i, total, &pass, &fail);
-		chdir(cur_dir);
+		// If it doesn't match well, fallback to scan mode.
+		if (test_case->sig_head != the_sig || test_case->sig_tail != the_sig + 2)
+		{
+			scan_mode = 1;
+			break;
+		}
+	}
+	int len, pass = 0, fail = 0;
+	// In scan mode, we will scan the whole section for a matching test case.
+	if (scan_mode)
+	{
+		total = 0;
+		len = (intptr_t)__stop_case_data - (intptr_t)__start_case_data - sizeof(case_t) + 1;
+		for (i = 0; i < len; i++)
+		{
+			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
+			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+				total++;
+		}
+	}
+	if (__test_case_setup)
+		__test_case_setup();
+	if (scan_mode)
+	{
+		int j = 0;
+		for (i = 0; i < len; i++)
+		{
+			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
+			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+			{
+				case_run(test_case, j++, total, &pass, &fail);
+				chdir(cur_dir);
+			}
+		}
+	} else {
+		// Simple case, I don't need to scan the data section.
+		for (i = 0; i < total; i++)
+		{
+			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
+			case_run(test_case, i, total, &pass, &fail);
+			chdir(cur_dir);
+		}
 	}
 	if (__test_case_teardown)
 		__test_case_teardown();
@@ -386,16 +426,16 @@ int main(int argc, char** argv)
 			buf = case_parse_map_entry(buf, &start, &end, (char**)&prot, &maj_dev, 0);
 			if (buf == NULL)
 				break;
-		} while ((uint64_t)start >= (uint64_t)&_test_end || (uint64_t)&_test_end >= (uint64_t)end);
+		} while ((intptr_t)start >= (intptr_t)&_test_end || (intptr_t)&_test_end >= (intptr_t)end);
 	}
 	char* start_pointer = (char*)start;
 	int total = 0;
-	int len = (uint64_t)end - (uint64_t)start - sizeof(case_t) + 1;
+	int len = (intptr_t)end - (intptr_t)start - sizeof(case_t) + 1;
 	int i;
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
-		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
 			total++;
 	}
 	char buf[1024];
@@ -406,7 +446,7 @@ int main(int argc, char** argv)
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
-		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig)
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
 		{
 			case_run(test_case, j++, total, &pass, &fail);
 			chdir(cur_dir);
