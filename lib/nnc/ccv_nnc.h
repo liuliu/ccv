@@ -369,13 +369,33 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t destination;
 } ccv_nnc_tensor_symbol_map_t;
 
-typedef int(*ccv_nnc_graph_while_f)(const int counter, const ccv_nnc_tensor_t* tensors, const int tensor_size);
-int ccv_nnc_symbolic_graph_while(const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
+// The given tensors contains all the special / input / output tensors specified in the sub-graph.
+// Currently, the special_size should always be 1, and contains only the loop counter.
+typedef int(*ccv_nnc_graph_while_f)(const ccv_nnc_tensor_t* specials, const int special_size, const ccv_nnc_tensor_t* inputs, const int input_size, const ccv_nnc_tensor_t* outputs, const int output_size);
+// Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations will be moved from the giving graph to the sub-graph.
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_while(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
+// Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
 int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_tape_t* tensor_tape, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
+
+// The set of functions below is for internal / advanced usage because it may cause confusions.
+// Internally, when a while loop constructed, a subset of the given symbolic graph becomes one single exec symbol. However,
+// its internal structure (which exec symbol follows another which) is maintained, by having a sub-graph.
+// The set of functions below is the way to access that sub-graph (remember, after called ccv_nnc_symbolic_graph_while, all
+// the exec symbol nodes that was given to this function won't be accessible through the symbolic graph). Being able to construct
+// / access the sub-graph gives us the flexibilities to implement things such as backward and compile with the while loop properly.
+//
+// Extract the sub-graph of the while loop from a symbol.
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+// Merge a while loop sub-graph into existing graph, create a new while symbol with it.
+// Note that this sub-graph hasn't been configured at this point, need to call ccv_nnc_symbolic_graph_while_set on the sub-graph to configure.
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_while_symbol_by_merge_graphs(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_symbolic_graph_t* while_graph);
+// For a given sub-graph, set its various parameters.
+int ccv_nnc_symbolic_graph_while_set(const ccv_nnc_symbolic_graph_t* while_graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
 
 #endif

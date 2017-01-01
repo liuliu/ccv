@@ -27,18 +27,36 @@ typedef struct {
 	int* inputs;
 	int* outputs;
 	ccv_array_t* outgoings; // outgoing nodes
+	int graph_ref; // reference to the sub-graph.
+	int dead; // Mark this node as dead.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	char* name;
 } ccv_nnc_graph_exec_symbol_info_t;
 
 struct ccv_nnc_symbolic_graph_s {
-	ccv_array_t* tensor_symbol_info;
-	ccv_array_t* exec_symbol_info;
+	ccv_array_t* tensor_symbol_info; // A lit of info for tensor symbols.
+	ccv_array_t* exec_symbol_info; // A list of info for exec symbols.
+	// I think that I can be more explicit about which are sources and which are destinations.
+	ccv_array_t* sources;
+	ccv_array_t* destinations;
+	// Some extra information piggy-back on symbolic graph struct.
+	// Start for while loop handling
+	ccv_array_t* while_graphs; // A list of its sub-graphs (for while loop).
+	struct ccv_nnc_symbolic_graph_s* p; // The parent graph (if current one is a sub-graph).
+	// Why some of these I choose to be flat int* array, some of these I choose to be ccv_array_t?
+	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
+	// for ccv_array_t, we can continue to modify what's inside.
+	ccv_array_t* conditions;
+	// Map between parent / sub graph's tensor symbols.
+	ccv_nnc_graph_while_f while_func;
+	// End of while loop handling.
+	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;
 	int* backward_tensor_symbols;
 	int backward_symbol_size;
 	int* backward_exec_symbols;
+	// End of backward (automatic differentiation) handling.
 };
 
 struct ccv_nnc_tensor_arena_s {
