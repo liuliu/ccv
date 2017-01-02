@@ -16,7 +16,7 @@
 #endif
 #include "../_ccv_nnc_conv_cpu_opt.h"
 
-int _ccv_nnc_conv_forw_fft_cpu_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+int _ccv_nnc_conv_forw_fft_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
 	return CCV_NNC_EXEC_INVALID;
 }

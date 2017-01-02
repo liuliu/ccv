@@ -31,10 +31,10 @@ enum {
 };
 
 enum {
-	CCV_NNC_EXEC_SUCCESS = 0,
-	CCV_NNC_EXEC_INVALID = -1, // Invalid input.
+	CCV_NNC_EXEC_SUCCESS   = 0,
+	CCV_NNC_EXEC_INVALID   = -1, // Invalid input.
 	CCV_NNC_EXEC_NO_KERNEL = -2,
-	CCV_NNC_EXEC_OOM = -3,
+	CCV_NNC_EXEC_OOM       = -3,
 };
 
 typedef struct {
@@ -79,7 +79,7 @@ typedef struct ccv_nnc_cmd_s {
 	ccv_nnc_cmd_param_t info;
 	// This has to be the same as the ccv_nnc_cmd_exec_f type.
 	// This is for type CCV_NNC_COMPUTE_CUSTOM
-	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 } ccv_nnc_cmd_t;
 
 // For forward functions, the input tensors and output tensors can be arbitrary.
@@ -87,9 +87,9 @@ typedef struct ccv_nnc_cmd_s {
 // the input is: 0~m-1: gradient for output tensors, 1~n: input tensors for forward functions, n+1~n+m: output tensors for forward functions,
 // the output is: 0~n-1: output gradients w.r.t. input tensors.
 // Which input / output tensors can be ignored can be specified in the cmd config structs.
-typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
-typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
 /**
  * Level-0 API
@@ -102,17 +102,17 @@ void ccv_nnc_init(void);
  */
 
 // For tensor
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 // Allocating on stack
-CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags);
-void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor);
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
+void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
 // Allocating on stack
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
-void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view);
 // All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
-void ccv_nnc_tensor_zero(void* tensor);
-int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b);
+void ccv_nnc_tensor_zero(void* const tensor);
+int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b);
 
 // For computation node
 // Return high precision time unit.
@@ -125,12 +125,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nn
 // Auto find the best hint for a given input / output (on forward pass only).
 CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
 // Auto find the outputs for the given inputs / hint.
-void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size);
+void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
-CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size);
-int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
@@ -145,16 +145,16 @@ enum {
 #define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
 // Flag is a combination of CPU / GPU and DEVICE_ID
-CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(int type);
-void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream);
-void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context);
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(const int type);
+void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
+void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context);
 
 typedef struct ccv_nnc_stream_signal_s ccv_nnc_stream_signal_t;
 
-CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(int type);
-void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* stream, const ccv_nnc_stream_signal_t* signal);
-void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* stream, const ccv_nnc_stream_signal_t* signal);
-void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* signal);
+CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(const int type);
+void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
 
 /**
  * Level-2 API
@@ -162,13 +162,13 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* signal);
 
 enum {
 	CCV_NNC_SHORT_DOT_GRAPH = 0x0,
-	CCV_NNC_LONG_DOT_GRAPH = 0x1,
+	CCV_NNC_LONG_DOT_GRAPH  = 0x1,
 };
 
 typedef struct ccv_nnc_graph_s ccv_nnc_graph_t;
 
 typedef struct {
-	int32_t d;
+	int32_t d; // This is int because sometimes I piggy-back on negatives to carry out some internal computations.
 	const ccv_nnc_graph_t* graph;
 } ccv_nnc_graph_exec_t;
 
@@ -181,21 +181,21 @@ CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(void);
 // Create a node with specific command execution, as well as its inputs & outputs.
 // Underlying, the graph maintains the backing object for the node, and all you get is
 // a on-stack object to index the backing object from the graph.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_new(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
-int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
 // Disconnect input graph nodes with an output graph nodes in this graph.
 // Return non-zero if cannot disjoin successfully.
-int ccv_nnc_graph_exec_disjoin(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
 // Generate output that can be parsed by GraphViz (DOT language).
-void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out);
+void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE* out);
 // Run the autotune function for all the inputs / outputs, afterwards, assigning the optimized cmd back.
-void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
+void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // Run the graph from source nodes all the way to the destination nodes.
-void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
+void ccv_nnc_graph_run(const ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
-void ccv_nnc_graph_free(ccv_nnc_graph_t* graph);
+void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph);
 
 /**
  * Level-3 API
@@ -231,71 +231,71 @@ enum {
 // Create a new symbolic graph. It is an opaque data structure that maintains the whole graph of computation in its symbolic form.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
 // Create an tensor symbol (thus, with no actual memory space allocation) in a symbolic graph.
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_param_t info, const char* name);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_param_t info, const char* const name);
 // Create an alias to the tensor symbol as tensor view (thus, pointing to the same memory region, but with a different header info and offset).
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* name);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
 // For a given alias, this method resolve to referenced tensor symbol.
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve_alias(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t tensor_alias);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve_alias(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias);
 // Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_new(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_cmd_t cmd, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* outputs, const int output_size, const char* name);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
 // Return the command on this exec symbol
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t exec);
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
 // The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
 // However, you can also set your own hints. Return non-zero if cannot set successfully.
-int ccv_nnc_graph_exec_symbol_set_hint(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_hint_t hint);
+int ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_hint_t hint);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
-int ccv_nnc_tensor_symbol_set(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
-int ccv_nnc_tensor_symbol_set_flags(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags);
-CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* graph, ccv_nnc_tensor_symbol_t tensor, const int flags);
+int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
+CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
 // Manually concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
-int ccv_nnc_graph_exec_symbol_concat(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
 // Manually disconnect input graph nodes with an output graph node for this graph.
 // Return non-zero if cannot disjoin successfully.
-int ccv_nnc_graph_exec_symbol_disjoin(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
 // Automatic concatenate these nodes together based on its inputs / outputs.
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
-int ccv_nnc_graph_exec_symbol_autogen(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
+int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size);
 // Generate output that can be parsed by GraphViz (DOT language).
-void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* graph, const int flags, FILE* out);
+void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, const int flags, FILE* out);
 
 typedef struct {
-	ccv_nnc_tensor_t* tensor;
+	const ccv_nnc_tensor_t* tensor;
 	ccv_nnc_tensor_symbol_t symbol;
 } ccv_nnc_tensor_bind_t;
 
 // Compile a symbolic graph into a graph that can be executed, and a set of tensors (opaque data structure tensor arena) are allocated based on which tensor symbols are the input and which are the outputs. The tensor allocation is done to minimize the required storage.
 // tensor_binds provide custom binding for these tensors. You still responsible to manage the life-time of these tensors.
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_binds_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref);
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_binds_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref);
 // Free the symbolic graph and its associated memory. Note that if you compiled a graph / tensor arena out of this symbolic graph, these won't be free'd.
-void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* graph);
+void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph);
 // Find corresponding tensor by a symbol from the tensor arena.
-CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol);
 // Bind a tensor to a symbol. You still responsible to manage the life-time of the tensor to make sure it is not freed until everything is done.
-int ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* tensor);
+int ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor);
 // Free the opaque tensor arena structure.
-void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena);
+void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena);
 // Find corresponding graph exec by a exec symbol from graph exec arena.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol);
 // Return the node that can drive all the source nodes from the compilation.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena);
 // Return the node that can drain all the destination nodes from the compilation.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* graph_exec_arena);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena);
 // Free the opaque graph exec arena structure.
-void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena);
+void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* const graph_exec_arena);
 
 /**
  * Level-4 API
  */
 // Compute the backward graph, assuming the provided symbolic graph only contain the "forward" part from sources to destinations.
 // This effectively is called the "autograd" or automatic differentiation process (specifically, "reverse AD") in other libs.
-void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* wrt_symbols, const int wrt_symbol_size);
+void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size);
 // Get the symbol that contains the gradient. The list will be flushed if the ccv_nnc_symbolic_graph_backward function is called again.
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 // This has to get the exec symbol from the tensor.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 
 // Construct a "while" loop in a symbolic graph.
 //
@@ -371,17 +371,17 @@ typedef struct {
 
 // The given tensors contains all the special / input / output tensors specified in the sub-graph.
 // Currently, the special_size should always be 1, and contains only the loop counter.
-typedef int(*ccv_nnc_graph_while_f)(const ccv_nnc_tensor_t* specials, const int special_size, const ccv_nnc_tensor_t* inputs, const int input_size, const ccv_nnc_tensor_t* outputs, const int output_size);
+typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const specials, const int special_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 // Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations will be moved from the giving graph to the sub-graph.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_while(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
 // Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
-int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_tape_t* tensor_tape, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size);
+int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 
 // The set of functions below is for internal / advanced usage because it may cause confusions.
 // Internally, when a while loop constructed, a subset of the given symbolic graph becomes one single exec symbol. However,
@@ -391,11 +391,11 @@ int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* graph, const ccv_nnc_tensor_t
 // / access the sub-graph gives us the flexibilities to implement things such as backward and compile with the while loop properly.
 //
 // Extract the sub-graph of the while loop from a symbol.
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 // Merge a while loop sub-graph into existing graph, create a new while symbol with it.
 // Note that this sub-graph hasn't been configured at this point, need to call ccv_nnc_symbolic_graph_while_set on the sub-graph to configure.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_while_symbol_by_merge_graphs(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_symbolic_graph_t* while_graph);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_while_symbol_by_merge_graphs(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const while_graph);
 // For a given sub-graph, set its various parameters.
-int ccv_nnc_symbolic_graph_while_set(const ccv_nnc_symbolic_graph_t* while_graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* inputs, const int input_size, const ccv_nnc_tensor_symbol_t* outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* symbol_map, const int symbol_map_size);
+int ccv_nnc_symbolic_graph_while_set(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
 
 #endif

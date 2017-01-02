@@ -112,7 +112,7 @@ static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 	return 0;
 }
 
-static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* params, const int n)
+static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* const params, const int n)
 {
 	switch (params->format)
 	{
@@ -126,7 +126,7 @@ static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* params, const in
 	}
 }
 
-static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* params, const int c)
+static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, const int c)
 {
 	switch (params->format)
 	{

@@ -47,7 +47,7 @@ inline static void _ccv_nnc_x4w_sse2(const float* const w, const int* const dim,
 	} parallel_endfor
 }
 
-static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -197,7 +197,7 @@ inline static void _ccv_nnc_x4w_neon(const float* const w, const int* const dim,
 	} parallel_endfor
 }
 
-static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -318,7 +318,7 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 }
 #endif
 
-int _ccv_nnc_conv_forw_cpu_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_t* w, const ccv_nnc_tensor_t* bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* b)
+int _ccv_nnc_conv_forw_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
 #if defined(HAVE_SSE2)
 	if (w->info.dim[3] % 4 == 0)

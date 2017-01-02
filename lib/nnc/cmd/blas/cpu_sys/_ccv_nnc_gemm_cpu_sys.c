@@ -5,7 +5,7 @@
 #include <nnc/ccv_nnc_internal.h>
 #include "../_ccv_nnc_gemm_cpu_opt.h"
 
-int _ccv_nnc_gemm_forw_cpu_sys(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+int _ccv_nnc_gemm_forw_cpu_sys(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	assert(!CCV_IS_TENSOR_VIEW(w));
@@ -35,7 +35,7 @@ int _ccv_nnc_gemm_forw_cpu_sys(const ccv_nnc_tensor_view_t* a, const ccv_nnc_ten
 #endif
 }
 
-int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* const g, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, ccv_nnc_tensor_view_t* const dw, ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const h, const int flags)
 {
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
 	assert(!CCV_IS_TENSOR_VIEW(g));

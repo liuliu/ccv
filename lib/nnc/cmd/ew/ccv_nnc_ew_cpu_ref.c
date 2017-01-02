@@ -12,7 +12,7 @@
 
 #include "../_ccv_nnc_cpu_ref.h"
 
-int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size == 1 && output_size == 1)
 	{
@@ -112,7 +112,7 @@ int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// D[x + y + z, x] = 1
 	int i;
@@ -131,7 +131,7 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size == 1 && output_size == 1)
 	{
@@ -231,7 +231,7 @@ static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// D[x * y * z, x] = y * z
 	// Assuming this is float 32.
@@ -407,7 +407,7 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
@@ -549,7 +549,7 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// D[x / y, x] = 1 / y, D[x / y, y] = -x / y^2
 	if (output_size == 1 || outputs[1] == 0)
@@ -762,7 +762,7 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
@@ -831,7 +831,7 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// D[Exp[x], x] = Exp[x]
 	if (inputs[0] == 0)
@@ -845,7 +845,7 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	}
 }
 
-static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
@@ -914,7 +914,7 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_cmd_t forw_cmd = cmd;
 	forw_cmd.cmd = CCV_NNC_EWDIV_FORWARD;
@@ -924,7 +924,7 @@ static int _ccv_nnc_ewlog_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -932,7 +932,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->exec = _ccv_nnc_ewsum_forw_cpu_ref;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -940,7 +940,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nn
 	registry->exec = _ccv_nnc_ewsum_back;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -948,7 +948,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nn
 	registry->exec = _ccv_nnc_ewprod_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -956,7 +956,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_n
 	registry->exec = _ccv_nnc_ewprod_back;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -964,7 +964,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->exec = _ccv_nnc_ewdiv_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -972,7 +972,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWDIV_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nn
 	registry->exec = _ccv_nnc_ewdiv_back;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -980,7 +980,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->exec = _ccv_nnc_ewexp_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -988,7 +988,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWEXP_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nn
 	registry->exec = _ccv_nnc_ewexp_back;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -996,7 +996,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWLOG_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->exec = _ccv_nnc_ewlog_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_EWLOG_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_EWLOG_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;

@@ -160,7 +160,7 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 	return hint_auto;
 }
 
-void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	int i;
 	assert(output_size <= input_size);
@@ -168,14 +168,14 @@ void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd,
 		outputs[i] = inputs[i];
 }
 
-void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	int i;
 	for (i = 0; i < output_size; i++)
 		outputs[i] = inputs[0];
 }
 
-void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	int i;
 	assert(output_size < input_size);
@@ -183,7 +183,7 @@ void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd
 		outputs[i] = inputs[i + 1];
 }
 
-void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* outputs, const int output_size)
+void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
 	// zero out the parameters
 	const ccv_nnc_tensor_param_t z = {
@@ -218,7 +218,7 @@ uint64_t ccv_nnc_cmd_mono_time(void)
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
-ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// This is a custom cmd kernel, no need to autotune.
 	if (cmd.cmd == CCV_NNC_CUSTOM)
@@ -292,7 +292,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	return tuned_cmd;
 }
 
-int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks, const int input_bitmask_size, const uint64_t* output_bitmasks, const int output_bitmask_size)
+int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// If it is no-op, return true, it can deal with any number of parameters.
 	if (cmd.cmd == CCV_NNC_NOOP)
@@ -308,7 +308,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* input_bitmasks,
 	return 0;
 }
 
-int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// If it is no-op, return as if succeed already.
 	if (cmd.cmd == CCV_NNC_NOOP)
@@ -379,7 +379,7 @@ struct ccv_nnc_stream_context_s {
 	// Left for implementation yet, the CPU support for stream context.
 };
 
-ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int type)
+ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 {
 	ccv_nnc_stream_context_t* stream_context = (ccv_nnc_stream_context_t*)ccmalloc(sizeof(ccv_nnc_stream_context_t));
 	stream_context->type = type;
@@ -390,7 +390,7 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(int type)
 	return stream_context;
 }
 
-void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream_context)
+void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (!stream_context)
 		return;
@@ -400,7 +400,7 @@ void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* stream_context)
 #endif
 }
 
-void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* stream_context)
+void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 {
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)

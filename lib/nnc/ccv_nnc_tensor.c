@@ -6,7 +6,7 @@
 
 const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
 
-ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags)
+ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags)
 {
 	ccv_nnc_tensor_t* tensor;
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t (On CPU, and 3 dims (channels, rows, cols), and channels is smaller than max channels of ccv_dense_matrix_t).
@@ -62,7 +62,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* ptr, const ccv_nnc_tensor_param
 	return tensor;
 }
 
-ccv_nnc_tensor_t ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t params, const int flags)
+ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags)
 {
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
 	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[0] > 0 && params.dim[0] <= CCV_MAX_CHANNEL && params.dim[1] > 0 && params.dim[2] > 0 && params.dim[3] == 0);
@@ -88,7 +88,7 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* ptr, const ccv_nnc_tensor_param_t pa
 	return tensor;
 }
 
-void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
+void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 {
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
@@ -97,7 +97,7 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* tensor)
 	ccfree(tensor);
 }
 
-static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	memcpy(tv->inc, tensor->info.dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
@@ -111,7 +111,7 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* tv, const ccv
 	tv->data.f32 = p;
 }
 
-ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
@@ -122,7 +122,7 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* tensor, c
 	return tv;
 }
 
-ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	ccv_nnc_tensor_view_t tv = {
@@ -135,12 +135,12 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* tensor, const 
 	return tv;
 }
 
-void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* tensor_view)
+void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view)
 {
 	ccfree(tensor_view);
 }
 
-void ccv_nnc_tensor_zero(void* tensor)
+void ccv_nnc_tensor_zero(void* const tensor)
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
 	if (!CCV_IS_TENSOR_VIEW(tv))
@@ -188,7 +188,7 @@ void ccv_nnc_tensor_zero(void* tensor)
 	}
 }
 
-int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* a, const ccv_nnc_tensor_t* b)
+int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b)
 {
 	assert(!CCV_IS_TENSOR_VIEW(a));
 	assert(!CCV_IS_TENSOR_VIEW(b));

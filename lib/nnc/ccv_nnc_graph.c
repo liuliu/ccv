@@ -24,7 +24,7 @@ ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 	return graph;
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(const ccv_nnc_graph_t* graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	int d = graph->exec_info->rnum;
 	ccv_nnc_graph_exec_info_t info = {
@@ -53,7 +53,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(const ccv_nnc_graph_t* graph, const 
 	return exec;
 }
 
-int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
+int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
 {
 	assert(graph == source.graph);
 	assert(graph == destination.graph);
@@ -73,7 +73,7 @@ int ccv_nnc_graph_exec_concat(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_
 	return 0;
 }
 
-int ccv_nnc_graph_exec_disjoin(const ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
+int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
 {
 	assert(graph == source.graph);
 	assert(graph == destination.graph);
@@ -98,7 +98,7 @@ int ccv_nnc_graph_exec_disjoin(const ccv_nnc_graph_t* graph, const ccv_nnc_graph
 	return 0;
 }
 
-static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* exec_info, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
 {
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		fputc('{', out);
@@ -111,7 +111,7 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 	}
 }
 
-static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* tensor, const int zone, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* const tensor, const int zone, const int flags, FILE* out)
 {
 	// if it has an alias pointer, or, it is a long form.
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
@@ -152,7 +152,7 @@ typedef struct {
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_dot_sort_by_ptr, ccv_nnc_tensor_dot_t, less_than)
 #undef less_than
 
-void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
+void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE* out)
 {
 	fputs("digraph G {\n", out);
 	int i, j;
@@ -301,7 +301,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* graph, const int flags, FILE* out)
 	ccfree(remap);
 }
 
-void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size)
+void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	// exec current node, for synchronous CPU execution, no stream unit.
 #define visitor(node, idx, ...) \
@@ -312,7 +312,7 @@ void ccv_nnc_graph_autotune(const ccv_nnc_graph_t* graph, const size_t max_works
 #undef visitor
 }
 
-void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_nnc_graph_exec_t* sources, const int source_size, const ccv_nnc_graph_exec_t* destinations, const int destination_size)
+void ccv_nnc_graph_run(const ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	// exec current node, for synchronous CPU execution, no stream unit.
 #define visitor(node, ...) \
@@ -323,7 +323,7 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* graph, const int flags, const ccv_
 #undef visitor
 }
 
-void ccv_nnc_graph_free(ccv_nnc_graph_t* graph)
+void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 {
 	int i;
 	for (i = 0; i < graph->exec_info->rnum; i++)

@@ -26,7 +26,7 @@ typedef struct {
 #endif
 } ccv_nnc_stream_context_compat_t;
 
-ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* stream_context)
+ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)ccrealloc(stream_context, sizeof(ccv_nnc_stream_context_compat_t));
@@ -40,15 +40,15 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
 
-void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* stream_context)
+void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
 	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 	cudaSetDevice(device);
 	cudaStreamSynchronize(stream_compat->stream);
 }
 
-void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* stream_context)
+void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
@@ -62,19 +62,19 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* stream_context)
 #endif
 }
 
-int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* stream_context)
+int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
 	return CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 }
 
-cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* stream_context)
+cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context)
 {
-	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
 	return stream_compat->stream;
 }
 
-cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* stream_context)
+cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat->cublas)
@@ -88,7 +88,7 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 }
 
 #ifdef HAVE_CUDNN
-cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* stream_context)
+cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat->cudnn)
@@ -101,43 +101,43 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* s
 	return stream_compat->cudnn;
 }
 
-cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context)
+cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnConvolutionDescriptor_t desc;
 	cudnnCreateConvolutionDescriptor(&desc);
 	return desc;
 }
 
-cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* stream_context)
+cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnTensorDescriptor_t desc;
 	cudnnCreateTensorDescriptor(&desc);
 	return desc;
 }
 
-cudnnFilterDescriptor_t ccv_nnc_stream_context_get_filter_descriptor(const ccv_nnc_stream_context_t* stream_context)
+cudnnFilterDescriptor_t ccv_nnc_stream_context_get_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnFilterDescriptor_t desc;
 	cudnnCreateFilterDescriptor(&desc);
 	return desc;
 }
 
-void ccv_nnc_stream_context_return_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnConvolutionDescriptor_t convolution_descriptor)
+void ccv_nnc_stream_context_return_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnConvolutionDescriptor_t convolution_descriptor)
 {
 	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 }
 
-void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnTensorDescriptor_t tensor_descriptor)
+void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnTensorDescriptor_t tensor_descriptor)
 {
 	cudnnDestroyTensorDescriptor(tensor_descriptor);
 }
 
-void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_context_t* stream_context, cudnnFilterDescriptor_t filter_descriptor)
+void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnFilterDescriptor_t filter_descriptor)
 {
 	cudnnDestroyFilterDescriptor(filter_descriptor);
 }
 
-ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(const ccv_nnc_stream_context_t* stream_context, const ccv_nnc_tensor_view_t* tensor)
+ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)
 {
 	ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc = {
 		stream_context,
@@ -183,7 +183,7 @@ void ccv_nnc_cudnn_deinit_tensor_view_descriptor(const ccv_nnc_cudnn_tensor_view
 	ccv_nnc_stream_context_return_tensor_descriptor(tensor_desc.stream_context, tensor_desc.descriptor);
 }
 
-ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_nnc_stream_context_t* stream_context, const ccv_nnc_tensor_t* tensor)
+ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_t* const tensor)
 {
 	ccv_nnc_cudnn_filter_descriptor_t filter_desc = {
 		stream_context,
@@ -215,7 +215,7 @@ void ccv_nnc_cudnn_deinit_filter_descriptor(const ccv_nnc_cudnn_filter_descripto
 	ccv_nnc_stream_context_return_filter_descriptor(filter_desc.stream_context, filter_desc.descriptor);
 }
 
-ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(const ccv_nnc_stream_context_t* stream_context, const ccv_nnc_hint_t hint)
+ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_hint_t hint)
 {
 	ccv_nnc_cudnn_convolution_descriptor_t convolution_desc = {
 		stream_context,

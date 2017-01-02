@@ -26,11 +26,11 @@ static inline int _ccv_nnc_cmd_backend_ph(const uint32_t backend)
 	}
 }
 
-<% init_map.each do |init| %>void _register_command_<%= init[:name] %>(ccv_nnc_cmd_registry_t* registry);
+<% init_map.each do |init| %>void _register_command_<%= init[:name] %>(ccv_nnc_cmd_registry_t* const registry);
 <% end %>
-<% command_backends.reject(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* registry);
+<% command_backends.reject(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
 <% end %>#ifdef HAVE_CUDA
-<% command_backends.select(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* registry);
+<% command_backends.select(&:cuda?).each do |command_backend| %>void _register_command_<%= command_backend.command %>_backend_<%= command_backend.backend %>(ccv_nnc_cmd_backend_registry_t* const registry);
 <% end %>#endif
 
 static inline void _ccv_nnc_cmd_init(void)

@@ -17,7 +17,7 @@
 #include "../_ccv_nnc_gemm_cpu_opt.h"
 
 #ifdef HAVE_SSE2
-static int _ccv_nnc_gemm_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_gemm_forw_sse2(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -51,7 +51,7 @@ static int _ccv_nnc_gemm_forw_sse2(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_gemm_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+static int _ccv_nnc_gemm_back_sse2(const ccv_nnc_tensor_view_t* const g, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, ccv_nnc_tensor_view_t* const dw, ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const h, const int flags)
 {
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -134,7 +134,7 @@ static int _ccv_nnc_gemm_back_sse2(const ccv_nnc_tensor_view_t* g, const ccv_nnc
 #endif
 
 #ifdef HAVE_NEON
-static int _ccv_nnc_gemm_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+static int _ccv_nnc_gemm_forw_neon(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
@@ -167,7 +167,7 @@ static int _ccv_nnc_gemm_forw_neon(const ccv_nnc_tensor_view_t* a, const ccv_nnc
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_gemm_back_neon(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+static int _ccv_nnc_gemm_back_neon(const ccv_nnc_tensor_view_t* const g, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, ccv_nnc_tensor_view_t* const dw, ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const h, const int flags)
 {
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
@@ -249,7 +249,7 @@ static int _ccv_nnc_gemm_back_neon(const ccv_nnc_tensor_view_t* g, const ccv_nnc
 }
 #endif
 
-int _ccv_nnc_gemm_forw_cpu_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, const ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* b)
+int _ccv_nnc_gemm_forw_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
 #if defined(HAVE_SSE2)
 	if (a->info.dim[0] % 8 == 0)
@@ -261,7 +261,7 @@ int _ccv_nnc_gemm_forw_cpu_opt(const ccv_nnc_tensor_view_t* a, const ccv_nnc_ten
 	return CCV_NNC_EXEC_INVALID;
 }
 
-int _ccv_nnc_gemm_back_cpu_opt(const ccv_nnc_tensor_view_t* g, const ccv_nnc_tensor_view_t* a, const ccv_nnc_tensor_view_t* w, ccv_nnc_tensor_view_t* dw, ccv_nnc_tensor_view_t* bias, ccv_nnc_tensor_view_t* h, int flags)
+int _ccv_nnc_gemm_back_cpu_opt(const ccv_nnc_tensor_view_t* const g, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, ccv_nnc_tensor_view_t* const dw, ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const h, const int flags)
 {
 #if defined(HAVE_SSE2)
 	if (g->info.dim[0] % 4 == 0 && a->info.dim[0] % 4 == 0 && (!h || h->info.dim[0] % 4 == 0))

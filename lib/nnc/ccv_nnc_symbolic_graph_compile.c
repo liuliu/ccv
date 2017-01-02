@@ -37,7 +37,7 @@ static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size, ccv_nnc_tensor_opt_
 #undef more_than
 
 // If every a's head is deterministically after b's tail
-static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* exec_dep, const ccv_nnc_tensor_expect_t a, const ccv_nnc_tensor_expect_t b)
+static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_expect_t a, const ccv_nnc_tensor_expect_t b)
 {
 	assert(a.head);
 	assert(b.tail);
@@ -53,7 +53,7 @@ static int _ccv_nnc_tensor_expect_head_after_tail(const ccv_sparse_matrix_t* exe
 	return (a.head->rnum > 0 && b.tail->rnum > 0);
 }
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int tensor_symbol_info_size, const ccv_sparse_matrix_t* exec_dep, const ccv_nnc_tensor_expect_t* tensor_expect, ccv_array_t** alloc_dep)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int tensor_symbol_info_size, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_expect_t* const tensor_expect, ccv_array_t** const alloc_dep)
 {
 	// Compute how many dis-continuous buffers are needed.
 	// We prefer to have several dis-continuous buffers instead of one big buffer because
@@ -449,7 +449,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	return tensor_arena;
 }
 
-static void _ccv_nnc_tensor_expect_add_exec(const ccv_sparse_matrix_t* exec_dep, const int idx, ccv_nnc_tensor_expect_t tensor_expect)
+static void _ccv_nnc_tensor_expect_add_exec(const ccv_sparse_matrix_t* const exec_dep, const int idx, ccv_nnc_tensor_expect_t tensor_expect)
 {
 	int i, found = 0;
 	// Try to insert head.
@@ -524,29 +524,29 @@ static void _ccv_nnc_tensor_expect_add_exec(const ccv_sparse_matrix_t* exec_dep,
 		ccv_array_push(tail, &idx);
 }
 
-ccv_nnc_tensor_t* ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* tensor_arena, const ccv_nnc_tensor_symbol_t symbol)
+ccv_nnc_tensor_t* ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol)
 {
 	assert(symbol.d >= 0 && symbol.d < tensor_arena->vt_tensor_rnum);
 	return tensor_arena->vt_tensor[symbol.d];
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol)
 {
 	assert(symbol.d >= 0 && symbol.d < graph_exec_arena->graph_exec_rnum);
 	return graph_exec_arena->graph_exec[symbol.d];
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* graph_exec_arena)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
 {
 	return graph_exec_arena->source;
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* graph_exec_arena)
+ccv_nnc_graph_exec_t ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
 {
 	return graph_exec_arena->destination;
 }
 
-void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_tensor_bind_t* tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_graph_t** graph_ref, ccv_nnc_tensor_arena_t** tensor_arena_ref, ccv_nnc_graph_exec_arena_t** graph_exec_arena_ref)
+void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref)
 {
 	assert(graph_ref);
 	assert(tensor_arena_ref);
@@ -881,7 +881,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* symbolic_gra
 	}
 }
 
-void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena)
+void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	int i;
 #ifdef HAVE_CUDA
@@ -902,7 +902,7 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* tensor_arena)
 	ccfree(tensor_arena);
 }
 
-void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* graph_exec_arena)
+void ccv_nnc_graph_exec_arena_free(ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
 {
 	ccfree(graph_exec_arena);
 }

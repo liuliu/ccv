@@ -50,6 +50,7 @@ struct ccv_nnc_symbolic_graph_s {
 	ccv_array_t* conditions;
 	// Map between parent / sub graph's tensor symbols.
 	ccv_nnc_graph_while_f while_func;
+	ccv_nnc_tensor_symbol_t* symbol_map;
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;
@@ -92,7 +93,7 @@ inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const
 	ccv_array_push(ints, &outgoing);
 }
 
-void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* symbolic_graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info);
+void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
 
 #endif
 

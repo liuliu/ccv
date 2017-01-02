@@ -10,7 +10,7 @@
 #include <dispatch/dispatch.h>
 #endif
 
-static int _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 1);
 	const ccv_nnc_tensor_t* a = inputs[0];
@@ -30,7 +30,7 @@ static int _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
 	const ccv_nnc_tensor_t* g = inputs[0]; // gradient
@@ -54,7 +54,7 @@ static int _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_RELU_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_RELU_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -62,7 +62,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RELU_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_
 	registry->exec = _ccv_nnc_relu_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_RELU_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_RELU_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;

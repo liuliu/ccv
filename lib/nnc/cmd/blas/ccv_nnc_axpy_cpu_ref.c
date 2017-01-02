@@ -13,7 +13,7 @@
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
 
-static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size == 1 || inputs[1] == 0)
 	{
@@ -189,7 +189,7 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* inputs, const int input_size, ccv_nnc_tensor_t** outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context)
+static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (inputs[0] == 0)
 	{
@@ -215,7 +215,7 @@ static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
@@ -223,7 +223,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_
 	registry->exec = _ccv_nnc_axpy_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;

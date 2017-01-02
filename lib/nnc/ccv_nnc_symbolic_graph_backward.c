@@ -70,7 +70,7 @@ typedef struct {
 // and will return 0.
 
 // Return 1 if inserted successfully.
-static inline int _ccv_nnc_try_mix(int* md, const int ins, const int c)
+static inline int _ccv_nnc_try_mix(int* const md, const int ins, const int c)
 {
 	if (!c)
 	{
@@ -94,7 +94,7 @@ static inline int _ccv_nnc_try_mix(int* md, const int ins, const int c)
 	return 1;
 }
 
-static inline int _ccv_nnc_mix_idx(const int* md, const int ins, const int c)
+static inline int _ccv_nnc_mix_idx(const int* const md, const int ins, const int c)
 {
 	if (c <= 1)
 		return 0;
@@ -113,7 +113,7 @@ static inline int _ccv_nnc_mix_idx(const int* md, const int ins, const int c)
 	return -1;
 }
 
-static inline void _ccv_nnc_try_set_pix_0(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset)
+static inline void _ccv_nnc_try_set_pix_0(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset)
 {
 	const int s = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
 	const int d = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
@@ -124,7 +124,7 @@ static inline void _ccv_nnc_try_set_pix_0(const int* ofs, const int* dim, const 
 		cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
 }
 
-static inline void _ccv_nnc_try_set_pix_1(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset)
+static inline void _ccv_nnc_try_set_pix_1(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset)
 {
 	const int s0 = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
 	const int d0 = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
@@ -148,7 +148,7 @@ static inline void _ccv_nnc_try_set_pix_1(const int* ofs, const int* dim, const 
 	}
 }
 
-static inline void _ccv_nnc_try_set_pix(const int* ofs, const int* dim, const int* tensor_dim, int* const* scmd, const int* cube_dim, const int* cube_step, uint8_t* cube, int offset, const int dim_idx)
+static inline void _ccv_nnc_try_set_pix(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset, const int dim_idx)
 {
 	switch (dim_idx)
 	{
@@ -167,7 +167,7 @@ static inline void _ccv_nnc_try_set_pix(const int* ofs, const int* dim, const in
 		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, offset + i * cube_step[dim_idx], dim_idx - 1);
 }
 
-static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info)
+static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_ref_t* const tensor_ref, const ccv_array_t* const autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info)
 {
 	// Only work with tensor_ref of aliases.
 	assert(tensor_ref->alias_registry);
@@ -273,7 +273,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	return 1;
 }
 
-static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int d, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, ccv_nnc_autograd_tensor_version_t* tensor_ver, ccv_nnc_graph_autograd_exec_t* autograd_exec, ccv_array_t* autograd_tensor_symbol, ccv_array_t* sum_or_set_exec)
+static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int d, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_autograd_tensor_version_t* const tensor_ver, ccv_nnc_graph_autograd_exec_t* const autograd_exec, ccv_array_t* const autograd_tensor_symbol, ccv_array_t* const sum_or_set_exec)
 {
 	int i, j;
 	assert(tensor_ver->c < tensor_ver->ref_version->rnum);
@@ -346,7 +346,7 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 	tensor_ver->c = tensor_ver->ref_version->rnum - 1;
 }
 
-static int _ccv_nnc_tensor_ref_version_involve_alias(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const ccv_nnc_tensor_symbol_info_t* alias)
+static int _ccv_nnc_tensor_ref_version_involve_alias(const ccv_nnc_tensor_ref_t* const tensor_ref, const ccv_array_t* const autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_tensor_symbol_info_t* const alias)
 {
 	assert(alias->alias_ref > 0);
 	// No alias_registry, must conflict (owns the whole band).
@@ -381,7 +381,7 @@ static int _ccv_nnc_tensor_ref_version_involve_alias(const ccv_nnc_tensor_ref_t*
 	return 0;
 }
 
-static int _ccv_nnc_tensor_ref_version_find_alias(const ccv_nnc_tensor_ref_t* tensor_ref, const ccv_array_t* autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const ccv_nnc_tensor_symbol_info_t* alias)
+static int _ccv_nnc_tensor_ref_version_find_alias(const ccv_nnc_tensor_ref_t* const tensor_ref, const ccv_array_t* const autograd_tensor_symbol, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_tensor_symbol_info_t* const alias)
 {
 	assert(alias->alias_ref > 0);
 	// No alias_registry, thus, cannot find the exact matched alias.
@@ -433,7 +433,7 @@ static int _ccv_nnc_tensor_ref_version_has_this_alias_exclusively(const ccv_nnc_
 	return 1;
 }
 
-static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, const int d, const ccv_nnc_tensor_symbol_info_t* tensor_symbol_info, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* alias, ccv_nnc_autograd_tensor_version_t* tensor_ver, ccv_nnc_graph_autograd_exec_t* autograd_exec, ccv_array_t* autograd_tensor_symbol, ccv_array_t* sum_or_set_exec)
+static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, const int d, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int exec_symbol_size, const ccv_nnc_tensor_symbol_info_t* const alias, ccv_nnc_autograd_tensor_version_t* const tensor_ver, ccv_nnc_graph_autograd_exec_t* const autograd_exec, ccv_array_t* const autograd_tensor_symbol, ccv_array_t* const sum_or_set_exec)
 {
 	assert(tensor_ver->c < tensor_ver->ref_version->rnum);
 	int i, j = 0;
@@ -605,7 +605,7 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 	return ad;
 }
 
-void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_graph_exec_symbol_t* sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* wrt_symbols, const int wrt_symbol_size)
+void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)
 {
 	// First, fill all the "auto" holes.
 	// This is the symbol table that with "auto" info filled up.
@@ -1226,7 +1226,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* graph, const ccv_
 	ccfree(tensor_symbol_info);
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol)
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
 {
 	assert(symbol.d >= 0);
 	assert(symbol.d < graph->forward_symbol_size);
@@ -1239,7 +1239,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symboli
 	return tensor;
 }
 
-ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* graph, const ccv_nnc_tensor_symbol_t symbol)
+ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
 {
 	assert(symbol.d >= graph->forward_symbol_size);
 	assert(symbol.d < graph->forward_symbol_size + graph->backward_symbol_size);
