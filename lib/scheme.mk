@@ -4,15 +4,27 @@
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
-	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
-	LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
+	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+	LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 endif
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
-debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address -fsanitize=undefined
+debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 debug: export DEBUG = 1
 debug: all
 
+# Undefined Scheme
+
+UNDEF ?= 0
+ifeq ($(UNDEF), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+	LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+endif
+
+undef: CFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+undef: LDFLAGS += -g -fno-omit-frame-pointer -O0 -fsanitize=address -fsanitize=undefined
+undef: export UNDEF = 1
+undef: all
 
 # Coverage Scheme
 
