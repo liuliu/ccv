@@ -47,7 +47,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) _ccv_nnc_while_graph_map_exec_symbo
 	return exec_symbol;
 }
 
-ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditions, const int condition_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditionals, const int conditional_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
 {
 	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();
 	while_graph->while_func = while_func;
@@ -101,7 +101,8 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 		{
 			// Mark this node as dead.
 			node->dead = 1;
-			if (node->outgoings && node->outgoings->rnum > 0)
+			if (node->outgoings)
+			{
 				for (j = 0; j < node->outgoings->rnum; j++)
 				{
 					const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, j);
@@ -115,9 +116,10 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 						ccv_nnc_graph_exec_symbol_concat(graph, symbol, outgoing_symbol);
 					}
 				}
-			// Remove all its outgoing nodes.
-			ccv_array_free(node->outgoings);
-			node->outgoings = 0;
+				// Remove all its outgoing nodes.
+				ccv_array_free(node->outgoings);
+				node->outgoings = 0;
+			}
 		} else {
 			if (node->outgoings && node->outgoings->rnum > 0)
 			{
@@ -149,6 +151,14 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 			}
 		}
 	}
+	if (!graph->while_graphs)
+		graph->while_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
+	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	// Note the extra allocation (the ccv_array_t only holds a pointer to ccv_nnc_symbolic_graph_t*).
+	// In this way, we can get the while graph and don't have to worry about it will be an invalid pointer once
+	// the array expands (another while graph allocated).
+	ccv_array_push(graph->while_graphs, &while_graph);
+	symbol_info->graph_ref = graph->while_graphs->rnum;
 	if (max_input_symbols)
 		ccfree(max_input_symbols);
 	if (max_output_symbols)
@@ -156,4 +166,14 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	ccfree(exec_symbol_map);
 	ccfree(tensor_symbol_map);
 	return symbol;
+}
+
+ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol)
+{
+	assert(graph->while_graphs);
+	assert(while_symbol.graph == graph);
+	assert(while_symbol.d < graph->exec_symbol_info->rnum);
+	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, while_symbol.d);
+	assert(symbol_info->graph_ref <= graph->while_graphs->rnum);
+	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, symbol_info->graph_ref - 1);
 }

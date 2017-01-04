@@ -19,6 +19,13 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_new(void)
 	ccv_nnc_symbolic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_symbolic_graph_t));
 	graph->tensor_symbol_info = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_info_t), 5, 0);
 	graph->exec_symbol_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_info_t), 5, 0);
+	graph->sources = 0;
+	graph->destinations = 0;
+	graph->while_func = 0;
+	graph->conditionals = 0;
+	graph->while_graphs = 0;
+	graph->symbol_map = 0;
+	graph->p = 0;
 	graph->forward_symbol_size = 0;
 	graph->backward_tensor_symbols = 0;
 	graph->backward_symbol_size = 0;
@@ -420,6 +427,18 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		if (symbol_info->name)
 			ccfree(symbol_info->name);
 	}
+	if (graph->while_graphs)
+	{
+		for (i = 0; i < graph->while_graphs->rnum; i++)
+			ccv_nnc_symbolic_graph_free(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, i));
+		ccv_array_free(graph->while_graphs);
+	}
+	if (graph->sources)
+		ccv_array_free(graph->sources);
+	if (graph->destinations)
+		ccv_array_free(graph->destinations);
+	if (graph->conditionals)
+		ccv_array_free(graph->conditionals);
 	ccv_array_free(graph->tensor_symbol_info);
 	ccv_array_free(graph->exec_symbol_info);
 	if (graph->backward_tensor_symbols)

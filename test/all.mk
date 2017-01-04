@@ -3,7 +3,7 @@ include ../lib/config.mk
 LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../lib" -I"." $(CFLAGS)
 
-SRCS := regression/defects.l0.1.tests.c unit/3rdparty.tests.c unit/io.tests.c unit/algebra.tests.c unit/memory.tests.c unit/convnet.tests.c unit/transform.tests.c unit/image_processing.tests.c unit/output.tests.c unit/nnc/backward.tests.c unit/nnc/winograd.tests.c unit/nnc/tensor.tests.c unit/nnc/forward.tests.c unit/nnc/autograd.tests.c unit/nnc/tfb.tests.c unit/nnc/gradient.tests.c unit/nnc/transform.tests.c unit/nnc/graph.tests.c unit/nnc/autograd.vector.tests.c unit/nnc/symbolic.graph.tests.c unit/util.tests.c unit/basic.tests.c unit/numeric.tests.c
+SRCS := regression/defects.l0.1.tests.c unit/3rdparty.tests.c unit/io.tests.c unit/algebra.tests.c unit/memory.tests.c unit/convnet.tests.c unit/transform.tests.c unit/image_processing.tests.c unit/output.tests.c unit/nnc/while.tests.c unit/nnc/backward.tests.c unit/nnc/winograd.tests.c unit/nnc/tensor.tests.c unit/nnc/forward.tests.c unit/nnc/autograd.tests.c unit/nnc/tfb.tests.c unit/nnc/gradient.tests.c unit/nnc/transform.tests.c unit/nnc/graph.tests.c unit/nnc/autograd.vector.tests.c unit/nnc/symbolic.graph.tests.c unit/util.tests.c unit/basic.tests.c unit/numeric.tests.c
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
@@ -41,6 +41,9 @@ unit/image_processing.tests.o: unit/image_processing.tests.c
 
 unit/output.tests.o: unit/output.tests.c
 	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit"' -o $@ -c $(CFLAGS)
+
+unit/nnc/while.tests.o: unit/nnc/while.tests.c
+	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit/nnc"' -o $@ -c $(CFLAGS)
 
 unit/nnc/backward.tests.o: unit/nnc/backward.tests.c
 	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit/nnc"' -o $@ -c $(CFLAGS)
