@@ -352,59 +352,146 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		fputc('}', out);
 }
 
+static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int index, const ccv_array_t* const tensor_symbol_info, const int skip_name, const int flags, FILE* out)
+{
+	fprintf(out, "node%d [shape=record,label=\"", index);
+	if (!skip_name)
+		_ccv_nnc_symbolic_graph_dot_exec_symbol(index, exec_symbol_info, flags, out);
+	int i;
+	if (exec_symbol_info->input_size > 0)
+	{
+		fputs("|{Input", out);
+		for (i = 0; i < exec_symbol_info->input_size; i++)
+		{
+			if (exec_symbol_info->inputs[i] >= 0)
+			{
+				fputc('|', out);
+				const ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->inputs[i]);
+				const ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[i], tensor_symbol, alias_symbol, flags, out);
+			} else
+				fputs("|-", out);
+		}
+		fputc('}', out);
+	}
+	if (exec_symbol_info->output_size > 0)
+	{
+		fputs("|{Output", out);
+		for (i = 0; i < exec_symbol_info->output_size; i++)
+		{
+			if (exec_symbol_info->outputs[i] >= 0)
+			{
+				fputc('|', out);
+				ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->outputs[i]);
+				ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[i], tensor_symbol, alias_symbol, flags, out);
+			} else
+				fputs("|-", out);
+		}
+		fputc('}', out);
+	}
+	fputs("\"];\n", out);
+}
+
+static void _ccv_nnc_symbolic_graph_dot_while_graph(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_array_t* const tensor_symbol_info, const ccv_nnc_symbolic_graph_t* const while_graph, const int flags, FILE* out, int* c)
+{
+	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\n", *c);
+	int i, j;
+	int* node_id = (int*)ccmalloc(sizeof(int) * while_graph->exec_symbol_info->rnum);
+	// Output this node info within this subgraph.
+	_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, tensor_symbol_info, 1, flags, out);
+	++(*c);
+	for (i = 0; i < while_graph->exec_symbol_info->rnum; i++)
+	{
+		node_id[i] = *c;
+		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, i);
+		// Skip the dead one.
+		if (exec_symbol_info->dead)
+			continue;
+		if (exec_symbol_info->graph_ref)
+		{
+			const ccv_nnc_symbolic_graph_t* graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->while_graphs, exec_symbol_info->graph_ref - 1);
+			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, while_graph->tensor_symbol_info, graph, flags, out, c);
+		} else {
+			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, while_graph->tensor_symbol_info, 0, flags, out);
+			++(*c);
+		}
+	}
+	// Output connections.
+	for (i = 0; i < while_graph->exec_symbol_info->rnum; i++)
+	{
+		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, i);
+		// Skip the dead one.
+		if (exec_symbol_info->dead)
+			continue;
+		if (exec_symbol_info->outgoings)
+			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)
+			{
+				const int outgoing_idx = *(int*)ccv_array_get(exec_symbol_info->outgoings, j);
+				const ccv_nnc_graph_exec_symbol_info_t* outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, outgoing_idx);
+				// If both are sub-graphs, have both tail and head specified.
+				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
+				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
+				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
+				else
+					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
+			}
+	}
+	fputs("}\n", out);
+	ccfree(node_id);
+}
+
 void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, const int flags, FILE* out)
 {
-	fputs("digraph G {\n", out);
+	fputs("digraph G {\ncompound=true;\n", out);
 	int i, j;
+	int c = 0;
+	int* node_id = (int*)ccmalloc(sizeof(int) * graph->exec_symbol_info->rnum);
 	// Output styles.
 	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
 	{
-		ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
-		fprintf(out, "node%d [shape=Mrecord,label=\"", i);
-		_ccv_nnc_symbolic_graph_dot_exec_symbol(i, exec_symbol_info, flags, out);
-		if (exec_symbol_info->input_size > 0)
+		node_id[i] = c;
+		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		// Skip the dead one.
+		if (exec_symbol_info->dead)
+			continue;
+		if (exec_symbol_info->graph_ref)
 		{
-			fputs("|{Input", out);
-			for (j = 0; j < exec_symbol_info->input_size; j++)
-			{
-				if (exec_symbol_info->inputs[j] >= 0)
-				{
-					fputc('|', out);
-					ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->inputs[j]);
-					ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
-					_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
-				} else
-					fputs("|-", out);
-			}
-			fputc('}', out);
+			const ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, exec_symbol_info->graph_ref - 1);
+			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, graph->tensor_symbol_info, while_graph, flags, out, &c);
+		} else {
+			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, c, graph->tensor_symbol_info, 0, flags, out);
+			++c;
 		}
-		if (exec_symbol_info->output_size > 0)
-		{
-			fputs("|{Output", out);
-			for (j = 0; j < exec_symbol_info->output_size; j++)
-			{
-				if (exec_symbol_info->outputs[j] >= 0)
-				{
-					fputc('|', out);
-					ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, exec_symbol_info->outputs[j]);
-					ccv_nnc_tensor_symbol_info_t* alias_symbol_info = tensor_symbol_info->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol_info->alias_ref - 1) : 0;
-					_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[j], tensor_symbol_info, alias_symbol_info, flags, out);
-				} else
-					fputs("|-", out);
-			}
-			fputc('}', out);
-		}
-		fputs("\"];\n", out);
 	}
 	// Output connections.
 	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
 	{
-		ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		// Skip the dead one.
+		if (exec_symbol_info->dead)
+			continue;
 		if (exec_symbol_info->outgoings)
 			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)
-				fprintf(out, "node%d -> node%d;\n", i, *(int*)ccv_array_get(exec_symbol_info->outgoings, j));
+			{
+				const int outgoing_idx = *(int*)ccv_array_get(exec_symbol_info->outgoings, j);
+				const ccv_nnc_graph_exec_symbol_info_t* outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx);
+				// If both are sub-graphs, have both tail and head specified.
+				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
+				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
+				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
+				else
+					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
+			}
 	}
 	fputs("}\n", out);
+	ccfree(node_id);
 }
 
 void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
