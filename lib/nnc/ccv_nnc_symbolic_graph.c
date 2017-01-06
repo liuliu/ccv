@@ -320,10 +320,10 @@ static void _ccv_nnc_symbolic_graph_dot_exec_symbol(const int index, const ccv_n
 	}
 }
 
-static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv_nnc_tensor_symbol_info_t* const symbol_info, const ccv_nnc_tensor_symbol_info_t* const alias_info, const int flags, FILE* out)
+static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv_nnc_tensor_symbol_info_t* const symbol_info, const ccv_nnc_tensor_symbol_info_t* const alias_info, const int html, const int flags, FILE* out)
 {
 	// if it has an alias pointer, or, it is a long form.
-	if (flags == CCV_NNC_LONG_DOT_GRAPH || alias_info)
+	if ((flags == CCV_NNC_LONG_DOT_GRAPH || alias_info) && !html)
 		fputc('{', out);
 	if (symbol_info->name)
 		fputs(symbol_info->name, out);
@@ -331,9 +331,22 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		fprintf(out, "tensor%d", index);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH && (symbol_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS))
 		fputs(" (0)", out); // Output if it is zero init'ed.
+	if (flags == CCV_NNC_LONG_DOT_GRAPH)
+	{
+		int i;
+		if (html)
+			fprintf(out, "</td><td>%d", symbol_info->info.dim[0]);
+		else
+			fprintf(out, "|%d", symbol_info->info.dim[0]);
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && symbol_info->info.dim[i]; i++)
+			fprintf(out, "x%d", symbol_info->info.dim[i]);
+	}
 	if (alias_info)
 	{
-		fputs("|as. ", out);
+		if (html)
+			fputs("</td><td border=\"0\">as. ", out);
+		else
+			fputs("|as. ", out);
 		if (alias_info->name)
 			fputs(alias_info->name, out);
 		else
@@ -341,22 +354,14 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		if (flags == CCV_NNC_LONG_DOT_GRAPH && (alias_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS))
 			fputs(" (0)", out); // Output if it is zero init'ed.
 	}
-	if (flags == CCV_NNC_LONG_DOT_GRAPH)
-	{
-		int i;
-		fprintf(out, "|%d", symbol_info->info.dim[0]);
-		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && symbol_info->info.dim[i]; i++)
-			fprintf(out, "x%d", symbol_info->info.dim[i]);
-	}
-	if (flags == CCV_NNC_LONG_DOT_GRAPH || alias_info)
+	if ((flags == CCV_NNC_LONG_DOT_GRAPH || alias_info) && !html)
 		fputc('}', out);
 }
 
-static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int index, const ccv_array_t* const tensor_symbol_info, const int skip_name, const int flags, FILE* out)
+static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int index, const ccv_array_t* const tensor_symbol_info, const int flags, FILE* out)
 {
 	fprintf(out, "node%d [shape=record,label=\"", index);
-	if (!skip_name)
-		_ccv_nnc_symbolic_graph_dot_exec_symbol(index, exec_symbol_info, flags, out);
+	_ccv_nnc_symbolic_graph_dot_exec_symbol(index, exec_symbol_info, flags, out);
 	int i;
 	if (exec_symbol_info->input_size > 0)
 	{
@@ -368,7 +373,7 @@ static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_inf
 				fputc('|', out);
 				const ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->inputs[i]);
 				const ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
-				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[i], tensor_symbol, alias_symbol, flags, out);
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[i], tensor_symbol, alias_symbol, 0, flags, out);
 			} else
 				fputs("|-", out);
 		}
@@ -384,7 +389,7 @@ static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_inf
 				fputc('|', out);
 				ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->outputs[i]);
 				ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
-				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[i], tensor_symbol, alias_symbol, flags, out);
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[i], tensor_symbol, alias_symbol, 0, flags, out);
 			} else
 				fputs("|-", out);
 		}
@@ -393,14 +398,62 @@ static void _ccv_nnc_symbolic_graph_dot_node(const ccv_nnc_graph_exec_symbol_inf
 	fputs("\"];\n", out);
 }
 
+static void _ccv_nnc_symbolic_graph_dot_node_html(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int index, const ccv_array_t* const tensor_symbol_info, const int flags, FILE* out)
+{
+	int i;
+	fputs("<table border=\"0\" cellborder=\"1\" cellspacing=\"0\"><tr><td border=\"0\"><b>", out);
+	if (exec_symbol_info->name)
+		fputs(exec_symbol_info->name, out);
+	else
+		fprintf(out, "while%d", index);
+	fputs("</b></td></tr>", out);
+	if (exec_symbol_info->input_size > 0)
+	{
+		fprintf(out, "<tr><td rowspan=\"%d\">Input</td>", exec_symbol_info->input_size);
+		for (i = 0; i < exec_symbol_info->input_size; i++)
+		{
+			if (i > 0)
+				fputs("<tr>", out);
+			if (exec_symbol_info->inputs[i] >= 0)
+			{
+				fputs("<td>", out);
+				const ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->inputs[i]);
+				const ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->inputs[i], tensor_symbol, alias_symbol, 1, flags, out);
+				fputs("</td></tr>", out);
+			} else
+				fputs("<td>-</td></tr>", out);
+		}
+	}
+	if (exec_symbol_info->output_size > 0)
+	{
+		fprintf(out, "<tr><td rowspan=\"%d\">Output</td>", exec_symbol_info->output_size);
+		for (i = 0; i < exec_symbol_info->output_size; i++)
+		{
+			if (i > 0)
+				fputs("<tr>", out);
+			if (exec_symbol_info->outputs[i] >= 0)
+			{
+				fputs("<td>", out);
+				ccv_nnc_tensor_symbol_info_t* tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, exec_symbol_info->outputs[i]);
+				ccv_nnc_tensor_symbol_info_t* alias_symbol = tensor_symbol->alias_ref ? (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_symbol->alias_ref - 1) : 0;
+				_ccv_nnc_symbolic_graph_dot_tensor_symbol(exec_symbol_info->outputs[i], tensor_symbol, alias_symbol, 1, flags, out);
+				fputs("</td></tr>", out);
+			} else
+				fputs("<td>-</td></tr>", out);
+		}
+	}
+	fputs("</table>", out);
+}
+
 static void _ccv_nnc_symbolic_graph_dot_while_graph(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_array_t* const tensor_symbol_info, const ccv_nnc_symbolic_graph_t* const while_graph, const int flags, FILE* out, int* c)
 {
-	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\n", *c);
+	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nlabel=<", *c);
 	int i, j;
-	int* node_id = (int*)ccmalloc(sizeof(int) * while_graph->exec_symbol_info->rnum);
 	// Output this node info within this subgraph.
-	_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, tensor_symbol_info, 1, flags, out);
-	++(*c);
+	_ccv_nnc_symbolic_graph_dot_node_html(exec_symbol_info, *c, tensor_symbol_info, flags, out);
+	fputs(">;\n", out);
+	int* node_id = (int*)ccmalloc(sizeof(int) * while_graph->exec_symbol_info->rnum);
 	for (i = 0; i < while_graph->exec_symbol_info->rnum; i++)
 	{
 		node_id[i] = *c;
@@ -413,7 +466,7 @@ static void _ccv_nnc_symbolic_graph_dot_while_graph(const ccv_nnc_graph_exec_sym
 			const ccv_nnc_symbolic_graph_t* graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->while_graphs, exec_symbol_info->graph_ref - 1);
 			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, while_graph->tensor_symbol_info, graph, flags, out, c);
 		} else {
-			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, while_graph->tensor_symbol_info, 0, flags, out);
+			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, while_graph->tensor_symbol_info, flags, out);
 			++(*c);
 		}
 	}
@@ -463,7 +516,7 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 			const ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, exec_symbol_info->graph_ref - 1);
 			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, graph->tensor_symbol_info, while_graph, flags, out, &c);
 		} else {
-			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, c, graph->tensor_symbol_info, 0, flags, out);
+			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, c, graph->tensor_symbol_info, flags, out);
 			++c;
 		}
 	}
