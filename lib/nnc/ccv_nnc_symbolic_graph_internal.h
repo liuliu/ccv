@@ -13,7 +13,10 @@
 #include "ccv_nnc.h"
 
 typedef struct {
-	int alias_ref;
+	// Start for while loop handling
+	int assign_ref; // Reference to the tensor that the value will be copied from (for parameter passing). Starts at 1.
+	// End of while loop handling.
+	int alias_ref; // Reference to the tensor. Starts at 1.
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	int inc[CCV_NNC_MAX_DIM_ALLOC];
 	ccv_nnc_tensor_param_t info;
@@ -26,8 +29,8 @@ typedef struct {
 	int output_size;
 	int* inputs;
 	int* outputs;
-	ccv_array_t* outgoings; // outgoing nodes
-	int graph_ref; // reference to the sub-graph.
+	ccv_array_t* outgoings; // Outgoing nodes
+	int graph_ref; // Reference to the sub-graph. Starts at 1.
 	int dead; // Mark this node as dead.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
@@ -48,9 +51,8 @@ struct ccv_nnc_symbolic_graph_s {
 	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
 	ccv_array_t* conditionals;
-	// Map between parent / sub graph's tensor symbols.
 	ccv_nnc_graph_while_f while_func;
-	ccv_nnc_tensor_symbol_t* symbol_map;
+	// Map between parent / sub-graph's tensor symbols.
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;

@@ -32,7 +32,6 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 		.hint = hint,
 		.input_size = input_size,
 		.output_size = output_size,
-		.outgoings = 0,
 	};
 	assert(inputs || input_size == 0);
 	assert(outputs || output_size == 0);

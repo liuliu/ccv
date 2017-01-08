@@ -47,7 +47,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) _ccv_nnc_while_graph_map_exec_symbo
 	return exec_symbol;
 }
 
-ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditionals, const int conditional_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const conditionals, const int conditional_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_while_f while_func, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size, const char* const name)
 {
 	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();
 	while_graph->while_func = while_func;
@@ -82,7 +82,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
 				if (exec_symbol_map[outgoing_idx].d == -2) /* It is on the path to be included into while graph */ \
 				{ \
-					const ccv_nnc_graph_exec_symbol_info_t* outgoing_node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx); \
+					const ccv_nnc_graph_exec_symbol_info_t* const outgoing_node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx); \
 					exec_symbol_map[outgoing_idx] = _ccv_nnc_while_graph_map_exec_symbol(outgoing_node, graph->tensor_symbol_info, while_graph, tensor_symbol_map, max_input_symbols, max_output_symbols); \
 					ccv_nnc_graph_exec_symbol_concat(while_graph, exec_symbol_map[idx], exec_symbol_map[outgoing_idx]); \
 				} \
@@ -93,7 +93,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	// Ready, now create the symbol to the while graph.
 	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_GRAPH_FORWARD, 0, CMD_GENERIC(), 0);
 	// Added one more symbol.
-	ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_graph_exec_symbol_new(graph, cmd, inputs, input_size, outputs, output_size, 0);
+	ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_graph_exec_symbol_new(graph, cmd, inputs, input_size, outputs, output_size, name);
 	for (i = 0; i < graph->exec_symbol_info->rnum - 1; i++)
 	{
 		ccv_nnc_graph_exec_symbol_info_t* node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
@@ -151,6 +151,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 			}
 		}
 	}
+	// Assigning graph_ref to it.
 	if (!graph->while_graphs)
 		graph->while_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
 	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
@@ -159,6 +160,20 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	// the array expands (another while graph allocated).
 	ccv_array_push(graph->while_graphs, &while_graph);
 	symbol_info->graph_ref = graph->while_graphs->rnum;
+	// Go through tensor symbols and fill up assign_ref.
+	for (i = 0; i < symbol_map_size; i++)
+	{
+		assert(symbol_map[i].source.graph == graph);
+		assert(symbol_map[i].destination.graph == graph);
+		const int source_d = symbol_map[i].source.d;
+		const int destination_d = symbol_map[i].destination.d;
+		assert(source_d < graph->tensor_symbol_info->rnum);
+		assert(destination_d < graph->tensor_symbol_info->rnum);
+		assert(tensor_symbol_map[source_d].d >= 0);
+		assert(tensor_symbol_map[destination_d].d >= 0);
+		ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, tensor_symbol_map[destination_d].d);
+		tensor_symbol_info->assign_ref = tensor_symbol_map[source_d].d + 1;
+	}
 	if (max_input_symbols)
 		ccfree(max_input_symbols);
 	if (max_output_symbols)
