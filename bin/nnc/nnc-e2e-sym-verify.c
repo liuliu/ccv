@@ -144,6 +144,24 @@ int main(int argc, char** argv)
 		elapsed_time = get_current_time();
 		ccv_nnc_graph_autotune(run_graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
 		printf("ccv_nnc_graph_autotune %u ms\n", get_current_time() - elapsed_time);
+		// Repopulate the weight. Since the weight tensor may be reused, need to repopulate every time run.
+		// To avoid this, bind the weights directly or declare as const.
+		for (i = 0; i < convnet->count; i++)
+		{
+			ccv_convnet_layer_t* layer = convnet->layers + i;
+			if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
+			{
+				ccv_nnc_tensor_t* w = ccv_nnc_tensor_from_symbol(tensor_arena, w_symbols[i]);
+				memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
+				ccv_nnc_tensor_t* bias = ccv_nnc_tensor_from_symbol(tensor_arena, bias_symbols[i]);
+				memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
+			} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
+				ccv_nnc_tensor_t* w = ccv_nnc_tensor_from_symbol(tensor_arena, w_symbols[i]);
+				memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
+				ccv_nnc_tensor_t* bias = ccv_nnc_tensor_from_symbol(tensor_arena, bias_symbols[i]);
+				memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
+			}
+		}
 		elapsed_time = get_current_time();
 		ccv_nnc_graph_run(run_graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
 		printf("ccv_nnc_graph_run %u ms\n", get_current_time() - elapsed_time);

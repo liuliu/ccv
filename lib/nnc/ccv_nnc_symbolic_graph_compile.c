@@ -593,7 +593,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 			for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */ \
 			{ \
 				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2]); \
- 				/* If not found, set */ \
+				/* If not found, set */ \
 				if (!cell.i32 || cell.i32[0] == 0) \
 					ccv_set_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2], &buf[j * 2 + 1]); \
 				else { \
@@ -627,7 +627,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 #undef visitor
 	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
-		tensor_expect[tensor_binds[i].symbol.d].flag = UNASSIGNED;
+		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
+		tensor_expect[tensor_binds[i].symbol.d].flag = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -658,10 +659,12 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 			if (TENSOR_EXPECT_UNASSIGNED(tensor_expect[d])) \
 				continue; \
 			assert(TENSOR_EXPECT_COMPUTABLE(tensor_expect[d])); \
+			/* If this is first encounter, its head starts (this tensor is init'ed outside of the graph)
+			 * from the very beginning of the graph life-cycle and ends here. */ \
 			if (tensor_expect[d].head->rnum == 0) \
-				tensor_expect[d].flag = CONST_TENSOR; \
-			else \
-				_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[d]); \
+				for (j = 0; j < source_size; j++) \
+					_ccv_nnc_tensor_expect_add_exec(exec_dep, sources[j].d, tensor_expect[d]); \
+			_ccv_nnc_tensor_expect_add_exec(exec_dep, idx, tensor_expect[d]); \
 		} \
 		for (i = 0; i < node->output_size; i++) \
 		{ \
@@ -670,7 +673,6 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 				continue; \
 			if (TENSOR_EXPECT_ALIAS(tensor_expect[d])) \
 				d = tensor_symbol_info[d].alias_ref - 1; \
-			/* If it is recognized as a const tensor, we can find it in the output pool because it may be in a RNN. */ \
 			if (TENSOR_EXPECT_CONST(tensor_expect[d]) || \
 				TENSOR_EXPECT_UNASSIGNED(tensor_expect[d])) \
 				continue; \
@@ -736,6 +738,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
+		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
+			continue;
 		// For binded tensors, it shouldn't be assigned yet.
 		assert(tensor_arena->vt_tensor[tensor_binds[i].symbol.d] == 0);
 		// I have to cast this, unfortunately.
