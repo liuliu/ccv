@@ -117,8 +117,8 @@ int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint)
 int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
-	assert(a.format == b.format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b.format));
+	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		if ((hint.border.begin[i] + hint.border.end[i] + a.dim[i] - cmd.size.dim[i]) % hint.stride.dim[i] != 0)
@@ -133,8 +133,8 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
-	assert(a.format == b.format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b.format));
+	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 		if (!a.dim[i] || !b.dim[i]) // If one of the dim is zero, we cannot auto the hint, return no hint.
 			return ccv_nnc_no_hint;
@@ -225,13 +225,13 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 		return cmd;
 	int i, j, k;
 	// Go through all the backends that supports the same type of memory input / output tensors support.
-	int tensor_memory = 0;
+	int tensor_memory = 0, tensor_formats = 0;
 	for (i = 0; i < input_size; i++)
 		if (inputs[i])
-			tensor_memory |= inputs[i]->info.type;
+			tensor_memory |= inputs[i]->info.type, tensor_formats |= inputs[i]->info.format;
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
-			tensor_memory |= outputs[i]->info.type;
+			tensor_memory |= outputs[i]->info.type, tensor_formats |= inputs[i]->info.format;
 	// In this case, we cannot determine the type of the tensor, skip auto-tune.
 	if (!tensor_memory)
 		return cmd;
@@ -247,7 +247,8 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
 			// We have the exec kernel, and support all the tensor memory types.
 			if (api_registry.exec &&
-				(api_registry.tensor_memory & tensor_memory) == tensor_memory)
+				(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
+				(api_registry.tensor_formats & tensor_formats) == tensor_formats)
 			{
 				ccv_nnc_cmd_t candid_cmd = cmd;
 				candid_cmd.backend = backend_init_map[i].backend;
@@ -334,13 +335,15 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	for (i = 0; i < input_size; i++)
 		if (inputs[i])
 		{
-			assert(api_registry.tensor_formats & inputs[i]->info.format);
+			assert(CCV_GET_DATA_TYPE(api_registry.tensor_formats) & CCV_GET_DATA_TYPE(inputs[i]->info.format));
+			assert(CCV_TENSOR_GET_FORMAT(api_registry.tensor_formats) & CCV_TENSOR_GET_FORMAT(inputs[i]->info.format));
 			input_bitmasks[i / 64] |= (uint64_t)1 << i;
 		}
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
 		{
-			assert(api_registry.tensor_formats & outputs[i]->info.format);
+			assert(CCV_GET_DATA_TYPE(api_registry.tensor_formats) & CCV_GET_DATA_TYPE(outputs[i]->info.format));
+			assert(CCV_TENSOR_GET_FORMAT(api_registry.tensor_formats) & CCV_TENSOR_GET_FORMAT(outputs[i]->info.format));
 			output_bitmasks[i / 64] |= (uint64_t)1 << i;
 		}
 	if (cmd_registry.bitmask)

@@ -14,7 +14,7 @@ TEST_CASE("zero out a tensor")
 {
 	ccv_nnc_tensor_param_t params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
+		.format = CCV_TENSOR_FORMAT_NHWC | CCV_32F,
 		.dim = {
 			10, 20, 30, 4, 5, 6,
 		},
@@ -33,7 +33,7 @@ TEST_CASE("zero out a tensor view")
 {
 	ccv_nnc_tensor_param_t params = {
 		.type = CCV_TENSOR_CPU_MEMORY,
-		.format = CCV_TENSOR_FORMAT_NHWC,
+		.format = CCV_TENSOR_FORMAT_NHWC | CCV_32F,
 		.dim = {
 			10, 20, 30, 4, 5, 6,
 		},

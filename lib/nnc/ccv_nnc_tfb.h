@@ -45,6 +45,7 @@ enum {
 	CCV_COMPUTE_DEVICE_07 = 0x0700,
 };
 
+#define CCV_TENSOR_GET_FORMAT(format) ((format) & 0xff)
 #define CCV_TENSOR_GET_MEMORY(type) ((type) & 0x3)
 #define CCV_TENSOR_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_TENSOR_GET_DEVICE_ID(type) (CCV_TENSOR_GET_DEVICE(type) >> 8)

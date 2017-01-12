@@ -38,8 +38,8 @@ typedef struct {
 static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
-	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b->format));
+	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
@@ -50,8 +50,8 @@ static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, co
 static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
-	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b->format));
+	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);

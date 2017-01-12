@@ -78,7 +78,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_CPU_OPT)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = CCV_NNC_CMD_OPT_CONV_ALGO_COUNT;
 	registry->exec = _ccv_nnc_conv_forw;

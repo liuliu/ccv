@@ -120,7 +120,7 @@ static int _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_MAX_POOL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_max_pool_forw;
@@ -128,7 +128,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_MAX_POOL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_MAX_POOL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_max_pool_back;

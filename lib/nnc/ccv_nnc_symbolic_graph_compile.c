@@ -10,6 +10,7 @@
 typedef struct {
 	int flag;
 	int ref;
+	uint64_t size; // The size of the tensor expected.
 	ccv_array_t* head; // The head nodes (it could be multiple if from the graph, one cannot determine which is the first).
 	ccv_array_t* tail; // The tail nodes (it could be multiple if from the graph, one cannot determine which is the last).
 } ccv_nnc_tensor_expect_t;
@@ -60,7 +61,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	// in this way, we can rely on system memory allocators (jemalloc, tcmalloc, or CUDA's allocator)
 	// to fully utilize memory.
 	int i, j, k;
-	uint64_t* tensor_size = (uint64_t*)ccmalloc(sizeof(uint64_t) * tensor_symbol_info_size);
 	int computable_tensor_size = 0, available_tensor_size = 0;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_expect[i]))
@@ -68,12 +68,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			// Tensors that we need the header info.
 			++available_tensor_size;
 			if (!TENSOR_EXPECT_ALIAS(tensor_expect[i]))
-			{
 				// Tensors that we actually need to compute (exclude the alias).
 				++computable_tensor_size;
-				// Cache tensor size (assuming it is 32F, and align to 16 bytes).
-				tensor_size[i] = ((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16;
-			}
 		}
 	ccv_sparse_matrix_t* tensor_itf = ccv_sparse_matrix_new(tensor_symbol_info_size, tensor_symbol_info_size, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	// Overlap count.
@@ -127,7 +123,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			if (oc[i] >= max_oc && TENSOR_EXPECT_COMPUTABLE(tensor_expect[i]) && !assigned[i])
 			{
 				ccv_nnc_tensor_opt_t a = {
-					.size = tensor_size[i],
+					.size = tensor_expect[i].size,
 					.index = i,
 					.companion = -1,
 				};
@@ -146,7 +142,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
 			for (k = 0; k < tensor_symbol_info_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned).
-				if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[k]) && !assigned[k] && tensor_size[k] > a.size)
+				if (TENSOR_EXPECT_COMPUTABLE(tensor_expect[k]) && !assigned[k] && tensor_expect[k].size > a.size)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
@@ -154,7 +150,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 					{
 						ccv_nnc_tensor_opt_t b = a;
 						b.companion = k;
-						b.size = tensor_size[k];
+						b.size = tensor_expect[k].size;
 						ccv_array_push(opt, &b);
 					}
 				}
@@ -299,36 +295,36 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 			if (a_hop_c > 0)
 			{
 				uint64_t val[2] = {
-					tensor_size[a.index], min_val[1] // keep the offset
+					tensor_expect[a.index].size, min_val[1] // keep the offset
 				};
 				ccv_set_sparse_matrix_cell(alloc, min_y, a.index + 1, val);
 				val[0] = a.size;
-				assert(a.size == tensor_size[a.companion]);
+				assert(a.size == tensor_expect[a.companion].size);
 				ccv_set_sparse_matrix_cell(alloc, a.index + 1, a.companion + 1, val);
 				ccv_set_sparse_matrix_cell(alloc, a.companion + 1, min_x, val);
-				if (a.size > tensor_size[a.index])
+				if (a.size > tensor_expect[a.index].size)
 				{
 					// residual size connection between min_y and companion.
-					val[0] = a.size - tensor_size[a.index];
+					val[0] = a.size - tensor_expect[a.index].size;
 					// offset need to be updated as well.
-					val[1] = min_val[1] + tensor_size[a.index];
+					val[1] = min_val[1] + tensor_expect[a.index].size;
 					ccv_set_sparse_matrix_cell(alloc, min_y, a.companion + 1, val);
 				}
 			} else {
 				uint64_t val[2] = {
 					a.size, min_val[1] // keep the offset
 				};
-				assert(a.size == tensor_size[a.companion]);
+				assert(a.size == tensor_expect[a.companion].size);
 				ccv_set_sparse_matrix_cell(alloc, min_y, a.companion + 1, val);
-				val[0] = tensor_size[a.index];
+				val[0] = tensor_expect[a.index].size;
 				ccv_set_sparse_matrix_cell(alloc, a.companion + 1, a.index + 1, val);
 				ccv_set_sparse_matrix_cell(alloc, a.index + 1, min_x, val);
-				if (a.size > tensor_size[a.index])
+				if (a.size > tensor_expect[a.index].size)
 				{
 					// residual size connection between min_y and companion.
-					val[0] = a.size - tensor_size[a.index];
+					val[0] = a.size - tensor_expect[a.index].size;
 					// offset need to be updated as well.
-					val[1] = min_val[1] + tensor_size[a.index];
+					val[1] = min_val[1] + tensor_expect[a.index].size;
 					ccv_set_sparse_matrix_cell(alloc, a.companion + 1, min_x, val);
 				}
 			}
@@ -349,7 +345,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_sy
 	CCV_SPARSE_FOREACH(alloc, for_block);
 #undef for_block
 	ccv_matrix_free(alloc);
-	ccfree(tensor_size);
 	ccfree(oc);
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
@@ -644,6 +639,8 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 		{
 			tensor_expect[i].head = ccv_array_new(sizeof(int), 0, 0);
 			tensor_expect[i].tail = ccv_array_new(sizeof(int), 0, 0);
+			// Cache tensor size (assuming it is 32F, and align to 16 bytes).
+			tensor_expect[i].size = ((uint64_t)CCV_GET_DATA_TYPE_SIZE(CCV_32F) * ccv_nnc_tensor_count(tensor_symbol_info[i].info) + 15) / 16 * 16;
 		}
 	}
 	// Collect head nodes and tail nodes for each tensor.

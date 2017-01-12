@@ -47,12 +47,12 @@
 #define GRAPH_EXEC_SYMBOL_LIST_X(...) (ccv_nnc_graph_exec_symbol_t []){__VA_ARGS__}
 #define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
-#define CPU_TENSOR_NHWC(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
-#define CPU_TENSOR_NCHW(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.dim={__VA_ARGS__}})
+#define CPU_TENSOR_NHWC(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC | CCV_32F,.dim={__VA_ARGS__}})
+#define CPU_TENSOR_NCHW(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW | CCV_32F,.dim={__VA_ARGS__}})
 #define ONE_CPU_TENSOR CPU_TENSOR_NHWC // The default is NHWC
 // This way, we can do error check on the device type :)
-#define GPU_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.dim={__VA_ARGS__}})
-#define GPU_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.dim={__VA_ARGS__}})
+#define GPU_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC | CCV_32F,.dim={__VA_ARGS__}})
+#define GPU_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW | CCV_32F,.dim={__VA_ARGS__}})
 #define ONE_GPU_TENSOR GPU_TENSOR_NHWC // The default is NHWC
 
 #define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}
@@ -90,7 +90,7 @@ static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 
 static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
 {
-	switch (params.format)
+	switch (CCV_TENSOR_GET_FORMAT(params.format))
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 		case CCV_TENSOR_FORMAT_NCHW:
@@ -103,7 +103,7 @@ static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
 
 static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 {
-	switch (params.format)
+	switch (CCV_TENSOR_GET_FORMAT(params.format))
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 			return params.dim[0];
@@ -117,7 +117,7 @@ static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 
 static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* const params, const int n)
 {
-	switch (params->format)
+	switch (CCV_TENSOR_GET_FORMAT(params->format))
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 		case CCV_TENSOR_FORMAT_NCHW:
@@ -131,7 +131,7 @@ static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* const params, co
 
 static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, const int c)
 {
-	switch (params->format)
+	switch (CCV_TENSOR_GET_FORMAT(params->format))
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 			params->dim[0] = c;
