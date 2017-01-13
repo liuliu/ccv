@@ -10,7 +10,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 {
 	ccv_nnc_tensor_t* tensor;
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t (On CPU, and 3 dims (channels, rows, cols), and channels is smaller than max channels of ccv_dense_matrix_t).
-	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_FORMAT(params.format) == CCV_TENSOR_FORMAT_NHWC && params.dim[0] > 0 && params.dim[0] <= CCV_MAX_CHANNEL && params.dim[1] > 0 && params.dim[2] > 0 && params.dim[3] == 0);
+	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[0] > 0 && params.dim[0] <= CCV_MAX_CHANNEL && params.dim[1] > 0 && params.dim[2] > 0 && params.dim[3] == 0);
 	if (ptr)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
@@ -19,11 +19,11 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor->info = params;
 		if (tfb)
 		{
-			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format) | params.dim[0];
+			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | params.datatype | params.dim[0];
 			// This corresponding to mat->step
-			tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.format) | params.dim[0]));
+			tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[0]));
 		} else // This won't be recognized by ccv_dense_matrix_t
-			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format);
+			tensor->type = CCV_NO_DATA_ALLOC | CCV_MATRIX_DENSE | params.datatype;
 		tensor->data.u8 = (uint8_t*)ptr;
 		return tensor;
 	}
@@ -33,7 +33,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	} else if (flags & CCV_TENSOR_GPU_MEMORY) {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY);
 	}
-	size_t size = CCV_GET_DATA_TYPE_SIZE(params.format) * ccv_nnc_tensor_count(params); // Assuming 32-bit float point layout
+	size_t size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * ccv_nnc_tensor_count(params); // Assuming 32-bit float point layout
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
@@ -54,18 +54,18 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	tensor->info = params;
 	if (tfb)
 	{
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format) | params.dim[0];
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[0];
 		// This corresponding to mat->step
-		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.format) | params.dim[0]));
+		tensor->info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[0]));
 	} else
-		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format);
+		tensor->type = CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
 	return tensor;
 }
 
 ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags)
 {
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
-	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_FORMAT(params.format) == CCV_TENSOR_FORMAT_NHWC && params.dim[0] > 0 && params.dim[0] <= CCV_MAX_CHANNEL && params.dim[1] > 0 && params.dim[2] > 0 && params.dim[3] == 0);
+	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[0] > 0 && params.dim[0] <= CCV_MAX_CHANNEL && params.dim[1] > 0 && params.dim[2] > 0 && params.dim[3] == 0);
 	assert(ptr);
 	ccv_nnc_tensor_t tensor;
 	tensor.sig = 0;
@@ -79,11 +79,11 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	}
 	if (tfb)
 	{
-		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format) | params.dim[0];
+		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype | params.dim[0];
 		// This corresponding to mat->step
-		tensor.info.dim[4] = CCV_GET_STEP(params.dim[1], (CCV_GET_DATA_TYPE(params.format) | params.dim[0]));
+		tensor.info.dim[4] = CCV_GET_STEP(params.dim[1], (params.datatype | params.dim[0]));
 	} else // This won't be recognized by ccv_dense_matrix_t
-		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | CCV_GET_DATA_TYPE(params.format);
+		tensor.type = CCV_NO_DATA_ALLOC | CCV_UNMANAGED | CCV_MATRIX_DENSE | params.datatype;
 	tensor.data.u8 = (uint8_t*)ptr;
 	return tensor;
 }

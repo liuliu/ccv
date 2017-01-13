@@ -145,16 +145,16 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 		tensor->data,
 	};
 	// N is the outer one nevertheless.
-	assert(CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NCHW || CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NHWC);
+	assert(tensor->info.format == CCV_TENSOR_FORMAT_NCHW || tensor->info.format == CCV_TENSOR_FORMAT_NHWC);
 	// Fill up dimensions with 1s.
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	int i;
 	const int nd = CCV_NNC_MAX_DIM + 2;
 	// This has to follow NCHW
-	if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NCHW)
+	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 		for (i = 0; i < nd; i++)
 			dim[i] = ccv_max(1, tensor->info.dim[nd - 1 - i]);
-	else if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NHWC) {
+	else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		dim[0] = ccv_max(1, tensor->info.dim[nd - 1]);
 		dim[1] = ccv_max(1, tensor->info.dim[0]);
 		for (i = 2; i < nd; i++)
@@ -164,10 +164,10 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 	int stride[CCV_NNC_MAX_DIM_ALLOC];
 	stride[nd - 1] = 1;
 	// Compute the stride from inc, so it will fit the tensor view.
-	if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NCHW)
+	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0; i++)
 			stride[nd - 1 - i] = stride[nd - i] * ccv_max(1, inc[i - 1]);
-	else if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NHWC) {
+	else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		stride[1] = 1;
 		stride[nd - 1] = ccv_max(1, inc[0]);
 		for (i = 0; i < nd - 3; i++)
@@ -195,12 +195,12 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {0};
 	int i;
 	// Reorder since nnc have different idea about NCHW and NHWC (N is in 3, C is in 0).
-	if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NCHW)
+	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		for (i = 0; i < nd; i++)
 			dim[i] = tensor->info.dim[nd - 1 - i];
 		assert_cudnn(cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, nd, dim));
-	} else if (CCV_TENSOR_GET_FORMAT(tensor->info.format) == CCV_TENSOR_FORMAT_NHWC) {
+	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		dim[0] = tensor->info.dim[nd - 1];
 		dim[1] = tensor->info.dim[0];
 		for (i = 2; i < nd; i++)

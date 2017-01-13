@@ -45,7 +45,6 @@ enum {
 	CCV_COMPUTE_DEVICE_07 = 0x0700,
 };
 
-#define CCV_TENSOR_GET_FORMAT(format) ((format) & 0xff)
 #define CCV_TENSOR_GET_MEMORY(type) ((type) & 0x3)
 #define CCV_TENSOR_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_TENSOR_GET_DEVICE_ID(type) (CCV_TENSOR_GET_DEVICE(type) >> 8)
@@ -68,6 +67,7 @@ typedef union {
 typedef struct {
 	int type;
 	int format;
+	int datatype;
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_tensor_param_t;
 
@@ -104,6 +104,7 @@ typedef struct __attribute__ ((aligned(16))) {
 		struct {
 			int resides;
 			int format;
+			int datatype;
 			int channels;
 			int cols;
 			int rows;

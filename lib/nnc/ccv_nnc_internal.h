@@ -29,6 +29,7 @@ typedef struct {
 
 typedef struct {
 	int tensor_formats; /**< [formats] The supported formats for this API implementation. */
+	int tensor_datatypes; /**< [datatypes] The supported data types for this API implementation. */
 	int tensor_memory; /**< [memory] The supported tensor memory type for this API implementation. */
 	int algorithms; /**< [algorithms] Number of algorithms variation. */
 	ccv_nnc_cmd_exec_f exec;
@@ -38,8 +39,8 @@ typedef struct {
 static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
-	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b->format));
-	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
@@ -50,8 +51,8 @@ static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, co
 static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
-	assert(CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_GET_FORMAT(b->format));
-	const int hw = (CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_CHWN || CCV_TENSOR_GET_FORMAT(a.format) == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	assert(a.format == b->format);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
