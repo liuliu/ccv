@@ -67,7 +67,7 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 }
 
-TEST_CASE("Autograd with sliced tensors for convolution doesn't require zeros (similar to Inception module)")
+TEST_CASE("autograd with sliced tensors for convolution doesn't require zeros (similar to Inception module)")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
@@ -109,7 +109,7 @@ TEST_CASE("Autograd with sliced tensors for convolution doesn't require zeros (s
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
-TEST_CASE("Autograd with sliced tensors for convolution require zeros")
+TEST_CASE("autograd with sliced tensors for convolution require zeros")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
@@ -141,7 +141,7 @@ TEST_CASE("Autograd with sliced tensors for convolution require zeros")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
-TEST_CASE("Autograd with sliced tensors for convolution that are over-subscribed")
+TEST_CASE("autograd with sliced tensors for convolution that are over-subscribed")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");
@@ -170,7 +170,7 @@ TEST_CASE("Autograd with sliced tensors for convolution that are over-subscribed
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
-TEST_CASE("Autograd with sliced tensors for convolution that are over-subscribed with no-op")
+TEST_CASE("autograd with sliced tensors for convolution that are over-subscribed with no-op")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t image = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(3, 100, 100), "image");

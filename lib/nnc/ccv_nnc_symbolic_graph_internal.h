@@ -65,15 +65,17 @@ struct ccv_nnc_symbolic_graph_s {
 struct ccv_nnc_tensor_arena_s {
 	int memory_type;
 	int device_id;
+	int sub_arena_size;
+	struct ccv_nnc_tensor_arena_s* sub_arenas;
 	// This is a table of tensor references to real allocated tensors.
-	int vt_tensor_rnum;
-	ccv_nnc_tensor_t** vt_tensor;
+	int vt_tensor_size;
+	ccv_nnc_tensor_t** vt_tensors;
 	// This is the allocated non-continuous buffers.
-	int buffer_rnum;
-	uint8_t** buffer;
-	uint64_t* buffer_size;
+	int buffer_size;
+	uint8_t** buffers;
+	uint64_t* buffer_lens;
 	// Real allocated tensor headers.
-	ccv_nnc_tensor_view_t tensor[1];
+	ccv_nnc_tensor_view_t tensors[1];
 };
 
 struct ccv_nnc_graph_exec_arena_s {

@@ -33,7 +33,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	} else if (flags & CCV_TENSOR_GPU_MEMORY) {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY);
 	}
-	size_t size = CCV_GET_DATA_TYPE_SIZE(params.datatype) * ccv_nnc_tensor_count(params); // Assuming 32-bit float point layout
+	size_t size = ccv_nnc_tensor_data_size(params);
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{

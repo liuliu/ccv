@@ -80,6 +80,11 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 	return ccv_nnc_dimension_count(params.dim);
 }
 
+static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
+{
+	return (CCV_GET_DATA_TYPE_SIZE(params.datatype) * ccv_nnc_tensor_count(params) + 15) / 16 * 16;
+}
+
 static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
 {
 	int nd = 0;
