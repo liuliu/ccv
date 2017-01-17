@@ -64,7 +64,7 @@ typedef union {
 #define CCV_NNC_MAX_DIM_ALLOC (8)
 #define CCV_NNC_MAX_DIM (2)
 
-typedef struct {
+typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int format;
 	int datatype;
@@ -79,7 +79,7 @@ typedef struct __attribute__ ((aligned(16))) {
 	ccv_numeric_data_t data;
 } ccv_nnc_tensor_t;
 
-typedef struct {
+typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
 	uint64_t sig;
