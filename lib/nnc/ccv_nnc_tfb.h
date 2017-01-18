@@ -79,7 +79,7 @@ typedef struct __attribute__ ((aligned(16))) {
 	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_t;
 
-typedef struct __attribute__ ((aligned(16))) {
+typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;
