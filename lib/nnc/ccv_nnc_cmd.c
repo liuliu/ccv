@@ -59,7 +59,7 @@ const char* ccv_nnc_cmd_backend_name(const uint32_t backend)
 	return backend_init_map[idx].name;
 }
 
-const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {{{0}}};
+const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto = {};
 
 int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params)
 {
@@ -107,7 +107,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const cc
 	return cmd;
 }
 
-const ccv_nnc_hint_t ccv_nnc_no_hint = {{{0}}};
+const ccv_nnc_hint_t ccv_nnc_no_hint = {};
 
 int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint)
 {
@@ -316,8 +316,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
 	int i;
-	uint64_t stack_input_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {0};
-	uint64_t stack_output_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {0};
+	uint64_t stack_input_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
+	uint64_t stack_output_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
 	assert(CCV_NNC_STACK_BITMASK_ALLOC > 0);
 	uint64_t* input_bitmasks = (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_input_bitmasks;
 	uint64_t* output_bitmasks = (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_output_bitmasks;

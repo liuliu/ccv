@@ -7,7 +7,7 @@
 #endif
 #include "ccv_nnc_symbolic_graph_internal.h"
 
-const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {0};
+const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {};
 
 int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params)
 {

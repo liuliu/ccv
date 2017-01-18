@@ -22,6 +22,7 @@ static void _ccv_nnc_pool_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	assert(output_size == 1);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
+	outputs[0].datatype = inputs[0].datatype;
 	// Get channels from the original input.
 	int count = ccv_nnc_tensor_get_c(inputs[0]);
 	ccv_nnc_tensor_set_c(outputs, count);
@@ -33,6 +34,7 @@ static void _ccv_nnc_pool_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const 
 	assert(output_size == 1);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
+	outputs[0].datatype = inputs[0].datatype;
 	// Get channels from the original input.
 	int count = ccv_nnc_tensor_get_c(inputs[0]);
 	ccv_nnc_tensor_set_c(outputs, count);

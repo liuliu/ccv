@@ -25,6 +25,7 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	assert(output_size == 1);
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
+	outputs[0].datatype = inputs[0].datatype;
 	outputs[0].dim[1] = inputs[0].dim[1]; // batch size.
 	outputs[0].dim[0] = inputs[1].dim[1]; // from the weight matrix.
 	assert(inputs[1].dim[1] == cmd.blas.count);

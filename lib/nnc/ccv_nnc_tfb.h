@@ -64,7 +64,7 @@ typedef union {
 #define CCV_NNC_MAX_DIM_ALLOC (8)
 #define CCV_NNC_MAX_DIM (2)
 
-typedef struct __attribute__ ((aligned(16))) {
+typedef struct {
 	int type;
 	int format;
 	int datatype;
@@ -74,17 +74,17 @@ typedef struct __attribute__ ((aligned(16))) {
 typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
+	ccv_numeric_data_t data;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
-	ccv_numeric_data_t data;
 } ccv_nnc_tensor_t;
 
 typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
+	ccv_numeric_data_t data;
 	uint64_t sig;
 	ccv_nnc_tensor_param_t info;
-	ccv_numeric_data_t data;
 	/* tensor view and tensor shares the same data structure besides the following one. */
 	int inc[CCV_NNC_MAX_DIM_ALLOC]; /**< "increment" or, length */
 } ccv_nnc_tensor_view_t;
@@ -96,6 +96,7 @@ typedef struct __attribute__ ((aligned(16))) {
 typedef struct __attribute__ ((aligned(16))) {
 	int type;
 	int refcount;
+	ccv_numeric_data_t data;
 	uint64_t sig;
 	// This is used for toll-free bridging between ccv_dense_matrix_t and ccv_nnc_tensor_t
 	// Note that this is bigger than it is needed, we carefully structured this
@@ -121,7 +122,6 @@ typedef struct __attribute__ ((aligned(16))) {
 		};
 		ccv_nnc_tensor_param_t info;
 	}; 
-	ccv_numeric_data_t data;
 } ccv_dense_matrix_t;
 #else
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (0)
