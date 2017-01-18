@@ -463,7 +463,7 @@ static void _ccv_nnc_symbolic_graph_dot_while_label(const ccv_nnc_graph_exec_sym
 	fputs("</table>", out);
 }
 
-static void _ccv_nnc_symbolic_graph_dot_while_graph(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_array_t* const tensor_symbol_info, const ccv_nnc_symbolic_graph_t* const while_graph, const int flags, FILE* out, int* c)
+static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_array_t* const tensor_symbol_info, const ccv_nnc_symbolic_graph_t* const while_graph, const int flags, FILE* out, int* c)
 {
 	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nlabel=<", *c);
 	int i, j;
@@ -480,8 +480,8 @@ static void _ccv_nnc_symbolic_graph_dot_while_graph(const ccv_nnc_graph_exec_sym
 			continue;
 		if (exec_symbol_info->graph_ref)
 		{
-			const ccv_nnc_symbolic_graph_t* const graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->while_graphs, exec_symbol_info->graph_ref - 1);
-			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, while_graph->tensor_symbol_info, graph, flags, out, c);
+			const ccv_nnc_symbolic_graph_t* const graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->sub_graphs, exec_symbol_info->graph_ref - 1);
+			_ccv_nnc_symbolic_graph_dot_sub_graph(exec_symbol_info, while_graph->tensor_symbol_info, graph, flags, out, c);
 		} else {
 			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, while_graph->tensor_symbol_info, flags, out);
 			++(*c);
@@ -530,8 +530,8 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 			continue;
 		if (exec_symbol_info->graph_ref)
 		{
-			const ccv_nnc_symbolic_graph_t* const while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, exec_symbol_info->graph_ref - 1);
-			_ccv_nnc_symbolic_graph_dot_while_graph(exec_symbol_info, graph->tensor_symbol_info, while_graph, flags, out, &c);
+			const ccv_nnc_symbolic_graph_t* const while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, exec_symbol_info->graph_ref - 1);
+			_ccv_nnc_symbolic_graph_dot_sub_graph(exec_symbol_info, graph->tensor_symbol_info, while_graph, flags, out, &c);
 		} else {
 			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, c, graph->tensor_symbol_info, flags, out);
 			++c;
@@ -584,11 +584,11 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		if (symbol_info->name)
 			ccfree(symbol_info->name);
 	}
-	if (graph->while_graphs)
+	if (graph->sub_graphs)
 	{
-		for (i = 0; i < graph->while_graphs->rnum; i++)
-			ccv_nnc_symbolic_graph_free(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, i));
-		ccv_array_free(graph->while_graphs);
+		for (i = 0; i < graph->sub_graphs->rnum; i++)
+			ccv_nnc_symbolic_graph_free(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, i));
+		ccv_array_free(graph->sub_graphs);
 	}
 	if (graph->sources)
 		ccv_array_free(graph->sources);

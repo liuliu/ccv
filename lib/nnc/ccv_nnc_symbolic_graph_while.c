@@ -152,14 +152,14 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 		}
 	}
 	// Assigning graph_ref to it.
-	if (!graph->while_graphs)
-		graph->while_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
+	if (!graph->sub_graphs)
+		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
 	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
 	// Note the extra allocation (the ccv_array_t only holds a pointer to ccv_nnc_symbolic_graph_t*).
 	// In this way, we can get the while graph and don't have to worry about it will be an invalid pointer once
 	// the array expands (another while graph allocated).
-	ccv_array_push(graph->while_graphs, &while_graph);
-	symbol_info->graph_ref = graph->while_graphs->rnum;
+	ccv_array_push(graph->sub_graphs, &while_graph);
+	symbol_info->graph_ref = graph->sub_graphs->rnum;
 	// Go through tensor symbols and fill up assign_ref.
 	for (i = 0; i < symbol_map_size; i++)
 	{
@@ -185,10 +185,10 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 
 ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol)
 {
-	assert(graph->while_graphs);
+	assert(graph->sub_graphs);
 	assert(while_symbol.graph == graph);
 	assert(while_symbol.d < graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, while_symbol.d);
-	assert(symbol_info->graph_ref <= graph->while_graphs->rnum);
-	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->while_graphs, symbol_info->graph_ref - 1);
+	assert(symbol_info->graph_ref <= graph->sub_graphs->rnum);
+	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1);
 }
