@@ -75,7 +75,7 @@ TEST_CASE("garbage collector 95\% hit rate")
 {
 	int i;
 	// deliberately let only cache size fits 90% of data
-	ccv_enable_cache((sizeof(ccv_dense_matrix_t) + 4) * N * 9 / 10);
+	ccv_enable_cache(ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) * N * 9 / 10);
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
@@ -102,7 +102,7 @@ TEST_CASE("garbage collector 47\% hit rate")
 {
 	int i;
 	// deliberately let only cache size fits 90% of data
-	ccv_enable_cache((sizeof(ccv_dense_matrix_t) + 4) * N * 45 / 100);
+	ccv_enable_cache(ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) * N * 45 / 100);
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);
@@ -128,7 +128,7 @@ TEST_CASE("garbage collector 47\% hit rate")
 TEST_CASE("multi-type garbage collector 92\% hit rate")
 {
 	int i;
-	ccv_enable_cache(((sizeof(ccv_dense_matrix_t) + 4) + (sizeof(ccv_array_t) + 4 * 4)) * N * 9 / 10);
+	ccv_enable_cache((ccv_compute_dense_matrix_size(1, 1, CCV_32S | CCV_C1) + (sizeof(ccv_array_t) + 4 * 4)) * N * 9 / 10);
 	for (i = 0; i < N; i++)
 	{
 		ccv_dense_matrix_t* dmt = ccv_dense_matrix_new(1, 1, CCV_32S | CCV_C1, 0, 0);

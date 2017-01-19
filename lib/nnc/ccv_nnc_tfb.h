@@ -71,7 +71,7 @@ typedef struct {
 	int dim[CCV_NNC_MAX_DIM_ALLOC];
 } ccv_nnc_tensor_param_t;
 
-typedef struct __attribute__ ((aligned(16))) {
+typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;
@@ -93,7 +93,7 @@ typedef struct {
 
 #if CCV_NNC_TENSOR_TFB
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (((x) & 0xFFF) > 0) // has channel components
-typedef struct __attribute__ ((aligned(16))) {
+typedef struct {
 	int type;
 	int refcount;
 	ccv_numeric_data_t data;

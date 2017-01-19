@@ -33,7 +33,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	} else if (flags & CCV_TENSOR_GPU_MEMORY) {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY);
 	}
-	size_t size = ccv_nnc_tensor_data_size(params);
+	const size_t tensor_hdr_size = (sizeof(ccv_nnc_tensor_t) + 15) & -16;
+	const size_t size = ccv_nnc_tensor_data_size(params);
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_GPU_MEMORY)
 	{
@@ -41,13 +42,13 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 		tensor->data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(params.type), size);
 	} else {
 		assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
-		ccmemalign((void **)&tensor, 16, sizeof(ccv_nnc_tensor_t) + size);
-		tensor->data.u8 = (uint8_t*)(tensor + 1);
+		ccmemalign((void **)&tensor, 16, tensor_hdr_size + size);
+		tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 	}
 #else
 	assert(CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY);
-	ccmemalign((void **)&tensor, 16, sizeof(ccv_nnc_tensor_t) + size);
-	tensor->data.u8 = (uint8_t*)(tensor + 1);
+	ccmemalign((void **)&tensor, 16, tensor_hdr_size + size);
+	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 #endif
 	tensor->sig = 0;
 	tensor->refcount = 1;

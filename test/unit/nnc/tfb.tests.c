@@ -22,7 +22,6 @@ TEST_CASE("toll-free bridging between ccv_nnc_tensor_t and ccv_dense_matrix_t")
 	REQUIRE(offsetof(ccv_nnc_tensor_t, info) + offsetof(ccv_nnc_tensor_param_t, dim) == offsetof(ccv_dense_matrix_t, channels), "info.dim[0] and channels offset should be the same");
 	REQUIRE(offsetof(ccv_nnc_tensor_t, info) + offsetof(ccv_nnc_tensor_param_t, dim) + sizeof(int) * 3 == offsetof(ccv_dense_matrix_t, reserved), "info.dim[3] and reserved offset should be the same");
 	REQUIRE(offsetof(ccv_nnc_tensor_t, info) + offsetof(ccv_nnc_tensor_param_t, dim) + sizeof(int) * 4 == offsetof(ccv_dense_matrix_t, step), "info.dim[4] and step offset should be the same");
-	REQUIRE(sizeof(ccv_nnc_tensor_t) % 16 == 0, "size of the data type is a multiple of 16");
 }
 #endif
 
