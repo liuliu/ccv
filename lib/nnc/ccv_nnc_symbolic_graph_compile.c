@@ -374,18 +374,24 @@ static ccv_nnc_tensor_arena_pre_alloc_t* _ccv_nnc_tensor_arena_pre_alloc_new(con
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	for (i = 0; i < tensor_block_size; i++)
-		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
 		{
-			pre_alloc->vt_blocks[i] = j;
-			// Also, set its allocations.
-			assert(assigned[i] > 0);
 			pre_alloc->blocks[j].block_ref = i;
-			pre_alloc->blocks[j].buffer_ref = assigned[i] - 1;
-			pre_alloc->blocks[j].offset = allocated_offset[i];
-			assert(allocated_offset[i] + tensor_blocks[i].size <= pre_alloc->buffers[assigned[i] - 1]);
+			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[i]))
+			{
+				pre_alloc->vt_blocks[i] = j;
+				// Also, set its allocations.
+				assert(assigned[i] > 0);
+				pre_alloc->blocks[j].buffer_ref = assigned[i] - 1;
+				pre_alloc->blocks[j].offset = allocated_offset[i];
+				assert(allocated_offset[i] + tensor_blocks[i].size <= pre_alloc->buffers[assigned[i] - 1]);
+			} else {
+				pre_alloc->vt_blocks[i] = -1;
+				pre_alloc->blocks[j].buffer_ref = -1;
+				pre_alloc->blocks[j].offset = 0;
+			}
 			++j;
-		} else // Clean it out.
-			pre_alloc->vt_blocks[i] = -1;
+		}
 	ccfree(allocated_offset);
 	ccfree(assigned);
 	return pre_alloc;
@@ -401,7 +407,7 @@ static void _ccv_nnc_tensor_arena_pre_alloc_free(ccv_nnc_tensor_arena_pre_alloc_
 	ccfree(pre_alloc);
 }
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_arena_pre_alloc_t* const pre_alloc, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int tensor_symbol_info_size)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_arena_pre_alloc_t* const pre_alloc, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int tensor_symbol_info_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
@@ -440,19 +446,63 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_ar
 #endif
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
-	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
+	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
+	for (i = 0; i < pre_alloc->block_size; i++)
+		if (pre_alloc->blocks[i].block_ref < tensor_symbol_info_size)
 		{
-			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
-			// Also, set its allocations.
-			// Since tensor view is bit compatible with tensor, we can just cast.
-			ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->buffers[pre_alloc->blocks[j].buffer_ref].ptr + pre_alloc->blocks[j].offset, tensor_symbol_info[i].info, 0);
-			memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
-			memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
-			assert(pre_alloc->blocks[j].offset + tensor_blocks[pre_alloc->blocks[j].block_ref].size <= tensor_arena->buffers[pre_alloc->blocks[j].buffer_ref].size);
-			++j;
-		} else // Clean it out.
-			tensor_arena->vt_tensors[i] = 0;
+			const int block_ref = pre_alloc->blocks[i].block_ref;
+			const int buffer_ref = pre_alloc->blocks[i].buffer_ref;
+			const uint64_t offset = pre_alloc->blocks[i].offset;
+			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
+			{
+				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
+				// Also, set its allocations.
+				// Since tensor view is bit compatible with tensor, we can just cast.
+				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
+				memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
+				memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
+				assert(offset + tensor_blocks[block_ref].size <= tensor_arena->buffers[buffer_ref].size);
+				++j;
+			}
+		}
+	for (i = 0; i < pre_alloc->block_size; i++)
+		if (pre_alloc->blocks[i].block_ref < tensor_symbol_info_size)
+		{
+			const int block_ref = pre_alloc->blocks[i].block_ref;
+			if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
+			{
+				// Assigning out the tensor aliases.
+				assert(tensor_symbol_info[block_ref].alias_ref);
+				int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+				// It referenced to is not an alias.
+				assert(tensor_arena->vt_tensors[alias_ref]);
+				assert(!CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[alias_ref]));
+				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
+				// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
+				if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
+					memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+				{
+					ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, tensor_symbol_info[block_ref].info, 0);
+					memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
+					memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
+				} else {
+					// Otherwise initialize a tensor view
+					// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
+					if (memcmp(tensor_arena->vt_tensors[alias_ref]->info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+						tensor_arena->tensors[j] = ccv_nnc_tensor_view(tensor_arena->vt_tensors[alias_ref], tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+					else {
+						// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
+						ccv_nnc_tensor_param_t info = tensor_symbol_info[block_ref].info;
+						memcpy(info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(tensor_arena->vt_tensors[alias_ref]->info));
+						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, info, 0);
+						tensor_arena->tensors[j] = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+					}
+				}
+				++j;
+			}
+		}
+	assert(j == pre_alloc->block_size);
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref)
@@ -461,39 +511,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_ar
 			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[tensor_blocks[i].ref - 1]));
 			assert(tensor_arena->vt_tensors[tensor_blocks[i].ref - 1]);
 			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[tensor_blocks[i].ref - 1];
-		}
-	// Now assigning out the tensor aliases.
-	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (TENSOR_EXPECT_ALIAS(tensor_blocks[i]))
-		{
-			assert(tensor_symbol_info[i].alias_ref);
-			int alias_ref = tensor_symbol_info[i].alias_ref - 1;
-			// It referenced to is not an alias.
-			assert(tensor_arena->vt_tensors[alias_ref]);
-			assert(!CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[alias_ref]));
-			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
-			// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
-			if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[i].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
-				memcmp(tensor_symbol_info[i].inc, tensor_symbol_info[i].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-			{
-				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, tensor_symbol_info[i].info, 0);
-				memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
-				memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
-			} else {
-				// Otherwise initialize a tensor view
-				// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
-				if (memcmp(tensor_arena->vt_tensors[alias_ref]->info.dim, tensor_symbol_info[i].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-					tensor_arena->tensors[j] = ccv_nnc_tensor_view(tensor_arena->vt_tensors[alias_ref], tensor_symbol_info[i].ofs, tensor_symbol_info[i].info.dim);
-				else {
-					// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
-					ccv_nnc_tensor_param_t info = tensor_symbol_info[i].info;
-					memcpy(info.dim, tensor_symbol_info[i].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-					assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(tensor_arena->vt_tensors[alias_ref]->info));
-					ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, info, 0);
-					tensor_arena->tensors[j] = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[i].ofs, tensor_symbol_info[i].info.dim);
-				}
-			}
-			++j;
 		}
 	return tensor_arena;
 }
@@ -831,7 +848,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	assert(tensor_arena_ref);
 	assert(graph_exec_arena_ref);
 	ccv_nnc_symbolic_graph_pre_compile_t* pre_compile = _ccv_nnc_symbolic_graph_pre_compile_new(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(pre_compile->pre_alloc, pre_compile->tensor_blocks, pre_compile->tensor_block_size, pre_compile->tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(pre_compile->pre_alloc, pre_compile->tensor_blocks, pre_compile->tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum);
 	int i, j, k;
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
