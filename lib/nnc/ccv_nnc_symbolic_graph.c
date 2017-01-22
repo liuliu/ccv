@@ -603,11 +603,21 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 	ccfree(graph);
 }
 
-void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
+void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
 {
 	memcpy(tensor_symbol_info, symbolic_graph->tensor_symbol_info->data, sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	memcpy(exec_symbol_info, symbolic_graph->exec_symbol_info->data, sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
-	int i, max_input_size = 0, max_output_size = 0;
+	int i;
+	if (p_tensor_symbol_info)
+		for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+			if (tensor_symbol_info[i].p_ref)
+			{
+				const int p_ref = tensor_symbol_info[i].p_ref - 1;
+				assert(p_ref < p_tensor_symbol_info_size);
+				tensor_symbol_info[i].info = p_tensor_symbol_info[p_ref].info;
+				// I don't need to copy over inc and ofs for alias.
+			}
+	int max_input_size = 0, max_output_size = 0;
 	// Materialize auto hints.
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 	{
