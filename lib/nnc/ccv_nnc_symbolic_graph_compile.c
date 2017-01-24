@@ -807,10 +807,11 @@ static ccv_nnc_symbolic_graph_pre_compile_t* _ccv_nnc_symbolic_graph_pre_compile
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in.
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
-	for (i = 0; i < symbolic_graph->sub_graphs->rnum; i++)
-	{
-		// TODO: Don't need to do this until graph supports while loop.
-	}
+	if (symbolic_graph->sub_graphs)
+		for (i = 0; i < symbolic_graph->sub_graphs->rnum; i++)
+		{
+			// TODO: Don't need to do this until graph supports while loop.
+		}
 
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
