@@ -5,7 +5,7 @@
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
-#include "ccv_nnc_symbolic_graph_internal.h"
+#include "_ccv_nnc_symbolic_graph.h"
 
 /**
  * Level-4 API
