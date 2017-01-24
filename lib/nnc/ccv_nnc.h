@@ -393,12 +393,12 @@ typedef struct {
 	int type; // This type is CCV_NNC_TENSOR_MULTI_VIEW
 	int versions; // How many versions of the data pointers are.
 	int repeats; // How many repeats (data pointers took turns from the [versions - repeats, versions - 1]).
-	// From now on, you can get the offset and cast the type back to ccv_nnc_tensor_view_t* or ccv_nnc_tensor_t*
-	ccv_nnc_tensor_view_t tv;
 	// versions of data pointers.
-	const ccv_numeric_data_t* data;
+	ccv_numeric_data_t* data;
+	// From now on, you can get the offset and cast the type back to ccv_nnc_tensor_view_t* or ccv_nnc_tensor_t*, you can also cast this to ccv_nnc_tensor_multiview_t again, in that case, we will access its data.ptr which point to a list of ccv_numeric_data_t again.
+	ccv_nnc_tensor_t* tv;
 } ccv_nnc_tensor_multiview_t;
-CCV_WARN_UNUSED(ccv_nnc_tensor_multiview_t) ccv_nnc_tensor_multiview(ccv_nnc_tensor_view_t* tv, const int versions, const int repeats, const ccv_numeric_data_t* const data);
+CCV_WARN_UNUSED(ccv_nnc_tensor_multiview_t) ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, const int versions, const int repeats, ccv_numeric_data_t* const data);
 // Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic graph. The reason
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph

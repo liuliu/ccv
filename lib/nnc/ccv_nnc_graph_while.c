@@ -7,14 +7,14 @@
 #endif
 #include "_ccv_nnc_graph.h"
 
-ccv_nnc_tensor_multiview_t ccv_nnc_tensor_multiview(ccv_nnc_tensor_view_t* tv, const int versions, const int repeats, const ccv_numeric_data_t* const data)
+ccv_nnc_tensor_multiview_t ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, const int versions, const int repeats, ccv_numeric_data_t* const data)
 {
 	ccv_nnc_tensor_multiview_t tensor_multiview;
 	tensor_multiview.type = CCV_TENSOR_MULTIVIEW;
 	tensor_multiview.data = data;
 	tensor_multiview.versions = versions;
 	tensor_multiview.repeats = repeats;
-	memcpy(&tensor_multiview.tv, tv, CCV_IS_TENSOR_VIEW(tv) ? sizeof(ccv_nnc_tensor_view_t) : sizeof(ccv_nnc_tensor_t));
+	tensor_multiview.tv = tv;
 	return tensor_multiview;
 }
 

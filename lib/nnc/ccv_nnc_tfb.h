@@ -54,12 +54,13 @@ enum {
 	CCV_TENSOR_MULTIVIEW = 0x02000000,
 };
 
-typedef union {
+typedef union ccv_numeric_data_u {
 	unsigned char* u8;
 	int* i32;
 	float* f32;
 	int64_t* i64;
 	double* f64;
+	union ccv_numeric_data_u* ptr; // Recursive pointer to itself.
 } ccv_numeric_data_t;
 
 #define CCV_NNC_MAX_DIM_ALLOC (8)
