@@ -51,8 +51,10 @@ struct ccv_nnc_symbolic_graph_s {
 	// Why some of these I choose to be flat int* array, some of these I choose to be ccv_array_t?
 	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
-	ccv_array_t* conditionals;
+	int conditional_size;
+	ccv_nnc_graph_exec_symbol_t* conditionals;
 	ccv_nnc_graph_while_f while_func;
+	const void* while_data;
 	// Map between parent / sub-graph's tensor symbols.
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling

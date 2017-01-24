@@ -50,7 +50,8 @@ enum {
 #define CCV_TENSOR_GET_DEVICE_ID(type) (CCV_TENSOR_GET_DEVICE(type) >> 8)
 
 enum {
-	CCV_TENSOR_VIEW = 0x01000000,
+	CCV_TENSOR_VIEW      = 0x01000000,
+	CCV_TENSOR_MULTIVIEW = 0x02000000,
 };
 
 typedef union {

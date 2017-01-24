@@ -2,24 +2,11 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-
-typedef struct {
-	int input_size;
-	int output_size;
-	ccv_nnc_tensor_t** inputs;
-	ccv_nnc_tensor_t** outputs;
-	ccv_array_t* outgoings; // outgoing nodes
-	ccv_nnc_cmd_t cmd;
-	ccv_nnc_hint_t hint;
-} ccv_nnc_graph_exec_info_t;
-
-struct ccv_nnc_graph_s {
-	ccv_array_t* exec_info; // deferred exec info
-};
+#include "_ccv_nnc_graph.h"
 
 ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 {
-	ccv_nnc_graph_t* graph = (ccv_nnc_graph_t*)ccmalloc(sizeof(ccv_nnc_graph_t));
+	ccv_nnc_graph_t* graph = (ccv_nnc_graph_t*)cccalloc(1, sizeof(ccv_nnc_graph_t));
 	graph->exec_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_info_t), 5, 0);
 	return graph;
 }
@@ -332,7 +319,20 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		if (outgoings)
 			ccv_array_free(outgoings);
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
-		ccfree(info->inputs);
+		if (info->inputs)
+			ccfree(info->inputs);
+	}
+	if (graph->conditionals)
+		ccfree(graph->conditionals);
+	if (graph->sources)
+		ccv_array_free(graph->sources);
+	if (graph->destinations)
+		ccv_array_free(graph->destinations);
+	if (graph->sub_graphs)
+	{
+		for (i = 0; i < graph->sub_graphs->rnum; i++)
+			ccv_nnc_graph_free(*(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, i));
+		ccv_array_free(graph->sub_graphs);
 	}
 	ccv_array_free(graph->exec_info);
 	ccfree(graph);

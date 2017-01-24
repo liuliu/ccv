@@ -595,7 +595,7 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
 	if (graph->conditionals)
-		ccv_array_free(graph->conditionals);
+		ccfree(graph->conditionals);
 	ccv_array_free(graph->tensor_symbol_info);
 	ccv_array_free(graph->exec_symbol_info);
 	if (graph->backward_tensor_symbols)
