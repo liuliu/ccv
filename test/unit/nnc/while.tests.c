@@ -22,8 +22,10 @@ TEST_CASE("graph for a while loop to compute 0.34 * 1.11 ^ 5")
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, 0, 0, 0, 0);
 	ccv_nnc_graph_exec_t prod0 = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST(y, z), TENSOR_LIST(z));
-	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph, GRAPH_EXEC_LIST(prod0), GRAPH_EXEC_LIST(prod0), GRAPH_EXEC_LIST(prod0), TENSOR_LIST(z), TENSOR_LIST(z), while_5, 0);
+	ccv_nnc_graph_exec_concat(while_graph, noop, prod0);
+	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph, GRAPH_EXEC_LIST(noop), GRAPH_EXEC_LIST(prod0), GRAPH_EXEC_LIST(noop), TENSOR_LIST(z), TENSOR_LIST(z), while_5, 0);
 	ccv_nnc_graph_exec_t prod1 = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST(x, z), TENSOR_LIST(z));
 	ccv_nnc_graph_exec_concat(graph, loop, prod1);
 	x->data.f32[0] = 0.34;

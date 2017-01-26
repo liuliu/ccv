@@ -83,9 +83,8 @@ int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t
 		uint64_t count = 0;
 		ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
 		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
-		for (;;)
+		for (;; ++count)
 		{
-			++count;
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->conditionals, graph->conditional_size, visitor);
 			// Reached conditionals, now check the conditional, if not met, break out.
 			if (!graph->while_func(special_tensors, 1, 0, 0, 0, 0, graph->while_data))
