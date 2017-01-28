@@ -92,7 +92,6 @@ typedef struct {
 } ccv_nnc_tensor_view_t;
 
 #define CCV_IS_TENSOR_VIEW(x) ((*(int*)(x)) & CCV_TENSOR_VIEW)
-#define CCV_IS_TENSOR_MULTIVIEW(x) ((*(int*)(x)) & CCV_TENSOR_MULTIVIEW)
 
 #if CCV_NNC_TENSOR_TFB
 #define CCV_TENSOR_IS_DENSE_MATRIX(x) (((x) & 0xFFF) > 0) // has channel components
