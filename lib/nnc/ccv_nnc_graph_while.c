@@ -49,23 +49,37 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 	return while_exec;
 }
 
-int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const graph_exec, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
-	// TODO: some error checking.
 	assert(tensor_tape == 0); // Cannot handle tensor tape yet.
-	// This is a while loop.
+	int i, j;
+	for (i = 0; i < source_size; i++)
+		if (sources[i].graph != graph)
+			return CCV_NNC_EXEC_INVALID;
+	for (i = 0; i < destination_size; i++)
+		if (destinations[i].graph != graph)
+			return CCV_NNC_EXEC_INVALID;
 #define visitor(node, ...) \
 	do { \
+		if (node->backed) \
+		{ \
+		} \
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
 		{ \
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
-			ccv_nnc_graph_while_run(sub_graph, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
+			_ccv_nnc_graph_while_run(sub_graph, node, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
 		} else \
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
+		if (node->backed) /* Restore the inputs / outputs value */ \
+		{ \
+			node->inputs = node->backed_inputs - (node->input_size + node->output_size); \
+			node->outputs = node->backed_outputs - (node->input_size + node->output_size); \
+		} \
 	} while (0)
 	if (graph->while_func)
 	{
-		int i, j;
+		// This is a while loop.
+		assert(graph_exec);
 		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->conditional_size, 0);
 		for (i = 0; i < graph->conditional_size; i++)
 		{
@@ -87,11 +101,10 @@ int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t
 		{
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->conditionals, graph->conditional_size, visitor);
 			// Reached conditionals, now check the conditional, if not met, break out.
-			if (!graph->while_func(special_tensors, 1, 0, 0, 0, 0, graph->while_data))
+			if (!graph->while_func(special_tensors, 1, graph_exec->inputs, graph_exec->input_size, graph_exec->outputs, graph_exec->output_size, graph->while_data))
 				break;
 			if (follows->rnum > 0)
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(follows, 0), follows->rnum, destinations, destination_size, visitor);
-			// TODO: Change versions on the tensor, so it point to a different part of the data.
 		}
 		ccv_array_free(follows);
 	} else {
@@ -99,4 +112,9 @@ int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t
 	}
 #undef visitor
 	return CCV_NNC_EXEC_SUCCESS;
+}
+
+int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+{
+	return _ccv_nnc_graph_while_run(graph, 0, tensor_tape, flags, sources, source_size, destinations, destination_size);
 }
