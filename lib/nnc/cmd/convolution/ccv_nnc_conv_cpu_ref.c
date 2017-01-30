@@ -20,61 +20,61 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(!CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(w->info.dim[0] == cmd.info.size.dim[0]);
-	assert(w->info.dim[0] == a->info.dim[0]);
-	assert(b->info.dim[0] == cmd.info.convolution.count);
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	assert(w->info.dim[CCV_NNC_MAX_DIM + 1] == adim[CCV_NNC_MAX_DIM]);
+	assert(bdim[CCV_NNC_MAX_DIM] == cmd.info.convolution.count);
 	int i;
 	// Make sure the weights dimension matches the network dimension
 	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)
 	{
-		if (w->info.dim[i] == 0 || cmd.info.size.dim[i] == 0)
+		if (w->info.dim[i] == 0 || cmd.info.size.dim[i - 1] == 0)
 			break;
-		assert(w->info.dim[i] == cmd.info.size.dim[i]);
+		assert(w->info.dim[i] == cmd.info.size.dim[i - 1]);
 	}
 	// Make sure the weights output dimension matches the network convolution kernels
-	for (i = CCV_NNC_MAX_DIM_ALLOC - 1; i > 0; i--)
-		if (w->info.dim[i] == 0 && w->info.dim[i])
-		{
-			assert(w->info.dim[i] == cmd.info.convolution.count);
-			break;
-		}
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	assert(w->info.dim[0] == cmd.info.convolution.count);
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
 	assert(bias->info.dim[0] == cmd.info.convolution.count);
 	parallel_for(k, cmd.info.convolution.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
-		float* wp = w->data.f32 + k * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+		float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
 		float biasval = bias->data.f32[k];
 		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 		int i[CCV_NNC_MAX_DIM];
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
-		for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+		for (i[0] = 0; i[0] < bdim[0]; i[0]++)
 		{
-			SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim, a->info.dim, n, m);
-			float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
-			for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+			SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+			float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+			for (i[1] = 0; i[1] < bdim[1]; i[1]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim, a->info.dim, n, m);
+				SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
 				float p = biasval;
-				float* wpz = wpu + n[0] * w->info.dim[0];
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
-				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				float* wpz = wpu + n[1] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[CCV_NNC_MAX_DIM];
+				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						for (c = 0; c < a->info.dim[0]; c++)
-							p += wpz[j[0] * w->info.dim[0] + c] * apz[j[0] * ainc[0] + c];
-					wpz += w->info.dim[1] * w->info.dim[0];
-					apz += ainc[1] * ainc[0];
+					for (j[1] = 0; j[1] < m[1]; j[1]++)
+						for (c = 0; c < adim[CCV_NNC_MAX_DIM]; c++)
+							p += wpz[j[1] * w->info.dim[CCV_NNC_MAX_DIM + 1] + c] * apz[j[1] * ainc[CCV_NNC_MAX_DIM] + c];
+					wpz += w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+					apz += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM];
 				}
-				bp[i[0] * binc[0]] = p;
+				bp[i[1] * binc[CCV_NNC_MAX_DIM]] = p;
 			}
-			bp += binc[1] * binc[0];
-			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+			bp += binc[CCV_NNC_MAX_DIM - 1] * binc[CCV_NNC_MAX_DIM];
+			ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 		}
 	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;
@@ -97,43 +97,49 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
 		memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
 	}
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
+	assert(g_axis_count == CCV_NNC_MAX_DIM + 1 || g_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* gdim = (g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->info.dim : g->info.dim + 1;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
 	parallel_for(k, cmd.info.convolution.count) {
 		int c;
 		float* ap = a->data.f32;
 		float* gp = g->data.f32 + k;
 		// kernel weight for one dim.
-		float* wp = w->data.f32 + k * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+		float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
 		float biasval = 0;
 		int i[CCV_NNC_MAX_DIM];
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
-		for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
+		for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 		{
-			SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim, a->info.dim, n, m);
-			float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
-			for (i[0] = 0; i[0] < g->info.dim[1]; i[0]++)
+			SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, adim, n, m);
+			float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+			for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim, a->info.dim, n, m);
-				const float v = gp[i[0] * g->info.dim[0]];
+				SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, adim, n, m);
+				const float v = gp[i[1] * gdim[CCV_NNC_MAX_DIM]];
 				if (v == 0) // shortcut if v is zero
 					continue;
 				biasval += v;
-				float* wpz = wpu + n[0] * w->info.dim[0];
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0];
-				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				float* wpz = wpu + n[1] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[CCV_NNC_MAX_DIM];
+				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						for (c = 0; c < a->info.dim[0]; c++)
-							wpz[j[0] * w->info.dim[0] + c] += v * apz[j[0] * ainc[0] + c];
-					wpz += w->info.dim[1] * w->info.dim[0];
-					apz += ainc[1] * ainc[0];
+					for (j[1] = 0; j[1] < m[1]; j[1]++)
+						for (c = 0; c < adim[CCV_NNC_MAX_DIM]; c++)
+							wpz[j[1] * w->info.dim[CCV_NNC_MAX_DIM + 1] + c] += v * apz[j[1] * ainc[CCV_NNC_MAX_DIM] + c];
+					wpz += w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+					apz += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM];
 				}
 			}
-			gp += ginc[1] * ginc[0];
-			ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+			gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
+			ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 		}
 		bias->data.f32[k] = biasval;
 	} parallel_endfor
@@ -141,7 +147,10 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	if (h)
 	{
 		assert(h);
-		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
+		const int h_axis_count = ccv_nnc_axis_count(h->info.dim);
+		assert(h_axis_count == CCV_NNC_MAX_DIM + 1 || h_axis_count == CCV_NNC_MAX_DIM + 2);
+		const int* hdim = (h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
+		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->inc : h->inc + 1) : hdim;
 		// reset it to 0.
 		ccv_nnc_tensor_zero(h);
 		w = inputs[2];
@@ -153,35 +162,35 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			float* hp = h->data.f32;
 			float* gp = g->data.f32 + k;
 			// kernel weight for one dim.
-			float* wp = w->data.f32 + k * w->info.dim[0] * w->info.dim[1] * w->info.dim[2];
+			float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * w->info.dim[3];
 			// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 			int i[CCV_NNC_MAX_DIM];
 			int n[CCV_NNC_MAX_DIM];
 			int m[CCV_NNC_MAX_DIM];
 			int j[CCV_NNC_MAX_DIM];
-			for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
+			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 			{
-				SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim, h->info.dim, n, m);
-				float* wpu = wp + n[1] * w->info.dim[1] * w->info.dim[0];
-				for (i[0] = 0; i[0] < g->info.dim[1]; i[0]++)
+				SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim + 1, h->info.dim, n, m);
+				float* wpu = wp + n[0] * w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+				for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 				{
-					SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, w->info.dim, h->info.dim, n, m);
-					const float v = gp[i[0] * ginc[0]];
+					SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, w->info.dim + 1, h->info.dim, n, m);
+					const float v = gp[i[1] * ginc[CCV_NNC_MAX_DIM]];
 					if (v == 0) // shortcut if v is zero
 						continue;
-					float* wpz = wpu + n[0] * w->info.dim[0];
-					float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[0];
-					for (j[1] = 0; j[1] < m[1]; j[1]++)
+					float* wpz = wpu + n[1] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+					float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[CCV_NNC_MAX_DIM];
+					for (j[0] = 0; j[0] < m[0]; j[0]++)
 					{
-						for (j[0] = 0; j[0] < m[0]; j[0]++)
-							for (c = 0; c < h->info.dim[0]; c++)
-								hpz[j[0] * hinc[0] + c] += v * wpz[j[0] * w->info.dim[0] + c];
-						wpz += w->info.dim[1] * w->info.dim[0];
-						hpz += hinc[1] * hinc[0];
+						for (j[1] = 0; j[1] < m[1]; j[1]++)
+							for (c = 0; c < hdim[CCV_NNC_MAX_DIM]; c++)
+								hpz[j[1] * hinc[CCV_NNC_MAX_DIM] + c] += v * wpz[j[1] * w->info.dim[CCV_NNC_MAX_DIM + 1] + c];
+						wpz += w->info.dim[CCV_NNC_MAX_DIM] * w->info.dim[CCV_NNC_MAX_DIM + 1];
+						hpz += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM];
 					}
 				}
-				gp += ginc[1] * ginc[0];
-				hp += hinc[1] * hinc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+				gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
+				hp += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 			}
 		}
 	}

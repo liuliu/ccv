@@ -17,7 +17,7 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 #define MACRO_STRINGIFY(x) #x
 
 #define UNROLL_PRAGMA0(x) MACRO_STRINGIFY(unroll x)
-#define UNROLL_FOR0(x, s, ss, ...) _Pragma(UNROLL_PRAGMA0(ss)) for ((x) = 0; (x) < (s); (x)++) {
+#define UNROLL_FOR0(x, s, ss, ...) _Pragma(UNROLL_PRAGMA0((ss))) for ((x) = 0; (x) < (s); (x)++) {
 /* How to use this:
  * unroll_for(i, the number of iterations, the number of unrolls)
  * Or

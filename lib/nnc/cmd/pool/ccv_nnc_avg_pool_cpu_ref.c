@@ -22,31 +22,37 @@ static int _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	int m[CCV_NNC_MAX_DIM];
 	int j[CCV_NNC_MAX_DIM];
 	int c;
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
 	float* ap = a->data.f32;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
 	float* bp = b->data.f32;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
-	for (i[1] = 0; i[1] < b->info.dim[2]; i[1]++)
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ?  b->inc : b->inc + 1) : bdim;
+	for (i[0] = 0; i[0] < bdim[0]; i[0]++)
 	{
-		SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, dim, a->info.dim, n, m);
-		for (i[0] = 0; i[0] < b->info.dim[1]; i[0]++)
+		SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, dim, adim, n, m);
+		for (i[1] = 0; i[1] < bdim[1]; i[1]++)
 		{
-			SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, dim, a->info.dim, n, m);
-			for (c = 0; c < b->info.dim[0]; c++)
+			SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, dim, adim, n, m);
+			for (c = 0; c < bdim[CCV_NNC_MAX_DIM]; c++)
 			{
-				float* apz = ap + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[0] + c;
+				float* apz = ap + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * ainc[CCV_NNC_MAX_DIM] + c;
 				float v = 0;
-				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						v += apz[j[0] * ainc[0]];
-					apz += ainc[1] * ainc[0];
+					for (j[1] = 0; j[1] < m[1]; j[1]++)
+						v += apz[j[1] * ainc[CCV_NNC_MAX_DIM]];
+					apz += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM];
 				}
-				bp[i[0] * binc[0] + c] = v / (m[0] * m[1]);
+				bp[i[1] * binc[CCV_NNC_MAX_DIM] + c] = v / (m[0] * m[1]);
 			}
 		}
-		bp += binc[1] * binc[0];
-		ap += ainc[1] * ainc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		bp += binc[CCV_NNC_MAX_DIM - 1] * binc[CCV_NNC_MAX_DIM];
+		ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -63,31 +69,37 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	int m[CCV_NNC_MAX_DIM];
 	int j[CCV_NNC_MAX_DIM];
 	int c;
+	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
+	assert(g_axis_count == CCV_NNC_MAX_DIM + 1 || g_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* gdim = (g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->info.dim : g->info.dim + 1;
+	const int h_axis_count = ccv_nnc_axis_count(h->info.dim);
+	assert(h_axis_count == CCV_NNC_MAX_DIM + 1 || h_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* hdim = (h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
 	float* gp = g->data.f32;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? g->inc : g->info.dim;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
 	float* hp = h->data.f32;
-	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? h->inc : h->info.dim;
+	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->inc : h->inc + 1) : hdim;
 	ccv_nnc_tensor_zero(h);
-	for (i[1] = 0; i[1] < g->info.dim[2]; i[1]++)
+	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 	{
-		SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, dim, h->info.dim, n, m);
-		for (i[0] = 0; i[0] < g->info.dim[1]; i[0]++)
+		SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, dim, hdim, n, m);
+		for (i[1] = 0; i[1] < gdim[1]; i[1]++)
 		{
-			SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, dim, h->info.dim, n, m);
-			for (c = 0; c < g->info.dim[0]; c++)
+			SET_BORDER_OFFSET_SIZE_FOR(1, i, hint, dim, hdim, n, m);
+			for (c = 0; c < gdim[CCV_NNC_MAX_DIM]; c++)
 			{
-				float* hpz = hp + ccv_max(i[0] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[0] + c;
-				float u = gp[i[0] * ginc[0] + c] / (m[0] * m[1]);
-				for (j[1] = 0; j[1] < m[1]; j[1]++)
+				float* hpz = hp + ccv_max(i[1] * hint.stride.dim[1] - hint.border.begin[1], 0) * hinc[CCV_NNC_MAX_DIM] + c;
+				float u = gp[i[1] * ginc[CCV_NNC_MAX_DIM] + c] / (m[0] * m[1]);
+				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
-					for (j[0] = 0; j[0] < m[0]; j[0]++)
-						hpz[j[0] * hinc[0]] += u;
-					hpz += hinc[1] * hinc[0];
+					for (j[1] = 0; j[1] < m[1]; j[1]++)
+						hpz[j[1] * hinc[1]] += u;
+					hpz += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM];
 				}
 			}
 		}
-		gp += ginc[1] * ginc[0];
-		hp += hinc[1] * hinc[0] * (ccv_max((i[1] + 1) * hint.stride.dim[2] - hint.border.begin[2], 0) - ccv_max(i[1] * hint.stride.dim[2] - hint.border.begin[2], 0));
+		gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
+		hp += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

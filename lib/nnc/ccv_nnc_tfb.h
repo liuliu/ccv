@@ -108,9 +108,9 @@ typedef struct {
 			int resides;
 			int format;
 			int datatype;
-			int channels;
-			int cols;
 			int rows;
+			int cols;
+			int channels;
 			int reserved; /* This reserved bit need to be zero'ed such that later dim is not cared. */
 			int step;
 			union {

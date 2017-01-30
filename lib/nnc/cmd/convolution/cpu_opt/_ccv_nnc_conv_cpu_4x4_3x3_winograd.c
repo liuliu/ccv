@@ -18,8 +18,8 @@
 
 #define set_n_m_dim(i, x, wd, ad) \
 	do { \
-		n[x] = ccv_max((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1], 0) - ((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1]); \
-		m[x] = wd[x + 1] - n[x] - ((i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1] - ccv_min(ad[x + 1], (i) * hint.stride.dim[x + 1] - hint.border.begin[x + 1] + wd[x + 1])); \
+		n[x] = ccv_max((i) * hint.stride.dim[x] - hint.border.begin[x], 0) - ((i) * hint.stride.dim[x] - hint.border.begin[x]); \
+		m[x] = wd[x + 1] - n[x] - ((i) * hint.stride.dim[x] - hint.border.begin[x] + wd[x + 1] - ccv_min(ad[x], (i) * hint.stride.dim[x] - hint.border.begin[x] + wd[x + 1])); \
 	} while (0)
 
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* const w, const int c, float* gwtg)
@@ -125,30 +125,34 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* const w, cons
 
 static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	assert(hint.border.begin[0] <= 1);
 	assert(hint.border.begin[1] <= 1);
-	assert(hint.border.begin[2] <= 1);
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
-	const int jump_dim[CCV_NNC_MAX_DIM] = {
-		(b->info.dim[1] + 3) / 4, (b->info.dim[2] + 3) / 4
-	};
+	const int jump_dim = (bdim[0] + 3) / 4;
 	// allocating workspace memory for kernel reshaping and input reshaping.
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * a->info.dim[0] * jump_dim[1] + 36 * w->info.dim[0] * w->info.dim[3]));
+	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * adim[2] * jump_dim + 36 * w->info.dim[0] * w->info.dim[3]));
 #else
 	// Otherwise, just one block.
-	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * a->info.dim[0] + 36 * w->info.dim[0] * w->info.dim[3]));
+	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * adim[2] + 36 * w->info.dim[0] * w->info.dim[3]));
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
 	// Convert w to a 6x6 matrix, by computing G.w.T(G) // T for transpose.
 	float* const gwtg = workmem;
 	float* const btdb = workmem + 36 * w->info.dim[0] * w->info.dim[3];
-	parallel_for(k, w->info.dim[3]) {
-		_ccv_nnc_winograd_4x4_3x3_gwtg_ref(w->data.f32 + k * w->info.dim[2] * w->info.dim[1] * w->info.dim[0], w->info.dim[0], gwtg + k * 36 * w->info.dim[0]);
+	parallel_for(k, w->info.dim[0]) {
+		_ccv_nnc_winograd_4x4_3x3_gwtg_ref(w->data.f32 + k * w->info.dim[3] * w->info.dim[2] * w->info.dim[1], w->info.dim[3], gwtg + k * 36 * w->info.dim[3]);
 	} parallel_endfor
 	// kernel weight for one dim.
 	const float* const biasval = bias->data.f32;
@@ -158,39 +162,39 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 	};
 	const int* const tile_dim = tile_dim_s;
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
-	parallel_for(i, jump_dim[1]) {
+	parallel_for(i, jump_dim) {
 		const int y = i * 4; // i is unsigned.
 		int j, x, k, c;
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int z[CCV_NNC_MAX_DIM];
-		set_n_m_dim(y, 1, tile_dim, a->info.dim);
-		z[1] = ccv_min(y + 4, b->info.dim[2]) - y;
-		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[2], 0) * ainc[1] * ainc[0];
-		float* bp = b->data.f32 + y * binc[1] * binc[0];
-		for (x = 0; x < b->info.dim[1]; x += 4)
+		set_n_m_dim(y, 0, tile_dim, adim);
+		z[0] = ccv_min(y + 4, bdim[0]) - y;
+		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[0], 0) * ainc[1] * ainc[2];
+		float* bp = b->data.f32 + y * binc[1] * binc[2];
+		for (x = 0; x < bdim[1]; x += 4)
 		{
-			set_n_m_dim(x, 0, tile_dim, a->info.dim);
-			z[0] = ccv_min(x + 4, b->info.dim[1]) - x;
+			set_n_m_dim(x, 1, tile_dim, adim);
+			z[1] = ccv_min(x + 4, bdim[1]) - x;
 #if FOR_IS_PARALLEL
-			float* g = btdb + i * 36 * a->info.dim[0];
+			float* g = btdb + i * 36 * adim[2];
 #else
 			float* g = btdb;
 #endif
 			// zero g such that we can have zero-padding.
-			memset(g, 0, sizeof(float) * 36 * a->info.dim[0]);
+			memset(g, 0, sizeof(float) * 36 * adim[2]);
 			int dx, dy;
-			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
-			float* gz = g + (n[1] * 6 + n[0]) * a->info.dim[0];
-			unroll_for(dy, m[1], 6) {
-				unroll_for(dx, m[0], 6) {
-					float* const gzu = gz + (dy * 6 + dx) * a->info.dim[0];
-					for (c = 0; c < a->info.dim[0]; c++)
-						gzu[c] = apz[dx * ainc[0] + c];
+			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[2];
+			float* gz = g + (n[0] * 6 + n[1]) * adim[2];
+			unroll_for(dy, m[0], 6) {
+				unroll_for(dx, m[1], 6) {
+					float* const gzu = gz + (dy * 6 + dx) * adim[2];
+					for (c = 0; c < adim[2]; c++)
+						gzu[c] = apz[dx * ainc[2] + c];
 				} unroll_endfor
-				apz += ainc[1] * ainc[0];
+				apz += ainc[1] * ainc[2];
 			} unroll_endfor
-			for (c = 0; c < a->info.dim[0]; c++)
+			for (c = 0; c < adim[2]; c++)
 			{
 				/*
 				 * a0, a1, a2, a3, a4, a5,
@@ -209,13 +213,13 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				float d[36];
 				/* BT.d */
 				unroll_for(j, 6) {
-					float g0 = g[j * a->info.dim[0]];
-					float g12 = g[(12 + j) * a->info.dim[0]];
-					float g24 = g[(24 + j) * a->info.dim[0]];
+					float g0 = g[j * adim[2]];
+					float g12 = g[(12 + j) * adim[2]];
+					float g24 = g[(24 + j) * adim[2]];
 					/* row 1 */
 					d[j] = 4 * g0 - 5 * g12 + g24;
-					float g6 = g[(6 + j) * a->info.dim[0]];
-					float g18 = g[(18 + j) * a->info.dim[0]];
+					float g6 = g[(6 + j) * adim[2]];
+					float g18 = g[(18 + j) * adim[2]];
 					/* row 2 */
 					d[6 + j] = -4 * (g6 + g12) + g18 + g24;
 					/* row 3 */
@@ -224,7 +228,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 					d[18 + j] = 2 * (g18 - g6) - g12 + g24;
 					/* row 5 */
 					d[24 + j] = 2 * (g6 - g18) - g12 + g24;
-					float g30 = g[(30 + j) * a->info.dim[0]];
+					float g30 = g[(30 + j) * adim[2]];
 					/* row 6 */
 					d[30 + j] = 4 * g6 - 5 * g18 + g30;
 				} unroll_endfor
@@ -245,35 +249,35 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				/* BT.d.B */
 				unroll_for(j, 6) {
 					/* row 1 - 6 */
-					float* const gz = g + j * 6 * a->info.dim[0];
+					float* const gz = g + j * 6 * adim[2];
 					float* const dz = d + j * 6;
 					gz[0] = 4 * dz[0] - 5 * dz[2] + dz[4];
-					gz[a->info.dim[0]] = -4 * (dz[1] + dz[2]) + dz[3] + dz[4];
-					gz[2 * a->info.dim[0]] = 4 * (dz[1] - dz[2]) - dz[3] + dz[4];
-					gz[3 * a->info.dim[0]] = 2 * (dz[3] - dz[1]) - dz[2] + dz[4];
-					gz[4 * a->info.dim[0]] = 2 * (dz[1] - dz[3]) - dz[2] + dz[4];
-					gz[5 * a->info.dim[0]] = 4 * dz[1] - 5 * dz[3] + dz[5];
+					gz[adim[2]] = -4 * (dz[1] + dz[2]) + dz[3] + dz[4];
+					gz[2 * adim[2]] = 4 * (dz[1] - dz[2]) - dz[3] + dz[4];
+					gz[3 * adim[2]] = 2 * (dz[3] - dz[1]) - dz[2] + dz[4];
+					gz[4 * adim[2]] = 2 * (dz[1] - dz[3]) - dz[2] + dz[4];
+					gz[5 * adim[2]] = 4 * dz[1] - 5 * dz[3] + dz[5];
 				} unroll_endfor
 				// move to the next channel
 				++g;
 			}
 			const float* wpz = gwtg;
-			for (k = 0; k < w->info.dim[3]; k++)
+			for (k = 0; k < w->info.dim[0]; k++)
 			{
 				float q[36];
 #if FOR_IS_PARALLEL
-				g = btdb + i * 36 * a->info.dim[0];
+				g = btdb + i * 36 * adim[2];
 #else
 				g = btdb;
 #endif
 				for (j = 0; j < 36; j++)
 				{
 					float b = 0;
-					for (c = 0; c < a->info.dim[0]; c++)
+					for (c = 0; c < adim[2]; c++)
 						b += g[c] * wpz[c];
 					q[j] = b;
-					g += a->info.dim[0];
-					wpz += a->info.dim[0];
+					g += adim[2];
+					wpz += adim[2];
 				}
 				/*
 				 * a0, a1, a2, a3, a4, a5,
@@ -322,18 +326,18 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 				 * {c12 + c13 + c14 + c15 + c16, c13 - c14 + 2 c15 - 2 c16, c13 + c14 + 4 (c15 + c16), c13 - c14 + 8 c15 - 8 c16 + c17},
 				 * {d18 + d19 + d20 + d21 + d22, d19 - d20 + 2 d21 - 2 d22, d19 + d20 + 4 (d21 + d22), d19 - d20 + 8 d21 - 8 d22 + d23}}
 				 */
-				float* bpz = bp + x * binc[0] + k;
-				unroll_for(dy, z[1], 4) {
+				float* bpz = bp + x * binc[2] + k;
+				unroll_for(dy, z[0], 4) {
 					float r[] = {
 						d[dy * 6 + 0] + d[dy * 6 + 1] + d[dy * 6 + 2] + d[dy * 6 + 3] + d[dy * 6 + 4] + biasval[k],
 						d[dy * 6 + 1] - d[dy * 6 + 2] + 2 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + biasval[k],
 						d[dy * 6 + 1] + d[dy * 6 + 2] + 4 * (d[dy * 6 + 3] + d[dy * 6 + 4]) + biasval[k],
 						d[dy * 6 + 1] - d[dy * 6 + 2] + 8 * (d[dy * 6 + 3] - d[dy * 6 + 4]) + d[dy * 6 + 5] + biasval[k],
 					};
-					unroll_for(dx, z[0], 4) {
-						bpz[dx * binc[0]] = r[dx];
+					unroll_for(dx, z[1], 4) {
+						bpz[dx * binc[2]] = r[dx];
 					} unroll_endfor
-					bpz += binc[1] * binc[0];
+					bpz += binc[1] * binc[2];
 				} unroll_endfor
 			}
 		}
@@ -345,25 +349,25 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 #ifdef HAVE_SSE2
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, const int* const dim, float* const gwtg)
 {
-	const int jump_dim = dim[3] / 4;
-	const int dimCx4 = (dim[0] + 3) & -4;
+	const int jump_dim = dim[0] / 4;
+	const int dimCx4 = (dim[3] + 3) & -4;
 	parallel_for(k, jump_dim) {
 		int i, j;
 		float* gwtgz = gwtg + k * 4 * 36 * dimCx4;
 		const float* wz[] = {
-			w + (k * 4) * 9 * dim[0],
-			w + (k * 4 + 1) * 9 * dim[0],
-			w + (k * 4 + 2) * 9 * dim[0],
-			w + (k * 4 + 3) * 9 * dim[0],
+			w + (k * 4) * 9 * dim[3],
+			w + (k * 4 + 1) * 9 * dim[3],
+			w + (k * 4 + 2) * 9 * dim[3],
+			w + (k * 4 + 3) * 9 * dim[3],
 		};
-		for (i = 0; i < dim[0]; i++)
+		for (i = 0; i < dim[3]; i++)
 		{
 			float x9w[9 * 4] __attribute__ ((__aligned__(16)));
 			unroll_for(j, 9) {
-				x9w[j * 4] = wz[0][j * dim[0] + i];
-				x9w[j * 4 + 1] = wz[1][j * dim[0] + i];
-				x9w[j * 4 + 2] = wz[2][j * dim[0] + i];
-				x9w[j * 4 + 3] = wz[3][j * dim[0] + i];
+				x9w[j * 4] = wz[0][j * dim[3] + i];
+				x9w[j * 4 + 1] = wz[1][j * dim[3] + i];
+				x9w[j * 4 + 2] = wz[2][j * dim[3] + i];
+				x9w[j * 4 + 3] = wz[3][j * dim[3] + i];
 			} unroll_endfor
 			float g[18 * 4] __attribute__ ((__aligned__(16)));
 			__m128 x9w0 = _mm_load_ps(x9w);
@@ -438,32 +442,36 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 
 static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	assert(hint.border.begin[0] <= 1);
 	assert(hint.border.begin[1] <= 1);
-	assert(hint.border.begin[2] <= 1);
-	assert(w->info.dim[3] % 4 == 0);
+	assert(w->info.dim[0] % 4 == 0);
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
-	const int jump_dim[CCV_NNC_MAX_DIM] = {
-		(b->info.dim[1] + 3) / 4, (b->info.dim[2] + 3) / 4
-	};
-	const int dimCx4 = (a->info.dim[0] + 3) & -4;
+	const int jump_dim = (bdim[0] + 3) / 4;
+	const int dimCx4 = (adim[2] + 3) & -4;
 	// allocating workspace memory for kernel reshaping and input reshaping.
 	float* workmem = 0;
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim[1] + 36 * dimCx4 * w->info.dim[3]));
+	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]));
 #else
 	// Otherwise, just one block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[3]));
+	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]));
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
 	// Convert w to a 6x6 matrix, by computing G.w.T(G) // T for transpose.
 	float* const gwtg = workmem;
-	float* const btdb = workmem + 36 * dimCx4 * w->info.dim[3];
-	memset(gwtg, 0, sizeof(float) * 36 * dimCx4 * w->info.dim[3]);
+	float* const btdb = workmem + 36 * dimCx4 * w->info.dim[0];
+	memset(gwtg, 0, sizeof(float) * 36 * dimCx4 * w->info.dim[0]);
 	_ccv_nnc_winograd_4x4_3x3_gwtg_sse2(w->data.f32, w->info.dim, gwtg);
 	// kernel weight for one dim.
 	const float* const biasval = bias->data.f32;
@@ -473,20 +481,20 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 	};
 	const int* const tile_dim = tile_dim_s;
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
-	parallel_for(i, jump_dim[1]) {
+	parallel_for(i, jump_dim) {
 		const int y = i * 4; // i is unsigned.
 		int j, x, k, c;
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int z[CCV_NNC_MAX_DIM];
-		set_n_m_dim(y, 1, tile_dim, a->info.dim);
-		z[1] = ccv_min(y + 4, b->info.dim[2]) - y;
-		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[2], 0) * ainc[1] * ainc[0];
-		float* bp = b->data.f32 + y * binc[1] * binc[0];
-		for (x = 0; x < b->info.dim[1]; x += 4)
+		set_n_m_dim(y, 0, tile_dim, adim);
+		z[0] = ccv_min(y + 4, bdim[0]) - y;
+		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[0], 0) * ainc[1] * ainc[2];
+		float* bp = b->data.f32 + y * binc[1] * binc[2];
+		for (x = 0; x < bdim[1]; x += 4)
 		{
-			set_n_m_dim(x, 0, tile_dim, a->info.dim);
-			z[0] = ccv_min(x + 4, b->info.dim[1]) - x;
+			set_n_m_dim(x, 1, tile_dim, adim);
+			z[1] = ccv_min(x + 4, bdim[1]) - x;
 #if FOR_IS_PARALLEL
 			float* g = btdb + i * 36 * dimCx4;
 #else
@@ -495,17 +503,17 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 			// zero g such that we can have zero-padding.
 			memset(g, 0, sizeof(float) * 36 * dimCx4);
 			int dx, dy;
-			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
-			float* gz = g + (n[1] * 6 + n[0]) * dimCx4;
-			unroll_for(dy, m[1], 6) {
-				unroll_for(dx, m[0], 6) {
+			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[2];
+			float* gz = g + (n[0] * 6 + n[1]) * dimCx4;
+			unroll_for(dy, m[0], 6) {
+				unroll_for(dx, m[1], 6) {
 					float* const gzu = gz + (dy * 6 + dx) * dimCx4;
-					for (c = 0; c < a->info.dim[0]; c++)
-						gzu[c] = apz[dx * ainc[0] + c];
+					for (c = 0; c < adim[2]; c++)
+						gzu[c] = apz[dx * ainc[2] + c];
 				} unroll_endfor
-				apz += ainc[1] * ainc[0];
+				apz += ainc[1] * ainc[2];
 			} unroll_endfor
-			for (c = 0; c < a->info.dim[0]; c += 4)
+			for (c = 0; c < adim[2]; c += 4)
 			{
 				float d[36 * 4]  __attribute__ ((__aligned__(16)));
 				/* BT.d */
@@ -588,7 +596,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 				g += 4;
 			}
 			const float* wpz = gwtg;
-			for (k = 0; k < w->info.dim[3]; k += 4)
+			for (k = 0; k < w->info.dim[0]; k += 4)
 			{
 				float q[36 * 4] __attribute__ ((__aligned__(16)));
 #if FOR_IS_PARALLEL
@@ -602,7 +610,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					__m128 v41 = _mm_setzero_ps();
 					__m128 v42 = _mm_setzero_ps();
 					__m128 v43 = _mm_setzero_ps();
-					for (c = 0; c < a->info.dim[0]; c += 4)
+					for (c = 0; c < adim[2]; c += 4)
 					{
 						__m128 g4 = _mm_load_ps(g);
 						__m128 w40 = _mm_load_ps(wpz);
@@ -653,11 +661,11 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 					/* row 4 */
 					_mm_store_ps(dz + 72, _mm_add_ps(_mm_add_ps(qn6x12, q30), qn18x24));
 				} unroll_endfor
-				float* bpz = bp + x * binc[0] + k;
+				float* bpz = bp + x * binc[2] + k;
 				__m128 bias4 = _mm_loadu_ps(biasval + k);
-				switch (z[0]) {
+				switch (z[1]) {
 					case 1:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -668,11 +676,11 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							__m128 ds3x4 = _mm_add_ps(d3, d4);
 							ds1x2 = _mm_add_ps(ds1x2, bias4);
 							_mm_stream_ps(bpz, _mm_add_ps(ds1x2, _mm_add_ps(d0, ds3x4)));
-							bpz += binc[1] * binc[0];
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 2:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -687,12 +695,12 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							__m128 dn3x4 = _mm_sub_ps(d3, d4);
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
 							dn1x2 = _mm_add_ps(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
-							bpz += binc[1] * binc[0];
+							_mm_stream_ps(bpz + binc[2], _mm_add_ps(dn1x2, dn3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 3:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -707,15 +715,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							__m128 dn3x4 = _mm_sub_ps(d3, d4);
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
 							dn1x2 = _mm_add_ps(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
+							_mm_stream_ps(bpz + binc[2], _mm_add_ps(dn1x2, dn3x4));
 							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
 							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
-							_mm_stream_ps(bpz + 2 * binc[0], _mm_add_ps(ds1x2, ds3x4));
-							bpz += binc[1] * binc[0];
+							_mm_stream_ps(bpz + 2 * binc[2], _mm_add_ps(ds1x2, ds3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 4:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							__m128 d0 = _mm_load_ps(dz);
 							__m128 d1 = _mm_load_ps(dz + 4);
@@ -730,15 +738,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 							__m128 dn3x4 = _mm_sub_ps(d3, d4);
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
 							dn1x2 = _mm_add_ps(dn1x2, bias4);
-							_mm_stream_ps(bpz + binc[0], _mm_add_ps(dn1x2, dn3x4));
+							_mm_stream_ps(bpz + binc[2], _mm_add_ps(dn1x2, dn3x4));
 							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
 							ds3x4 = _mm_add_ps(ds3x4, ds3x4);
-							_mm_stream_ps(bpz + 2 * binc[0], _mm_add_ps(ds1x2, ds3x4));
+							_mm_stream_ps(bpz + 2 * binc[2], _mm_add_ps(ds1x2, ds3x4));
 							__m128 d5 = _mm_load_ps(dz + 20);
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
 							dn3x4 = _mm_add_ps(dn3x4, dn3x4);
-							_mm_stream_ps(bpz + 3 * binc[0], _mm_add_ps(_mm_add_ps(dn1x2, d5), dn3x4));
-							bpz += binc[1] * binc[0];
+							_mm_stream_ps(bpz + 3 * binc[2], _mm_add_ps(_mm_add_ps(dn1x2, d5), dn3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 				};
@@ -753,25 +761,25 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 #ifdef HAVE_NEON
 inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_neon(const float* const w, const int* const dim, float* const gwtg)
 {
-	const int jump_dim = dim[3] / 4;
-	const int dimCx4 = (dim[0] + 3) & -4;
+	const int jump_dim = dim[0] / 4;
+	const int dimCx4 = (dim[3] + 3) & -4;
 	parallel_for(k, jump_dim) {
 		int i, j;
 		float* gwtgz = gwtg + k * 4 * 36 * dimCx4;
 		const float* wz[] = {
-			w + (k * 4) * 9 * dim[0],
-			w + (k * 4 + 1) * 9 * dim[0],
-			w + (k * 4 + 2) * 9 * dim[0],
-			w + (k * 4 + 3) * 9 * dim[0],
+			w + (k * 4) * 9 * dim[3],
+			w + (k * 4 + 1) * 9 * dim[3],
+			w + (k * 4 + 2) * 9 * dim[3],
+			w + (k * 4 + 3) * 9 * dim[3],
 		};
-		for (i = 0; i < dim[0]; i++)
+		for (i = 0; i < dim[3]; i++)
 		{
 			float x9w[9 * 4] __attribute__ ((__aligned__(16)));
 			unroll_for(j, 9) {
-				x9w[j * 4] = wz[0][j * dim[0] + i];
-				x9w[j * 4 + 1] = wz[1][j * dim[0] + i];
-				x9w[j * 4 + 2] = wz[2][j * dim[0] + i];
-				x9w[j * 4 + 3] = wz[3][j * dim[0] + i];
+				x9w[j * 4] = wz[0][j * dim[3] + i];
+				x9w[j * 4 + 1] = wz[1][j * dim[3] + i];
+				x9w[j * 4 + 2] = wz[2][j * dim[3] + i];
+				x9w[j * 4 + 3] = wz[3][j * dim[3] + i];
 			} unroll_endfor
 			float g[18 * 4] __attribute__ ((__aligned__(16)));
 			float32x4_t x9w0 = vld1q_f32(x9w);
@@ -846,32 +854,36 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_neon(const float* const w, con
 
 static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
+	assert(hint.border.begin[0] <= 1);
 	assert(hint.border.begin[1] <= 1);
-	assert(hint.border.begin[2] <= 1);
-	assert(w->info.dim[3] % 4 == 0);
+	assert(w->info.dim[0] % 4 == 0);
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
-	const int jump_dim[CCV_NNC_MAX_DIM] = {
-		(b->info.dim[1] + 3) / 4, (b->info.dim[2] + 3) / 4
-	};
-	const int dimCx4 = (a->info.dim[0] + 3) & -4;
+	const int jump_dim = (bdim[0] + 3) / 4;
+	const int dimCx4 = (adim[2] + 3) & -4;
 	// allocating workspace memory for kernel reshaping and input reshaping.
 	float* workmem = 0;
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim[1] + 36 * dimCx4 * w->info.dim[3]));
+	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]));
 #else
 	// Otherwise, just one block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[3]));
+	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]));
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
 	// Convert w to a 6x6 matrix, by computing G.w.T(G) // T for transpose.
 	float* const gwtg = workmem;
-	float* const btdb = workmem + 36 * dimCx4 * w->info.dim[3];
-	memset(gwtg, 0, sizeof(float) * 36 * dimCx4 * w->info.dim[3]);
+	float* const btdb = workmem + 36 * dimCx4 * w->info.dim[0];
+	memset(gwtg, 0, sizeof(float) * 36 * dimCx4 * w->info.dim[0]);
 	_ccv_nnc_winograd_4x4_3x3_gwtg_neon(w->data.f32, w->info.dim, gwtg);
 	// kernel weight for one dim.
 	const float* const biasval = bias->data.f32;
@@ -881,20 +893,20 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 	};
 	const int* const tile_dim = tile_dim_s;
 	// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
-	parallel_for(i, jump_dim[1]) {
+	parallel_for(i, jump_dim) {
 		const int y = i * 4; // i is unsigned.
 		int j, x, k, c;
 		int n[CCV_NNC_MAX_DIM];
 		int m[CCV_NNC_MAX_DIM];
 		int z[CCV_NNC_MAX_DIM];
-		set_n_m_dim(y, 1, tile_dim, a->info.dim);
-		z[1] = ccv_min(y + 4, b->info.dim[2]) - y;
-		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[2], 0) * ainc[1] * ainc[0];
-		float* bp = b->data.f32 + y * binc[1] * binc[0];
+		set_n_m_dim(y, 0, tile_dim, adim);
+		z[0] = ccv_min(y + 4, bdim[0]) - y;
+		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[0], 0) * ainc[1] * ainc[2];
+		float* bp = b->data.f32 + y * binc[1] * binc[2];
 		for (x = 0; x < b->info.dim[1]; x += 4)
 		{
-			set_n_m_dim(x, 0, tile_dim, a->info.dim);
-			z[0] = ccv_min(x + 4, b->info.dim[1]) - x;
+			set_n_m_dim(x, 1, tile_dim, adim);
+			z[1] = ccv_min(x + 4, bdim[1]) - x;
 #if FOR_IS_PARALLEL
 			float* g = btdb + i * 36 * dimCx4;
 #else
@@ -903,17 +915,17 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 			// zero g such that we can have zero-padding.
 			memset(g, 0, sizeof(float) * 36 * dimCx4);
 			int dx, dy;
-			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[0];
-			float* gz = g + (n[1] * 6 + n[0]) * dimCx4;
-			unroll_for(dy, m[1], 6) {
-				unroll_for(dx, m[0], 6) {
+			const float* apz = ap + ccv_max(x - hint.border.begin[1], 0) * ainc[2];
+			float* gz = g + (n[0] * 6 + n[1]) * dimCx4;
+			unroll_for(dy, m[0], 6) {
+				unroll_for(dx, m[1], 6) {
 					float* const gzu = gz + (dy * 6 + dx) * dimCx4;
-					for (c = 0; c < a->info.dim[0]; c++)
-						gzu[c] = apz[dx * ainc[0] + c];
+					for (c = 0; c < adim[2]; c++)
+						gzu[c] = apz[dx * ainc[2] + c];
 				} unroll_endfor
-				apz += ainc[1] * ainc[0];
+				apz += ainc[1] * ainc[2];
 			} unroll_endfor
-			for (c = 0; c < a->info.dim[0]; c += 4)
+			for (c = 0; c < adim[2]; c += 4)
 			{
 				float d[36 * 4]  __attribute__ ((__aligned__(16)));
 				/* BT.d */
@@ -996,7 +1008,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 				g += 4;
 			}
 			const float* wpz = gwtg;
-			for (k = 0; k < w->info.dim[3]; k += 4)
+			for (k = 0; k < w->info.dim[0]; k += 4)
 			{
 				float q[36 * 4] __attribute__ ((__aligned__(16)));
 #if FOR_IS_PARALLEL
@@ -1061,11 +1073,11 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 					/* row 4 */
 					vst1q_f32(dz + 72, vaddq_f32(vaddq_f32(qn6x12, q30), qn18x24));
 				} unroll_endfor
-				float* bpz = bp + x * binc[0] + k;
+				float* bpz = bp + x * binc[2] + k;
 				float32x4_t bias4 = vld1q_f32(biasval + k);
-				switch (z[0]) {
+				switch (z[1]) {
 					case 1:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							float32x4_t d0 = vld1q_f32(dz);
 							float32x4_t d1 = vld1q_f32(dz + 4);
@@ -1076,11 +1088,11 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 							float32x4_t ds3x4 = vaddq_f32(d3, d4);
 							ds1x2 = vaddq_f32(ds1x2, bias4);
 							vst1q_f32(bpz, vaddq_f32(ds1x2, vaddq_f32(d0, ds3x4)));
-							bpz += binc[1] * binc[0];
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 2:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							float32x4_t d0 = vld1q_f32(dz);
 							float32x4_t d1 = vld1q_f32(dz + 4);
@@ -1095,12 +1107,12 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
-							bpz += binc[1] * binc[0];
+							vst1q_f32(bpz + binc[2], vaddq_f32(dn1x2, dn3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 3:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							float32x4_t d0 = vld1q_f32(dz);
 							float32x4_t d1 = vld1q_f32(dz + 4);
@@ -1115,15 +1127,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
+							vst1q_f32(bpz + binc[2], vaddq_f32(dn1x2, dn3x4));
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
-							vst1q_f32(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
-							bpz += binc[1] * binc[0];
+							vst1q_f32(bpz + 2 * binc[2], vaddq_f32(ds1x2, ds3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 					case 4:
-						unroll_for(dy, z[1], 4) {
+						unroll_for(dy, z[0], 4) {
 							const float* const dz = d + dy * 24;
 							float32x4_t d0 = vld1q_f32(dz);
 							float32x4_t d1 = vld1q_f32(dz + 4);
@@ -1138,15 +1150,15 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 							float32x4_t dn3x4 = vsubq_f32(d3, d4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn1x2 = vaddq_f32(dn1x2, bias4);
-							vst1q_f32(bpz + binc[0], vaddq_f32(dn1x2, dn3x4));
+							vst1q_f32(bpz + binc[2], vaddq_f32(dn1x2, dn3x4));
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
 							ds3x4 = vaddq_f32(ds3x4, ds3x4);
-							vst1q_f32(bpz + 2 * binc[0], vaddq_f32(ds1x2, ds3x4));
+							vst1q_f32(bpz + 2 * binc[2], vaddq_f32(ds1x2, ds3x4));
 							float32x4_t d5 = vld1q_f32(dz + 20);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
 							dn3x4 = vaddq_f32(dn3x4, dn3x4);
-							vst1q_f32(bpz + 3 * binc[0], vaddq_f32(vaddq_f32(dn1x2, d5), dn3x4));
-							bpz += binc[1] * binc[0];
+							vst1q_f32(bpz + 3 * binc[2], vaddq_f32(vaddq_f32(dn1x2, d5), dn3x4));
+							bpz += binc[1] * binc[2];
 						} unroll_endfor
 						break;
 				};
@@ -1161,10 +1173,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 int _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
 {
 #if defined(HAVE_SSE2)
-	if (w->info.dim[3] % 4 == 0)
+	if (w->info.dim[0] % 4 == 0)
 		return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b);
 #elif defined(HAVE_NEON)
-	if (w->info.dim[3] % 4 == 0)
+	if (w->info.dim[0] % 4 == 0)
 		return _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(a, w, bias, hint, b);
 #endif
 	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
