@@ -903,7 +903,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 		z[0] = ccv_min(y + 4, bdim[0]) - y;
 		const float* ap = a->data.f32 + ccv_max(y - hint.border.begin[0], 0) * ainc[1] * ainc[2];
 		float* bp = b->data.f32 + y * binc[1] * binc[2];
-		for (x = 0; x < b->info.dim[1]; x += 4)
+		for (x = 0; x < bdim[1]; x += 4)
 		{
 			set_n_m_dim(x, 1, tile_dim, adim);
 			z[1] = ccv_min(x + 4, bdim[1]) - x;
@@ -1022,7 +1022,7 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 					float32x4_t v41 = vmovq_n_f32(0);
 					float32x4_t v42 = vmovq_n_f32(0);
 					float32x4_t v43 = vmovq_n_f32(0);
-					for (c = 0; c < a->info.dim[0]; c += 4)
+					for (c = 0; c < adim[2]; c += 4)
 					{
 						float32x2x2_t g4 = vld2_f32(g);
 						float32x4_t w40 = vld1q_f32(wpz);
