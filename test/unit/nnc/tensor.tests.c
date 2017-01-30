@@ -95,24 +95,24 @@ TEST_CASE("zero out a tensor view")
 
 TEST_CASE("hint tensor")
 {
-	ccv_nnc_tensor_param_t a = ONE_CPU_TENSOR(3, 128, 234);
+	ccv_nnc_tensor_param_t a = ONE_CPU_TENSOR(234, 128, 3);
 	ccv_nnc_hint_t hint = {
 		.border = {
-			.begin = {0, 1, 1},
-			.end = {0, 2, 1}
+			.begin = {1, 1},
+			.end = {1, 2}
 		},
 		.stride = {
-			.dim = {0, 7, 8}
+			.dim = {8, 7}
 		}
 	};
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(128, 3, 5, 4);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(128, 4, 5, 3);
 	ccv_nnc_tensor_param_t b;
-	ccv_nnc_tensor_param_t w = ONE_CPU_TENSOR(3, 5, 4, 128);
+	ccv_nnc_tensor_param_t w = ONE_CPU_TENSOR(128, 4, 5, 3);
 	ccv_nnc_tensor_param_t bias = ONE_CPU_TENSOR(128);
 	ccv_nnc_hint_tensor_auto(cmd, TENSOR_PARAM_LIST(a, w, bias), hint, &b, 1);
-	REQUIRE_EQ(b.dim[0], 128, "channel should be the convolution filter count");
+	REQUIRE_EQ(b.dim[0], 30, "height should be 30");
 	REQUIRE_EQ(b.dim[1], 19, "width should be 19");
-	REQUIRE_EQ(b.dim[2], 30, "height should be 30");
+	REQUIRE_EQ(b.dim[2], 128, "channel should be the convolution filter count");
 }
 
 #include "case_main.h"

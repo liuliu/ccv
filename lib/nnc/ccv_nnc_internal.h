@@ -52,7 +52,7 @@ static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, c
 {
 	int i;
 	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 1 : 0;
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 0 : 1;
 	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);

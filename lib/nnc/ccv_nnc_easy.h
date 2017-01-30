@@ -108,9 +108,9 @@ static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 		case CCV_TENSOR_FORMAT_NCHW:
-			return params.dim[CCV_NNC_MAX_DIM + 1];
-		case CCV_TENSOR_FORMAT_CHWN:
 			return params.dim[0];
+		case CCV_TENSOR_FORMAT_CHWN:
+			return params.dim[CCV_NNC_MAX_DIM + 1];
 	}
 	return 0;
 }
@@ -120,11 +120,11 @@ static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 	switch (params.format)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
-			return params.dim[0];
-		case CCV_TENSOR_FORMAT_NCHW:
-			return params.dim[CCV_NNC_MAX_DIM];
-		case CCV_TENSOR_FORMAT_CHWN:
 			return params.dim[CCV_NNC_MAX_DIM + 1];
+		case CCV_TENSOR_FORMAT_NCHW:
+			return params.dim[1];
+		case CCV_TENSOR_FORMAT_CHWN:
+			return params.dim[0];
 	}
 	return 0;
 }
@@ -135,10 +135,10 @@ static inline void ccv_nnc_tensor_set_n(ccv_nnc_tensor_param_t* const params, co
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
 		case CCV_TENSOR_FORMAT_NCHW:
-			params->dim[CCV_NNC_MAX_DIM + 1] = n;
+			params->dim[0] = n;
 			break;
 		case CCV_TENSOR_FORMAT_CHWN:
-			params->dim[0] = n;
+			params->dim[CCV_NNC_MAX_DIM + 1] = n;
 			break;
 	}
 }
@@ -148,13 +148,13 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 	switch (params->format)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
-			params->dim[0] = c;
-			break;
-		case CCV_TENSOR_FORMAT_NCHW:
 			params->dim[CCV_NNC_MAX_DIM] = c;
 			break;
+		case CCV_TENSOR_FORMAT_NCHW:
+			params->dim[1] = c;
+			break;
 		case CCV_TENSOR_FORMAT_CHWN:
-			params->dim[CCV_NNC_MAX_DIM + 1] = c;
+			params->dim[0] = c;
 			break;
 	}
 }
