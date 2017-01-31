@@ -199,24 +199,24 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
 				dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM];
-				stride[CCV_NNC_MAX_DIM + 1] = 1;
+				stride[1] = 1;
 				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
 				{
 					dim[i + 2] = tensor->info.dim[i];
-					stride[i + 1] = stride[i + 2] * inc[i + 1];
+					stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 1] : stride[i + 3] * inc[i + 1];
 				}
-				stride[0] = stride[1] * inc[0];
+				stride[0] = stride[2] * inc[0];
 				break;
 			case CCV_NNC_MAX_DIM + 2:
 				dim[0] = tensor->info.dim[0];
-				dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM];
-				stride[CCV_NNC_MAX_DIM + 1] = 1;
+				dim[1] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+				stride[1] = 1;
 				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
 				{
 					dim[i + 2] = tensor->info.dim[i + 1];
-					stride[i + 1] = stride[i + 2] * inc[i + 2];
+					stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 2] : stride[i + 3] * inc[i + 2];
 				}
-				stride[0] = stride[1] * inc[1];
+				stride[0] = stride[2] * inc[1];
 				break;
 			default:
 				assert(0);
@@ -240,9 +240,9 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 	};
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	assert(nd == CCV_NNC_MAX_DIM + 2);
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int i;
-	// Reorder since nnc have different idea about NCHW and NHWC (N is in 3, C is in 0).
 	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
 	{
 		for (i = 0; i < nd; i++)
