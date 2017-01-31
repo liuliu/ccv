@@ -100,16 +100,18 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 
 static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
-	memcpy(tv->inc, tensor->info.dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
-	memcpy(tv->info.dim, dim, sizeof(float) * CCV_NNC_MAX_DIM_ALLOC);
-	int i, inc = 1;
-	float* p = tensor->data.f32;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[i] > 0; i++)
+	memcpy(tv->inc, tensor->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	int i;
+	size_t inc = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
+	uint8_t* p = tensor->data.u8;
+	const int axis_count = ccv_nnc_axis_count(tensor->info.dim);
+	for (i = axis_count - 1; i >= 0; i--)
 	{
 		p += ofs[i] * inc;
 		inc *= tv->inc[i];
 	}
-	tv->data.f32 = p;
+	tv->data.u8 = p;
 }
 
 ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])

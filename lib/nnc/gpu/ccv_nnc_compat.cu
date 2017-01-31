@@ -147,32 +147,37 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 	// N is the outer one nevertheless.
 	assert(tensor->info.format == CCV_TENSOR_FORMAT_NCHW || tensor->info.format == CCV_TENSOR_FORMAT_NHWC);
 	// Fill up dimensions with 1s.
-	int dim[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int i;
+	const int axis_count = ccv_nnc_axis_count(tensor->info.dim);
 	const int nd = CCV_NNC_MAX_DIM + 2;
+	const int offset = nd - axis_count;
 	// This has to follow NCHW
 	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
-		for (i = 0; i < nd; i++)
-			dim[i] = ccv_max(1, tensor->info.dim[nd - 1 - i]);
-	else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
-		dim[0] = ccv_max(1, tensor->info.dim[nd - 1]);
-		dim[1] = ccv_max(1, tensor->info.dim[0]);
+	{
+		dim[0] = (offset > 0) ? 1 : ccv_max(1, tensor->info.dim[0]);
+		for (i = 1; i < nd; i++)
+			dim[i] = i - offset < 0 ? 1 : ccv_max(1, tensor->info.dim[i - offset]);
+	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
+		dim[0] = (offset > 0) ? 1 : ccv_max(1, tensor->info.dim[0]);
+		dim[1] = ccv_max(1, tensor->info.dim[axis_count - 1]);
 		for (i = 2; i < nd; i++)
-			dim[i] = ccv_max(1, tensor->info.dim[nd - i]);
+			dim[i] = i - offset - 1 < 0 ? 1 : ccv_max(1, tensor->info.dim[i - offset - 1]);
 	}
 	const int* inc = CCV_IS_TENSOR_VIEW(tensor) ? tensor->inc : tensor->info.dim;
 	int stride[CCV_NNC_MAX_DIM_ALLOC];
-	stride[nd - 1] = 1;
 	// Compute the stride from inc, so it will fit the tensor view.
 	if (tensor->info.format == CCV_TENSOR_FORMAT_NCHW)
-		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] > 0; i++)
-			stride[nd - 1 - i] = stride[nd - i] * ccv_max(1, inc[i - 1]);
-	else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
+	{
+		stride[nd - 1] = 1;
+		for (i = nd - 2; i >= 0; i--)
+			stride[i] = stride[i + 1] * ccv_max(1, inc[i + 1]);
+	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		stride[1] = 1;
-		stride[nd - 1] = ccv_max(1, inc[0]);
-		for (i = 0; i < nd - 3; i++)
-			stride[nd - 2 - i] = stride[nd - 1 - i] * ccv_max(1, inc[i + 1]);
-		stride[0] = stride[2] * ccv_max(1, inc[nd - 2]);
+		stride[nd - 1] = ccv_max(1, inc[axis_count - 1]);
+		for (i = nd - 2; i > 1; i--)
+			stride[i] = stride[i + 1] * (i - offset < 0 ? 1 : ccv_max(1, inc[i - offset]));
+		stride[0] = stride[2] * (1 - offset < 0 ? 1 : ccv_max(1, inc[1 - offset]));
 	}
 	assert_cudnn(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, CUDNN_DATA_FLOAT, nd, dim, stride));
 	return tensor_desc;

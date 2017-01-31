@@ -278,8 +278,10 @@ static int _ccv_nnc_gemm_back_neon(const ccv_nnc_tensor_view_t* const g, const c
 
 int _ccv_nnc_gemm_forw_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, const ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const b)
 {
+#if defined(HAVE_SSE2) || defined(HAVE_NEON)
 	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
 	const int adim = (a_axis_count == 1) ? a->info.dim[0] : a->info.dim[1];
+#endif
 #if defined(HAVE_SSE2)
 	if (adim % 8 == 0)
 		return _ccv_nnc_gemm_forw_sse2(a, w, bias, b);
@@ -292,12 +294,14 @@ int _ccv_nnc_gemm_forw_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_n
 
 int _ccv_nnc_gemm_back_cpu_opt(const ccv_nnc_tensor_view_t* const g, const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_view_t* const w, ccv_nnc_tensor_view_t* const dw, ccv_nnc_tensor_view_t* const bias, ccv_nnc_tensor_view_t* const h, const int flags)
 {
+#if defined(HAVE_SSE2) || defined(HAVE_NEON)
 	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
 	const int adim = (a_axis_count == 1) ? a->info.dim[0] : a->info.dim[1];
 	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
 	const int gdim = (g_axis_count == 1) ? g->info.dim[0] : g->info.dim[1];
 	const int h_axis_count = h ? ccv_nnc_axis_count(h->info.dim) : 0;
 	const int hdim = h ? ((h_axis_count == 1) ? h->info.dim[0] : h->info.dim[1]) : 0;
+#endif
 #if defined(HAVE_SSE2)
 	if (gdim % 4 == 0 && adim % 4 == 0 && (!h || hdim % 4 == 0))
 		return _ccv_nnc_gemm_back_sse2(g, a, w, dw, bias, h, flags);
