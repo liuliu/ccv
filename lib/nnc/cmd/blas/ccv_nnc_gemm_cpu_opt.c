@@ -24,13 +24,20 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(b->info.dim[0] == bias->info.dim[0]);
-	assert(bias->info.dim[1] == 0); // It is a 1-d array
 	assert(b->info.dim[2] == 0); // It is a 2-d array.
-	assert(ccv_max(1, b->info.dim[1]) == ccv_max(1, a->info.dim[1]));
-	assert(a->info.dim[0] == w->info.dim[0]);
-	assert(b->info.dim[0] == w->info.dim[1]);
 	assert(w->info.dim[2] == 0); // It is a 2-d array
+	assert(bias->info.dim[1] == 0); // It is a 1-d array
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == 1 || a_axis_count == 2);
+	const int* adim = (a_axis_count == 1) ? a->info.dim : a->info.dim + 1;
+	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
+	assert(b_axis_count == 1 || b_axis_count == 2);
+	const int* bdim = (b_axis_count == 1) ? b->info.dim : b->info.dim + 1;
+	const int batch_size = a_axis_count == 1 ? 1 : ccv_max(1, a->info.dim[0]);
+	assert(batch_size == (b_axis_count == 1) ? 1 : ccv_max(1, b->info.dim[0]));
+	assert(bdim[0] == bias->info.dim[0]);
+	assert(bdim[0] == w->info.dim[0]);
+	assert(adim[0] == w->info.dim[1]);
 	switch (cmd.algorithm)
 	{
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
@@ -56,24 +63,33 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// outputs: [output gradient], weight updates, bias updates
 	assert((input_size == 2 && output_size == 3) || (input_size == 3 && output_size == 3));
 	const ccv_nnc_tensor_view_t* g = (const ccv_nnc_tensor_view_t*)inputs[0];
+	assert(g->info.dim[2] == 0); // It is a 2-d array.
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1];
+	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[2];
 	assert(bias->info.dim[1] == 0); // It is a 1-d array.
-	assert(ccv_max(1, a->info.dim[1]) == ccv_max(1, g->info.dim[1]));
-	assert(a->info.dim[2] == 0); // It is a 2-d array.
-	assert(g->info.dim[2] == 0); // It is a 2-d array.
-	assert(bias->info.dim[0] == g->info.dim[0]);
-	assert(a->info.dim[0] == dw->info.dim[0]);
-	assert(g->info.dim[0] == dw->info.dim[1]);
+	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
+	assert(a_axis_count == 1 || a_axis_count == 2);
+	const int* adim = (a_axis_count == 1) ? a->info.dim : a->info.dim + 1;
+	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
+	assert(g_axis_count == 1 || g_axis_count == 2);
+	const int* gdim = (g_axis_count == 1) ? g->info.dim : g->info.dim + 1;
+	const int batch_size = a_axis_count == 1 ? 1 : ccv_max(1, a->info.dim[0]);
+	assert(batch_size == (g_axis_count == 1) ? 1 : ccv_max(1, g->info.dim[0]));
+	assert(bias->info.dim[0] == gdim[0]);
+	assert(gdim[0] == dw->info.dim[0]);
+	assert(adim[0] == dw->info.dim[1]);
 	const ccv_nnc_tensor_view_t* w = (input_size == 3) ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
 	{
-		assert(h->info.dim[0] == a->info.dim[0]);
-		assert(ccv_max(1, h->info.dim[1]) == ccv_max(1, a->info.dim[1]));
 		assert(h->info.dim[2] == 0); // It is a 2-d array.
+		const int h_axis_count = ccv_nnc_axis_count(h->info.dim);
+		assert(h_axis_count == 1 || h_axis_count == 2);
+		const int* hdim = (h_axis_count == 1) ? h->info.dim : h->info.dim + 1;
+		assert(hdim[0] == adim[0]);
 	}
 	if (w)
 	{
