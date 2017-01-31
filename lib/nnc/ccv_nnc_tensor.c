@@ -144,48 +144,50 @@ void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view)
 void ccv_nnc_tensor_zero(void* const tensor)
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)tensor;
+	const size_t data_size = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
 	if (!CCV_IS_TENSOR_VIEW(tv))
 	{
-		memset(tv->data.f32, 0, sizeof(float) * ccv_nnc_tensor_count(tv->info));
+		memset(tv->data.u8, 0, data_size * ccv_nnc_tensor_count(tv->info));
 		return;
 	}
+	const int axis_count = ccv_nnc_axis_count(tv->info.dim);
 	const int* tvinc = tv->inc;
 	// reset it to 0.
-	int c, i[3];
+	int c, x, y;
 	int count = 1;
 	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
-	int mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
-	mod_inc[0] = tvinc[0] * tvinc[1] * tvinc[2];
-	int dim_count = 0;
-	for (c = 3; c < CCV_NNC_MAX_DIM_ALLOC && tv->info.dim[c] > 0; c++)
+	size_t mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
+	mod_inc[axis_count - 3] = data_size * tvinc[axis_count - 3] * tvinc[axis_count - 2] * tvinc[axis_count - 1];
+	for (c = axis_count - 4; c >= 0; c--)
 	{
 		// Compute the mod.
-		mod[c - 3] = c == 3 ? tv->info.dim[c] : mod[c - 4] * tv->info.dim[c];
-		mod_inc[c - 2] = mod_inc[c - 3] * tvinc[c];
+		mod[c] = c == axis_count - 4 ? tv->info.dim[c] : mod[c + 1] * tv->info.dim[c];
+		mod_inc[c] = mod_inc[c + 1] * tvinc[c];
 		count *= tv->info.dim[c];
-		dim_count = c - 2; // Keep track of the top of the dim.
 	}
-	for (c = dim_count - 1; c > 0; c--)
-		mod_inc[c] = mod_inc[c - 1] * (tvinc[c + 3] - tv->info.dim[c + 3]);
-	float* tvdf32 = tv->data.f32;
+	for (c = 0; c < axis_count - 3; c++)
+		mod_inc[c] = mod_inc[c + 1] * (tvinc[c] - tv->info.dim[c]);
+	uint8_t* tvd = tv->data.u8;
+	const size_t tvinc_21 = data_size * tvinc[axis_count - 2] * tvinc[axis_count - 1];
+	const size_t tvinc_1 = data_size * tvinc[axis_count - 1];
+	const size_t tvdim_1 = data_size * tv->info.dim[axis_count - 1];
 	for (c = 0; c < count; c++)
 	{
-		for (i[2] = 0; i[2] < ccv_max(1, tv->info.dim[2]); i[2]++)
+		for (y = 0; y < ccv_max(1, tv->info.dim[axis_count - 3]); y++)
 		{
-			float* tvp = tvdf32 + i[2] * tvinc[1] * tvinc[0];
-			for (i[1] = 0; i[1] < ccv_max(1, tv->info.dim[1]); i[1]++)
+			uint8_t* tvp = tvd + y * tvinc_21;
+			for (x = 0; x < ccv_max(1, tv->info.dim[axis_count - 2]); x++)
 			{
-				memset(tvp, 0, sizeof(float) * tv->info.dim[0]);
-				tvp += tvinc[0];
+				memset(tvp, 0, tvdim_1);
+				tvp += tvinc_1;
 			}
 		}
-		int j;
-		tvdf32 += mod_inc[0];
-		for (j = 0; j < dim_count - 1; j++)
-			if ((c + 1) % mod[j] != 0)
+		tvd += mod_inc[axis_count - 3];
+		for (y = axis_count - 4; y >= 0; y--)
+			if ((c + 1) % mod[y] != 0)
 				break; // cannot be mod, break out.
 			else
-				tvdf32 += mod_inc[j + 1];
+				tvd += mod_inc[y];
 	}
 }
 

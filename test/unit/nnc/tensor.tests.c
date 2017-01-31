@@ -59,34 +59,34 @@ TEST_CASE("zero out a tensor view")
 	int i[6];
 	float* tvp[6];
 	tvp[5] = b_tensor_view.data.f32;
-	for (i[5] = 0; i[5] < b_tensor_view.info.dim[5]; i[5]++)
+	for (i[5] = 0; i[5] < b_tensor_view.info.dim[0]; i[5]++)
 	{
 		tvp[4] = tvp[5];
-		for (i[4] = 0; i[4] < b_tensor_view.info.dim[4]; i[4]++)
+		for (i[4] = 0; i[4] < b_tensor_view.info.dim[1]; i[4]++)
 		{
 			tvp[3] = tvp[4];
-			for (i[3] = 0; i[3] < b_tensor_view.info.dim[3]; i[3]++)
+			for (i[3] = 0; i[3] < b_tensor_view.info.dim[2]; i[3]++)
 			{
 				tvp[2] = tvp[3];
-				for (i[2] = 0; i[2] < b_tensor_view.info.dim[2]; i[2]++)
+				for (i[2] = 0; i[2] < b_tensor_view.info.dim[3]; i[2]++)
 				{
 					tvp[1] = tvp[2];
-					for (i[1] = 0; i[1] < b_tensor_view.info.dim[1]; i[1]++)
+					for (i[1] = 0; i[1] < b_tensor_view.info.dim[4]; i[1]++)
 					{
 						tvp[0] = tvp[1];
-						for (i[0] = 0; i[0] < b_tensor_view.info.dim[0]; i[0]++)
+						for (i[0] = 0; i[0] < b_tensor_view.info.dim[5]; i[0]++)
 						{
 							tvp[0][i[0]] = 0;
 						}
-						tvp[1] += b_tensor_view.inc[0];
+						tvp[1] += b_tensor_view.inc[5];
 					}
-					tvp[2] += b_tensor_view.inc[1] * b_tensor_view.inc[0];
+					tvp[2] += b_tensor_view.inc[4] * b_tensor_view.inc[5];
 				}
-				tvp[3] += b_tensor_view.inc[2] * b_tensor_view.inc[1] * b_tensor_view.inc[0];
+				tvp[3] += b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
 			}
-			tvp[4] += b_tensor_view.inc[3] * b_tensor_view.inc[2] * b_tensor_view.inc[1] * b_tensor_view.inc[0];
+			tvp[4] += b_tensor_view.inc[2] * b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
 		}
-		tvp[5] += b_tensor_view.inc[4] * b_tensor_view.inc[3] * b_tensor_view.inc[2] * b_tensor_view.inc[1] * b_tensor_view.inc[0];
+		tvp[5] += b_tensor_view.inc[1] * b_tensor_view.inc[2] * b_tensor_view.inc[3] * b_tensor_view.inc[4] * b_tensor_view.inc[5];
 	}
 	REQUIRE_TENSOR_EQ(a_tensor, b_tensor, "zero'ed tensor view should be equal");
 	ccv_nnc_tensor_free(a_tensor);
