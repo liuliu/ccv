@@ -15,15 +15,15 @@ int _ccv_nnc_gemm_forw_cpu_sys(const ccv_nnc_tensor_view_t* const a, const ccv_n
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	assert(b->info.dim[2] == 0); // It is a 2-d array.
 	// Copy the most of parameters, but reshape the dimension of a to a vector.
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	const int* adim = (a_axis_count == 1) ? a->info.dim : a->info.dim + 1;
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	const int* bdim = (b_axis_count == 1) ? b->info.dim : b->info.dim + 1;
-	const int batch_size = a_axis_count == 1 ? 1 : ccv_max(1, a->info.dim[0]);
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int* bdim = (b_nd == 1) ? b->info.dim : b->info.dim + 1;
+	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	ccv_dense_matrix_t am = ccv_dense_matrix(batch_size, adim[0], CCV_32F | CCV_C1, a->data.u8, 0);
 	int bias_count = ccv_nnc_tensor_count(bias->info);
 	assert(bdim[0] == bias_count);
-	assert(batch_size == (b_axis_count == 1) ? 1 : ccv_max(1, b->info.dim[0]));
+	assert(batch_size == (b_nd == 1) ? 1 : ccv_max(1, b->info.dim[0]));
 	ccv_dense_matrix_t bm = ccv_dense_matrix(batch_size, bdim[0], CCV_32F | CCV_C1, b->data.u8, 0);
 	ccv_dense_matrix_t* dbm = &bm;
 	// copy bias into each row.
@@ -54,14 +54,14 @@ int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* const g, const ccv_n
 	}
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	assert(g->info.dim[2] == 0); // It is a 2-d array.
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	assert(a_axis_count == 1 || a_axis_count == 2);
-	const int* adim = (a_axis_count == 1) ? a->info.dim : a->info.dim + 1;
-	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
-	assert(g_axis_count == 1 || g_axis_count == 2);
-	const int* gdim = (g_axis_count == 1) ? g->info.dim : g->info.dim + 1;
-	const int batch_size = a_axis_count == 1 ? 1 : ccv_max(1, a->info.dim[0]);
-	assert(batch_size == (g_axis_count == 1) ? 1 : ccv_max(1, g->info.dim[0]));
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	assert(a_nd == 1 || a_nd == 2);
+	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
+	const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
+	assert(g_nd == 1 || g_nd == 2);
+	const int* gdim = (g_nd == 1) ? g->info.dim : g->info.dim + 1;
+	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
+	assert(batch_size == (g_nd == 1) ? 1 : ccv_max(1, g->info.dim[0]));
 	assert(bias->info.dim[0] == gdim[0]);
 	ccv_dense_matrix_t gm = ccv_dense_matrix(batch_size, gdim[0], CCV_32F | CCV_C1, g->data.u8, 0);
 	ccv_dense_matrix_t am = ccv_dense_matrix(batch_size, adim[0], CCV_32F | CCV_C1, a->data.u8, 0);
@@ -85,11 +85,11 @@ int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* const g, const ccv_n
 		assert(!CCV_IS_TENSOR_VIEW(w));
 		assert(h->info.dim[2] == 0); // It is a 2-d array.
 		assert(h->info.dim[0] == a->info.dim[0]);
-		const int h_axis_count = ccv_nnc_axis_count(h->info.dim);
-		assert(h_axis_count == 1 || h_axis_count == 2);
-		const int* hdim = (h_axis_count == 1) ? h->info.dim : h->info.dim + 1;
+		const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
+		assert(h_nd == 1 || h_nd == 2);
+		const int* hdim = (h_nd == 1) ? h->info.dim : h->info.dim + 1;
 		assert(hdim[0] == adim[0]);
-		assert(batch_size == (h_axis_count == 1) ? 1 : ccv_max(1, h->info.dim[0]));
+		assert(batch_size == (h_nd == 1) ? 1 : ccv_max(1, h->info.dim[0]));
 		ccv_dense_matrix_t wm = ccv_dense_matrix(gdim[0], hdim[0], CCV_32F | CCV_C1, w->data.u8, 0);
 		ccv_dense_matrix_t hm = ccv_dense_matrix(batch_size, hdim[0], CCV_32F | CCV_C1, h->data.u8, 0);
 		ccv_dense_matrix_t* dhm = &hm;

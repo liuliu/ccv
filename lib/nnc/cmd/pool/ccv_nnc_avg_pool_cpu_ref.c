@@ -22,16 +22,16 @@ static int _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	int m[CCV_NNC_MAX_DIM];
 	int j[CCV_NNC_MAX_DIM];
 	int c;
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
 	float* ap = a->data.f32;
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_axis_count == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
+	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
 	float* bp = b->data.f32;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_axis_count == CCV_NNC_MAX_DIM + 1) ?  b->inc : b->inc + 1) : bdim;
+	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ?  b->inc : b->inc + 1) : bdim;
 	for (i[0] = 0; i[0] < bdim[0]; i[0]++)
 	{
 		SET_BORDER_OFFSET_SIZE_FOR(0, i, hint, dim, adim, n, m);
@@ -69,16 +69,16 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	int m[CCV_NNC_MAX_DIM];
 	int j[CCV_NNC_MAX_DIM];
 	int c;
-	const int g_axis_count = ccv_nnc_axis_count(g->info.dim);
-	assert(g_axis_count == CCV_NNC_MAX_DIM + 1 || g_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* gdim = (g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->info.dim : g->info.dim + 1;
-	const int h_axis_count = ccv_nnc_axis_count(h->info.dim);
-	assert(h_axis_count == CCV_NNC_MAX_DIM + 1 || h_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* hdim = (h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
+	const int g_nd = ccv_nnc_tensor_nd(g->info.dim);
+	assert(g_nd == CCV_NNC_MAX_DIM + 1 || g_nd == CCV_NNC_MAX_DIM + 2);
+	const int* gdim = (g_nd == CCV_NNC_MAX_DIM + 1) ? g->info.dim : g->info.dim + 1;
+	const int h_nd = ccv_nnc_tensor_nd(h->info.dim);
+	assert(h_nd == CCV_NNC_MAX_DIM + 1 || h_nd == CCV_NNC_MAX_DIM + 2);
+	const int* hdim = (h_nd == CCV_NNC_MAX_DIM + 1) ? h->info.dim : h->info.dim + 1;
 	float* gp = g->data.f32;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_axis_count == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
+	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == CCV_NNC_MAX_DIM + 1) ? g->inc : g->inc + 1) : gdim;
 	float* hp = h->data.f32;
-	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_axis_count == CCV_NNC_MAX_DIM + 1) ? h->inc : h->inc + 1) : hdim;
+	const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == CCV_NNC_MAX_DIM + 1) ? h->inc : h->inc + 1) : hdim;
 	ccv_nnc_tensor_zero(h);
 	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 	{

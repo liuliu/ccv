@@ -11,12 +11,12 @@ int _ccv_nnc_conv_forw_gemm_cpu_opt(const ccv_nnc_tensor_view_t* const a, const 
 	assert(!CCV_IS_TENSOR_VIEW(w));
 	assert(!CCV_IS_TENSOR_VIEW(bias));
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
 	assert(hint.border.begin[0] == 0 && hint.border.begin[1] == 0);
 	assert(hint.border.end[0] == 0 && hint.border.end[1] == 0);
 	assert(adim[0] == bdim[0]);

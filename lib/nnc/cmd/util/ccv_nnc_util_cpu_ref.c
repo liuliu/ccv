@@ -26,9 +26,9 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 		memcpy(b->data.f32, a->data.f32, ccv_nnc_tensor_count(a->info) * sizeof(float));
 		return;
 	}
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_axis_count;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
 	for (x = 0; x < a_offset; x++)
 		dim[x] = ainc[x] = 1;
 	for (x = a_offset; x < CCV_NNC_MAX_DIM + 2; x++)
@@ -36,7 +36,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 		dim[x] = a->info.dim[x - a_offset];
 		ainc[x] = CCV_IS_TENSOR_VIEW(a) ? a->inc[x - a_offset] : a->info.dim[x - a_offset];
 	}
-	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_axis_count;
+	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
 	for (x = 0; x < b_offset; x++)
 		binc[x] = 1;
 	for (x = b_offset; x < CCV_NNC_MAX_DIM + 2; x++)
@@ -89,8 +89,8 @@ void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b)
 	int dim[CCV_NNC_MAX_DIM + 2];
 	int ainc[CCV_NNC_MAX_DIM + 2];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_axis_count;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
@@ -214,11 +214,11 @@ static void _ccv_nnc_tensor_nhwc_nchw(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	// In case it is Toll-free bridged matrix object (NHWC format is possible).
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0 || a->info.dim[CCV_NNC_MAX_DIM + 1] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_axis_count;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
 	assert(a_offset == 0 || a_offset == 1);
-	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_axis_count;
+	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
 	assert(b_offset == 0 || b_offset == 1);
 	for (k = 0; k < a_offset; k++)
 		ainc[k] = 1;
@@ -232,8 +232,8 @@ static void _ccv_nnc_tensor_nhwc_nchw(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
 	const int n = (a_offset == 0 ? a->info.dim[0] : 1);
 	// Comparing C
-	assert(a->info.dim[a_axis_count - 1] == b->info.dim[1 - b_offset]);
-	const int c = a->info.dim[a_axis_count - 1];
+	assert(a->info.dim[a_nd - 1] == b->info.dim[1 - b_offset]);
+	const int c = a->info.dim[a_nd - 1];
 	// Comparing HW
 	int hw[CCV_NNC_MAX_DIM];
 	for (k = 0; k < CCV_NNC_MAX_DIM; k++)
@@ -274,11 +274,11 @@ static void _ccv_nnc_tensor_nchw_nhwc(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	// In case it is Toll-free bridged matrix object (NHWC format is possible).
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0 || b->info.dim[CCV_NNC_MAX_DIM + 1] == 0);
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_axis_count;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
 	assert(a_offset == 0 || a_offset == 1);
-	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_axis_count;
+	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
 	assert(b_offset == 0 || b_offset == 1);
 	for (k = 0; k < a_offset; k++)
 		ainc[k] = 1;
@@ -292,7 +292,7 @@ static void _ccv_nnc_tensor_nchw_nhwc(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
 	const int n = (a_offset == 0 ? a->info.dim[0] : 1);
 	// Comparing C
-	assert(a->info.dim[1 - a_offset] == b->info.dim[b_axis_count - 1]);
+	assert(a->info.dim[1 - a_offset] == b->info.dim[b_nd - 1]);
 	const int c = a->info.dim[1 - a_offset];
 	// Comparing HW
 	int hw[CCV_NNC_MAX_DIM];

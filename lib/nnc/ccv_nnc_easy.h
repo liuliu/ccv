@@ -75,7 +75,7 @@ static inline size_t ccv_nnc_dimension_count(const int dim[CCV_NNC_MAX_DIM_ALLOC
 	return count;
 }
 
-static inline int ccv_nnc_axis_count(const int dim[CCV_NNC_MAX_DIM_ALLOC])
+static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
@@ -92,14 +92,6 @@ static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t params)
 {
 	return (CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 15) & -16;
-}
-
-static inline int ccv_nnc_tensor_nd(const ccv_nnc_tensor_param_t params)
-{
-	int nd = 0;
-	while (nd < CCV_NNC_MAX_DIM_ALLOC && params.dim[nd] > 0)
-		++nd;
-	return nd;
 }
 
 static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)

@@ -105,8 +105,8 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 	int i;
 	size_t inc = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
 	uint8_t* p = tensor->data.u8;
-	const int axis_count = ccv_nnc_axis_count(tensor->info.dim);
-	for (i = axis_count - 1; i >= 0; i--)
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	for (i = nd - 1; i >= 0; i--)
 	{
 		p += ofs[i] * inc;
 		inc *= tv->inc[i];
@@ -152,40 +152,40 @@ void ccv_nnc_tensor_zero(void* const tensor)
 		memset(tv->data.u8, 0, data_size * ccv_nnc_tensor_count(tv->info));
 		return;
 	}
-	const int axis_count = ccv_nnc_axis_count(tv->info.dim);
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
 	const int* tvinc = tv->inc;
 	// reset it to 0.
 	int c, x, y;
 	int count = 1;
 	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
 	size_t mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
-	mod_inc[axis_count - 3] = data_size * tvinc[axis_count - 3] * tvinc[axis_count - 2] * tvinc[axis_count - 1];
-	for (c = axis_count - 4; c >= 0; c--)
+	mod_inc[nd - 3] = data_size * tvinc[nd - 3] * tvinc[nd - 2] * tvinc[nd - 1];
+	for (c = nd - 4; c >= 0; c--)
 	{
 		// Compute the mod.
-		mod[c] = c == axis_count - 4 ? tv->info.dim[c] : mod[c + 1] * tv->info.dim[c];
+		mod[c] = c == nd - 4 ? tv->info.dim[c] : mod[c + 1] * tv->info.dim[c];
 		mod_inc[c] = mod_inc[c + 1] * tvinc[c];
 		count *= tv->info.dim[c];
 	}
-	for (c = 0; c < axis_count - 3; c++)
+	for (c = 0; c < nd - 3; c++)
 		mod_inc[c] = mod_inc[c + 1] * (tvinc[c] - tv->info.dim[c]);
 	uint8_t* tvd = tv->data.u8;
-	const size_t tvinc_21 = data_size * tvinc[axis_count - 2] * tvinc[axis_count - 1];
-	const size_t tvinc_1 = data_size * tvinc[axis_count - 1];
-	const size_t tvdim_1 = data_size * tv->info.dim[axis_count - 1];
+	const size_t tvinc_21 = data_size * tvinc[nd - 2] * tvinc[nd - 1];
+	const size_t tvinc_1 = data_size * tvinc[nd - 1];
+	const size_t tvdim_1 = data_size * tv->info.dim[nd - 1];
 	for (c = 0; c < count; c++)
 	{
-		for (y = 0; y < ccv_max(1, tv->info.dim[axis_count - 3]); y++)
+		for (y = 0; y < ccv_max(1, tv->info.dim[nd - 3]); y++)
 		{
 			uint8_t* tvp = tvd + y * tvinc_21;
-			for (x = 0; x < ccv_max(1, tv->info.dim[axis_count - 2]); x++)
+			for (x = 0; x < ccv_max(1, tv->info.dim[nd - 2]); x++)
 			{
 				memset(tvp, 0, tvdim_1);
 				tvp += tvinc_1;
 			}
 		}
-		tvd += mod_inc[axis_count - 3];
-		for (y = axis_count - 4; y >= 0; y--)
+		tvd += mod_inc[nd - 3];
+		for (y = nd - 4; y >= 0; y--)
 			if ((c + 1) % mod[y] != 0)
 				break; // cannot be mod, break out.
 			else

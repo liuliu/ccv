@@ -26,12 +26,12 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(!CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	const int a_axis_count = ccv_nnc_axis_count(a->info.dim);
-	assert(a_axis_count == CCV_NNC_MAX_DIM + 1 || a_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* adim = (a_axis_count == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
-	const int b_axis_count = ccv_nnc_axis_count(b->info.dim);
-	assert(b_axis_count == CCV_NNC_MAX_DIM + 1 || b_axis_count == CCV_NNC_MAX_DIM + 2);
-	const int* bdim = (b_axis_count == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
+	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
+	const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
+	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+	assert(b_nd == CCV_NNC_MAX_DIM + 1 || b_nd == CCV_NNC_MAX_DIM + 2);
+	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
 	assert(w->info.dim[CCV_NNC_MAX_DIM + 1] == adim[CCV_NNC_MAX_DIM]);
 	assert(bdim[CCV_NNC_MAX_DIM] == cmd.info.convolution.count);
 	int i;
