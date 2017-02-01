@@ -40,11 +40,12 @@ static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, co
 {
 	int i;
 	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 0 : 1;
-	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
+	const int nd = ccv_nnc_tensor_nd(a.dim);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? nd - (CCV_NNC_MAX_DIM + 1) : 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
-		b->dim[i] = (a.dim[i] + hint.border.begin[i] + hint.border.end[i] - cmd.size.dim[i]) / stride + 1;
+		b->dim[i + hw] = (a.dim[i + hw] + hint.border.begin[i] + hint.border.end[i] - cmd.size.dim[i]) / stride + 1;
 	}
 }
 
@@ -52,11 +53,12 @@ static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, c
 {
 	int i;
 	assert(a.format == b->format);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? 0 : 1;
-	for (i = hw; i < CCV_NNC_MAX_DIM + hw; i++)
+	const int nd = ccv_nnc_tensor_nd(a.dim);
+	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC) ? nd - (CCV_NNC_MAX_DIM + 1) : 1;
+	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
-		b->dim[i] = (a.dim[i] - 1) * stride - hint.border.begin[i] - hint.border.end[i] + cmd.size.dim[i];
+		b->dim[i + hw] = (a.dim[i + hw] - 1) * stride - hint.border.begin[i] - hint.border.end[i] + cmd.size.dim[i];
 	}
 }
 

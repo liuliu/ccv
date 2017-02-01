@@ -91,6 +91,15 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 
+static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int i;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
+		if (dim[i] == 0)
+			return i;
+	return CCV_NNC_MAX_DIM_ALLOC;
+}
+
 /**
  * Level-0 API
  */

@@ -91,14 +91,18 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
+	void* workmem = 0;
+	cudaMalloc(&workmem, max_workspace_size);
+	if (!workmem)
+		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[1]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 	int count = 0;
 	cudnnConvolutionFwdAlgoPerf_t perfs[CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionForwardAlgorithm(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs));
+	assert_cudnn(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
+	cudaFree(workmem);
 	int i;
 	cudnnConvolutionFwdAlgo_t algorithm;
 	for(i = 0; i < count; i++)
@@ -109,7 +113,6 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_filter_descriptor(w);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	switch (algorithm)
@@ -258,6 +261,10 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
+	void* workmem = 0;
+	cudaMalloc(&workmem, max_workspace_size);
+	if (!workmem)
+		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
@@ -266,7 +273,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 	int count = 0;
 	cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs));
+	assert_cudnn(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
 	int i;
 	cudnnConvolutionBwdFilterAlgo_t filter_algorithm;
 	for(i = 0; i < count; i++)
@@ -276,7 +283,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			break;
 		}
 	cudnnConvolutionBwdDataAlgoPerf_t data_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionBackwardDataAlgorithm(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs));
+	assert_cudnn(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
 	cudnnConvolutionBwdDataAlgo_t data_algorithm;
 	for(i = 0; i < count; i++)
 		if ((size_t)data_perfs[i].memory <= max_workspace_size && data_perfs[i].status == CUDNN_STATUS_SUCCESS)
@@ -284,6 +291,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			data_algorithm = data_perfs[i].algo;
 			break;
 		}
+	cudaFree(workmem);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_filter_descriptor(w);

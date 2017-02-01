@@ -160,8 +160,9 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				dim[0] = dim[2] = dim[3] = 1;
 				dim[1] = tensor->info.dim[0];
 				stride[0] = inc[0];
-				for (i = 1; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
+				stride[1] = 1;
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = inc[0];
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
@@ -193,8 +194,9 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				dim[0] = dim[2] = dim[3] = 1;
 				dim[1] = tensor->info.dim[0];
 				stride[0] = inc[0];
-				for (i = 1; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
+				stride[1] = 1;
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = inc[0];
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;

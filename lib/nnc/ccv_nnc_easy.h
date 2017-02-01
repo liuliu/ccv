@@ -75,15 +75,6 @@ static inline size_t ccv_nnc_dimension_count(const int dim[CCV_NNC_MAX_DIM_ALLOC
 	return count;
 }
 
-static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
-{
-	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC; i++)
-		if (dim[i] == 0)
-			return i;
-	return CCV_NNC_MAX_DIM_ALLOC;
-}
-
 static inline size_t ccv_nnc_tensor_count(const ccv_nnc_tensor_param_t params)
 {
 	return ccv_nnc_dimension_count(params.dim);
