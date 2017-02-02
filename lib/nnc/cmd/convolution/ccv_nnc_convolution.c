@@ -28,10 +28,10 @@ static void _ccv_nnc_conv_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	// Get the channel output from the weight matrix.
-	int count = ccv_nnc_tensor_get_n(inputs[1]);
+	const int count = ccv_nnc_tensor_get_n(inputs[1]);
 	assert(count == cmd.convolution.count);
 	assert(count == inputs[2].dim[0]); // from the bias matrix.
-	ccv_nnc_tensor_set_c(outputs, count);
+	ccv_nnc_tensor_set_c(outputs, ccv_nnc_tensor_nd(inputs[0].dim), count);
 	ccv_nnc_hint_tensor_forward(cmd, inputs[0], hint, outputs);
 }
 

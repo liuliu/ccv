@@ -27,9 +27,9 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	outputs[0].dim[1] = inputs[0].dim[1]; // batch size.
-	outputs[0].dim[0] = inputs[1].dim[1]; // from the weight matrix.
-	assert(inputs[1].dim[1] == cmd.blas.count);
-	assert(inputs[1].dim[1] == inputs[2].dim[0]); // from the bias matrix.
+	outputs[0].dim[0] = inputs[1].dim[0]; // from the weight matrix.
+	assert(inputs[1].dim[0] == cmd.blas.count);
+	assert(inputs[1].dim[0] == inputs[2].dim[0]); // from the bias matrix.
 }
 
 REGISTER_COMMAND(CCV_NNC_GEMM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

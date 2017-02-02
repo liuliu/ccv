@@ -29,28 +29,28 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			if (layer->type == CCV_CONVNET_FULL_CONNECT)
 				tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(rows * cols * partition), 0);
 			else
-				tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR((layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->input.matrix.channels), cols, rows), 0);
+				tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(rows, cols, (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->input.matrix.channels)), 0);
 			ccv_array_push(tensors, &tensor);
 		}
 		ccv_nnc_graph_exec_t exec = {0};
 		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
 		{
-			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows, layer->net.convolutional.count), 0);
+			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels), 0);
 			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
 			ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->net.convolutional.count), 0);
 			memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
-			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(layer->net.convolutional.count, layer->net.convolutional.channels, layer->net.convolutional.cols, layer->net.convolutional.rows);
+			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
 			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, input->info, tensor->info);
 			cmd = ccv_nnc_cmd_autotune(cmd, 0, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
 			exec = ccv_nnc_graph_exec_new(vgg, cmd, hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->input.matrix.channels, layer->net.pool.size, layer->net.pool.size), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->net.pool.size, layer->net.pool.size, layer->input.matrix.channels), 0);
 			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, input->info, tensor->info);
 			exec = ccv_nnc_graph_exec_new(vgg, cmd, hint, TENSOR_LIST(input), TENSOR_LIST(tensor));
 		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
-			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->input.node.count, layer->net.full_connect.count), 0);
+			ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->net.full_connect.count, layer->input.node.count), 0);
 			memcpy(w->data.f32, layer->w, layer->wnum * sizeof(float));
 			ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(layer->net.full_connect.count), 0);
 			memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));

@@ -23,9 +23,8 @@ static void _ccv_nnc_pool_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
-	// Get channels from the original input.
-	int count = ccv_nnc_tensor_get_c(inputs[0]);
-	ccv_nnc_tensor_set_c(outputs, count);
+	// Copy channels / batch size from the original input for now.
+	memcpy(outputs[0].dim, inputs[0].dim, sizeof(inputs[0].dim));
 	ccv_nnc_hint_tensor_forward(cmd, inputs[0], hint, outputs);
 }
 
@@ -35,9 +34,8 @@ static void _ccv_nnc_pool_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].type = inputs[0].type;
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
-	// Get channels from the original input.
-	int count = ccv_nnc_tensor_get_c(inputs[0]);
-	ccv_nnc_tensor_set_c(outputs, count);
+	// Copy channels / batch size from the original input for now.
+	memcpy(outputs[0].dim, inputs[0].dim, sizeof(inputs[0].dim));
 	ccv_nnc_hint_tensor_backward(cmd, inputs[0], hint, outputs);
 }
 
