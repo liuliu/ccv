@@ -85,6 +85,43 @@ static inline size_t ccv_nnc_tensor_data_size(const ccv_nnc_tensor_param_t param
 	return (CCV_GET_DATA_TYPE_SIZE(params.datatype) * (ssize_t)ccv_nnc_tensor_count(params) + 15) & -16;
 }
 
+static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	for (x = 0; x < offset; x++)
+		dim[x] = 1;
+	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
+		dim[x] = tv->info.dim[x - offset];
+}
+
+static inline void ccv_nnc_tensor_view_check_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	for (x = 0; x < offset; x++)
+	{
+		assert(dim[x] == 1);
+	}
+	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
+	{
+		assert(dim[x] == tv->info.dim[x - offset]);
+	}
+}
+
+static inline void ccv_nnc_tensor_view_get_inc(const ccv_nnc_tensor_view_t* const tv, int inc[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	for (x = 0; x < offset; x++)
+		inc[x] = 1;
+	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
+		inc[x] = CCV_IS_TENSOR_VIEW(tv) ? tv->inc[x - offset] : tv->info.dim[x - offset];
+}
+
 static inline int ccv_nnc_tensor_get_n(const ccv_nnc_tensor_param_t params)
 {
 	switch (params.format)

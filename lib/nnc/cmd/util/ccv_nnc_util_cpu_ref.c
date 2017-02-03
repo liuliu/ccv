@@ -17,7 +17,6 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 	int dim[CCV_NNC_MAX_DIM + 2];
 	int ainc[CCV_NNC_MAX_DIM + 2];
 	int binc[CCV_NNC_MAX_DIM + 2];
-	int x;
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
@@ -26,31 +25,17 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 		memcpy(b->data.f32, a->data.f32, ccv_nnc_tensor_count(a->info) * sizeof(float));
 		return;
 	}
-	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
-	for (x = 0; x < a_offset; x++)
-		dim[x] = ainc[x] = 1;
-	for (x = a_offset; x < CCV_NNC_MAX_DIM + 2; x++)
-	{
-		dim[x] = a->info.dim[x - a_offset];
-		ainc[x] = CCV_IS_TENSOR_VIEW(a) ? a->inc[x - a_offset] : a->info.dim[x - a_offset];
-	}
-	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
-	for (x = 0; x < b_offset; x++)
-		binc[x] = 1;
-	for (x = b_offset; x < CCV_NNC_MAX_DIM + 2; x++)
-	{
-		assert(dim[x] == b->info.dim[x - b_offset]);
-		binc[x] = CCV_IS_TENSOR_VIEW(b) ? b->inc[x - b_offset] : b->info.dim[x - b_offset];
-	}
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	ccv_nnc_tensor_view_check_dim(b, dim);
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
 	int i[CCV_NNC_MAX_DIM + 2];
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;
 	if (ainc[3] == dim[3] && binc[3] == dim[3])
 	{
-		// Special casing if the ainc[0] is the same as dim[0] (do memcpy for the last two dim)
+		// Special casing if the ainc[3] is the same as dim[3] (do memcpy for the last two dim)
 		for (i[0] = 0; i[0] < dim[0]; i[0]++)
 		{
 			for (i[1] = 0; i[1] < dim[1]; i[1]++)
@@ -89,8 +74,6 @@ void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b)
 	int dim[CCV_NNC_MAX_DIM + 2];
 	int ainc[CCV_NNC_MAX_DIM + 2];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
@@ -101,19 +84,14 @@ void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b)
 		return;
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-	for (x = 0; x < a_offset; x++)
-		dim[x] = ainc[x] = 1;
-	for (x = a_offset; x < CCV_NNC_MAX_DIM + 2; x++)
-	{
-		dim[x] = a->info.dim[x - a_offset];
-		ainc[x] = CCV_IS_TENSOR_VIEW(a) ? a->inc[x - a_offset] : a->info.dim[x - a_offset];
-	}
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	ccv_nnc_tensor_view_get_inc(a, ainc);
 	int i[CCV_NNC_MAX_DIM + 2];
 	float* ap = a->data.f32;
 	const int count = dim[2] * dim[3];
 	if (ainc[3] == dim[3])
 	{
-		// Special casing if the ainc[0] is the same as dim[0]
+		// Special casing if the ainc[3] is the same as dim[3]
 		for (i[0] = 0; i[0] < dim[0]; i[0]++)
 		{
 			for (i[1] = 0; i[1] < dim[1]; i[1]++)
@@ -220,14 +198,8 @@ static void _ccv_nnc_tensor_nhwc_nchw(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	assert(a_offset == 0 || a_offset == 1);
 	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
 	assert(b_offset == 0 || b_offset == 1);
-	for (k = 0; k < a_offset; k++)
-		ainc[k] = 1;
-	for (k = a_offset; k < CCV_NNC_MAX_DIM + 2; k++)
-		ainc[k] = CCV_IS_TENSOR_VIEW(a) ? a->inc[k - a_offset] : a->info.dim[k - a_offset];
-	for (k = 0; k < b_offset; k++)
-		binc[k] = 1;
-	for (k = b_offset; k < CCV_NNC_MAX_DIM + 2; k++)
-		binc[k] = CCV_IS_TENSOR_VIEW(b) ? b->inc[k - b_offset] : b->info.dim[k - b_offset];
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
 	// Comparing N
 	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
 	const int n = (a_offset == 0 ? a->info.dim[0] : 1);
@@ -280,14 +252,8 @@ static void _ccv_nnc_tensor_nchw_nhwc(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	assert(a_offset == 0 || a_offset == 1);
 	const int b_offset = CCV_NNC_MAX_DIM + 2 - b_nd;
 	assert(b_offset == 0 || b_offset == 1);
-	for (k = 0; k < a_offset; k++)
-		ainc[k] = 1;
-	for (k = a_offset; k < CCV_NNC_MAX_DIM + 2; k++)
-		ainc[k] = CCV_IS_TENSOR_VIEW(a) ? a->inc[k - a_offset] : a->info.dim[k - a_offset];
-	for (k = 0; k < b_offset; k++)
-		binc[k] = 1;
-	for (k = b_offset; k < CCV_NNC_MAX_DIM + 2; k++)
-		binc[k] = CCV_IS_TENSOR_VIEW(b) ? b->inc[k - b_offset] : b->info.dim[k - b_offset];
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
 	// Comparing N
 	assert((a_offset == 0 ? a->info.dim[0] : 1) == (b_offset == 0 ? b->info.dim[0] : 1));
 	const int n = (a_offset == 0 ? a->info.dim[0] : 1);

@@ -36,14 +36,9 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		const float p = cmd.info.blas.a[0];
+		ccv_nnc_tensor_view_get_dim(a, dim);
+		ccv_nnc_tensor_view_check_dim(b, dim);
 		int x;
-		for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
-		{
-			assert(ccv_max(1, a->info.dim[x]) == ccv_max(1, b->info.dim[x]));
-			dim[x] = ccv_max(1, a->info.dim[x]);
-			ainc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(a) ? a->inc[x] : a->info.dim[x]);
-			binc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(b) ? b->inc[x] : b->info.dim[x]);
-		}
 		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
 		{
 			// Super optimal case, just do one for-loop for sum.
@@ -53,44 +48,46 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+		ccv_nnc_tensor_view_get_inc(a, ainc);
+		ccv_nnc_tensor_view_get_inc(b, binc);
 		int i[CCV_NNC_MAX_DIM + 2];
 		float* ap = a->data.f32;
 		float* bp = b->data.f32;
-		const int count = dim[1] * dim[0];
-		if (ainc[0] == dim[0] && binc[0] == dim[0])
+		const int count = dim[2] * dim[3];
+		if (ainc[3] == dim[3] && binc[3] == dim[3])
 		{
-			// Special casing if the ainc[0] is the same as dim[0]
-			for (i[3] = 0; i[3] < dim[3]; i[3]++)
+			// Special casing if the ainc[3] is the same as dim[3]
+			for (i[0] = 0; i[0] < dim[0]; i[0]++)
 			{
-				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				for (i[1] = 0; i[1] < dim[1]; i[1]++)
 				{
 					for (x = 0; x < count; x++)
 						bp[x] = p * ap[x];
-					ap += ainc[1] * ainc[0];
-					bp += binc[1] * binc[0];
+					ap += ainc[2] * ainc[3];
+					bp += binc[2] * binc[3];
 				}
-				ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
-				bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+				ap += (ainc[1] - dim[1]) * ainc[2] * ainc[3];
+				bp += (binc[1] - dim[1]) * binc[2] * binc[3];
 			}
 			return CCV_NNC_EXEC_SUCCESS;
 		}
 		// Non-optimal case, need to do skip copy.
-		for (i[3] = 0; i[3] < dim[3]; i[3]++)
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
 		{
-			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
 			{
-				for (i[1] = 0; i[1] < dim[1]; i[1]++)
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
 				{
-					for (x = 0; x < dim[0]; x++)
+					for (x = 0; x < dim[3]; x++)
 						bp[x] = p * ap[x];
-					ap += ainc[0];
-					bp += binc[0];
+					ap += ainc[3];
+					bp += binc[3];
 				}
-				ap += (ainc[1] - dim[1]) * ainc[0];
-				bp += (binc[1] - dim[1]) * binc[0];
+				ap += (ainc[2] - dim[2]) * ainc[3];
+				bp += (binc[2] - dim[2]) * binc[3];
 			}
-			ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
-			bp += (binc[2] - dim[2]) * binc[1] * binc[0];
+			ap += (ainc[1] - dim[1]) * ainc[2] * ainc[3];
+			bp += (binc[1] - dim[1]) * binc[2] * binc[3];
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
@@ -122,16 +119,10 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	const float p = cmd.info.blas.a[0];
 	const float q = cmd.info.blas.a[1];
+	ccv_nnc_tensor_view_get_dim(a, dim);
+	ccv_nnc_tensor_view_check_dim(b, dim);
+	ccv_nnc_tensor_view_check_dim(c, dim);
 	int x;
-	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
-	{
-		assert(ccv_max(1, a->info.dim[x]) == ccv_max(1, b->info.dim[x]));
-		assert(ccv_max(1, b->info.dim[x]) == ccv_max(1, c->info.dim[x]));
-		dim[x] = ccv_max(1, a->info.dim[x]);
-		ainc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(a) ? a->inc[x] : a->info.dim[x]);
-		binc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(b) ? b->inc[x] : b->info.dim[x]);
-		cinc[x] = ccv_max(1, CCV_IS_TENSOR_VIEW(c) ? c->inc[x] : c->info.dim[x]);
-	}
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
 	{
 		// Super optimal case, just do one for-loop for sum.
@@ -141,50 +132,53 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
+	ccv_nnc_tensor_view_get_inc(c, cinc);
 	int i[CCV_NNC_MAX_DIM + 2];
 	float* ap = a->data.f32;
 	float* bp = b->data.f32;
 	float* cp = c->data.f32;
-	const int count = dim[1] * dim[0];
-	if (ainc[0] == dim[0] && binc[0] == dim[0] && cinc[0] == dim[0])
+	const int count = dim[2] * dim[3];
+	if (ainc[3] == dim[3] && binc[3] == dim[3] && cinc[3] == dim[3])
 	{
-		// Special casing if the ainc[0] is the same as dim[0]
-		for (i[3] = 0; i[3] < dim[3]; i[3]++)
+		// Special casing if the ainc[3] is the same as dim[3]
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
 		{
-			for (i[2] = 0; i[2] < dim[2]; i[2]++)
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
 			{
 				for (x = 0; x < count; x++)
 					cp[x] = p * ap[x] + q * bp[x];
-				ap += ainc[1] * ainc[0];
-				bp += binc[1] * binc[0];
-				cp += cinc[1] * cinc[0];
+				ap += ainc[2] * ainc[3];
+				bp += binc[2] * binc[3];
+				cp += cinc[2] * cinc[3];
 			}
-			ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
-			bp += (binc[2] - dim[2]) * binc[1] * binc[0];
-			cp += (cinc[2] - dim[2]) * cinc[1] * cinc[0];
+			ap += (ainc[1] - dim[1]) * ainc[2] * ainc[3];
+			bp += (binc[1] - dim[1]) * binc[2] * binc[3];
+			cp += (cinc[1] - dim[1]) * cinc[2] * cinc[3];
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	// Non-optimal case, need to do skip copy.
-	for (i[3] = 0; i[3] < dim[3]; i[3]++)
+	for (i[0] = 0; i[0] < dim[0]; i[0]++)
 	{
-		for (i[2] = 0; i[2] < dim[2]; i[2]++)
+		for (i[1] = 0; i[1] < dim[1]; i[1]++)
 		{
-			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				for (x = 0; x < dim[0]; x++)
+				for (x = 0; x < dim[3]; x++)
 					cp[x] = p * ap[x] + q * bp[x];
-				ap += ainc[0];
-				bp += binc[0];
-				cp += cinc[0];
+				ap += ainc[3];
+				bp += binc[3];
+				cp += cinc[3];
 			}
-			ap += (ainc[1] - dim[1]) * ainc[0];
-			bp += (binc[1] - dim[1]) * binc[0];
-			cp += (cinc[1] - dim[1]) * cinc[0];
+			ap += (ainc[2] - dim[2]) * ainc[3];
+			bp += (binc[2] - dim[2]) * binc[3];
+			cp += (cinc[2] - dim[2]) * cinc[3];
 		}
-		ap += (ainc[2] - dim[2]) * ainc[1] * ainc[0];
-		bp += (binc[2] - dim[2]) * binc[1] * binc[0];
-		cp += (cinc[2] - dim[2]) * cinc[1] * cinc[0];
+		ap += (ainc[1] - dim[1]) * ainc[2] * ainc[3];
+		bp += (binc[1] - dim[1]) * binc[2] * binc[3];
+		cp += (cinc[1] - dim[1]) * cinc[2] * cinc[3];
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
