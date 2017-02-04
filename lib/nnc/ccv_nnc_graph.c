@@ -26,10 +26,10 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 	{
 		int i;
 		for (i = 0; i < input_size && !info.backed; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
+			if (inputs[i] && CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
 				info.backed = 1;
 		for (i = 0; i < output_size && !info.backed; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
+			if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
 				info.backed = 1;
 		if (info.backed)
 		{
