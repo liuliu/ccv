@@ -18,9 +18,12 @@ typedef struct {
 	ccv_nnc_tensor_t** inputs;
 	ccv_nnc_tensor_t** outputs;
 	ccv_array_t* outgoings; // outgoing nodes
-	int graph_ref; // Reference to the sub-graph. Starts at 1.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
+	int graph_ref; // Reference to the sub-graph. Starts at 1.
+	int backed; // Use backed inputs / outputs (thus, the inputs and outputs may contain multiview tensor).
+	ccv_nnc_tensor_t** backed_inputs;
+	ccv_nnc_tensor_t** backed_outputs;
 } ccv_nnc_graph_exec_info_t;
 
 struct ccv_nnc_graph_s {
