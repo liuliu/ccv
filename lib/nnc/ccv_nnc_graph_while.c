@@ -49,7 +49,48 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 	return while_exec;
 }
 
-static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const graph_exec, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+static void _ccv_nnc_graph_exec_unwrap_inputs_outputs(const ccv_nnc_graph_exec_info_t* const graph_exec, const uint64_t count, ccv_nnc_tensor_t*** inputs, ccv_nnc_tensor_t*** outputs)
+{
+	assert(inputs);
+	assert(outputs);
+	if (graph_exec->wrapped)
+	{
+		*inputs = graph_exec->unwrapped_inputs;
+		*outputs = graph_exec->unwrapped_outputs;
+		int i;
+		for (i = 0; i < graph_exec->input_size; i++)
+			if (CCV_IS_TENSOR_MULTIVIEW(graph_exec->inputs[i]))
+			{
+				ccv_nnc_tensor_multiview_t* tmv = (ccv_nnc_tensor_multiview_t*)graph_exec->inputs[i];
+				const int ver = count >= tmv->versions ? (count - (tmv->versions - tmv->repeats)) % tmv->repeats + (tmv->versions - tmv->repeats) : count;
+				// Update the data pointer to the latest version.
+				if (CCV_IS_TENSOR_MULTIVIEW(tmv->tv))
+					// If it points to a multiview again, change that multiview's data ptr to this newer version.
+					((ccv_nnc_tensor_multiview_t*)(tmv->tv))->data = tmv->data[ver].ptr;
+				else
+					tmv->tv->data = tmv->data[ver];
+			} else
+				graph_exec->unwrapped_inputs[i] = graph_exec->inputs[i];
+		for (i = 0; i < graph_exec->output_size; i++)
+			if (CCV_IS_TENSOR_MULTIVIEW(graph_exec->outputs[i]))
+			{
+				ccv_nnc_tensor_multiview_t* tmv = (ccv_nnc_tensor_multiview_t*)graph_exec->outputs[i];
+				const int ver = count >= tmv->versions ? (count - (tmv->versions - tmv->repeats)) % tmv->repeats + (tmv->versions - tmv->repeats) : count;
+				// Update the data pointer to the latest version.
+				if (CCV_IS_TENSOR_MULTIVIEW(tmv->tv))
+					// If it points to a multiview again, change that multiview's data ptr to this newer version.
+					((ccv_nnc_tensor_multiview_t*)(tmv->tv))->data = tmv->data[ver].ptr;
+				else
+					tmv->tv->data = tmv->data[ver];
+			} else
+				graph_exec->unwrapped_outputs[i] = graph_exec->outputs[i];
+		return;
+	}
+	*inputs = graph_exec->inputs;
+	*outputs = graph_exec->outputs;
+}
+
+static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	assert(tensor_tape == 0); // Cannot handle tensor tape yet.
 	int i, j;
@@ -59,27 +100,27 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, const cc
 	for (i = 0; i < destination_size; i++)
 		if (destinations[i].graph != graph)
 			return CCV_NNC_EXEC_INVALID;
-#define visitor(node, ...) \
-	do { \
-		if (node->backed) \
-		{ \
-		} \
-		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
-		{ \
-			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
-			_ccv_nnc_graph_while_run(sub_graph, node, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
-		} else \
-			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
-		if (node->backed) /* Restore the inputs / outputs value */ \
-		{ \
-			node->inputs = node->backed_inputs - (node->input_size + node->output_size); \
-			node->outputs = node->backed_outputs - (node->input_size + node->output_size); \
-		} \
-	} while (0)
 	if (graph->while_func)
 	{
+#define visitor(node, ...) \
+		do { \
+			ccv_nnc_tensor_t** unwrapped_inputs; \
+			ccv_nnc_tensor_t** unwrapped_outputs; \
+			/* Do the unwrap at this point. Note that unwrapping will use the current count to
+			 * compute a data pointer, and will change the underlying tensor's data pointer, that
+			 * means you cannot pass that tensor along while updating the count in a while loop.
+			 * This is OK because every time we update the count, we made sure that we reached the
+			 * end of the destinations, therefore, no ops are currently in progress to use these
+			 * tensors. */ \
+			_ccv_nnc_graph_exec_unwrap_inputs_outputs(node, count, &unwrapped_inputs, &unwrapped_outputs); \
+			if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
+			{ \
+				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
+				_ccv_nnc_graph_while_run(sub_graph, unwrapped_inputs, node->input_size, unwrapped_outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
+			} else \
+				ccv_nnc_cmd_exec(node->cmd, node->hint, flags, unwrapped_inputs, node->input_size, unwrapped_outputs, node->output_size, 0); \
+		} while (0)
 		// This is a while loop.
-		assert(graph_exec);
 		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->conditional_size, 0);
 		for (i = 0; i < graph->conditional_size; i++)
 		{
@@ -101,20 +142,30 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, const cc
 		{
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->conditionals, graph->conditional_size, visitor);
 			// Reached conditionals, now check the conditional, if not met, break out.
-			if (!graph->while_func(special_tensors, 1, graph_exec->inputs, graph_exec->input_size, graph_exec->outputs, graph_exec->output_size, graph->while_data))
+			if (!graph->while_func(special_tensors, 1, inputs, input_size, outputs, output_size, graph->while_data))
 				break;
 			if (follows->rnum > 0)
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(follows, 0), follows->rnum, destinations, destination_size, visitor);
 		}
 		ccv_array_free(follows);
-	} else {
-		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
-	}
 #undef visitor
+	} else {
+#define visitor(node, ...) \
+		do { \
+			if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
+			{ \
+				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
+				_ccv_nnc_graph_while_run(sub_graph, node->inputs, node->input_size, node->outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
+			} else \
+				ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
+		} while (0)
+		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
 int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
-	return _ccv_nnc_graph_while_run(graph, 0, tensor_tape, flags, sources, source_size, destinations, destination_size);
+	return _ccv_nnc_graph_while_run(graph, 0, 0, 0, 0, tensor_tape, flags, sources, source_size, destinations, destination_size);
 }

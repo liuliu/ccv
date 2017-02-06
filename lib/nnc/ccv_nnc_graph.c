@@ -25,18 +25,18 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 	if (input_size > 0 || output_size > 0)
 	{
 		int i;
-		for (i = 0; i < input_size && !info.backed; i++)
+		for (i = 0; i < input_size && !info.wrapped; i++)
 			if (inputs[i] && CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
-				info.backed = 1;
-		for (i = 0; i < output_size && !info.backed; i++)
+				info.wrapped = 1;
+		for (i = 0; i < output_size && !info.wrapped; i++)
 			if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
-				info.backed = 1;
-		if (info.backed)
+				info.wrapped = 1;
+		if (info.wrapped)
 		{
 			info.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * 2);
 			info.outputs = info.inputs + input_size;
-			info.backed_inputs = info.outputs + output_size;
-			info.backed_outputs = info.backed_inputs + input_size;
+			info.unwrapped_inputs = info.outputs + output_size;
+			info.unwrapped_outputs = info.unwrapped_inputs + input_size;
 		} else {
 			info.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
 			info.outputs = info.inputs + input_size;
