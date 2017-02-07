@@ -69,6 +69,7 @@ static void _ccv_nnc_graph_exec_unwrap_inputs_outputs(const ccv_nnc_graph_exec_i
 					((ccv_nnc_tensor_multiview_t*)(tmv->tv))->data = tmv->data[ver].ptr;
 				else
 					tmv->tv->data = tmv->data[ver];
+				graph_exec->unwrapped_inputs[i] = tmv->tv;
 			} else
 				graph_exec->unwrapped_inputs[i] = graph_exec->inputs[i];
 		for (i = 0; i < graph_exec->output_size; i++)
@@ -82,6 +83,7 @@ static void _ccv_nnc_graph_exec_unwrap_inputs_outputs(const ccv_nnc_graph_exec_i
 					((ccv_nnc_tensor_multiview_t*)(tmv->tv))->data = tmv->data[ver].ptr;
 				else
 					tmv->tv->data = tmv->data[ver];
+				graph_exec->unwrapped_outputs[i] = tmv->tv;
 			} else
 				graph_exec->unwrapped_outputs[i] = graph_exec->outputs[i];
 		return;
