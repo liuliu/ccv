@@ -807,11 +807,56 @@ static ccv_nnc_symbolic_graph_pre_compile_t* _ccv_nnc_symbolic_graph_pre_compile
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in.
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
-	if (symbolic_graph->sub_graphs)
-		for (i = 0; i < symbolic_graph->sub_graphs->rnum; i++)
-		{
-			// TODO: Don't need to do this until graph supports while loop.
-		}
+#define visitor(node, idx, ...) \
+	do { \
+		if (node->graph_ref) \
+		{ \
+			ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, node->graph_ref - 1); \
+			const ccv_nnc_symbolic_graph_pre_compile_t* const pre_compile = _ccv_nnc_symbolic_graph_pre_compile_new(while_graph, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->sources, 0), while_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->destinations, 0), while_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum); \
+			const ccv_nnc_tensor_arena_pre_alloc_t* const pre_alloc = pre_compile->pre_alloc; \
+			const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = pre_compile->tensor_symbol_info; \
+			int* buffer_assigned = (int*)cccalloc(pre_alloc->buffer_size, sizeof(int)); \
+			for (i = 0; i < pre_alloc->block_size; i++) \
+			{ \
+				const int block_ref = pre_alloc->blocks[i].block_ref; \
+				const int buffer_ref = pre_alloc->blocks[i].buffer_ref; \
+				if (block_ref < while_graph->tensor_symbol_info->rnum) \
+				{ \
+					if (tensor_symbol_info[block_ref].p_ref) \
+					{ \
+						const int p_ref = tensor_symbol_info[block_ref].p_ref - 1; \
+						/* Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
+						tensor_blocks[p_ref].size = ccv_max(pre_alloc->buffers[buffer_ref], tensor_blocks[p_ref].size); \
+						/* We are good, mark this buffer as assigned out. */ \
+						buffer_assigned[buffer_ref] = 1; \
+					} \
+				} \
+			} \
+			int unassigned_buffer_size = 0; \
+			for (i = 0; i < pre_alloc->buffer_size; i++) \
+				if (!buffer_assigned[i]) \
+					++unassigned_buffer_size; \
+			if (unassigned_buffer_size) \
+			{ \
+				/* Anonymous block, allocate additional tensor blocks for this. */ \
+				/* This is either because this is an internal tensor (don't have p_ref) */ \
+				/* or it is an anonymous block itself within the sub graphs of this while graph. */ \
+				tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + unassigned_buffer_size)); \
+				memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * unassigned_buffer_size); \
+				for (i = 0; i < pre_alloc->buffer_size; i++) \
+					if (!buffer_assigned[i]) \
+					{ \
+						tensor_blocks[tensor_block_size].size = pre_alloc->buffers[i]; \
+						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
+						tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
+						/* ref and flags are both 0. */ \
+					} \
+			} \
+			ccfree(buffer_assigned); \
+		} \
+	} while (0)
+	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
 
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.

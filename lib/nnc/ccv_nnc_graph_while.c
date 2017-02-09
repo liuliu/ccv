@@ -18,7 +18,7 @@ ccv_nnc_tensor_multiview_t ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, 
 	return tensor_multiview;
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_t* const conditionals, const int conditional_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_graph_while_f while_func, const void* const while_data)
+ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_t* const cond_evals, const int cond_eval_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_graph_while_f while_func, const void* const while_data)
 {
 	assert(cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD);
 	ccv_nnc_graph_exec_t while_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(cmd, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, inputs, input_size, outputs, output_size);
@@ -27,9 +27,9 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_graph_t*), 1, 0);
 	while_graph->while_data = while_data;
 	while_graph->while_func = while_func;
-	assert(conditional_size > 0);
-	while_graph->conditional_size = conditional_size;
-	while_graph->conditionals = (ccv_nnc_graph_exec_t*)((while_graph->conditionals) ? ccrealloc(while_graph->conditionals, sizeof(ccv_nnc_graph_exec_t) * conditional_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * conditional_size));
+	assert(cond_eval_size > 0);
+	while_graph->cond_eval_size = cond_eval_size;
+	while_graph->cond_evals = (ccv_nnc_graph_exec_t*)((while_graph->cond_evals) ? ccrealloc(while_graph->cond_evals, sizeof(ccv_nnc_graph_exec_t) * cond_eval_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * cond_eval_size));
 	if (!while_graph->sources)
 		while_graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), source_size, 0);
 	else
@@ -43,7 +43,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 		ccv_array_clear(while_graph->destinations);
 	for (i = 0; i < destination_size; i++)
 		ccv_array_push(while_graph->destinations, destinations + i);
-	memcpy(while_graph->conditionals, conditionals, sizeof(ccv_nnc_graph_exec_t) * conditional_size);
+	memcpy(while_graph->cond_evals, cond_evals, sizeof(ccv_nnc_graph_exec_t) * cond_eval_size);
 	ccv_array_push(graph->sub_graphs, &while_graph);
 	while_exec_info->graph_ref = graph->sub_graphs->rnum;
 	return while_exec;
@@ -123,10 +123,10 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 				ccv_nnc_cmd_exec(node->cmd, node->hint, flags, unwrapped_inputs, node->input_size, unwrapped_outputs, node->output_size, 0); \
 		} while (0)
 		// This is a while loop.
-		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->conditional_size, 0);
-		for (i = 0; i < graph->conditional_size; i++)
+		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->cond_eval_size, 0);
+		for (i = 0; i < graph->cond_eval_size; i++)
 		{
-			const ccv_nnc_graph_exec_info_t* const exec_info = (const ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, graph->conditionals->d);
+			const ccv_nnc_graph_exec_info_t* const exec_info = (const ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, graph->cond_evals->d);
 			if (exec_info->outgoings)
 				for (j = 0; j < exec_info->outgoings->rnum; j++)
 				{
@@ -142,8 +142,8 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
 		for (;; ++count)
 		{
-			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->conditionals, graph->conditional_size, visitor);
-			// Reached conditionals, now check the conditional, if not met, break out.
+			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->cond_evals, graph->cond_eval_size, visitor);
+			// Reached cond_evals, now check the cond_eval, if not met, break out.
 			if (!graph->while_func(special_tensors, 1, inputs, input_size, outputs, output_size, graph->while_data))
 				break;
 			if (follows->rnum > 0)
