@@ -68,8 +68,9 @@ struct ccv_nnc_symbolic_graph_s {
 struct ccv_nnc_tensor_arena_s {
 	int memory_type;
 	int device_id;
+	intptr_t graph_ref; // A value contains the pointer name of the graph.
 	int sub_arena_size;
-	struct ccv_nnc_tensor_arena_s* sub_arenas;
+	struct ccv_nnc_tensor_arena_s* sub_arenas; // Corresponding to sub graphs.
 	// This is a table of tensor references to real allocated tensors.
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
@@ -102,7 +103,7 @@ inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const
 	ccv_array_push(ints, &outgoing);
 }
 
-void ccv_nnc_symbolic_graph_symbol_organize(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
+void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
 
 #endif
 
