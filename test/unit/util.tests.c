@@ -43,6 +43,20 @@ TEST_CASE("dynamic array")
 	ccv_array_free(array);
 }
 
+TEST_CASE("array resize")
+{
+	ccv_array_t* array = ccv_array_new(4, 2, 0);
+	int i;
+	i = 1;
+	ccv_array_push(array, &i);
+	ccv_array_resize(array, 4);
+	REQUIRE_EQ(4, array->rnum, "should have 4 elements in array");
+	REQUIRE_EQ(1, ((int*)ccv_array_get(array, 0))[0], "check element values in array");
+	for (i = 1; i < array->rnum; i++)
+		REQUIRE_EQ(0, ((int*)ccv_array_get(array, i))[0], "check element values in array");
+	ccv_array_free(array);
+}
+
 int is_equal(const void* r1, const void* r2, void* data)
 {
 	int a = *(int*)r1;

@@ -614,12 +614,14 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_are
 	return graph_exec_arena->destination;
 }
 
-typedef struct {
+typedef struct ccv_nnc_symbolic_graph_prep_s {
 	int tensor_block_size;
 	ccv_nnc_tensor_block_t* tensor_blocks;
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep;
+	int sub_prep_size;
+	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
 } ccv_nnc_symbolic_graph_prep_t;
 
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
@@ -807,6 +809,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
 
+	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in.
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
@@ -816,7 +819,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 		if (node->graph_ref) \
 		{ \
 			ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, node->graph_ref - 1); \
-			const ccv_nnc_symbolic_graph_prep_t* const prep = _ccv_nnc_symbolic_graph_prep_new(while_graph, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->sources, 0), while_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->destinations, 0), while_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum); \
+			ccv_nnc_symbolic_graph_prep_t* const prep = _ccv_nnc_symbolic_graph_prep_new(while_graph, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->sources, 0), while_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->destinations, 0), while_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum); \
+			sub_preps[node->graph_ref - 1] = prep; \
 			const ccv_nnc_tensor_alloc_prep_t* const alloc_prep = prep->alloc_prep; \
 			const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = prep->tensor_symbol_info; \
 			if (!buffer_assigned) \
@@ -879,6 +883,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
 	ccv_matrix_free(exec_dep);
+	prep->sub_prep_size = symbolic_graph->sub_graphs ? symbolic_graph->sub_graphs->rnum : 0;
+	prep->sub_preps = sub_preps;
 	prep->exec_symbol_info = exec_symbol_info;
 	prep->tensor_symbol_info = tensor_symbol_info;
 	prep->tensor_blocks = tensor_blocks;
@@ -897,6 +903,11 @@ static void _ccv_nnc_symbolic_graph_prep_free(ccv_nnc_symbolic_graph_prep_t* pre
 		if (prep->tensor_blocks[i].tail)
 			ccv_array_free(prep->tensor_blocks[i].tail);
 	}
+	for (i = 0; i < prep->sub_prep_size; i++)
+		if (prep->sub_preps[i])
+			_ccv_nnc_symbolic_graph_prep_free(prep->sub_preps[i]);
+	if (prep->sub_preps)
+		ccfree(prep->sub_preps);
 	ccfree(prep->tensor_blocks);
 	ccfree(prep->tensor_symbol_info);
 	ccfree(prep->exec_symbol_info);

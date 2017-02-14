@@ -38,7 +38,7 @@ struct ccv_nnc_graph_s {
 	// for ccv_array_t, we can continue to modify what's inside.
 	int cond_eval_size;
 	ccv_nnc_graph_exec_t* cond_evals;
-	ccv_nnc_graph_while_f while_func;
+	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// End of while loop handling.
 };

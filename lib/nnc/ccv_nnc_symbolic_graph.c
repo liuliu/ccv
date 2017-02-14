@@ -126,9 +126,15 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 	}
 	int i;
 	for (i = 0; i < input_size; i++)
+	{
+		assert(inputs[i].graph == graph);
 		symbol_info.inputs[i] = inputs[i].d;
+	}
 	for (i = 0; i < output_size; i++)
+	{
+		assert(outputs[i].graph == graph);
 		symbol_info.outputs[i] = outputs[i].d;
+	}
 	ccv_array_push(graph->exec_symbol_info, &symbol_info);
 	return symbol;
 }

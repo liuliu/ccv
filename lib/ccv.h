@@ -927,6 +927,12 @@ void ccv_make_array_mutable(ccv_array_t* array);
  */
 void ccv_array_zero(ccv_array_t* array);
 /**
+ * Resize the array, it will change the array->rnum and zero init the rest.
+ * @param array The array.
+ * @param rnum The expanded size of the array.
+ */
+void ccv_array_resize(ccv_array_t* array, int rnum);
+/**
  * Clear the array, it will reset the array->rnum to 0.
  * @param array The array.
  */

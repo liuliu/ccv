@@ -16,6 +16,7 @@ typedef struct {
 	// Start for while loop handling
 	int assign_ref; // Reference to the tensor that the value will be copied from (for parameter passing). Starts at 1.
 	int p_ref; // Reference to the tensor number in its parent graph. Starts at 1.
+	ccv_array_t* s_ref; // Reference to the tensor number in its sub graphs, Starts at 1.
 	// End of while loop handling.
 	int alias_ref; // Reference to the tensor. Starts at 1.
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
@@ -48,12 +49,13 @@ struct ccv_nnc_symbolic_graph_s {
 	// Start for while loop handling
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
 	struct ccv_nnc_symbolic_graph_s* p; // The parent graph (if current one is a sub-graph).
+	int p_idx; // Reference to the index in its parent graph, Starts at 1.
 	// Why some of these I choose to be flat int* array, some of these I choose to be ccv_array_t?
 	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
 	int cond_eval_size;
 	ccv_nnc_graph_exec_symbol_t* cond_evals;
-	ccv_nnc_graph_while_f while_func;
+	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// Map between parent / sub-graph's tensor symbols.
 	// End of while loop handling.
