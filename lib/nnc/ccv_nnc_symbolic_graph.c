@@ -227,7 +227,7 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	return 0;
 }
 
-int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* execs, const int exec_size)
+int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size)
 {
 	int i, j, x, y;
 	for (i = 0; i < exec_size; i++)
@@ -236,13 +236,15 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 		assert(execs[i].d >= 0);
 		assert(execs[i].d < graph->exec_symbol_info->rnum);
 	}
-	for (i = 0; i < exec_size; i++)
+	assert((execs && exec_size) || (!execs && !exec_size));
+	const int exec_total_size = exec_size ?: graph->exec_symbol_info->rnum;
+	for (i = 0; i < exec_total_size; i++)
 	{
-		int a_idx = execs[i].d;
+		int a_idx = execs ? execs[i].d : i;
 		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
-		for (j = i + 1; j < exec_size;j++)
+		for (j = i + 1; j < exec_total_size; j++)
 		{
-			int b_idx = execs[j].d;
+			int b_idx = execs ? execs[j].d : j;
 			// Skip if they are the same.
 			if (a_idx == b_idx)
 				continue;
@@ -267,7 +269,20 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 				}
 			}
 			if (b_to_a)
-				ccv_nnc_graph_exec_symbol_concat(graph, execs[j], execs[i]);
+			{
+				if (execs)
+					ccv_nnc_graph_exec_symbol_concat(graph, execs[j], execs[i]);
+				else
+					ccv_nnc_graph_exec_symbol_concat(graph,
+						(ccv_nnc_graph_exec_symbol_t) {
+							.d = j,
+							.graph = graph
+						}, (ccv_nnc_graph_exec_symbol_t) {
+							.d = i,
+							.graph = graph
+						}
+					);
+			}
 			int a_to_b = 0;
 			for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
 			{
@@ -288,10 +303,108 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 				}
 			}
 			if (a_to_b)
-				ccv_nnc_graph_exec_symbol_concat(graph, execs[i], execs[j]);
+			{
+				if (execs)
+					ccv_nnc_graph_exec_symbol_concat(graph, execs[i], execs[j]);
+				else
+					ccv_nnc_graph_exec_symbol_concat(graph,
+						(ccv_nnc_graph_exec_symbol_t) {
+							.d = i,
+							.graph = graph
+						}, (ccv_nnc_graph_exec_symbol_t) {
+							.d = j,
+							.graph = graph
+						}
+					);
+			}
 		}
 	}
+	// If there is no inputs, loop over to find sources / destinations too.
+	if (!execs && !exec_size)
+	{
+		int* flags = (int*)cccalloc(sizeof(int), graph->exec_symbol_info->rnum);
+		for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		{
+			ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+			if (symbol_info->outgoings && symbol_info->outgoings->rnum)
+			{
+				flags[i] |= 2;
+				for (j = 0; j < symbol_info->outgoings->rnum; j++)
+					flags[*(int*)ccv_array_get(symbol_info->outgoings, j)] |= 1;
+			}
+		}
+		if (!graph->sources)
+			graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+		else
+			ccv_array_clear(graph->sources);
+		if (!graph->destinations)
+			graph->destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+		else
+			ccv_array_clear(graph->destinations);
+		for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		{
+			if (flags[i] == 3)
+				continue;
+			ccv_nnc_graph_exec_symbol_t exec = {
+				.d = i,
+				.graph = graph,
+			};
+			if (!(flags[i] & 1))
+				ccv_array_push(graph->sources, &exec);
+			if (!(flags[i] & 2))
+				ccv_array_push(graph->destinations, &exec);
+		}
+		ccfree(flags);
+	}
 	return 0;
+}
+
+ccv_nnc_graph_exec_symbol_t* ccv_nnc_symbolic_graph_sources(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->sources ? (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->sources, 0) : 0;
+}
+
+void ccv_nnc_symbolic_graph_set_sources(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size)
+{
+	if (!graph->sources)
+		graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+	else
+		ccv_array_clear(graph->sources);
+	int i;
+	for (i = 0; i < source_size; i++)
+	{
+		assert(sources[i].graph == graph);
+		ccv_array_push(graph->sources, sources + i);
+	}
+}
+
+int ccv_nnc_symbolic_graph_source_size(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->sources ? graph->sources->rnum : 0;
+}
+
+ccv_nnc_graph_exec_symbol_t* ccv_nnc_symbolic_graph_destinations(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->destinations ? (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->destinations, 0) : 0;
+}
+
+void ccv_nnc_symbolic_graph_set_destinations(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+{
+	if (!graph->destinations)
+		graph->destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+	else
+		ccv_array_clear(graph->destinations);
+	int i;
+	for (i = 0; i < destination_size; i++)
+	{
+		assert(destinations[i].graph == graph);
+		ccv_array_push(graph->destinations, destinations + i);
+	}
+}
+
+int ccv_nnc_symbolic_graph_destination_size(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->destinations ? graph->destinations->rnum : 0;
 }
 
 static void _ccv_nnc_symbolic_graph_dot_exec_symbol(const int index, const ccv_nnc_graph_exec_symbol_info_t* const symbol_info, const int flags, FILE* out)
