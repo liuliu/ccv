@@ -423,6 +423,14 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 	const int exec_total_size = exec_size ?: graph->exec_symbol_info->rnum;
 	for (i = 0; i < exec_total_size; i++)
 	{
+		int idx = execs ? execs[i].d : i;
+		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, idx);
+		// Autogen for sub-graphs.
+		if (symbol_info->graph_ref)
+			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1), 0, 0);
+	}
+	for (i = 0; i < exec_total_size; i++)
+	{
 		int a_idx = execs ? execs[i].d : i;
 		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
 		for (j = i + 1; j < exec_total_size; j++)
