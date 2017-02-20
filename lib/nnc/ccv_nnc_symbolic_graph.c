@@ -100,6 +100,189 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve_alias(const ccv_nnc_symbol
 	return symbol;
 }
 
+// This method generate tensor symbols and their links along the way when traverse the graph.
+enum {
+	MAP_TENSOR_USE_AS_INPUT,
+	MAP_TENSOR_USE_AS_OUTPUT,
+};
+
+static void _ccv_nnc_graph_exec_add_input_if_needed(ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int d)
+{
+	int i;
+	for (i = 0; i < exec_symbol_info->input_size; i++)
+		if (exec_symbol_info->inputs[i] == d)
+			return; // No need to continue, this symbol already exists as input.
+	// Expand the array.
+	if (!exec_symbol_info->input_size && !exec_symbol_info->output_size)
+	{
+		exec_symbol_info->inputs = (int*)ccmalloc(sizeof(int));
+		exec_symbol_info->inputs[0] = d;
+		exec_symbol_info->input_size = 1;
+		exec_symbol_info->outputs = exec_symbol_info->inputs + 1;
+		return;
+	}
+	exec_symbol_info->inputs = (int*)ccrealloc(exec_symbol_info->inputs, sizeof(int) * (exec_symbol_info->input_size + 1 + exec_symbol_info->output_size));
+	if (exec_symbol_info->output_size)
+		memmove(exec_symbol_info->outputs + 1, exec_symbol_info->outputs, sizeof(int) * exec_symbol_info->output_size); 
+	exec_symbol_info->inputs[exec_symbol_info->input_size] = d;
+	++exec_symbol_info->input_size;
+	exec_symbol_info->outputs = exec_symbol_info->inputs + exec_symbol_info->input_size;
+}
+
+static void _ccv_nnc_graph_exec_add_output_if_needed(ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const int d)
+{
+	int i;
+	for (i = 0; i < exec_symbol_info->output_size; i++)
+		if (exec_symbol_info->outputs[i] == d)
+			return; // No need to continue, this symbol already exists as output.
+	// Expand the array.
+	if (!exec_symbol_info->input_size && !exec_symbol_info->output_size)
+	{
+		exec_symbol_info->inputs = (int*)ccmalloc(sizeof(int));
+		exec_symbol_info->outputs = exec_symbol_info->inputs;
+		exec_symbol_info->outputs[0] = d;
+		exec_symbol_info->output_size = 1;
+		return;
+	}
+	exec_symbol_info->inputs = (int*)ccrealloc(exec_symbol_info->inputs, sizeof(int) * (exec_symbol_info->input_size + exec_symbol_info->output_size + 1));
+	exec_symbol_info->outputs[exec_symbol_info->output_size] = d;
+	++exec_symbol_info->output_size;
+}
+
+static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int map_use)
+{
+	assert(graph && symbol.graph);
+	assert(symbol.graph != graph);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(symbol.graph->tensor_symbol_info, symbol.d);
+	// Find if the symbol is in the sub-graph.
+	const ccv_nnc_symbolic_graph_t* curr_graph = symbol.graph;
+	assert(symbol.d >= 0 && symbol.d < curr_graph->tensor_symbol_info->rnum);
+	while (curr_graph && curr_graph != graph)
+		curr_graph = curr_graph->p;
+	if (curr_graph)
+	{
+		// The graph is a parent of the symbol passed in. For this case, if we are connecting this symbol to an exec as input,
+		// that means it must be an output in these sub-graphs. Otherwise, if we are connecting this symbol to an exec as output,
+		// it must be an input in these sub-graphs.
+		curr_graph = symbol.graph;
+		ccv_nnc_tensor_symbol_info_t* curr_symbol_info = symbol_info;
+		ccv_nnc_tensor_symbol_t curr_symbol = symbol;
+		while (curr_graph != graph)
+		{
+			ccv_nnc_symbolic_graph_t* const p = curr_graph->p;
+			// I need to find the symbol whether it exists or not before creating new one.
+			ccv_nnc_tensor_symbol_t new_symbol;
+			ccv_nnc_tensor_symbol_info_t* new_symbol_info;
+			if (!curr_symbol_info->p_ref)
+			{
+				new_symbol = ccv_nnc_tensor_symbol_new(p, curr_symbol_info->info, curr_symbol_info->name);
+				new_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(p->tensor_symbol_info, new_symbol.d);
+				curr_symbol_info->p_ref = new_symbol.d + 1;
+				new_symbol_info->s_ref = ccv_array_new(sizeof(int), p->sub_graphs->rnum, 0);
+				new_symbol_info->s_ref->rnum = p->sub_graphs->rnum;
+				ccv_array_zero(new_symbol_info->s_ref);
+				*(int*)ccv_array_get(new_symbol_info->s_ref, curr_graph->p_idx - 1) = curr_symbol.d + 1;
+			} else {
+				new_symbol.d = curr_symbol_info->p_ref - 1;
+				new_symbol.graph = p;
+				assert(new_symbol.d >= 0 && new_symbol.d < p->tensor_symbol_info->rnum);
+				new_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(p->tensor_symbol_info, new_symbol.d);
+			}
+			if (curr_graph->exec_idx)
+			{
+				// This is a sub-graph.
+				assert(p);
+				assert(curr_graph->exec_idx > 0 && curr_graph->exec_idx <= p->exec_symbol_info->rnum);
+				ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(p->exec_symbol_info, curr_graph->exec_idx - 1);
+				switch (map_use)
+				{
+					case MAP_TENSOR_USE_AS_INPUT:
+						_ccv_nnc_graph_exec_add_output_if_needed(exec_symbol_info, new_symbol.d);
+						break;
+					case MAP_TENSOR_USE_AS_OUTPUT:
+						_ccv_nnc_graph_exec_add_input_if_needed(exec_symbol_info, new_symbol.d);
+						break;
+				}
+			}
+			// Move on.
+			curr_symbol = new_symbol;
+			curr_symbol_info = new_symbol_info;
+			curr_graph = p;
+		}
+		return curr_symbol.d;
+	}
+	// Otherwise, if the symbol is in the parent graph, this is a bit more expensive because I need to keep a trace stack.
+	curr_graph = graph;
+	ccv_array_t* trace = ccv_array_new(sizeof(int), 0, 0);
+	while (curr_graph && curr_graph != symbol.graph)
+	{
+		const int p_idx = curr_graph->p_idx - 1;
+		ccv_array_push(trace, &p_idx);
+		curr_graph = curr_graph->p;
+	}
+	// If it is not in both the parent graph and the sub-graph, the input is invalid.
+	assert(curr_graph);
+	curr_graph = symbol.graph;
+	ccv_nnc_tensor_symbol_info_t* curr_symbol_info = symbol_info;
+	ccv_nnc_tensor_symbol_t curr_symbol = symbol;
+	// The graph is a sub graph of the symbol passed in. For this case, if we are connecting this symbol to an exec as input,
+	// that means it must be an input in these parent graphs. Otherwise, if we are connecting this symbol to an exec as output,
+	// it must be an output in these parent graphs.
+	int i;
+	for (i = trace->rnum - 1; i >= 0; i--)
+	{
+		const int p_idx = *(int*)ccv_array_get(trace, i);
+		assert(p_idx >= 0);
+		assert(curr_graph->sub_graphs);
+		if (!curr_symbol_info->s_ref)
+		{
+			curr_symbol_info->s_ref = ccv_array_new(sizeof(int), curr_graph->sub_graphs->rnum, 0);
+			curr_symbol_info->s_ref->rnum = curr_graph->sub_graphs->rnum;
+			ccv_array_zero(curr_symbol_info->s_ref);
+		} else if (curr_symbol_info->s_ref->rnum != curr_graph->sub_graphs->rnum)
+			ccv_array_resize(curr_symbol_info->s_ref, curr_graph->sub_graphs->rnum);
+		assert(p_idx >= 0 && p_idx < curr_symbol_info->s_ref->rnum);
+		const int s_idx = *(int*)ccv_array_get(curr_symbol_info->s_ref, p_idx);
+		ccv_nnc_symbolic_graph_t* const s = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(curr_graph->sub_graphs, p_idx);
+		ccv_nnc_tensor_symbol_t new_symbol;
+		ccv_nnc_tensor_symbol_info_t* new_symbol_info;
+		// I need to find the symbol whether it exists or not before creating new one.
+		if (!s_idx)
+		{
+			new_symbol = ccv_nnc_tensor_symbol_new(s, symbol_info->info, symbol_info->name);
+			new_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(s->tensor_symbol_info, new_symbol.d);
+			new_symbol_info->p_ref = curr_symbol.d + 1;
+			*(int*)ccv_array_get(curr_symbol_info->s_ref, p_idx) = new_symbol.d + 1;
+		} else {
+			new_symbol.d = s_idx - 1;
+			new_symbol.graph = s;
+			assert(new_symbol.d >= 0 && new_symbol.d < s->tensor_symbol_info->rnum);
+			new_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(s->tensor_symbol_info, new_symbol.d);
+		}
+		if (curr_graph->exec_idx)
+		{
+			assert(curr_graph->p); // This is a sub-graph.
+			assert(curr_graph->exec_idx > 0 && curr_graph->exec_idx <= s->exec_symbol_info->rnum);
+			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(s->exec_symbol_info, curr_graph->exec_idx - 1);
+			switch (map_use)
+			{
+				case MAP_TENSOR_USE_AS_INPUT:
+					_ccv_nnc_graph_exec_add_input_if_needed(exec_symbol_info, new_symbol.d);
+					break;
+				case MAP_TENSOR_USE_AS_OUTPUT:
+					_ccv_nnc_graph_exec_add_output_if_needed(exec_symbol_info, new_symbol.d);
+					break;
+			}
+		}
+		// Move on.
+		curr_symbol = new_symbol;
+		curr_symbol_info = new_symbol_info;
+		curr_graph = s;
+	}
+	ccv_array_free(trace);
+	return curr_symbol.d;
+}
+
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
 {
 	ccv_nnc_graph_exec_symbol_t symbol = {
@@ -127,13 +310,13 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 	int i;
 	for (i = 0; i < input_size; i++)
 	{
-		assert(inputs[i].graph == graph);
-		symbol_info.inputs[i] = inputs[i].d;
+		const int d = (inputs[i].graph != graph) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, inputs[i], MAP_TENSOR_USE_AS_INPUT) : inputs[i].d;
+		symbol_info.inputs[i] = d;
 	}
 	for (i = 0; i < output_size; i++)
 	{
-		assert(outputs[i].graph == graph);
-		symbol_info.outputs[i] = outputs[i].d;
+		const int d = (outputs[i].graph != graph) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, outputs[i], MAP_TENSOR_USE_AS_OUTPUT) : outputs[i].d;
+		symbol_info.outputs[i] = d;
 	}
 	ccv_array_push(graph->exec_symbol_info, &symbol_info);
 	return symbol;
@@ -695,13 +878,16 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		if (outgoings)
 			ccv_array_free(outgoings);
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
-		ccfree(symbol_info->inputs);
+		if (symbol_info->inputs)
+			ccfree(symbol_info->inputs);
 	}
 	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
 	{
 		ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
 		if (symbol_info->name)
 			ccfree(symbol_info->name);
+		if (symbol_info->s_ref)
+			ccv_array_free(symbol_info->s_ref);
 	}
 	if (graph->sub_graphs)
 	{

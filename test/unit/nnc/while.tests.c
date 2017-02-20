@@ -66,7 +66,6 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 
 TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 {
-	/*
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
@@ -77,7 +76,7 @@ TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
 	ccv_nnc_graph_exec_symbol_t prod0 = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, z0), TENSOR_SYMBOL_LIST(z1), "prod0");
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, prod0);
-	ccv_nnc_tensor_symbol_t z2 = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "z2");
+	ccv_nnc_tensor_symbol_t z2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z2");
 	ccv_nnc_graph_exec_symbol_t prod1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(z1, y), TENSOR_SYMBOL_LIST(z2), "prod1");
 	ccv_nnc_graph_exec_symbol_concat(symbolic_graph, for1_5, prod1);
 	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_5, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
@@ -86,7 +85,6 @@ TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 	ccv_nnc_symbolic_graph_dot(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH, fw);
 	fclose(fw);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
-	*/
 }
 
 #include "case_main.h"

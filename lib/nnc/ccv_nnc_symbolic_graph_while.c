@@ -11,27 +11,7 @@
  * Level-4 API
  */
 
-void _ccv_nnc_while_graph_map_tensor_symbol(const ccv_array_t* const tensor_symbol_info, int idx, ccv_nnc_symbolic_graph_t* const while_graph, ccv_nnc_tensor_symbol_t* const tensor_symbol_map)
-{
-	const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, idx);
-	ccv_nnc_tensor_symbol_t tensor_symbol;
-	if (tensor_info->alias_ref)
-	{
-		if (tensor_symbol_map[tensor_info->alias_ref - 1].d == -1)
-		{
-			ccv_nnc_tensor_symbol_info_t* alias_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol_info, tensor_info->alias_ref - 1);
-			assert(alias_info->alias_ref == 0);
-			tensor_symbol_map[tensor_info->alias_ref - 1] = ccv_nnc_tensor_symbol_new(while_graph, alias_info->info, alias_info->name);
-		}
-		tensor_symbol = ccv_nnc_tensor_symbol_alias_new(while_graph, tensor_symbol_map[tensor_info->alias_ref - 1], tensor_info->ofs, tensor_info->inc, tensor_info->info, tensor_info->name);
-	} else
-		tensor_symbol = ccv_nnc_tensor_symbol_new(while_graph, tensor_info->info, tensor_info->name);
-	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, tensor_symbol.d);
-	symbol_info->p_ref = idx + 1;
-	tensor_symbol_map[idx]  = tensor_symbol;
-}
-
-ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_symbolic_graph_t* const while_graph, const char* const name)
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name)
 {
 	assert(while_graph->p == 0);
 	assert(while_graph->p_idx == 0);
@@ -47,6 +27,9 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	// In this way, we can get the while graph and don't have to worry about it will be an invalid pointer once
 	// the array expands (another while graph allocated).
 	symbol_info->graph_ref = graph->sub_graphs->rnum;
+	while_graph->p_idx = graph->sub_graphs->rnum;
+	while_graph->exec_idx = symbol.d + 1;
+	while_graph->p = graph;
 	return symbol;
 }
 

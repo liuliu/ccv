@@ -49,7 +49,8 @@ struct ccv_nnc_symbolic_graph_s {
 	// Start for while loop handling
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
 	struct ccv_nnc_symbolic_graph_s* p; // The parent graph (if current one is a sub-graph).
-	int p_idx; // Reference to the index in its parent graph, Starts at 1.
+	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
+	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
 	// Why some of these I choose to be flat int* array, some of these I choose to be ccv_array_t?
 	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.

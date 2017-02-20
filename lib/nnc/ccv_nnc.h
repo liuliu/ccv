@@ -416,7 +416,7 @@ int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t
 // for the symbolic graph has to be parameterized.
 
 // Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations will be moved from the giving graph to the sub-graph.
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
 // Set the expression to be evaluated, and at which nodes to be evaluated.
 void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const cond_evals, const int cond_eval_size);
 
