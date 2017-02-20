@@ -73,7 +73,7 @@ struct ccv_nnc_tensor_arena_s {
 	int device_id;
 	intptr_t graph_ref; // A value contains the pointer name of the graph.
 	int sub_arena_size;
-	struct ccv_nnc_tensor_arena_s* sub_arenas; // Corresponding to sub graphs.
+	struct ccv_nnc_tensor_arena_s** sub_arenas; // Corresponding to sub graphs.
 	// This is a table of tensor references to real allocated tensors.
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;

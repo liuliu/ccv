@@ -10,7 +10,6 @@
 typedef struct {
 	int flag;
 	int ref; // Reference to another tensor block. Start with 1.
-	int buffer_ref; // Reference to a particular buffer. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	ccv_array_t* head; // The head nodes (it could be multiple if from the graph, one cannot determine which is the first).
@@ -61,7 +60,10 @@ typedef struct {
 	int buffer_size;
 	int vt_block_size;
 	int* vt_blocks; // A reference to the block, because blocks only contains available block (thus, doesn't consider alias etc.). -1 means no block pointed to. Starts at 0.
-	uint64_t* buffers; // The buffer size for each buffer allocated.
+	struct {
+		int p_ref; // Reference to the upper level block, Starts at 1.
+		uint64_t size; // The size of the buffer allocated.
+	}* buffers;
 	int block_size;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
@@ -69,6 +71,19 @@ typedef struct {
 		uint64_t offset; // The offset of this block.
 	}* blocks;
 } ccv_nnc_tensor_alloc_prep_t;
+
+typedef struct ccv_nnc_symbolic_graph_prep_s {
+	intptr_t graph_ref;
+	int tensor_block_size;
+	ccv_nnc_tensor_block_t* tensor_blocks;
+	int tensor_symbol_info_size;
+	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
+	int exec_symbol_info_size;
+	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
+	ccv_nnc_tensor_alloc_prep_t* alloc_prep;
+	int sub_prep_size;
+	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
+} ccv_nnc_symbolic_graph_prep_t;
 
 static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
 {
@@ -363,15 +378,19 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 #undef for_block
 	ccv_matrix_free(alloc);
 	ccfree(oc);
-	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(int) * tensor_block_size + sizeof(uint64_t) * num_assigned + sizeof(alloc_prep->blocks[0]) * available_tensor_size);
+	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(int) * tensor_block_size + sizeof(alloc_prep->buffers[0]) * num_assigned + sizeof(alloc_prep->blocks[0]) * available_tensor_size);
 	alloc_prep->alloc_dep = alloc_dep;
 	alloc_prep->vt_block_size = tensor_block_size;
 	alloc_prep->vt_blocks = (int*)(alloc_prep + 1);
 	alloc_prep->buffer_size = num_assigned;
-	alloc_prep->buffers = (uint64_t*)(alloc_prep->vt_blocks + tensor_block_size);
+	alloc_prep->buffers = (void*)(alloc_prep->vt_blocks + tensor_block_size);
 	alloc_prep->block_size = available_tensor_size;
 	alloc_prep->blocks = (void*)(alloc_prep->buffers + num_assigned);
-	memcpy(alloc_prep->buffers, allocated_size, sizeof(uint64_t) * num_assigned);
+	for (i = 0; i < num_assigned; i++)
+	{
+		alloc_prep->buffers[i].p_ref = 0;
+		alloc_prep->buffers[i].size = allocated_size[i];
+	}
 	ccfree(allocated_size);
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
@@ -386,14 +405,15 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				assert(assigned[i] > 0);
 				alloc_prep->blocks[j].buffer_ref = assigned[i] - 1;
 				alloc_prep->blocks[j].offset = allocated_offset[i];
-				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[assigned[i] - 1]);
+				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[assigned[i] - 1].size);
 			} else {
 				alloc_prep->vt_blocks[i] = -1;
 				alloc_prep->blocks[j].buffer_ref = -1;
 				alloc_prep->blocks[j].offset = 0;
 			}
 			++j;
-		}
+		} else
+			alloc_prep->vt_blocks[i] = -1;
 	ccfree(allocated_offset);
 	ccfree(assigned);
 	return alloc_prep;
@@ -409,18 +429,24 @@ static void _ccv_nnc_tensor_alloc_prep_free(ccv_nnc_tensor_alloc_prep_t* alloc_p
 	ccfree(alloc_prep);
 }
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_alloc_prep_t* const alloc_prep, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int tensor_symbol_info_size)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_alloc_prep_t* const p_alloc_prep)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_view_t) * (alloc_prep->block_size - 1));
+	const ccv_nnc_tensor_alloc_prep_t* const alloc_prep = graph_prep->alloc_prep;
+	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;
+	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
+	const int tensor_symbol_info_size = graph_prep->tensor_symbol_info_size;
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_tensor_view_t) * (alloc_prep->block_size - 1));
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->tensors + alloc_prep->block_size);
 	tensor_arena->buffers = (void*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
+	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
+	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	int i, j;
 	for (i = 0; i < alloc_prep->buffer_size; i++)
-		tensor_arena->buffers[i].size = alloc_prep->buffers[i];
+		tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
 	int memory_type = CCV_TENSOR_GET_MEMORY(tensor_symbol_info[0].info.type);
 	int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_symbol_info[0].info.type);
 	for (i = 1; i < tensor_symbol_info_size; i++)
@@ -430,22 +456,41 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_al
 	}
 	tensor_arena->memory_type = memory_type;
 	tensor_arena->device_id = device_id;
-	// Now, allocate actual buffers.
-#ifdef HAVE_CUDA
-	if (memory_type == CCV_TENSOR_GPU_MEMORY)
+	assert((p_arena && p_alloc_prep) || (!p_arena && !p_alloc_prep));
+	if (p_arena && p_alloc_prep)
 	{
+		// Don't need to allocate the actual buffer, just use the pointer from the above.
 		for (i = 0; i < tensor_arena->buffer_size; i++)
-			tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
+		{
+			const int p_ref = alloc_prep->buffers[i].p_ref - 1;
+			assert(p_ref >= 0);
+			const int vt_ref = p_alloc_prep->vt_blocks[p_ref];
+			assert(vt_ref >= 0);
+			const int buffer_ref = p_alloc_prep->blocks[vt_ref].buffer_ref;
+			const int offset = p_alloc_prep->blocks[vt_ref].offset;
+			tensor_arena->buffers[i].ptr = p_arena->buffers[buffer_ref].ptr + offset;
+		}
 	} else {
+		// Now, allocate actual buffers.
+#ifdef HAVE_CUDA
+		if (memory_type == CCV_TENSOR_GPU_MEMORY)
+		{
+			for (i = 0; i < tensor_arena->buffer_size; i++)
+				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
+		} else {
+			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+			for (i = 0; i < tensor_arena->buffer_size; i++)
+				ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+		}
+#else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 			ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
-	}
-#else
-	assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-	for (i = 0; i < tensor_arena->buffer_size; i++)
-		ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 #endif
+	}
+	// Buffer has been allocated, I can go over sub_preps and allocate arenas for them.
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, alloc_prep);
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
@@ -503,6 +548,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_tensor_al
 				}
 				++j;
 			}
+		} else {
+			// In this case, there is no need to assign a tensor header, we simply keep a reference to the buffer for this block.
+			++j;
 		}
 	assert(j == alloc_prep->block_size);
 	for (i = 0; i < tensor_symbol_info_size; i++)
@@ -613,16 +661,6 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_are
 {
 	return graph_exec_arena->destination;
 }
-
-typedef struct ccv_nnc_symbolic_graph_prep_s {
-	int tensor_block_size;
-	ccv_nnc_tensor_block_t* tensor_blocks;
-	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
-	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
-	ccv_nnc_tensor_alloc_prep_t* alloc_prep;
-	int sub_prep_size;
-	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
-} ccv_nnc_symbolic_graph_prep_t;
 
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
 static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const p_exec_symbol_info, const int p_exec_symbol_info_size)
@@ -813,7 +851,6 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in.
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
-	int* buffer_assigned = 0;
 #define visitor(node, idx, ...) \
 	do { \
 		if (node->graph_ref) \
@@ -823,12 +860,6 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			sub_preps[node->graph_ref - 1] = prep; \
 			const ccv_nnc_tensor_alloc_prep_t* const alloc_prep = prep->alloc_prep; \
 			const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = prep->tensor_symbol_info; \
-			if (!buffer_assigned) \
-				buffer_assigned = (int*)cccalloc(alloc_prep->buffer_size, sizeof(int)); \
-			else { \
-				buffer_assigned = (int*)ccrealloc(buffer_assigned, sizeof(int) * alloc_prep->buffer_size); \
-				memset(buffer_assigned, 0, sizeof(int) * alloc_prep->buffer_size); \
-			} \
 			for (i = 0; i < alloc_prep->block_size; i++) \
 			{ \
 				const int block_ref = alloc_prep->blocks[i].block_ref; \
@@ -841,15 +872,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						/* Need to go through refs. Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
 						while (tensor_blocks[p_ref].ref) \
 							p_ref = tensor_blocks[p_ref].ref - 1; \
-						tensor_blocks[p_ref].size = ccv_max(alloc_prep->buffers[buffer_ref], tensor_blocks[p_ref].size); \
+						/* Cannot continue with a tensor block that is unassigned. */ \
+						if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref])) \
+							continue; \
+						tensor_blocks[p_ref].size = ccv_max(alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref].size); \
 						/* We are good, mark this buffer as assigned out. */ \
-						buffer_assigned[buffer_ref] = 1; \
+						alloc_prep->buffers[buffer_ref].p_ref = p_ref + 1; \
 					} \
 				} \
 			} \
 			int unassigned_buffer_size = 0; \
 			for (i = 0; i < alloc_prep->buffer_size; i++) \
-				if (!buffer_assigned[i]) \
+				if (!alloc_prep->buffers[i].p_ref) \
 					++unassigned_buffer_size; \
 			if (unassigned_buffer_size) \
 			{ \
@@ -859,15 +893,16 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + unassigned_buffer_size)); \
 				memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * unassigned_buffer_size); \
 				for (i = 0; i < alloc_prep->buffer_size; i++) \
-					if (!buffer_assigned[i]) \
+					if (!alloc_prep->buffers[i].p_ref) \
 					{ \
-						tensor_blocks[tensor_block_size].size = alloc_prep->buffers[i]; \
+						tensor_blocks[tensor_block_size].size = alloc_prep->buffers[i].size; \
+						alloc_prep->buffers[i].p_ref = tensor_block_size + 1; \
 						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref; \
-						tensor_blocks[tensor_block_size].buffer_ref = i + 1; \
 						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
 						ccv_array_push(tensor_blocks[tensor_block_size].head, &idx); \
 						tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
 						ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx); \
+						++tensor_block_size; \
 						/* ref and flags are both 0. */ \
 					} \
 			} \
@@ -875,17 +910,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
-	if (buffer_assigned)
-		ccfree(buffer_assigned);
 
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
 	ccv_matrix_free(exec_dep);
+	prep->graph_ref = (intptr_t)symbolic_graph;
 	prep->sub_prep_size = symbolic_graph->sub_graphs ? symbolic_graph->sub_graphs->rnum : 0;
 	prep->sub_preps = sub_preps;
+	prep->exec_symbol_info_size = symbolic_graph->exec_symbol_info->rnum;
 	prep->exec_symbol_info = exec_symbol_info;
+	prep->tensor_symbol_info_size = symbolic_graph->tensor_symbol_info->rnum;
 	prep->tensor_symbol_info = tensor_symbol_info;
 	prep->tensor_blocks = tensor_blocks;
 	prep->tensor_block_size = tensor_block_size;
@@ -921,7 +957,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	assert(tensor_arena_ref);
 	assert(graph_exec_arena_ref);
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep->alloc_prep, graph_prep->tensor_blocks, graph_prep->tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, 0);
 	int i, j, k;
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
@@ -1063,6 +1099,15 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	}
 }
 
+static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
+{
+	// Buffers are inherited from above, no need to dealloc.
+	int i;
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
+	ccfree(tensor_arena);
+}
+
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	int i;
@@ -1081,6 +1126,8 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 	for (i = 0; i < tensor_arena->buffer_size; i++)
 		ccfree(tensor_arena->buffers[i].ptr);
 #endif
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
 	ccfree(tensor_arena);
 }
 
