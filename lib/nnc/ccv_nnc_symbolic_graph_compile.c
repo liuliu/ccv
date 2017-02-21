@@ -873,9 +873,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						while (tensor_blocks[p_ref].ref) \
 							p_ref = tensor_blocks[p_ref].ref - 1; \
 						/* Cannot continue with a tensor block that is unassigned. */ \
-						if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref])) \
-							continue; \
-						tensor_blocks[p_ref].size = ccv_max(alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref].size); \
+						if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref])) \
+							tensor_blocks[p_ref].size = ccv_max(alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref].size); \
+						else { \
+							/* This tensor is not unassigned any more. */ \
+							tensor_blocks[p_ref].flag = 0; \
+							tensor_blocks[p_ref].size = alloc_prep->buffers[i].size; \
+							tensor_blocks[p_ref].graph_ref = node->graph_ref; \
+							tensor_blocks[p_ref].head = ccv_array_new(sizeof(int), 1, 0); \
+							ccv_array_push(tensor_blocks[p_ref].head, &idx); \
+							tensor_blocks[p_ref].tail = ccv_array_new(sizeof(int), 1, 0); \
+							ccv_array_push(tensor_blocks[p_ref].tail, &idx); \
+						} \
 						/* We are good, mark this buffer as assigned out. */ \
 						alloc_prep->buffers[buffer_ref].p_ref = p_ref + 1; \
 					} \
