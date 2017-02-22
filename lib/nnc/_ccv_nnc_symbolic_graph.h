@@ -88,10 +88,13 @@ struct ccv_nnc_tensor_arena_s {
 };
 
 struct ccv_nnc_graph_exec_arena_s {
-	int graph_exec_rnum;
+	intptr_t graph_ref; // A value contains the pointer name of the graph.
+	int sub_arena_size;
+	struct ccv_nnc_graph_exec_arena_s** sub_arenas; // Corresponding to sub graphs.
 	ccv_nnc_graph_exec_t source;
 	ccv_nnc_graph_exec_t destination;
-	ccv_nnc_graph_exec_t graph_exec[1];
+	int graph_exec_size;
+	ccv_nnc_graph_exec_t graph_execs[1];
 };
 
 inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const int outgoing)
