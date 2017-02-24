@@ -161,7 +161,6 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 		curr_graph = curr_graph->p;
 	if (curr_graph)
 	{
-	printf("this is the case for %d\n", symbol.d);
 		// The graph is a parent of the symbol passed in. For this case, if we are connecting this symbol to an exec as input,
 		// that means it must be an output in these sub-graphs. Otherwise, if we are connecting this symbol to an exec as output,
 		// it must be an input in these sub-graphs.
