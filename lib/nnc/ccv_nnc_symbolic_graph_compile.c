@@ -713,7 +713,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 #define visitor(node, idx, _, term) \
 	do { \
 		buf_size = 0; /* save all its parent deps to this buffer */ \
-		ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx); \
+		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx); \
 		if (vector) \
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block); \
 		if (!node->outgoings) \

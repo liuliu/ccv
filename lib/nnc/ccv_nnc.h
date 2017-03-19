@@ -46,6 +46,7 @@ typedef struct {
 			int count; /**< [convolution.count] The number of filters for convolutional layer. */
 		} convolution;
 		struct {
+			int reserved;
 		} pool;
 		struct {
 			float kappa; /**< [rnorm.kappa] As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */

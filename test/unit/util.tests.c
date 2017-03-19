@@ -114,7 +114,7 @@ TEST_CASE("sparse matrix basic insertion")
 			ccv_set_sparse_matrix_cell(mat, i, j, &k);
 			k++;
 		}
-	REQUIRE_EQ(1543, CCV_GET_SPARSE_PRIME(mat->prime), "sparse matrix column size should be the prime number 1543");
+	REQUIRE_EQ(1597, mat->size, "sparse matrix column size should be the prime number 1597");
 	for (n = 0; n < 100; n++)
 	{
 		k = 0;
@@ -277,7 +277,7 @@ TEST_CASE("loop over sparse matrix vector")
 		a->data.f32[x] = v;
 		ccv_set_sparse_matrix_cell(mat, 38, x, &v);
 	}
-	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
+	ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
 #define block(x, v) { b->data.f32[x] = ((float*)v)[0]; }
 	CCV_SPARSE_VECTOR_FOREACH(mat, vector, block);
 #undef block
@@ -306,7 +306,7 @@ TEST_CASE("loop over sparse matrix dense vector")
 		a->data.f32[x] = v;
 		ccv_set_sparse_matrix_cell(mat, 38, x, &v);
 	}
-	ccv_dense_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
+	ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(mat, 38);
 #define block(x, v) { b->data.f32[x] = ((float*)v)[0]; }
 	CCV_SPARSE_VECTOR_FOREACH(mat, vector, block);
 #undef block

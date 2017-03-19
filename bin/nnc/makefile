@@ -4,9 +4,9 @@ LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" $(CFLAGS)
 NVFLAGS := -O3 -I"../../lib" -lineinfo $(NVFLAGS)
 
-TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym hash
+TARGETS = nnc-e2e-verify nnc-e2e-sym-verify nnc-sym
 
-TARGET_SRCS := nnc-e2e-verify.c nnc-e2e-sym-verify.c nnc-sym.c hash.c # $(patsubst %,%.c,$(TARGETS))
+TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
 .PHONY: release all clean dep
 
@@ -27,9 +27,6 @@ libccv.a:
 
 %.o: %.c
 	$(CC) $< -o $@ -c $(CFLAGS)
-
-%.o: %.cc
-	clang++ $< -o $@ -c $(CFLAGS) -std=c++11
 
 .gitignore:
 	echo $(TARGETS) | tr ' ' '\n' > .gitignore

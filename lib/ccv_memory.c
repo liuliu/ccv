@@ -134,17 +134,12 @@ ccv_sparse_matrix_t* ccv_sparse_matrix_new(int rows, int cols, int type, int maj
 	mat->cols = cols;
 	mat->type = type | CCV_MATRIX_SPARSE | ((type & CCV_DENSE_VECTOR) ? CCV_DENSE_VECTOR : CCV_SPARSE_VECTOR);
 	mat->major = major;
-	mat->prime = 0;
-	mat->load_factor = 0;
+	mat->prime_index = 1; // See ccv_util.c to know why this is 1 and why size is 2.
+	mat->size = 2;
+	mat->rnum = 0;
 	mat->refcount = 1;
-	mat->vector = (ccv_dense_vector_t*)ccmalloc(CCV_GET_SPARSE_PRIME(mat->prime) * sizeof(ccv_dense_vector_t));
-	int i;
-	for (i = 0; i < CCV_GET_SPARSE_PRIME(mat->prime); i++)
-	{
-		mat->vector[i].index = -1;
-		mat->vector[i].length = 0;
-		mat->vector[i].next = 0;
-	}
+	mat->index = (ccv_sparse_matrix_index_t*)cccalloc(sizeof(ccv_sparse_matrix_index_t), mat->size);
+	mat->vector = (ccv_sparse_matrix_vector_t*)ccmalloc(sizeof(ccv_sparse_matrix_vector_t) * mat->size);
 	return mat;
 }
 
@@ -160,20 +155,9 @@ void ccv_matrix_free_immediately(ccv_matrix_t* mat)
 	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
 		int i;
-		for (i = 0; i < CCV_GET_SPARSE_PRIME(smt->prime); i++)
-			if (smt->vector[i].index != -1)
-			{
-				ccv_dense_vector_t* iter = &smt->vector[i];
-				ccfree(iter->data.u8);
-				iter = iter->next;
-				while (iter != 0)
-				{
-					ccv_dense_vector_t* iter_next = iter->next;
-					ccfree(iter->data.u8);
-					ccfree(iter);
-					iter = iter_next;
-				}
-			}
+		for (i = 0; i < smt->size; i++)
+			if (smt->index[i].ifbit)
+				ccfree(smt->vector[i].data.u8);
 		ccfree(smt->vector);
 		ccfree(smt);
 	} else if ((type & CCV_MATRIX_CSR) || (type & CCV_MATRIX_CSC)) {
@@ -208,20 +192,12 @@ void ccv_matrix_free(ccv_matrix_t* mat)
 	} else if (type & CCV_MATRIX_SPARSE) {
 		ccv_sparse_matrix_t* smt = (ccv_sparse_matrix_t*)mat;
 		int i;
-		for (i = 0; i < CCV_GET_SPARSE_PRIME(smt->prime); i++)
-			if (smt->vector[i].index != -1)
-			{
-				ccv_dense_vector_t* iter = &smt->vector[i];
-				ccfree(iter->data.u8);
-				iter = iter->next;
-				while (iter != 0)
-				{
-					ccv_dense_vector_t* iter_next = iter->next;
-					ccfree(iter->data.u8);
-					ccfree(iter);
-					iter = iter_next;
-				}
-			}
+		for (i = 0; i < smt->size; i++)
+		{
+			if (smt->index[i].ifbit > 1)
+				ccfree(smt->vector[i].index); // It is a union of index / data, can just free them.
+		}
+		ccfree(smt->index);
 		ccfree(smt->vector);
 		ccfree(smt);
 	} else if ((type & CCV_MATRIX_CSR) || (type & CCV_MATRIX_CSC)) {
