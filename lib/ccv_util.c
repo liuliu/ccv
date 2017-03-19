@@ -427,7 +427,7 @@ static void _ccv_init_sparse_matrix_vector(ccv_sparse_matrix_vector_t* vector, c
 	vector->index = (ccv_sparse_matrix_index_t*)cccalloc(sizeof(ccv_sparse_matrix_index_t) + cell_size_aligned, vector->size);
 }
 
-static inline void _ccv_add_fresh_sparse_matrix_vector(ccv_sparse_matrix_index_t* const index, ccv_sparse_matrix_vector_t* const vector, const ccv_sparse_matrix_t* const mat, uint32_t k, uint32_t idx, int i, const uint32_t size, const int prime_index)
+static inline void _ccv_move_sparse_matrix_vector(ccv_sparse_matrix_index_t* const index, ccv_sparse_matrix_vector_t* const vector, const ccv_sparse_matrix_t* const mat, uint32_t k, uint32_t idx, int i, const uint32_t size, const int prime_index)
 {
 	uint32_t old_i = index[idx].i;
 	index[idx].i = i;
@@ -508,7 +508,7 @@ static ccv_sparse_matrix_vector_t* _ccv_get_or_add_sparse_matrix_vector(ccv_spar
 				index[idx].i = i;
 				_ccv_init_sparse_matrix_vector(vector + idx, mat);
 			} else
-				_ccv_add_fresh_sparse_matrix_vector(index, vector, mat, j /* This is j not k because we are replacing it. */, idx, i, size, prime_index);
+				_ccv_move_sparse_matrix_vector(index, vector, mat, j /* This is j not k because we are replacing it. */, idx, i, size, prime_index);
 			return vector + idx;
 		}
 		if (index[idx].i == i)
@@ -531,7 +531,7 @@ static ccv_sparse_matrix_vector_t* _ccv_get_or_add_sparse_matrix_vector(ccv_spar
 				index[idx].i = i;
 				_ccv_init_sparse_matrix_vector(vector + idx, mat);
 			} else
-				_ccv_add_fresh_sparse_matrix_vector(index, vector, mat, j /* This is j not k because we are replacing it. */, idx, i, size, prime_index);
+				_ccv_move_sparse_matrix_vector(index, vector, mat, j /* This is j not k because we are replacing it. */, idx, i, size, prime_index);
 			return vector + idx;
 		}
 		if (index[idx].i == i)

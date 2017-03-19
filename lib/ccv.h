@@ -88,7 +88,7 @@ enum {
 typedef struct {
 	uint8_t ifbit;
 	uint32_t i;
-} __attribute__((__packed__)) ccv_sparse_matrix_index_t;
+} ccv_sparse_matrix_index_t;
 
 typedef struct {
 	int step;
