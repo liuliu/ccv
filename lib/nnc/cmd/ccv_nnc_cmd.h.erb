@@ -1,8 +1,9 @@
 enum {
-	CCV_NNC_CUSTOM = 0,
-	CCV_NNC_NOOP,
+	CCV_NNC_NOOP = 0,
+	CCV_NNC_CUSTOM_FORWARD = 2,
+	CCV_NNC_CUSTOM_BACKWARD,
 	CCV_NNC_GRAPH_FORWARD,
 	CCV_NNC_GRAPH_BACKWARD,
 	<%= commands.join ",\n\t" %>,
-	CCV_NNC_COUNT = <%= commands.count + 2 %>,
+	CCV_NNC_COUNT = <%= commands.count + 3 %>,
 };

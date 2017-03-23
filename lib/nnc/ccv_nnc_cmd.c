@@ -38,8 +38,10 @@ const char* ccv_nnc_cmd_name(const uint32_t cmd)
 	{
 		case CCV_NNC_NOOP:
 			return "CCV_NNC_NOOP";
-		case CCV_NNC_CUSTOM:
-			return "CCV_NNC_CUSTOM";
+		case CCV_NNC_CUSTOM_FORWARD:
+			return "CCV_NNC_CUSTOM_FORWARD";
+		case CCV_NNC_CUSTOM_BACKWARD:
+			return "CCV_NNC_CUSTOM_BACKWARD";
 		case CCV_NNC_GRAPH_FORWARD:
 			return "CCV_NNC_GRAPH_FORWARD";
 		case CCV_NNC_GRAPH_BACKWARD:
@@ -70,9 +72,10 @@ int ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd)
 {
 	switch (cmd.cmd)
 	{
-		case CCV_NNC_CUSTOM:
 		case CCV_NNC_NOOP:
 			return 0;
+		case CCV_NNC_CUSTOM_FORWARD:
+		case CCV_NNC_CUSTOM_BACKWARD:
 		case CCV_NNC_GRAPH_FORWARD:
 		case CCV_NNC_GRAPH_BACKWARD:
 		default:
@@ -84,9 +87,10 @@ int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd)
 {
 	switch (cmd.cmd)
 	{
-		case CCV_NNC_CUSTOM:
 		case CCV_NNC_NOOP:
 			return 0;
+		case CCV_NNC_CUSTOM_FORWARD:
+		case CCV_NNC_CUSTOM_BACKWARD:
 		case CCV_NNC_GRAPH_FORWARD:
 		case CCV_NNC_GRAPH_BACKWARD:
 		default:
@@ -100,7 +104,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const cc
 	cmd.info = params;
 	// Default to CPU ref implementation if the type is CPU memory, otherwise use GPU ref.
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
-	assert((_cmd == CCV_NNC_CUSTOM && exec) || (_cmd != CCV_NNC_CUSTOM && !exec));
+	assert((_cmd == CCV_NNC_CUSTOM_FORWARD && exec) || (_cmd != CCV_NNC_CUSTOM_FORWARD && !exec));
 	cmd.cmd = _cmd;
 	cmd.algorithm = -1; // This is default.
 	cmd.exec = exec;
@@ -215,7 +219,7 @@ uint64_t ccv_nnc_cmd_mono_time(void)
 ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// This is a custom cmd kernel, no need to autotune.
-	if (cmd.cmd == CCV_NNC_CUSTOM)
+	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD || cmd.cmd == CCV_NNC_NOOP)
 		return cmd;
 	int i, j, k;
 	// Go through all the backends that supports the same type of memory input / output tensors support.
@@ -294,7 +298,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bit
 	if (cmd.cmd == CCV_NNC_NOOP)
 		return 1;
 	// If it is a custom command, I cannot check it at all, return true.
-	if (cmd.cmd == CCV_NNC_CUSTOM)
+	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 		return 1;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
@@ -310,7 +314,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (cmd.cmd == CCV_NNC_NOOP)
 		return 0;
 	// If it is a custom command, just apply it directly.
-	if (cmd.cmd == CCV_NNC_CUSTOM)
+	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
@@ -363,7 +367,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 {
 	// If it is a custom command, just apply it directly.
-	assert(cmd.cmd != CCV_NNC_CUSTOM);
+	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx <sizeof(init_map) / sizeof(init_map[0]));
