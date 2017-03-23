@@ -65,7 +65,7 @@ When the actual computation is needed. A symbolic graph can be compiled to a **c
 
  3. Emit implicit commands for tensor initialization. Certain tensor symbols need to be initialized before use (zero init for now), which is impossible to know when until tensor allocation was taken place. This is one reason why there is no 1:1 mapping between **symbolic graph** and **computation graph**.
 
-All above steps are carried out recursively for its `while` type sub-graphs too.
+All above steps are carried out recursively for its *`while` type sub-graph* too.
 
 ## 4. Dynamic Graph
 
@@ -101,7 +101,18 @@ The specific implementation also means taking second order derivation is not pos
 
 ### `while` Type Sub-Graph
 
-The **`while` type sub-graph** is a specific type of a **symbolic graph** or a **computation graph**. This is special because it expresses a generic loop structure with custom evaluation function supplied.
+The *`while` type sub-graph* is a specific type of a **symbolic graph** or a **computation graph**. This is special because it expresses a generic loop structure with custom evaluation function supplied.
+
+The loop execution within a *`while` type sub-graph* looks like this:
+
+ 1. The sub-graph starts the execution from a set of source command instances;
+ 2. It proceeds either serially or in parallel until all evaluation command instances executed. The subsequent command instances are on hold;
+ 3. The evaluation function is called, and depends on the result, the execution within the sub-graph will either abort (break), or continue, until all the destination command instances executed and reached;
+ 4. Once all destination command instances executed and reached, we will start from step 1. again.
+
+For *`while` type symbolic sub-graph*, the obvious question would be how *SSA* rule plays out in the loop structure. We allow in the sub-graph to specify certain output tensor symbols map to the input tensor symbols in the loop, practically made these input tensor symbols parameters. The *compilation* step will handle this properly and allocate the input tensors at the same memory locations as the output tensors (there are `ccv_nnc_tensor_multiview_t` workaround if the condition cannot be satisfied).
+
+When doing *automatic differentiation*, a `ccv_nnc_tape_t` need to be provided for the *`while` type sub-graph* to record the outputs properly.
 
 ### Limits and Constraints
 
