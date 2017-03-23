@@ -3,9 +3,9 @@ NNC: Neural Network Collection
 
 ## What's NNC?
 
-NNC is the natural progression against `ccv_convnet`, which is a couple of years old now. It's monolithic, single path neural layer design didn't really feel right with more advanced network architectures.
+NNC is the natural progression against `ccv_convnet`, which is a couple of years old now. `ccv_convnet` is monolithic, single path neural layer design didn't really feel right with more advanced network architectures.
 
-NNC took some good ideas from more recent neural network frameworks and did a long re-think on how to achieve both efficiency and expressiveness. The design itself is layered. At the highest layer, you have ordinary neural network primitives that reflect real-world usage such as Inception module, LSTM, RNN et al. At lowest layer, depending on the infrastructure, it maps to allocated tensors on GPU, computations backed by CuDNN, and computation graphs driven with CUDA streams (or you can exchange that with CPU, Metal, and libdispatch). For the abstractions in between, there are trade-offs and constraints to accommodating both the library design and usage.
+NNC took some good ideas from more recent neural network frameworks and did a long re-think on how to achieve both efficiency and expressiveness. The design itself is layered. At the highest layer, you have ordinary neural network primitives that reflect real-world usage such as Inception module, LSTM, RNN et al. At the lowest layer, depending on the infrastructure, it maps to allocated tensors on GPU, computations backed by CuDNN, and computation graphs driven with CUDA streams (or you can exchange that with CPU, Metal, and libdispatch). For the abstractions in between, there are trade-offs and constraints to accommodating both the library design and usage.
 
 In a few sentences, here is how the layered design works.
 
@@ -17,15 +17,15 @@ There are roughly **5 layers** built on top of each other.
 
 Tensors are multi-dimensional arrays at its basic level.
 
-Commands are ops (operands) in other framework's terminology.
+Commands are ops (operations) in other framework's terminology.
 
 Streams are the synchronization mechanism. Each command instance executed serially on a given stream. Different command instances on different streams will be scheduled in parallel if the underlying infrastructure permits.
 
-A command is identified by its `cmd` identifier. It processes a set of input tensors, and write output to a set of output tensors. There is no limitations on how many input tensors it can accept or how many output tensors it can write to.
+A command is identified by its `cmd` identifier. It processes a set of input tensors, and write output to a set of output tensors. There is no limits on how many input tensors it can accept or how many output tensors it can write to.
 
 A command can only have one set of attributes (recognized by NNC) specified. These attributes (such as whether this can be an *inplace* operation) help on symbolic processes. If you find that you need to implement the same command but these attributes cannot be hold, you need to rename the command to avoid invalid symbolic processes.
 
-One command, however, can be backed by several **backend** implementations. Command backend implementors, besides the ones who implement `*_REF` free to only support specific cases of the input tensors (for example, a particular tensor layout, or a specific tensor size (3x3?), or half precision numbers). But once a backend accepts the input, it follows exactly the command attributes specified above (for example, any backend that implements a *inplace* command, will allow any parts of its input to be overwritten at time while this command is executing without affecting the correctness of the output).
+One command, however, can be backed by several **backend** implementations. Command backend implementors, besides the ones who implement `*_REF` free to only support specific cases of the input tensors (for example, a particular tensor layout, or a specific tensor size (3x3?), or half precision numbers). But once a backend accepts the input, it follows exactly the command attributes specified above (for example, any backend that implements a *inplace* command, will allow any parts of its input to be overwritten by this command at time while this command is executing without affecting the correctness of the output).
 
 At runtime, a command will select the appropriate backend based on the input type and execution time.
 
@@ -33,7 +33,7 @@ At runtime, a command will select the appropriate backend based on the input typ
 
 **Computation graph** expresses how the computation carries out. The output tensors can be used as input for the next command, so on and so forth. That is where *Tensorflow* got its name from. At this layer, **computation graph** knows the execution orders (data dependencies) between each command instances, and will schedule them on proper streams to ensure these execution orders are respected. Tensors themselves are not associated with the execution order at this point.
 
-A **computation graph** can contain a sub-graph, which is a **computation graph** itself. It is executed as a single command instance by the parent **computation graph**. As of now, only a `while` type sub-graph is supported. Actually, branching and looping are supported through the `while` type sub-graph.
+A **computation graph** can contain a sub-graph, which is a **computation graph** itself. It is executed as a single command instance by the parent **computation graph**. As of now, only a *`while` type sub-graph* is supported. Actually, branching and looping are supported through the *`while` type sub-graph*.
 
 A **computation graph** can be auto-tuned to find the best backend implementations that minimize the total execution time. There may be future optimizations to allow modifying the graph itself to do more aggressive tuning (such as including tensor conversions to trade between slower implementation and conversion + faster implementation).
 
@@ -49,31 +49,31 @@ In short, once you have a **computation graph**, the computation can be carried 
 
  3. There is no 1:1 mapping guarantee about the commands in the **symbolic graph** with the command instances in the **computation graph**.
 
-In fact, **symbolic graph** doesn't take tensors. It takes tensor symbols. The tensor symbol usage within the symbolic graph follows strict *static single assignment (SSA)* rule. It can only be used as a command instance's output once. This is important because by follow *SSA*, potential data races are completely eliminated. More over, certain processes and the actual tensor allocation algorithm are much easier to implement with this assumption. By sticking with *SSA* rule, the execution orders (dependencies) can be generated trivially.
+In fact, **symbolic graph** doesn't take tensors. It takes tensor symbols. The tensor symbol usage within the symbolic graph follows strict *static single assignment (SSA)* rule. It can only be used as a command instance's output once. This is important because by following *SSA*, potential data races are completely eliminated. More over, certain processes and the actual tensor allocation algorithm are much easier to implement with this assumption. With *SSA* rule, the execution orders (dependencies) can be generated trivially.
 
-It may feel like the tensor metadata is over-specified. For example, why precision or layout, or which GPU it resides is relevant? Because a tensor symbol have many to 1 mapping to one actual tensor. Specifications on the tensor symbol avoid processes on the **symbolic graph** resulting a tensor symbol that needs to be backed with conversions. Any conversions on the symbolic graph has to be explicit command instances.
+It may feel like the tensor metadata is over-specified. For example, why precision or layout, or which GPU it resides is relevant? Because tensor symbols have many to 1 mapping with the actual tensors. Specifications on the tensor symbol avoid processes on the **symbolic graph** resulting a tensor symbol that needs to be backed with conversions. Any conversions on the **symbolic graph** has to be explicit command instances.
 
 Having that in mind, however, you can take an *alias* of a tensor symbol, which is a sliced / reshaped tensor symbol from the original. It allows several operations to be zero effort on the actual **computation graph**. The *alias* itself still have to follow the same *SSA* rule, which means all the *aliases* and the original tensor symbol can only be written once.
 
-Processes can be carried out on the symbolic graph ranging from *automatic differentiation*, to *common sub-expression elimination* (CSE), or *operator fusion* (finer-grained set of commands be replaced by a combined command implementation).
+Processes can be carried out on the **symbolic graph** ranging from *automatic differentiation*, to *common sub-expression elimination* (CSE), or *operator fusion* (finer-grained set of commands be replaced by a combined command implementation).
 
-When the actual computation is needed. A symbolic graph can be compiled to a **computation graph**. The compilation process can involve optimizations that previously already possible on the given **computation graph** (such as CSE). More importantly, this step performs additional optimization passes that will violate the *SSA** rule. Currently, it will perform following processes that are not available as optimization passes:
+When the actual computation is needed. A **symbolic graph** can be compiled to a **computation graph**. The compilation process can involve optimizations that previously already possible on the given **computation graph** (such as CSE). More importantly, this step performs additional optimization passes that will violate the *SSA* rule above. Currently, it will perform following processes that are not available as optimization passes:
 
  1. In-place safe command instance will operate on the same tensor symbol inputs / outputs whenever possible (for example, `1.23 * x => y` will be re-written to `1.23 * x => x` if no other places use `x`);
 
- 2. Tensor allocation based on the liveness analysis for the tensor symbols. This step will generate the many to 1 mapping between tensor symbols with actual tensors;
+ 2. Tensor allocation based on the liveness analysis for the tensor symbols. This step will generate the many to 1 mapping between tensor symbols with the actual tensors;
 
  3. Emit implicit commands for tensor initialization. Certain tensor symbols need to be initialized before use (zero init for now), which is impossible to know when until tensor allocation was taken place. This is one reason why there is no 1:1 mapping between **symbolic graph** and **computation graph**.
 
-All above steps are carried out recursively for its *`while` type sub-graph* too.
+All above steps are carried out recursively for its *`while` type sub-graphs* too.
 
 ## 4. Dynamic Graph
 
-**Dynamic graph** operates on concrete tensor instances. It took input tensors, executed a command on them, and took the outputs. From this perspective, it is very similar to **computation graph**. The conceptual difference, is that the **computation graph** carries out execution from a specification, while **dynamic graph** forms a specification from the actual execution.
+**Dynamic graph** operates on concrete tensor instances. It took input tensors, executed a command on them, and took the outputs. From this perspective, it is very similar to the **computation graph**. The conceptual difference, is that the **computation graph** carries out execution from a specification, while **dynamic graph** forms a specification from the actual execution.
 
 Thus, **dynamic graph** will construct a **symbolic graph** along its execution. It enables the **dynamic graph** to perform the same kind of sophisticated optimization passes and analysis once needed (such as *automatic differentiation*)
 
-More over, **dynamic graph** implements a simple cache. The tensors it uses will carry a hash, as well as a specific command. The output tensors can be retrieved from the cache by the generated hash if it is possible, to avoid repetitive computations.
+More over, **dynamic graph** implements a simple memorization mechanism. The tensors it uses will carry a hash, as well as a specific command. The output tensors can be retrieved from the cache by the generated hash if it is possible, to avoid repetitive computations.
 
 ## 5. Common Neural Network Primitives
 
@@ -85,23 +85,21 @@ The goal here is to provide a set of **common neural network primitives** for mo
 
 *Toll-free bridging* here means that a `ccv_dense_matrix_t` struct, without any conversions at all, can be cast to a `ccv_nnc_tensor_t` struct and then used with nnc directly. The byte pattern is specifically arranged such that a 3 dimensional `ccv_nnc_tensor_t` can be cast back to `ccv_dense_matrix_t` vice versa. This allows seamless integration with the rest of image process primitives provided by ccv.
 
-### Add New Command
-
 ### Automatic Differentiation
 
-*Automatic differentiation* supported by nnc is the reverse mode. The implementation is simple enough because we enforced *SSA* throughout the **symbolic graph**.
+*Automatic differentiation* supported by nnc is its reverse mode. The implementation is simple enough because we enforced *SSA* throughout the **symbolic graph**.
 
 Each command need to implement its forward function, as well as its backward function. The backward function takes the input / output of the its forward function, as well as the gradients (matching the output tensors) as its input. It outputs the gradients with respect to the input (matching the input tensors of the forward function).
 
-When doing *automatic differentiation*, from its **symbolic graph**, a backward command matching each forward command is created. The execution order (dependencies) is exactly reverse. *SSA* guarantees each tensor symbol is written once, that means he gradient w.r.t. that symbol need to only be summed once as well.
+When doing *automatic differentiation*, from its **symbolic graph**, a backward command matching each forward command is created. The execution order (dependencies) is exactly reverse. *SSA* guarantees each tensor symbol is written once, that means the gradient w.r.t. that symbol needs to only be summed once as well.
 
 *alias* introduced some complexities to the implementation. Namely, because an alias can be used as input for follow-up commands, its reverse suggests different gradients w.r.t. different *aliases* required to be summed at certain point. That means these gradients need to be potentially zero init to avoid generating garbage results. This is done by inserting zero init tensor symbol property, which indicated an implicit zero init command will be injected at **symbolic graph** compilation time.
 
-The specific implementation also means taking second order derivation is not possible with nnc at this point. It will be possible however in the future once the backward function can be specified by a set of forward functions and then we can do command substitution on the **symbolic graph**.
+The specific implementation also means taking second order derivative isn't possible with nnc at this point. It will be possible however in the future once the backward function can be specified by a set of forward functions and then we can do command substitution on the **symbolic graph**.
 
 ### `while` Type Sub-Graph
 
-The *`while` type sub-graph* is a specific type of a **symbolic graph** or a **computation graph**. This is special because it expresses a generic loop structure with custom evaluation function supplied.
+The *`while` type sub-graph* is a special type of a **symbolic graph** or a **computation graph**. This is because it expresses a generic loop structure with custom evaluation function supplied.
 
 The loop execution within a *`while` type sub-graph* looks like this:
 
@@ -112,7 +110,7 @@ The loop execution within a *`while` type sub-graph* looks like this:
 
 For *`while` type symbolic sub-graph*, the obvious question would be how *SSA* rule plays out in the loop structure. We allow in the sub-graph to specify certain output tensor symbols map to the input tensor symbols in the loop, practically made these input tensor symbols parameters. The *compilation* step will handle this properly and allocate the input tensors at the same memory locations as the output tensors (there are `ccv_nnc_tensor_multiview_t` workaround if the condition cannot be satisfied).
 
-When doing *automatic differentiation*, a `ccv_nnc_tape_t` need to be provided for the *`while` type sub-graph* to record the outputs properly.
+When doing *automatic differentiation*, a `ccv_nnc_tensor_tape_t` need to be provided for the *`while` type sub-graph* to record the outputs properly.
 
 ### Limits and Constraints
 
