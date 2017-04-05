@@ -104,7 +104,7 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 			return CCV_NNC_EXEC_INVALID;
 	if (graph->while_expr)
 	{
-#define visitor(node, ...) \
+#define visitor(node, idx, d, ...) \
 		do { \
 			ccv_nnc_tensor_t** unwrapped_inputs; \
 			ccv_nnc_tensor_t** unwrapped_outputs; \
@@ -119,8 +119,14 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 			{ \
 				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
 				_ccv_nnc_graph_while_run(sub_graph, unwrapped_inputs, node->input_size, unwrapped_outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
-			} else \
+			} else { \
+				PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, d, node->input_size, node->output_size); \
+				for (i = 0; i < node->input_size; i++) \
+					PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+				for (i = 0; i < node->output_size; i++) \
+					PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
 				ccv_nnc_cmd_exec(node->cmd, node->hint, flags, unwrapped_inputs, node->input_size, unwrapped_outputs, node->output_size, 0); \
+			} \
 		} while (0)
 		// This is a while loop.
 		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->cond_eval_size, 0);
@@ -152,14 +158,20 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		ccv_array_free(follows);
 #undef visitor
 	} else {
-#define visitor(node, ...) \
+#define visitor(node, idx, d, ...) \
 		do { \
 			if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
 			{ \
 				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
 				_ccv_nnc_graph_while_run(sub_graph, node->inputs, node->input_size, node->outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
-			} else \
+			} else { \
+				PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, d, node->input_size, node->output_size); \
+				for (i = 0; i < node->input_size; i++) \
+					PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+				for (i = 0; i < node->output_size; i++) \
+					PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
 				ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
+			} \
 		} while (0)
 		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor

@@ -2407,11 +2407,11 @@ enum {
 	CCV_CLI_NONE = 0,
 };
 
-
 int ccv_cli_output_level_and_above(int level);
-void ccv_set_cli_output_levels(int level);
-int ccv_get_cli_output_levels(void);
+void ccv_cli_set_output_levels(int level);
+int ccv_cli_get_output_levels(void);
 
-#define CCV_CLI_OUTPUT_LEVEL_IS(a) (a & ccv_get_cli_output_levels())
+#define CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(level) ccv_cli_set_output_levels(ccv_cli_output_level_and_above(level))
+#define CCV_CLI_OUTPUT_LEVEL_IS(a) (a & ccv_cli_get_output_levels())
 
 #endif

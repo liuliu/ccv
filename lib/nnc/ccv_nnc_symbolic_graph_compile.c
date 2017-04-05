@@ -462,6 +462,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	if (p_arena && p_alloc_prep)
 	{
 		// Don't need to allocate the actual buffer, just use the pointer from the above.
+		PRINT(CCV_CLI_VERBOSE, "Buffer assignment for sub arena %p (parent %p)\n", tensor_arena, p_arena);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
 			const int p_ref = alloc_prep->buffers[i].p_ref - 1;
@@ -469,25 +470,36 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			const int vt_ref = p_alloc_prep->vt_blocks[p_ref];
 			assert(vt_ref >= 0);
 			const int buffer_ref = p_alloc_prep->blocks[vt_ref].buffer_ref;
-			const int offset = p_alloc_prep->blocks[vt_ref].offset;
+			const uint64_t offset = p_alloc_prep->blocks[vt_ref].offset;
 			tensor_arena->buffers[i].ptr = p_arena->buffers[buffer_ref].ptr + offset;
+			PRINT(CCV_CLI_VERBOSE, "|-Assign block %d in parent arena to buffer %d with offset %lu\n", vt_ref, i, offset);
 		}
 	} else {
 		// Now, allocate actual buffers.
+		PRINT(CCV_CLI_VERBOSE, "Buffer allocation for arena %p\n", tensor_arena);
 #ifdef HAVE_CUDA
 		if (memory_type == CCV_TENSOR_GPU_MEMORY)
 		{
 			for (i = 0; i < tensor_arena->buffer_size; i++)
+			{
 				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+			}
 		} else {
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			for (i = 0; i < tensor_arena->buffer_size; i++)
+			{
 				ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+			}
 		}
 #else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
+		{
 			ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+		}
 #endif
 	}
 	j = 0;
@@ -505,7 +517,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
 				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
-				memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
 				memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
 				assert(offset + tensor_blocks[block_ref].size <= tensor_arena->buffers[buffer_ref].size);
 				++j;
@@ -529,7 +540,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 					memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 				{
 					ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, tensor_symbol_info[block_ref].info, 0);
-					memset(tensor_arena->tensors + j, 0, sizeof(ccv_nnc_tensor_view_t));
 					memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
 				} else {
 					// Otherwise initialize a tensor view
@@ -547,10 +557,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 				}
 				++j;
 			}
-		} else {
-			// In this case, there is no need to assign a tensor header, we simply keep a reference to the buffer for this block.
-			++j;
 		}
+	for (i = 0; i < alloc_prep->block_size; i++)
+		// In this case, there is no need to assign a tensor header, we simply keep a reference to the buffer for this block.
+		if (alloc_prep->blocks[i].block_ref >= tensor_symbol_info_size)
+			++j;
 	assert(j == alloc_prep->block_size);
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.

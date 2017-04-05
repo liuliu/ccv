@@ -145,6 +145,7 @@ static void _ccv_nnc_graph_exec_add_output_if_needed(ccv_nnc_graph_exec_symbol_i
 		return;
 	}
 	exec_symbol_info->inputs = (int*)ccrealloc(exec_symbol_info->inputs, sizeof(int) * (exec_symbol_info->input_size + exec_symbol_info->output_size + 1));
+	exec_symbol_info->outputs = exec_symbol_info->inputs + exec_symbol_info->input_size;
 	exec_symbol_info->outputs[exec_symbol_info->output_size] = d;
 	++exec_symbol_info->output_size;
 }
@@ -259,18 +260,18 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 			assert(new_symbol.d >= 0 && new_symbol.d < s->tensor_symbol_info->rnum);
 			new_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(s->tensor_symbol_info, new_symbol.d);
 		}
-		if (curr_graph->exec_idx)
+		if (s->exec_idx)
 		{
-			assert(curr_graph->p); // This is a sub-graph.
-			assert(curr_graph->exec_idx > 0 && curr_graph->exec_idx <= s->exec_symbol_info->rnum);
-			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(s->exec_symbol_info, curr_graph->exec_idx - 1);
+			assert(s->p); // This is a sub-graph.
+			assert(s->exec_idx > 0 && s->exec_idx <= curr_graph->exec_symbol_info->rnum);
+			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(curr_graph->exec_symbol_info, s->exec_idx - 1);
 			switch (map_use)
 			{
 				case MAP_TENSOR_USE_AS_INPUT:
-					_ccv_nnc_graph_exec_add_input_if_needed(exec_symbol_info, new_symbol.d);
+					_ccv_nnc_graph_exec_add_input_if_needed(exec_symbol_info, curr_symbol.d);
 					break;
 				case MAP_TENSOR_USE_AS_OUTPUT:
-					_ccv_nnc_graph_exec_add_output_if_needed(exec_symbol_info, new_symbol.d);
+					_ccv_nnc_graph_exec_add_output_if_needed(exec_symbol_info, curr_symbol.d);
 					break;
 			}
 		}

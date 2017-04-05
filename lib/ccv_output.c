@@ -14,12 +14,12 @@ int ccv_cli_output_level_and_above(int level)
 	return (int)levels;
 }
 
-void ccv_set_cli_output_levels(int levels)
+void ccv_cli_set_output_levels(int levels)
 {
 	cli_output_levels = levels;
 }
 
-int ccv_get_cli_output_levels(void)
+int ccv_cli_get_output_levels(void)
 {
 	return cli_output_levels;
 }
