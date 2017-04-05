@@ -150,7 +150,7 @@ int main(int argc, char** argv)
 		for (i = depth - 3; i < depth - 1; i++)
 			layer_params[i].dor = 0.5;
 		train_params.layer_params = layer_params;
-		ccv_set_cli_output_levels(ccv_cli_output_level_and_above(CCV_CLI_INFO));
+		CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_INFO);
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, working_dir, train_params);
 	} else {
 		PRINT(CCV_CLI_ERROR, "Invalid convnet configuration\n");
