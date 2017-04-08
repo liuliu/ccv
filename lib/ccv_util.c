@@ -434,6 +434,9 @@ static inline void _ccv_move_sparse_matrix_vector(ccv_sparse_matrix_index_t* con
 	i = old_i;
 	ccv_sparse_matrix_vector_t val = vector[idx];
 	_ccv_init_sparse_matrix_vector(vector + idx, mat);
+	// Move to next idx, this is already occupied.
+	++k;
+	++idx;
 	for (; k < 255; ++idx, ++k)
 	{
 		if (idx >= size)
@@ -684,8 +687,8 @@ static void _ccv_sparse_matrix_vector_inc_size(const ccv_sparse_matrix_t* const 
 				if (j != 1)
 					k = j;
 				else { // In this case, I cannot keep going with the idx, need to recompute idx as well restart k.
-					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index);
-					k = 2; // Restart.
+					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index) - 1;
+					k = 1; // Restart.
 				}
 			}
 			if (k < 255)
@@ -721,8 +724,8 @@ static void _ccv_sparse_matrix_vector_inc_size(const ccv_sparse_matrix_t* const 
 				if (j != 1)
 					k = j;
 				else { // In this case, I cannot keep going with the idx, need to recompute idx as well restart k.
-					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index);
-					k = 2; // Restart.
+					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index) - 1;
+					k = 1; // Restart.
 				}
 			}
 		}
@@ -775,8 +778,8 @@ static void _ccv_sparse_matrix_inc_size(ccv_sparse_matrix_t* mat)
 				if (j != 1)
 					k = j;
 				else { // In this case, I cannot keep going with the idx, need to recompute idx as well restart k.
-					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index);
-					k = 2; // Restart.
+					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index) - 1;
+					k = 1; // Restart.
 				}
 			}
 			if (k < 255)
@@ -807,21 +810,24 @@ static void _ccv_sparse_matrix_inc_size(ccv_sparse_matrix_t* mat)
 				if (j != 1)
 					k = j;
 				else { // In this case, I cannot keep going with the idx, need to recompute idx as well restart k.
-					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index);
-					k = 2; // Restart.
+					idx = _ccv_sparse_matrix_index_for_hash(key, prime_index) - 1;
+					k = 1; // Restart.
 				}
 			}
 		}
 }
 
-static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k, uint32_t idx, int i, const uint32_t size, const int prime_index, const size_t index_size, const size_t cell_size)
+static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k, uint32_t idx, int i, const uint32_t size, const int prime_index, const size_t index_size, const size_t cell_size_aligned)
 {
-	ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + idx * index_size);
-	const size_t cell_rnum = cell_size / sizeof(uint32_t);
+	ccv_sparse_matrix_index_t* const index_idx = (ccv_sparse_matrix_index_t*)(index + index_size * idx);
+	const size_t cell_rnum = cell_size_aligned / sizeof(uint32_t);
 	uint32_t* val = (uint32_t*)(index_idx + 1);
 	uint32_t old_i = index_idx->i;
 	index_idx->i = i;
 	i = old_i;
+	// Move to next idx, this is already occupied.
+	++k;
+	++idx;
 	uint32_t h;
 	for (; k < 255; ++idx, ++k)
 	{
@@ -832,7 +838,7 @@ static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k
 		{
 			index_idx->ifbit = k;
 			index_idx->i = i;
-			memcpy(index_idx + 1, val, cell_size);
+			memcpy(index_idx + 1, val, cell_size_aligned);
 			return;
 		}
 		uint32_t j = index_idx->ifbit;
@@ -861,7 +867,7 @@ static inline void _ccv_move_sparse_matrix_cell(uint8_t* const index, uint32_t k
 		{
 			index_idx->ifbit = k > 0xff ? 0xff : k;
 			index_idx->i = i;
-			memcpy(index_idx + 1, val, cell_size);
+			memcpy(index_idx + 1, val, cell_size_aligned);
 			return;
 		}
 		uint32_t j = index_idx->ifbit;

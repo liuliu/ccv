@@ -103,6 +103,23 @@ TEST_CASE("group array with is_equal function")
 	ccv_array_free(idx);
 }
 
+TEST_CASE("specific sparse matrix insertion")
+{
+	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1, 70, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	const int k = 1;
+	int idx[] = {26, 29, 30, 34, 35, 38, 39, 42, 43, 47, 48, 51, 52, 55, 56, 60, 61, 65, 66, 68, 69};
+	int i;
+	for (i = 0; i < sizeof(idx) / sizeof(int); i++)
+		ccv_set_sparse_matrix_cell(mat, 0, idx[i], &k);
+	for (i = 0; i < sizeof(idx) / sizeof(int); i++)
+	{
+		ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(mat, 0, idx[i]);
+		REQUIRE(cell.u8 != 0, "cell at (%d, %d) doesn't contain any valid value", 0, idx[i]);
+		REQUIRE_EQ(1, cell.i32[0], "cell at (%d, %d) doesn't match inserted value", 0, idx[i]);
+	}
+	ccv_matrix_free(mat);
+}
+
 TEST_CASE("sparse matrix basic insertion")
 {
 	ccv_sparse_matrix_t* mat = ccv_sparse_matrix_new(1000, 1000, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
