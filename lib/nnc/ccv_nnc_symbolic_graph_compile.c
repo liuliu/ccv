@@ -472,7 +472,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			const int buffer_ref = p_alloc_prep->blocks[vt_ref].buffer_ref;
 			const uint64_t offset = p_alloc_prep->blocks[vt_ref].offset;
 			tensor_arena->buffers[i].ptr = p_arena->buffers[buffer_ref].ptr + offset;
-			PRINT(CCV_CLI_VERBOSE, "|-Assign block %d in parent arena to buffer %d with offset %lu\n", vt_ref, i, offset);
+			PRINT(CCV_CLI_VERBOSE, "|-Assign block %d in parent arena to buffer %d with offset %lu\n", vt_ref, i, (unsigned long)offset);
 		}
 	} else {
 		// Now, allocate actual buffers.
@@ -483,14 +483,14 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			for (i = 0; i < tensor_arena->buffer_size; i++)
 			{
 				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
-				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 		} else {
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			for (i = 0; i < tensor_arena->buffer_size; i++)
 			{
 				ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
-				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 		}
 #else
@@ -498,7 +498,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
 			ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
-			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, tensor_arena->buffers[i].size);
+			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 		}
 #endif
 	}
