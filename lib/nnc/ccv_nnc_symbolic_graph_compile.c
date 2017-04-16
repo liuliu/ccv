@@ -26,7 +26,6 @@ enum {
 #define TENSOR_EXPECT_UNASSIGNED(t) (t.flag == UNASSIGNED)
 #define TENSOR_EXPECT_ALIAS(t) (t.flag == ALIAS)
 #define TENSOR_EXPECT_CONST(t) (t.flag == CONST_TENSOR)
-#define TENSOR_EXPECT_UNUSED(t) (t.flag == UNUSED)
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 
 typedef struct {
@@ -787,6 +786,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			// An alias cannot ref to another alias.
 			assert(!tensor_symbol_info[tensor_symbol_info[i].alias_ref - 1].alias_ref);
 			tensor_blocks[i].flag = ALIAS;
+			tensor_blocks[i].ref = tensor_symbol_info[i].alias_ref; // Assign the ref.
 		}
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
@@ -892,11 +892,67 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
-
-	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in.
+	// There is a last step though, for a while loop, it is parameterized:
+	// while (x > 5) {
+	//     y = x + 1;
+	// } (y => x) // This means after this loop is done, y's value will be copied over to x.
+	// we will do our best to avoid to do the actual data copy, what we do here is to check whether y can be x's alias.
+	// If y can be x's alias, this is good, no other changes required. In above case, y can be x's alias because
+	// it is a inplace operation.
+	// But if y cannot be x's alias, for example, this while loop looks like this:
+	// while (x > 5) {
+	//     y = x + a
+	//     b = x + y
+	// } (y => x, b => a) // This means after this loop is done, y's value copied to x and b's value copied to a.
+	// For this example, y cannot be x's alias because x is used later to compute b (and that computation
+	// has dependency on y as well).
+	// For this case, we need to modify the computation graph. Previously, the graph looks like this:
+	// y = x + a -> b = x + y
+	// This graph will be extended to look like this:
+	// y0 = x0 + a0 -> b0 = x0 + y0 -> y1 = y0 + b0 -> b1 = y0 + y1, or:
+	// while (x0 > 5) {
+	//     y0 = x0 + a0
+	//     b0 = x0 + y0
+	//     if (y0 > 5) break
+	//     y1 = y0 + b0
+	//     b1 = y0 + y1
+	// } (y1 => x0, b1 => a0)
+	// After this extension, y1 now can be the alias of x0, as well as b1 can be alias of a0 (they don't interfere
+	// with each other now).
+	// With this algorithm, we don't need to insert any data copy logic, the only thing need is to switch pointers
+	// which is covered by the tensor_multiview_t construct (thus, y (y0, y1), x (y1, y0), b (b0, b1), a (b1, b0))
+	int flag = 0;
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum && !flag; i++)
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
+		{
+			// This is is a parameter, thus, it has to be either an alias or used.
+			assert(tensor_blocks[i].ref || tensor_blocks[i].flag == 0);
+			const int assign_ref = tensor_symbol_info[i].assign_ref - 1; // Starts at 1.
+			// The parameter it assign to has to be either an alias or used.
+			assert(tensor_blocks[assign_ref].ref || tensor_blocks[assign_ref].flag == 0);
+			// If any of this two (assigner and assignee) is an alias, check to see if they are the same.
+			// If it is the same, we are good, no need to extend.
+			if (tensor_blocks[i].ref || tensor_blocks[assign_ref].ref)
+			{
+				int a_ref = i;
+				while (tensor_blocks[a_ref].ref)
+					a_ref = tensor_blocks[a_ref].ref - 1;
+				int b_ref = assign_ref;
+				while (tensor_blocks[b_ref].ref)
+					b_ref = tensor_blocks[b_ref].ref - 1;
+				if (a_ref != b_ref)
+					flag = 1;
+			} else
+				flag = 1;
+		}
+	if (flag)
+	{
+		// Doing graph extension.
+	}
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
+	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
 #define visitor(node, idx, ...) \
 	do { \
 		if (node->graph_ref) \

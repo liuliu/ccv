@@ -71,7 +71,7 @@ int main(int argc, char** argv)
 	cmd.backend = CCV_NNC_BACKEND_GPU_CUDNN;
 	assert(cmd.backend >= 0);
 	cmd.algorithm = -1;
-	cmd = ccv_nnc_cmd_autotune(cmd, 2 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
+	cmd = ccv_nnc_cmd_autotune(cmd, 1 * 1024 * 1024 * 1024, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context);
 	elapsed_time = get_current_time();
 	assert(CCV_NNC_EXEC_SUCCESS == ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(ga, gwo, gbias), TENSOR_LIST(gc), stream_context));
 	ccv_nnc_stream_context_wait(stream_context);

@@ -224,7 +224,12 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				assert(0);
 		}
 	}
-	assert_cudnn(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, CUDNN_DATA_FLOAT, CCV_NNC_MAX_DIM + 2, dim, stride));
+	if (CCV_NNC_MAX_DIM == 2)
+	{
+		assert_cudnn(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, CUDNN_DATA_FLOAT, dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
+	} else {
+		assert_cudnn(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, CUDNN_DATA_FLOAT, CCV_NNC_MAX_DIM + 2, dim, stride));
+	}
 	return tensor_desc;
 }
 
@@ -249,13 +254,23 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 	{
 		for (i = 0; i < nd; i++)
 			dim[i] = tensor->info.dim[i];
-		assert_cudnn(cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, nd, dim));
+		if (nd == 4)
+		{
+			assert_cudnn(cudnnSetFilter4dDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, dim[0], dim[1], dim[2], dim[3]));
+		} else {
+			assert_cudnn(cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW, nd, dim));
+		}
 	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		dim[0] = tensor->info.dim[0];
 		dim[1] = tensor->info.dim[nd - 1];
 		for (i = 2; i < nd; i++)
 			dim[i] = tensor->info.dim[i - 1];
-		assert_cudnn(cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NHWC, nd, dim));
+		if (nd == 4)
+		{
+			assert_cudnn(cudnnSetFilter4dDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NHWC, dim[0], dim[1], dim[2], dim[3]));
+		} else {
+			assert_cudnn(cudnnSetFilterNdDescriptor(filter_desc.descriptor, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NHWC, nd, dim));
+		}
 	}
 	return filter_desc;
 }
