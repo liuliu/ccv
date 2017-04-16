@@ -42,7 +42,17 @@ static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, co
 	assert(a.format == b->format);
 	const int nd = ccv_nnc_tensor_nd(a.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC || nd == CCV_NNC_MAX_DIM + 1) ? 0 : 1;
+	int hw;
+	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
+		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 0;
+	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
+			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 1;
+	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
+		hw = 2;
+	else
+		assert(0 && "unknown format");
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);
@@ -56,7 +66,17 @@ static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, c
 	assert(a.format == b->format);
 	const int nd = ccv_nnc_tensor_nd(a.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC || nd == CCV_NNC_MAX_DIM + 1) ? 0 : 1;
+	int hw;
+	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
+		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 0;
+	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
+			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 1;
+	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
+		hw = 2;
+	else
+		assert(0 && "unknown format");
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
 		int stride = ccv_max(1, hint.stride.dim[i]);

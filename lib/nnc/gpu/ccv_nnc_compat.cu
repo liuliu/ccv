@@ -293,10 +293,15 @@ ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(
 	int v[CCV_NNC_MAX_DIM];
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 		v[i] = hint.stride.dim[i];
-	int u[CCV_NNC_MAX_DIM];
-	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
-		u[i] = 1;
-	assert_cudnn(cudnnSetConvolutionNdDescriptor(convolution_desc.descriptor, CCV_NNC_MAX_DIM, p, v, u, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+	if (CCV_NNC_MAX_DIM == 2)
+	{
+		assert_cudnn(cudnnSetConvolution2dDescriptor(convolution_desc.descriptor, p[0], p[1], v[0], v[1], 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+	} else {
+		int u[CCV_NNC_MAX_DIM];
+		for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+			u[i] = 1;
+		assert_cudnn(cudnnSetConvolutionNdDescriptor(convolution_desc.descriptor, CCV_NNC_MAX_DIM, p, v, u, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
+	}
 	return convolution_desc;
 }
 

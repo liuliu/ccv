@@ -124,7 +124,17 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 	assert(a.format == b.format);
 	const int nd = ccv_nnc_tensor_nd(a.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC || nd == CCV_NNC_MAX_DIM + 1) ? 0 : 1;
+	int hw;
+	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
+		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 0;
+	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
+			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
+		hw = 1;
+	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
+		hw = 2;
+	else
+		assert(0 && "unknown format");
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
 		if ((hint.border.begin[i] + hint.border.end[i] + a.dim[i] - cmd.size.dim[i]) % hint.stride.dim[i] != 0)
@@ -145,7 +155,17 @@ ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_te
 	// Is not auto hint deducible dimensions.
 	if (a_nd != b_nd || (a_nd != CCV_NNC_MAX_DIM + 1 && a_nd != CCV_NNC_MAX_DIM + 2))
 		return ccv_nnc_no_hint;
-	const int hw = (a.format == CCV_TENSOR_FORMAT_CHWN || a.format == CCV_TENSOR_FORMAT_NHWC || a_nd == CCV_NNC_MAX_DIM + 1) ? 0 : 1;
+	int hw;
+	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
+		(a.format == CCV_TENSOR_FORMAT_NHWC && a_nd == CCV_NNC_MAX_DIM + 1))
+		hw = 0;
+	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && a_nd == CCV_NNC_MAX_DIM + 2) ||
+			 (a.format == CCV_TENSOR_FORMAT_NCHW && a_nd == CCV_NNC_MAX_DIM + 1))
+		hw = 1;
+	else if (a.format == CCV_TENSOR_FORMAT_NCHW && a_nd == CCV_NNC_MAX_DIM + 2)
+		hw = 2;
+	else
+		assert(0 && "unknown format");
 	ccv_nnc_hint_t hint_auto = {};
 	// 0-dim is reserved for channels
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
