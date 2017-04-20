@@ -22,6 +22,113 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_new(void)
 	return graph;
 }
 
+ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_subst_f subst)
+{
+	ccv_nnc_symbolic_graph_t* new_graph = ccmalloc(sizeof(ccv_nnc_symbolic_graph_t));
+	memcpy(new_graph, graph, sizeof(ccv_nnc_symbolic_graph_t));
+	new_graph->tensor_symbol_info = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_info_t), graph->tensor_symbol_info->rnum, 0);
+	new_graph->tensor_symbol_info->rnum = graph->tensor_symbol_info->rnum;
+	memcpy(ccv_array_get(new_graph->tensor_symbol_info, 0), ccv_array_get(graph->tensor_symbol_info, 0), sizeof(ccv_nnc_tensor_symbol_info_t) * graph->tensor_symbol_info->rnum);
+	int i;
+	for (i = 0; i < new_graph->tensor_symbol_info->rnum; i++)
+	{
+		ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(new_graph->tensor_symbol_info, i);
+		if (symbol_info->name)
+		{
+			char* const name = symbol_info->name;
+			const size_t n = strnlen(name, 63) + 1;
+			symbol_info->name = (char*)ccmalloc(n);
+			// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+			strncpy(symbol_info->name, name, n);
+		}
+		if (symbol_info->s_ref)
+		{
+			ccv_array_t* const s_ref = symbol_info->s_ref;
+			symbol_info->s_ref = ccv_array_new(sizeof(int), s_ref->rnum, 0);
+			symbol_info->s_ref->rnum = s_ref->rnum;
+			memcpy(ccv_array_get(symbol_info->s_ref, 0), ccv_array_get(s_ref, 0), sizeof(int) * s_ref->rnum);
+		}
+	}
+	new_graph->exec_symbol_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_info_t), graph->exec_symbol_info->rnum, 0);
+	new_graph->exec_symbol_info->rnum = graph->exec_symbol_info->rnum;
+	memcpy(ccv_array_get(new_graph->exec_symbol_info, 0), ccv_array_get(graph->exec_symbol_info, 0), sizeof(ccv_nnc_graph_exec_symbol_info_t) * graph->exec_symbol_info->rnum);
+	for (i = 0; i < new_graph->exec_symbol_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(new_graph->exec_symbol_info, i);
+		if (symbol_info->name)
+		{
+			char* const name = symbol_info->name;
+			const size_t n = strnlen(name, 63) + 1;
+			symbol_info->name = (char*)ccmalloc(n);
+			// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+			strncpy(symbol_info->name, name, n);
+		}
+		if (symbol_info->outgoings)
+		{
+			ccv_array_t* const outgoings = symbol_info->outgoings;
+			symbol_info->outgoings = ccv_array_new(sizeof(int), outgoings->rnum, 0);
+			symbol_info->outgoings->rnum = outgoings->rnum;
+			memcpy(ccv_array_get(symbol_info->outgoings, 0), ccv_array_get(outgoings, 0), sizeof(int) * outgoings->rnum);
+		}
+		if (symbol_info->inputs)
+		{
+			int* const inputs = symbol_info->inputs;
+			symbol_info->inputs = (int*)ccmalloc(sizeof(int) * (symbol_info->input_size + symbol_info->output_size));
+			memcpy(symbol_info->inputs, inputs, sizeof(int) * (symbol_info->input_size + symbol_info->output_size));
+		}
+	}
+	if (graph->sources)
+	{
+		new_graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), graph->sources->rnum, 0);
+		new_graph->sources->rnum = graph->sources->rnum;
+		memcpy(ccv_array_get(new_graph->sources, 0), ccv_array_get(graph->sources, 0), sizeof(ccv_nnc_graph_exec_symbol_t) * graph->sources->rnum);
+		for (i = 0; i < new_graph->sources->rnum; i++)
+			((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(new_graph->sources, i))->graph = new_graph;
+	}
+	if (graph->destinations)
+	{
+		new_graph->destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), graph->destinations->rnum, 0);
+		new_graph->destinations->rnum = graph->destinations->rnum;
+		memcpy(ccv_array_get(new_graph->destinations, 0), ccv_array_get(graph->destinations, 0), sizeof(ccv_nnc_graph_exec_symbol_t) * graph->destinations->rnum);
+		for (i = 0; i < new_graph->destinations->rnum; i++)
+			((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(new_graph->destinations, i))->graph = new_graph;
+	}
+	if (graph->cond_evals)
+	{
+		new_graph->cond_evals = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * graph->cond_eval_size);
+		memcpy(new_graph->cond_evals, graph->cond_evals, sizeof(ccv_nnc_graph_exec_symbol_t) * graph->cond_eval_size);
+		for (i = 0; i < graph->cond_eval_size; i++)
+			new_graph->cond_evals[i].graph = new_graph;
+	}
+	if (graph->backward_tensor_symbols)
+	{
+		new_graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (new_graph->forward_symbol_size + new_graph->backward_symbol_size));
+		if (new_graph->forward_symbol_size > 0)
+			memcpy(new_graph->backward_tensor_symbols, graph->backward_tensor_symbols, sizeof(int) * new_graph->forward_symbol_size);
+		new_graph->backward_exec_symbols = new_graph->backward_tensor_symbols + new_graph->forward_symbol_size;
+		if (new_graph->backward_symbol_size > 0)
+			memcpy(new_graph->backward_exec_symbols, graph->backward_exec_symbols, sizeof(int) * new_graph->backward_symbol_size);
+	}
+	if (subst)
+	{
+		for (i = 0; i < new_graph->exec_symbol_info->rnum; i++)
+		{
+			ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(new_graph->exec_symbol_info, i);
+			if (!symbol_info->dead)
+			{
+				symbol_info->cmd = subst((ccv_nnc_graph_exec_symbol_t){
+					.d = i,
+					.graph = graph,
+				}, symbol_info->cmd);
+			}
+		}
+	}
+	// TODO: See how and if I need to dup sub-graphs. I also need to figure out what's the relationship between this graph
+	// and its parent graph (or how can we use the symbol from the graph properly).
+	new_graph->sub_graphs = 0;
+	return new_graph;
+}
+
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	ccv_nnc_tensor_symbol_t symbol = {

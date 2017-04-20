@@ -888,6 +888,17 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	*p_tensor_blocks = tensor_blocks;
 }
 
+static ccv_nnc_cmd_t _ccv_nnc_subst_sub_graph_with_noop(const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd)
+{
+	if (cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
+	{
+		ccv_nnc_cmd_t retval = cmd;
+		retval.cmd = CCV_NNC_NOOP;
+		return retval;
+	}
+	return cmd;
+}
+
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
 static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const p_exec_symbol_info, const int p_exec_symbol_info_size)
 {
@@ -960,7 +971,9 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 		}
 	if (expanse)
 	{
-		// Doing graph expansion.
+		// Doing graph expansion, first duplicate the old graph, but replace all sub graphs with noop.
+		ccv_nnc_symbolic_graph_t* dup_graph = ccv_nnc_symbolic_graph_dup(symbolic_graph, _ccv_nnc_subst_sub_graph_with_noop);
+		ccv_nnc_symbolic_graph_free(dup_graph);
 	}
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
