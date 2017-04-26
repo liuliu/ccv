@@ -3,9 +3,6 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
-#ifdef HAVE_CUDA
-#include <nnc/gpu/ccv_nnc_compat.h>
-#endif
 #include <3rdparty/dsfmt/dSFMT.h>
 
 TEST_SETUP()
@@ -25,7 +22,8 @@ TEST_SETUP()
 
 TEST_CASE("cudnn forward convolution")
 {
-#ifdef HAVE_CUDNN
+	if (!ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN))
+		return;
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
 	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM);
@@ -84,7 +82,6 @@ TEST_CASE("cudnn forward convolution")
 	ccv_nnc_tensor_free(gbias);
 	ccv_nnc_tensor_free(gwo);
 	ccv_nnc_tensor_free(ga);
-#endif
 }
 
 #include "case_main.h"

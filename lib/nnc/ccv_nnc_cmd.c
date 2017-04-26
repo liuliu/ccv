@@ -98,6 +98,22 @@ int ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd)
 	}
 }
 
+int ccv_nnc_cmd_ok(const uint32_t cmd, const uint32_t backend)
+{
+	// If it is a custom command, a no op, or a graph op, there is no backend to check.
+	if (cmd == CCV_NNC_NOOP ||
+		cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD ||
+		cmd == CCV_NNC_CUSTOM_FORWARD || cmd == CCV_NNC_CUSTOM_BACKWARD)
+		return 1;
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd);
+	const int backend_idx = _ccv_nnc_cmd_backend_ph(backend);
+	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
+	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
+	// Check if the execution function exists or not.
+	return !!api_registry.exec;
+}
+
 ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
 {
 	ccv_nnc_cmd_t cmd;

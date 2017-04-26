@@ -129,6 +129,7 @@ int ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* c
 uint64_t ccv_nnc_cmd_mono_time(void);
 CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_name(const uint32_t cmd);
 CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_backend_name(const uint32_t backend);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_ok(const uint32_t cmd, const uint32_t backend);
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const uint32_t cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
 // Verify the hint
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
