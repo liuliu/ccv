@@ -3,6 +3,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/gpu/ccv_nnc_compat.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 
 TEST_SETUP()
