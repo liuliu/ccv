@@ -10,6 +10,7 @@
 typedef struct {
 	int flag;
 	int ref; // Reference to another tensor block. Start with 1.
+	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	int p_refs[2]; // Reference to the parent tensor block, at max there will be only two. Start with 1.
@@ -779,6 +780,10 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			assert(!tensor_symbol_info[tensor_symbol_info[i].alias_ref - 1].alias_ref);
 			tensor_blocks[i].flag = ALIAS;
 			tensor_blocks[i].ref = tensor_symbol_info[i].alias_ref; // Assign the ref.
+			const int ref = tensor_blocks[i].ref - 1;
+			if (!tensor_blocks[ref].r_refs)
+				tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0);
+			ccv_array_replace_int(tensor_blocks[ref].r_refs, i + 1, i + 1);
 		}
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
@@ -840,8 +845,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				int ref = node->inputs[x]; \
 				if (ref < 0) \
 					continue; \
-				while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref) \
+				if (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref) \
 					ref = tensor_blocks[ref].ref - 1; \
+				assert(tensor_blocks[ref].ref == 0); \
 				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref]; \
 				if (!TENSOR_EXPECT_CONST(tensor_blocks[ref]) && \
 					TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && \
@@ -874,6 +880,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 								ccv_array_free(tensor_blocks[node_output_y].head); \
 								tensor_blocks[node_output_y].flag = UNASSIGNED; \
 								tensor_blocks[node_output_y].ref = ref + 1; \
+								if (!tensor_blocks[ref].r_refs) \
+									tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0); \
+								ccv_array_replace_int(tensor_blocks[ref].r_refs, node_output_y + 1, node_output_y + 1); \
 								tensor_blocks[node_output_y].size = 0; \
 								tensor_blocks[node_output_y].head = 0; \
 								tensor_blocks[node_output_y].tail = 0; \
@@ -909,7 +918,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
-	int i;
+	int i, j, k;
 	ccv_sparse_matrix_t* exec_dep;
 	ccv_nnc_tensor_block_t* tensor_blocks;
 	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks);
@@ -945,8 +954,9 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// with each other now).
 	// With this algorithm, we don't need to insert any data copy logic, the only thing need is to switch pointers
 	// which is covered by the tensor_multiview_t construct (thus, y (y0, y1), x (y1, y0), b (b0, b1), a (b1, b0))
-	int expanse = 0;
-	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum && !expanse; i++)
+	int* conflicts = 0;
+	int conflict_rnum = 0;
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
 			// This is is a parameter, thus, it has to be either an alias or used.
@@ -959,21 +969,65 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			if (tensor_blocks[i].ref || tensor_blocks[assign_ref].ref)
 			{
 				int a_ref = i;
-				while (tensor_blocks[a_ref].ref)
+				if (tensor_blocks[a_ref].ref)
 					a_ref = tensor_blocks[a_ref].ref - 1;
+				assert(tensor_blocks[a_ref].ref == 0);
 				int b_ref = assign_ref;
-				while (tensor_blocks[b_ref].ref)
+				if (tensor_blocks[b_ref].ref)
 					b_ref = tensor_blocks[b_ref].ref - 1;
+				assert(tensor_blocks[b_ref].ref == 0);
 				if (a_ref != b_ref)
-					expanse = 1;
-			} else
-				expanse = 1;
+				{
+					if (!conflict_rnum)
+						conflicts = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
+					conflicts[conflict_rnum] = i;
+					++conflict_rnum;
+				}
+			} else {
+				if (!conflict_rnum)
+					conflicts = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
+				conflicts[conflict_rnum] = i;
+				++conflict_rnum;
+			}
 		}
-	if (expanse)
+	// Have conditions that cannot be satisfied.
+	if (conflict_rnum)
 	{
+		// The visited exec nodes, these are the nodes we are going to extend.
+		uint8_t* visited = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
+		for (i = 0; i < conflict_rnum; i++)
+		{
+			int ref = conflicts[i];
+			if (tensor_blocks[ref].ref)
+				ref = tensor_blocks[ref].ref - 1;
+			assert(tensor_blocks[ref].ref == 0);
+			if (tensor_blocks[ref].head)
+				for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
+					visited[*(int*)ccv_array_get(tensor_blocks[ref].head, j)] = 1;
+			if (tensor_blocks[ref].tail)
+				for (j = 0; j < tensor_blocks[ref].tail->rnum; j++)
+					visited[*(int*)ccv_array_get(tensor_blocks[ref].tail, j)] = 1;
+			if (tensor_blocks[ref].r_refs)
+				for (j = 0; j < tensor_blocks[ref].r_refs->rnum; j++)
+				{
+					const int r_ref = *(int*)ccv_array_get(tensor_blocks[ref].r_refs, j);
+					if (tensor_blocks[r_ref].head)
+						for (k = 0; k < tensor_blocks[r_ref].head->rnum; k++)
+							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].head, k)] = 1;
+					if (tensor_blocks[r_ref].tail)
+						for (k = 0; k < tensor_blocks[r_ref].tail->rnum; k++)
+							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].tail, k)] = 1;
+				}
+		}
+		ccfree(conflicts);
+		// Now I have all conflicts related exec marked. Mark all the nodes that reach to or can be reached from.
+		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+		{
+		}
 		// Doing graph expansion, first duplicate the old graph, but replace all sub graphs with noop.
 		ccv_nnc_symbolic_graph_t* dup_graph = ccv_nnc_symbolic_graph_dup(symbolic_graph, _ccv_nnc_subst_sub_graph_with_noop);
 		ccv_nnc_symbolic_graph_free(dup_graph);
+		ccfree(visited);
 	}
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
@@ -1031,6 +1085,9 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							ccv_array_free(tensor_blocks[p_ref_1].head); \
 							tensor_blocks[p_ref_1].flag = UNASSIGNED; \
 							tensor_blocks[p_ref_1].ref = p_ref_0 + 1; \
+							if (!tensor_blocks[p_ref_0].r_refs) \
+								tensor_blocks[p_ref_0].r_refs = ccv_array_new(sizeof(int), 0, 0); \
+							ccv_array_replace_int(tensor_blocks[p_ref_0].r_refs, p_ref_1 + 1, p_ref_1 + 1); \
 							tensor_blocks[p_ref_1].size = 0; \
 							tensor_blocks[p_ref_1].head = 0; \
 							tensor_blocks[p_ref_1].tail = 0; \
@@ -1097,6 +1154,8 @@ static void _ccv_nnc_symbolic_graph_prep_free(ccv_nnc_symbolic_graph_prep_t* pre
 			ccv_array_free(prep->tensor_blocks[i].head);
 		if (prep->tensor_blocks[i].tail)
 			ccv_array_free(prep->tensor_blocks[i].tail);
+		if (prep->tensor_blocks[i].r_refs)
+			ccv_array_free(prep->tensor_blocks[i].r_refs);
 	}
 	for (i = 0; i < prep->sub_prep_size; i++)
 		if (prep->sub_preps[i])
