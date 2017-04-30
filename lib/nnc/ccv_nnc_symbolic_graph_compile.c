@@ -10,8 +10,9 @@
 typedef struct {
 	int flag;
 	int ref; // Reference to another tensor block. Start with 1.
-	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
+	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
+	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	int p_refs[2]; // Reference to the parent tensor block, at max there will be only two. Start with 1.
 	ccv_array_t* head; // The head nodes (it could be multiple if from the graph, one cannot determine which is the first).
@@ -35,7 +36,7 @@ typedef struct {
 	uint64_t size;
 } ccv_nnc_tensor_opt_t;
 
-#define more_than(i1, i2, aux) ((i1).size >= (i2).size)
+#define more_than(i1, i2, aux) ((i1).size > (i2).size || ((i1).size == (i2).size && (i1).companion >= 0 && (i2).companion < 0))
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
@@ -94,15 +95,15 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	// to fully utilize memory.
 	int i, j, k;
 	ccv_array_t** alloc_dep = (ccv_array_t**)cccalloc(tensor_block_size, sizeof(ccv_array_t*));
-	int computable_tensor_size = 0, available_tensor_size = 0;
+	int allocable_tensor_size = 0, available_tensor_size = 0;
 	for (i = 0; i < tensor_block_size; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
 		{
 			// Tensors that we need the header info.
 			++available_tensor_size;
 			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[i]))
-				// Tensors that we actually need to compute (exclude the alias).
-				++computable_tensor_size;
+				// Tensors that we actually need to allocate (exclude the alias).
+				++allocable_tensor_size;
 		}
 	ccv_sparse_matrix_t* tensor_itf = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	// Overlap count.
@@ -147,7 +148,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	// the second channel denotes the offset available for the allocation,
 	ccv_sparse_matrix_t* alloc = ccv_sparse_matrix_new(tensor_block_size + 2, tensor_block_size + 2, CCV_64S | CCV_C2, CCV_SPARSE_ROW_MAJOR, 0);
 	ccv_array_t* opt = ccv_array_new(sizeof(ccv_nnc_tensor_opt_t), 1, 0);
-	for (j = 0; j < computable_tensor_size;)
+	for (j = 0; j < allocable_tensor_size;)
 	{
 		// Find the one with largest overlap, and it is not assigned.
 		int max_oc = 0;
@@ -158,7 +159,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_blocks[i].size,
 					.index = i,
-					.companion = -1,
+					.companion = tensor_blocks[i].companion_ref ? tensor_blocks[i].companion_ref - 1 : -1, // If already have a designated companion, use that.
 				};
 				// In case we have a tie, take them all in the array.
 				if (oc[i] > max_oc)
@@ -173,9 +174,12 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		{
 			// Copy it out, because after insertion, it may hold invalid pointer.
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
+			// Already have a designated companion.
+			if (a.companion >= 0)
+				continue;
 			for (k = 0; k < tensor_block_size; k++)
-				// Find non-overlapping tensor that has larger size (of course, is unassigned).
-				if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size)
+				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
+				if (k != a.index && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !tensor_blocks[k].companion_ref && !assigned[k] && tensor_blocks[k].size >= a.size)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
@@ -199,15 +203,20 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		for (i = 0; i < opt->rnum; i++)
 		{
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
-			// Determine the order between the two.
-			int a_hop_c = 0;
-			int c_hop_a = 0;
+			// Now, determine the order between a and c. After this, we can always check whether y
+			// can hop to the earliest one and if the latest one can hop to x.
+			// The earliest one will be called p and the latest one will be called q.
+			int p = a.index;
+			int q = a.index;
 			if (a.companion >= 0)
 			{
-				a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
-				c_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[a.companion]);
-				// You can only hop from one direction, otherwise we have a loop.
+				const int a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
+				const int c_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[a.companion]);
 				assert((a_hop_c > 0 && c_hop_a == 0) || (a_hop_c == 0 && c_hop_a > 0));
+				if (a_hop_c > 0)
+					q = a.companion;
+				else
+					p = a.companion;
 			}
 #define for_block(y, x, val) do { \
 				/* y is always earlier than x, but this is hard to assert now. */ \
@@ -215,37 +224,13 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				/* Thus, the hop between y and x (through a) should be smallest ones. */ \
 				if (((uint64_t*)val)[0] >= a.size) \
 				{ \
-					if (a.companion < 0) \
-					{ \
-						int y_hop_a = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[y - 1]); \
-						int a_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[a.index]); \
-						int hop = y_hop_a + a_hop_x; \
-						/* a.index doesn't overlap with y and x (in between) */ \
-						if ((y == 0 || y_hop_a) && (x == tensor_block_size + 1 || a_hop_x) && hop < min_hop) \
-							min_y = y, min_x = x, min_hop = hop, \
-							min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
-					} else { \
-						/* a.index doesn't overlap with y and x (in between) */ \
-						/* a.companion doesn't overlap with y and x (in between) as well */ \
-						/* because we know a.index is before a.companion (a can hop to c), */ \
-						/* we can check if y can hop to a and then c can hop to x to determine. */ \
-						if (a_hop_c > 0) \
-						{ \
-							int y_hop_a = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[y - 1]); \
-							int c_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[a.companion]); \
-							int hop = y_hop_a + c_hop_x; \
-							if ((y == 0 || y_hop_a) && (x == tensor_block_size + 1 || c_hop_x) && hop < min_hop) \
-								min_y = y, min_x = x, min_hop = hop, \
-								min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
-						} else { \
-							int y_hop_c = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[y - 1]); \
-							int a_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[a.index]); \
-							int hop = y_hop_c + a_hop_x; \
-							if ((y == 0 || y_hop_c) && (x == tensor_block_size + 1 || a_hop_x) && hop < min_hop) \
-								min_y = y, min_x = x, min_hop = hop, \
-								min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
-						} \
-					} \
+					int y_hop_p = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[y - 1]); \
+					int q_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[q]); \
+					int hop = y_hop_p + q_hop_x; \
+					/* a.index doesn't overlap with y and x (in between) */ \
+					if ((y == 0 || y_hop_p) && (x == tensor_block_size + 1 || q_hop_x) && hop < min_hop) \
+						min_y = y, min_x = x, min_hop = hop, \
+						min_val[0] = ((uint64_t*)val)[0], min_val[1] = ((uint64_t*)val)[1]; \
 				} \
 			} while (0)
 			CCV_SPARSE_FOREACH(alloc, for_block);
@@ -954,8 +939,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// with each other now).
 	// With this algorithm, we don't need to insert any data copy logic, the only thing need is to switch pointers
 	// which is covered by the tensor_multiview_t construct (thus, y (y0, y1), x (y1, y0), b (b0, b1), a (b1, b0))
-	int* conflicts = 0;
-	int conflict_rnum = 0;
+	int* unsolvables = 0; // blocks that cannot be simply solved with either in-place operation replacement or using the same memory region.
+	int unsolvable_rnum = 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
@@ -966,38 +951,41 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			assert(tensor_blocks[assign_ref].ref || tensor_blocks[assign_ref].flag == 0);
 			// If any of this two (assigner and assignee) is an alias, check to see if they are the same.
 			// If it is the same, we are good, no need to extend.
-			if (tensor_blocks[i].ref || tensor_blocks[assign_ref].ref)
+			int a_ref = i;
+			if (tensor_blocks[a_ref].ref)
+				a_ref = tensor_blocks[a_ref].ref - 1;
+			int b_ref = assign_ref;
+			if (tensor_blocks[b_ref].ref)
+				b_ref = tensor_blocks[b_ref].ref - 1;
+			if (a_ref != b_ref)
 			{
-				int a_ref = i;
-				if (tensor_blocks[a_ref].ref)
-					a_ref = tensor_blocks[a_ref].ref - 1;
-				assert(tensor_blocks[a_ref].ref == 0);
-				int b_ref = assign_ref;
-				if (tensor_blocks[b_ref].ref)
-					b_ref = tensor_blocks[b_ref].ref - 1;
-				assert(tensor_blocks[b_ref].ref == 0);
-				if (a_ref != b_ref)
+				// If any of the i's head is deterministically later than j's tail
+				// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
+				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a_ref], tensor_blocks[a_ref]);
+				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[b_ref]);
+				// It cannot be that both i can hop to j can j can hop to i.
+				assert(!(a_hop_b > 0 && b_hop_a > 0));
+				// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere).
+				if (a_hop_b || b_hop_a)
 				{
-					if (!conflict_rnum)
-						conflicts = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
-					conflicts[conflict_rnum] = i;
-					++conflict_rnum;
+					tensor_blocks[a_ref].companion_ref = b_ref + 1;
+					tensor_blocks[b_ref].companion_ref = a_ref + 1;
+				} else {
+					if (!unsolvable_rnum)
+						unsolvables = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
+					unsolvables[unsolvable_rnum] = i;
+					++unsolvable_rnum;
 				}
-			} else {
-				if (!conflict_rnum)
-					conflicts = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
-				conflicts[conflict_rnum] = i;
-				++conflict_rnum;
 			}
 		}
 	// Have conditions that cannot be satisfied.
-	if (conflict_rnum)
+	if (unsolvable_rnum)
 	{
 		// The visited exec nodes, these are the nodes we are going to extend.
 		uint8_t* visited = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
-		for (i = 0; i < conflict_rnum; i++)
+		for (i = 0; i < unsolvable_rnum; i++)
 		{
-			int ref = conflicts[i];
+			int ref = unsolvables[i];
 			if (tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_blocks[ref].ref == 0);
@@ -1019,7 +1007,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].tail, k)] = 1;
 				}
 		}
-		ccfree(conflicts);
+		ccfree(unsolvables);
 		// Now I have all conflicts related exec marked. Mark all the nodes that reach to or can be reached from.
 		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		{
