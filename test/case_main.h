@@ -53,9 +53,9 @@ static void case_run(case_t* test_case, const char* const match_test, int i, int
 		(*fail)++;
 		if (isatty(fileno(stdout)))
 		{
-			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m ", i + 1, total);
+			printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m ", i + 1, total);
 			case_print_hi(test_case->name, match_test);
-			printf("    \n");
+			printf("\n");
 		} else
 			printf("\n[%d/%d] [FAIL] %s\n", i + 1, total, test_case->name);
 	}
