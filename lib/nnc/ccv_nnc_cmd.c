@@ -402,8 +402,12 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 
 int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 {
-	// If it is a custom command, just apply it directly.
-	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+	// No additional attr for noop.
+	if (cmd.cmd == CCV_NNC_NOOP ||
+		// If it is a custom command, just apply it directly.
+		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD ||
+		// If it is sub-graph, there is no additional attr as well.
+		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
 		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);

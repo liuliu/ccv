@@ -507,6 +507,16 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 				++j;
 			}
 		}
+	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
+		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref)
+		{
+			// It must be available.
+			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[tensor_blocks[i].ref - 1]));
+			assert(tensor_arena->vt_tensors[tensor_blocks[i].ref - 1]);
+			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[tensor_blocks[i].ref - 1];
+		}
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
 		{
@@ -548,15 +558,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 		if (alloc_prep->blocks[i].block_ref >= tensor_symbol_info_size)
 			++j;
 	assert(j == alloc_prep->block_size);
-	for (i = 0; i < tensor_symbol_info_size; i++)
-		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
-		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref)
-		{
-			// It must be available.
-			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[tensor_blocks[i].ref - 1]));
-			assert(tensor_arena->vt_tensors[tensor_blocks[i].ref - 1]);
-			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[tensor_blocks[i].ref - 1];
-		}
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
@@ -581,7 +582,13 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 	ccv_array_t* head = tensor_blocks.head;
 	for (i = 0; i < head->rnum;)
 	{
-		ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(head, i), idx);
+		const int head_idx = *(int*)ccv_array_get(head, i);
+		if (head_idx == idx)
+		{
+			found = 1;
+			break;
+		}
+		ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, head_idx, idx);
 		if (cell.i32 && cell.i32[0] > 0)
 		{
 			/* If the current node is the parent of the head node, check if we found it or not. */
@@ -599,7 +606,7 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 			}
 		} else {
 			// If the head is the parent of the idx, we cannot add it to the array (it is deterministically later than head).
-			cell = ccv_get_sparse_matrix_cell(exec_dep, idx, *(int*)ccv_array_get(head, i));
+			cell = ccv_get_sparse_matrix_cell(exec_dep, idx, head_idx);
 			if (cell.i32 && cell.i32[0] > 0)
 			{
 				found = 1;
@@ -617,7 +624,13 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 	ccv_array_t* tail = tensor_blocks.tail;
 	for (i = 0; i < tail->rnum;)
 	{
-		ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, *(int*)ccv_array_get(tail, i));
+		const int tail_idx = *(int*)ccv_array_get(tail, i);
+		if (tail_idx == idx)
+		{
+			found = 1;
+			break;
+		}
+		ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, tail_idx);
 		if (cell.i32 && cell.i32[0] > 0)
 		{
 			/* If the current node is the child of the tail node, check if we found it or not. */
@@ -634,7 +647,7 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 			}
 		} else {
 			// If the tail is the child of the idx, we cannot add it to the array (it is deterministically earlier than tail).
-			cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(tail, i), idx);
+			cell = ccv_get_sparse_matrix_cell(exec_dep, tail_idx, idx);
 			if (cell.i32 && cell.i32[0] > 0)
 			{
 				found = 1;
@@ -830,7 +843,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				int ref = node->inputs[x]; \
 				if (ref < 0) \
 					continue; \
-				if (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref) \
+				while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref) \
 					ref = tensor_blocks[ref].ref - 1; \
 				assert(tensor_blocks[ref].ref == 0); \
 				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref]; \
@@ -951,10 +964,10 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			// If any of this two (assigner and assignee) is an alias, check to see if they are the same.
 			// If it is the same, we are good, no need to extend.
 			int a_ref = i;
-			if (tensor_blocks[a_ref].ref)
+			while (tensor_blocks[a_ref].ref)
 				a_ref = tensor_blocks[a_ref].ref - 1;
 			int b_ref = assign_ref;
-			if (tensor_blocks[b_ref].ref)
+			while (tensor_blocks[b_ref].ref)
 				b_ref = tensor_blocks[b_ref].ref - 1;
 			if (a_ref != b_ref)
 			{
@@ -984,7 +997,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 		for (i = 0; i < hard->rnum; i++)
 		{
 			int ref = *(int*)ccv_array_get(hard, i);
-			if (tensor_blocks[ref].ref)
+			while (tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_blocks[ref].ref == 0);
 			if (tensor_blocks[ref].head)
