@@ -939,8 +939,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// with each other now).
 	// With this algorithm, we don't need to insert any data copy logic, the only thing need is to switch pointers
 	// which is covered by the tensor_multiview_t construct (thus, y (y0, y1), x (y1, y0), b (b0, b1), a (b1, b0))
-	int* unsolvables = 0; // blocks that cannot be simply solved with either in-place operation replacement or using the same memory region.
-	int unsolvable_rnum = 0;
+	ccv_array_t* hard = 0; // blocks that cannot be simply solved with either in-place operation replacement or using the same memory region.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
@@ -971,21 +970,20 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					tensor_blocks[a_ref].companion_ref = b_ref + 1;
 					tensor_blocks[b_ref].companion_ref = a_ref + 1;
 				} else {
-					if (!unsolvable_rnum)
-						unsolvables = (int *)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
-					unsolvables[unsolvable_rnum] = i;
-					++unsolvable_rnum;
+					if (!hard)
+						hard = ccv_array_new(sizeof(int), 1, 0);
+					ccv_array_push(hard, &i);
 				}
 			}
 		}
 	// Have conditions that cannot be satisfied.
-	if (unsolvable_rnum)
+	if (hard)
 	{
 		// The visited exec nodes, these are the nodes we are going to extend.
 		uint8_t* visited = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
-		for (i = 0; i < unsolvable_rnum; i++)
+		for (i = 0; i < hard->rnum; i++)
 		{
-			int ref = unsolvables[i];
+			int ref = *(int*)ccv_array_get(hard, i);
 			if (tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_blocks[ref].ref == 0);
@@ -1007,7 +1005,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].tail, k)] = 1;
 				}
 		}
-		ccfree(unsolvables);
+		ccv_array_free(hard);
 		// Now I have all conflicts related exec marked. Mark all the nodes that reach to or can be reached from.
 		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		{

@@ -4,14 +4,37 @@
 #include <string.h>
 #include <assert.h>
 
-static void case_run(case_t* test_case, int i, int total, int* pass, int* fail)
+static void case_print_hi(char* str, const char* const hi)
+{
+	if (!hi)
+	{
+		printf("%s", str);
+		return;
+	}
+	const size_t hilen = strlen(hi);
+	char* savestr = strstr(str, hi);
+	while (savestr)
+	{
+		for (;str < savestr; ++str)
+			putchar(str[0]);
+		printf("\033[7m%s\033[0m", hi); // decorate with underline.
+		str += hilen;
+		savestr = strstr(str, hi);
+	}
+	printf("%s", str);
+}
+
+static void case_run(case_t* test_case, const char* const match_test, int i, int total, int* pass, int* fail)
 {
 	// Change the current directory.
 	if (test_case->dir && test_case->dir[0] != 0 && strcmp(test_case->dir, ".") != 0)
 		chdir(test_case->dir);
 	if (isatty(fileno(stdout)))
-		printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m %s ...", i + 1, total, test_case->name);
-	else
+	{
+		printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m ", i + 1, total);
+		case_print_hi(test_case->name, match_test);
+		printf(" ...");
+	} else
 		printf("[%d/%d] [RUN] %s ...", i + 1, total, test_case->name);
 	fflush(stdout);
 	int result = 0;
@@ -20,14 +43,20 @@ static void case_run(case_t* test_case, int i, int total, int* pass, int* fail)
 	{
 		(*pass)++;
 		if (isatty(fileno(stdout)))
-			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m %s    \n", i + 1, total, test_case->name);
-		else
+		{
+			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m ", i + 1, total);
+			case_print_hi(test_case->name, match_test);
+			printf("    \n");
+		} else
 			printf("\r[%d/%d] [PASS] %s    \n", i + 1, total, test_case->name);
 	} else {
 		(*fail)++;
 		if (isatty(fileno(stdout)))
-			printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m %s\n", i + 1, total, test_case->name);
-		else
+		{
+			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;31m[FAIL]\033[0;0m ", i + 1, total);
+			case_print_hi(test_case->name, match_test);
+			printf("    \n");
+		} else
 			printf("\n[%d/%d] [FAIL] %s\n", i + 1, total, test_case->name);
 	}
 }
@@ -69,6 +98,7 @@ int main(int argc, char** argv)
 	char* cur_dir = getcwd(buf, 1024);
 	static uint64_t the_sig = 0x883253372849284B;
 	int scan_mode = (test_size % case_size != 0);
+	const char* match_test = (argc == 2) ? argv[1] : 0;
 	int i, total = 0;
 	if (!scan_mode)
 		total = test_size / case_size;
@@ -91,7 +121,8 @@ int main(int argc, char** argv)
 		for (i = 0; i < len; i++)
 		{
 			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
-			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
+				(!match_test || strstr(test_case->name, match_test)))
 				total++;
 		}
 	}
@@ -103,18 +134,28 @@ int main(int argc, char** argv)
 		for (i = 0; i < len; i++)
 		{
 			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i);
-			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
+				(!match_test || strstr(test_case->name, match_test)))
 			{
-				case_run(test_case, j++, total, &pass, &fail);
+				case_run(test_case, match_test, j++, total, &pass, &fail);
 				chdir(cur_dir);
 			}
 		}
 	} else {
+		int matched_total = match_test ? 0 : total;
+		if (match_test)
+			for (i = 0; i < total; i++)
+			{
+				case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
+				if (strstr(test_case->name, match_test))
+					matched_total++;
+			}
 		// Simple case, I don't need to scan the data section.
 		for (i = 0; i < total; i++)
 		{
 			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
-			case_run(test_case, i, total, &pass, &fail);
+			if (!match_test || strstr(test_case->name, match_test))
+				case_run(test_case, match_test, i, matched_total, &pass, &fail);
 			chdir(cur_dir);
 		}
 	}
@@ -412,6 +453,7 @@ static char _test_end[8];
 
 int main(int argc, char** argv)
 {
+	const char* match_test = (argc == 2) ? argv[1] : 0;
 	char* buf = case_get_maps();
 	void* start;
 	void* end;
@@ -435,20 +477,22 @@ int main(int argc, char** argv)
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
-		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
+			(!match_test || strstr(test_case->name, match_test)))
 			total++;
 	}
-	char buf[1024];
-	char* cur_dir = getcwd(buf, 1024);
+	char dir_buf[1024];
+	char* cur_dir = getcwd(dir_buf, 1024);
 	if (__test_case_setup)
 		__test_case_setup();
 	int j = 0, pass = 0, fail = 0;
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
-		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2)
+		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
+			(!match_test || strstr(test_case->name, match_test)))
 		{
-			case_run(test_case, j++, total, &pass, &fail);
+			case_run(test_case, match_test, j++, total, &pass, &fail);
 			chdir(cur_dir);
 		}
 	}
