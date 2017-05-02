@@ -53,6 +53,11 @@ REGISTER_COMMAND(CCV_NNC_MAX_POOL_BACKWARD)(ccv_nnc_cmd_registry_t* const regist
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_back;
 }
 
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MAX_POOL_FORWARD)
+#define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_MAX_POOL_BACKWARD)
+#define CMD_MAX_POOL_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
+
 static int _ccv_nnc_avg_pool_forw_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
@@ -80,3 +85,8 @@ REGISTER_COMMAND(CCV_NNC_AVERAGE_POOL_BACKWARD)(ccv_nnc_cmd_registry_t* const re
 	registry->bitmask = _ccv_nnc_avg_pool_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_back;
 }
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_AVERAGE_POOL_FORWARD)
+#define CMD_AVERAGE_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_AVERAGE_POOL_BACKWARD)
+#define CMD_AVERAGE_POOL_BACKWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)

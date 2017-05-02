@@ -916,7 +916,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
-	int i, j, k;
+	int i, j;
 	ccv_sparse_matrix_t* exec_dep;
 	ccv_nnc_tensor_block_t* tensor_blocks;
 	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks);
@@ -971,10 +971,10 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				b_ref = tensor_blocks[b_ref].ref - 1;
 			if (a_ref != b_ref)
 			{
-				// If any of the i's head is deterministically later than j's tail
-				// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
-				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a_ref], tensor_blocks[a_ref]);
-				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[b_ref]);
+				// If any of the b's head is deterministically later than a's tail
+				// or any of the b's tail is deterministically earlier than a's head, they don't interfere.
+				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[a_ref]);
+				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a_ref], tensor_blocks[b_ref]);
 				// It cannot be that both i can hop to j can j can hop to i.
 				assert(!(a_hop_b > 0 && b_hop_a > 0));
 				// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere).
@@ -989,7 +989,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				}
 			}
 		}
-	// Have conditions that cannot be satisfied.
+	// Have conditions that cannot be satisfied with simple solution (allocate to the same memory region).
 	if (hard)
 	{
 		// The visited exec nodes, these are the nodes we are going to extend.
@@ -1000,26 +1000,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			while (tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_blocks[ref].ref == 0);
+			// This covered all the cases for this block, because if it has aliases, all aliases have
+			// its relevent exec attributed back, if it is normal ref (for in-place exec), it is attributed
+			// back as well.
 			if (tensor_blocks[ref].head)
 				for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
 					visited[*(int*)ccv_array_get(tensor_blocks[ref].head, j)] = 1;
 			if (tensor_blocks[ref].tail)
 				for (j = 0; j < tensor_blocks[ref].tail->rnum; j++)
 					visited[*(int*)ccv_array_get(tensor_blocks[ref].tail, j)] = 1;
-			if (tensor_blocks[ref].r_refs)
-				for (j = 0; j < tensor_blocks[ref].r_refs->rnum; j++)
-				{
-					const int r_ref = *(int*)ccv_array_get(tensor_blocks[ref].r_refs, j);
-					if (tensor_blocks[r_ref].head)
-						for (k = 0; k < tensor_blocks[r_ref].head->rnum; k++)
-							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].head, k)] = 1;
-					if (tensor_blocks[r_ref].tail)
-						for (k = 0; k < tensor_blocks[r_ref].tail->rnum; k++)
-							visited[*(int*)ccv_array_get(tensor_blocks[r_ref].tail, k)] = 1;
-				}
 		}
 		ccv_array_free(hard);
-		// Now I have all conflicts related exec marked. Mark all the nodes that reach to or can be reached from.
+		// Now I have all hard solution related exec marked. Mark all the nodes that reach to or can be reached from.
 		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		{
 		}

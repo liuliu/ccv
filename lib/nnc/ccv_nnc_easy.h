@@ -58,9 +58,9 @@
 #define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}
 
 #define ESCAPE_X(...) __VA_ARGS__
-#define HINT_X_1(_stride_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0},.end={0}}})
-#define HINT_X_2(_stride_, _border_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _border_},.end={0, ESCAPE_X _border_}}})
-#define HINT_X_3(_stride_, _begin_, _end_) ((ccv_nnc_hint_t){.stride={.dim={0, ESCAPE_X _stride_}}, .border={.begin={0, ESCAPE_X _begin_},.end={0, ESCAPE_X _end_}}})
+#define HINT_X_1(_stride_) ((ccv_nnc_hint_t){.stride={.dim={ESCAPE_X _stride_}}, .border={.begin={0},.end={0}}})
+#define HINT_X_2(_stride_, _border_) ((ccv_nnc_hint_t){.stride={.dim={ESCAPE_X _stride_}}, .border={.begin={ESCAPE_X _border_},.end={ESCAPE_X _border_}}})
+#define HINT_X_3(_stride_, _begin_, _end_) ((ccv_nnc_hint_t){.stride={.dim={ESCAPE_X _stride_}}, .border={.begin={ESCAPE_X _begin_},.end={ESCAPE_X _end_}}})
 #define HINT_X_SEL(_1, _2, _3, _FX, ...) _FX
 #define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2, HINT_X_1)(__VA_ARGS__)
 

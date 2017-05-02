@@ -150,12 +150,13 @@ int main(int argc, char** argv)
 				if (strstr(test_case->name, match_test))
 					matched_total++;
 			}
+		int j = 0;
 		// Simple case, I don't need to scan the data section.
 		for (i = 0; i < total; i++)
 		{
 			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 			if (!match_test || strstr(test_case->name, match_test))
-				case_run(test_case, match_test, i, matched_total, &pass, &fail);
+				case_run(test_case, match_test, j++, matched_total, &pass, &fail);
 			chdir(cur_dir);
 		}
 	}
