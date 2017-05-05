@@ -36,7 +36,7 @@ typedef struct {
 	uint64_t size;
 } ccv_nnc_tensor_opt_t;
 
-#define more_than(i1, i2, aux) ((i1).size > (i2).size || ((i1).size == (i2).size && (i1).companion >= 0 && (i2).companion < 0))
+#define more_than(i1, i2, aux) ((i1).size >= (i2).size)
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
@@ -159,8 +159,10 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_blocks[i].size,
 					.index = i,
-					.companion = tensor_blocks[i].companion_ref ? tensor_blocks[i].companion_ref - 1 : -1, // If already have a designated companion, use that.
+					.companion = -1, // If already have a designated companion, use that.
 				};
+				if (tensor_blocks[i].companion_ref)
+					a.size = ccv_max(a.size, tensor_blocks[tensor_blocks[i].companion_ref - 1].size);
 				// In case we have a tie, take them all in the array.
 				if (oc[i] > max_oc)
 					ccv_array_clear(opt), max_oc = oc[i];
@@ -177,19 +179,26 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			// Already have a designated companion.
 			if (a.companion >= 0)
 				continue;
+			const int companion_ref = tensor_blocks[i].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
-				if (k != a.index && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !tensor_blocks[k].companion_ref && !assigned[k] && tensor_blocks[k].size >= a.size)
+				if (k != a.index && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
-					if (!cell.u8 || cell.u8[0] == 0)
+					if (cell.u8 && cell.u8[0] == 1)
+						continue;
+					if (companion_ref >= 0 && companion_ref != k)
 					{
-						ccv_nnc_tensor_opt_t b = a;
-						b.companion = k;
-						b.size = tensor_blocks[k].size;
-						ccv_array_push(opt, &b);
+						// Have to make sure k doesn't interfere with the designated companion as well.
+						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k), ccv_max(companion_ref, k));
+						if (cell.u8 && cell.u8[0] == 1)
+							continue;
 					}
+					ccv_nnc_tensor_opt_t b = a;
+					b.companion = k;
+					b.size = tensor_blocks[k].size;
+					ccv_array_push(opt, &b);
 				}
 		}
 		// Order opt array by the size.
@@ -217,6 +226,23 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					q = a.companion;
 				else
 					p = a.companion;
+			}
+			if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
+			{
+				const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
+				const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[companion_ref]);
+				if (b_hop_p > 0)
+					p = companion_ref;
+				else {
+					const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[q]);
+					if (q_hop_b > 0)
+						q = companion_ref;
+					else { // Otherwise, b is in between p and q.
+						const int p_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[p]);
+						const int b_hop_q = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[q], tensor_blocks[companion_ref]);
+						assert(p_hop_b > 0 && b_hop_q > 0);
+					}
+				}
 			}
 #define for_block(y, x, val) do { \
 				/* y is always earlier than x, but this is hard to assert now. */ \
@@ -258,6 +284,21 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			assert(min_x == tensor_block_size + 1 || assigned[min_x - 1] == assign_group);
 		} else if (min_x < tensor_block_size + 1)
 			assign_group = assigned[min_x - 1];
+		// If min_y is source and min_x is destination, we don't need to do anything, otherwise, decrease the weight on that edge.
+		if (min_y != 0 || min_x != tensor_block_size + 1)
+		{
+			uint64_t val[2] = {
+				min_val[0], min_val[1]
+			};
+			assert(val[0] >= a.size);
+			val[0] -= a.size;
+			val[1] = val[1] + a.size; // Move the offset to the next one.
+			ccv_set_sparse_matrix_cell(alloc, min_y, min_x, val);
+		}
+		int strings[3] = {
+			a.index + 1
+		};
+		int string_size = 1;
 		// Assign out the selected one.
 		assigned[a.index] = assign_group;
 		// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
@@ -272,6 +313,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		// Assign out companion as well.
 		if (a.companion >= 0)
 		{
+			const int a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
+			if (a_hop_c > 0)
+				strings[1] = a.companion + 1;
+			else {
+				strings[1] = strings[0];
+				strings[0] = a.companion + 1;
+			}
+			++string_size;
 			assigned[a.companion] = assign_group;
 			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
 			allocated_offset[a.companion] = min_val[1];
@@ -283,72 +332,88 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 						--oc[i];
 				}
 		}
-		// If min_y is source and min_x is destination, we don't need to do anything, otherwise, decrease the weight on that edge.
-		if (min_y != 0 || min_x != tensor_block_size + 1)
+		// Assign out designated companion if it exist.
+		if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
 		{
-			uint64_t val[2] = {
-				min_val[0], min_val[1]
-			};
-			assert(val[0] >= a.size);
-			val[0] -= a.size;
-			val[1] = val[1] + a.size; // Move the offset to the next one.
-			ccv_set_sparse_matrix_cell(alloc, min_y, min_x, val);
-		}
-		// If a doesn't have a companion, simple, set the edge between min_y and the current one, current one and min_x,
-		// with proper offset and size deduction.
-		if (a.companion < 0)
-		{
-			uint64_t val[2] = {
-				a.size, min_val[1] // keep the offset
-			};
-			ccv_set_sparse_matrix_cell(alloc, min_y, a.index + 1, val);
-			ccv_set_sparse_matrix_cell(alloc, a.index + 1, min_x, val);
-			// Move to the next available tensor.
-			j++;
-		} else {
-			int a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
-			int c_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[a.companion]);
-			// You can only hop from one direction, otherwise we have a loop.
-			assert((a_hop_c > 0 && c_hop_a == 0) || (a_hop_c == 0 && c_hop_a > 0));
-			if (a_hop_c > 0)
+			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
+			const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[0] - 1], tensor_blocks[companion_ref]);
+			if (b_hop_p > 0)
 			{
-				uint64_t val[2] = {
-					tensor_blocks[a.index].size, min_val[1] // keep the offset
-				};
-				ccv_set_sparse_matrix_cell(alloc, min_y, a.index + 1, val);
-				val[0] = a.size;
-				assert(a.size == tensor_blocks[a.companion].size);
-				ccv_set_sparse_matrix_cell(alloc, a.index + 1, a.companion + 1, val);
-				ccv_set_sparse_matrix_cell(alloc, a.companion + 1, min_x, val);
-				if (a.size > tensor_blocks[a.index].size)
-				{
-					// residual size connection between min_y and companion.
-					val[0] = a.size - tensor_blocks[a.index].size;
-					// offset need to be updated as well.
-					val[1] = min_val[1] + tensor_blocks[a.index].size;
-					ccv_set_sparse_matrix_cell(alloc, min_y, a.companion + 1, val);
-				}
+				for (i = 0; i < string_size; i++)
+					strings[i + 1] = strings[i];
+				strings[0] = companion_ref + 1;
 			} else {
-				uint64_t val[2] = {
-					a.size, min_val[1] // keep the offset
-				};
-				assert(a.size == tensor_blocks[a.companion].size);
-				ccv_set_sparse_matrix_cell(alloc, min_y, a.companion + 1, val);
-				val[0] = tensor_blocks[a.index].size;
-				ccv_set_sparse_matrix_cell(alloc, a.companion + 1, a.index + 1, val);
-				ccv_set_sparse_matrix_cell(alloc, a.index + 1, min_x, val);
-				if (a.size > tensor_blocks[a.index].size)
-				{
-					// residual size connection between min_y and companion.
-					val[0] = a.size - tensor_blocks[a.index].size;
-					// offset need to be updated as well.
-					val[1] = min_val[1] + tensor_blocks[a.index].size;
-					ccv_set_sparse_matrix_cell(alloc, a.companion + 1, min_x, val);
+				const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[strings[string_size - 1] - 1]);
+				if (q_hop_b > 0)
+					strings[string_size] = companion_ref + 1;
+				else {
+					// Because b_hop_p is 0, q_hop_b is nil, p != q, and b must in between p and q. Therefore, I must have 2 allocations.
+					assert(string_size == 2);
+					strings[2] = strings[1];
+					strings[1] = companion_ref + 1;
 				}
 			}
-			// Assigned out two tensors.
-			j += 2;
+			++string_size;
+			assigned[companion_ref] = assign_group;
+			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
+			allocated_offset[companion_ref] = min_val[1];
+			for (i = 0; i < tensor_block_size; i++)
+				if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
+				{
+					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, companion_ref), ccv_max(i, companion_ref));
+					if (cell.u8 && cell.u8[0] == 1)
+						--oc[i];
+				}
 		}
+		uint64_t val[2] = {
+			a.size, min_val[1]
+		};
+		uint64_t consumed_size = 0;
+		// Go over from min_y to string_size (excluding min_x).
+		for (i = 0; i < string_size; i++)
+		{
+			const uint64_t size = tensor_blocks[strings[i] - 1].size;
+			assert(size <= a.size);
+			// Update consumed size if it is bigger than "size".
+			if (size > consumed_size)
+			{
+				val[0] = size - consumed_size;
+				ccv_set_sparse_matrix_cell(alloc, min_y, strings[i], val);
+				consumed_size = size;
+				val[1] = min_val[1] + consumed_size;
+			}
+			// If it consumed all the flow, break out.
+			if (consumed_size == a.size)
+				break;
+		}
+		for (i = 0; i < string_size; i++)
+		{
+			const uint64_t i_size = tensor_blocks[strings[i] - 1].size;
+			uint64_t val[2] = {
+				i_size, min_val[1]
+			};
+			uint64_t consumed_size = 0;
+			for (k = i + 1; k < string_size; k++)
+			{
+				const uint64_t size = ccv_min(i_size, tensor_blocks[strings[k] - 1].size);
+				// Update consumed size if it is bigger than "size".
+				if (size > consumed_size)
+				{
+					val[0] = size - consumed_size;
+					ccv_set_sparse_matrix_cell(alloc, strings[i], strings[k], val);
+					consumed_size = size;
+					val[1] = min_val[1] + consumed_size;
+				}
+				// If it consumed all the flow, break out.
+				if (consumed_size == i_size)
+					break;
+			}
+			val[0] = i_size - consumed_size;
+			// Still have residual, flow it to min_x.
+			if (val[0] > 0)
+				ccv_set_sparse_matrix_cell(alloc, strings[i], min_x, val);
+		}
+		j += string_size;
 	}
 	ccv_array_free(opt);
 	ccv_matrix_free(tensor_itf);
