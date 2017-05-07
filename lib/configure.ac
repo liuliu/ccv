@@ -39,6 +39,10 @@ blas_ok=no
 if test "$blas_ok" = no; then
 	AC_CHECK_LIB(blas, sgemm, [blas_ok=yes; BLAS_LIBS="-lblas"])
 fi
+# check for OpenBLAS library
+if test "$blas_ok" = no; then
+	AC_CHECK_LIB(openblas, cblas_sgemm, [blas_ok=yes; BLAS_LIBS="-lopenblas"])
+fi
 # check for ATLAS library
 if test "$blas_ok" = no; then
 	AC_CHECK_LIB(atlas, ATL_xerbla,
