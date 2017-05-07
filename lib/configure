@@ -2142,6 +2142,7 @@ fi
 
 
 
+
 # check for ARM NEON support
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking neon" >&5
 $as_echo_n "checking neon... " >&6; }
@@ -2153,41 +2154,10 @@ else
 fi
 
 if test "$neon_support" = yes; then
-	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_NEON "
-
-	MKCFLAGS="$MKCFLAGS-mfpu=neon -mfloat-abi=hard "
-
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes" >&5
 $as_echo "yes" >&6; }
-else
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
-$as_echo "no" >&6; }
-fi
+	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_NEON "
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking arch" >&5
-$as_echo_n "checking arch... " >&6; }
-
-# Check whether --with-arch was given.
-if test "${with_arch+set}" = set; then :
-  withval=$with_arch; arch_native=$withval
-else
-  arch_native="native"
-fi
-
-if test "$arch_native" = native; then
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: native" >&5
-$as_echo "native" >&6; }
-else
-	MKCFLAGS="$MKCFLAGS-march=$arch_native -mtune=$arch_native "
-
-	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $arch_native" >&5
-$as_echo "$arch_native" >&6; }
-fi
-
-# check for blas
-blas_ok=no
-# check for Generic BLAS library
-if test "$blas_ok" = no; then
 	ac_ext=c
 ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -2978,7 +2948,72 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sgemm in -lblas" >&5
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking whether C compiler accepts -mfpu=neon" >&5
+$as_echo_n "checking whether C compiler accepts -mfpu=neon... " >&6; }
+if ${ax_cv_check_cflags__Werror__mfpu_neon+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS -Werror -mfpu=neon"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_compile "$LINENO"; then :
+  ax_cv_check_cflags__Werror__mfpu_neon=yes
+else
+  ax_cv_check_cflags__Werror__mfpu_neon=no
+fi
+rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags__Werror__mfpu_neon" >&5
+$as_echo "$ax_cv_check_cflags__Werror__mfpu_neon" >&6; }
+	if test "x$ax_cv_check_cflags__Werror__mfpu_neon" = xyes; then :
+  MKCFLAGS="$MKCFLAGS-mfpu=neon -mfloat-abi=hard "
+
+else
+  :
+fi
+
+else
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
+$as_echo "no" >&6; }
+fi
+
+{ $as_echo "$as_me:${as_lineno-$LINENO}: checking arch" >&5
+$as_echo_n "checking arch... " >&6; }
+
+# Check whether --with-arch was given.
+if test "${with_arch+set}" = set; then :
+  withval=$with_arch; arch_native=$withval
+else
+  arch_native="native"
+fi
+
+if test "$arch_native" = native; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: native" >&5
+$as_echo "native" >&6; }
+else
+	MKCFLAGS="$MKCFLAGS-march=$arch_native -mtune=$arch_native "
+
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $arch_native" >&5
+$as_echo "$arch_native" >&6; }
+fi
+
+# check for blas
+blas_ok=no
+# check for Generic BLAS library
+if test "$blas_ok" = no; then
+	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for sgemm in -lblas" >&5
 $as_echo_n "checking for sgemm in -lblas... " >&6; }
 if ${ac_cv_lib_blas_sgemm+:} false; then :
   $as_echo_n "(cached) " >&6
