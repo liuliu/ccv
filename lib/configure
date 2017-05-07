@@ -195,8 +195,7 @@ test -x / || exit 1"
   as_suggested="  as_lineno_1=";as_suggested=$as_suggested$LINENO;as_suggested=$as_suggested" as_lineno_1a=\$LINENO
   as_lineno_2=";as_suggested=$as_suggested$LINENO;as_suggested=$as_suggested" as_lineno_2a=\$LINENO
   eval 'test \"x\$as_lineno_1'\$as_run'\" != \"x\$as_lineno_2'\$as_run'\" &&
-  test \"x\`expr \$as_lineno_1'\$as_run' + 1\`\" = \"x\$as_lineno_2'\$as_run'\"' || exit 1
-test \$(( 1 + 1 )) = 2 || exit 1"
+  test \"x\`expr \$as_lineno_1'\$as_run' + 1\`\" = \"x\$as_lineno_2'\$as_run'\"' || exit 1"
   if (eval "$as_required") 2>/dev/null; then :
   as_have_required=yes
 else
@@ -582,48 +581,10 @@ PACKAGE_STRING='libccv 0.6'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
-# Factoring default headers for most tests.
-ac_includes_default="\
-#include <stdio.h>
-#ifdef HAVE_SYS_TYPES_H
-# include <sys/types.h>
-#endif
-#ifdef HAVE_SYS_STAT_H
-# include <sys/stat.h>
-#endif
-#ifdef STDC_HEADERS
-# include <stdlib.h>
-# include <stddef.h>
-#else
-# ifdef HAVE_STDLIB_H
-#  include <stdlib.h>
-# endif
-#endif
-#ifdef HAVE_STRING_H
-# if !defined STDC_HEADERS && defined HAVE_MEMORY_H
-#  include <memory.h>
-# endif
-# include <string.h>
-#endif
-#ifdef HAVE_STRINGS_H
-# include <strings.h>
-#endif
-#ifdef HAVE_INTTYPES_H
-# include <inttypes.h>
-#endif
-#ifdef HAVE_STDINT_H
-# include <stdint.h>
-#endif
-#ifdef HAVE_UNISTD_H
-# include <unistd.h>
-#endif"
-
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 DISCFLAGS
 OPENMP_CFLAGS
-EGREP
-GREP
 CPP
 OBJEXT
 EXEEXT
@@ -1538,166 +1499,6 @@ fi
   as_fn_set_status $ac_retval
 
 } # ac_fn_c_try_cpp
-
-# ac_fn_c_check_header_mongrel LINENO HEADER VAR INCLUDES
-# -------------------------------------------------------
-# Tests whether HEADER exists, giving a warning if it cannot be compiled using
-# the include files in INCLUDES and setting the cache variable VAR
-# accordingly.
-ac_fn_c_check_header_mongrel ()
-{
-  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
-  if eval \${$3+:} false; then :
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $2" >&5
-$as_echo_n "checking for $2... " >&6; }
-if eval \${$3+:} false; then :
-  $as_echo_n "(cached) " >&6
-fi
-eval ac_res=\$$3
-	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
-$as_echo "$ac_res" >&6; }
-else
-  # Is the header compilable?
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking $2 usability" >&5
-$as_echo_n "checking $2 usability... " >&6; }
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-$4
-#include <$2>
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ac_header_compiler=yes
-else
-  ac_header_compiler=no
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_header_compiler" >&5
-$as_echo "$ac_header_compiler" >&6; }
-
-# Is the header present?
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking $2 presence" >&5
-$as_echo_n "checking $2 presence... " >&6; }
-cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <$2>
-_ACEOF
-if ac_fn_c_try_cpp "$LINENO"; then :
-  ac_header_preproc=yes
-else
-  ac_header_preproc=no
-fi
-rm -f conftest.err conftest.i conftest.$ac_ext
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_header_preproc" >&5
-$as_echo "$ac_header_preproc" >&6; }
-
-# So?  What about this header?
-case $ac_header_compiler:$ac_header_preproc:$ac_c_preproc_warn_flag in #((
-  yes:no: )
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2: accepted by the compiler, rejected by the preprocessor!" >&5
-$as_echo "$as_me: WARNING: $2: accepted by the compiler, rejected by the preprocessor!" >&2;}
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2: proceeding with the compiler's result" >&5
-$as_echo "$as_me: WARNING: $2: proceeding with the compiler's result" >&2;}
-    ;;
-  no:yes:* )
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2: present but cannot be compiled" >&5
-$as_echo "$as_me: WARNING: $2: present but cannot be compiled" >&2;}
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2:     check for missing prerequisite headers?" >&5
-$as_echo "$as_me: WARNING: $2:     check for missing prerequisite headers?" >&2;}
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2: see the Autoconf documentation" >&5
-$as_echo "$as_me: WARNING: $2: see the Autoconf documentation" >&2;}
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2:     section \"Present But Cannot Be Compiled\"" >&5
-$as_echo "$as_me: WARNING: $2:     section \"Present But Cannot Be Compiled\"" >&2;}
-    { $as_echo "$as_me:${as_lineno-$LINENO}: WARNING: $2: proceeding with the compiler's result" >&5
-$as_echo "$as_me: WARNING: $2: proceeding with the compiler's result" >&2;}
-    ;;
-esac
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $2" >&5
-$as_echo_n "checking for $2... " >&6; }
-if eval \${$3+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  eval "$3=\$ac_header_compiler"
-fi
-eval ac_res=\$$3
-	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
-$as_echo "$ac_res" >&6; }
-fi
-  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
-
-} # ac_fn_c_check_header_mongrel
-
-# ac_fn_c_try_run LINENO
-# ----------------------
-# Try to link conftest.$ac_ext, and return whether this succeeded. Assumes
-# that executables *can* be run.
-ac_fn_c_try_run ()
-{
-  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
-  if { { ac_try="$ac_link"
-case "(($ac_try" in
-  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
-  *) ac_try_echo=$ac_try;;
-esac
-eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
-$as_echo "$ac_try_echo"; } >&5
-  (eval "$ac_link") 2>&5
-  ac_status=$?
-  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
-  test $ac_status = 0; } && { ac_try='./conftest$ac_exeext'
-  { { case "(($ac_try" in
-  *\"* | *\`* | *\\*) ac_try_echo=\$ac_try;;
-  *) ac_try_echo=$ac_try;;
-esac
-eval ac_try_echo="\"\$as_me:${as_lineno-$LINENO}: $ac_try_echo\""
-$as_echo "$ac_try_echo"; } >&5
-  (eval "$ac_try") 2>&5
-  ac_status=$?
-  $as_echo "$as_me:${as_lineno-$LINENO}: \$? = $ac_status" >&5
-  test $ac_status = 0; }; }; then :
-  ac_retval=0
-else
-  $as_echo "$as_me: program exited with status $ac_status" >&5
-       $as_echo "$as_me: failed program was:" >&5
-sed 's/^/| /' conftest.$ac_ext >&5
-
-       ac_retval=$ac_status
-fi
-  rm -rf conftest.dSYM conftest_ipa8_conftest.oo
-  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
-  as_fn_set_status $ac_retval
-
-} # ac_fn_c_try_run
-
-# ac_fn_c_check_header_compile LINENO HEADER VAR INCLUDES
-# -------------------------------------------------------
-# Tests whether HEADER exists and can be compiled using the include files in
-# INCLUDES, setting the cache variable VAR accordingly.
-ac_fn_c_check_header_compile ()
-{
-  as_lineno=${as_lineno-"$1"} as_lineno_stack=as_lineno_stack=$as_lineno_stack
-  { $as_echo "$as_me:${as_lineno-$LINENO}: checking for $2" >&5
-$as_echo_n "checking for $2... " >&6; }
-if eval \${$3+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-$4
-#include <$2>
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  eval "$3=yes"
-else
-  eval "$3=no"
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-fi
-eval ac_res=\$$3
-	       { $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_res" >&5
-$as_echo "$ac_res" >&6; }
-  eval $as_lineno_stack; ${as_lineno_stack:+:} unset as_lineno
-
-} # ac_fn_c_check_header_compile
 cat >config.log <<_ACEOF
 This file contains any messages produced by compilers while
 running configure, to aid debugging if configure makes a mistake.
@@ -2139,6 +1940,7 @@ else
   { $as_echo "$as_me:${as_lineno-$LINENO}: result: no" >&5
 $as_echo "no" >&6; }
 fi
+
 
 
 
@@ -3368,148 +3170,17 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for grep that handles long lines and -e" >&5
-$as_echo_n "checking for grep that handles long lines and -e... " >&6; }
-if ${ac_cv_path_GREP+:} false; then :
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking png.h presence" >&5
+$as_echo_n "checking png.h presence... " >&6; }
+if ${ax_cv_check_cflags_png_h+:} false; then :
   $as_echo_n "(cached) " >&6
 else
-  if test -z "$GREP"; then
-  ac_path_GREP_found=false
-  # Loop through the user's path and test for each of PROGNAME-LIST
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH$PATH_SEPARATOR/usr/xpg4/bin
-do
-  IFS=$as_save_IFS
-  test -z "$as_dir" && as_dir=.
-    for ac_prog in grep ggrep; do
-    for ac_exec_ext in '' $ac_executable_extensions; do
-      ac_path_GREP="$as_dir/$ac_prog$ac_exec_ext"
-      as_fn_executable_p "$ac_path_GREP" || continue
-# Check for GNU ac_path_GREP and select it if it is found.
-  # Check for GNU $ac_path_GREP
-case `"$ac_path_GREP" --version 2>&1` in
-*GNU*)
-  ac_cv_path_GREP="$ac_path_GREP" ac_path_GREP_found=:;;
-*)
-  ac_count=0
-  $as_echo_n 0123456789 >"conftest.in"
-  while :
-  do
-    cat "conftest.in" "conftest.in" >"conftest.tmp"
-    mv "conftest.tmp" "conftest.in"
-    cp "conftest.in" "conftest.nl"
-    $as_echo 'GREP' >> "conftest.nl"
-    "$ac_path_GREP" -e 'GREP$' -e '-(cannot match)-' < "conftest.nl" >"conftest.out" 2>/dev/null || break
-    diff "conftest.out" "conftest.nl" >/dev/null 2>&1 || break
-    as_fn_arith $ac_count + 1 && ac_count=$as_val
-    if test $ac_count -gt ${ac_path_GREP_max-0}; then
-      # Best one so far, save it but keep looking for a better one
-      ac_cv_path_GREP="$ac_path_GREP"
-      ac_path_GREP_max=$ac_count
-    fi
-    # 10*(2^10) chars as input seems more than enough
-    test $ac_count -gt 10 && break
-  done
-  rm -f conftest.in conftest.tmp conftest.nl conftest.out;;
-esac
 
-      $ac_path_GREP_found && break 3
-    done
-  done
-  done
-IFS=$as_save_IFS
-  if test -z "$ac_cv_path_GREP"; then
-    as_fn_error $? "no acceptable grep could be found in $PATH$PATH_SEPARATOR/usr/xpg4/bin" "$LINENO" 5
-  fi
-else
-  ac_cv_path_GREP=$GREP
-fi
-
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_path_GREP" >&5
-$as_echo "$ac_cv_path_GREP" >&6; }
- GREP="$ac_cv_path_GREP"
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for egrep" >&5
-$as_echo_n "checking for egrep... " >&6; }
-if ${ac_cv_path_EGREP+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  if echo a | $GREP -E '(a|b)' >/dev/null 2>&1
-   then ac_cv_path_EGREP="$GREP -E"
-   else
-     if test -z "$EGREP"; then
-  ac_path_EGREP_found=false
-  # Loop through the user's path and test for each of PROGNAME-LIST
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH$PATH_SEPARATOR/usr/xpg4/bin
-do
-  IFS=$as_save_IFS
-  test -z "$as_dir" && as_dir=.
-    for ac_prog in egrep; do
-    for ac_exec_ext in '' $ac_executable_extensions; do
-      ac_path_EGREP="$as_dir/$ac_prog$ac_exec_ext"
-      as_fn_executable_p "$ac_path_EGREP" || continue
-# Check for GNU ac_path_EGREP and select it if it is found.
-  # Check for GNU $ac_path_EGREP
-case `"$ac_path_EGREP" --version 2>&1` in
-*GNU*)
-  ac_cv_path_EGREP="$ac_path_EGREP" ac_path_EGREP_found=:;;
-*)
-  ac_count=0
-  $as_echo_n 0123456789 >"conftest.in"
-  while :
-  do
-    cat "conftest.in" "conftest.in" >"conftest.tmp"
-    mv "conftest.tmp" "conftest.in"
-    cp "conftest.in" "conftest.nl"
-    $as_echo 'EGREP' >> "conftest.nl"
-    "$ac_path_EGREP" 'EGREP$' < "conftest.nl" >"conftest.out" 2>/dev/null || break
-    diff "conftest.out" "conftest.nl" >/dev/null 2>&1 || break
-    as_fn_arith $ac_count + 1 && ac_count=$as_val
-    if test $ac_count -gt ${ac_path_EGREP_max-0}; then
-      # Best one so far, save it but keep looking for a better one
-      ac_cv_path_EGREP="$ac_path_EGREP"
-      ac_path_EGREP_max=$ac_count
-    fi
-    # 10*(2^10) chars as input seems more than enough
-    test $ac_count -gt 10 && break
-  done
-  rm -f conftest.in conftest.tmp conftest.nl conftest.out;;
-esac
-
-      $ac_path_EGREP_found && break 3
-    done
-  done
-  done
-IFS=$as_save_IFS
-  if test -z "$ac_cv_path_EGREP"; then
-    as_fn_error $? "no acceptable egrep could be found in $PATH$PATH_SEPARATOR/usr/xpg4/bin" "$LINENO" 5
-  fi
-else
-  ac_cv_path_EGREP=$EGREP
-fi
-
-   fi
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_path_EGREP" >&5
-$as_echo "$ac_cv_path_EGREP" >&6; }
- EGREP="$ac_cv_path_EGREP"
-
-
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for ANSI C header files" >&5
-$as_echo_n "checking for ANSI C header files... " >&6; }
-if ${ac_cv_header_stdc+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS png.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
 /* end confdefs.h.  */
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-#include <float.h>
-
+#include <png.h>
 int
 main ()
 {
@@ -3518,130 +3189,60 @@ main ()
   return 0;
 }
 _ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  ac_cv_header_stdc=yes
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_png_h=yes
 else
-  ac_cv_header_stdc=no
+  ax_cv_check_cflags_png_h=no
 fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-
-if test $ac_cv_header_stdc = yes; then
-  # SunOS 4.x string.h does not declare mem*, contrary to ANSI.
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <string.h>
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "memchr" >/dev/null 2>&1; then :
-
-else
-  ac_cv_header_stdc=no
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
 fi
-rm -f conftest*
-
-fi
-
-if test $ac_cv_header_stdc = yes; then
-  # ISC 2.0.2 stdlib.h does not declare free, contrary to ANSI.
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <stdlib.h>
-
-_ACEOF
-if (eval "$ac_cpp conftest.$ac_ext") 2>&5 |
-  $EGREP "free" >/dev/null 2>&1; then :
-
-else
-  ac_cv_header_stdc=no
-fi
-rm -f conftest*
-
-fi
-
-if test $ac_cv_header_stdc = yes; then
-  # /bin/cc in Irix-4.0.5 gets non-ANSI ctype macros unless using -ansi.
-  if test "$cross_compiling" = yes; then :
-  :
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <ctype.h>
-#include <stdlib.h>
-#if ((' ' & 0x0FF) == 0x020)
-# define ISLOWER(c) ('a' <= (c) && (c) <= 'z')
-# define TOUPPER(c) (ISLOWER(c) ? 'A' + ((c) - 'a') : (c))
-#else
-# define ISLOWER(c) \
-		   (('a' <= (c) && (c) <= 'i') \
-		     || ('j' <= (c) && (c) <= 'r') \
-		     || ('s' <= (c) && (c) <= 'z'))
-# define TOUPPER(c) (ISLOWER(c) ? ((c) | 0x40) : (c))
-#endif
-
-#define XOR(e, f) (((e) && !(f)) || (!(e) && (f)))
-int
-main ()
-{
-  int i;
-  for (i = 0; i < 256; i++)
-    if (XOR (islower (i), ISLOWER (i))
-	|| toupper (i) != TOUPPER (i))
-      return 2;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_run "$LINENO"; then :
-
-else
-  ac_cv_header_stdc=no
-fi
-rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
-  conftest.$ac_objext conftest.beam conftest.$ac_ext
-fi
-
-fi
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ac_cv_header_stdc" >&5
-$as_echo "$ac_cv_header_stdc" >&6; }
-if test $ac_cv_header_stdc = yes; then
-
-$as_echo "#define STDC_HEADERS 1" >>confdefs.h
-
-fi
-
-# On IRIX 5.3, sys/types and inttypes.h are conflicting.
-for ac_header in sys/types.h sys/stat.h stdlib.h string.h memory.h strings.h \
-		  inttypes.h stdint.h unistd.h
-do :
-  as_ac_Header=`$as_echo "ac_cv_header_$ac_header" | $as_tr_sh`
-ac_fn_c_check_header_compile "$LINENO" "$ac_header" "$as_ac_Header" "$ac_includes_default
-"
-if eval test \"x\$"$as_ac_Header"\" = x"yes"; then :
-  cat >>confdefs.h <<_ACEOF
-#define `$as_echo "HAVE_$ac_header" | $as_tr_cpp` 1
-_ACEOF
-
-fi
-
-done
-
-
-ac_fn_c_check_header_mongrel "$LINENO" "png.h" "ac_cv_header_png_h" "$ac_includes_default"
-if test "x$ac_cv_header_png_h" = xyes; then :
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_png_h" >&5
+$as_echo "$ax_cv_check_cflags_png_h" >&6; }
+	if test "x$ax_cv_check_cflags_png_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBPNG "
  MKLDFLAGS="$MKLDFLAGS-lpng "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking jpeglib.h presence" >&5
+$as_echo_n "checking jpeglib.h presence... " >&6; }
+if ${ax_cv_check_cflags_jpeglib_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "jpeglib.h" "ac_cv_header_jpeglib_h" "$ac_includes_default"
-if test "x$ac_cv_header_jpeglib_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS jpeglib.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <jpeglib.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_jpeglib_h=yes
+else
+  ax_cv_check_cflags_jpeglib_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_jpeglib_h" >&5
+$as_echo "$ax_cv_check_cflags_jpeglib_h" >&6; }
+	if test "x$ax_cv_check_cflags_jpeglib_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBJPEG "
  MKLDFLAGS="$MKLDFLAGS-ljpeg "
 
+else
+  :
 fi
-
 
 
 { $as_echo "$as_me:${as_lineno-$LINENO}: checking fftw3" >&5
@@ -3654,74 +3255,306 @@ else
 fi
 
 if test "$fftw3_enable" != no; then
-	ac_fn_c_check_header_mongrel "$LINENO" "fftw3.h" "ac_cv_header_fftw3_h" "$ac_includes_default"
-if test "x$ac_cv_header_fftw3_h" = xyes; then :
+	 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking fftw3.h presence" >&5
+$as_echo_n "checking fftw3.h presence... " >&6; }
+if ${ax_cv_check_cflags_fftw3_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS fftw3.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <fftw3.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_fftw3_h=yes
+else
+  ax_cv_check_cflags_fftw3_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_fftw3_h" >&5
+$as_echo "$ax_cv_check_cflags_fftw3_h" >&6; }
+	if test "x$ax_cv_check_cflags_fftw3_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_FFTW3 "
  MKLDFLAGS="$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "
 
+else
+  :
 fi
-
 
 else
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: result: disabled" >&5
 $as_echo "disabled" >&6; }
 fi
 
-ac_fn_c_check_header_mongrel "$LINENO" "linear.h" "ac_cv_header_linear_h" "$ac_includes_default"
-if test "x$ac_cv_header_linear_h" = xyes; then :
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking linear.h presence" >&5
+$as_echo_n "checking linear.h presence... " >&6; }
+if ${ax_cv_check_cflags_linear_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS linear.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <linear.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_linear_h=yes
+else
+  ax_cv_check_cflags_linear_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_linear_h" >&5
+$as_echo "$ax_cv_check_cflags_linear_h" >&6; }
+	if test "x$ax_cv_check_cflags_linear_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_LIBLINEAR "
  MKLDFLAGS="$MKLDFLAGS-llinear "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking tesseract/capi.h presence" >&5
+$as_echo_n "checking tesseract/capi.h presence... " >&6; }
+if ${ax_cv_check_cflags_tesseract_capi_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "tesseract/capi.h" "ac_cv_header_tesseract_capi_h" "$ac_includes_default"
-if test "x$ac_cv_header_tesseract_capi_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS tesseract/capi.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <tesseract/capi.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_tesseract_capi_h=yes
+else
+  ax_cv_check_cflags_tesseract_capi_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_tesseract_capi_h" >&5
+$as_echo "$ax_cv_check_cflags_tesseract_capi_h" >&6; }
+	if test "x$ax_cv_check_cflags_tesseract_capi_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_TESSERACT "
  MKLDFLAGS="$MKLDFLAGS-ltesseract "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking Accelerate/Accelerate.h presence" >&5
+$as_echo_n "checking Accelerate/Accelerate.h presence... " >&6; }
+if ${ax_cv_check_cflags_Accelerate_Accelerate_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "Accelerate/Accelerate.h" "ac_cv_header_Accelerate_Accelerate_h" "$ac_includes_default"
-if test "x$ac_cv_header_Accelerate_Accelerate_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS Accelerate/Accelerate.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <Accelerate/Accelerate.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_Accelerate_Accelerate_h=yes
+else
+  ax_cv_check_cflags_Accelerate_Accelerate_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_Accelerate_Accelerate_h" >&5
+$as_echo "$ax_cv_check_cflags_Accelerate_Accelerate_h" >&6; }
+	if test "x$ax_cv_check_cflags_Accelerate_Accelerate_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_ACCELERATE_FRAMEWORK "
  MKLDFLAGS="$MKLDFLAGS-framework Accelerate "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking libavcodec/avcodec.h presence" >&5
+$as_echo_n "checking libavcodec/avcodec.h presence... " >&6; }
+if ${ax_cv_check_cflags_libavcodec_avcodec_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "libavcodec/avcodec.h" "ac_cv_header_libavcodec_avcodec_h" "$ac_includes_default"
-if test "x$ac_cv_header_libavcodec_avcodec_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS libavcodec/avcodec.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <libavcodec/avcodec.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_libavcodec_avcodec_h=yes
+else
+  ax_cv_check_cflags_libavcodec_avcodec_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_libavcodec_avcodec_h" >&5
+$as_echo "$ax_cv_check_cflags_libavcodec_avcodec_h" >&6; }
+	if test "x$ax_cv_check_cflags_libavcodec_avcodec_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_AVCODEC "
  MKLDFLAGS="$MKLDFLAGS-lavcodec "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking libavformat/avformat.h presence" >&5
+$as_echo_n "checking libavformat/avformat.h presence... " >&6; }
+if ${ax_cv_check_cflags_libavformat_avformat_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "libavformat/avformat.h" "ac_cv_header_libavformat_avformat_h" "$ac_includes_default"
-if test "x$ac_cv_header_libavformat_avformat_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS libavformat/avformat.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <libavformat/avformat.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_libavformat_avformat_h=yes
+else
+  ax_cv_check_cflags_libavformat_avformat_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_libavformat_avformat_h" >&5
+$as_echo "$ax_cv_check_cflags_libavformat_avformat_h" >&6; }
+	if test "x$ax_cv_check_cflags_libavformat_avformat_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_AVFORMAT "
  MKLDFLAGS="$MKLDFLAGS-lavformat "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking libavutil/avutil.h presence" >&5
+$as_echo_n "checking libavutil/avutil.h presence... " >&6; }
+if ${ax_cv_check_cflags_libavutil_avutil_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "libavutil/avutil.h" "ac_cv_header_libavutil_avutil_h" "$ac_includes_default"
-if test "x$ac_cv_header_libavutil_avutil_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS libavutil/avutil.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <libavutil/avutil.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_libavutil_avutil_h=yes
+else
+  ax_cv_check_cflags_libavutil_avutil_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_libavutil_avutil_h" >&5
+$as_echo "$ax_cv_check_cflags_libavutil_avutil_h" >&6; }
+	if test "x$ax_cv_check_cflags_libavutil_avutil_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_AVUTIL "
  MKLDFLAGS="$MKLDFLAGS-lavutil "
 
+else
+  :
 fi
 
+ 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking libswscale/swscale.h presence" >&5
+$as_echo_n "checking libswscale/swscale.h presence... " >&6; }
+if ${ax_cv_check_cflags_libswscale_swscale_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
 
-ac_fn_c_check_header_mongrel "$LINENO" "libswscale/swscale.h" "ac_cv_header_libswscale_swscale_h" "$ac_includes_default"
-if test "x$ac_cv_header_libswscale_swscale_h" = xyes; then :
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS libswscale/swscale.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <libswscale/swscale.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_libswscale_swscale_h=yes
+else
+  ax_cv_check_cflags_libswscale_swscale_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_libswscale_swscale_h" >&5
+$as_echo "$ax_cv_check_cflags_libswscale_swscale_h" >&6; }
+	if test "x$ax_cv_check_cflags_libswscale_swscale_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_SWSCALE "
  MKLDFLAGS="$MKLDFLAGS-lswscale "
 
+else
+  :
 fi
-
 
 # try to find CPU parallel libraries, OpenMP or libdispatch, we will prefer OpenMP when possible.
 
@@ -3800,13 +3633,42 @@ if test -n "${OPENMP_CFLAGS}"; then
 fi
 # only check dispatch if compiled with clang
 if test $CC = clang; then
-	ac_fn_c_check_header_mongrel "$LINENO" "dispatch/dispatch.h" "ac_cv_header_dispatch_dispatch_h" "$ac_includes_default"
-if test "x$ac_cv_header_dispatch_dispatch_h" = xyes; then :
+	 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking dispatch/dispatch.h presence" >&5
+$as_echo_n "checking dispatch/dispatch.h presence... " >&6; }
+if ${ax_cv_check_cflags_dispatch_dispatch_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS dispatch/dispatch.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <dispatch/dispatch.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_dispatch_dispatch_h=yes
+else
+  ax_cv_check_cflags_dispatch_dispatch_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_dispatch_dispatch_h" >&5
+$as_echo "$ax_cv_check_cflags_dispatch_dispatch_h" >&6; }
+	if test "x$ax_cv_check_cflags_dispatch_dispatch_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D USE_DISPATCH "
  MKCFLAGS="$MKCFLAGS-fblocks "
 
+else
+  :
 fi
-
 
 	{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for dispatch_apply in -ldispatch" >&5
 $as_echo_n "checking for dispatch_apply in -ldispatch... " >&6; }
@@ -3852,13 +3714,42 @@ fi
 fi
 # check for SSE2 support only we don't enable NEON explicitly
 if test "$neon_support" != yes; then
-	ac_fn_c_check_header_mongrel "$LINENO" "xmmintrin.h" "ac_cv_header_xmmintrin_h" "$ac_includes_default"
-if test "x$ac_cv_header_xmmintrin_h" = xyes; then :
+	 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking xmmintrin.h presence" >&5
+$as_echo_n "checking xmmintrin.h presence... " >&6; }
+if ${ax_cv_check_cflags_xmmintrin_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS xmmintrin.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <xmmintrin.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_xmmintrin_h=yes
+else
+  ax_cv_check_cflags_xmmintrin_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_xmmintrin_h" >&5
+$as_echo "$ax_cv_check_cflags_xmmintrin_h" >&6; }
+	if test "x$ax_cv_check_cflags_xmmintrin_h" = xyes; then :
   DEFINE_MACROS="$DEFINE_MACROS-D HAVE_SSE2 "
  MKCFLAGS="$MKCFLAGS-msse2 "
 
+else
+  :
 fi
-
 
 fi
 
@@ -4028,14 +3919,6 @@ if [ -d "$cuda_prefix" ]; then
 
 	CPPFLAGS="$CPPFLAGS-I$cuda_prefix/include "
 
-	ac_fn_c_check_header_mongrel "$LINENO" "cudnn.h" "ac_cv_header_cudnn_h" "$ac_includes_default"
-if test "x$ac_cv_header_cudnn_h" = xyes; then :
-  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDNN "
- MKLDFLAGS="$MKLDFLAGS-lcudnn "
-
-fi
-
-
 	if [ -d "$cuda_prefix/lib64" ]; then
 		MKLDFLAGS="$MKLDFLAGS-L$cuda_prefix/lib64 "
 
@@ -4047,6 +3930,43 @@ $as_echo "yes, x86_64" >&6; }
 		{ $as_echo "$as_me:${as_lineno-$LINENO}: result: yes, i386" >&5
 $as_echo "yes, i386" >&6; }
 	fi
+	 		{ $as_echo "$as_me:${as_lineno-$LINENO}: checking cudnn.h presence" >&5
+$as_echo_n "checking cudnn.h presence... " >&6; }
+if ${ax_cv_check_cflags_cudnn_h+:} false; then :
+  $as_echo_n "(cached) " >&6
+else
+
+		ax_check_save_flags=$CFLAGS
+		CFLAGS="$CFLAGS cudnn.h"
+		cat confdefs.h - <<_ACEOF >conftest.$ac_ext
+/* end confdefs.h.  */
+#include <cudnn.h>
+int
+main ()
+{
+
+  ;
+  return 0;
+}
+_ACEOF
+if ac_fn_c_try_cpp "$LINENO"; then :
+  ax_cv_check_cflags_cudnn_h=yes
+else
+  ax_cv_check_cflags_cudnn_h=no
+fi
+rm -f conftest.err conftest.i conftest.$ac_ext
+		CFLAGS=$ax_check_save_flags
+fi
+{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $ax_cv_check_cflags_cudnn_h" >&5
+$as_echo "$ax_cv_check_cflags_cudnn_h" >&6; }
+	if test "x$ax_cv_check_cflags_cudnn_h" = xyes; then :
+  DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDNN "
+ MKLDFLAGS="$MKLDFLAGS-lcudnn "
+
+else
+  :
+fi
+
 else
 	CUDA_SRCS=""
 

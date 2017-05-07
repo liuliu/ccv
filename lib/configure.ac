@@ -29,6 +29,22 @@ AC_DEFUN([AX_CHECK_COMPILE_FLAG],
 	AS_VAR_POPDEF([CACHEVAR])dnl
 ]) dnl AX_CHECK_COMPILE_FLAGS
 
+AC_DEFUN([AX_CHECK_HEADER_PRESENCE],
+	[AC_PREREQ(2.64) dnl for _AC_LANG_PREFIX and AS_VAR_IF
+	AS_VAR_PUSHDEF([CACHEVAR],[ax_cv_check_[]_AC_LANG_ABBREV[]flags_$1])dnl
+	AC_CACHE_CHECK([$1 presence], CACHEVAR, [
+		ax_check_save_flags=$[]_AC_LANG_PREFIX[]FLAGS
+		_AC_LANG_PREFIX[]FLAGS="$[]_AC_LANG_PREFIX[]FLAGS $1"
+		AC_PREPROC_IFELSE([m4_default([$5],[AC_LANG_PROGRAM([[#include <$1>]])])],
+			[AS_VAR_SET(CACHEVAR,[yes])],
+			[AS_VAR_SET(CACHEVAR,[no])])
+		_AC_LANG_PREFIX[]FLAGS=$ax_check_save_flags])
+	AS_VAR_IF(CACHEVAR,yes,
+		[m4_default([$2], :)],
+		[m4_default([$3], :)])
+	AS_VAR_POPDEF([CACHEVAR])dnl
+]) dnl AX_CHECK_HEADER
+
 # check for ARM NEON support
 AC_MSG_CHECKING([neon])
 AC_ARG_ENABLE(neon, [AS_HELP_STRING([--enable-neon], [optimize with NEON instruction set])], [neon_support=$enableval], [neon_support="no"])
@@ -77,34 +93,34 @@ AC_CHECK_LIB(rt, clock_gettime,
 			[AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lrt "])])
 
 # check for libpng, libjpeg, fftw3, liblinear, Accelerate framework, avformat, avcodec, avutil, swscale
-AC_CHECK_HEADER([png.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
-AC_CHECK_HEADER([jpeglib.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
+AX_CHECK_HEADER_PRESENCE([png.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBPNG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpng "])])
+AX_CHECK_HEADER_PRESENCE([jpeglib.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBJPEG "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ljpeg "])])
 
 AC_MSG_CHECKING([fftw3])
 AC_ARG_ENABLE(fftw3, [AS_HELP_STRING([--disable-fftw3], [disable FFTW3 (GPL License)])], [fftw3_enable=$enableval], [fftw3_enable="yes"])
 if test "$fftw3_enable" != no; then
-	AC_CHECK_HEADER([fftw3.h],
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
+	AX_CHECK_HEADER_PRESENCE([fftw3.h],
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_FFTW3 "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lfftw3 -lfftw3f -lpthread "])])
 else
 	AC_MSG_RESULT([disabled])
 fi
 
-AC_CHECK_HEADER([linear.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBLINEAR "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-llinear "])])
-AC_CHECK_HEADER([tesseract/capi.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_TESSERACT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ltesseract "])])
-AC_CHECK_HEADER([Accelerate/Accelerate.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_ACCELERATE_FRAMEWORK "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-framework Accelerate "])])
-AC_CHECK_HEADER([libavcodec/avcodec.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVCODEC "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavcodec "])])
-AC_CHECK_HEADER([libavformat/avformat.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVFORMAT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavformat "])])
-AC_CHECK_HEADER([libavutil/avutil.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVUTIL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavutil "])])
-AC_CHECK_HEADER([libswscale/swscale.h],
-				[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SWSCALE "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lswscale "])])
+AX_CHECK_HEADER_PRESENCE([linear.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBLINEAR "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-llinear "])])
+AX_CHECK_HEADER_PRESENCE([tesseract/capi.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_TESSERACT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ltesseract "])])
+AX_CHECK_HEADER_PRESENCE([Accelerate/Accelerate.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_ACCELERATE_FRAMEWORK "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-framework Accelerate "])])
+AX_CHECK_HEADER_PRESENCE([libavcodec/avcodec.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVCODEC "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavcodec "])])
+AX_CHECK_HEADER_PRESENCE([libavformat/avformat.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVFORMAT "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavformat "])])
+AX_CHECK_HEADER_PRESENCE([libavutil/avutil.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_AVUTIL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lavutil "])])
+AX_CHECK_HEADER_PRESENCE([libswscale/swscale.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SWSCALE "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lswscale "])])
 # try to find CPU parallel libraries, OpenMP or libdispatch, we will prefer OpenMP when possible.
 AC_OPENMP
 if test -n "${OPENMP_CFLAGS}"; then
@@ -114,14 +130,14 @@ if test -n "${OPENMP_CFLAGS}"; then
 fi
 # only check dispatch if compiled with clang
 if test $CC = clang; then
-	AC_CHECK_HEADER([dispatch/dispatch.h],
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "])])
+	AX_CHECK_HEADER_PRESENCE([dispatch/dispatch.h],
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D USE_DISPATCH "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-fblocks "])])
 	AC_CHECK_LIB(dispatch, dispatch_apply, [AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-ldispatch -lBlocksRuntime "])])
 fi
 # check for SSE2 support only we don't enable NEON explicitly
 if test "$neon_support" != yes; then
-	AC_CHECK_HEADER(xmmintrin.h,
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SSE2 "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-msse2 "])])
+	AX_CHECK_HEADER_PRESENCE(xmmintrin.h,
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_SSE2 "]) AC_SUBST(MKCFLAGS, ["$MKCFLAGS-msse2 "])])
 fi
 
 # check for gsl, and I need to first check these two before I can check gsl
@@ -131,7 +147,7 @@ if test "$gsl_enable" != no; then
 	AC_CHECK_LIB(m, cos)
 	AC_CHECK_LIB(gslcblas, cblas_dgemm)
 	AC_CHECK_LIB(gsl, gsl_blas_dgemm,
-				 [AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_GSL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lgsl -lgslcblas "])])
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_GSL "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lgsl -lgslcblas "])])
 else
 	AC_MSG_RESULT([disabled])
 fi
@@ -143,8 +159,6 @@ if [[ -d "$cuda_prefix" ]]; then
 	AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDA "])
 	AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcuda -lcudart -lcublas "])
 	AC_SUBST(CPPFLAGS, ["$CPPFLAGS-I$cuda_prefix/include "])
-	AC_CHECK_HEADER([cudnn.h],
-					[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDNN "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcudnn "])])
 	if [[ -d "$cuda_prefix/lib64" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib64 "])
 		AC_MSG_RESULT([yes, x86_64])
@@ -152,6 +166,8 @@ if [[ -d "$cuda_prefix" ]]; then
 		AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-L$cuda_prefix/lib "])
 		AC_MSG_RESULT([yes, i386])
 	fi
+	AX_CHECK_HEADER_PRESENCE([cudnn.h],
+		[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_CUDNN "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lcudnn "])])
 else
 	AC_SUBST(CUDA_SRCS, [""])
 	AC_SUBST(CUDA_COMPAT_LIB, [""])
