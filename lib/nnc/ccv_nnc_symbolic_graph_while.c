@@ -123,8 +123,8 @@ void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const whi
 		assert(destination.graph == while_graph);
 		assert(source.d < while_graph->tensor_symbol_info->rnum);
 		assert(destination.d < while_graph->tensor_symbol_info->rnum);
-		ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, destination.d);
-		tensor_symbol_info->assign_ref = source.d + 1;
+		ccv_nnc_tensor_symbol_info_t* destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, destination.d);
+		destination_tensor_symbol_info->assign_ref = source.d + 1;
 	}
 }
 
