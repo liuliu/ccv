@@ -663,6 +663,14 @@ ccv_nnc_graph_exec_symbol_t* ccv_nnc_symbolic_graph_sources(const ccv_nnc_symbol
 	return graph->sources ? (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->sources, 0) : 0;
 }
 
+void ccv_nnc_symbolic_graph_add_source(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source)
+{
+	if (!graph->sources)
+		graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+	assert(source.graph == graph);
+	ccv_array_push(graph->sources, &source);
+}
+
 void ccv_nnc_symbolic_graph_set_sources(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size)
 {
 	if (!graph->sources)
@@ -671,10 +679,7 @@ void ccv_nnc_symbolic_graph_set_sources(ccv_nnc_symbolic_graph_t* const graph, c
 		ccv_array_clear(graph->sources);
 	int i;
 	for (i = 0; i < source_size; i++)
-	{
-		assert(sources[i].graph == graph);
-		ccv_array_push(graph->sources, sources + i);
-	}
+		ccv_nnc_symbolic_graph_add_source(graph, sources[i]);
 }
 
 int ccv_nnc_symbolic_graph_source_size(const ccv_nnc_symbolic_graph_t* const graph)
@@ -687,6 +692,14 @@ ccv_nnc_graph_exec_symbol_t* ccv_nnc_symbolic_graph_destinations(const ccv_nnc_s
 	return graph->destinations ? (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->destinations, 0) : 0;
 }
 
+void ccv_nnc_symbolic_graph_add_destination(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t destination)
+{
+	if (!graph->destinations)
+		graph->destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+	assert(destination.graph == graph);
+	ccv_array_push(graph->destinations, &destination);
+}
+
 void ccv_nnc_symbolic_graph_set_destinations(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	if (!graph->destinations)
@@ -695,10 +708,7 @@ void ccv_nnc_symbolic_graph_set_destinations(ccv_nnc_symbolic_graph_t* const gra
 		ccv_array_clear(graph->destinations);
 	int i;
 	for (i = 0; i < destination_size; i++)
-	{
-		assert(destinations[i].graph == graph);
-		ccv_array_push(graph->destinations, destinations + i);
-	}
+		ccv_nnc_symbolic_graph_add_destination(graph, destinations[i]);
 }
 
 int ccv_nnc_symbolic_graph_destination_size(const ccv_nnc_symbolic_graph_t* const graph)
