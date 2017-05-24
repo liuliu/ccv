@@ -1476,9 +1476,14 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					max_cond_evals[i] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->cond_evals[i]); \
 				ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena); \
 				ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena); \
-				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph, &source, 1, &destination, 1, max_cond_evals, sub_symbolic_graph->cond_eval_size, max_inputs, node->input_size, max_outputs, node->output_size, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data); \
-			} else \
+				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph); \
+				ccv_nnc_graph_set_sources(sub_graph, &source, 1); \
+				ccv_nnc_graph_set_destinations(sub_graph, &destination, 1); \
+				ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_cond_evals, sub_symbolic_graph->cond_eval_size); \
+				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size); \
+			} else { \
 				graph_execs[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size); \
+			} \
 		} \
 		if (!node->outgoings) \
 			break; \
@@ -1502,9 +1507,14 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 						max_cond_evals[j] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->cond_evals[j]); \
 					ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena); \
 					ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena); \
-					graph_execs[outgoing] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph, &source, 1, &destination, 1, max_cond_evals, sub_symbolic_graph->cond_eval_size, max_inputs, node->input_size, max_outputs, node->output_size, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data); \
-				} else \
+					graph_execs[outgoing] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph); \
+					ccv_nnc_graph_set_sources(sub_graph, &source, 1); \
+					ccv_nnc_graph_set_destinations(sub_graph, &destination, 1); \
+					ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_cond_evals, sub_symbolic_graph->cond_eval_size); \
+					ccv_nnc_graph_exec_set_io(graph, graph_execs[outgoing], max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size); \
+				} else { \
 					graph_execs[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size); \
+				} \
 			} \
 			ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[outgoing]); \
 		} \
