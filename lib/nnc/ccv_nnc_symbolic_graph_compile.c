@@ -437,14 +437,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 #undef for_block
 	ccv_matrix_free(alloc);
 	ccfree(oc);
-	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(int) * tensor_block_size + sizeof(alloc_prep->buffers[0]) * num_assigned + sizeof(alloc_prep->blocks[0]) * available_tensor_size);
+	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(alloc_prep->blocks[0]) * available_tensor_size + sizeof(alloc_prep->buffers[0]) * num_assigned + sizeof(int) * tensor_block_size);
 	alloc_prep->alloc_dep = alloc_dep;
 	alloc_prep->vt_block_size = tensor_block_size;
-	alloc_prep->vt_blocks = (int*)(alloc_prep + 1);
 	alloc_prep->buffer_size = num_assigned;
-	alloc_prep->buffers = (void*)(alloc_prep->vt_blocks + tensor_block_size);
 	alloc_prep->block_size = available_tensor_size;
-	alloc_prep->blocks = (void*)(alloc_prep->buffers + num_assigned);
+	alloc_prep->blocks = (void*)(alloc_prep + 1); // From the biggest structs to smaller ones.
+	alloc_prep->buffers = (void*)(alloc_prep->blocks + available_tensor_size);
+	alloc_prep->vt_blocks = (int*)(alloc_prep->buffers + num_assigned);
 	for (i = 0; i < num_assigned; i++)
 	{
 		alloc_prep->buffers[i].p_ref = 0;
