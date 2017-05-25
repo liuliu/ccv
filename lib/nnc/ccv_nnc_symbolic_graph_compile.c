@@ -496,13 +496,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
 	const int tensor_symbol_info_size = graph_prep->tensor_symbol_info_size;
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_tensor_view_t) * (alloc_prep->block_size - 1));
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_view_t) * (alloc_prep->block_size - 1) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	tensor_arena->graph_ref = graph_prep->graph_ref;
-	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
-	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->tensors + alloc_prep->block_size);
-	tensor_arena->buffers = (void*)(tensor_arena->vt_tensors + tensor_symbol_info_size);
+	tensor_arena->buffers = (void*)(tensor_arena->tensors + alloc_prep->block_size);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
-	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
+	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
+	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
+	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	int i, j;
 	for (i = 0; i < alloc_prep->buffer_size; i++)
