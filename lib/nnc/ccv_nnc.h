@@ -411,8 +411,8 @@ typedef struct {
 	// 3 way multi-view tensor gets the current tensor with tv[i > 0 ? 1 + (i - 1) % 2 : 0]
 	int ways;
 	intptr_t wrap_anchor; // on which graph this multi-view tensor is wrapped. This helps to determine on which level the multi-view tensor should be unwrapped.
-	ccv_nnc_tensor_t* tiu; // Current tensor (tensor in use), this is updated along with the graph computation.
-	// This is useful because by just traverse tiu, I can get the latest up-to-date reference to this multi-view tensor.
+	ccv_nnc_tensor_t* tu; // Current tensor (tensor in use), this is updated along with the graph computation.
+	// This is useful because by just traverse tu, I can get the latest up-to-date reference to this multi-view tensor.
 	// Since we only support 2 or 3 ways multi-view tensor, therefore, fixed allocation of 3.
 	ccv_nnc_tensor_t* tv[3];
 } ccv_nnc_tensor_multiview_t;

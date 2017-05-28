@@ -73,6 +73,39 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 	ccv_nnc_tensor_free(z);
 }
 
+TEST_CASE("while graph add and re-add reuse tensor allocations for 0.47 * 5.5 ^ 5")
+{
+	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
+	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, 0, 0, 0, 0);
+	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_multiview_t xx = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+			x, z
+	}, 2, while_graph);
+	ccv_nnc_tensor_multiview_t zz = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+			z, x
+	}, 2, while_graph);
+	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
+	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
+	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));
+	ccv_nnc_graph_set_while_expr(while_graph, while_5, 0, GRAPH_EXEC_LIST(noop));
+	ccv_nnc_graph_exec_concat(while_graph, noop, prod);
+	ccv_nnc_graph_exec_set_io(while_graph, prod, TENSOR_LIST(x, y), TENSOR_LIST(z));
+	ccv_nnc_graph_exec_set_io(while_graph, prod, TENSOR_LIST((ccv_nnc_tensor_t*)&zz, y), TENSOR_LIST((ccv_nnc_tensor_t*)&xx));
+	x->data.f32[0] = 0.32;
+	z->data.f32[0] = 0.47;
+	y->data.f32[0] = 5.5;
+	ccv_nnc_graph_while_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
+	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 0.47 * 5.5 * 5.5 * 5.5 * 5.5 * 5.5, 1e-2, "computed result of 0.47 * 5.5 ^ 5 should be the same");
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(x);
+	ccv_nnc_tensor_free(y);
+	ccv_nnc_tensor_free(z);
+}
+
 TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();

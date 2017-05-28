@@ -81,9 +81,9 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 					// This can be unwrapped, do that.
 					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensors[j];
 					const int off = mv->ways - 2;
-					// Update tiu (tensor in use).
-					mv->tiu = mv->tv[((count - off) & 1) + off]; // If mv->ways is 2, then I cycle through 0 and 1. If it is 3, I cycle through 1 to 2.
-					unwrap_tensors[j] = mv->tiu; // Unwrap.
+					// Update tu (tensor in use).
+					mv->tu = mv->tv[((count - off) & 1) + off]; // If mv->ways is 2, then I cycle through 0 and 1. If it is 3, I cycle through 1 to 2.
+					unwrap_tensors[j] = mv->tu; // Unwrap.
 				} else
 					unwrap_tensors[j] = tensors[j]; // Just copy it over
 		}
