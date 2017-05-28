@@ -87,6 +87,7 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 		if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
 			has_wraps = 1;
 	// It need to be handled specifically if it contains a wrap.
+	info->wraps = 0;
 	if (has_wraps)
 	{
 		// The logic as following, I assume I need to unwrap at each graph level (go through graph until reaches p = 0).
@@ -110,7 +111,6 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 			if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
 				_ccv_recursively_mark_as_anchored_for_multi_view_wrap((ccv_nnc_tensor_multiview_t*)outputs[i], wrap_anchors, wrap_size);
 		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
-		info->wraps = 0;
 		for (i = 0; i < wrap_size; i++)
 			if (wrap_anchors[i] & 1)
 				++info->wraps;
@@ -135,50 +135,8 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	assert(exec.graph == graph);
 	int i;
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	if (input_size == 0 && output_size == 0)
+	if (info->wraps)
 	{
-		if (info->input_size > 0 || info->output_size > 0)
-			ccfree(info->inputs);
-		if (info->wraps)
-		{
-			ccv_nnc_graph_t* p = graph;
-			do {
-				// Remove from the array.
-				if (p->wraps)
-					for (i = 0; i < p->wraps->rnum; i++)
-					{
-						ccv_nnc_graph_exec_t* const wrap_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->wraps, i);
-						if (wrap_exec->d == exec.d && wrap_exec->graph == graph)
-						{
-							--p->wraps->rnum;
-							if (i < p->wraps->rnum)
-								memcpy(wrap_exec, wrap_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->wraps->rnum - i));
-							break;
-						}
-					}
-				p = p->p;
-			} while (p);
-		}
-		info->inputs = 0;
-		info->outputs = 0;
-		info->input_size = 0;
-		info->output_size = 0;
-		info->wraps = 0;
-		info->wrap_ptr = 0;
-		return;
-	}
-	int prev_wraps = info->wraps;
-	_ccv_nnc_graph_exec_info_set_io(graph, info, inputs, input_size, outputs, output_size);
-	if (info->wraps && !prev_wraps)
-	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			if (!p->wraps)
-				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
-			ccv_array_push(p->wraps, &exec);
-			p = p->p;
-		} while (p);
-	} else if (!info->wraps && prev_wraps) {
 		ccv_nnc_graph_t* p = graph;
 		do {
 			// Remove from the array.
@@ -194,7 +152,30 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 						break;
 					}
 				}
-			p = graph->p;
+			p = p->p;
+		} while (p);
+	}
+	if (input_size == 0 && output_size == 0)
+	{
+		if (info->input_size > 0 || info->output_size > 0)
+			ccfree(info->inputs);
+		info->inputs = 0;
+		info->outputs = 0;
+		info->input_size = 0;
+		info->output_size = 0;
+		info->wraps = 0;
+		info->wrap_ptr = 0;
+		return;
+	}
+	_ccv_nnc_graph_exec_info_set_io(graph, info, inputs, input_size, outputs, output_size);
+	if (info->wraps)
+	{
+		ccv_nnc_graph_t* p = graph;
+		do {
+			if (!p->wraps)
+				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
+			ccv_array_push(p->wraps, &exec);
+			p = p->p;
 		} while (p);
 	}
 }
