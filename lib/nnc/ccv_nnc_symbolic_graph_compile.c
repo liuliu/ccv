@@ -644,7 +644,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	// Everything is allocated, I can go over sub_preps and allocate arenas for them.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		// TODO: I also need to pass binded tensor properly to the lower level.
-		tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, alloc_prep, 0, 0);
+		if (graph_prep->sub_preps[i])
+			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, alloc_prep, 0, 0);
+		else
+			tensor_arena->sub_arenas[i] = 0;
 	return tensor_arena;
 }
 
@@ -1626,7 +1629,8 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	// Buffers are inherited from above, no need to dealloc.
 	int i;
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
-		_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
+		if (tensor_arena->sub_arenas[i])
+			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
 	ccfree(tensor_arena);
 }
 
@@ -1649,7 +1653,8 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 		ccfree(tensor_arena->buffers[i].ptr);
 #endif
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
-		_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
+		if (tensor_arena->sub_arenas[i])
+			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
 	ccfree(tensor_arena);
 }
 
