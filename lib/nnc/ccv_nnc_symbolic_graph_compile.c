@@ -94,6 +94,7 @@ typedef struct ccv_nnc_symbolic_graph_prep_s {
 	struct ccv_nnc_symbolic_graph_prep_s* p;
 	int sub_prep_size;
 	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
+	// Structures that don't require to be freed after deallocation.
 	ccv_nnc_graph_t* graph; // materialized graph.
 } ccv_nnc_symbolic_graph_prep_t;
 
@@ -1245,6 +1246,25 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 	*r_dup_tensor_ref = dup_tensor_ref;
 }
 
+static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, const ccv_nnc_graph_exec_symbol_info_t *const node)
+{
+	int i;
+	int is_input = 0;
+	for (i = 0; i < node->input_size && !is_input; i++)
+		if (p_ref == node->inputs[i])
+			is_input = 1;
+	int is_output = 0;
+	for (i = 0; i < node->output_size && !is_output; i++)
+		if (p_ref == node->outputs[i])
+			is_output = 1;
+	assert(!(is_input && is_output));
+	if (is_input)
+		return -1;
+	if (is_output)
+		return 1;
+	return 0;
+}
+
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
 static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const p_exec_symbol_info, const int p_exec_symbol_info_size)
 {
@@ -1319,50 +1339,61 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					{ \
 						int p_ref_0 = s_tensor_blocks[block_ref].p_refs[0] - 1; \
 						/* Need to go through refs. Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
+						const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, node); \
+						assert(p_ref_0_is_in_or_out != 0); \
 						while (tensor_blocks[p_ref_0].ref) \
 							p_ref_0 = tensor_blocks[p_ref_0].ref - 1; \
-						/* Cannot continue with a tensor block that is unassigned. */ \
-						if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])) \
-							tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref_0].size); \
-						else { \
-							/* This tensor is not unassigned any more. */ \
-							TENSOR_EXPECT_SET_ORDINARY(tensor_blocks[p_ref_0]); \
-							tensor_blocks[p_ref_0].size = s_alloc_prep->buffers[i].size; \
-							tensor_blocks[p_ref_0].graph_ref = node->graph_ref; \
-							tensor_blocks[p_ref_0].head = ccv_array_new(sizeof(int), 1, 0); \
-							ccv_array_push(tensor_blocks[p_ref_0].head, &idx); \
-							tensor_blocks[p_ref_0].tail = ccv_array_new(sizeof(int), 1, 0); \
-							ccv_array_push(tensor_blocks[p_ref_0].tail, &idx); \
-						} \
+						/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
+						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
+						tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref_0].size); \
 						if (s_tensor_blocks[block_ref].p_refs[1]) \
 						{ \
 							int p_ref_1 = s_tensor_blocks[block_ref].p_refs[1] - 1; \
+							const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, node); \
+							assert(p_ref_1_is_in_or_out != 0); \
 							while (tensor_blocks[p_ref_1].ref) \
 								p_ref_1 = tensor_blocks[p_ref_1].ref - 1; \
-							/* Must concatenate with each other, therefore, we can mark one as a ref. This is very similar to in-place operation combining. */ \
-							assert(*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0)); \
-							ccv_array_free(tensor_blocks[p_ref_0].tail); \
-							tensor_blocks[p_ref_0].tail = tensor_blocks[p_ref_1].tail; \
-							if (tensor_blocks[p_ref_1].p_refs[0]) \
+							/* See above comment for the similar p_ref_0 check. */ \
+							assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_1])); \
+							assert(p_ref_0_is_in_or_out != p_ref_1_is_in_or_out); \
+							int p_ref_t; \
+							if (p_ref_0_is_in_or_out > p_ref_1_is_in_or_out) /* if p_ref_0 is output and p_ref_1 is input, switch. */ \
+								CCV_SWAP(p_ref_0, p_ref_1, p_ref_t); \
+							/* Now we are sure p_ref_0 points to the input, p_ref_1 points to the output. */ \
+							if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) && \
+								tensor_blocks[p_ref_0].tail->rnum == 1 && \
+								tensor_blocks[p_ref_1].head->rnum == 1 && \
+								*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0)) \
 							{ \
-								assert(tensor_blocks[p_ref_1].p_refs[1] == 0); /* It simply cannot have more than one p_refs, otherwise we cannot merge. */ \
-								if (!tensor_blocks[p_ref_0].p_refs[0]) \
-									tensor_blocks[p_ref_0].p_refs[0] = tensor_blocks[p_ref_1].p_refs[0]; \
-								else \
-									tensor_blocks[p_ref_0].p_refs[1] = tensor_blocks[p_ref_1].p_refs[0]; \
+								/* If the two parent refs matches (thus, they meet at the same node), we can concatenate with each other and mark one as a ref. This is very similar to in-place operation combining. */ \
+								assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[p_ref_0])); \
+								assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[p_ref_1])); \
+								ccv_array_free(tensor_blocks[p_ref_1].head); \
+								tensor_blocks[p_ref_1].head = tensor_blocks[p_ref_0].head; \
+								if (tensor_blocks[p_ref_0].p_refs[0]) \
+								{ \
+									assert(tensor_blocks[p_ref_0].p_refs[1] == 0); /* It simply cannot have more than one p_refs, otherwise we cannot merge. */ \
+									if (!tensor_blocks[p_ref_1].p_refs[0]) \
+										tensor_blocks[p_ref_1].p_refs[0] = tensor_blocks[p_ref_0].p_refs[0]; \
+									else \
+										tensor_blocks[p_ref_1].p_refs[1] = tensor_blocks[p_ref_0].p_refs[0]; \
+								} \
+								ccv_array_free(tensor_blocks[p_ref_0].tail); \
+								tensor_blocks[p_ref_0].flag = UNASSIGNED; \
+								tensor_blocks[p_ref_0].ref = p_ref_1 + 1; \
+								if (!tensor_blocks[p_ref_1].r_refs) \
+									tensor_blocks[p_ref_1].r_refs = ccv_array_new(sizeof(int), 0, 0); \
+								ccv_array_replace_int(tensor_blocks[p_ref_1].r_refs, p_ref_0 + 1, p_ref_0 + 1); \
+								tensor_blocks[p_ref_0].size = 0; \
+								tensor_blocks[p_ref_0].head = 0; \
+								tensor_blocks[p_ref_0].tail = 0; \
 							} \
-							ccv_array_free(tensor_blocks[p_ref_1].head); \
-							tensor_blocks[p_ref_1].flag = UNASSIGNED; \
-							tensor_blocks[p_ref_1].ref = p_ref_0 + 1; \
-							if (!tensor_blocks[p_ref_0].r_refs) \
-								tensor_blocks[p_ref_0].r_refs = ccv_array_new(sizeof(int), 0, 0); \
-							ccv_array_replace_int(tensor_blocks[p_ref_0].r_refs, p_ref_1 + 1, p_ref_1 + 1); \
-							tensor_blocks[p_ref_1].size = 0; \
-							tensor_blocks[p_ref_1].head = 0; \
-							tensor_blocks[p_ref_1].tail = 0; \
+							/* We are good, mark this buffer as assigned out for p_ref_1 (the output tensor). */ \
+							s_alloc_prep->buffers[buffer_ref].p_ref = p_ref_1 + 1; \
+						} else { \
+							/* We are good, mark this buffer as assigned out for p_ref_0. */ \
+							s_alloc_prep->buffers[buffer_ref].p_ref = p_ref_0 + 1; \
 						} \
-						/* We are good, mark this buffer as assigned out. */ \
-						s_alloc_prep->buffers[buffer_ref].p_ref = p_ref_0 + 1; \
 					} \
 				} \
 			} \

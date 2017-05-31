@@ -228,6 +228,9 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 	int i;
 	for (i = 0; i < output_size; i++)
 		outputs[i] = z; // Reset the outputs.
+	// Cannot handle these situations.
+	if (cmd.cmd == CCV_NNC_NOOP || cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD || cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
+		return;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.tensor_auto)

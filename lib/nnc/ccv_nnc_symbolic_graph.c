@@ -1065,6 +1065,7 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 	ccv_nnc_tensor_param_t* output_params = max_output_size > 0 ? (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t) * max_output_size) : 0;
 
 	// Materialize auto tensors. This need to go with the topological order.
+	// TODO: Need to proper handle sub-graphs (thus, run sub-graph to figure out the tensor properties).
 #define visitor(node, ...) \
 	do { \
 		if (node->input_size > 0 && node->output_size > 0) \
