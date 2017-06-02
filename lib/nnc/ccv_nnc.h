@@ -402,21 +402,28 @@ typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, cons
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
-typedef struct {
+typedef struct ccv_nnc_tensor_multiview_s {
 	// This is an augmented ccv_nnc_tensor_view_t
 	// Namely, it can point to multiple versions of tensors.
 	int type; // This type is CCV_NNC_TENSOR_MULTI_VIEW
-	// ways specified how the multi-version tensors stored.
-	// 2 way multi-view tensor gets the current tensor tv[i % 2]
-	// 3 way multi-view tensor gets the current tensor with tv[i > 0 ? 1 + (i - 1) % 2 : 0]
-	int ways;
+	// way specified how the multi-version tensors stored.
+	// See the comment on the follow up enums.
+	int way;
 	intptr_t wrap_anchor; // on which graph this multi-view tensor is wrapped. This helps to determine on which level the multi-view tensor should be unwrapped.
+	struct ccv_nnc_tensor_multiview_s* p; // If this is wrapped with another multiview tensor. Get to the parent one.
 	ccv_nnc_tensor_t* tu; // Current tensor (tensor in use), this is updated along with the graph computation.
 	// This is useful because by just traverse tu, I can get the latest up-to-date reference to this multi-view tensor.
 	// Since we only support 2 or 3 ways multi-view tensor, therefore, fixed allocation of 3.
 	ccv_nnc_tensor_t* tv[3];
 } ccv_nnc_tensor_multiview_t;
-CCV_WARN_UNUSED(ccv_nnc_tensor_multiview_t) ccv_nnc_tensor_multiview(ccv_nnc_tensor_t** const tv, const int ways, const ccv_nnc_graph_t* const graph);
+
+enum {
+	CCV_NNC_MULTIVIEW_W11, // The first one is the first, the second one is the rest. (0111111...)
+	CCV_NNC_MULTIVIEW_W02, // The first one is the first, the second one is the second, the third is the first one again (0101010101...)
+	CCV_NNC_MULTIVIEW_W12, // The first one is the first, the second one is the second, the third one is the third, and 4th is the second again. (012121212...)
+};
+
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t** const tv, const int ways, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
 // Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic graph. The reason
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph

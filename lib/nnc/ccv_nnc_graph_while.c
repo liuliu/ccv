@@ -7,17 +7,20 @@
 #endif
 #include "_ccv_nnc_graph.h"
 
-ccv_nnc_tensor_multiview_t ccv_nnc_tensor_multiview(ccv_nnc_tensor_t** const tv, const int ways, const ccv_nnc_graph_t* const graph)
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t** const tv, const int way, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
-	assert(ways == 2 || ways == 3);
-	ccv_nnc_tensor_multiview_t tensor_multiview;
-	tensor_multiview.type = CCV_TENSOR_MULTIVIEW;
-	tensor_multiview.ways = ways;
-	tensor_multiview.wrap_anchor = (intptr_t)graph;
+	assert(way == CCV_NNC_MULTIVIEW_W11 || way == CCV_NNC_MULTIVIEW_W02 || way == CCV_NNC_MULTIVIEW_W12);
+	tensor_multiview->type = CCV_TENSOR_MULTIVIEW;
+	tensor_multiview->way = way;
+	tensor_multiview->wrap_anchor = (intptr_t)graph;
 	int i;
-	for (i = 0; i < ways; i++)
-		tensor_multiview.tv[i] = tv[i];
-	return tensor_multiview;
+	// Currently, only CCV_NNC_MULTIVIEW_W12 uses 3 tensors.
+	for (i = 0; i < ((way == CCV_NNC_MULTIVIEW_W12) ? 3 : 2); i++)
+	{
+		tensor_multiview->tv[i] = tv[i];
+		if (CCV_IS_TENSOR_MULTIVIEW(tv[i]))
+			((ccv_nnc_tensor_multiview_t*)tv[i])->p = tensor_multiview;
+	}
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph)
@@ -80,9 +83,10 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				{
 					// This can be unwrapped, do that.
 					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensors[j];
-					const int off = mv->ways - 2;
+					const int off = (mv->way == CCV_NNC_MULTIVIEW_W02) ? 0 : 1;
+					const int mask = (mv->way == CCV_NNC_MULTIVIEW_W11) ? 0 : 1;
 					// Update tu (tensor in use).
-					mv->tu = mv->tv[((count - off) & 1) + off]; // If mv->ways is 2, then I cycle through 0 and 1. If it is 3, I cycle through 1 to 2.
+					mv->tu = mv->tv[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
 					unwrap_tensors[j] = mv->tu; // Unwrap.
 				} else
 					unwrap_tensors[j] = tensors[j]; // Just copy it over

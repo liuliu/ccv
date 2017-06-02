@@ -52,12 +52,14 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_multiview_t xx = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+	ccv_nnc_tensor_multiview_t xx;
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
 			x, z
-	}, 2, while_graph);
-	ccv_nnc_tensor_multiview_t zz = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+	}, CCV_NNC_MULTIVIEW_W02, while_graph, &xx);
+	ccv_nnc_tensor_multiview_t zz;
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
 			z, x
-	}, 2, while_graph);
+	}, CCV_NNC_MULTIVIEW_W02, while_graph, &zz);
 	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));
@@ -82,12 +84,14 @@ TEST_CASE("while graph add and re-add reuse tensor allocations for 0.47 * 5.5 ^ 
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_multiview_t xx = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+	ccv_nnc_tensor_multiview_t xx;
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
 			x, z
-	}, 2, while_graph);
-	ccv_nnc_tensor_multiview_t zz = ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+	}, CCV_NNC_MULTIVIEW_W02, while_graph, &xx);
+	ccv_nnc_tensor_multiview_t zz;
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
 			z, x
-	}, 2, while_graph);
+	}, CCV_NNC_MULTIVIEW_W02, while_graph, &zz);
 	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));

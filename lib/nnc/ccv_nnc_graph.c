@@ -62,7 +62,7 @@ static void _ccv_recursively_mark_as_anchored_for_multi_view_wrap(ccv_nnc_tensor
 			wrap_anchors[i] |= 1;
 			break;
 		}
-	for (i = 0; i < mv->ways; i++)
+	for (i = 0; i < ((mv->way == CCV_NNC_MULTIVIEW_W12) ? 3 : 2); i++)
 		if (CCV_IS_TENSOR_MULTIVIEW(mv->tv[i]))
 			_ccv_recursively_mark_as_anchored_for_multi_view_wrap((ccv_nnc_tensor_multiview_t*)(mv->tv[i]), wrap_anchors, wrap_size);
 }
