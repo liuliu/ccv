@@ -7,19 +7,24 @@
 #endif
 #include "_ccv_nnc_graph.h"
 
-void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t** const tv, const int way, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const int kind, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
-	assert(way == CCV_NNC_MULTIVIEW_W11 || way == CCV_NNC_MULTIVIEW_W02 || way == CCV_NNC_MULTIVIEW_W12);
+	assert(kind == CCV_NNC_MULTIVIEW_K11 || kind == CCV_NNC_MULTIVIEW_K02 || kind == CCV_NNC_MULTIVIEW_K12);
 	tensor_multiview->type = CCV_TENSOR_MULTIVIEW;
-	tensor_multiview->way = way;
-	tensor_multiview->wrap_anchor = (intptr_t)graph;
+	tensor_multiview->kind = kind;
+	tensor_multiview->anchor = (intptr_t)graph;
+	tensor_multiview->tv = tv;
 	int i;
-	// Currently, only CCV_NNC_MULTIVIEW_W12 uses 3 tensors.
-	for (i = 0; i < ((way == CCV_NNC_MULTIVIEW_W12) ? 3 : 2); i++)
+	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
+	for (i = 0; i < ((kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2); i++)
 	{
-		tensor_multiview->tv[i] = tv[i];
-		if (CCV_IS_TENSOR_MULTIVIEW(tv[i]))
-			((ccv_nnc_tensor_multiview_t*)tv[i])->p = tensor_multiview;
+		tensor_multiview->data[i] = data[i];
+		if (!tv)
+		{
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)data[i].ptr;
+			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
+			mv->p = tensor_multiview;
+		}
 	}
 }
 
@@ -71,7 +76,7 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 		int rewrap = 0;
 		for (j = 0; j < tensor_size && !rewrap; j++)
 			// If I have a multi-view tensor and this multi-view tensor need to be unwrapped at this level (wrap_anchor)
-			if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->wrap_anchor == (intptr_t)graph)
+			if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->anchor == (intptr_t)graph)
 				rewrap = 1;
 		if (rewrap)
 		{
@@ -79,15 +84,20 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 			++exec_info->wrap_ptr;
 			ccv_nnc_tensor_t** const unwrap_tensors = exec_info->inputs + (exec_info->input_size + exec_info->output_size) * exec_info->wrap_ptr;
 			for (j = 0; j < tensor_size; j++)
-				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->wrap_anchor == (intptr_t)graph)
+				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->anchor == (intptr_t)graph)
 				{
 					// This can be unwrapped, do that.
 					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensors[j];
-					const int off = (mv->way == CCV_NNC_MULTIVIEW_W02) ? 0 : 1;
-					const int mask = (mv->way == CCV_NNC_MULTIVIEW_W11) ? 0 : 1;
-					// Update tu (tensor in use).
-					mv->tu = mv->tv[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
-					unwrap_tensors[j] = mv->tu; // Unwrap.
+					const int off = (mv->kind == CCV_NNC_MULTIVIEW_K02) ? 0 : 1;
+					const int mask = (mv->kind == CCV_NNC_MULTIVIEW_K11) ? 0 : 1;
+					// If reached the root.
+					if (mv->tv)
+					{
+						// Update the pointer
+						mv->tv->data = mv->data[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
+						unwrap_tensors[j] = mv->tv;
+					} else
+						unwrap_tensors[j] = (ccv_nnc_tensor_t*)mv->data[((count - off) & mask) + off].ptr; // Unwrap.
 				} else
 					unwrap_tensors[j] = tensors[j]; // Just copy it over
 		}
@@ -111,7 +121,7 @@ static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call th
 			int rewrap = 0;
 			for (j = 0; j < tensor_size && !rewrap; j++)
 				// If I have a multi-view tensor and this multi-view tensor need to be unwrapped at this level (wrap_anchor)
-				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->wrap_anchor == (intptr_t)graph)
+				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->anchor == (intptr_t)graph)
 					rewrap = 1;
 			// If I did rewrap before, pop the pointer.
 			if (rewrap)

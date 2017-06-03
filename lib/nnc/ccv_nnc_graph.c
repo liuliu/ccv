@@ -53,18 +53,18 @@ int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph)
 	return graph->destinations ? graph->destinations->rnum : 0;
 }
 
-static void _ccv_recursively_mark_as_anchored_for_multi_view_wrap(ccv_nnc_tensor_multiview_t* const mv, intptr_t* const wrap_anchors, const int wrap_size)
+static void _ccv_recursively_mark_as_anchored_for_multiview_wrap(ccv_nnc_tensor_multiview_t* const mv, intptr_t* const wrap_anchors, const int wrap_size)
 {
 	int i;
 	for (i = 0; i < wrap_size; i++)
-		if (mv->wrap_anchor == (wrap_anchors[i] & ~(intptr_t)1))
+		if (mv->anchor == (wrap_anchors[i] & ~(intptr_t)1))
 		{
 			wrap_anchors[i] |= 1;
 			break;
 		}
-	for (i = 0; i < ((mv->way == CCV_NNC_MULTIVIEW_W12) ? 3 : 2); i++)
-		if (CCV_IS_TENSOR_MULTIVIEW(mv->tv[i]))
-			_ccv_recursively_mark_as_anchored_for_multi_view_wrap((ccv_nnc_tensor_multiview_t*)(mv->tv[i]), wrap_anchors, wrap_size);
+	for (i = 0; i < ((mv->kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2); i++)
+		if (!mv->tv && CCV_IS_TENSOR_MULTIVIEW(mv->data[i].ptr))
+			_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)(mv->data[i].ptr), wrap_anchors, wrap_size);
 }
 
 void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_hint_t hint)
@@ -106,10 +106,10 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 			wrap_anchors[i] = (intptr_t)p;
 		for (i = 0; i < input_size; i++)
 			if (inputs[i] && CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
-				_ccv_recursively_mark_as_anchored_for_multi_view_wrap((ccv_nnc_tensor_multiview_t*)inputs[i], wrap_anchors, wrap_size);
+				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)inputs[i], wrap_anchors, wrap_size);
 		for (i = 0; i < output_size; i++)
 			if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
-				_ccv_recursively_mark_as_anchored_for_multi_view_wrap((ccv_nnc_tensor_multiview_t*)outputs[i], wrap_anchors, wrap_size);
+				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)outputs[i], wrap_anchors, wrap_size);
 		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
 		for (i = 0; i < wrap_size; i++)
 			if (wrap_anchors[i] & 1)

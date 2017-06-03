@@ -67,7 +67,6 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 {
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
 	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
-	assert(ptr);
 	ccv_nnc_tensor_t tensor;
 	tensor.sig = 0;
 	tensor.refcount = 1;

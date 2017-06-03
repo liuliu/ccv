@@ -60,7 +60,7 @@ typedef union ccv_numeric_data_u {
 	float* f32;
 	int64_t* i64;
 	double* f64;
-	union ccv_numeric_data_u* ptr; // Recursive pointer to itself.
+	void* ptr; // Raw pointer
 } ccv_numeric_data_t;
 
 #define CCV_NNC_MAX_DIM_ALLOC (8)
