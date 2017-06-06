@@ -7,6 +7,11 @@
 #endif
 #include "_ccv_nnc_graph.h"
 
+typedef struct {
+	off_t offset; // If the tensor points to a tensor view, tensor->data.u8 - offset is the origin of the tensor.
+	ccv_nnc_tensor_t* tensor;
+} ccv_nnc_tensor_reference_t;
+
 void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const int kind, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	assert(kind == CCV_NNC_MULTIVIEW_K11 || kind == CCV_NNC_MULTIVIEW_K02 || kind == CCV_NNC_MULTIVIEW_K12);
@@ -14,6 +19,9 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t dat
 	tensor_multiview->kind = kind;
 	tensor_multiview->anchor = (intptr_t)graph;
 	tensor_multiview->tv = tv;
+	tensor_multiview->p = 0;
+	tensor_multiview->offset = 0;
+	tensor_multiview->rtvs = 0;
 	int i;
 	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
 	for (i = 0; i < ((kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2); i++)
@@ -26,6 +34,23 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t dat
 			mv->p = tensor_multiview;
 		}
 	}
+}
+
+void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview)
+{
+	if (tensor_multiview.rtvs)
+		ccv_array_free(tensor_multiview.rtvs);
+}
+
+void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, const off_t offset, ccv_nnc_tensor_t* const tensor)
+{
+	ccv_nnc_tensor_reference_t tensor_reference = {
+		.offset = offset,
+		.tensor = tensor,
+	};
+	if (!tensor_multiview->rtvs)
+		tensor_multiview->rtvs = ccv_array_new(sizeof(ccv_nnc_tensor_reference_t), 0, 0);
+	ccv_array_push(tensor_multiview->rtvs, &tensor_reference);
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph)
