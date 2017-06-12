@@ -102,6 +102,10 @@ void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_
 	memcpy(while_graph->cond_evals, cond_evals, sizeof(ccv_nnc_graph_exec_t) * cond_eval_size);
 }
 
+#define TAG_TENSOR_REQUIRE_BROADCAST(x) (ccv_nnc_tensor_t*)((intptr_t)(x) | 1)
+#define UNTAG_TENSOR_REQUIRE_BROADCAST(x) (ccv_nnc_tensor_t*)((intptr_t)(x) & ~(intptr_t)1)
+#define IS_TAGGED_TENSOR_REQUIRE_BROADCAST(x) ((intptr_t)(x) & 1)
+
 static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int count)
 {
 	if (!graph->wraps)
@@ -125,6 +129,8 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 			++exec_info->wrap_ptr;
 			ccv_nnc_tensor_t** const unwrap_tensors = exec_info->inputs + (exec_info->input_size + exec_info->output_size) * exec_info->wrap_ptr;
 			for (j = 0; j < tensor_size; j++)
+			{
+				assert(!IS_TAGGED_TENSOR_REQUIRE_BROADCAST(tensors[j])); // I cannot encounter a tagged pointer.
 				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->anchor == (intptr_t)graph)
 				{
 					// This can be unwrapped, do that.
@@ -136,13 +142,14 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 					{
 						// Update the pointer
 						mv->tv->data = mv->data[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
-						unwrap_tensors[j] = tensors[j]; // Keep it dirty yet, will unwrap the first time encountered it in actual execution.
+						unwrap_tensors[j] = TAG_TENSOR_REQUIRE_BROADCAST(tensors[j]); // Keep it dirty yet, will unwrap the first time encountered it in actual execution, using tagged pointer to keep track.
 						// In this way, I can broadcast the pointer change only when executing it, to avoid early abortion causing no pointer
 						// update is needed.
 					} else
 						unwrap_tensors[j] = (ccv_nnc_tensor_t*)mv->data[((count - off) & mask) + off].ptr; // Unwrap.
 				} else
 					unwrap_tensors[j] = tensors[j]; // Just copy it over
+			}
 		}
 	}
 }
@@ -191,16 +198,18 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
  		/* Broadcast the updates to all subscribed references for input / output, even though at this
 		 * time output is not written yet, propagate pointer change is still valid. */ \
 		for (i = 0; i < node->input_size; i++) \
-			if (CCV_IS_TENSOR_MULTIVIEW(inputs[i])) \
+			if (IS_TAGGED_TENSOR_REQUIRE_BROADCAST(inputs[i])) \
 			{ \
-				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)inputs[i]; \
+				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)UNTAG_TENSOR_REQUIRE_BROADCAST(inputs[i]); \
+				assert(CCV_IS_TENSOR_MULTIVIEW(mv)); \
 				if (mv->tv) /* This is marked dirty. Unwrap it and broadcast.*/ \
 					ccv_nnc_tensor_multiview_broadcast(mv), inputs[i] = mv->tv; \
 			} \
 		for (i = 0; i < node->output_size; i++) \
-			if (CCV_IS_TENSOR_MULTIVIEW(outputs[i])) \
+			if (IS_TAGGED_TENSOR_REQUIRE_BROADCAST(outputs[i])) \
 			{ \
-				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)outputs[i]; \
+				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)UNTAG_TENSOR_REQUIRE_BROADCAST(outputs[i]); \
+				assert(CCV_IS_TENSOR_MULTIVIEW(mv)); \
 				if (mv->tv) /* This is marked dirty. Unwrap it and broadcast.*/ \
 					ccv_nnc_tensor_multiview_broadcast(mv), outputs[i] = mv->tv; \
 			} \
