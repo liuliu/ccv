@@ -53,6 +53,22 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 	ccv_array_push(tensor_multiview->rtvs, &tensor_reference);
 }
 
+void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const tensor_multiview)
+{
+	unsigned char* data = tensor_multiview->tv->data.u8 - tensor_multiview->offset;
+	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
+	int i;
+	do {
+		if (c->rtvs)
+			for (i = 0; i < c->rtvs->rnum; i++)
+			{
+				ccv_nnc_tensor_reference_t* reference = (ccv_nnc_tensor_reference_t*)ccv_array_get(c->rtvs, i);
+				reference->tensor->data.u8 = data + reference->offset;
+			}
+		c = c->p;
+	} while (c);
+}
+
 ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph)
 {
 	assert(cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD);
@@ -120,7 +136,9 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 					{
 						// Update the pointer
 						mv->tv->data = mv->data[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
-						unwrap_tensors[j] = mv->tv;
+						unwrap_tensors[j] = tensors[j]; // Keep it dirty yet, will unwrap the first time encountered it in actual execution.
+						// In this way, I can broadcast the pointer change only when executing it, to avoid early abortion causing no pointer
+						// update is needed.
 					} else
 						unwrap_tensors[j] = (ccv_nnc_tensor_t*)mv->data[((count - off) & mask) + off].ptr; // Unwrap.
 				} else
@@ -170,6 +188,22 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 	do { \
 		ccv_nnc_tensor_t** inputs = node->inputs + (node->input_size + node->output_size) * node->wrap_ptr; \
 		ccv_nnc_tensor_t** outputs = inputs + node->input_size; \
+ 		/* Broadcast the updates to all subscribed references for input / output, even though at this
+		 * time output is not written yet, propagate pointer change is still valid. */ \
+		for (i = 0; i < node->input_size; i++) \
+			if (CCV_IS_TENSOR_MULTIVIEW(inputs[i])) \
+			{ \
+				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)inputs[i]; \
+				if (mv->tv) /* This is marked dirty. Unwrap it and broadcast.*/ \
+					ccv_nnc_tensor_multiview_broadcast(mv), inputs[i] = mv->tv; \
+			} \
+		for (i = 0; i < node->output_size; i++) \
+			if (CCV_IS_TENSOR_MULTIVIEW(outputs[i])) \
+			{ \
+				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)outputs[i]; \
+				if (mv->tv) /* This is marked dirty. Unwrap it and broadcast.*/ \
+					ccv_nnc_tensor_multiview_broadcast(mv), outputs[i] = mv->tv; \
+			} \
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
 		{ \
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \

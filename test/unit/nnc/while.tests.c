@@ -62,6 +62,8 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 	ccv_nnc_tensor_multiview(&zb, (ccv_numeric_data_t[]){
 			z->data, x->data
 	}, CCV_NNC_MULTIVIEW_K02, while_graph, &zz);
+	ccv_nnc_tensor_t zbb = ccv_nnc_tensor(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_reference_to_multiview(&zz, 0, &zbb);
 	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));
@@ -71,6 +73,9 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 	y->data.f32[0] = 2.8;
 	ccv_nnc_graph_while_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
 	REQUIRE_EQ_WITH_TOLERANCE(z->data.f32[0], 0.32 * 2.8 * 2.8 * 2.8 * 2.8 * 2.8, 1e-5, "computed result of 0.32 * 2.8 ^ 5 should be the same");
+	REQUIRE(z->data.f32 == zbb.data.f32, "Two pointers should be the same");
+	ccv_nnc_tensor_multiview_free(xx);
+	ccv_nnc_tensor_multiview_free(zz);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_free(x);
 	ccv_nnc_tensor_free(y);
