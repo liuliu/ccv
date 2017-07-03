@@ -26,6 +26,7 @@ enum {
 	READ_ONLY = 0x4,
 	WRITE_ONLY = 0x8,
 	READ_WRITE = 0xc,
+	ANONYMOUS = 0x10, // Mark this block as anonymous (thus, not reference to any specific tensor).
 };
 
 #define TENSOR_EXPECT_ORDINARY(t) ((t.flag & 0x3) == 0)
@@ -37,6 +38,8 @@ enum {
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 #define TENSOR_READ_WRITE(t) (t.flag & 0xc)
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flag = ((t.flag & ~0xc) | rw))
+#define TENSOR_SET_ANONYMOUS(t) (t.flag = (t.flag & ~0x10 | ANONYMOUS))
+#define TENSOR_IS_ANONYMOUS(t) (t.flag & ANONYMOUS)
 
 typedef struct {
 	int index;
@@ -493,6 +496,31 @@ static void _ccv_nnc_tensor_alloc_prep_free(ccv_nnc_tensor_alloc_prep_t* alloc_p
 	ccfree(alloc_prep);
 }
 
+// Simple allocator from ccv_array_t.
+static int _ccv_nnc_tensor_metadata_pos_new(ccv_array_t* const tensor_metadata, const size_t size)
+{
+	int pos = tensor_metadata->rnum + 1; // Appending 1 so it starts from non-zero.
+	int rsize = (size + 15) / 16;
+	ccv_array_resize(tensor_metadata, pos + rsize - 1);
+	return pos;
+}
+
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_get(const ccv_array_t* const tensor_metadata, const int pos)
+{
+	assert(pos <= tensor_metadata->rnum);
+	return (ccv_nnc_tensor_t*)ccv_array_get(tensor_metadata, pos - 1);
+}
+
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* const tensor_metadata, ccv_nnc_tensor_t* const vt_tensor)
+{
+	ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)vt_tensor);
+	if (CCV_IS_TENSOR_MULTIVIEW(tensor))
+	{
+		// TODO: handle multiview rewire.
+	}
+	return tensor;
+}
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_alloc_prep_t* const p_alloc_prep, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
@@ -501,15 +529,16 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
 	const int tensor_symbol_info_size = graph_prep->tensor_symbol_info_size;
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(ccv_nnc_tensor_view_t) * (alloc_prep->block_size - 1) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	tensor_arena->graph_ref = graph_prep->graph_ref;
-	tensor_arena->buffers = (void*)(tensor_arena->tensors + alloc_prep->block_size);
+	tensor_arena->buffers = (void*)(tensor_arena + 1);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
 	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
-	int i, j;
+	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
+	int i;
 	for (i = 0; i < alloc_prep->buffer_size; i++)
 		tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
 	int memory_type = CCV_TENSOR_GET_MEMORY(tensor_symbol_info[0].info.type);
@@ -565,7 +594,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 		}
 #endif
 	}
-	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
 	for (i = 0; i < alloc_prep->block_size; i++)
@@ -576,13 +604,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			const uint64_t offset = alloc_prep->blocks[i].offset;
 			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
 			{
-				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
+				const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
+				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
-				ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
-				memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
+				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
 				assert(offset + tensor_blocks[block_ref].size <= tensor_arena->buffers[buffer_ref].size);
-				++j;
 			}
 		}
 	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
@@ -603,39 +631,42 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			{
 				// Assigning out the tensor aliases.
 				assert(tensor_symbol_info[block_ref].alias_ref);
-				int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
+				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
 				// It referenced to is not an alias.
 				assert(tensor_arena->vt_tensors[alias_ref]);
-				assert(!CCV_IS_TENSOR_VIEW(tensor_arena->vt_tensors[alias_ref]));
-				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)&tensor_arena->tensors[j];
+				const ccv_nnc_tensor_t alias_tensor = *_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[alias_ref]);
+				assert(!CCV_IS_TENSOR_VIEW(&alias_tensor));
 				// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
 				if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
 					memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 				{
-					ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, tensor_symbol_info[block_ref].info, 0);
-					memcpy(tensor_arena->tensors + j, &tensor, sizeof(ccv_nnc_tensor_t));
+					const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+					ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+					*tensor = ccv_nnc_tensor(alias_tensor.data.u8, tensor_symbol_info[block_ref].info, 0);
+					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 				} else {
+					const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 					// Otherwise initialize a tensor view
 					// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
-					if (memcmp(tensor_arena->vt_tensors[alias_ref]->info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-						tensor_arena->tensors[j] = ccv_nnc_tensor_view(tensor_arena->vt_tensors[alias_ref], tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+					if (memcmp(alias_tensor.info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+						*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
 					else {
 						// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
 						ccv_nnc_tensor_param_t info = tensor_symbol_info[block_ref].info;
 						memcpy(info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(tensor_arena->vt_tensors[alias_ref]->info));
-						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, info, 0);
-						tensor_arena->tensors[j] = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(alias_tensor.info));
+						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(alias_tensor.data.u8, info, 0);
+						*tensor_view = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
 					}
+					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 				}
-				++j;
 			}
 		}
-	for (i = 0; i < alloc_prep->block_size; i++)
-		// In this case, there is no need to assign a tensor header, we simply keep a reference to the buffer for this block.
-		if (alloc_prep->blocks[i].block_ref >= tensor_symbol_info_size)
-			++j;
-	assert(j == alloc_prep->block_size);
+	// Everything is done, rewire vt_tensor to real locations. From now on, no push to tensor_metadata is possible.
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		if (tensor_arena->vt_tensors[i])
+			tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor_arena->vt_tensors[i]);
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
@@ -1399,27 +1430,28 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					} \
 				} \
 			} \
-			int unassigned_buffer_size = 0; \
+			int anonymous_buffer_size = 0; \
 			for (i = 0; i < s_alloc_prep->buffer_size; i++) \
 				if (!s_alloc_prep->buffers[i].p_ref) \
-					++unassigned_buffer_size; \
-			if (unassigned_buffer_size) \
+					++anonymous_buffer_size; \
+			if (anonymous_buffer_size) \
 			{ \
 				/* Anonymous block, allocate additional tensor blocks for this. */ \
 				/* This is either because this is an internal tensor (don't have p_ref) */ \
 				/* or it is an anonymous block itself within the sub graphs of this while graph. */ \
 				if (dup_tensor_block_ref) \
 				{ \
-					tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + 2 * unassigned_buffer_size)); \
-					memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * 2 * unassigned_buffer_size); \
-					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * (tensor_block_size + 2 * unassigned_buffer_size)); \
+					tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + 2 * anonymous_buffer_size)); \
+					memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * 2 * anonymous_buffer_size); \
+					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * (tensor_block_size + 2 * anonymous_buffer_size)); \
 				} else { \
-					tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + unassigned_buffer_size)); \
-					memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * unassigned_buffer_size); \
+					tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + anonymous_buffer_size)); \
+					memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * anonymous_buffer_size); \
 				} \
 				for (i = 0; i < s_alloc_prep->buffer_size; i++) \
 					if (!s_alloc_prep->buffers[i].p_ref) \
 					{ \
+						TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 						s_alloc_prep->buffers[i].p_ref = tensor_block_size + 1; \
 						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref; \
@@ -1433,6 +1465,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						{ \
 							dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size; \
 							dup_tensor_block_ref[tensor_block_size] = -1; \
+							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
 							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
 							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
@@ -1687,6 +1720,7 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
+	ccv_array_free(tensor_arena->tensor_metadata);
 	ccfree(tensor_arena);
 }
 
@@ -1711,6 +1745,7 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
+	ccv_array_free(tensor_arena->tensor_metadata);
 	ccfree(tensor_arena);
 }
 

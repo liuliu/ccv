@@ -83,8 +83,9 @@ struct ccv_nnc_tensor_arena_s {
 		uint64_t size;
 		uint8_t* ptr;
 	}* buffers;
-	// Real allocated tensor headers.
-	ccv_nnc_tensor_view_t tensors[1];
+	// Real allocated tensor header metadata (this is a mixed pool of ccv_tensor_t, ccv_tensor_view_t,
+	// ccv_tensor_multiview_t, thus, it is aligned to a 16-byte boundary).
+	ccv_array_t* tensor_metadata;
 };
 
 struct ccv_nnc_graph_exec_arena_s {
