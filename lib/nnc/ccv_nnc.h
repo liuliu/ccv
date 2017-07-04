@@ -413,7 +413,7 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	// If this tensor points to a tensor view, data.u8 - offset is the real pointer start.
 	off_t offset;
 	struct ccv_nnc_tensor_multiview_s* p; // If this is wrapped with another multiview tensor. Get to the parent one.
-	ccv_numeric_data_t dc; // The updated pointer based on data.
+	ccv_numeric_data_t it; // The updated pointer based on data.
 	// Since we only support 2 or 3 ways multi-view tensor, therefore, fixed allocation of 3.
 	ccv_numeric_data_t data[3];
 	ccv_nnc_tensor_t* tv; // Current tensor (tensor in use), this is updated along with the graph computation.

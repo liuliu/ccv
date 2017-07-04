@@ -56,8 +56,8 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	// Update the pointer on tv.
-	tensor_multiview->tv->data = tensor_multiview->dc;
-	unsigned char* const data = tensor_multiview->dc.u8 - tensor_multiview->offset;
+	tensor_multiview->tv->data = tensor_multiview->it;
+	unsigned char* const data = tensor_multiview->it.u8 - tensor_multiview->offset;
 	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
 	int i;
 	do {
@@ -143,7 +143,7 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 					if (mv->tv)
 					{
 						// Update the pointer
-						mv->dc = mv->data[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
+						mv->it = mv->data[((count - off) & mask) + off]; // See the comment of the CCV_NNC_MULTIVIEW_WXX enum for why the computation carried out this way.
 						unwrap_tensors[j] = TAG_TENSOR_REQUIRE_BROADCAST(tensors[j]); // Keep it dirty yet, will unwrap the first time encountered it in actual execution, using tagged pointer to keep track.
 						// In this way, I can broadcast the pointer change only when executing it, to avoid early abortion causing no pointer
 						// update is needed.
