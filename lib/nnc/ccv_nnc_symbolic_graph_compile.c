@@ -516,7 +516,13 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 	ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)vt_tensor);
 	if (CCV_IS_TENSOR_MULTIVIEW(tensor))
 	{
-		// TODO: handle multiview rewire.
+		ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
+		int i;
+		if (mv->tv)
+			mv->tv = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->tv);
+		else
+			for (i = 0; i < (mv->kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2; i++)
+				mv->data[i].ptr = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->data[i].ptr);
 	}
 	return tensor;
 }
