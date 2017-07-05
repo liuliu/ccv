@@ -46,4 +46,9 @@ struct ccv_nnc_graph_s {
 	// End of while loop handling.
 };
 
+typedef struct {
+	off_t offset; // If the tensor points to a tensor view, tensor->data.u8 - offset is the origin of the tensor.
+	ccv_nnc_tensor_t* tensor;
+} ccv_nnc_tensor_reference_t;
+
 #endif

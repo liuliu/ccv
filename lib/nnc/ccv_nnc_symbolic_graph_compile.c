@@ -5,6 +5,7 @@
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
+#include "_ccv_nnc_graph.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
 typedef struct {
@@ -523,6 +524,16 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 		else
 			for (i = 0; i < (mv->kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2; i++)
 				mv->data[i].ptr = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->data[i].ptr);
+		// No need to recursively do parent pointer, otherwise we are in deep rewire.
+		if (mv->p)
+			mv->p = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)vt_tensor);
+		if (mv->rtvs)
+			for (i = 0; i < mv->rtvs->rnum; i++)
+			{
+				ccv_nnc_tensor_reference_t* reference = (ccv_nnc_tensor_reference_t*)ccv_array_get(mv->rtvs, i);
+				reference->tensor = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, reference->tensor);
+				assert(!CCV_IS_TENSOR_MULTIVIEW(reference->tensor));
+			}
 	}
 	return tensor;
 }
@@ -587,7 +598,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			for (i = 0; i < tensor_arena->buffer_size; i++)
 			{
-				ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+				ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 		}
@@ -595,7 +606,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
-			ccmemalign((void **)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+			ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 		}
 #endif
