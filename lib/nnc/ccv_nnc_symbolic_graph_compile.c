@@ -538,7 +538,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 	return tensor;
 }
 
-static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_alloc_prep_t* const p_alloc_prep, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
+static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
 	// Each tensor have the designation in assigned array, and offset in allocated_offset.
@@ -546,6 +546,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
 	const int tensor_symbol_info_size = graph_prep->tensor_symbol_info_size;
+	const ccv_nnc_symbolic_graph_prep_t* const p_graph_prep = graph_prep->p;
+	const ccv_nnc_tensor_alloc_prep_t* const p_alloc_prep = p_graph_prep ? p_graph_prep->alloc_prep : 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	tensor_arena->graph_ref = graph_prep->graph_ref;
 	tensor_arena->buffers = (void*)(tensor_arena + 1);
@@ -567,8 +569,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	}
 	tensor_arena->memory_type = memory_type;
 	tensor_arena->device_id = device_id;
-	assert((p_arena && p_alloc_prep) || (!p_arena && !p_alloc_prep));
-	if (p_arena && p_alloc_prep)
+	assert((p_arena && p_graph_prep) || (!p_arena && !p_graph_prep));
+	if (p_arena && p_graph_prep)
 	{
 		// Don't need to allocate the actual buffer, just use the pointer from the above.
 		PRINT(CCV_CLI_VERBOSE, "Buffer assignment for sub arena %p (parent %p)\n", tensor_arena, p_arena);
@@ -576,9 +578,26 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 		{
 			const int p_ref = alloc_prep->buffers[i].p_ref - 1;
 			assert(p_ref >= 0);
+			if (p_graph_prep->dup_tensor_block_ref && p_graph_prep->dup_tensor_block_ref[p_ref] >= 0)
+			{
+				// This condition means in the parent graph, we point to multiple tensor blocks for the same
+				// buffer, therefore, we cannot have one single pointer assigned in this case.
+				// Later we will handle this by generate ccv_tensor_multiview_t structure.
+				tensor_arena->buffers[i].ptr = 0;
+				PRINT(CCV_CLI_VERBOSE, "|-Cannot assign buffer %d, it points to multiple blocks (multi view tensor required)\n", i);
+				continue;
+			}
+			// Otherwise, find the actual buffer pointer.
 			const int vt_ref = p_alloc_prep->vt_blocks[p_ref];
 			assert(vt_ref >= 0);
 			const int buffer_ref = p_alloc_prep->blocks[vt_ref].buffer_ref;
+			if (!p_arena->buffers[buffer_ref].ptr)
+			{
+				// Pass it down as 0 ptr.
+				tensor_arena->buffers[i].ptr = 0;
+				PRINT(CCV_CLI_VERBOSE, "|-Cannot assign buffer %d, it points to multiple blocks (multi view tensor required)\n", i);
+				continue;
+			}
 			const uint64_t offset = p_alloc_prep->blocks[vt_ref].offset;
 			tensor_arena->buffers[i].ptr = p_arena->buffers[buffer_ref].ptr + offset;
 			PRINT(CCV_CLI_VERBOSE, "|-Assign block %d in parent arena to buffer %d with offset %lu\n", vt_ref, i, (unsigned long)offset);
@@ -621,13 +640,21 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 			const uint64_t offset = alloc_prep->blocks[i].offset;
 			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
 			{
-				const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
-				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
-				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				// Also, set its allocations.
-				// Since tensor view is bit compatible with tensor, we can just cast.
-				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
-				assert(offset + tensor_blocks[block_ref].size <= tensor_arena->buffers[buffer_ref].size);
+				// Either we have dup_tensor_block_ref in current layer, or we have that in
+				// previous layer, therefore, cannot really find the buffer ptr.
+				if ((graph_prep->dup_tensor_block_ref && graph_prep->dup_tensor_block_ref[block_ref] >= 0) ||
+					!tensor_arena->buffers[buffer_ref].ptr)
+				{
+				} else {
+					// Having ptr.
+					const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
+					ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+					// Also, set its allocations.
+					// Since tensor view is bit compatible with tensor, we can just cast.
+					*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[block_ref].info, 0);
+					assert(offset + tensor_blocks[block_ref].size <= tensor_arena->buffers[buffer_ref].size);
+				}
 			}
 		}
 	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
@@ -698,7 +725,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(const ccv_nnc_symbolic_
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		// TODO: I also need to pass binded tensor properly to the lower level.
 		if (graph_prep->sub_preps[i])
-			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, alloc_prep, 0, 0);
+			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, 0, 0);
 		else
 			tensor_arena->sub_arenas[i] = 0;
 	return tensor_arena;
@@ -1501,6 +1528,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
 	ccv_matrix_free(exec_dep);
+	prep->p = 0;
 	prep->graph_ref = (intptr_t)symbolic_graph;
 	prep->sub_prep_size = symbolic_graph->sub_graphs ? symbolic_graph->sub_graphs->rnum : 0;
 	prep->sub_preps = sub_preps;
@@ -1721,7 +1749,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	assert(tensor_arena_ref);
 	assert(graph_exec_arena_ref);
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
-	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, 0, tensor_binds, tensor_bind_size);
+	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
 	*graph_ref = graph_prep->graph;

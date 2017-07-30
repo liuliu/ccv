@@ -9,7 +9,7 @@
 
 void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const int kind, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
-	assert(kind == CCV_NNC_MULTIVIEW_K11 || kind == CCV_NNC_MULTIVIEW_K02 || kind == CCV_NNC_MULTIVIEW_K12);
+	assert(kind == CCV_NNC_MULTIVIEW_K01 || kind == CCV_NNC_MULTIVIEW_K11 || kind == CCV_NNC_MULTIVIEW_K02 || kind == CCV_NNC_MULTIVIEW_K12);
 	tensor_multiview->type = CCV_TENSOR_MULTIVIEW;
 	tensor_multiview->kind = kind;
 	tensor_multiview->anchor = (intptr_t)graph;
@@ -19,7 +19,10 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t dat
 	tensor_multiview->rtvs = 0;
 	int i;
 	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
-	for (i = 0; i < ((kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2); i++)
+	const int kindz[] = {
+		1, 2, 2, 3
+	};
+	for (i = 0; i < kindz[kind]; i++)
 	{
 		tensor_multiview->data[i] = data[i];
 		if (!tv)
@@ -133,8 +136,8 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				{
 					// This can be unwrapped, do that.
 					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensors[j];
-					const int off = (mv->kind == CCV_NNC_MULTIVIEW_K02) ? 0 : 1;
-					const int mask = (mv->kind == CCV_NNC_MULTIVIEW_K11) ? 0 : 1;
+					const int off = (mv->kind >> 1) & 1;
+					const int mask = mv->kind & 1;
 					// If reached the root.
 					if (mv->tv)
 					{

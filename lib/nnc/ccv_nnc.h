@@ -422,9 +422,10 @@ typedef struct ccv_nnc_tensor_multiview_s {
 } ccv_nnc_tensor_multiview_t;
 
 enum {
-	CCV_NNC_MULTIVIEW_K11, // The first one is the first, the second one is the rest. (0111111...)
-	CCV_NNC_MULTIVIEW_K02, // The first one is the first, the second one is the second, the third is the first one again (0101010101...)
-	CCV_NNC_MULTIVIEW_K12, // The first one is the first, the second one is the second, the third one is the third, and 4th is the second again. (012121212...)
+	CCV_NNC_MULTIVIEW_K01 = 0, // All of them are the same.
+	CCV_NNC_MULTIVIEW_K02 = 1, // The first one is the first, the second one is the second, the third is the first one again (0101010101...)
+	CCV_NNC_MULTIVIEW_K11 = 2, // The first one is the first, the second one is the rest. (0111111...)
+	CCV_NNC_MULTIVIEW_K12 = 3, // The first one is the first, the second one is the second, the third one is the third, and 4th is the second again. (012121212...)
 };
 // Setup a tensor multiview with a given set of tensors.
 void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const int kind, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
