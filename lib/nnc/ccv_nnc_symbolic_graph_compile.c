@@ -583,7 +583,9 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 		if (!data_ptr)
 			return -1;
 		// Based on ch, go all the way back to find the exact pointer to compose.
-		if (prep->dup_tensor_block_ref && prep->dup_tensor_block_ref[block_ref] >= 0)
+		if (prep->dup_tensor_block_ref &&
+			prep->dup_tensor_block_ref[block_ref] >= 0 &&
+			prep->dup_tensor_block_ref[block_ref] != block_ref)
 		{
 			uint8_t* const dup_data_ptr = _ccv_nnc_tensor_multiview_find_ptr(preps, prep->dup_tensor_block_ref[block_ref], ch, idx, prep);
 			assert(dup_data_ptr);
@@ -720,7 +722,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		{
 			const int p_ref = alloc_prep->buffers[i].p_ref - 1;
 			assert(p_ref >= 0);
-			if (p_graph_prep->dup_tensor_block_ref && p_graph_prep->dup_tensor_block_ref[p_ref] >= 0)
+			if (p_graph_prep->dup_tensor_block_ref &&
+				p_graph_prep->dup_tensor_block_ref[p_ref] >= 0 &&
+				p_graph_prep->dup_tensor_block_ref[p_ref] != p_ref)
 			{
 				// This condition means in the parent graph, we point to multiple tensor blocks for the same
 				// buffer, therefore, we cannot have one single pointer assigned in this case.
@@ -784,7 +788,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			{
 				// Either we have dup_tensor_block_ref in current layer, or we have that in
 				// previous layer, therefore, cannot really find the buffer ptr.
-				if ((graph_prep->dup_tensor_block_ref && graph_prep->dup_tensor_block_ref[block_ref] >= 0) ||
+				if ((graph_prep->dup_tensor_block_ref &&
+					 graph_prep->dup_tensor_block_ref[block_ref] >= 0 &&
+					 graph_prep->dup_tensor_block_ref[block_ref] != block_ref) ||
 					!tensor_arena->buffers[buffer_ref].ptr)
 				{
 					const int pos = _ccv_nnc_tensor_multiview_gen(tensor_arena->tensor_metadata, tensor_symbol_info[block_ref].info, graph_prep, tensor_arena, block_ref);
