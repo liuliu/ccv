@@ -274,6 +274,8 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times"
 	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(4, 3, 3, 4), "w");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(4), "b");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(5, 5, 4), "y");
+	ccv_nnc_tensor_symbol_t z0 = ccv_nnc_tensor_symbol_alias_new(while_graph, y, DIM_ALLOC(0, 0, 1), y.info.dim, ONE_CPU_TENSOR(5, 5, 3), "z0");
+	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_alias_new(while_graph, y, DIM_ALLOC(4), DIM_ALLOC(10), ONE_CPU_TENSOR(6), "z1");
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
 	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_CONVOLUTION_FORWARD(4, 3, 3, 4), TENSOR_SYMBOL_LIST(x, w, b), TENSOR_SYMBOL_LIST(y), "conv");
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, conv);
@@ -290,6 +292,8 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times"
 	ccv_nnc_tensor_t* w_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, w);
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	ccv_nnc_tensor_t* z0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z0);
+	ccv_nnc_tensor_t* z1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z1);
 	int i;
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
@@ -314,6 +318,9 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times"
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
 	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_MATRIX_EQ(y1, y_tensor, "5x5x4 matrix should be exactly the same");
+	REQUIRE(z0_tensor->data.f32 == y_tensor->data.f32 + 1, "z0 should point to the same memory region as y, offset by 1");
+	// z0 and z1 trigger different code path (z1 will trigger one additional tensor setup).
+	REQUIRE(z1_tensor->data.f32 == y_tensor->data.f32 + 4, "z1 should point to the same memory region as y, offset by 4");
 	ccv_nnc_tensor_free(x1);
 	ccv_nnc_tensor_free(y1);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);

@@ -42,7 +42,6 @@ void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multi
 
 void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, const off_t offset, ccv_nnc_tensor_t* const tensor)
 {
-	assert(!CCV_IS_TENSOR_MULTIVIEW(tensor));
 	ccv_nnc_tensor_reference_t tensor_reference = {
 		.offset = offset,
 		.tensor = tensor,

@@ -1,5 +1,6 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_easy.h"
+#include "ccv_nnc_internal.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
 #endif
@@ -101,16 +102,8 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 {
 	memcpy(tv->inc, tensor->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	int i;
-	size_t inc = CCV_GET_DATA_TYPE_SIZE(tv->info.datatype);
 	uint8_t* p = tensor->data.u8;
-	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
-	for (i = nd - 1; i >= 0; i--)
-	{
-		p += ofs[i] * inc;
-		inc *= tv->inc[i];
-	}
-	tv->data.u8 = p;
+	tv->data.u8 = p + ccv_nnc_tensor_view_offset(tv, ofs);
 }
 
 ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
