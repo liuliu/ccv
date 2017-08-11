@@ -1934,7 +1934,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	// Cannot bind the multiview.
 	for (i = 0; i < tensor_bind_size; i++)
 		if (tensor_binds[i].tensor)
-		{ assert(CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor)); }
+		{ assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor)); }
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
 	*tensor_arena_ref = tensor_arena;
