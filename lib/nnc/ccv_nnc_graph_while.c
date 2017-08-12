@@ -133,10 +133,12 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 			for (j = 0; j < tensor_size; j++)
 			{
 				assert(!IS_TAGGED_TENSOR_REQUIRE_BROADCAST(tensors[j])); // I cannot encounter a tagged pointer.
-				if (CCV_IS_TENSOR_MULTIVIEW(tensors[j]) && ((ccv_nnc_tensor_multiview_t*)tensors[j])->anchor == (intptr_t)graph)
+				ccv_nnc_tensor_t* tensor = tensors[j];
+				// Just copy it over if it is not a multiview tensor.
+				while (CCV_IS_TENSOR_MULTIVIEW(tensor) && ((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph)
 				{
 					// This can be unwrapped, do that.
-					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensors[j];
+					ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 					const int off = (mv->kind >> 1) & 1;
 					const int mask = mv->kind & 1;
 					// If reached the root.
@@ -146,13 +148,14 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 						if (mv->kind != CCV_NNC_MULTIVIEW_K01)
 							// Update the pointer
 							mv->it = mv->data[count >= off ? ((count - off) & mask) + off : count]; // See the comment of the CCV_NNC_MULTIVIEW_KXX enum for why the computation carried out this way.
-						unwrap_tensors[j] = TAG_TENSOR_REQUIRE_BROADCAST(tensors[j]); // Keep it dirty yet, will unwrap the first time encountered it in actual execution, using tagged pointer to keep track.
+						tensor = TAG_TENSOR_REQUIRE_BROADCAST(tensor); // Keep it dirty yet, will unwrap the first time encountered it in actual execution, using tagged pointer to keep track.
+						break;
 						// In this way, I can broadcast the pointer change only when executing it, to avoid early abortion causing no pointer
 						// update is needed.
 					} else
-						unwrap_tensors[j] = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) & mask) + off : count].ptr; // Unwrap.
-				} else
-					unwrap_tensors[j] = tensors[j]; // Just copy it over
+						tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) & mask) + off : count].ptr; // Unwrap.
+				}
+				unwrap_tensors[j] = tensor;
 			}
 		}
 	}
