@@ -124,7 +124,11 @@ void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const whi
 		assert(source.d < while_graph->tensor_symbol_info->rnum);
 		assert(destination.d < while_graph->tensor_symbol_info->rnum);
 		ccv_nnc_tensor_symbol_info_t* destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, destination.d);
-		// Don't support parameterize with alias yet.
+		// Don't support parameterize with alias. The reason is that to support parameterized loop (for SSA), I choose
+		// to simply reuse the piece of memory (allocating the same memory region to both, therefore to enable parameter
+		// passing). For alias, it is not possible because alias can pointing to the tensors with different sizes, thus,
+		// these pointed tensors cannot share the same memory region. The best way for alias to be parameterized is to
+		// create a new tensor of the same size, transfer value over, and parameterized on that tensor instead.
 		assert(!destination_tensor_symbol_info->alias_ref);
 		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, source.d))->alias_ref);
 		destination_tensor_symbol_info->assign_ref = source.d + 1;
