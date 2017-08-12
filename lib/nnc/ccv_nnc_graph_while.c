@@ -53,9 +53,11 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 
 void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
-	// Update the pointer on tv.
-	tensor_multiview->tv->data = tensor_multiview->it;
-	unsigned char* const data = tensor_multiview->it.u8 - tensor_multiview->offset;
+	assert(tensor_multiview->tv);
+	// Update the pointer on tv only if it is not a single tensor pointer.
+	if (tensor_multiview->kind != CCV_NNC_MULTIVIEW_K01)
+		tensor_multiview->tv->data = tensor_multiview->it;
+	unsigned char* const data = tensor_multiview->tv->data.u8 - tensor_multiview->offset;
 	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
 	int i;
 	do {
@@ -140,8 +142,10 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 					// If reached the root.
 					if (mv->tv)
 					{
-						// Update the pointer
-						mv->it = mv->data[count >= off ? ((count - off) & mask) + off : count]; // See the comment of the CCV_NNC_MULTIVIEW_KXX enum for why the computation carried out this way.
+						// If it is a single tensor view pointer wrapped into multi-view tensor, no need to update pointer at all.
+						if (mv->kind != CCV_NNC_MULTIVIEW_K01)
+							// Update the pointer
+							mv->it = mv->data[count >= off ? ((count - off) & mask) + off : count]; // See the comment of the CCV_NNC_MULTIVIEW_KXX enum for why the computation carried out this way.
 						unwrap_tensors[j] = TAG_TENSOR_REQUIRE_BROADCAST(tensors[j]); // Keep it dirty yet, will unwrap the first time encountered it in actual execution, using tagged pointer to keep track.
 						// In this way, I can broadcast the pointer change only when executing it, to avoid early abortion causing no pointer
 						// update is needed.
