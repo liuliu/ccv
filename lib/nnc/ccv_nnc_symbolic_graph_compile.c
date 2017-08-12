@@ -783,6 +783,16 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		}
 #endif
 	}
+	// Go over sub_preps and allocate arenas for them. Do it this early because
+	// we may reference tensors from sub arenas, the reason why we need to reference
+	// tensors from sub arenas is because for output tensors, sub arena's tensor
+	// will have automatic reference updates.
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		// TODO: I also need to pass binded tensor properly to the lower level.
+		if (graph_prep->sub_preps[i])
+			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, 0, 0);
+		else
+			tensor_arena->sub_arenas[i] = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
 	for (i = 0; i < alloc_prep->block_size; i++)
@@ -910,13 +920,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		// I have to cast this, unfortunately.
 		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
 	}
-	// Everything is allocated, I can go over sub_preps and allocate arenas for them.
-	for (i = 0; i < tensor_arena->sub_arena_size; i++)
-		// TODO: I also need to pass binded tensor properly to the lower level.
-		if (graph_prep->sub_preps[i])
-			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, 0, 0);
-		else
-			tensor_arena->sub_arenas[i] = 0;
 	return tensor_arena;
 }
 
