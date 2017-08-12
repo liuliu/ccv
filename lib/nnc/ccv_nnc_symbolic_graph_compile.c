@@ -1204,8 +1204,17 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			/* If this is first encounter, its head starts (this tensor is init'ed outside of the graph)
 			 * from the very beginning of the graph life-cycle and ends here. */ \
 			if (tensor_blocks[d].head->rnum == 0) \
+			{ \
 				for (j = 0; j < source_size; j++) \
 					_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[d]); \
+				/* If this is a read-only (based on SSA, if first encountered as read), and this is a
+				 * sub-graph, it is not assign_ref from anywhere (not a parameterized loop).  We cannot
+				 * reuse this region of memory anyway (because on second loop, we want to read the same
+				 * value out). Mark it to the end of the graph. */ \
+				if (symbolic_graph->p && !tensor_symbol_info[d].assign_ref) \
+					for (j = 0; j < destination_size; j++) \
+						_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]); \
+			} \
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]); \
 		} \
 		for (i = 0; i < node->output_size; i++) \

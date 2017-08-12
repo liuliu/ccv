@@ -124,6 +124,9 @@ void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const whi
 		assert(source.d < while_graph->tensor_symbol_info->rnum);
 		assert(destination.d < while_graph->tensor_symbol_info->rnum);
 		ccv_nnc_tensor_symbol_info_t* destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, destination.d);
+		// Don't support parameterize with alias yet.
+		assert(!destination_tensor_symbol_info->alias_ref);
+		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(while_graph->tensor_symbol_info, source.d))->alias_ref);
 		destination_tensor_symbol_info->assign_ref = source.d + 1;
 	}
 }
