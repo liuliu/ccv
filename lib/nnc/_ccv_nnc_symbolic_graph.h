@@ -77,7 +77,8 @@ struct ccv_nnc_tensor_arena_s {
 	// This is a table of tensor references to real allocated tensors.
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
-	ccv_nnc_tensor_multiview_t** tensor_multiviews;
+	int m_tensor_size;
+	ccv_nnc_tensor_t** m_tensors;
 	// This is the allocated non-continuous buffers.
 	int buffer_size;
 	struct {

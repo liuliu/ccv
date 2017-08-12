@@ -691,18 +691,24 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	const int tensor_symbol_info_size = graph_prep->tensor_symbol_info_size;
 	const ccv_nnc_symbolic_graph_prep_t* const p_graph_prep = graph_prep->p;
 	const ccv_nnc_tensor_alloc_prep_t* const p_alloc_prep = p_graph_prep ? p_graph_prep->alloc_prep : 0;
-	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_multiview_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
+	int i;
+	int m_tensor_size = 0;
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
+			++m_tensor_size;
+	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_t*) * m_tensor_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	graph_prep->tensor_arena = tensor_arena;
 	tensor_arena->graph_ref = graph_prep->graph_ref;
 	tensor_arena->buffers = (void*)(tensor_arena + 1);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
-	tensor_arena->tensor_multiviews = (ccv_nnc_tensor_multiview_t**)(tensor_arena->vt_tensors + tensor_symbol_info_size);
-	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->tensor_multiviews + tensor_symbol_info_size);
+	tensor_arena->m_tensor_size = m_tensor_size;
+	tensor_arena->m_tensors = (ccv_nnc_tensor_t**)(tensor_arena->vt_tensors + tensor_symbol_info_size);
+	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->m_tensors + m_tensor_size);
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
-	int i;
 	for (i = 0; i < alloc_prep->buffer_size; i++)
 		tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
 	int memory_type = CCV_TENSOR_GET_MEMORY(tensor_symbol_info[0].info.type);
@@ -785,6 +791,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			const int block_ref = alloc_prep->blocks[i].block_ref;
 			const int buffer_ref = alloc_prep->blocks[i].buffer_ref;
 			const uint64_t offset = alloc_prep->blocks[i].offset;
+			assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[block_ref]));
 			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
 			{
 				// Either we have dup_tensor_block_ref in current layer, or we have that in
@@ -881,15 +888,18 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 			}
 		}
-	memset(tensor_arena->tensor_multiviews, 0, sizeof(ccv_nnc_tensor_multiview_t*) * tensor_symbol_info_size);
+	memset(tensor_arena->m_tensors, 0, sizeof(ccv_nnc_tensor_t*) * m_tensor_size);
+	int j;
 	// Everything is done, rewire vt_tensor to real locations. From now on, no push to tensor_metadata is possible.
+	for (i = 0, j = 0; i < tensor_symbol_info_size; i++)
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_arena->vt_tensors[i])
+			tensor_arena->m_tensors[j++] = tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor_arena->vt_tensors[i]);
+	assert(j == m_tensor_size);
+	// Re-do ref again for pointer.
 	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (tensor_arena->vt_tensors[i])
-		{
-			tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor_arena->vt_tensors[i]);
-			if (CCV_IS_TENSOR_MULTIVIEW(tensor_arena->vt_tensors[i]))
-				tensor_arena->tensor_multiviews[i] = (ccv_nnc_tensor_multiview_t*)tensor_arena->vt_tensors[i];
-		}
+		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
+		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref)
+			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[tensor_blocks[i].ref - 1];
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
@@ -1958,17 +1968,11 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 			_ccv_nnc_tensor_arena_free(tensor_arena->sub_arenas[i]);
-	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+	for (i = 0; i < tensor_arena->m_tensor_size; i++)
 	{
-		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)tensor_arena->tensor_multiviews[i];
-		if (!mv)
-			continue;
-		assert(CCV_IS_TENSOR_MULTIVIEW(mv));
-		if (mv->rtvs)
-		{
+		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)tensor_arena->m_tensors[i];
+		if (mv && CCV_IS_TENSOR_MULTIVIEW(mv) && mv->rtvs)
 			ccv_array_free(mv->rtvs);
-			mv->rtvs = 0;
-		}
 	}
 	ccv_array_free(tensor_arena->tensor_metadata);
 	ccfree(tensor_arena);
