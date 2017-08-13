@@ -75,7 +75,7 @@ typedef struct {
 	int vt_block_size;
 	int* vt_blocks; // A reference to the block, because blocks only contains available block (thus, doesn't consider alias etc.). -1 means no block pointed to. Starts at 0.
 	struct {
-		int p_ref; // Reference to the upper level block, Starts at 1.
+		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 		uint64_t size; // The size of the buffer allocated.
 	}* buffers;
 	int block_size;
@@ -457,7 +457,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	alloc_prep->vt_blocks = (int*)(alloc_prep->buffers + num_assigned);
 	for (i = 0; i < num_assigned; i++)
 	{
-		alloc_prep->buffers[i].p_ref = 0;
+		alloc_prep->buffers[i].p_refs[0] = 0;
+		alloc_prep->buffers[i].p_refs[1] = 0;
 		alloc_prep->buffers[i].size = allocated_size[i];
 	}
 	ccfree(allocated_size);
@@ -546,7 +547,7 @@ static uint8_t* _ccv_nnc_tensor_multiview_find_ptr(const ccv_nnc_symbolic_graph_
 	assert(block_ref == prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = prep->alloc_prep->blocks[vt_ref].buffer_ref;
 	uint64_t offset = prep->alloc_prep->blocks[vt_ref].offset;
-	int p_ref = prep->alloc_prep->buffers[buffer_ref].p_ref - 1;
+	int p_ref = prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
 	for (i = idx - 1; i >= 0; i--)
 	{
 		assert(p_ref >= 0);
@@ -567,7 +568,7 @@ static uint8_t* _ccv_nnc_tensor_multiview_find_ptr(const ccv_nnc_symbolic_graph_
 					return 0;
 			return prep->tensor_arena->buffers[buffer_ref].ptr + offset;
 		}
-		p_ref = prep->alloc_prep->buffers[buffer_ref].p_ref - 1;
+		p_ref = prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
 	}
 	return 0;
 }
@@ -727,7 +728,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		PRINT(CCV_CLI_VERBOSE, "Buffer assignment for sub arena %p (parent %p)\n", tensor_arena, p_arena);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
-			const int p_ref = alloc_prep->buffers[i].p_ref - 1;
+			const int p_ref = alloc_prep->buffers[i].p_refs[0] - 1;
 			assert(p_ref >= 0);
 			if (p_graph_prep->dup_tensor_block_ref &&
 				p_graph_prep->dup_tensor_block_ref[p_ref] >= 0 &&
@@ -1652,50 +1653,71 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				const int block_ref = s_alloc_prep->blocks[i].block_ref; \
 				const int buffer_ref = s_alloc_prep->blocks[i].buffer_ref; \
 				if (block_ref < sub_prep->tensor_symbol_info_size) \
-				{ \
 					if (s_tensor_blocks[block_ref].p_refs[0]) \
 					{ \
-						int p_ref_0 = s_tensor_blocks[block_ref].p_refs[0] - 1; \
-						/* Need to go through refs. Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
-						const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, node); \
-						assert(p_ref_0_is_in_or_out != 0); \
-						while (tensor_blocks[p_ref_0].ref) \
-							p_ref_0 = tensor_blocks[p_ref_0].ref - 1; \
-						/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
-						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
-						if (s_tensor_blocks[block_ref].p_refs[1]) \
+						/* If it is already properly assigned, next. */ \
+						if (s_alloc_prep->buffers[buffer_ref].p_refs[0] != s_tensor_blocks[block_ref].p_refs[0] && \
+							s_alloc_prep->buffers[buffer_ref].p_refs[1] != s_tensor_blocks[block_ref].p_refs[0]) \
 						{ \
-							int p_ref_1 = s_tensor_blocks[block_ref].p_refs[1] - 1; \
-							const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, node); \
-							assert(p_ref_1_is_in_or_out != 0); \
-							while (tensor_blocks[p_ref_1].ref) \
-								p_ref_1 = tensor_blocks[p_ref_1].ref - 1; \
-							/* See above comment for the similar p_ref_0 check. */ \
-							assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_1])); \
-							assert(p_ref_0_is_in_or_out != p_ref_1_is_in_or_out); \
-							int p_ref_t; \
-							if (p_ref_0_is_in_or_out > p_ref_1_is_in_or_out) /* if p_ref_0 is output and p_ref_1 is input, switch. */ \
-								CCV_SWAP(p_ref_0, p_ref_1, p_ref_t); \
-							_ccv_nnc_tensor_blocks_fold(tensor_blocks, p_ref_0, p_ref_1); \
-							if (dup_tensor_block_ref) /* Fold its duplicates as well. */ \
-								_ccv_nnc_tensor_blocks_fold(tensor_blocks, dup_tensor_block_ref[p_ref_0], dup_tensor_block_ref[p_ref_1]); \
-							/* We are good, mark this buffer as assigned out for p_ref_1 (the output tensor). */ \
-							s_alloc_prep->buffers[buffer_ref].p_ref = p_ref_1 + 1; \
-						} else { \
-							/* We are good, mark this buffer as assigned out for p_ref_0. */ \
-							s_alloc_prep->buffers[buffer_ref].p_ref = p_ref_0 + 1; \
+							if (!s_alloc_prep->buffers[buffer_ref].p_refs[0]) \
+								s_alloc_prep->buffers[buffer_ref].p_refs[0] = s_tensor_blocks[block_ref].p_refs[0]; \
+							else { \
+								assert(!s_alloc_prep->buffers[buffer_ref].p_refs[1]); \
+								s_alloc_prep->buffers[buffer_ref].p_refs[1] = s_tensor_blocks[block_ref].p_refs[0]; \
+							} \
 						} \
-						/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
-						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
-						tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[buffer_ref].size, tensor_blocks[p_ref_0].size); \
-						if (dup_tensor_block_ref) /* Change the size of its duplicates as well. */ \
-							tensor_blocks[dup_tensor_block_ref[p_ref_0]].size = tensor_blocks[p_ref_0].size; \
+						/* When entering this branch, s_alloc_prep->buffers[buffer_ref].p_refs[0] cannot be 0. */ \
+						if (s_tensor_blocks[block_ref].p_refs[1] && \
+							s_alloc_prep->buffers[buffer_ref].p_refs[0] != s_tensor_blocks[block_ref].p_refs[1] && \
+							s_alloc_prep->buffers[buffer_ref].p_refs[1] != s_tensor_blocks[block_ref].p_refs[1]) \
+						{ \
+							assert(s_alloc_prep->buffers[buffer_ref].p_refs[0]); \
+							assert(!s_alloc_prep->buffers[buffer_ref].p_refs[1]); \
+							s_alloc_prep->buffers[buffer_ref].p_refs[1] = s_tensor_blocks[block_ref].p_refs[1]; \
+						} \
 					} \
-				} \
 			} \
 			int anonymous_buffer_size = 0; \
 			for (i = 0; i < s_alloc_prep->buffer_size; i++) \
-				if (!s_alloc_prep->buffers[i].p_ref) \
+				if (s_alloc_prep->buffers[i].p_refs[0]) \
+				{ \
+					/* Reduce 2 p_refs, if it is, to 1 p_ref (by doing block folding). */ \
+					int p_ref_0 = s_alloc_prep->buffers[i].p_refs[0] - 1; \
+					/* Need to go through refs. Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
+					const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, node); \
+					assert(p_ref_0_is_in_or_out != 0); \
+					while (tensor_blocks[p_ref_0].ref) \
+						p_ref_0 = tensor_blocks[p_ref_0].ref - 1; \
+					/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
+					assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
+					if (s_alloc_prep->buffers[i].p_refs[1]) \
+					{ \
+						int p_ref_1 = s_alloc_prep->buffers[i].p_refs[1] - 1; \
+						const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, node); \
+						assert(p_ref_1_is_in_or_out != 0); \
+						while (tensor_blocks[p_ref_1].ref) \
+							p_ref_1 = tensor_blocks[p_ref_1].ref - 1; \
+						/* See above comment for the similar p_ref_0 check. */ \
+						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_1])); \
+						assert(p_ref_0_is_in_or_out != p_ref_1_is_in_or_out); \
+						int p_ref_t; \
+						if (p_ref_0_is_in_or_out > p_ref_1_is_in_or_out) /* if p_ref_0 is output and p_ref_1 is input, switch. */ \
+							CCV_SWAP(p_ref_0, p_ref_1, p_ref_t); \
+						_ccv_nnc_tensor_blocks_fold(tensor_blocks, p_ref_0, p_ref_1); \
+						if (dup_tensor_block_ref) /* Fold its duplicates as well. */ \
+							_ccv_nnc_tensor_blocks_fold(tensor_blocks, dup_tensor_block_ref[p_ref_0], dup_tensor_block_ref[p_ref_1]); \
+						/* We are good, mark this buffer as assigned out for p_ref_1 (the output tensor). */ \
+						s_alloc_prep->buffers[i].p_refs[0] = p_ref_1 + 1; \
+					} else { \
+						/* We are good, mark this buffer as assigned out for p_ref_0. */ \
+						s_alloc_prep->buffers[i].p_refs[0] = p_ref_0 + 1; \
+					} \
+					/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
+					assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
+					tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[i].size, tensor_blocks[p_ref_0].size); \
+					if (dup_tensor_block_ref) /* Change the size of its duplicates as well. */ \
+						tensor_blocks[dup_tensor_block_ref[p_ref_0]].size = tensor_blocks[p_ref_0].size; \
+				} else \
 					++anonymous_buffer_size; \
 			if (anonymous_buffer_size) \
 			{ \
@@ -1712,11 +1734,11 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * anonymous_buffer_size); \
 				} \
 				for (i = 0; i < s_alloc_prep->buffer_size; i++) \
-					if (!s_alloc_prep->buffers[i].p_ref) \
+					if (!s_alloc_prep->buffers[i].p_refs[0]) \
 					{ \
 						TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
-						s_alloc_prep->buffers[i].p_ref = tensor_block_size + 1; \
+						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1; \
 						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref; \
 						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
 						tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
