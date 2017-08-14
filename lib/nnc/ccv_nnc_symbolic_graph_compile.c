@@ -457,8 +457,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	alloc_prep->vt_blocks = (int*)(alloc_prep->buffers + num_assigned);
 	for (i = 0; i < num_assigned; i++)
 	{
-		alloc_prep->buffers[i].p_refs[0] = 0;
-		alloc_prep->buffers[i].p_refs[1] = 0;
+		alloc_prep->buffers[i].p_refs[0] = alloc_prep->buffers[i].p_refs[1] = 0;
 		alloc_prep->buffers[i].size = allocated_size[i];
 	}
 	ccfree(allocated_size);
@@ -1052,8 +1051,22 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_destination(const ccv_nnc_graph_exec_are
 	return graph_exec_arena->destination;
 }
 
-// Make two tensor blocks one.
-static void _ccv_nnc_tensor_blocks_fold(ccv_nnc_tensor_block_t* const tensor_blocks, const int p_ref_0, const int p_ref_1)
+// Check whether the head is the beginning of this block.
+static int _ccv_nnc_tensor_block_check_head(const ccv_nnc_tensor_block_t* const tensor_block, const int head_node)
+{
+	assert(tensor_block->head);
+	return (tensor_block->head->rnum == 1 && *(int*)ccv_array_get(tensor_block->head, 0) == head_node);
+}
+
+// Check whether the tail is the end of this block.
+static int _ccv_nnc_tensor_block_check_tail(const ccv_nnc_tensor_block_t* const tensor_block, const int tail_node)
+{
+	assert(tensor_block->tail);
+	return (tensor_block->tail->rnum == 1 && *(int*)ccv_array_get(tensor_block->tail, 0) == tail_node);
+}
+
+// Make two tensor blocks one. Return 1 if that happened.
+static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_blocks, const int p_ref_0, const int p_ref_1)
 {
 	// Now we are sure p_ref_0 points to the input, p_ref_1 points to the output.
 	if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) &&
@@ -1085,7 +1098,9 @@ static void _ccv_nnc_tensor_blocks_fold(ccv_nnc_tensor_block_t* const tensor_blo
 		tensor_blocks[p_ref_1].size = 0;
 		tensor_blocks[p_ref_1].head = 0;
 		tensor_blocks[p_ref_1].tail = 0;
+		return 1;
 	}
+	return 0;
 }
 
 static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
@@ -1266,7 +1281,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 							const ccv_nnc_tensor_symbol_info_t y_symbol = tensor_symbol_info[node_output_y]; \
 							/* If dimension matches perfectly, then we can assign y_symbol to x. */ \
 							if (memcmp(x_symbol.info.dim, y_symbol.info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0) \
-								_ccv_nnc_tensor_blocks_fold(tensor_blocks, ref, node_output_y); \
+								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y); \
 						} \
 			} \
 		} \
@@ -1684,10 +1699,11 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					/* Reduce 2 p_refs, if it is, to 1 p_ref (by doing block folding). */ \
 					int p_ref_0 = s_alloc_prep->buffers[i].p_refs[0] - 1; \
 					/* Need to go through refs. Since we reuse the tensor block for this input, it now has to have allocate at least this much space. */ \
-					const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, node); \
+					int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, node); \
 					assert(p_ref_0_is_in_or_out != 0); \
 					while (tensor_blocks[p_ref_0].ref) \
 						p_ref_0 = tensor_blocks[p_ref_0].ref - 1; \
+					int folded = 0; \
 					/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
 					assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
 					if (s_alloc_prep->buffers[i].p_refs[1]) \
@@ -1701,22 +1717,40 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_1])); \
 						assert(p_ref_0_is_in_or_out != p_ref_1_is_in_or_out); \
 						int p_ref_t; \
-						if (p_ref_0_is_in_or_out > p_ref_1_is_in_or_out) /* if p_ref_0 is output and p_ref_1 is input, switch. */ \
+						if (p_ref_0_is_in_or_out < p_ref_1_is_in_or_out) /* if p_ref_0 is input and p_ref_1 is output, switch. */ \
 							CCV_SWAP(p_ref_0, p_ref_1, p_ref_t); \
-						_ccv_nnc_tensor_blocks_fold(tensor_blocks, p_ref_0, p_ref_1); \
-						if (dup_tensor_block_ref) /* Fold its duplicates as well. */ \
-							_ccv_nnc_tensor_blocks_fold(tensor_blocks, dup_tensor_block_ref[p_ref_0], dup_tensor_block_ref[p_ref_1]); \
-						/* We are good, mark this buffer as assigned out for p_ref_1 (the output tensor). */ \
-						s_alloc_prep->buffers[i].p_refs[0] = p_ref_1 + 1; \
-					} else { \
-						/* We are good, mark this buffer as assigned out for p_ref_0. */ \
-						s_alloc_prep->buffers[i].p_refs[0] = p_ref_0 + 1; \
+						p_ref_0_is_in_or_out = 1; /* Now p_ref_0 surely is the output tensor. */ \
+						/* If the dimension matches, can fold. */ \
+						if (memcmp(tensor_symbol_info[p_ref_1].info.dim, tensor_symbol_info[p_ref_0].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0) \
+						{ \
+							folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, p_ref_1, p_ref_0); \
+							if (dup_tensor_block_ref) /* Fold its duplicates as well. */ \
+								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1], dup_tensor_block_ref[p_ref_0]); \
+						} \
 					} \
-					/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
-					assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
-					tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[i].size, tensor_blocks[p_ref_0].size); \
-					if (dup_tensor_block_ref) /* Change the size of its duplicates as well. */ \
-						tensor_blocks[dup_tensor_block_ref[p_ref_0]].size = tensor_blocks[p_ref_0].size; \
+					/* Only proceed if it is folded (thus, the input / output tensor can be connected, reuse is not a problem).
+					 * Or if the p_ref_0 is the output, it is the first started from this node (thus, I have full control over
+					 * its life-cycle). Or if the p_ref_0 is the input, it is ended in this node (thus, I can take over its
+					 * life-cycle freely within this sub-graph (otherwise, if it is used anywhere, I cannot change the content
+					 * within its memory region)). */ \
+					if (folded || \
+						(p_ref_0_is_in_or_out == 1 && _ccv_nnc_tensor_block_check_head(tensor_blocks + p_ref_0, idx)) || \
+						(p_ref_0_is_in_or_out == -1 && _ccv_nnc_tensor_block_check_tail(tensor_blocks + p_ref_0, idx))) \
+					{ \
+						/* p_ref_0 is either the only one, or the output tensor, we always prefer the output tensor (there
+						 * is a long argument why that is the case, the digest is, it is much easier to control your output
+						 * than your input). */ \
+						s_alloc_prep->buffers[i].p_refs[0] = p_ref_0 + 1; \
+						s_alloc_prep->buffers[i].p_refs[1] = 0; \
+						/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */ \
+						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0])); \
+						tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[i].size, tensor_blocks[p_ref_0].size); \
+						if (dup_tensor_block_ref) /* Change the size of its duplicates as well. */ \
+							tensor_blocks[dup_tensor_block_ref[p_ref_0]].size = tensor_blocks[p_ref_0].size; \
+					} else { \
+						s_alloc_prep->buffers[i].p_refs[0] = s_alloc_prep->buffers[i].p_refs[1] = 0; \
+						++anonymous_buffer_size; \
+					} \
 				} else \
 					++anonymous_buffer_size; \
 			if (anonymous_buffer_size) \
