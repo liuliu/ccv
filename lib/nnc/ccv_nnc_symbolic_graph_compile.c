@@ -16,6 +16,7 @@ typedef struct {
 	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	int p_refs[2]; // Reference to the parent tensor block, at max there will be only two. Start with 1.
+	int dup_p_ref; // Reference to the parent tensor block from the duplicated tensor blocks. It will only be one, for the output. Start with 1.
 	ccv_array_t* head; // The head nodes (it could be multiple if from the graph, one cannot determine which is the first).
 	ccv_array_t* tail; // The tail nodes (it could be multiple if from the graph, one cannot determine which is the last).
 } ccv_nnc_tensor_block_t; // Tensor Arena Block
@@ -78,6 +79,7 @@ typedef struct {
 	struct {
 		uint64_t size; // The size of the buffer allocated.
 		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
+		int dup_p_ref; // Reference to the parent tensor block from the duplicated tensor blocks. It will only be one, for the output. Start with 1.
 	}* buffers;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
@@ -88,17 +90,18 @@ typedef struct {
 
 typedef struct ccv_nnc_symbolic_graph_prep_s {
 	intptr_t graph_ref;
+	int exec_idx;
 	int dup_tensor_block_size;
-	ccv_nnc_tensor_block_t* tensor_blocks;
 	int tensor_symbol_info_size;
-	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
 	int exec_symbol_info_size;
-	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
 	int tensor_block_size;
+	int sub_prep_size;
+	ccv_nnc_tensor_block_t* tensor_blocks;
+	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
+	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
 	int* dup_tensor_block_ref;
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep;
 	struct ccv_nnc_symbolic_graph_prep_s* p;
-	int sub_prep_size;
 	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
 	// Structures that don't require to be freed after deallocation.
 	ccv_nnc_graph_t* graph; // materialized graph, not managed by prep.
@@ -455,11 +458,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	alloc_prep->blocks = (void*)(alloc_prep + 1); // From the biggest structs to smaller ones.
 	alloc_prep->buffers = (void*)(alloc_prep->blocks + available_tensor_size);
 	alloc_prep->vt_blocks = (int*)(alloc_prep->buffers + num_assigned);
+	memset(alloc_prep->buffers, 0, sizeof(alloc_prep->buffers[0]) * num_assigned);
 	for (i = 0; i < num_assigned; i++)
-	{
-		alloc_prep->buffers[i].p_refs[0] = alloc_prep->buffers[i].p_refs[1] = 0;
 		alloc_prep->buffers[i].size = allocated_size[i];
-	}
 	ccfree(allocated_size);
 	j = 0;
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
@@ -655,6 +656,50 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 		*pos_ref = mv_pos;
 	}
 	return 0;
+}
+
+static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, const ccv_nnc_graph_exec_symbol_info_t *const node)
+{
+	int i;
+	int is_input = 0;
+	for (i = 0; i < node->input_size && !is_input; i++)
+		if (p_ref == node->inputs[i])
+			is_input = 1;
+	int is_output = 0;
+	for (i = 0; i < node->output_size && !is_output; i++)
+		if (p_ref == node->outputs[i])
+			is_output = 1;
+	assert(!(is_input && is_output));
+	if (is_input)
+		return -1;
+	if (is_output)
+		return 1;
+	return 0;
+}
+
+static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref)
+{
+	const int p_ref = graph_prep->tensor_blocks[block_ref].p_refs[0] - 1;
+	// If p is not input, no need to preserve at all.
+	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + graph_prep->exec_idx))
+		return 0;
+	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
+	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
+	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
+	/* This needs detailed explanation, what preserve_input mean?
+	 * For a parameterized loop, such as while { y = x + 1 } (y => x), if tensor x is
+	 * also used outside of the while loop, we cannot reuse the memory region of x for
+	 * the for loop, otherwise we will destroy x when doing y = x + 1 computation (assuming
+	 * y uses the same memory region as x). The way to workaround this is by using a different
+	 * memory region for y = x + 1, but for the first iteration, having x pointing to the
+	 * original. During the allocation process, the way to identify whether x should preserve
+	 * its value or not by looking up its parent tensor. If the symbol (tensor_block)'s input
+	 * parent tensor is the same as the memory region it plans to use in the buffer, then we are
+	 * good (buffer.p_refs[0] == p_refs[0]). A buffer can only point to one parent tensor, and
+	 * it is the input tensor whenever that is possible. A tensor block can point to two parent
+	 * tensors, one is input tensor, one is the output tensor. p_refs[0] should be the input
+	 * tensor whenever that is possible. */
+	return (graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1 == p_ref);
 }
 
 static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena, const int block_ref)
@@ -1565,6 +1610,23 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 	ccfree(max_outputs);
 	ccfree(dup_exec_symbol_info);
 	ccfree(dup_tensor_symbol_info);
+	// Assign out dup_p_ref, which will be used to extended the anonymous block life-time.
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		if (dup_tensor_block_ref[i] > symbolic_graph->tensor_symbol_info->rnum &&
+			(tensor_blocks[i].p_refs[0] || tensor_blocks[i].p_refs[1]))
+		{
+			const int dup_idx = dup_tensor_block_ref[i];
+			const int p_ref_0 = tensor_blocks[i].p_refs[0] - 1;
+			const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx));
+			if (p_ref_0_is_in_or_out == 1)
+				tensor_blocks[dup_idx].dup_p_ref = p_ref_0 + 1;
+			if (p_ref_0_is_in_or_out == 1 || tensor_blocks[i].p_refs[1] == 0)
+				continue;
+			const int p_ref_1 = tensor_blocks[i].p_refs[1] - 1;
+			const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx));
+			if (p_ref_1_is_in_or_out == 1)
+				tensor_blocks[dup_idx].dup_p_ref = p_ref_1 + 1;
+		}
 	// Extend the dup tensor block ref, prepare for future extensions.
 	dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * dup_graph->tensor_symbol_info->rnum);
 	for (i = symbolic_graph->tensor_symbol_info->rnum; i < dup_graph->tensor_symbol_info->rnum; i++)
@@ -1576,25 +1638,6 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 	*r_dup_graph = dup_graph;
 	*r_dup_exec_ref = dup_exec_ref;
 	*r_dup_tensor_block_ref = dup_tensor_block_ref;
-}
-
-static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, const ccv_nnc_graph_exec_symbol_info_t *const node)
-{
-	int i;
-	int is_input = 0;
-	for (i = 0; i < node->input_size && !is_input; i++)
-		if (p_ref == node->inputs[i])
-			is_input = 1;
-	int is_output = 0;
-	for (i = 0; i < node->output_size && !is_output; i++)
-		if (p_ref == node->outputs[i])
-			is_output = 1;
-	assert(!(is_input && is_output));
-	if (is_input)
-		return -1;
-	if (is_output)
-		return 1;
-	return 0;
 }
 
 // Plan out how we allocate tensor (should I do optimizations on graph here or not at all?).
@@ -1668,6 +1711,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				const int block_ref = s_alloc_prep->blocks[i].block_ref; \
 				const int buffer_ref = s_alloc_prep->blocks[i].buffer_ref; \
 				if (block_ref < sub_prep->tensor_symbol_info_size) \
+				{ \
 					if (s_tensor_blocks[block_ref].p_refs[0]) \
 					{ \
 						/* If it is already properly assigned, next. */ \
@@ -1691,6 +1735,16 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							s_alloc_prep->buffers[buffer_ref].p_refs[1] = s_tensor_blocks[block_ref].p_refs[1]; \
 						} \
 					} \
+				} else if (s_tensor_blocks[block_ref].dup_p_ref) { \
+					/* In this case, only relevant bit is dup_p_ref. dup_p_ref extends the life-time of anonymous block,
+					 * which by default only has life-cycle shared with this sub-graph node. The reason to extend is that
+					 * these anonymous blocks that has dup_p_ref may contain data that will be used as output (thus, dup_p_ref
+					 * always points to an output tensor of this sub-graph node) therefore, the memory region must extend
+					 * its life-time to the end of the output tensor. */ \
+					if (!s_alloc_prep->buffers[buffer_ref].dup_p_ref) \
+						s_alloc_prep->buffers[buffer_ref].dup_p_ref = s_tensor_blocks[block_ref].dup_p_ref; \
+					assert(s_alloc_prep->buffers[buffer_ref].dup_p_ref == s_tensor_blocks[block_ref].dup_p_ref); \
+				} \
 			} \
 			int anonymous_buffer_size = 0; \
 			for (i = 0; i < s_alloc_prep->buffer_size; i++) \
@@ -1775,9 +1829,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1; \
 						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref; \
 						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
-						tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
 						ccv_array_push(tensor_blocks[tensor_block_size].head, &idx); \
-						ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx); \
+						const int dup_p_ref = s_alloc_prep->buffers[i].dup_p_ref - 1; \
+						if (dup_p_ref >= 0) \
+						{ \
+							assert(tensor_blocks[dup_p_ref].tail); \
+							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_p_ref].tail->rnum, 0); \
+							memcpy(ccv_array_get(tensor_blocks[tensor_block_size].tail, 0), ccv_array_get(tensor_blocks[dup_p_ref].tail, 0), sizeof(int) * tensor_blocks[dup_p_ref].tail->rnum); \
+							tensor_blocks[tensor_block_size].tail->rnum = tensor_blocks[dup_p_ref].tail->rnum; \
+						} else { \
+							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
+							ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx); \
+						} \
 						++tensor_block_size; \
 						/* ref and flags are both 0. */ \
 						if (dup_tensor_block_ref) \
@@ -1787,10 +1850,21 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
 							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
-							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
 							/* Attach to duplicated exec for this tensor block. */ \
 							ccv_array_push(tensor_blocks[tensor_block_size].head, &dup_exec_ref[idx]); \
-							ccv_array_push(tensor_blocks[tensor_block_size].tail, &dup_exec_ref[idx]); \
+							if (dup_p_ref >= 0) \
+							{ \
+								/* Not nil, not self-reflecting. */ \
+								assert(dup_tensor_block_ref[dup_p_ref] >= 0 && dup_tensor_block_ref[dup_p_ref] != dup_p_ref); \
+								const int dup_dup_p_ref = dup_tensor_block_ref[dup_p_ref]; \
+								assert(tensor_blocks[dup_dup_p_ref].tail); \
+								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_dup_p_ref].tail->rnum, 0); \
+								memcpy(ccv_array_get(tensor_blocks[tensor_block_size].tail, 0), ccv_array_get(tensor_blocks[dup_dup_p_ref].tail, 0), sizeof(int) * tensor_blocks[dup_dup_p_ref].tail->rnum); \
+							tensor_blocks[tensor_block_size].tail->rnum = tensor_blocks[dup_dup_p_ref].tail->rnum; \
+							} else { \
+								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
+								ccv_array_push(tensor_blocks[tensor_block_size].tail, &dup_exec_ref[idx]); \
+							} \
 							++tensor_block_size; \
 						} \
 					} \
@@ -1805,6 +1879,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_matrix_free(exec_dep);
 	prep->p = 0;
 	prep->graph_ref = (intptr_t)symbolic_graph;
+	prep->exec_idx = symbolic_graph->exec_idx;
 	prep->sub_prep_size = symbolic_graph->sub_graphs ? symbolic_graph->sub_graphs->rnum : 0;
 	prep->sub_preps = sub_preps;
 	prep->exec_symbol_info_size = symbolic_graph->exec_symbol_info->rnum;

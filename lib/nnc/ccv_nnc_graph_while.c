@@ -235,6 +235,7 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 	} while (0)
 	if (graph->while_expr)
 	{
+		// TODO: Need to do a broadcast when first entering this graph for all the inputs.
 		// This is a while loop.
 		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->cond_eval_size, 0);
 		for (i = 0; i < graph->cond_eval_size; i++)
