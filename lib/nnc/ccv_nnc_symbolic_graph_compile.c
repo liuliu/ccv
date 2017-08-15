@@ -71,14 +71,14 @@ static int _ccv_nnc_tensor_block_head_after_tail(const ccv_sparse_matrix_t* cons
 
 typedef struct {
 	ccv_array_t** alloc_dep;
-	int buffer_size;
 	int vt_block_size;
+	int buffer_size;
+	int block_size;
 	int* vt_blocks; // A reference to the block, because blocks only contains available block (thus, doesn't consider alias etc.). -1 means no block pointed to. Starts at 0.
 	struct {
-		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 		uint64_t size; // The size of the buffer allocated.
+		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 	}* buffers;
-	int block_size;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
 		int block_ref; // A reference to which block in the given tensor_block to use.
@@ -472,9 +472,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				alloc_prep->vt_blocks[i] = j;
 				// Also, set its allocations.
 				assert(assigned[i] > 0);
-				alloc_prep->blocks[j].buffer_ref = assigned[i] - 1;
+				const int buffer_ref = alloc_prep->blocks[j].buffer_ref = assigned[i] - 1;
 				alloc_prep->blocks[j].offset = allocated_offset[i];
-				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[assigned[i] - 1].size);
+				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[buffer_ref].size);
 			} else {
 				alloc_prep->vt_blocks[i] = -1;
 				alloc_prep->blocks[j].buffer_ref = -1;
