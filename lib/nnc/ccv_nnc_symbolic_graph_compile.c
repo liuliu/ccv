@@ -574,7 +574,7 @@ static uint8_t* _ccv_nnc_tensor_multiview_find_ptr(const ccv_nnc_symbolic_graph_
 }
 
 // Descent from root to the prep level, and compose multiview from there.
-static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref, uint8_t* ch, const int idx, int* const pos_ref, uint8_t** const ptr_ref)
+static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_param_t params, const int preserve, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref, uint8_t* ch, const int idx, int* const pos_ref, uint8_t** const ptr_ref)
 {
 	assert(pos_ref && ptr_ref);
 	const ccv_nnc_symbolic_graph_prep_t* const prep = preps[idx];
@@ -605,12 +605,51 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 			*ptr_ref = data_ptr;
 			*pos_ref = -1;
 		}
+		if (preserve)
+		{
+			// If need to preserve, this need to be more complicated. At loop 0, I need to access the new assigned tv.
+			// at any other loops, it should be the same. Thus, for this case, I will create a mv tensor as following:
+			// mv of K11, thus, when loop is 0, it unwrap to mv->data[0], otherwise, unwrap to mv->data[1].
+			// mv->data[0] (thin_mv) is a K01, which points to the assigned tv (using 1 as a placeholder here until parent
+			// arena allocated).
+			// mv->data[1] (prev_mv_pos_ is a K01 or K02, depending on whether above we passed raw pointer directly or
+			// a mv structure. If we pass a mv structure, we just pass it here. If we pass a raw pointer, we need to wrap
+			// it to a K01 structure.
+			// Why we didn't wrap it directly as mv->data[0] pointing to a assigned tv pointer and the mv->data[1] pointing
+			// to the raw pointer (as ptr_ref) with K11? The reason is we don't know the assigned tv is pointing to one
+			// memory region, or is a managed by multi-view tensor, which could pointing to different memory regions.
+			int prev_mv_pos = *pos_ref;
+			if (prev_mv_pos == -1)
+			{
+				const int tv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
+				prev_mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+				ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, tv_pos);
+				*tv = ccv_nnc_tensor(data_ptr, params, 0);
+				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, prev_mv_pos);
+				ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)tv_pos, (ccv_numeric_data_t[]){
+					{ data_ptr },
+				}, CCV_NNC_MULTIVIEW_K01, prep->graph, mv);
+			}
+			const int thin_mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+			ccv_nnc_tensor_multiview_t* const thin_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, thin_mv_pos);
+			ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)1 /* This is a placeholder */, (ccv_numeric_data_t[]){
+				{ 0 },
+			}, CCV_NNC_MULTIVIEW_K01, prep->graph, thin_mv);
+			const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, mv_pos);
+			ccv_nnc_tensor_multiview(0, (ccv_numeric_data_t[]){
+				{ (void*)(intptr_t)thin_mv_pos },
+				{ (void*)(intptr_t)prev_mv_pos },
+			}, CCV_NNC_MULTIVIEW_K11, prep->graph, mv);
+			*pos_ref = mv_pos;
+			*ptr_ref = 0;
+		}
 		return 0;
 	}
 	ch[idx] = 0;
 	int pos = -1;
 	uint8_t* data_ptr = 0;
-	const int retval = _ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preps, graph_prep, block_ref, ch, idx + 1, &pos, &data_ptr);
+	const int retval = _ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preserve, preps, graph_prep, block_ref, ch, idx + 1, &pos, &data_ptr);
 	assert(retval == 0);
 	// If current prep has no dup.
 	if (!prep->dup_tensor_block_ref)
@@ -622,7 +661,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 	ch[idx] = 1;
 	int dup_pos = -1;
 	uint8_t* dup_data_ptr = 0;
-	const int dup_retval = _ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preps, graph_prep, block_ref, ch, idx + 1, &dup_pos, &dup_data_ptr);
+	const int dup_retval = _ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preserve, preps, graph_prep, block_ref, ch, idx + 1, &dup_pos, &dup_data_ptr);
 	if (dup_retval < 0)
 	{
 		*pos_ref = pos;
@@ -681,12 +720,12 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 {
 	const int p_ref = graph_prep->tensor_blocks[block_ref].p_refs[0] - 1;
 	// If p is not input, no need to preserve at all.
-	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + graph_prep->exec_idx))
+	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1)))
 		return 0;
 	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
 	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
-	/* This needs detailed explanation, what preserve_input mean?
+	/* This needs detailed explanation, what does preserve mean?
 	 * For a parameterized loop, such as while { y = x + 1 } (y => x), if tensor x is
 	 * also used outside of the while loop, we cannot reuse the memory region of x for
 	 * the for loop, otherwise we will destroy x when doing y = x + 1 computation (assuming
@@ -699,11 +738,16 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 	 * it is the input tensor whenever that is possible. A tensor block can point to two parent
 	 * tensors, one is input tensor, one is the output tensor. p_refs[0] should be the input
 	 * tensor whenever that is possible. */
-	return (graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1 == p_ref);
+	if (graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1 == p_ref)
+		return 0;
+	// Otherwise, return 1 because we now need to preserve.
+	return 1;
 }
 
 static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena, const int block_ref)
 {
+	// See if the input need to be preserved or not.
+	const int preserve = _ccv_nnc_tensor_block_check_preserve(graph_prep, block_ref);
 	// Go to the root of the graph.
 	const ccv_nnc_symbolic_graph_prep_t* prep = graph_prep;
 	int i;
@@ -721,7 +765,7 @@ static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, con
 	memset(ch, 0, sizeof(uint8_t) * (c - 1));
 	int pos = -1;
 	uint8_t* ptr = 0;
-	_ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preps, graph_prep, block_ref, ch, 0, &pos, &ptr);
+	_ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preserve, preps, graph_prep, block_ref, ch, 0, &pos, &ptr);
 	assert(pos >= 0 && ptr == 0);
 	return pos;
 }
@@ -838,8 +882,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, 0, 0);
 		else
 			tensor_arena->sub_arenas[i] = 0;
-	// Assigning out the tensors (in case of sharing tensors / in-place ops).
+	// Now sub-arenas are all assigned, go over its outputs to assign out tensors from its output directly.
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
+	// Assigning out the tensors (in case of sharing tensors / in-place ops).
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
 		{
@@ -1617,13 +1662,13 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 		{
 			const int dup_idx = dup_tensor_block_ref[i];
 			const int p_ref_0 = tensor_blocks[i].p_refs[0] - 1;
-			const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx));
+			const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
 			if (p_ref_0_is_in_or_out == 1)
 				tensor_blocks[dup_idx].dup_p_ref = p_ref_0 + 1;
 			if (p_ref_0_is_in_or_out == 1 || tensor_blocks[i].p_refs[1] == 0)
 				continue;
 			const int p_ref_1 = tensor_blocks[i].p_refs[1] - 1;
-			const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx));
+			const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
 			if (p_ref_1_is_in_or_out == 1)
 				tensor_blocks[dup_idx].dup_p_ref = p_ref_1 + 1;
 		}
