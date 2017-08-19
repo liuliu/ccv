@@ -801,11 +801,12 @@ static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, con
 	preps[c - 1] = prep;
 	for (i = 0; prep->p; i++)
 		preps[c - 2 - i] = prep = prep->p;
-	uint8_t ch[c - 1]; // Use dynamic allocation for array. This is an array to record our selections when recursive from top to bottom.
-	memset(ch, 0, sizeof(uint8_t) * (c - 1));
+	uint8_t ch[c]; // Use dynamic allocation for array. This is an array to record our selections when recursive from top to bottom.
+	memset(ch, 0, sizeof(uint8_t) * c);
 	int pos = -1;
 	uint8_t* ptr = 0;
 	_ccv_nnc_tensor_multiview_down_find_pos(tensor_metadata, params, preserve, preps, graph_prep, block_ref, ch, 0, &pos, &ptr);
+	assert(ch[c - 1] == 0); // This shouldn't never be modified.
 	assert(pos >= 0 && ptr == 0);
 	return pos;
 }
@@ -2245,6 +2246,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
 			{
 				const int outgoing = *(int*)ccv_array_get(tensor_blocks[ref].head, j);
+				assert(graph_execs[outgoing].graph);
 				ccv_nnc_graph_exec_concat(graph, set_exec, graph_execs[outgoing]);
 			}
 			int flag = 0;
@@ -2258,6 +2260,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 						for (k = 0; k < tensor_blocks[d].tail->rnum; k++)
 						{
 							const int incoming = *(int*)ccv_array_get(tensor_blocks[d].tail, j);
+							assert(graph_execs[incoming].graph);
 							ccv_nnc_graph_exec_concat(graph, graph_execs[incoming], set_exec);
 							flag = 1;
 						}

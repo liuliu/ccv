@@ -101,7 +101,6 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 		// I will take advantage of the fact that intptr are 4-bytes aligned.
 		assert(wrap_size < 512); // We can only go 512 layer deep.
 		intptr_t* wrap_anchors = (intptr_t*)alloca(sizeof(intptr_t) * wrap_size);
-		p = graph;
 		for (p = graph, i = 0; p; p = p->p, i++)
 			wrap_anchors[i] = (intptr_t)p;
 		for (i = 0; i < input_size; i++)
