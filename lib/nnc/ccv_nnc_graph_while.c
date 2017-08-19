@@ -28,7 +28,6 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t dat
 		if (!tv)
 		{
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)data[i].ptr;
-			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			mv->p = tensor_multiview;
 		}
 	}
@@ -227,9 +226,9 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		} else { \
 			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, d, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
 			for (i = 0; i < node->output_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? node->outputs[i]->data.u8 : 0)); \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
 		} \
 	} while (0)

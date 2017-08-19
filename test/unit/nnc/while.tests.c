@@ -164,7 +164,6 @@ TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 
 TEST_CASE("symbolic graph for a while loop to compute z * x ^ 5 * y + z")
 {
-	/*
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
@@ -206,7 +205,6 @@ TEST_CASE("symbolic graph for a while loop to compute z * x ^ 5 * y + z")
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_free(graph);
-	*/
 }
 
 TEST_CASE("symbolic graph for a while loop to compute x = max(conv(x, w, b), 3x3) 5 times")
