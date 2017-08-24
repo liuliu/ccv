@@ -2,6 +2,9 @@
 #define _GUARD_ccv_case_h_
 
 #include <math.h>
+#include <assert.h>
+#include <string.h>
+#include <sys/stat.h>
 
 #define REQUIRE_MATRIX_EQ(a, b, err, ...) { \
 if (ccv_matrix_eq(a, b) != 0) \
@@ -45,5 +48,63 @@ if (acos(__dot_prod__ / (__mag_a__ * __mag_b__)) * 180 / 3.141592653 > angle || 
 		printf("\n\tREQUIRE_ARRAY_EQ_WITHIN_ANGLE_AND_MAGNITUDE: %s:%d: angle: %lg | %lg, magnitude: %lg != %lg | +-%lg, " err, __FILE__, __LINE__, (double)(acos(__dot_prod__ / (__mag_a__ * __mag_b__)) * 180 / 3.141592653), (double)angle, __mag_a__, __mag_b__, (double)(magnitude), ##__VA_ARGS__); \
 	ABORT_CASE; \
 } }
+
+inline static FILE* _ccv_nnc_symbolic_graph_gen(const char* test_case_name)
+{
+	mkdir("gen", S_IRWXU | S_IRGRP | S_IROTH);
+	mkdir("gen/symbolic", S_IRWXU | S_IRGRP | S_IROTH);
+	char sanitized_test_case_name[1024] = "gen/symbolic/";
+	strncpy(sanitized_test_case_name + 13, test_case_name, 1024 - 13);
+	int i;
+	for (i = 13; i < 1024 && sanitized_test_case_name[i]; i++)
+		// If not A-Za-z0-9, replace with _
+		if (!((sanitized_test_case_name[i] >= 'A' && sanitized_test_case_name[i] <= 'Z') ||
+			 (sanitized_test_case_name[i] >= 'a' && sanitized_test_case_name[i] <= 'z') ||
+			 (sanitized_test_case_name[i] >= '0' && sanitized_test_case_name[i] <= '9')))
+			sanitized_test_case_name[i] = '_';
+	assert(i < 1024);
+	sanitized_test_case_name[i] = '.';
+	sanitized_test_case_name[i + 1] = 'd';
+	sanitized_test_case_name[i + 2] = 'o';
+	sanitized_test_case_name[i + 3] = 't';
+	sanitized_test_case_name[i + 4] = 0;
+	return fopen(sanitized_test_case_name, "w+");
+}
+
+inline static FILE* _ccv_nnc_graph_gen(const char* test_case_name)
+{
+	mkdir("gen", S_IRWXU | S_IRGRP | S_IROTH);
+	mkdir("gen/graph", S_IRWXU | S_IRGRP | S_IROTH);
+	char sanitized_test_case_name[1024] = "gen/graph/";
+	strncpy(sanitized_test_case_name + 10, test_case_name, 1024 - 10);
+	int i;
+	for (i = 10; i < 1024 && sanitized_test_case_name[i]; i++)
+		// If not A-Za-z0-9, replace with _
+		if (!((sanitized_test_case_name[i] >= 'A' && sanitized_test_case_name[i] <= 'Z') ||
+			 (sanitized_test_case_name[i] >= 'a' && sanitized_test_case_name[i] <= 'z') ||
+			 (sanitized_test_case_name[i] >= '0' && sanitized_test_case_name[i] <= '9')))
+			sanitized_test_case_name[i] = '_';
+	assert(i < 1024);
+	sanitized_test_case_name[i] = '.';
+	sanitized_test_case_name[i + 1] = 'd';
+	sanitized_test_case_name[i + 2] = 'o';
+	sanitized_test_case_name[i + 3] = 't';
+	sanitized_test_case_name[i + 4] = 0;
+	return fopen(sanitized_test_case_name, "w+");
+}
+
+// Generate dot graph into a designated directory.
+#define SYMBOLIC_GRAPH_GEN(symbolic_graph, type) do { \
+	FILE* _w_ = _ccv_nnc_symbolic_graph_gen(__case_name__); \
+	ccv_nnc_symbolic_graph_dot(symbolic_graph, type, _w_); \
+	fclose(_w_); \
+} while (0)
+
+#define GRAPH_GEN(graph, type) do { \
+	FILE* _w_ = _ccv_nnc_graph_gen(__case_name__); \
+	ccv_nnc_graph_dot(graph, type, _w_); \
+	fclose(_w_); \
+} while (0)
+
 
 #endif
