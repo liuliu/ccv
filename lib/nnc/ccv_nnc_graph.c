@@ -269,7 +269,7 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 	}
 }
 
-static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* const tensor, const int zone, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* const tensor, const int zone, const int flags, const int depth, FILE* out)
 {
 	// if it has an alias pointer, or, it is a long form.
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
@@ -279,15 +279,19 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* c
 		fprintf(out, "tensorview%d", index);
 	else
 		fprintf(out, "tensor%d", index);
+	int i;
+	for (i = 0; i < depth; i++) // Print subscription to denote depth.
+		fputc('\'', out);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		fprintf(out, "|zone%d", zone);
+		for (i = 0; i < depth; i++) // Print subscription to denote depth.
+			fputc('\'', out);
 		uintptr_t aptr = (uintptr_t)tensor->data.u8;
 		const int* ainc = is_tensor_view ? ((ccv_nnc_tensor_view_t*)(tensor))->inc : tensor->info.dim;
 		// For the last one, we don't extend to full ainc.
 		size_t ainc_size = (ccv_nnc_dimension_count(ainc) - ainc[0] + tensor->info.dim[0]) * CCV_GET_DATA_TYPE_SIZE(tensor->type);
 		// Print out the range as well.
-		int i;
 		fprintf(out, "|{%#010x|%#010x}|%d", (uint32_t)aptr, (uint32_t)(aptr + ainc_size - 1), tensor->info.dim[0]);
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && tensor->info.dim[i]; i++)
 			fprintf(out, "x%d", tensor->info.dim[i]);
@@ -476,12 +480,12 @@ static void _ccv_nnc_graph_tensor_dot_recovery_free(const ccv_nnc_tensor_dot_rec
 	ccfree(recovery.remap);
 }
 
-static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_dot_recovery_t recovery, int* tensor_index, FILE* out)
+static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_dot_recovery_t recovery, const int depth, int* tensor_index, FILE* out)
 {
 	const int kindz[] = {
 		1, 2, 2, 3
 	};
-	int i;
+	int i, j;
 	fputs("|{", out);
 	if (mv->tv)
 	{
@@ -492,6 +496,8 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 				fputc('*', out); // Denotes that we loop on this.
 			const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[*tensor_index];
 			fprintf(out, "|zone%d", recovery.rename_zone[tensor_dot->zone]);
+			for (j = 0; j < depth; j++)
+				fputc('\'', out);
 			uintptr_t aptr = (uintptr_t)(mv->kind == CCV_NNC_MULTIVIEW_K01 ? mv->tv->data.u8 : mv->data[i].ptr);
 			// For the last one, we don't extend to full ainc.
 			size_t dim_size = ccv_nnc_dimension_count(mv->tv->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->tv->type);
@@ -509,7 +515,7 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 			fprintf(out, "{%d", i);
 			if (mv->kind == CCV_NNC_MULTIVIEW_K01 || mv->kind == CCV_NNC_MULTIVIEW_K02 || ((mv->kind == CCV_NNC_MULTIVIEW_K11 || mv->kind == CCV_NNC_MULTIVIEW_K12) && i > 0))
 				fputc('*', out); // Denotes that we loop on this.
-			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, recovery, tensor_index, out);
+			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, recovery, depth, tensor_index, out);
 			if (i == kindz[mv->kind] - 1)
 				fputc('}', out);
 			else
@@ -519,20 +525,22 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 	fputc('}', out);
 }
 
-static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_dot_recovery_t recovery, int* tensor_index, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, int* tensor_index, FILE* out)
 {
 	// if it has an alias pointer, or, it is a long form.
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		fputc('{', out);
 	const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[*tensor_index];
 	fprintf(out, "multiview%d", recovery.rename_index[tensor_dot->index]);
+	int i;
+	for (i = 0; i < depth; i++) // Print subscription to denote depth.
+		fputc('\'', out);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
-		_ccv_nnc_graph_dot_tensor_multiview_one(mv, recovery, tensor_index, out);
+		_ccv_nnc_graph_dot_tensor_multiview_one(mv, recovery, depth, tensor_index, out);
 		const ccv_nnc_tensor_multiview_t* root = mv;
 		while (!root->tv)
 			root = (ccv_nnc_tensor_multiview_t*)(root->data[0].ptr);
-		int i;
 		fprintf(out, "|%d", root->tv->info.dim[0]);
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && root->tv->info.dim[i]; i++)
 			fprintf(out, "x%d", root->tv->info.dim[i]);
@@ -541,7 +549,7 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 		*tensor_index += _ccv_nnc_graph_dot_tensor_multiview_count(mv);
 }
 
-static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, FILE* out, int* const tensor_index)
+static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* const tensor_index)
 {
 	fprintf(out, "node%d [shape=record,label=\"", exec_index);
 	_ccv_nnc_graph_dot_exec(exec_index, exec_info, flags, out);
@@ -555,10 +563,10 @@ static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_
 			{
 				fputc('|', out);
 				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->inputs[i]))
-					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->inputs[i], recovery, &k, flags, out);
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->inputs[i], recovery, flags, depth, &k, out);
 				else {
 					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
-					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->inputs[i], recovery.rename_zone[tensor_dot->zone], flags, out);
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->inputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
 					++k;
 				}
 			} else
@@ -573,10 +581,10 @@ static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_
 			{
 				fputc('|', out);
 				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[i]))
-					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->outputs[i], recovery, &k, flags, out);
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->outputs[i], recovery, flags, depth, &k, out);
 				else {
 					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
-					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->outputs[i], recovery.rename_zone[tensor_dot->zone], flags, out);
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->outputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
 					++k;
 				}
 			} else
@@ -587,7 +595,7 @@ static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_
 	*tensor_index = k;
 }
 
-static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const ccv_nnc_graph_t* const while_graph, const int flags, FILE* out, int* tensor_index)
+static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const ccv_nnc_graph_t* const while_graph, const int flags, const int depth, FILE* out, int* tensor_index)
 {
 	int i;
 	fprintf(out, "label=<<b>while%d</b>>;\n", exec_index);
@@ -603,10 +611,10 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 			if (exec_info->inputs[i])
 			{
 				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->inputs[i]))
-					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->inputs[i], recovery, &k, flags, out);
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->inputs[i], recovery, flags, depth, &k, out);
 				else {
 					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
-					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->inputs[i], recovery.rename_zone[tensor_dot->zone], flags, out);
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->inputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
 					++k;
 				}
 			} else
@@ -626,10 +634,10 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 			if (exec_info->outputs[i])
 			{
 				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[i]))
-					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->outputs[i], recovery, &k, flags, out);
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->outputs[i], recovery, flags, depth, &k, out);
 				else {
 					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
-					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->outputs[i], recovery.rename_zone[tensor_dot->zone], flags, out);
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->outputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
 					++k;
 				}
 			} else
@@ -641,11 +649,11 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 	*tensor_index = k;
 }
 
-static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_nnc_graph_t* const graph, const int flags, FILE* out, int* tensor_index, int* exec_index)
+static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_nnc_graph_t* const graph, const int flags, const int depth, FILE* out, int* tensor_index, int* exec_index)
 {
 	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\n", *exec_index);
 	// Output this node info within this subgraph.
-	_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, graph, flags, out, tensor_index);
+	_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, graph, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
 	ccv_nnc_tensor_dot_recovery_t recovery = _ccv_nnc_graph_tensor_dot_recovery(graph);
 	int i, j;
 	int k = 0;
@@ -658,9 +666,9 @@ static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const 
 		if (exec_info->graph_ref)
 		{
 			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, exec_info->graph_ref - 1);
-			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, out, &k, exec_index);
+			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, depth + 1, out, &k, exec_index);
 		} else {
-			_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, out, &k);
+			_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, depth, out, &k);
 			++(*exec_index);
 		}
 	}
@@ -704,9 +712,9 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 		if (exec_info->graph_ref)
 		{
 			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, exec_info->graph_ref - 1);
-			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, out, &k, &c);
+			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, 1, out, &k, &c);
 		} else {
-			_ccv_nnc_graph_dot_node(exec_info, c, recovery, flags, out, &k);
+			_ccv_nnc_graph_dot_node(exec_info, c, recovery, flags, 0, out, &k);
 			++c;
 		}
 	}
