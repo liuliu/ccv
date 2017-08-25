@@ -1145,7 +1145,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 				if (!sub_arena_out_tensors[sub_arena_ref])
 					continue;
-				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)sub_arena_out_tensors[block_ref];
+				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)sub_arena_out_tensors[sub_arena_ref];
 				assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 				ccv_nnc_tensor_reference_to_multiview(mv, offset, tensor_arena->vt_tensors[block_ref]);
 			}
