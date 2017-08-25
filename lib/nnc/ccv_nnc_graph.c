@@ -378,9 +378,11 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 	{
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
 		for (j = 0; j < exec_info->input_size; j++)
-			tensor_count += CCV_IS_TENSOR_MULTIVIEW(exec_info->inputs[j]) ? _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)exec_info->inputs[j]) : 1;
+			if (exec_info->inputs[j])
+				tensor_count += CCV_IS_TENSOR_MULTIVIEW(exec_info->inputs[j]) ? _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)exec_info->inputs[j]) : 1;
 		for (j = 0; j < exec_info->output_size; j++)
-			tensor_count += CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[j]) ? _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)exec_info->outputs[j]) : 1;
+			if (exec_info->outputs[j])
+				tensor_count += CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[j]) ? _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)exec_info->outputs[j]) : 1;
 	}
 	ccv_nnc_tensor_dot_t* tensor_dots = tensor_count > 0 ? (ccv_nnc_tensor_dot_t*)ccmalloc(sizeof(ccv_nnc_tensor_dot_t) * tensor_count) : 0;
 	int k = 0;
@@ -390,6 +392,8 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 		for (j = 0; j < exec_info->input_size; j++)
 		{
 			ccv_nnc_tensor_t* tensor = exec_info->inputs[j];
+			if (!tensor)
+				continue;
 			if (CCV_IS_TENSOR_MULTIVIEW(tensor))
 				_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)tensor, tensor_dots, &k);
 			else {
@@ -405,6 +409,8 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 		for (j = 0; j < exec_info->output_size; j++)
 		{
 			ccv_nnc_tensor_t* tensor = exec_info->outputs[j];
+			if (!tensor)
+				continue;
 			if (CCV_IS_TENSOR_MULTIVIEW(tensor))
 				_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)tensor, tensor_dots, &k);
 			else {
