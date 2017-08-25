@@ -428,8 +428,8 @@ static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const cc
 	// To group overlap memory into one zone, we sort it by start ptr first (secondary by the tensor pointer).
 	_ccv_nnc_tensor_dot_sort_by_ptr(tensor_dots, tensor_count, 0);
 	int index = 0, zone = 0;
-	uintptr_t tensor_ref = tensor_dots[0].tensor_ref;
-	uintptr_t end_ptr = tensor_dots[0].end_ptr;
+	uintptr_t tensor_ref = tensor_count > 0 ? tensor_dots[0].tensor_ref : 0;
+	uintptr_t end_ptr = tensor_count > 0 ? tensor_dots[0].end_ptr : 0;
 	// Then, it is trivial, we go by end ptr. If the next start ptr is still within the end ptr (start ptr <= end ptr),
 	// they are the same zone.
 	for (i = 0; i < tensor_count; i++)
