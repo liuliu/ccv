@@ -10,6 +10,7 @@
 
 typedef struct {
 	int flag;
+	int type;
 	int ref; // Reference to another tensor block. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
@@ -80,6 +81,7 @@ typedef struct {
 		uint64_t size; // The size of the buffer allocated.
 		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 		int dup_p_ref; // Reference to the parent tensor block from the duplicated tensor blocks. It will only be one, for the output. Start with 1.
+		int type; // The type from tensor blocks.
 	}* buffers;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
@@ -476,6 +478,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				assert(assigned[i] > 0);
 				const int buffer_ref = alloc_prep->blocks[j].buffer_ref = assigned[i] - 1;
 				alloc_prep->blocks[j].offset = allocated_offset[i];
+				if (!alloc_prep->buffers[buffer_ref].type)
+					alloc_prep->buffers[buffer_ref].type = tensor_blocks[i].type;
 				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[buffer_ref].size);
 			} else {
 				alloc_prep->vt_blocks[i] = -1;
@@ -868,12 +872,17 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	for (i = 0; i < alloc_prep->buffer_size; i++)
 		tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
-	int memory_type = CCV_TENSOR_GET_MEMORY(tensor_symbol_info[0].info.type);
-	int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_symbol_info[0].info.type);
-	for (i = 1; i < tensor_symbol_info_size; i++)
+	int memory_type = CCV_TENSOR_GET_MEMORY(alloc_prep->buffers[0].type);
+	int device_id = CCV_TENSOR_GET_DEVICE_ID(alloc_prep->buffers[0].type);
+	for (i = 1; i < alloc_prep->buffer_size; i++)
 	{
-		assert(CCV_TENSOR_GET_MEMORY(tensor_symbol_info[i].info.type) == memory_type);
-		assert(CCV_TENSOR_GET_DEVICE_ID(tensor_symbol_info[i].info.type) == device_id);
+		assert(CCV_TENSOR_GET_MEMORY(alloc_prep->buffers[i].type) == memory_type);
+		assert(CCV_TENSOR_GET_DEVICE_ID(alloc_prep->buffers[i].type) == device_id);
+	}
+	for (i = 0; i < graph_prep->tensor_block_size; i++)
+	{
+		assert(CCV_TENSOR_GET_MEMORY(tensor_blocks[i].type) == memory_type);
+		assert(CCV_TENSOR_GET_DEVICE_ID(tensor_blocks[i].type) == device_id);
 	}
 	tensor_arena->memory_type = memory_type;
 	tensor_arena->device_id = device_id;
@@ -1418,7 +1427,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	// The reason is that I need to make everyone of them to be unassigned unless it is used somewhere. It
 	// happens that I have to loop through all relevant node to find out if one is used or not.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
-		tensor_blocks[i].flag = UNASSIGNED;
+		tensor_blocks[i].flag = UNASSIGNED, tensor_blocks[i].type = tensor_symbol_info[i].info.type;
 #define visitor(node, idx, ...) \
 	do { \
 		for (i = 0; i < node->input_size; i++) \
@@ -2046,6 +2055,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					if (!s_alloc_prep->buffers[i].p_refs[0]) \
 					{ \
 						TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
+						tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1; \
 						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref; \
@@ -2069,6 +2079,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size; \
 							dup_tensor_block_ref[tensor_block_size] = -1; \
 							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
+							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
 							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
 							/* Attach to duplicated exec for this tensor block. */ \
