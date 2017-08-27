@@ -804,7 +804,7 @@ static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const t
 	{
 		if (CCV_NNC_IS_METDATA_POS(mv->tv))
 		{
-			mv->tv = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->tv);
+			mv->tv = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)mv->tv);
 			mv->data[0] = mv->tv->data;
 		}
 	} else {
@@ -1149,16 +1149,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 			}
 		}
-	// Handle binded tensors.
-	for (i = 0; i < tensor_bind_size; i++)
-	{
-		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
-			continue;
-		// For binded tensors, it shouldn't be assigned yet.
-		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
-		// I have to cast this, unfortunately.
-		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
-	}
 	// Replacing the tensor placeholder within sub arena's multi-view to the input tensor.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
@@ -1172,13 +1162,12 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assert(s_idx >= 0);
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
-				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
+				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
 				{
 					const int vt_pos = (int)(intptr_t)tensor_arena->vt_tensors[idx];
 					// If this tensor is also an multiview, we need to first generate a new tensor, and then generate a reference
 					// to this tensor.
-					if (!CCV_NNC_IS_METDATA_POS(tensor_arena->vt_tensors[idx]) ||
-						CCV_IS_TENSOR_MULTIVIEW((ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos)))
+					if (CCV_IS_TENSOR_MULTIVIEW((ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos)))
 					{
 						const int ref_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 						ccv_nnc_tensor_t* const ref_tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, ref_pos);
@@ -1189,10 +1178,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 						ccv_nnc_tensor_t* const tv = CCV_NNC_IS_METDATA_POS(multiview->tv) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->tv) : multiview->tv;
 						*ref_tensor = ccv_nnc_tensor(tv->data.ptr, tv->info, 0);
 						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
-					} else {
-						assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_arena->vt_tensors[idx]));
+					} else
 						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, tensor_arena->vt_tensors[idx]);
-					}
 				}
 			}
 		}
@@ -1236,6 +1223,16 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_reference_to_multiview(mv, offset, tensor_arena->vt_tensors[block_ref]);
 			}
 	ccfree(sub_arena_out_tensors);
+	// Handle binded tensors.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
+			continue;
+		// For binded tensors, it shouldn't be assigned yet.
+		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
+		// I have to cast this, unfortunately.
+		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+	}
 	// Rewire sub arena's tensor references.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
@@ -1250,7 +1247,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
 				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
-					_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_arena->tensor_metadata, (ccv_nnc_tensor_multiview_t*)sub_tensor);
+				{
+					// This is binded tensor, bind it now.
+					if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
+						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, tensor_arena->vt_tensors[idx]);
+					else
+						_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_arena->tensor_metadata, (ccv_nnc_tensor_multiview_t*)sub_tensor);
+				}
 			}
 		}
 	return tensor_arena;
