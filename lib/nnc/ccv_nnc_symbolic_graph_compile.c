@@ -519,10 +519,12 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_get(const ccv_array_t* const t
 	return (ccv_nnc_tensor_t*)ccv_array_get(tensor_metadata, (pos >> 1) - 1);
 }
 
+#define CCV_NNC_IS_METDATA_POS(ptr) ((uintptr_t)(ptr) & 1)
+
 static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* const tensor_metadata, ccv_nnc_tensor_t* const vt_tensor)
 {
 	// If the low bit is not 1, this is not a position (but a normal tensor pointer), just return directly.
-	if (!((uintptr_t)vt_tensor & 1))
+	if (!CCV_NNC_IS_METDATA_POS(vt_tensor))
 		return vt_tensor;
 	ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)vt_tensor);
 	if (CCV_IS_TENSOR_MULTIVIEW(tensor))
@@ -539,7 +541,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 				mv->data[i].ptr = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->data[i].ptr);
 		}
 		// No need to recursively do parent pointer, otherwise we are in deep rewire.
-		if (mv->p && ((uintptr_t)mv->p & 1))
+		if (mv->p && CCV_NNC_IS_METDATA_POS(mv->p))
 			mv->p = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)mv->p);
 		if (mv->rtvs)
 			for (i = 0; i < mv->rtvs->rnum; i++)
@@ -769,23 +771,52 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 	return 1;
 }
 
-static void _ccv_nnc_tensor_multiview_fulfill(ccv_nnc_tensor_multiview_t* const mv, ccv_nnc_tensor_t* const tensor)
+static void _ccv_nnc_tensor_multiview_full_pos(ccv_nnc_tensor_multiview_t* const mv, ccv_nnc_tensor_t* const tensor)
 {
 	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 	if (mv->tv)
 	{
 		if (mv->tv == TENSOR_PLACEHOLDER)
-			mv->tv = tensor, mv->data[0] = tensor->data;
+		{
+			if (CCV_NNC_IS_METDATA_POS(tensor))
+				mv->tv = tensor;
+			else
+				mv->tv = tensor, mv->data[0] = tensor->data;
+		}
 	} else {
 		switch (mv->kind)
 		{
 			case CCV_NNC_MULTIVIEW_K12:
-				_ccv_nnc_tensor_multiview_fulfill((ccv_nnc_tensor_multiview_t*)mv->data[2].ptr, tensor);
+				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[2].ptr, tensor);
 			case CCV_NNC_MULTIVIEW_K11:
 			case CCV_NNC_MULTIVIEW_K02:
-				_ccv_nnc_tensor_multiview_fulfill((ccv_nnc_tensor_multiview_t*)mv->data[1].ptr, tensor);
+				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[1].ptr, tensor);
 			case CCV_NNC_MULTIVIEW_K01:
-				_ccv_nnc_tensor_multiview_fulfill((ccv_nnc_tensor_multiview_t*)mv->data[0].ptr, tensor);
+				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[0].ptr, tensor);
+		}
+	}
+}
+
+static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const tensor_metadata, ccv_nnc_tensor_multiview_t* const mv)
+{
+	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
+	if (mv->tv)
+	{
+		if (CCV_NNC_IS_METDATA_POS(mv->tv))
+		{
+			mv->tv = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->tv);
+			mv->data[0] = mv->tv->data;
+		}
+	} else {
+		switch (mv->kind)
+		{
+			case CCV_NNC_MULTIVIEW_K12:
+				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[2].ptr);
+			case CCV_NNC_MULTIVIEW_K11:
+			case CCV_NNC_MULTIVIEW_K02:
+				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[1].ptr);
+			case CCV_NNC_MULTIVIEW_K01:
+				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[0].ptr);
 		}
 	}
 }
@@ -1118,7 +1149,53 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 			}
 		}
-	memset(tensor_arena->m_tensors, 0, sizeof(ccv_nnc_tensor_t*) * m_tensor_size);
+	// Handle binded tensors.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
+			continue;
+		// For binded tensors, it shouldn't be assigned yet.
+		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
+		// I have to cast this, unfortunately.
+		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+	}
+	// Replacing the tensor placeholder within sub arena's multi-view to the input tensor.
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		if (tensor_arena->sub_arenas[i])
+		{
+			const int exec_idx = graph_prep->sub_preps[i]->exec_idx - 1;
+			const ccv_nnc_graph_exec_symbol_info_t* const node = graph_prep->exec_symbol_info + exec_idx;
+			for (j = 0; j < node->input_size; j++)
+			{
+				const int idx = node->inputs[j];
+				const int s_idx = *(int*)ccv_array_get(tensor_symbol_info[idx].s_ref, i) - 1;
+				assert(s_idx >= 0);
+				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
+				// Only do the replacement if it is a multi-view tensor.
+				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
+				{
+					const int vt_pos = (int)(intptr_t)tensor_arena->vt_tensors[idx];
+					// If this tensor is also an multiview, we need to first generate a new tensor, and then generate a reference
+					// to this tensor.
+					if (!CCV_NNC_IS_METDATA_POS(tensor_arena->vt_tensors[idx]) ||
+						CCV_IS_TENSOR_MULTIVIEW((ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos)))
+					{
+						const int ref_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+						ccv_nnc_tensor_t* const ref_tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, ref_pos);
+						ccv_nnc_tensor_multiview_t* multiview = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos);
+						ccv_nnc_tensor_reference_to_multiview(multiview, 0, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
+						while (!multiview->tv)
+							multiview = (ccv_nnc_tensor_multiview_t*)(CCV_NNC_IS_METDATA_POS(multiview->data[0].ptr) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->data[0].ptr) : multiview->data[0].ptr);
+						ccv_nnc_tensor_t* const tv = CCV_NNC_IS_METDATA_POS(multiview->tv) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->tv) : multiview->tv;
+						*ref_tensor = ccv_nnc_tensor(tv->data.ptr, tv->info, 0);
+						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
+					} else {
+						assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_arena->vt_tensors[idx]));
+						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, tensor_arena->vt_tensors[idx]);
+					}
+				}
+			}
+		}
 	// Everything is done, rewire vt_tensor to real locations. From now on, no push to tensor_metadata is possible.
 	for (i = 0, j = 0; i < tensor_symbol_info_size; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_arena->vt_tensors[i])
@@ -1159,18 +1236,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_reference_to_multiview(mv, offset, tensor_arena->vt_tensors[block_ref]);
 			}
 	ccfree(sub_arena_out_tensors);
-	// Handle binded tensors.
-	for (i = 0; i < tensor_bind_size; i++)
-	{
-		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
-			continue;
-		// For binded tensors, it shouldn't be assigned yet.
-		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
-		// I have to cast this, unfortunately.
-		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
-	}
-	// Now all the vt_tensors are associated properly.
-	// Replacing the tensor placeholder within sub arena's multi-view to the input tensor.
+	// Rewire sub arena's tensor references.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 		{
@@ -1184,7 +1250,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
 				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
-					_ccv_nnc_tensor_multiview_fulfill((ccv_nnc_tensor_multiview_t*)sub_tensor, tensor_arena->vt_tensors[idx]);
+					_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_arena->tensor_metadata, (ccv_nnc_tensor_multiview_t*)sub_tensor);
 			}
 		}
 	return tensor_arena;
@@ -2213,13 +2279,13 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				{ \
 					const int graph_ref = outgoing_node->graph_ref - 1; \
 					ccv_nnc_graph_t* const sub_graph = graph_prep->sub_preps[graph_ref]->graph; \
+					graph_execs[outgoing] = ccv_nnc_graph_while(graph, outgoing_node->cmd.cmd, sub_graph); \
 					const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref); \
 					const ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]); \
 					for (j = 0; j < sub_symbolic_graph->cond_eval_size; j++) \
 						max_cond_evals[j] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->cond_evals[j]); \
 					ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena); \
 					ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena); \
-					graph_execs[outgoing] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph); \
 					ccv_nnc_graph_set_sources(sub_graph, &source, 1); \
 					ccv_nnc_graph_set_destinations(sub_graph, &destination, 1); \
 					ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_cond_evals, sub_symbolic_graph->cond_eval_size); \
