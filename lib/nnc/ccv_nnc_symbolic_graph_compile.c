@@ -1430,10 +1430,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
-	// Ignore tensors that are already binded, no matter if it is used or not.
-	for (i = 0; i < tensor_bind_size; i++)
-		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
-		tensor_blocks[tensor_binds[i].symbol.d].flag = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -1445,10 +1441,22 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			tensor_blocks[i].flag = ALIAS;
 			tensor_blocks[i].ref = tensor_symbol_info[i].alias_ref; // Assign the ref.
 			const int ref = tensor_blocks[i].ref - 1;
+			// If the referenced one is unassigned, at list first make it assigned.
+			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]))
+				tensor_blocks[ref].flag = 0;
 			if (!tensor_blocks[ref].r_refs)
 				tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0);
 			ccv_array_replace_int(tensor_blocks[ref].r_refs, i + 1, i + 1);
 		}
+	}
+	// Ignore tensors that are already binded, no matter if it is used or not.
+	for (i = 0; i < tensor_bind_size; i++)
+		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
+		tensor_blocks[tensor_binds[i].symbol.d].flag = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+	{
+		// Check no tensor info is auto now.
+		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
 		{
