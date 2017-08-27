@@ -899,6 +899,7 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 	// Output this node info within this subgraph.
 	_ccv_nnc_symbolic_graph_dot_while_label(exec_symbol_info, *c, tensor_symbol_info, while_graph, flags, out);
 	fputs(">;\n", out);
+	++(*c);
 	int* node_id = (int*)ccmalloc(sizeof(int) * while_graph->exec_symbol_info->rnum);
 	for (i = 0; i < while_graph->exec_symbol_info->rnum; i++)
 	{
@@ -930,11 +931,11 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
 				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx] + 1, node_id[i], node_id[outgoing_idx]);
 				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx], node_id[i]);
 				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx] + 1, node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
 			}
@@ -980,11 +981,11 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
 				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx] + 1, node_id[i], node_id[outgoing_idx]);
 				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx], node_id[i]);
 				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx] + 1, node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
 			}
