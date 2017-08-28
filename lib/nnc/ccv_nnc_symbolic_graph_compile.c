@@ -9,7 +9,7 @@
 #include "_ccv_nnc_symbolic_graph.h"
 
 typedef struct {
-	int flag;
+	int flags;
 	int type;
 	int ref; // Reference to another tensor block. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
@@ -32,17 +32,17 @@ enum {
 	ANONYMOUS = 0x10, // Mark this block as anonymous (thus, not reference to any specific tensor).
 };
 
-#define TENSOR_EXPECT_ORDINARY(t) ((t.flag & 0x3) == 0)
-#define TENSOR_EXPECT_SET_ORDINARY(t) (t.flag = (t.flag & ~0x3))
-#define TENSOR_EXPECT_UNASSIGNED(t) ((t.flag & 0x3) == UNASSIGNED)
-#define TENSOR_EXPECT_SET_UNASSIGNED(t) (t.flag = ((t.flag & ~0x3) | UNASSIGNED))
-#define TENSOR_EXPECT_ALIAS(t) ((t.flag & 0x3) == ALIAS)
-#define TENSOR_EXPECT_CONST(t) ((t.flag & 0x3) == CONST_TENSOR)
+#define TENSOR_EXPECT_ORDINARY(t) ((t.flags & 0x3) == 0)
+#define TENSOR_EXPECT_SET_ORDINARY(t) (t.flags = (t.flags & ~0x3))
+#define TENSOR_EXPECT_UNASSIGNED(t) ((t.flags & 0x3) == UNASSIGNED)
+#define TENSOR_EXPECT_SET_UNASSIGNED(t) (t.flags = ((t.flags & ~0x3) | UNASSIGNED))
+#define TENSOR_EXPECT_ALIAS(t) ((t.flags & 0x3) == ALIAS)
+#define TENSOR_EXPECT_CONST(t) ((t.flags & 0x3) == CONST_TENSOR)
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
-#define TENSOR_READ_WRITE(t) (t.flag & 0xc)
-#define TENSOR_SET_READ_WRITE(t, rw) (t.flag = ((t.flag & ~0xc) | rw))
-#define TENSOR_SET_ANONYMOUS(t) (t.flag = (t.flag & ~0x10 | ANONYMOUS))
-#define TENSOR_IS_ANONYMOUS(t) (t.flag & ANONYMOUS)
+#define TENSOR_READ_WRITE(t) (t.flags & 0xc)
+#define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
+#define TENSOR_SET_ANONYMOUS(t) (t.flags = (t.flags & ~0x10 | ANONYMOUS))
+#define TENSOR_IS_ANONYMOUS(t) (t.flags & ANONYMOUS)
 
 typedef struct {
 	int index;
@@ -82,6 +82,7 @@ typedef struct {
 		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 		int dup_p_ref; // Reference to the parent tensor block from the duplicated tensor blocks. It will only be one, for the output. Start with 1.
 		int type; // The type from tensor blocks.
+		int flags; // The flags (currently for READ_ONLY or not).
 	}* buffers;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
@@ -480,6 +481,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				alloc_prep->blocks[j].offset = allocated_offset[i];
 				if (!alloc_prep->buffers[buffer_ref].type)
 					alloc_prep->buffers[buffer_ref].type = tensor_blocks[i].type;
+				alloc_prep->buffers[buffer_ref].flags |= TENSOR_READ_WRITE(tensor_blocks[i]);
 				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[buffer_ref].size);
 			} else {
 				alloc_prep->vt_blocks[i] = -1;
@@ -1496,15 +1498,15 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	// The reason is that I need to make everyone of them to be unassigned unless it is used somewhere. It
 	// happens that I have to loop through all relevant node to find out if one is used or not.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
-		tensor_blocks[i].flag = UNASSIGNED, tensor_blocks[i].type = tensor_symbol_info[i].info.type;
+		tensor_blocks[i].flags = UNASSIGNED, tensor_blocks[i].type = tensor_symbol_info[i].info.type;
 #define visitor(node, idx, ...) \
 	do { \
 		for (i = 0; i < node->input_size; i++) \
 			if (node->inputs[i] >= 0) \
-				tensor_blocks[node->inputs[i]].flag = 0; \
+				tensor_blocks[node->inputs[i]].flags = 0; \
 		for (i = 0; i < node->output_size; i++) \
 			if (node->outputs[i] >= 0) \
-				tensor_blocks[node->outputs[i]].flag = 0; \
+				tensor_blocks[node->outputs[i]].flags = 0; \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
@@ -1516,12 +1518,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		{
 			// An alias cannot ref to another alias.
 			assert(!tensor_symbol_info[tensor_symbol_info[i].alias_ref - 1].alias_ref);
-			tensor_blocks[i].flag = ALIAS;
+			tensor_blocks[i].flags = ALIAS;
 			tensor_blocks[i].ref = tensor_symbol_info[i].alias_ref; // Assign the ref.
 			const int ref = tensor_blocks[i].ref - 1;
 			// If the referenced one is unassigned, at list first make it assigned.
 			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]))
-				tensor_blocks[ref].flag = 0;
+				tensor_blocks[ref].flags = 0;
 			if (!tensor_blocks[ref].r_refs)
 				tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0);
 			ccv_array_replace_int(tensor_blocks[ref].r_refs, i + 1, i + 1);
@@ -1530,7 +1532,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
 		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
-		tensor_blocks[tensor_binds[i].symbol.d].flag = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
+		tensor_blocks[tensor_binds[i].symbol.d].flags = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -1555,7 +1557,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			int d = node->inputs[i]; \
 			if (d < 0) \
 				continue; \
-			tensor_blocks[d].flag |= READ_ONLY; \
+			tensor_blocks[d].flags |= READ_ONLY; \
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d])) \
 				d = tensor_symbol_info[d].alias_ref - 1; \
 			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d])) \
@@ -1582,7 +1584,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			int d = node->outputs[i]; \
 			if (d < 0) \
 				continue; \
-			tensor_blocks[d].flag |= WRITE_ONLY; \
+			tensor_blocks[d].flags |= WRITE_ONLY; \
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d])) \
 				d = tensor_symbol_info[d].alias_ref - 1; \
 			if (TENSOR_EXPECT_CONST(tensor_blocks[d]) || \
@@ -1949,7 +1951,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
-	int i;
+	int i, j;
 	ccv_sparse_matrix_t* exec_dep;
 	ccv_nnc_tensor_block_t* tensor_blocks;
 	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks);
@@ -2141,32 +2143,49 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
 							ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx); \
 						} \
+						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, add all sources (destinations) to it. */ \
+						{ \
+							for (j = 0; j < source_size; j++) \
+								_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[tensor_block_size]); \
+							/* If this is a read-only (based on SSA, if first encountered as read), and this is a
+							 * sub-graph. Mark it to the end of the graph. */ \
+							if (symbolic_graph->p) \
+								for (j = 0; j < destination_size; j++) \
+									_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_block_size]); \
+						} \
 						++tensor_block_size; \
 						/* ref and flags are both 0. */ \
 						if (dup_tensor_block_ref) \
 						{ \
-							dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size; \
-							dup_tensor_block_ref[tensor_block_size] = -1; \
-							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
-							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
-							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
-							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
-							/* Attach to duplicated exec for this tensor block. */ \
-							ccv_array_push(tensor_blocks[tensor_block_size].head, &dup_exec_ref[idx]); \
-							if (dup_p_ref >= 0) \
+							if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, it is self-reflecting. */ \
 							{ \
-								/* Not nil, not self-reflecting. */ \
-								assert(dup_tensor_block_ref[dup_p_ref] >= 0 && dup_tensor_block_ref[dup_p_ref] != dup_p_ref); \
-								const int dup_dup_p_ref = dup_tensor_block_ref[dup_p_ref]; \
-								assert(tensor_blocks[dup_dup_p_ref].tail); \
-								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_dup_p_ref].tail->rnum, 0); \
-								memcpy(ccv_array_get(tensor_blocks[tensor_block_size].tail, 0), ccv_array_get(tensor_blocks[dup_dup_p_ref].tail, 0), sizeof(int) * tensor_blocks[dup_dup_p_ref].tail->rnum); \
-							tensor_blocks[tensor_block_size].tail->rnum = tensor_blocks[dup_dup_p_ref].tail->rnum; \
+								/* No need to extend life-time, because this is a sub-graph and we already extended read-only to the end of destination. */ \
+								assert(symbolic_graph->p); \
+								dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size - 1; \
 							} else { \
-								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
-								ccv_array_push(tensor_blocks[tensor_block_size].tail, &dup_exec_ref[idx]); \
+								dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size; \
+								dup_tensor_block_ref[tensor_block_size] = -1; \
+								TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
+								tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
+								tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
+								tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \
+								/* Attach to duplicated exec for this tensor block. */ \
+								ccv_array_push(tensor_blocks[tensor_block_size].head, &dup_exec_ref[idx]); \
+								if (dup_p_ref >= 0) \
+								{ \
+									/* Not nil, not self-reflecting. */ \
+									assert(dup_tensor_block_ref[dup_p_ref] >= 0 && dup_tensor_block_ref[dup_p_ref] != dup_p_ref); \
+									const int dup_dup_p_ref = dup_tensor_block_ref[dup_p_ref]; \
+									assert(tensor_blocks[dup_dup_p_ref].tail); \
+									tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_dup_p_ref].tail->rnum, 0); \
+									memcpy(ccv_array_get(tensor_blocks[tensor_block_size].tail, 0), ccv_array_get(tensor_blocks[dup_dup_p_ref].tail, 0), sizeof(int) * tensor_blocks[dup_dup_p_ref].tail->rnum); \
+									tensor_blocks[tensor_block_size].tail->rnum = tensor_blocks[dup_dup_p_ref].tail->rnum; \
+								} else { \
+									tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0); \
+									ccv_array_push(tensor_blocks[tensor_block_size].tail, &dup_exec_ref[idx]); \
+								} \
+								++tensor_block_size; \
 							} \
-							++tensor_block_size; \
 						} \
 					} \
 			} \
@@ -2337,7 +2356,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				assert(graph_execs[outgoing].graph);
 				ccv_nnc_graph_exec_concat(graph, set_exec, graph_execs[outgoing]);
 			}
-			int flag = 0;
+			int flags = 0;
 			if (alloc_dep[ref])
 				for (j = 0; j < alloc_dep[ref]->rnum; j++)
 				{
@@ -2350,11 +2369,11 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 							const int incoming = *(int*)ccv_array_get(tensor_blocks[d].tail, j);
 							assert(graph_execs[incoming].graph);
 							ccv_nnc_graph_exec_concat(graph, graph_execs[incoming], set_exec);
-							flag = 1;
+							flags = 1;
 						}
 				}
 			// If cannot find a start node for this exec, we need to append it to the no-op of the start.
-			if (!flag)
+			if (!flags)
 			{
 				if (!source_exec_created)
 				{
