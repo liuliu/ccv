@@ -425,32 +425,33 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	ccv_nnc_tensor_symbol_t xz = ccv_nnc_tensor_symbol_alias_new(while_graph, x, ccv_nnc_no_ofs, DIM_ALLOC(5 * 5 * 4), ONE_CPU_TENSOR(5 * 5 * 4), "x0");
 	ccv_nnc_tensor_symbol_t yz = ccv_nnc_tensor_symbol_alias_new(while_graph, y, ccv_nnc_no_ofs, DIM_ALLOC(5 * 5 * 4), ONE_CPU_TENSOR(5 * 5 * 4), "y0");
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(5, 5, 4), "z");
-	ccv_nnc_tensor_symbol_t zz = ccv_nnc_tensor_symbol_alias_new(while_graph, z, ccv_nnc_no_ofs, DIM_ALLOC(5 * 5 * 4), ONE_CPU_TENSOR(5 * 5 * 4), "x0");
-	ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(xz, yz), TENSOR_SYMBOL_LIST(zz), "sum");
+	ccv_nnc_tensor_symbol_t zz = ccv_nnc_tensor_symbol_alias_new(while_graph, z, ccv_nnc_no_ofs, DIM_ALLOC(5 * 5 * 4), ONE_CPU_TENSOR(5 * 5 * 4), "z0");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(xz, yz), TENSOR_SYMBOL_LIST(zz), "sum");
 	ccv_nnc_symbolic_graph_set_while_expr(sub_while_graph, while_5, 0, GRAPH_EXEC_SYMBOL_LIST(sub_noop));
 	ccv_nnc_symbolic_graph_set_while_params(sub_while_graph, TENSOR_SYMBOL_MAP(KV(y, x)));
 	ccv_nnc_symbolic_graph_set_sources(sub_while_graph, GRAPH_EXEC_SYMBOL_LIST(sub_noop));
 	ccv_nnc_symbolic_graph_set_destinations(sub_while_graph, GRAPH_EXEC_SYMBOL_LIST(conv));
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, sub_while);
+	ccv_nnc_graph_exec_symbol_concat(while_graph, sub_while, sum);
 	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_5, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_symbolic_graph_set_while_params(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
 	ccv_nnc_symbolic_graph_set_sources(while_graph, GRAPH_EXEC_SYMBOL_LIST(noop));
-	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(sub_while));
+	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(sum));
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	/*
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* w_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, w);
 	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
-	int i;
+	int i, j;
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	for (i = 0; i < 5 * 5 * 4; i++)
@@ -458,7 +459,6 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	ccv_nnc_tensor_t* x0 = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 5, 4), 0);
 	ccv_nnc_tensor_t* x1 = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 5, 4), 0);
 	memcpy(x0->data.f32, x_tensor->data.f32, sizeof(float) * 5 * 5 * 4);
-	memcpy(x1->data.f32, x_tensor->data.f32, sizeof(float) * 5 * 5 * 4);
 	for (i = 0; i < 4 * 3 * 3 * 4; i++)
 		w_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) / (4 * 3 * 3);
 	for (i = 0; i < 4; i++)
@@ -469,20 +469,25 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	ccv_nnc_tensor_t* y1 = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(5, 5, 4), 0);
 	for (i = 0; i < 5; i++)
 	{
-		ccv_nnc_cmd_exec(CMD_CONVOLUTION_FORWARD(4, 3, 3, 4), HINT((1, 1), (1, 1)), 0, TENSOR_LIST(x1, w_tensor, b_tensor), TENSOR_LIST(y1), 0);
-		memcpy(x1->data.f32, y1->data.f32, sizeof(float) * 5 * 5 * 4);
+		memcpy(x1->data.f32, x0->data.f32, sizeof(float) * 5 * 5 * 4);
+		for (j = 0; j < 5; j++)
+		{
+			ccv_nnc_cmd_exec(CMD_CONVOLUTION_FORWARD(4, 3, 3, 4), HINT((1, 1), (1, 1)), 0, TENSOR_LIST(x1, w_tensor, b_tensor), TENSOR_LIST(y1), 0);
+			memcpy(x1->data.f32, y1->data.f32, sizeof(float) * 5 * 5 * 4);
+		}
+		for (j = 0; j < 5 * 5 * 4; j++)
+			x0->data.f32[j] += y1->data.f32[j];
 	}
-	for (i = 0; i < 5 * 5 * 4; i++)
-		x0->data.f32[i] += y1->data.f32[i];
-	ccv_nnc_tensor_t z0 = ccv_nnc_tensor(x0->data.f32, ONE_CPU_TENSOR(5 * 5 * 4), 0);
+	// ccv_nnc_tensor_t z0 = ccv_nnc_tensor(x0->data.f32, ONE_CPU_TENSOR(5 * 5 * 4), 0);
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
 	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
-	REQUIRE_MATRIX_EQ(&z0, z_tensor, "5x5x4 matrix should be exactly the same");
+	for (i = 0; i < 5; i++)
+		printf("%f %f\n", x0->data.f32[i], z_tensor->data.f32[i]);
+	// REQUIRE_MATRIX_EQ(&z0, z_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x0);
 	ccv_nnc_tensor_free(x1);
 	ccv_nnc_tensor_free(y1);
-	*/
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_free(graph);

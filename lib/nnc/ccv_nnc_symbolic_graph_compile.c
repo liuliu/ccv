@@ -1657,8 +1657,15 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 		{
 			const int alias_ref = tensor_symbol_info[input].alias_ref - 1;
 			assert(tensor_symbol_info[alias_ref].alias_ref == 0);
-			ccv_nnc_tensor_symbol_t tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[alias_ref].info, 0);
-			dup_tensor_block_ref[alias_ref] = tensor_symbol.d;
+			ccv_nnc_tensor_symbol_t tensor_symbol;
+			if (dup_tensor_block_ref[alias_ref] < 0)
+			{
+				tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[alias_ref].info, 0);
+				dup_tensor_block_ref[alias_ref] = tensor_symbol.d;
+			} else {
+				tensor_symbol.d = dup_tensor_block_ref[alias_ref];
+				tensor_symbol.graph = dup_graph;
+			}
 			ccv_nnc_tensor_symbol_t alias_symbol = ccv_nnc_tensor_symbol_alias_new(dup_graph, tensor_symbol, tensor_symbol_info[input].ofs, tensor_symbol_info[input].inc, tensor_symbol_info[input].info, 0);
 			dup_tensor_block_ref[input] = alias_symbol.d;
 		} else {
@@ -1825,7 +1832,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 		// If there is a assign_ref, that means I don't need to dup the tensor.
 		if (tensor_symbol_info[i].assign_ref)
 			dup_tensor_block_ref[i] = tensor_symbol_info[i].assign_ref - 1;
-		else if (TENSOR_READ_WRITE(tensor_blocks[i]) == READ_ONLY)
+		else if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_READ_WRITE(tensor_blocks[i]) == READ_ONLY)
 		// If this is a read-only tensor block, no need to duplicate because the value never changes
 		// (note we handled assign_ref first), therefore, no need to generate duplicate.
 			dup_tensor_block_ref[i] = i;
@@ -1927,6 +1934,23 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_sy
 			const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
 			if (p_ref_1_is_in_or_out == 1)
 				tensor_blocks[dup_idx].dup_p_ref = p_ref_1 + 1;
+		}
+	// companion_ref
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		// Now can assign them (The dup) as companion.
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
+		{
+			// If this is also hard.
+			const int assign_ref = dup_tensor_block_ref[tensor_symbol_info[i].assign_ref - 1];
+			if (assign_ref >= 0)
+			{
+				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[assign_ref]);
+				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[assign_ref], tensor_blocks[i]);
+				// It cannot be that both i can hop to j can j can hop to i.
+				assert((a_hop_b > 0 || b_hop_a > 0));
+				tensor_blocks[i].companion_ref = assign_ref + 1;
+				tensor_blocks[assign_ref].companion_ref = i + 1;
+			}
 		}
 	// Extend the dup tensor block ref, prepare for future extensions.
 	dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * dup_graph->tensor_symbol_info->rnum);
@@ -2126,6 +2150,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					if (!s_alloc_prep->buffers[i].p_refs[0]) \
 					{ \
 						TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
+						TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i])); \
 						tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1; \
@@ -2159,6 +2184,9 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						{ \
 							if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, it is self-reflecting. */ \
 							{ \
+								for (j = 0; j < destination_size; j++) \
+									if (dup_exec_ref[destinations[j].d] >= 0) \
+									_ccv_nnc_tensor_block_add_exec(exec_dep, dup_exec_ref[destinations[j].d], tensor_blocks[tensor_block_size - 1]); \
 								/* No need to extend life-time, because this is a sub-graph and we already extended read-only to the end of destination. */ \
 								assert(symbolic_graph->p); \
 								dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size - 1; \
@@ -2166,6 +2194,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 								dup_tensor_block_ref[tensor_block_size - 1] = tensor_block_size; \
 								dup_tensor_block_ref[tensor_block_size] = -1; \
 								TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
+								TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i])); \
 								tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
 								tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size; \
 								tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0); \

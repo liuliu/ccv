@@ -121,6 +121,8 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 					.d = i,
 					.graph = graph,
 				}, symbol_info->cmd);
+				if (symbol_info->cmd.cmd != CCV_NNC_GRAPH_FORWARD && symbol_info->cmd.cmd != CCV_NNC_GRAPH_BACKWARD)
+					symbol_info->graph_ref = 0;
 			}
 		}
 	}
