@@ -2423,7 +2423,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	{
 		ccv_nnc_tensor_t* const mv = tensor_arena->vt_tensors[i];
 		// If it is multiview tensor, inspect all its head to see whether we already associated with the node.
-		if (CCV_IS_TENSOR_MULTIVIEW(mv))
+		if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
 		{
 			const ccv_array_t* const head = tensor_blocks[i].head;
 			if (head && head->rnum > 0)
