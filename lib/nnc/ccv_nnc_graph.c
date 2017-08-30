@@ -87,7 +87,7 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 		if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
 			has_wraps = 1;
 	// It need to be handled specifically if it contains a wrap.
-	info->wraps = 0;
+	info->io_wraps = 0;
 	if (has_wraps)
 	{
 		// The logic as following, I assume I need to unwrap at each graph level (go through graph until reaches p = 0).
@@ -112,13 +112,13 @@ static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nn
 		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
 		for (i = 0; i < wrap_size; i++)
 			if (wrap_anchors[i] & 1)
-				++info->wraps;
+				++info->io_wraps;
 	}
-	// info.wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
+	// info.io_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
 	if (info->inputs)
-		info->inputs = (ccv_nnc_tensor_t**)ccrealloc(info->inputs, sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->wraps + 1));
+		info->inputs = (ccv_nnc_tensor_t**)ccrealloc(info->inputs, sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->io_wraps + 1));
 	else
-		info->inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->wraps + 1));
+		info->inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->io_wraps + 1));
 	info->outputs = info->inputs + input_size;
 	if (inputs)
 		memcpy(info->inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
@@ -134,7 +134,8 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	assert(exec.graph == graph);
 	int i;
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	if (info->wraps)
+	// Remove only it doesn't have both io_wraps and cast_wraps.
+	if (info->io_wraps && !info->cast_wraps)
 	{
 		ccv_nnc_graph_t* p = graph;
 		do {
@@ -162,12 +163,106 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		info->outputs = 0;
 		info->input_size = 0;
 		info->output_size = 0;
-		info->wraps = 0;
-		info->wrap_ptr = 0;
+		info->io_wraps = 0;
+		info->io_wrap_ptr = 0;
 		return;
 	}
 	_ccv_nnc_graph_exec_info_set_io(graph, info, inputs, input_size, outputs, output_size);
-	if (info->wraps)
+	// If we don't remove it because cast_wraps is nil, then no need to add it back.
+	if (info->io_wraps && !info->cast_wraps)
+	{
+		ccv_nnc_graph_t* p = graph;
+		do {
+			if (!p->wraps)
+				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
+			ccv_array_push(p->wraps, &exec);
+			p = p->p;
+		} while (p);
+	}
+}
+static void _ccv_nnc_graph_exec_info_set_cast(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const info, ccv_nnc_tensor_t* const* const casts, const int cast_size)
+{
+	assert(cast_size > 0);
+	int i;
+	int has_wraps = 0;
+	for (i = 0; i < cast_size && !has_wraps; i++)
+		if (casts[i] && CCV_IS_TENSOR_MULTIVIEW(casts[i]))
+			has_wraps = 1;
+	// It need to be handled specifically if it contains a wrap.
+	info->cast_wraps = 0;
+	if (has_wraps)
+	{
+		// The logic as following, I assume I need to unwrap at each graph level (go through graph until reaches p = 0).
+		// and then go over each input / output to see at which level we actually do the unwrapping.
+		assert(graph->p);
+		// Graph has to have attached to it parent, otherwise we cannot figure out the anchor point the wrap is pointing to.
+		int wrap_size = 1;
+		ccv_nnc_graph_t* p = graph->p;
+		for (; p; p = p->p)
+			++wrap_size;
+		// I will take advantage of the fact that intptr are 4-bytes aligned.
+		assert(wrap_size < 512); // We can only go 512 layer deep.
+		intptr_t* wrap_anchors = (intptr_t*)alloca(sizeof(intptr_t) * wrap_size);
+		for (p = graph, i = 0; p; p = p->p, i++)
+			wrap_anchors[i] = (intptr_t)p;
+		for (i = 0; i < cast_size; i++)
+			if (casts[i] && CCV_IS_TENSOR_MULTIVIEW(casts[i]))
+				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)casts[i], wrap_anchors, wrap_size);
+		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
+		for (i = 0; i < wrap_size; i++)
+			if (wrap_anchors[i] & 1)
+				++info->cast_wraps;
+	}
+	// info.io_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
+	if (info->casts)
+		info->casts = (ccv_nnc_tensor_t**)ccrealloc(info->casts, sizeof(ccv_nnc_tensor_t*) * cast_size * (info->io_wraps + 1));
+	else
+		info->casts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * cast_size * (info->cast_wraps + 1));
+	if (casts)
+		memcpy(info->casts, casts, sizeof(ccv_nnc_tensor_t*) * cast_size);
+	info->cast_size = cast_size;
+}
+
+void ccv_nnc_graph_exec_set_cast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const casts, const int cast_size)
+{
+	assert(exec.d < graph->exec_info->rnum);
+	assert(exec.graph == graph);
+	int i;
+	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
+	// Remove only it doesn't have both io_wraps and cast_wraps.
+	if (info->cast_wraps && !info->io_wraps)
+	{
+		ccv_nnc_graph_t* p = graph;
+		do {
+			// Remove from the array.
+			if (p->wraps)
+				for (i = 0; i < p->wraps->rnum; i++)
+				{
+					ccv_nnc_graph_exec_t* const wrap_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->wraps, i);
+					if (wrap_exec->d == exec.d && wrap_exec->graph == graph)
+					{
+						--p->wraps->rnum;
+						if (i < p->wraps->rnum)
+							memcpy(wrap_exec, wrap_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->wraps->rnum - i));
+						break;
+					}
+				}
+			p = p->p;
+		} while (p);
+	}
+	if (cast_size == 0)
+	{
+		if (info->cast_size > 0)
+			ccfree(info->casts);
+		info->casts = 0;
+		info->cast_size = 0;
+		info->cast_wraps = 0;
+		info->cast_wrap_ptr = 0;
+		return;
+	}
+	_ccv_nnc_graph_exec_info_set_cast(graph, info, casts, cast_size);
+	// If we don't remove it because io_wraps is nil, then no need to add it back.
+	if (info->cast_wraps && !info->io_wraps)
 	{
 		ccv_nnc_graph_t* p = graph;
 		do {
@@ -198,7 +293,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 		.graph = graph,
 	};
 	// Add itself to the graph's wraps array, this will help the run time when we run the graph and do unwrapping.
-	if (info.wraps)
+	if (info.io_wraps)
 	{
 		ccv_nnc_graph_t* p = graph;
 		do {

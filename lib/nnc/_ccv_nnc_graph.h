@@ -21,8 +21,13 @@ typedef struct {
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	int graph_ref; // Reference to the sub-graph. Starts at 1.
-	int wraps; // How many wraps for the inputs / outputs (thus, the inputs and outputs must contain multi-view tensor).
-	int wrap_ptr; // At which level of the wrap we are currently at. Starts at 0.
+	int io_wraps; // How many wraps for the inputs / outputs (thus, the inputs and outputs must contain multi-view tensor).
+	int io_wrap_ptr; // At which level of the wrap we are currently at. Starts at 0.
+	// In parallel with io wraps.
+	int cast_size;
+	ccv_nnc_tensor_t** casts;
+	int cast_wraps;
+	int cast_wrap_ptr;
 } ccv_nnc_graph_exec_info_t;
 
 struct ccv_nnc_graph_s {
