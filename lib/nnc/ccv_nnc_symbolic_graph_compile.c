@@ -2413,6 +2413,56 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			}
 		}
 	}
+	// Now go through the list of tensors to see whether we need to do explicit broadcast for these tensor multi-views
+	// (we need that if it is not associated as inputs / outputs of any execs, this is possible if all execs associate
+	// with its alias).
+	assert(tensor_arena->vt_tensor_size == graph_prep->tensor_symbol_info_size);
+	ccv_nnc_tensor_t** max_casts = 0;
+	int max_cast_size = 0;
+	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+	{
+		ccv_nnc_tensor_t* const mv = tensor_arena->vt_tensors[i];
+		// If it is multiview tensor, inspect all its head to see whether we already associated with the node.
+		if (CCV_IS_TENSOR_MULTIVIEW(mv))
+		{
+			const ccv_array_t* const head = tensor_blocks[i].head;
+			if (head && head->rnum > 0)
+				for (j = 0; j < head->rnum; j++)
+				{
+					const int idx = *(int*)ccv_array_get(head, j);
+					const int d = graph_execs[idx].d;
+					ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, d);
+					int flag = 0;
+					for (k = 0; k < exec_info->input_size && !flag; k++)
+						if (exec_info->inputs[k] == mv)
+							flag = 1;
+					for (k = 0; k < exec_info->output_size && !flag; k++)
+						if (exec_info->outputs[k] == mv)
+							flag = 1;
+					for (k = 0; k < exec_info->cast_size && !flag; k++)
+						if (exec_info->casts[k] == mv)
+							flag = 1;
+					// If non is in the flag, it need to be included in the cast.
+					if (!flag)
+					{
+						if (exec_info->cast_size + 1 > max_cast_size)
+						{
+							max_cast_size = exec_info->cast_size + 1;
+							if (max_casts)
+								max_casts = ccrealloc(max_casts, sizeof(ccv_nnc_tensor_t*) * max_cast_size);
+							else
+								max_casts = ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_cast_size);
+						}
+						if (exec_info->cast_size)
+							memcpy(max_casts, exec_info->casts, sizeof(ccv_nnc_tensor_t*) * exec_info->cast_size);
+						max_casts[exec_info->cast_size] = mv;
+						ccv_nnc_graph_exec_set_cast(graph, graph_execs[idx], max_casts, exec_info->cast_size + 1);
+					}
+				}
+		}
+	}
+	if (max_casts)
+		ccfree(max_casts);
 	// Create source / destination phony node. This is to facilitate use of compiled graph.
 	// Also, this is needed if you have init zero execs.
 	if (source_exec_created || source_size > 1)

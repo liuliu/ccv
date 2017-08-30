@@ -213,9 +213,9 @@ static void _ccv_nnc_graph_exec_info_set_cast(ccv_nnc_graph_t* const graph, ccv_
 			if (wrap_anchors[i] & 1)
 				++info->cast_wraps;
 	}
-	// info.io_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
+	// info.cast_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
 	if (info->casts)
-		info->casts = (ccv_nnc_tensor_t**)ccrealloc(info->casts, sizeof(ccv_nnc_tensor_t*) * cast_size * (info->io_wraps + 1));
+		info->casts = (ccv_nnc_tensor_t**)ccrealloc(info->casts, sizeof(ccv_nnc_tensor_t*) * cast_size * (info->cast_wraps + 1));
 	else
 		info->casts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * cast_size * (info->cast_wraps + 1));
 	if (casts)
@@ -885,6 +885,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
 		if (info->inputs)
 			ccfree(info->inputs);
+		if (info->casts)
+			ccfree(info->casts);
 	}
 	if (graph->cond_evals)
 		ccfree(graph->cond_evals);

@@ -443,7 +443,6 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
@@ -478,13 +477,10 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 		for (j = 0; j < 5 * 5 * 4; j++)
 			x0->data.f32[j] += y1->data.f32[j];
 	}
-	// ccv_nnc_tensor_t z0 = ccv_nnc_tensor(x0->data.f32, ONE_CPU_TENSOR(5 * 5 * 4), 0);
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
 	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
-	for (i = 0; i < 5; i++)
-		printf("%f %f\n", x0->data.f32[i], z_tensor->data.f32[i]);
-	// REQUIRE_MATRIX_EQ(&z0, z_tensor, "5x5x4 matrix should be exactly the same");
+	REQUIRE_MATRIX_EQ(x0, z_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x0);
 	ccv_nnc_tensor_free(x1);
 	ccv_nnc_tensor_free(y1);
