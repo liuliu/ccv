@@ -189,10 +189,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					.oc = oc[i],
 				};
 				if (tensor_blocks[i].companion_ref)
-					a.size = ccv_max(a.size, tensor_blocks[tensor_blocks[i].companion_ref - 1].size);
+				{
+					const int companion_ref = tensor_blocks[i].companion_ref - 1;
+					a.size = ccv_max(a.size, tensor_blocks[companion_ref].size);
+					a.oc += oc[companion_ref];
+				}
 				// In case we have a tie, take them all in the array.
-				if (oc[i] > max_oc)
-					ccv_array_clear(opt), max_oc = oc[i];
+				if (a.oc > max_oc)
+					ccv_array_clear(opt), max_oc = a.oc;
 				ccv_array_push(opt, &a);
 			}
 		assert(opt->rnum > 0);
@@ -213,18 +217,16 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					// Good, push to opt array.
 					if (cell.u8 && cell.u8[0] == 1)
 						continue;
-					int b_oc = a.oc + oc[k];
 					if (companion_ref >= 0 && companion_ref != k)
 					{
 						// Have to make sure k doesn't interfere with the designated companion as well.
 						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k), ccv_max(companion_ref, k));
 						if (cell.u8 && cell.u8[0] == 1)
 							continue;
-						b_oc += oc[companion_ref];
 					}
 					ccv_nnc_tensor_opt_t b = a;
 					b.companion = k;
-					b.oc = b_oc;
+					b.oc = a.oc + oc[k];
 					b.size = tensor_blocks[k].size;
 					ccv_array_push(opt, &b);
 				}
@@ -1715,7 +1717,7 @@ static void _ccv_nnc_tensor_blocks_free(ccv_nnc_tensor_block_t* const tensor_blo
 	ccfree(tensor_blocks);
 }
 
-static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+static void _ccv_nnc_unroll_exec_dep_and_tensor_blocks(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
 {
 	int i, j;
 	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
@@ -2018,7 +2020,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	int* dup_exec_ref = 0;
 	int* dup_tensor_block_ref = 0;
 	// Cannot handle dup a node that is a graph as well.
-	_ccv_nnc_redo_exec_dep_and_tensor_blocks_if_expanse(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &dup_exec_ref, &dup_tensor_block_ref);
+	_ccv_nnc_unroll_exec_dep_and_tensor_blocks(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &dup_exec_ref, &dup_tensor_block_ref);
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
 	prep->graph = ccv_nnc_graph_new(); // Just allocate the graph right now.
