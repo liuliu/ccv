@@ -47,11 +47,12 @@ enum {
 typedef struct {
 	int index;
 	int companion; // The companion node index (the node that doesn't interfere with current one).
+	int oc;
 	uint64_t size;
 } ccv_nnc_tensor_opt_t;
 
-#define more_than(i1, i2, aux) ((i1).size >= (i2).size)
-static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size, ccv_nnc_tensor_opt_t, more_than)
+#define more_than(i1, i2, aux) (((i1).size > (i2).size) || ((i1).size == (i2).size && (i1).oc >= (i2).oc))
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
 // If every a's head is deterministically after b's tail
@@ -185,6 +186,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					.size = tensor_blocks[i].size,
 					.index = i,
 					.companion = -1, // If already have a designated companion, use that.
+					.oc = oc[i],
 				};
 				if (tensor_blocks[i].companion_ref)
 					a.size = ccv_max(a.size, tensor_blocks[tensor_blocks[i].companion_ref - 1].size);
@@ -211,21 +213,24 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					// Good, push to opt array.
 					if (cell.u8 && cell.u8[0] == 1)
 						continue;
+					int b_oc = a.oc + oc[k];
 					if (companion_ref >= 0 && companion_ref != k)
 					{
 						// Have to make sure k doesn't interfere with the designated companion as well.
 						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k), ccv_max(companion_ref, k));
 						if (cell.u8 && cell.u8[0] == 1)
 							continue;
+						b_oc += oc[companion_ref];
 					}
 					ccv_nnc_tensor_opt_t b = a;
 					b.companion = k;
+					b.oc = b_oc;
 					b.size = tensor_blocks[k].size;
 					ccv_array_push(opt, &b);
 				}
 		}
 		// Order opt array by the size.
-		_ccv_nnc_tensor_opt_sort_by_size((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
+		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Assuming all tensors has the same data format (32F), therefore, we only need to consider the dimensional size.
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
 		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;
