@@ -1717,13 +1717,10 @@ static void _ccv_nnc_tensor_blocks_free(ccv_nnc_tensor_block_t* const tensor_blo
 	ccfree(tensor_blocks);
 }
 
-static void _ccv_nnc_unroll_exec_dep_and_tensor_blocks(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+// Find tensors that cannot be solved by co-allocating to the same location.
+static ccv_array_t* _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks)
 {
-	int i, j;
-	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
-	ccv_nnc_tensor_block_t* tensor_blocks = *r_tensor_blocks;
-	// blocks that cannot be simply solved with either in-place operation tensor block folding or using the same memory region.
-	// Unfortunately, I cannot do this analysis to the block folding done for sub-graphs, because we do sub-graph placement later.
+	int i;
 	ccv_array_t* hard = 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
@@ -1761,7 +1758,18 @@ static void _ccv_nnc_unroll_exec_dep_and_tensor_blocks(const ccv_nnc_symbolic_gr
 				}
 			}
 		}
+	return hard;
+}
+
+static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+{
+	int i, j;
+	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
+	ccv_nnc_tensor_block_t* tensor_blocks = *r_tensor_blocks;
+	// blocks that cannot be simply solved with either in-place operation tensor block folding or using the same memory region.
+	// Unfortunately, I cannot do this analysis to the block folding done for sub-graphs, because we do sub-graph placement later.
 	// No need to change anything, we are good.
+	ccv_array_t* const hard = _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(symbolic_graph, tensor_symbol_info, exec_dep, tensor_blocks);
 	if (!hard)
 		return;
 	// Have conditions that cannot be satisfied with simple solution (allocate to the same memory region).
@@ -1859,9 +1867,11 @@ static void _ccv_nnc_unroll_exec_dep_and_tensor_blocks(const ccv_nnc_symbolic_gr
 			{ \
 				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
 				if (visited[outgoing_idx]) \
+				{ \
 					visited[outgoing_idx] |= OUTGOING_NODE; /* Mark this node as outgoing. */ \
-				ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
-				ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
+					ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
+					ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
+				} \
 			} \
 		} \
 	} while (0)
@@ -1869,7 +1879,7 @@ static void _ccv_nnc_unroll_exec_dep_and_tensor_blocks(const ccv_nnc_symbolic_gr
 #undef visitor
 	// Check the visitor are all marked as either incoming or outgoing.
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
-		if (visited[i])
+		if (visited[i] & 1)
 		{
 			assert((visited[i] & INCOMING_NODE) || (visited[i] & OUTGOING_NODE));
 			// If this is pure incoming nodes, then I need to concat this one with all original destination node
@@ -2020,7 +2030,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	int* dup_exec_ref = 0;
 	int* dup_tensor_block_ref = 0;
 	// Cannot handle dup a node that is a graph as well.
-	_ccv_nnc_unroll_exec_dep_and_tensor_blocks(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &dup_exec_ref, &dup_tensor_block_ref);
+	_ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &dup_exec_ref, &dup_tensor_block_ref);
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
 	prep->graph = ccv_nnc_graph_new(); // Just allocate the graph right now.
