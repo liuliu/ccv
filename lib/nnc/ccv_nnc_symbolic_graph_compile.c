@@ -13,7 +13,8 @@ typedef struct {
 	int type;
 	int ref; // Reference to another tensor block. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
-	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
+	int primary_companion; // Whether this is the primary companion.
+	ccv_array_t* companion_refs; // Reference to another block that they two share the same memory region. Start with 0. The current crude implementation requires the two mutually be companion. Because there are two, we took the one with minimal index as the primary. For allocation algorithm, we use the primary throughout.
 	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	int p_refs[2]; // Reference to the parent tensor block, at max there will be only two. Start with 1.
@@ -113,13 +114,29 @@ typedef struct ccv_nnc_symbolic_graph_prep_s {
 	ccv_nnc_tensor_arena_t* tensor_arena; // tensor arena, not managed by prep as well.
 } ccv_nnc_symbolic_graph_prep_t;
 
+static void _ccv_nnc_tensor_block_primary_companion_check(ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
+{
+	int i, c;
+	for (i = 0; i < tensor_block_size; i++)
+	{
+		int flag = 0;
+		for (c = 0; tensor_blocks[i].companion_refs && c < tensor_blocks[i].companion_refs->rnum; c++)
+		{
+			const int companion_ref = *(int*)ccv_array_get(tensor_blocks[i].companion_refs, c);
+			if ((flag = (companion_ref < i)))
+				break;
+		}
+		tensor_blocks[i].primary_companion = !flag;
+	}
+}
+
 static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
 {
 	// Compute how many dis-continuous buffers are needed.
 	// We prefer to have several dis-continuous buffers instead of one big buffer because
 	// in this way, we can rely on system memory allocators (jemalloc, tcmalloc, or CUDA's allocator)
 	// to fully utilize memory.
-	int i, j, k;
+	int i, j, k, c, d;
 	ccv_array_t** alloc_dep = (ccv_array_t**)cccalloc(tensor_block_size, sizeof(ccv_array_t*));
 	int allocable_tensor_size = 0, available_tensor_size = 0;
 	for (i = 0; i < tensor_block_size; i++)
@@ -153,7 +170,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 						ccv_set_sparse_matrix_cell(tensor_itf, i, j, &one);
 				}
 			}
-	int* oc = (int*)cccalloc(tensor_block_size, sizeof(int));
+	int* oc = (int*)cccalloc(tensor_block_size + ccv_max(tensor_block_size, 2), sizeof(int));
+	int* strings = oc + tensor_block_size;
 	for (i = 0; i < tensor_block_size; i++)
 		for (j = 0; j < tensor_block_size; j++)
 			// If these two tensors are still alive, analyze them.
@@ -180,18 +198,18 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		int max_oc = 0;
 		ccv_array_clear(opt);
 		for (i = 0; i < tensor_block_size; i++)
-			if (oc[i] >= max_oc && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && !assigned[i])
+			if (oc[i] >= max_oc && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && !assigned[i] && tensor_blocks[i].primary_companion)
 			{
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_blocks[i].size,
 					.index = i,
-					.companion = -1, // If already have a designated companion, use that.
+					.companion = -1,
 					.oc = oc[i],
 				};
-				if (tensor_blocks[i].companion_ref)
+				for (c = 0; tensor_blocks[i].companion_refs && c < tensor_blocks[i].companion_refs->rnum; c++)
 				{
-					const int companion_ref = tensor_blocks[i].companion_ref - 1;
-					a.size = ccv_max(a.size, tensor_blocks[companion_ref].size);
+					const int companion_ref = *(int*)ccv_array_get(tensor_blocks[i].companion_refs, c);
+					assert(a.size == tensor_blocks[companion_ref].size);
 					a.oc += oc[companion_ref];
 				}
 				// In case we have a tie, take them all in the array.
@@ -208,25 +226,47 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			// Copy it out, because after insertion, it may hold invalid pointer.
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
 			assert(a.companion == -1);
-			const int companion_ref = tensor_blocks[i].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
-				if (k != a.index && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size)
+				if (k != a.index && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size && tensor_blocks[k].primary_companion)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
 					if (cell.u8 && cell.u8[0] == 1)
 						continue;
-					if (companion_ref >= 0 && companion_ref != k)
+					int flag = 0;
+					int k_oc = oc[k];
+					for (d = 0; tensor_blocks[k].companion_refs && d < tensor_blocks[k].companion_refs->rnum; d++)
 					{
+						const int k_companion_ref = *(int*)ccv_array_get(tensor_blocks[k].companion_refs, d);
+						assert(k_companion_ref != a.index);
+						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k_companion_ref), ccv_max(a.index, k_companion_ref));
+						if ((flag = (cell.u8 && cell.u8[0] == 1)))
+							break;
+						k_oc += oc[k_companion_ref];
+					}
+					for (c = 0; !flag && tensor_blocks[i].companion_refs && c < tensor_blocks[i].companion_refs->rnum; c++)
+					{
+						const int companion_ref = *(int*)ccv_array_get(tensor_blocks[i].companion_refs, c);
+						assert(companion_ref != k);
 						// Have to make sure k doesn't interfere with the designated companion as well.
 						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k), ccv_max(companion_ref, k));
-						if (cell.u8 && cell.u8[0] == 1)
-							continue;
+						if ((flag = (cell.u8 && cell.u8[0] == 1)))
+							break;
+						for (d = 0; tensor_blocks[k].companion_refs && d < tensor_blocks[k].companion_refs->rnum; d++)
+						{
+							const int k_companion_ref = *(int*)ccv_array_get(tensor_blocks[k].companion_refs, d);
+							ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k_companion_ref), ccv_max(companion_ref, k_companion_ref));
+							if ((flag = (cell.u8 && cell.u8[0] == 1)))
+								break;
+						}
 					}
+					// Interfered with some of its designated companion.
+					if (flag)
+						continue;
 					ccv_nnc_tensor_opt_t b = a;
 					b.companion = k;
-					b.oc = a.oc + oc[k];
+					b.oc = a.oc + k_oc;
 					b.size = tensor_blocks[k].size;
 					ccv_array_push(opt, &b);
 				}
@@ -257,23 +297,29 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				else
 					p = a.companion;
 			}
-			if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
-			{
-				const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
-				const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[companion_ref]);
-				if (b_hop_p > 0)
-					p = companion_ref;
-				else {
-					const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[q]);
-					if (q_hop_b > 0)
-						q = companion_ref;
-					else { // Otherwise, b is in between p and q.
-						const int p_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[p]);
-						const int b_hop_q = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[q], tensor_blocks[companion_ref]);
-						assert(p_hop_b > 0 && b_hop_q > 0);
+			const int ii[2] = {
+				a.index, a.companion
+			};
+			for (c = 0; c < 2 && ii[c] >= 0; c++)
+				for (d = 0; tensor_blocks[ii[c]].companion_refs && d < tensor_blocks[ii[c]].companion_refs->rnum; d++)
+				{
+					const int companion_ref = *(int*)ccv_array_get(tensor_blocks[ii[c]].companion_refs, d);
+					assert(a.companion != companion_ref);
+					assert(a.index != companion_ref);
+					const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[companion_ref]);
+					if (b_hop_p > 0)
+						p = companion_ref;
+					else {
+						const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[q]);
+						if (q_hop_b > 0)
+							q = companion_ref;
+						else { // Otherwise, b is in between p and q.
+							const int p_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[p]);
+							const int b_hop_q = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[q], tensor_blocks[companion_ref]);
+							assert(p_hop_b > 0 && b_hop_q > 0);
+						}
 					}
 				}
-			}
 #define for_block(y, x, val) do { \
 				/* y is always earlier than x, but this is hard to assert now. */ \
 				/* If this edge satisfy the requirement, now we need to find the ones with tightest possible bounds. */ \
@@ -325,21 +371,10 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			val[1] = val[1] + a.size; // Move the offset to the next one.
 			ccv_set_sparse_matrix_cell(alloc, min_y, min_x, val);
 		}
-		int strings[3] = {
-			a.index + 1
-		};
+		assert(tensor_block_size >= (tensor_blocks[a.index].companion_refs ? 2 + tensor_blocks[a.index].companion_refs->rnum : 2));
+		// strings is an ordered array of allocations (by allocation time) that going to share the same region of memory.
+		strings[0] = a.index + 1;
 		int string_size = 1;
-		// Assign out the selected one.
-		assigned[a.index] = assign_group;
-		// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
-		allocated_offset[a.index] = min_val[1];
-		for (i = 0; i < tensor_block_size; i++)
-			if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
-			{
-				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, a.index), ccv_max(i, a.index));
-				if (cell.u8 && cell.u8[0] == 1)
-					--oc[i];
-			}
 		// Assign out companion as well.
 		if (a.companion >= 0)
 		{
@@ -351,46 +386,49 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				strings[0] = a.companion + 1;
 			}
 			++string_size;
-			assigned[a.companion] = assign_group;
-			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
-			allocated_offset[a.companion] = min_val[1];
-			for (i = 0; i < tensor_block_size; i++)
-				if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
-				{
-					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, a.companion), ccv_max(i, a.companion));
-					if (cell.u8 && cell.u8[0] == 1)
-						--oc[i];
-				}
 		}
-		// Assign out designated companion if it exist.
-		if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
-		{
-			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
-			const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[0] - 1], tensor_blocks[companion_ref]);
-			if (b_hop_p > 0)
+		const int ii[2] = {
+			a.index, a.companion
+		};
+		for (c = 0; c < 2 && ii[c] >= 0; c++)
+			for (d = 0; tensor_blocks[ii[c]].companion_refs && d < tensor_blocks[ii[c]].companion_refs->rnum; d++)
 			{
-				for (i = 0; i < string_size; i++)
-					strings[i + 1] = strings[i];
-				strings[0] = companion_ref + 1;
-			} else {
-				const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[strings[string_size - 1] - 1]);
-				if (q_hop_b > 0)
-					strings[string_size] = companion_ref + 1;
-				else {
-					// Because b_hop_p is 0, q_hop_b is nil, p != q, and b must in between p and q. Therefore, I must have 2 allocations.
-					assert(string_size == 2);
-					strings[2] = strings[1];
-					strings[1] = companion_ref + 1;
+				const int companion_ref = *(int*)ccv_array_get(tensor_blocks[ii[c]].companion_refs, c);
+				const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[0] - 1], tensor_blocks[companion_ref]);
+				if (b_hop_p > 0)
+				{
+					for (i = 0; i < string_size; i++)
+						strings[i + 1] = strings[i];
+					strings[0] = companion_ref + 1;
+				} else {
+					const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[strings[string_size - 1] - 1]);
+					if (q_hop_b > 0)
+						strings[string_size] = companion_ref + 1;
+					else {
+						int flag = 0;
+						for (i = 1; !flag && i < string_size; i++)
+							flag = (_ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[i] - 1], tensor_blocks[companion_ref]) > 0);
+						// There must be a place for this.
+						assert(flag);
+						// Must be after previous one as well.
+						assert(_ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[strings[i - 1] - 1]) > 0);
+						memmove(strings + i + 1, strings + i, sizeof(int) * (string_size - i));
+						strings[i] = companion_ref;
+					}
 				}
+				++string_size;
 			}
-			++string_size;
-			assigned[companion_ref] = assign_group;
+		// Assign out everyone on strings, and update the oc.
+		for (c = 0; c < string_size; c++)
+		{
+			const int index = strings[c] - 1;
+			assigned[index] = assign_group;
 			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
-			allocated_offset[companion_ref] = min_val[1];
+			allocated_offset[index] = min_val[1];
 			for (i = 0; i < tensor_block_size; i++)
 				if (!assigned[i] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
 				{
-					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, companion_ref), ccv_max(i, companion_ref));
+					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, index), ccv_max(i, index));
 					if (cell.u8 && cell.u8[0] == 1)
 						--oc[i];
 				}
@@ -445,6 +483,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		}
 		j += string_size;
 	}
+	ccfree(oc);
 	ccv_array_free(opt);
 	ccv_matrix_free(tensor_itf);
 #define for_block(y, x, val) do { \
@@ -458,7 +497,6 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	CCV_SPARSE_FOREACH(alloc, for_block);
 #undef for_block
 	ccv_matrix_free(alloc);
-	ccfree(oc);
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(alloc_prep->blocks[0]) * available_tensor_size + sizeof(alloc_prep->buffers[0]) * num_assigned + sizeof(int) * tensor_block_size);
 	alloc_prep->alloc_dep = alloc_dep;
 	alloc_prep->vt_block_size = tensor_block_size;
@@ -1713,6 +1751,8 @@ static void _ccv_nnc_tensor_blocks_free(ccv_nnc_tensor_block_t* const tensor_blo
 			ccv_array_free(tensor_blocks[i].tail);
 		if (tensor_blocks[i].r_refs)
 			ccv_array_free(tensor_blocks[i].r_refs);
+		if (tensor_blocks[i].companion_refs)
+			ccv_array_free(tensor_blocks[i].companion_refs);
 	}
 	ccfree(tensor_blocks);
 }
@@ -1749,8 +1789,10 @@ static ccv_array_t* _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(const cc
 				// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere).
 				if (a_hop_b || b_hop_a)
 				{
-					tensor_blocks[a_ref].companion_ref = b_ref + 1;
-					tensor_blocks[b_ref].companion_ref = a_ref + 1;
+					tensor_blocks[a_ref].companion_refs = ccv_array_new(sizeof(int), 1, 0);
+					ccv_array_push(tensor_blocks[a_ref].companion_refs, &b_ref);
+					tensor_blocks[b_ref].companion_refs = ccv_array_new(sizeof(int), 1, 0);
+					ccv_array_push(tensor_blocks[b_ref].companion_refs, &a_ref);
 				} else {
 					if (!hard)
 						hard = ccv_array_new(sizeof(int), 1, 0);
@@ -1957,7 +1999,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 			if (p_ref_1_is_in_or_out == 1)
 				tensor_blocks[dup_idx].dup_p_ref = p_ref_1 + 1;
 		}
-	// companion_ref
+	// companion_refs
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		// Now can assign them (The dup) as companion.
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
@@ -1970,8 +2012,10 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[assign_ref], tensor_blocks[i]);
 				// It cannot be that both i can hop to j can j can hop to i.
 				assert((a_hop_b > 0 || b_hop_a > 0));
-				tensor_blocks[i].companion_ref = assign_ref + 1;
-				tensor_blocks[assign_ref].companion_ref = i + 1;
+				tensor_blocks[i].companion_refs = ccv_array_new(sizeof(int), 1, 0);
+				ccv_array_push(tensor_blocks[i].companion_refs, &assign_ref);
+				tensor_blocks[assign_ref].companion_refs = ccv_array_new(sizeof(int), 1, 0);
+				ccv_array_push(tensor_blocks[assign_ref].companion_refs, &i);
 			}
 		}
 	// Extend the dup tensor block ref, prepare for future extensions.
@@ -2244,6 +2288,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
+	_ccv_nnc_tensor_block_primary_companion_check(tensor_blocks, tensor_block_size);
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
