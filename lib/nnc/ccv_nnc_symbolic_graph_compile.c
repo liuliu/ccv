@@ -1752,54 +1752,8 @@ static ccv_array_t* _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(const cc
 static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_array_t* const hard, ccv_nnc_symbolic_graph_t* const dup_graph, int* const dup_tensor_block_ref, int* const dup_exec_ref)
 {
 	int i, j;
-	// The visited exec nodes, these are the nodes we are going to extend.
-	uint8_t* visited = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
-	for (i = 0; i < hard->rnum; i++)
-	{
-		int ref = *(int*)ccv_array_get(hard, i);
-		int assign_ref = tensor_symbol_info[ref].assign_ref - 1;
-		assert(assign_ref >= 0);
-		while (tensor_blocks[ref].ref)
-			ref = tensor_blocks[ref].ref - 1;
-		while (tensor_blocks[assign_ref].ref)
-			assign_ref = tensor_blocks[assign_ref].ref - 1;
-		assert(tensor_blocks[ref].ref == 0);
-		assert(tensor_blocks[assign_ref].ref == 0);
-		// This covered all the cases for this block, because if it has aliases, all aliases have
-		// its relevant exec attributed back, if it is normal ref (for in-place exec), it is attributed
-		// back as well.
-		// Now loop over all the tails, and mark all its dependencies. Thus, when we expand the graph,
-		// we can only expand the relevant ones.
-#define for_block(x, val) \
-		do { \
-			if (((int32_t*)val)[0] > 0) \
-				visited[x] = 1; \
-		} while (0)
-		if (tensor_blocks[ref].tail)
-			for (j = 0; j < tensor_blocks[ref].tail->rnum; j++)
-			{
-				const int idx = *(int*)ccv_array_get(tensor_blocks[ref].tail, j);
-				visited[idx] = 1;
-				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
-				CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-			}
-		if (tensor_blocks[assign_ref].tail)
-			for (j = 0; j < tensor_blocks[assign_ref].tail->rnum; j++)
-			{
-				const int idx = *(int*)ccv_array_get(tensor_blocks[assign_ref].tail, j);
-				visited[idx] = 1;
-				ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
-				CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
-			}
-#undef for_block
-		// Verify that we did everything alright (by loop through exec_dep, we should already covered all head).
-		if (tensor_blocks[ref].head)
-			for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
-				{ assert(visited[*(int*)ccv_array_get(tensor_blocks[ref].head, j)] == 1); }
-		if (tensor_blocks[assign_ref].head)
-			for (j = 0; j < tensor_blocks[assign_ref].head->rnum; j++)
-				{ assert(visited[*(int*)ccv_array_get(tensor_blocks[assign_ref].head, j)] == 1); }
-	}
+	// The inout exec nodes, these are the nodes we are going to extend.
+	uint8_t* inout = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
 	int max_input_size = 0;
 	int max_output_size = 0;
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
@@ -1827,49 +1781,42 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_gr
 		else
 			dup_tensor_block_ref[i] = -1;
 	}
-	// Go through the original graph, make copies of the node if it is visited.
-#define INCOMING_NODE (2)
-#define OUTGOING_NODE (4)
+	// Go through the original graph, make copies of the node if it is inout.
+#define INCOMING_NODE (1)
+#define OUTGOING_NODE (2)
 #define visitor(node, idx, ...) \
 	do { \
-		if (visited[idx]) \
+		ccv_nnc_graph_exec_symbol_t exec_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, node, idx, max_inputs, max_outputs); \
+		inout[idx] |= INCOMING_NODE; /* Mark this node as incoming. */ \
+		if (!node->outgoings) \
+			break; \
+		for (i = 0; i < node->outgoings->rnum; i++) \
 		{ \
-			ccv_nnc_graph_exec_symbol_t exec_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, node, idx, max_inputs, max_outputs); \
-			visited[idx] |= INCOMING_NODE; /* Mark this node as incoming. */ \
-			if (!node->outgoings) \
-				break; \
-			for (i = 0; i < node->outgoings->rnum; i++) \
-			{ \
-				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
-				if (visited[outgoing_idx]) \
-				{ \
-					visited[outgoing_idx] |= OUTGOING_NODE; /* Mark this node as outgoing. */ \
-					ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
-					ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
-				} \
-			} \
+			const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
+			inout[outgoing_idx] |= OUTGOING_NODE; /* Mark this node as outgoing. */ \
+			ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
+			ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
 		} \
 	} while (0)
 	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
 #undef visitor
 	// Check the visitor are all marked as either incoming or outgoing.
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
-		if (visited[i] & 1)
-		{
-			assert((visited[i] & INCOMING_NODE) || (visited[i] & OUTGOING_NODE));
-			// If this is pure incoming nodes, then I need to concat this one with all original destination node
-			if (visited[i] == (INCOMING_NODE | 1))
-				for (j = 0; j < destination_size; j++)
-				{
-					ccv_nnc_graph_exec_symbol_concat(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
-						.d = destinations[j].d,
-						.graph = dup_graph,
-					}, (ccv_nnc_graph_exec_symbol_t) {
-						.d = dup_exec_ref[i],
-						.graph = dup_graph,
-					});
-				}
-		}
+	{
+		assert((inout[i] & INCOMING_NODE) || (inout[i] & OUTGOING_NODE));
+		// If this is pure incoming nodes, then I need to concat this one with all original destination node
+		if (inout[i] == INCOMING_NODE)
+			for (j = 0; j < destination_size; j++)
+			{
+				ccv_nnc_graph_exec_symbol_concat(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
+					.d = destinations[j].d,
+					.graph = dup_graph,
+				}, (ccv_nnc_graph_exec_symbol_t) {
+					.d = dup_exec_ref[i],
+					.graph = dup_graph,
+				});
+			}
+	}
 	if (dup_graph->sources)
 		ccv_array_clear(dup_graph->sources);
 	for (i = 0; i < source_size; i++)
@@ -1882,20 +1829,19 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_gr
 	if (dup_graph->destinations)
 		ccv_array_clear(dup_graph->destinations);
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
-		if (visited[i] & 1) // If this is a visited node that we expanded.
-		{
-			const int d = dup_exec_ref[i];
-			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, d);
-			// If this has no outgoing node, add to the destination.
-			if (!exec_symbol_info->outgoings || exec_symbol_info->outgoings->rnum == 0)
-				ccv_nnc_symbolic_graph_add_destination(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
-					.graph = dup_graph,
-					.d = d,
-				});
-		}
+	{
+		const int d = dup_exec_ref[i];
+		ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, d);
+		// If this has no outgoing node, add to the destination.
+		if (!exec_symbol_info->outgoings || exec_symbol_info->outgoings->rnum == 0)
+			ccv_nnc_symbolic_graph_add_destination(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
+				.graph = dup_graph,
+				.d = d,
+			});
+	}
 #undef INCOMING_NODE
 #undef OUTGOING_NODE
-	ccfree(visited);
+	ccfree(inout);
 	ccfree(max_inputs);
 	ccfree(max_outputs);
 }
