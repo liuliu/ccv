@@ -1761,18 +1761,9 @@ static ccv_array_t* _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(const cc
 	return hard;
 }
 
-static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_array_t* const hard, ccv_nnc_symbolic_graph_t* const dup_graph, int* const dup_tensor_block_ref, int* const dup_exec_ref)
 {
 	int i, j;
-	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
-	ccv_nnc_tensor_block_t* tensor_blocks = *r_tensor_blocks;
-	// blocks that cannot be simply solved with either in-place operation tensor block folding or using the same memory region.
-	// Unfortunately, I cannot do this analysis to the block folding done for sub-graphs, because we do sub-graph placement later.
-	// No need to change anything, we are good.
-	ccv_array_t* const hard = _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(symbolic_graph, tensor_symbol_info, exec_dep, tensor_blocks);
-	if (!hard)
-		return;
-	// Have conditions that cannot be satisfied with simple solution (allocate to the same memory region).
 	// The visited exec nodes, these are the nodes we are going to extend.
 	uint8_t* visited = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
 	for (i = 0; i < hard->rnum; i++)
@@ -1821,7 +1812,6 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 			for (j = 0; j < tensor_blocks[assign_ref].head->rnum; j++)
 				{ assert(visited[*(int*)ccv_array_get(tensor_blocks[assign_ref].head, j)] == 1); }
 	}
-	ccv_array_free(hard);
 	int max_input_size = 0;
 	int max_output_size = 0;
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
@@ -1831,15 +1821,12 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	}
 	ccv_nnc_tensor_symbol_t* max_inputs = max_input_size > 0 ? (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * max_input_size) : 0;
 	ccv_nnc_tensor_symbol_t* max_outputs = max_output_size > 0 ? (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * max_output_size) : 0;
-	// Doing graph expansion, first duplicate the old graph, but replace all sub graphs with noop.
-	ccv_nnc_symbolic_graph_t* dup_graph = ccv_nnc_symbolic_graph_dup(symbolic_graph, _ccv_nnc_subst_sub_graph_with_noop);
+	// Doing graph expansion
 	// It goes without saying, we must have more than one tensors / execs (otherwise I cannot use 0 as no exec ref).
 	assert(dup_graph->exec_symbol_info->rnum > 0);
 	assert(dup_graph->tensor_symbol_info->rnum > 0);
-	int* dup_exec_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->exec_symbol_info->rnum);
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		dup_exec_ref[i] = -1;
-	int* dup_tensor_block_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// If there is a assign_ref, that means I don't need to dup the tensor.
@@ -1918,6 +1905,31 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 					.d = d,
 				});
 		}
+#undef INCOMING_NODE
+#undef OUTGOING_NODE
+	ccfree(visited);
+	ccfree(max_inputs);
+	ccfree(max_outputs);
+}
+
+static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+{
+	int i;
+	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
+	ccv_nnc_tensor_block_t* tensor_blocks = *r_tensor_blocks;
+	// blocks that cannot be simply solved with either in-place operation tensor block folding or using the same memory region.
+	// Unfortunately, I cannot do this analysis to the block folding done for sub-graphs, because we do sub-graph placement later.
+	// No need to change anything, we are good.
+	ccv_array_t* const hard = _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(symbolic_graph, tensor_symbol_info, exec_dep, tensor_blocks);
+	if (!hard)
+		return;
+	// Have conditions that cannot be satisfied with simple solution (allocate to the same memory region).
+	// Doing graph expansion, first duplicate the old graph, but replace all sub graphs with noop.
+	ccv_nnc_symbolic_graph_t* dup_graph = ccv_nnc_symbolic_graph_dup(symbolic_graph, _ccv_nnc_subst_sub_graph_with_noop);
+	int* dup_exec_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->exec_symbol_info->rnum);
+	int* dup_tensor_block_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
+	_ccv_nnc_exec_dep_and_tensor_blocks_unroll(symbolic_graph, exec_symbol_info, tensor_symbol_info, sources, source_size, destinations, destination_size, exec_dep, tensor_blocks, hard, dup_graph, dup_tensor_block_ref, dup_exec_ref);
+	ccv_array_free(hard);
 	ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * dup_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_tensor_symbol_info, dup_exec_symbol_info);
@@ -1926,11 +1938,6 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	// and the tensor blocks, prepare for the new.
 	_ccv_nnc_tensor_blocks_free(tensor_blocks, symbolic_graph->tensor_symbol_info->rnum);
 	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, dup_exec_symbol_info, dup_tensor_symbol_info, &exec_dep, &tensor_blocks);
-#undef INCOMING_NODE
-#undef OUTGOING_NODE
-	ccfree(visited);
-	ccfree(max_inputs);
-	ccfree(max_outputs);
 	ccfree(dup_exec_symbol_info);
 	ccfree(dup_tensor_symbol_info);
 	// Assign out dup_p_ref, which will be used to extended the anonymous block life-time.
