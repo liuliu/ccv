@@ -62,7 +62,8 @@ static void _ccv_recursively_mark_as_anchored_for_multiview_wrap(ccv_nnc_tensor_
 			wrap_anchors[i] |= 1;
 			break;
 		}
-	for (i = 0; i < ((mv->kind == CCV_NNC_MULTIVIEW_K12) ? 3 : 2); i++)
+	const int count = mv->kind + mv->repeat;
+	for (i = 0; i < count; i++)
 		if (!mv->tv && CCV_IS_TENSOR_MULTIVIEW(mv->data[i].ptr))
 			_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)(mv->data[i].ptr), wrap_anchors, wrap_size);
 }
@@ -418,28 +419,24 @@ static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_dot_sort_by_ptr, ccv_nnc_tensor_dot_t
 static int _ccv_nnc_graph_dot_tensor_multiview_count(const ccv_nnc_tensor_multiview_t* const mv)
 {
 	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
-	const int kindz[] = {
-		1, 2, 2, 3
-	};
+	const int count = mv->kind + mv->repeat;
 	if (mv->tv)
-		return kindz[mv->kind];
+		return count;
 	int i, c = 0;
-	for (i = 0; i < kindz[mv->kind]; i++)
+	for (i = 0; i < count; i++)
 		c += _ccv_nnc_graph_dot_tensor_multiview_count(mv->data[i].ptr);
 	return c;
 }
 
 static void _ccv_nnc_graph_dot_tensor_multiview_tensor_dots(const ccv_nnc_tensor_multiview_t* const mv, ccv_nnc_tensor_dot_t* const tensor_dots, int* tensor_index)
 {
-	const int kindz[] = {
-		1, 2, 2, 3
-	};
+	const int count = mv->kind + mv->repeat;
 	int i;
 	if (mv->tv)
-		for (i = 0; i < kindz[mv->kind]; i++)
+		for (i = 0; i < count; i++)
 		{
 			tensor_dots[*tensor_index].name = *tensor_index;
-			if (mv->kind == CCV_NNC_MULTIVIEW_K01)
+			if (CCV_NNC_MULTIVIEW_K01(mv))
 			{
 				tensor_dots[*tensor_index].tensor_ref = (uintptr_t)mv->tv;
 				tensor_dots[*tensor_index].start_ptr =  (uintptr_t)mv->tv->data.u8;
@@ -453,7 +450,7 @@ static void _ccv_nnc_graph_dot_tensor_multiview_tensor_dots(const ccv_nnc_tensor
 			++(*tensor_index);
 		}
 	else
-		for (i = 0; i < kindz[mv->kind]; i++)
+		for (i = 0; i < count; i++)
 			_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, tensor_dots, tensor_index);
 }
 
@@ -583,41 +580,39 @@ static void _ccv_nnc_graph_tensor_dot_recovery_free(const ccv_nnc_tensor_dot_rec
 
 static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multiview_t* const mv, const ccv_nnc_tensor_dot_recovery_t recovery, const int depth, int* tensor_index, FILE* out)
 {
-	const int kindz[] = {
-		1, 2, 2, 3
-	};
+	const int count = mv->kind + mv->repeat;
 	int i, j;
 	fputs("|{", out);
 	if (mv->tv)
 	{
-		for (i = 0; i < kindz[mv->kind]; i++)
+		for (i = 0; i < count; i++)
 		{
 			fprintf(out, "{%d", i);
-			if (mv->kind == CCV_NNC_MULTIVIEW_K01 || mv->kind == CCV_NNC_MULTIVIEW_K02 || ((mv->kind == CCV_NNC_MULTIVIEW_K11 || mv->kind == CCV_NNC_MULTIVIEW_K12) && i > 0))
+			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
 				fputc('*', out); // Denotes that we loop on this.
 			const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[*tensor_index];
 			fprintf(out, "|zone%d", recovery.rename_zone[tensor_dot->zone]);
 			for (j = 0; j < depth; j++)
 				fputc('\'', out);
-			uintptr_t aptr = (uintptr_t)(mv->kind == CCV_NNC_MULTIVIEW_K01 ? mv->tv->data.u8 : mv->data[i].ptr);
+			uintptr_t aptr = (uintptr_t)(CCV_NNC_MULTIVIEW_K01(mv) ? mv->tv->data.u8 : mv->data[i].ptr);
 			// For the last one, we don't extend to full ainc.
 			size_t dim_size = ccv_nnc_dimension_count(mv->tv->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->tv->type);
 			// Print out the range as well.
 			fprintf(out, "|{%#010x|%#010x}", (uint32_t)aptr, (uint32_t)(aptr + dim_size - 1));
 			++(*tensor_index);
-			if (i == kindz[mv->kind] - 1)
+			if (i == count - 1)
 				fputc('}', out);
 			else
 				fputs("}|", out);
 		}
 	} else {
-		for (i = 0; i < kindz[mv->kind]; i++)
+		for (i = 0; i < count; i++)
 		{
 			fprintf(out, "{%d", i);
-			if (mv->kind == CCV_NNC_MULTIVIEW_K01 || mv->kind == CCV_NNC_MULTIVIEW_K02 || ((mv->kind == CCV_NNC_MULTIVIEW_K11 || mv->kind == CCV_NNC_MULTIVIEW_K12) && i > 0))
+			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
 				fputc('*', out); // Denotes that we loop on this.
 			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, recovery, depth, tensor_index, out);
-			if (i == kindz[mv->kind] - 1)
+			if (i == count - 1)
 				fputc('}', out);
 			else
 				fputs("}|", out);

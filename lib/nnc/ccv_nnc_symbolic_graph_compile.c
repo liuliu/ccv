@@ -529,10 +529,8 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 		if (mv->tv)
 			mv->tv = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->tv);
 		else {
-			const int kindz[] = {
-				1, 2, 2, 3
-			};
-			for (i = 0; i < kindz[mv->kind]; i++)
+			const int count = mv->kind + mv->repeat;
+			for (i = 0; i < count; i++)
 				mv->data[i].ptr = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->data[i].ptr);
 		}
 		// No need to recursively do parent pointer, otherwise we are in deep rewire.
@@ -609,7 +607,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 			ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)tv_pos, (ccv_numeric_data_t[]){
 				{ data_ptr },
 				{ dup_data_ptr },
-			}, CCV_NNC_MULTIVIEW_K02, prep->graph, mv);
+			}, CCV_NNC_MULTIVIEW_K0N, 2, prep->graph, mv);
 			*ptr_ref = 0;
 			*pos_ref = mv_pos;
 		} else {
@@ -639,20 +637,20 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, prev_mv_pos);
 				ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)tv_pos, (ccv_numeric_data_t[]){
 					{ data_ptr },
-				}, CCV_NNC_MULTIVIEW_K01, prep->graph, mv);
+				}, CCV_NNC_MULTIVIEW_K0N, 1, prep->graph, mv);
 			}
 			const int thin_mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
 			const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
 			ccv_nnc_tensor_multiview_t* const thin_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, thin_mv_pos);
 			ccv_nnc_tensor_multiview(TENSOR_PLACEHOLDER, (ccv_numeric_data_t[]){
 				{ 0 },
-			}, CCV_NNC_MULTIVIEW_K01, prep->graph, thin_mv);
+			}, CCV_NNC_MULTIVIEW_K0N, 1, prep->graph, thin_mv);
 			ccv_nnc_tensor_multiview_t* const prev_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, prev_mv_pos);
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, mv_pos);
 			ccv_nnc_tensor_multiview(0, (ccv_numeric_data_t[]){
 				{ .ptr = thin_mv },
 				{ .ptr = prev_mv },
-			}, CCV_NNC_MULTIVIEW_K11, prep->graph, mv);
+			}, CCV_NNC_MULTIVIEW_K1N, 1, prep->graph, mv);
 			thin_mv->p = (void*)(intptr_t)mv_pos;
 			prev_mv->p = (void*)(intptr_t)mv_pos;
 			mv->data[0].ptr = (void*)(intptr_t)thin_mv_pos;
@@ -695,7 +693,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 		ccv_nnc_tensor_multiview(0, (ccv_numeric_data_t[]){
 			{ .ptr = tv },
 			{ .ptr = dup_tv },
-		}, CCV_NNC_MULTIVIEW_K02, prep->graph, mv);
+		}, CCV_NNC_MULTIVIEW_K0N, 2, prep->graph, mv);
 		tv->p = (void*)(intptr_t)mv_pos;
 		dup_tv->p = (void*)(intptr_t)mv_pos;
 		mv->data[0].ptr = (void*)(intptr_t)pos;
@@ -712,7 +710,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 		ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)tv_pos, (ccv_numeric_data_t[]){
 			{ data_ptr },
 			{ dup_data_ptr },
-		}, CCV_NNC_MULTIVIEW_K02, prep->graph, mv);
+		}, CCV_NNC_MULTIVIEW_K0N, 2, prep->graph, mv);
 		*ptr_ref = 0;
 		*pos_ref = mv_pos;
 	}
@@ -779,16 +777,9 @@ static void _ccv_nnc_tensor_multiview_full_pos(ccv_nnc_tensor_multiview_t* const
 				mv->tv = tensor, mv->data[0] = tensor->data;
 		}
 	} else {
-		switch (mv->kind)
-		{
-			case CCV_NNC_MULTIVIEW_K12:
-				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[2].ptr, tensor);
-			case CCV_NNC_MULTIVIEW_K11:
-			case CCV_NNC_MULTIVIEW_K02:
-				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[1].ptr, tensor);
-			case CCV_NNC_MULTIVIEW_K01:
-				_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[0].ptr, tensor);
-		}
+		int i;
+		for (i = 0; i < mv->kind + mv->repeat; i++)
+			_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, tensor);
 	}
 }
 
@@ -803,16 +794,9 @@ static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const t
 			mv->data[0] = mv->tv->data;
 		}
 	} else {
-		switch (mv->kind)
-		{
-			case CCV_NNC_MULTIVIEW_K12:
-				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[2].ptr);
-			case CCV_NNC_MULTIVIEW_K11:
-			case CCV_NNC_MULTIVIEW_K02:
-				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[1].ptr);
-			case CCV_NNC_MULTIVIEW_K01:
-				_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[0].ptr);
-		}
+		int i;
+		for (i = 0; i < mv->kind + mv->repeat; i++)
+			_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[i].ptr);
 	}
 }
 
@@ -851,16 +835,16 @@ static int _ccv_nnc_tensor_multiview_preserve_gen(ccv_array_t* const tensor_meta
 	ccv_nnc_tensor_multiview_t* const prev_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, prev_mv_pos);
 	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*)(intptr_t)tv_pos, (ccv_numeric_data_t[]){
 		tv->data,
-	}, CCV_NNC_MULTIVIEW_K01, graph_prep->graph, prev_mv);
+	}, CCV_NNC_MULTIVIEW_K0N, 1, graph_prep->graph, prev_mv);
 	ccv_nnc_tensor_multiview_t* const thin_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, thin_mv_pos);
 	ccv_nnc_tensor_multiview(TENSOR_PLACEHOLDER, (ccv_numeric_data_t[]){
 		{ 0 },
-	}, CCV_NNC_MULTIVIEW_K01, graph_prep->graph, thin_mv);
+	}, CCV_NNC_MULTIVIEW_K0N, 1, graph_prep->graph, thin_mv);
 	ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, mv_pos);
 	ccv_nnc_tensor_multiview(0, (ccv_numeric_data_t[]){
 		{ .ptr = thin_mv },
 		{ .ptr = prev_mv },
-	}, CCV_NNC_MULTIVIEW_K11, graph_prep->graph, mv);
+	}, CCV_NNC_MULTIVIEW_K1N, 1, graph_prep->graph, mv);
 	thin_mv->p = (void*)(intptr_t)mv_pos;
 	prev_mv->p = (void*)(intptr_t)mv_pos;
 	mv->data[0].ptr = (void*)(intptr_t)thin_mv_pos;

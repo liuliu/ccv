@@ -410,7 +410,8 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	int type; // This type is CCV_NNC_TENSOR_MULTI_VIEW
 	// kind specified how the multi-version tensors stored.
 	// See the comment on the follow up enums.
-	int kind;
+	uint8_t kind;
+	uint16_t repeat;
 	intptr_t anchor; // on which graph this multi-view tensor is wrapped. This helps to determine on which level the multi-view tensor should be unwrapped.
 	// If this tensor points to a tensor view, data.u8 - offset is the real pointer start.
 	off_t offset;
@@ -424,13 +425,12 @@ typedef struct ccv_nnc_tensor_multiview_s {
 } ccv_nnc_tensor_multiview_t;
 
 enum {
-	CCV_NNC_MULTIVIEW_K01 = 0, // All of them are the same.
-	CCV_NNC_MULTIVIEW_K02 = 1, // The first one is the first, the second one is the second, the third is the first one again (0101010101...)
-	CCV_NNC_MULTIVIEW_K11 = 2, // The first one is the first, the second one is the rest. (0111111...)
-	CCV_NNC_MULTIVIEW_K12 = 3, // The first one is the first, the second one is the second, the third one is the third, and 4th is the second again. (012121212...)
+	CCV_NNC_MULTIVIEW_K0N = 0, // All of them are repeated.
+	CCV_NNC_MULTIVIEW_K1N = 1, // The first one is the first, the second one starts to repeat. (0111111...)
 };
+#define CCV_NNC_MULTIVIEW_K01(x) ((x)->kind == CCV_NNC_MULTIVIEW_K0N && (x)->repeat == 1)
 // Setup a tensor multiview with a given set of tensors.
-void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const int kind, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
 // Since tensor_multiview will never be allocated with *_new method, the *_free method simply frees anything that is dynamically allocated afterwards (such as the reference items).
 void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview);
 // Setup a tensor as a reference to a tensor multiview, thus, when tensor multiview's tu (current tensor) updates, the tensor reference's data.u8 will get update as well (point to the same memory region as the tu).
