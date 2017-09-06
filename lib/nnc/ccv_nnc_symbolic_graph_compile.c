@@ -1749,9 +1749,9 @@ static ccv_array_t* _ccv_nnc_exec_dep_and_tensor_blocks_find_hard_cases(const cc
 	return hard;
 }
 
-static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_array_t* const hard, ccv_nnc_symbolic_graph_t* const dup_graph, int* const dup_tensor_block_ref, int* const dup_exec_ref)
+static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n_times(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const int n_times, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_array_t* const hard, ccv_nnc_symbolic_graph_t* const dup_graph, int* const r_dup_tensor_block_ref, int* const r_dup_exec_ref)
 {
-	int i, j;
+	int i, j, n;
 	// The inout exec nodes, these are the nodes we are going to extend.
 	uint8_t* inout = (uint8_t*)cccalloc(symbolic_graph->exec_symbol_info->rnum, sizeof(uint8_t));
 	int max_input_size = 0;
@@ -1767,77 +1767,83 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll(const ccv_nnc_symbolic_gr
 	// It goes without saying, we must have more than one tensors / execs (otherwise I cannot use 0 as no exec ref).
 	assert(dup_graph->exec_symbol_info->rnum > 0);
 	assert(dup_graph->tensor_symbol_info->rnum > 0);
-	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
-		dup_exec_ref[i] = -1;
-	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
-	{
-		// If there is a assign_ref, that means I don't need to dup the tensor.
-		if (tensor_symbol_info[i].assign_ref)
-			dup_tensor_block_ref[i] = tensor_symbol_info[i].assign_ref - 1;
-		else if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_READ_WRITE(tensor_blocks[i]) == READ_ONLY)
-		// If this is a read-only tensor block, no need to duplicate because the value never changes
-		// (note we handled assign_ref first), therefore, no need to generate duplicate.
-			dup_tensor_block_ref[i] = i;
-		else
-			dup_tensor_block_ref[i] = -1;
-	}
-	// Go through the original graph, make copies of the node if it is inout.
+	const ccv_nnc_graph_exec_symbol_t* const sources = ccv_nnc_symbolic_graph_sources(symbolic_graph);
+	const int source_size = ccv_nnc_symbolic_graph_source_size(symbolic_graph);
+	const ccv_nnc_graph_exec_symbol_t* const destinations = ccv_nnc_symbolic_graph_destinations(symbolic_graph);
+	const int destination_size = ccv_nnc_symbolic_graph_destination_size(symbolic_graph);
 #define INCOMING_NODE (1)
 #define OUTGOING_NODE (2)
-#define visitor(node, idx, ...) \
-	do { \
-		ccv_nnc_graph_exec_symbol_t exec_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, node, idx, max_inputs, max_outputs); \
-		inout[idx] |= INCOMING_NODE; /* Mark this node as incoming. */ \
-		if (!node->outgoings) \
-			break; \
-		for (i = 0; i < node->outgoings->rnum; i++) \
-		{ \
-			const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
-			inout[outgoing_idx] |= OUTGOING_NODE; /* Mark this node as outgoing. */ \
-			ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
-			ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
-		} \
-	} while (0)
-	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
-#undef visitor
-	// Check the visitor are all marked as either incoming or outgoing.
-	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+	// Unroll the graph n times.
+	for (n = 0; n < n_times; n++)
 	{
-		assert((inout[i] & INCOMING_NODE) || (inout[i] & OUTGOING_NODE));
-		// If this is pure incoming nodes, then I need to concat this one with all original destination node
-		if (inout[i] == INCOMING_NODE)
-			for (j = 0; j < destination_size; j++)
+		int* const dup_exec_ref = r_dup_exec_ref + symbolic_graph->exec_symbol_info->rnum * n;
+		const int* const prev_dup_tensor_block_ref = n > 0 ? r_dup_tensor_block_ref + symbolic_graph->tensor_symbol_info->rnum * (n - 1) : 0;
+		int* const dup_tensor_block_ref = r_dup_tensor_block_ref + symbolic_graph->tensor_symbol_info->rnum * n;
+		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+			dup_exec_ref[i] = -1;
+		for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		{
+			// If there is a assign_ref, that means I don't need to dup the tensor.
+			if (tensor_symbol_info[i].assign_ref)
 			{
-				ccv_nnc_graph_exec_symbol_concat(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
-					.d = destinations[j].d,
+				const int assign_ref = tensor_symbol_info[i].assign_ref - 1;
+				dup_tensor_block_ref[i] = prev_dup_tensor_block_ref ? prev_dup_tensor_block_ref[assign_ref] : assign_ref;
+			} else if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_READ_WRITE(tensor_blocks[i]) == READ_ONLY)
+			// If this is a read-only tensor block, no need to duplicate because the value never changes
+			// (note we handled assign_ref first), therefore, no need to generate duplicate.
+				dup_tensor_block_ref[i] = i;
+			else
+				dup_tensor_block_ref[i] = -1;
+		}
+		// Go through the original graph, make copies of the node if it is inout.
+#define visitor(node, idx, ...) \
+		do { \
+			ccv_nnc_graph_exec_symbol_t exec_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, node, idx, max_inputs, max_outputs); \
+			inout[idx] |= INCOMING_NODE; /* Mark this node as incoming. */ \
+			if (!node->outgoings) \
+				break; \
+			for (i = 0; i < node->outgoings->rnum; i++) \
+			{ \
+				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i); \
+				inout[outgoing_idx] |= OUTGOING_NODE; /* Mark this node as outgoing. */ \
+				ccv_nnc_graph_exec_symbol_t outgoing_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, exec_symbol_info + outgoing_idx, outgoing_idx, max_inputs, max_outputs); \
+				ccv_nnc_graph_exec_symbol_concat(dup_graph, exec_symbol, outgoing_symbol); \
+			} \
+		} while (0)
+		// Check the visitor are all marked as either incoming or outgoing.
+		CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
+#undef visitor
+		const ccv_nnc_graph_exec_symbol_t* const dup_destinations = ccv_nnc_symbolic_graph_destinations(dup_graph);
+		const int dup_destination_size = ccv_nnc_symbolic_graph_destination_size(dup_graph);
+		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+		{
+			assert((inout[i] & INCOMING_NODE) || (inout[i] & OUTGOING_NODE));
+			// If this is pure incoming nodes, then I need to concat this one with all original destination node
+			if (inout[i] == INCOMING_NODE)
+				for (j = 0; j < dup_destination_size; j++)
+				{
+					ccv_nnc_graph_exec_symbol_concat(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
+						.d = dup_destinations[j].d,
+						.graph = dup_graph,
+					}, (ccv_nnc_graph_exec_symbol_t) {
+						.d = dup_exec_ref[i],
+						.graph = dup_graph,
+					});
+				}
+		}
+		if (dup_graph->destinations)
+			ccv_array_clear(dup_graph->destinations);
+		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
+		{
+			const int d = dup_exec_ref[i];
+			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, d);
+			// If this has no outgoing node, add to the destination.
+			if (!exec_symbol_info->outgoings || exec_symbol_info->outgoings->rnum == 0)
+				ccv_nnc_symbolic_graph_add_destination(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
 					.graph = dup_graph,
-				}, (ccv_nnc_graph_exec_symbol_t) {
-					.d = dup_exec_ref[i],
-					.graph = dup_graph,
+					.d = d,
 				});
-			}
-	}
-	if (dup_graph->sources)
-		ccv_array_clear(dup_graph->sources);
-	for (i = 0; i < source_size; i++)
-	{
-		ccv_nnc_symbolic_graph_add_source(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
-			.graph = dup_graph,
-			.d = sources[i].d,
-		});
-	}
-	if (dup_graph->destinations)
-		ccv_array_clear(dup_graph->destinations);
-	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
-	{
-		const int d = dup_exec_ref[i];
-		ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, d);
-		// If this has no outgoing node, add to the destination.
-		if (!exec_symbol_info->outgoings || exec_symbol_info->outgoings->rnum == 0)
-			ccv_nnc_symbolic_graph_add_destination(dup_graph, (ccv_nnc_graph_exec_symbol_t) {
-				.graph = dup_graph,
-				.d = d,
-			});
+		}
 	}
 #undef INCOMING_NODE
 #undef OUTGOING_NODE
@@ -1862,7 +1868,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	ccv_nnc_symbolic_graph_t* dup_graph = ccv_nnc_symbolic_graph_dup(symbolic_graph, _ccv_nnc_subst_sub_graph_with_noop);
 	int* dup_exec_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->exec_symbol_info->rnum);
 	int* dup_tensor_block_ref = (int*)ccmalloc(sizeof(int) * symbolic_graph->tensor_symbol_info->rnum);
-	_ccv_nnc_exec_dep_and_tensor_blocks_unroll(symbolic_graph, exec_symbol_info, tensor_symbol_info, sources, source_size, destinations, destination_size, exec_dep, tensor_blocks, hard, dup_graph, dup_tensor_block_ref, dup_exec_ref);
+	_ccv_nnc_exec_dep_and_tensor_blocks_unroll_n_times(symbolic_graph, 1, exec_symbol_info, tensor_symbol_info, exec_dep, tensor_blocks, hard, dup_graph, dup_tensor_block_ref, dup_exec_ref);
 	ccv_array_free(hard);
 	ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * dup_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
