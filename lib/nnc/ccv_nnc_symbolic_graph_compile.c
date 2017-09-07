@@ -1893,7 +1893,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[assign_ref]);
 				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[assign_ref], tensor_blocks[i]);
 				// It cannot be that both i can hop to j can j can hop to i.
-				assert((a_hop_b > 0 || b_hop_a > 0));
+				assert(!(a_hop_b > 0 && b_hop_a > 0));
 				tensor_blocks[i].companion_ref = assign_ref + 1;
 				tensor_blocks[assign_ref].companion_ref = i + 1;
 			}
