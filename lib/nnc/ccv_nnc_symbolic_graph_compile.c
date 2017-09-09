@@ -2103,7 +2103,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + (nth_unroll + 1) * anonymous_buffer_size)); \
 				memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * (nth_unroll + 1) * anonymous_buffer_size); \
 				if (dup_tensor_block_ref) \
-					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * nth_unroll * (tensor_block_size + (nth_unroll + 1) * anonymous_buffer_size)); \
+					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * nth_unroll * (tensor_block_size + anonymous_buffer_size)); \
 				for (i = 0; i < s_alloc_prep->buffer_size; i++) \
 					if (!s_alloc_prep->buffers[i].p_refs[0]) \
 					{ \
@@ -2150,10 +2150,10 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 								dup_tensor_block_ref[(tensor_block_size - 1) * nth_unroll + k] = tensor_block_size - 1; \
 							} \
 						} else { \
+							const int prev_tensor_block_idx = tensor_block_size - 1; \
 							for (k = 0; k < nth_unroll; k++) \
 							{ \
-								dup_tensor_block_ref[(tensor_block_size - 1) * nth_unroll + k] = tensor_block_size; \
-								dup_tensor_block_ref[tensor_block_size * nth_unroll + k] = -1; \
+								dup_tensor_block_ref[prev_tensor_block_idx * nth_unroll + k] = tensor_block_size; \
 								TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]); \
 								TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i])); \
 								tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type; \
