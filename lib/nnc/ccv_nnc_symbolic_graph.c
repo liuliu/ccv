@@ -260,11 +260,12 @@ static void _ccv_nnc_graph_exec_add_output_if_needed(ccv_nnc_graph_exec_symbol_i
 	++exec_symbol_info->output_size;
 }
 
-static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int map_use)
+static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int map_use)
 {
 	assert(graph && symbol.graph);
 	assert(symbol.graph != graph);
 	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(symbol.graph->tensor_symbol_info, symbol.d);
+	assert(!symbol_info->alias_ref);
 	// Find if the symbol is in the sub-graph.
 	const ccv_nnc_symbolic_graph_t* curr_graph = symbol.graph;
 	assert(symbol.d >= 0 && symbol.d < curr_graph->tensor_symbol_info->rnum);
@@ -392,6 +393,26 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 	}
 	ccv_array_free(trace);
 	return curr_symbol.d;
+}
+
+static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int map_use)
+{
+	assert(graph && symbol.graph);
+	assert(symbol.graph != graph);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(symbol.graph->tensor_symbol_info, symbol.d);
+	if (!symbol_info->alias_ref)
+		return _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(graph, symbol, map_use);
+	const int d = symbol_info->alias_ref - 1;
+	assert(d >= 0 && d < symbol.graph->tensor_symbol_info->rnum);
+	const int map_d = _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(graph, (ccv_nnc_tensor_symbol_t){
+		.graph = symbol.graph,
+		.d = d
+	}, map_use);
+	const ccv_nnc_tensor_symbol_t alias = ccv_nnc_tensor_symbol_alias_new(graph, (ccv_nnc_tensor_symbol_t){
+		.graph = graph,
+		.d = map_d
+	}, symbol_info->ofs, symbol_info->inc, symbol_info->info, symbol_info->name);
+	return alias.d;
 }
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)

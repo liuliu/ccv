@@ -747,7 +747,7 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 
 static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_nnc_graph_t* const graph, const int flags, const int depth, FILE* out, int* tensor_index, int* exec_index)
 {
-	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\n", *exec_index);
+	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];", *exec_index, *exec_index);
 	// Output this node info within this subgraph.
 	_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, graph, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
 	++(*exec_index);
