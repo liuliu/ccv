@@ -131,9 +131,14 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 			int32_t c; /* number of incoming edges. */ \
 		} ccv_nnc_incoming_t; \
 		/* Statistics of how many incoming edges for all nodes of a graph. */ \
-		ccv_nnc_incoming_t* _incomings_ = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
-		memset(_incomings_, 0, sizeof(ccv_nnc_incoming_t) * (node_size)); \
+		int _heap_mem_ = (node_size > 1024); \
 		int _i_, _j_; \
+		ccv_nnc_incoming_t* _incomings_; \
+		if (_heap_mem_) \
+			_incomings_ = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
+		else \
+			_incomings_ = (ccv_nnc_incoming_t*)alloca(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
+		memset(_incomings_, 0, sizeof(ccv_nnc_incoming_t) * (node_size)); \
 		for (_i_ = 0; _i_ < (node_size); _i_++) \
 		{ \
 			if ((nodes)[_i_].outgoings) \
@@ -201,7 +206,8 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 			/* fetch the info for destination node and exec current node. */ \
 			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_, (_incomings_[(destinations)[_i_].d].d)); \
 		} \
-		ccfree(_incomings_); \
+		if (_heap_mem_) \
+			ccfree(_incomings_); \
 	} while (0);
 
 typedef struct {
