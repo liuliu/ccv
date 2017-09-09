@@ -119,7 +119,8 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 		m[x] = (wd)[x] - n[x] - (i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x] - ccv_min(ad[x], i[x] * hint.stride.dim[x] - hint.border.begin[x] + (wd)[x])); \
 	} while (0)
 
-// Defines common graph visit macro
+// Defines common graph visit macros
+
 // The visitor function / macro takes parameter visitor(node_type* node, int index, int level, int term);
 #define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
 	do { \
@@ -201,6 +202,47 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_, (_incomings_[(destinations)[_i_].d].d)); \
 		} \
 		ccfree(_incomings_); \
-	} while (0)
+	} while (0);
+
+typedef struct {
+	int size;
+	struct {
+		int index;
+		int level;
+		int term;
+	} node[1];
+} ccv_nnc_graph_visit_t;
+
+static inline void ccv_nnc_graph_visit_free(ccv_nnc_graph_visit_t* graph_visit)
+{
+	ccfree(graph_visit);
+}
+
+#define CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, _node_, _index_, _level_, _term_, ...) { \
+	int _i_; \
+	for (_i_ = 0; _i_ < (graph_visit)->size; _i_++) { \
+		const int _index_ __attribute__((unused)) = (graph_visit)->node[_i_].index; \
+		const int _level_ __attribute__((unused)) = (graph_visit)->node[_i_].level; \
+		const int _term_ __attribute__((unused)) = (graph_visit)->node[_i_].term; \
+		typeof ((nodes)) const _node_ __attribute__((unused)) = (nodes) + _index_; \
+
+#define ccv_nnc_graph_visit_for(graph_visit, nodes, ...) \
+	CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, ##__VA_ARGS__, _node_unused_, _index_unused_, _level_unused_, _term_unused_)
+
+#define ccv_nnc_graph_visit_endfor } }
+
+#define CCV_NNC_GRAPH_VISIT_NEW_VISITOR1(_, _index_, _level_, _term_) \
+	_visit_->node[_visit_->size].index = (_index_); \
+	_visit_->node[_visit_->size].level = (_level_); \
+	_visit_->node[_visit_->size].term = (_term_); \
+	++_visit_->size;
+
+#define ccv_nnc_graph_visit_new(_graph, nodes, node_size, sources, source_size, destinations, destination_size) ({\
+	ccv_nnc_graph_visit_t* _visit_ = (ccv_nnc_graph_visit_t*)ccmalloc(sizeof(ccv_nnc_graph_visit_t) + sizeof(_visit_->node[0]) * ((node_size) - 1)); \
+	_visit_->size = 0; \
+	CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, CCV_NNC_GRAPH_VISIT_NEW_VISITOR1); \
+	assert(_visit_->size <= (node_size)); \
+	_visit_; \
+})
 
 #endif

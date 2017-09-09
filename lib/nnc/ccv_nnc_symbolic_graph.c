@@ -1038,7 +1038,7 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 	ccfree(graph);
 }
 
-void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
+void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info)
 {
 	memcpy(tensor_symbol_info, ccv_array_get(symbolic_graph->tensor_symbol_info, 0), sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	memcpy(exec_symbol_info, ccv_array_get(symbolic_graph->exec_symbol_info, 0), sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
@@ -1070,21 +1070,18 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 
 	// Materialize auto tensors. This need to go with the topological order.
 	// TODO: Need to proper handle sub-graphs (thus, run sub-graph to figure out the tensor properties).
-#define visitor(node, ...) \
-	do { \
-		if (node->input_size > 0 && node->output_size > 0) \
-		{ \
-			for (i = 0; i < node->input_size; i++) \
-				input_params[i] = node->inputs[i] >= 0 ? tensor_symbol_info[node->inputs[i]].info : ccv_nnc_tensor_auto; \
-			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size); \
-			for (i = 0; i < node->output_size; i++) \
-				/* Only assign the output parameters if the symbol itself is auto. */ \
-				if (node->outputs[i] >= 0 && ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info)) \
-					tensor_symbol_info[node->outputs[i]].info = output_params[i]; \
-		} \
-	} while (0)
-	CCV_NNC_GRAPH_VISIT(symbolic_graph, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, visitor);
-#undef visitor
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node) {
+		if (node->input_size > 0 && node->output_size > 0)
+		{
+			for (i = 0; i < node->input_size; i++)
+				input_params[i] = node->inputs[i] >= 0 ? tensor_symbol_info[node->inputs[i]].info : ccv_nnc_tensor_auto;
+			ccv_nnc_hint_tensor_auto(node->cmd, input_params, node->input_size, node->hint, output_params, node->output_size);
+			for (i = 0; i < node->output_size; i++)
+				/* Only assign the output parameters if the symbol itself is auto. */
+				if (node->outputs[i] >= 0 && ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info))
+					tensor_symbol_info[node->outputs[i]].info = output_params[i];
+		}
+	} ccv_nnc_graph_visit_endfor
 	if (input_params)
 		ccfree(input_params);
 	if (output_params)
