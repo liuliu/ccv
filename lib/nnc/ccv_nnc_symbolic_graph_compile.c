@@ -2049,8 +2049,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						if (memcmp(tensor_symbol_info[p_ref_1].info.dim, tensor_symbol_info[p_ref_0].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 						{
 							folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, p_ref_1, p_ref_0);
-							if (dup_tensor_block_ref) /* Fold its duplicates as well. */
-								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1], dup_tensor_block_ref[p_ref_0]);
+							for (j = 0; j < nth_unroll; j++) /* Fold its duplicates as well. */
+								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1 * nth_unroll + j], dup_tensor_block_ref[p_ref_0 * nth_unroll + j]);
 						}
 					}
 					/* Only proceed if it is folded (thus, the input / output tensor can be connected, reuse is not a problem
@@ -2070,8 +2070,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */
 						assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[p_ref_0]));
 						tensor_blocks[p_ref_0].size = ccv_max(s_alloc_prep->buffers[i].size, tensor_blocks[p_ref_0].size);
-						if (dup_tensor_block_ref) /* Change the size of its duplicates as well. */
-							tensor_blocks[dup_tensor_block_ref[p_ref_0]].size = tensor_blocks[p_ref_0].size;
+						for (j = 0; j < nth_unroll; j++) /* Change the size of its duplicates as well. */
+							tensor_blocks[dup_tensor_block_ref[p_ref_0 * nth_unroll + j]].size = tensor_blocks[p_ref_0].size;
 					} else {
 						s_alloc_prep->buffers[i].p_refs[0] = s_alloc_prep->buffers[i].p_refs[1] = 0;
 						++anonymous_buffer_size;
