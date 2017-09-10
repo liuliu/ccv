@@ -106,6 +106,7 @@ TEST_CASE("run vgg-d graph with nnc")
 	ccv_nnc_graph_exec_t source, dest;
 	ccv_array_t* tensors = ccv_array_new(sizeof(ccv_nnc_tensor_t*), 1, 0);
 	ccv_nnc_graph_t* graph = ccv_nnc_simple_graph(convnet, (ccv_nnc_tensor_t*)sliced, c, &source, &dest, tensors);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_run(graph, 0, &source, 1, &dest, 1);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, 1000, 1e-4, "output should be the same from convnet and from the graph");
 	ccv_nnc_tensor_free(c);

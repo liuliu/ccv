@@ -104,7 +104,9 @@ TEST_CASE("run vgg-d graph from its symbolic representation")
 	ccv_nnc_graph_t* run_graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	SYMBOLIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_symbolic_graph_compile(graph, TENSOR_BIND_MAP(KV(input_symbol, (ccv_nnc_tensor_t*)sliced), KV(output_symbol, c)), GRAPH_EXEC_SYMBOL_LIST(source_symbol), GRAPH_EXEC_SYMBOL_LIST(dest_symbol), &run_graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(run_graph, CCV_NNC_LONG_DOT_GRAPH);
 	int i;
 	for (i = 0; i < convnet->count; i++)
 	{
