@@ -9,4 +9,5 @@ addons:
       - libatlas-base-dev
       - libblas-dev
       - libgsl0-dev
+      - libomp-dev
 script: cd lib && ./configure && make lib && cd ../bin && make && cd ../site && make source && cd ../test && make && make test
