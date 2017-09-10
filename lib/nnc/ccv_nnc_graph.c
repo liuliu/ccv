@@ -747,7 +747,7 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 
 static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_nnc_graph_t* const graph, const int flags, const int depth, FILE* out, int* tensor_index, int* exec_index)
 {
-	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];", *exec_index, *exec_index);
+	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];\n", *exec_index, *exec_index);
 	// Output this node info within this subgraph.
 	_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, graph, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
 	++(*exec_index);
@@ -780,11 +780,11 @@ static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const 
 				const ccv_nnc_graph_exec_info_t* const outgoing_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
 				if (exec_info->graph_ref && outgoing_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx] + 1, node_id[i], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
 				else if (exec_info->graph_ref && !outgoing_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx], node_id[i]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
 				else if (!exec_info->graph_ref && outgoing_info->graph_ref)
-					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx] + 1, node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
 			}
