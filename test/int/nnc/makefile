@@ -2,7 +2,7 @@ include ../../../lib/config.mk
 
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
-TARGETS = cudnn.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests
+TARGETS = cudnn.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 
