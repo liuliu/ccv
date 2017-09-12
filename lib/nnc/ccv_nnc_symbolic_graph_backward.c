@@ -517,7 +517,7 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 	ccv_nnc_graph_sum_or_set_exec_t sum_exec = {
 		.input_size = input_size,
 		.inputs = inputs,
-		.output = ad
+		.output = tensor_ref_d
 	};
 	if (idx >= 0)
 	{
