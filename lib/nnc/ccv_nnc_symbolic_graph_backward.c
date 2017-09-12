@@ -137,10 +137,10 @@ static inline void _ccv_nnc_try_set_pix_1(const int* const ofs, const int* const
 	if (step1 == d0 - s0)
 	{
 		// Faster one, we can simply loop through.
-		const int len = d1 + (d1 - s1) * step1;
-		for (i = s1; i < len; i++)
+		for (i = s1 * step1; i < d1 * step1; i++)
 			cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
 	} else {
+		offset += s1 * step1;
 		// There are gaps, slow one.
 		for (i = s1; i < d1; i++, offset += step1)
 			for (j = s0; j < d0; j++)
@@ -200,7 +200,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	 * that the total volume is larger than 2048 * 8 (I only allocate 2K on stack for this).
 	 * */
 	int scm[1024]; // Having 1024 int scratch space for mapping dimensions. (Or sparse coordinate mapping).
-	int cube_dim[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Mapping dimension size.
+	int cube_dim[CCV_NNC_MAX_DIM_ALLOC] = {}; // Mapping dimension size.
 	int cube_size = 1;
 	int* scmptr = scm;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
@@ -238,8 +238,8 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	// binary map to see if it fills up.
 	uint8_t* cube = (uint8_t*)alloca(sizeof(uint8_t) * ((cube_size + 7) >> 3));
 	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 7) >> 3));
-	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {0}; // Sparse coordinate map at dimension x.
-	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {}; // Sparse coordinate map at dimension x.
+	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {};
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
 	{
 		cube_step[i] = (i > 0) ? cube_step[i - 1] * (cube_dim[i - 1] + 1) : 1;
@@ -281,8 +281,9 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 	int* inputs = (int*)ccmalloc(sizeof(int) * input_size);
 	for (i = tensor_ver->c; i < tensor_ver->ref_version->rnum; i++)
 		inputs[i] = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, i))->d;
-	ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
-	tensor_sym.d = d;
+	ccv_nnc_autograd_tensor_symbol_t tensor_sym = {
+		.d = d
+	};
 	ccv_array_push(autograd_tensor_symbol, &tensor_sym);
 	ccv_nnc_graph_sum_or_set_exec_t sum_exec = {
 		.input_size = input_size,
@@ -473,9 +474,10 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 				!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbol, tensor_symbol_info)) {
 			ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
 		}
-		ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
-		tensor_sym.d = d;
-		tensor_sym.alias_ref = tensor_ref->d + 1;
+		ccv_nnc_autograd_tensor_symbol_t tensor_sym = {
+			.d = d,
+			.alias_ref = tensor_ref->d + 1
+		};
 		ccv_array_push(autograd_tensor_symbol, &tensor_sym);
 		const int ad = autograd_tensor_symbol->rnum - 1;
 		if (tensor_ref->alias_registry) // Only push this when it has an alias registry (otherwise it already conflict with everyone).
@@ -503,10 +505,11 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 			inputs[i] = tensor_ref->d;
 		}
 	}
-	ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
-	tensor_sym.d = alias->alias_ref - 1;
-	const int tensor_ref_d = autograd_tensor_symbol->rnum - 1;
+	ccv_nnc_autograd_tensor_symbol_t tensor_sym = {
+		.d = alias->alias_ref - 1
+	};
 	ccv_array_push(autograd_tensor_symbol, &tensor_sym);
+	const int tensor_ref_d = autograd_tensor_symbol->rnum - 1;
 	tensor_sym.d = d;
 	tensor_sym.alias_ref = tensor_ref_d + 1;
 	ccv_array_push(autograd_tensor_symbol, &tensor_sym);
@@ -816,7 +819,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 					/* Initialization tensor, should corresponding to f symbols */
 					if (!tensor_ver->ref_version)
 					{
-						ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
+						ccv_nnc_autograd_tensor_symbol_t tensor_sym = {};
 						if (!alias_ref)
 						{
 							tensor_sym.d = d;
@@ -882,8 +885,9 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 						continue;
 					const int d = forw_exec->inputs[i];
 					const int alias_ref = tensor_symbol_info[d].alias_ref;
-					ccv_nnc_autograd_tensor_symbol_t tensor_sym = {0};
-					tensor_sym.d = d;
+					ccv_nnc_autograd_tensor_symbol_t tensor_sym = {
+						.d = d
+					};
 					/* The simplest case (most common), it is not an alias. */
 					if (!alias_ref)
 					{
@@ -907,7 +911,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 							tensor_ver->ref_version = ccv_array_new(sizeof(ccv_nnc_tensor_ref_t), 1, 0);
 						/* If already exists a ref version, check if any of these not-sealed tensors have free space. */
 						int found = 0;
-						for (j = tensor_ver->c; j < tensor_ver->ref_version->rnum; j++)
+						for (j = tensor_ver->c; !found && j < tensor_ver->ref_version->rnum; j++)
 						{
 							ccv_nnc_tensor_ref_t* tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, j);
 							if (!_ccv_nnc_tensor_ref_version_involve_alias(tensor_ref, autograd_tensor_symbol, tensor_symbol_info, tensor_symbol_info + d))
@@ -921,7 +925,6 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 								ccv_array_push(tensor_ref->exec_registry, &idx);
 								back_exec->outputs[i] = ad;
 								found = 1;
-								break;
 							}
 						}
 						if (!found) /* Cannot find an tensor ref to insert, create one first */
@@ -965,7 +968,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 		ccv_nnc_autograd_tensor_symbol_t* symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, i);
 		assert(symbol->d >= 0);
 		assert(symbol->d < tensor_symbol_size);
-		ccv_nnc_tensor_symbol_info_t* forw_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol->d);
+		ccv_nnc_tensor_symbol_info_t* forw_symbol = tensor_symbol_info + symbol->d;
 		if (!symbol->alias_ref)
 		{
 			assert(!forw_symbol->alias_ref);

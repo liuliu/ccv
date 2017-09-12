@@ -71,7 +71,6 @@ TEST_CASE("dense net with GEMM as the core")
 
 TEST_CASE("dense net with GEMM as the core and autograd")
 {
-	/*
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1, 4), "x");
 	ccv_nnc_tensor_symbol_t x1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 1), "x1");
@@ -97,7 +96,6 @@ TEST_CASE("dense net with GEMM as the core and autograd")
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(e1), GRAPH_EXEC_SYMBOL_LIST(e4), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(w1, b1, w2, b2, w3, b3));
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
-	*/
 }
 
 #include "case_main.h"
