@@ -500,7 +500,7 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 			{
 				has_this_alias_exclusively = 0;
 				for (j = 0; j < i; j++)
-					inputs[j] = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, kd[i].i))->d;
+					inputs[j] = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, kd[j].i))->d;
 			}
 			inputs[i] = tensor_ref->d;
 		}
@@ -517,7 +517,7 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 	ccv_nnc_graph_sum_or_set_exec_t sum_exec = {
 		.input_size = input_size,
 		.inputs = inputs,
-		.output = tensor_ref_d
+		.output = has_this_alias_exclusively ? ad : tensor_ref_d /* If has this alias exclusively, the output should be alias as well. Otherwise the output are the real tensor. */
 	};
 	if (idx >= 0)
 	{
@@ -623,11 +623,12 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	// Now, for each one of these, find a reverse graph.
 	ccv_nnc_graph_backward_info_t* backward_info = (ccv_nnc_graph_backward_info_t*)cccalloc(exec_symbol_size, sizeof(ccv_nnc_graph_backward_info_t));
 	int i, j;
+	// f symbols cannot be alias.
 	for (i = 0; i < f_symbol_size; i++)
-	{
-		// f symbols cannot be alias.
-		assert(!tensor_symbol_info[f_symbols[i].d].alias_ref);
-	}
+		{ assert(!tensor_symbol_info[f_symbols[i].d].alias_ref); }
+	// wrt symbols cannot be alias.
+	for (i = 0; i < wrt_symbol_size; i++)
+		{ assert(!tensor_symbol_info[wrt_symbols[i].d].alias_ref); }
 	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, node, idx) {
 		assert(ccv_nnc_cmd_is_forward(node->cmd) || node->cmd.cmd == CCV_NNC_NOOP);
 		if (node->outgoings)
@@ -646,7 +647,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 		for (i = 0; i < exec_symbol_info[idx].output_size && !f; i++)
 		{
 			int d = exec_symbol_info[idx].outputs[i];
-			if (tensor_symbol_info[d].alias_ref)
+			while (tensor_symbol_info[d].alias_ref)
 				d = tensor_symbol_info[d].alias_ref - 1;
 			for (j = 0; j < f_symbol_size && !f; j++)
 				if (d == f_symbols[j].d)
@@ -667,9 +668,14 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, node, idx) {
 		int wrt = backward_info[idx].f_wrt & 0x2;
 		for (i = 0; i < node->input_size && !wrt; i++)
+		{
+			int d = node->inputs[i];
+			while (tensor_symbol_info[d].alias_ref)
+				d = tensor_symbol_info[d].alias_ref - 1;
 			for (j = 0; j < wrt_symbol_size && !wrt; j++)
-				if (node->inputs[i] == wrt_symbols[j].d)
+				if (d == wrt_symbols[j].d)
 					wrt = 0x2;
+		}
 		if (wrt)
 		{
 			backward_info[idx].f_wrt |= wrt;

@@ -10,7 +10,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when x = [0.44 -1.18]")
+TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + (y_1 + y_1 ^ 2) + Exp[y_2], x] when x = [0.44 -1.18]")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t one = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "[1 1.5]");
@@ -24,13 +24,15 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ofs[0] = 1;
 	ccv_nnc_tensor_symbol_t y_2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_2");
 	ccv_nnc_tensor_symbol_t w_1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "w_1");
+	ccv_nnc_tensor_symbol_t u_1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u_1");
 	ccv_nnc_tensor_symbol_t u_2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u_2");
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
 	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, one), TENSOR_SYMBOL_LIST(y), "plus");
 	ccv_nnc_graph_exec_symbol_t sqr = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_1, y_1), TENSOR_SYMBOL_LIST(w_1), "sqr");
+	ccv_nnc_graph_exec_symbol_t plus_y = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w_1, y_1), TENSOR_SYMBOL_LIST(u_1), "plus_y");
 	ccv_nnc_graph_exec_symbol_t exp_ = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWEXP_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_2), TENSOR_SYMBOL_LIST(u_2), "exp");
-	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_1, w_1, u_2), TENSOR_SYMBOL_LIST(v), "sum");
-	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus, sqr, exp_, sum));
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_1, u_1, u_2), TENSOR_SYMBOL_LIST(v), "sum");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus, sqr, plus_y, exp_, sum));
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x));
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -53,10 +55,103 @@ TEST_CASE("autograd with D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] when 
 	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
 	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
-	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], 0.44 + (0.44 + 1) * (0.44 + 1) + expf(-1.18 + 1.5), 1e-6, "computed result of y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2] should be the same");
-	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 1 + 2 * (0.44 + 1), 1e-6, "computed result of D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] for x_1 should be the same");
-	// This cannot pass yet (need to zero out the tensor before sum up).
-	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], expf(-1.18 + 1.5), 1e-6, "computed result of D[y = x + [1 1.5] => x_1 + y_1 ^ 2 + Exp[y_2], x] for x_2 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], 0.44 + (0.44 + 1 + (0.44 + 1) * (0.44 + 1)) + expf(-1.18 + 1.5), 1e-6, "computed result of y = x + [1 1.5] => x_1 + (y_1 + y_1 ^ 2) + Exp[y_2] should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 + 2 * (0.44 + 1), 1e-6, "computed result of D[y = x + [1 1.5] => x_1 + (y_1 + y_1 ^ 2) + Exp[y_2], x] for x_1 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], expf(-1.18 + 1.5), 1e-6, "computed result of D[y = x + [1 1.5] => x_1 + (y_1 + y_1 ^ 2) + Exp[y_2], x] for x_2 should be the same");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+}
+
+TEST_CASE("autograd with D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] when x = [0.38 -2.8]")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "y");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 2;
+	ccv_nnc_tensor_symbol_t x_1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, x, ofs, inc, ONE_CPU_TENSOR(1), "x_1");
+	ccv_nnc_tensor_symbol_t y_1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_1");
+	ofs[0] = 1;
+	ccv_nnc_tensor_symbol_t x_2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, x, ofs, inc, ONE_CPU_TENSOR(1), "x_2");
+	ccv_nnc_tensor_symbol_t y_2 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_2");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "w");
+	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
+	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
+	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_1), TENSOR_SYMBOL_LIST(y_1), "log");
+	ccv_nnc_graph_exec_symbol_t x_1_sqr = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_2, x_2), TENSOR_SYMBOL_LIST(y_2), "x_1_sqr");
+	ccv_nnc_graph_exec_symbol_t y_1_sqr = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_1, y_1), TENSOR_SYMBOL_LIST(w), "y_1_sqr");
+	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_1, y_2), TENSOR_SYMBOL_LIST(u), "prod");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, u), TENSOR_SYMBOL_LIST(v), "sum");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus, x_1_sqr, y_1_sqr, prod, sum));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus, x_1_sqr), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x));
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
+	ccv_nnc_graph_exec_symbol_t dxc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, GRAPH_EXEC_SYMBOL_LIST(plus, x_1_sqr), GRAPH_EXEC_SYMBOL_LIST(dxc, sum), &graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	tx->data.f32[0] = 0.38;
+	tx->data.f32[1] = -2.8;
+	ccv_nnc_tensor_symbol_t dv = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, v);
+	ccv_nnc_tensor_t* tdv = ccv_nnc_tensor_from_symbol(tensor_arena, dv);
+	// Seed the initialization vector.
+	tdv->data.f32[0] = 1;
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
+	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
+	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], logf(0.38) * logf(0.38) + logf(0.38) * (-2.8 * -2.8), 1e-6, "computed result of y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * logf(0.38) / 0.38 + (-2.8 * -2.8) / 0.38, 1e-6, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_1 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], 2 * -2.8 * logf(0.38), 1e-6, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_2 should be the same");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+}
+
+TEST_CASE("autograd with D[y_1 = Log[x_1] => y_1 ^ 2 + y_1, x] when x = [0.21 -13.22]")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "y");
+	int ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	int inc[CCV_NNC_MAX_DIM_ALLOC] = {0};
+	inc[0] = 2;
+	ccv_nnc_tensor_symbol_t x_1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, x, ofs, inc, ONE_CPU_TENSOR(1), "x_1");
+	ccv_nnc_tensor_symbol_t y_1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y, ofs, inc, ONE_CPU_TENSOR(1), "y_1");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "w");
+	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
+	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x_1), TENSOR_SYMBOL_LIST(y_1), "log");
+	ccv_nnc_graph_exec_symbol_t sqr = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y_1, y_1), TENSOR_SYMBOL_LIST(w), "sqr");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, y_1), TENSOR_SYMBOL_LIST(v), "sum");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus, sqr, sum));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(plus), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x));
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
+	ccv_nnc_graph_exec_symbol_t dxc = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dx);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, GRAPH_EXEC_SYMBOL_LIST(plus), GRAPH_EXEC_SYMBOL_LIST(dxc, sum), &graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	tx->data.f32[0] = 0.21;
+	tx->data.f32[1] = -13.22;
+	ccv_nnc_tensor_symbol_t dv = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, v);
+	ccv_nnc_tensor_t* tdv = ccv_nnc_tensor_from_symbol(tensor_arena, dv);
+	// Seed the initialization vector.
+	tdv->data.f32[0] = 1;
+	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
+	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
+	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], logf(0.21) * logf(0.21) + logf(0.21), 1e-6, "computed result of y_1 = Log[x_1] => y_1 ^ 2 + y_1 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * logf(0.21) / 0.21 + 1 / 0.21, 1e-6, "computed result of D[y_1 = Log[x_1] => y_1 ^ 2 + y_1, x] for x_1 should be the same");
+	// Note that the value in tdx->data.f32[1] is undefined.
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
