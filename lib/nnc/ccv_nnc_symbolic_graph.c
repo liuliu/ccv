@@ -442,12 +442,12 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 	int i;
 	for (i = 0; i < input_size; i++)
 	{
-		const int d = (inputs[i].graph != graph) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, inputs[i], MAP_TENSOR_USE_AS_INPUT) : inputs[i].d;
+		const int d = (inputs[i].graph != graph && inputs[i].d >= 0) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, inputs[i], MAP_TENSOR_USE_AS_INPUT) : inputs[i].d;
 		symbol_info.inputs[i] = d;
 	}
 	for (i = 0; i < output_size; i++)
 	{
-		const int d = (outputs[i].graph != graph) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, outputs[i], MAP_TENSOR_USE_AS_OUTPUT) : outputs[i].d;
+		const int d = (outputs[i].graph != graph && outputs[i].d >= 0) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, outputs[i], MAP_TENSOR_USE_AS_OUTPUT) : outputs[i].d;
 		symbol_info.outputs[i] = d;
 	}
 	ccv_array_push(graph->exec_symbol_info, &symbol_info);

@@ -987,11 +987,6 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 			symbol->symbol = ccv_nnc_tensor_symbol_alias_new(graph, ref->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0);
 		}
 	}
-	// a no symbol.
-	const ccv_nnc_tensor_symbol_t no_symbol = {
-		.d = -1,
-		.graph = graph
-	};
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	for (i = 0; i < exec_symbol_size; i++)
 	{
@@ -1011,12 +1006,12 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 			if (back_info->input_bitmasks[j >> 6] & ((uint64_t)1 << j))
 				ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, back_exec->inputs[j]))->symbol));
 			else
-				ccv_array_push(symbols, &no_symbol);
+				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 		ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + i;
 		// Inputs from forward function.
 		for (j = 0; j < forw_exec->input_size; j++)
 			if (!(back_info->input_bitmasks[(j + back_exec->input_size) >> 6] & ((uint64_t)1 << (j + back_exec->input_size))))
-				ccv_array_push(symbols, &no_symbol);
+				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 			else {
 				ccv_nnc_tensor_symbol_t symbol = {
 					.info = tensor_symbol_info[forw_exec->inputs[j]].info,
@@ -1028,7 +1023,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 		// Outputs from forward function.
 		for (j = 0; j < forw_exec->output_size; j++)
 			if (!(back_info->input_bitmasks[(j + back_exec->input_size + forw_exec->input_size) >> 6] & ((uint64_t)1 << (j + back_exec->input_size + forw_exec->input_size))))
-				ccv_array_push(symbols, &no_symbol);
+				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 			else {
 				ccv_nnc_tensor_symbol_t symbol = {
 					.info = tensor_symbol_info[forw_exec->outputs[j]].info,
@@ -1041,7 +1036,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 			if (back_info->output_bitmasks[j >> 6] & ((uint64_t)1 << j))
 				ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, back_exec->outputs[j]))->symbol));
 			else
-				ccv_array_push(symbols, &no_symbol);
+				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 		back_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
 	}
 	for (i = 0; i < sum_execs->rnum; i++)
