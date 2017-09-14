@@ -1085,19 +1085,14 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 					ccv_nnc_graph_exec_symbol_concat(graph, exec->symbol, ((ccv_nnc_graph_sum_exec_t*)ccv_array_get(sum_execs, d - exec_symbol_size))->symbol);
 			}
 	}
-	int alias_size = 0;
-	for (i = 0; i < wrt_symbol_size; i++)
-		if (tensor_symbol_info[wrt_symbols[i].d].alias_ref)
-			// I need to create alias for these, therefore, add to alias_size count.
-			++alias_size;
 	// Now, everything is done, set the metadata on graph so that we can lookup later for backward symbols
 	if (graph->backward_tensor_symbols)
-		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum + alias_size));
+		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * graph->tensor_symbol_info->rnum);
 	else
-		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum + alias_size));
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * graph->tensor_symbol_info->rnum);
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_size;
 	graph->forward_symbol_size = tensor_symbol_size;
-	graph->backward_symbol_size = (graph->tensor_symbol_info->rnum + alias_size) - tensor_symbol_size;
+	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - tensor_symbol_size;
 	for (i = 0; i < graph->forward_symbol_size; i++)
 		graph->backward_tensor_symbols[i] = -1;
 	for (i = 0; i < graph->backward_symbol_size; i++)
@@ -1111,25 +1106,13 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 		// If this wrt symbol is an alias, create extra alias for this.
 		ccv_nnc_tensor_ref_t* tensor_ref;
 		int dd;
-		if (tensor_symbol_info[d].alias_ref)
-		{
-			ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + (tensor_symbol_info[d].alias_ref - 1);
-			assert(tensor_ver->ref_version);
-			tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
-			ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
-			ccv_nnc_tensor_symbol_t alias = ccv_nnc_tensor_symbol_alias_new(graph, autograd_symbol->symbol, tensor_symbol_info[d].ofs, tensor_symbol_info[d].inc, tensor_symbol_info[d].info, 0);
-			graph->backward_tensor_symbols[d] = alias.d;
-			assert(alias.d >= tensor_symbol_size);
-			dd = alias.d - tensor_symbol_size;
-		} else {
-			ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d;
-			assert(tensor_ver->ref_version);
-			tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
-			ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
-			graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
-			assert(autograd_symbol->symbol.d >= tensor_symbol_size);
-			dd = autograd_symbol->symbol.d - tensor_symbol_size;
-		}
+		ccv_nnc_autograd_tensor_version_t* tensor_ver = autograd_tensor_version + d;
+		assert(tensor_ver->ref_version);
+		tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
+		ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbol, tensor_ref->d);
+		graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
+		assert(autograd_symbol->symbol.d >= tensor_symbol_size);
+		dd = autograd_symbol->symbol.d - tensor_symbol_size;
 		const int x = tensor_ref->x;
 		if (tensor_ref->exec_registry && tensor_ref->exec_registry->rnum) // Create no-op node.
 		{
