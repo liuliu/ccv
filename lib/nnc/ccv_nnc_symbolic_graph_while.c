@@ -33,16 +33,16 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	return symbol;
 }
 
-void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const cond_evals, const int cond_eval_size)
+void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size)
 {
 	while_graph->while_expr = while_expr;
 	while_graph->while_data = while_data;
-	if (cond_eval_size > 0)
+	if (breakpoint_size > 0)
 	{
-		assert(cond_evals);
-		while_graph->cond_eval_size = cond_eval_size;
-		while_graph->cond_evals = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * cond_eval_size);
-		memcpy(while_graph->cond_evals, cond_evals, sizeof(ccv_nnc_graph_exec_symbol_t) * cond_eval_size);
+		assert(breakpoints);
+		while_graph->breakpoint_size = breakpoint_size;
+		while_graph->breakpoints = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * breakpoint_size);
+		memcpy(while_graph->breakpoints, breakpoints, sizeof(ccv_nnc_graph_exec_symbol_t) * breakpoint_size);
 	}
 }
 

@@ -608,14 +608,14 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 }
 
 typedef struct {
-	int exec_symbol_info_size;
-	int tensor_symbol_info_size;
-	ccv_nnc_graph_backward_info_t* backward_info;
-	ccv_nnc_graph_visit_t* backward_visit;
-	ccv_nnc_autograd_graph_exec_symbol_t* autograd_execs;
-	ccv_nnc_autograd_tensor_version_t* autograd_tensor_versions;
-	ccv_array_t* autograd_tensor_symbols;
-	ccv_array_t* sum_execs;
+	int exec_symbol_info_size; // Number of graph exec symbols before adding any new symbols related to automatic differentiation.
+	int tensor_symbol_info_size; // Number of tensor symbols before adding anything new.
+	ccv_nnc_graph_backward_info_t* backward_info; // Corresponding to forward graph exec symbol info, it is exactly in reverse.
+	ccv_nnc_graph_visit_t* backward_visit; // The visitor structure (top sorted index) when doing reverse traversal.
+	ccv_nnc_autograd_graph_exec_symbol_t* autograd_execs; // The graph exec symbols we need for automatic differentiation. This is a 1:1 mapping for forward graph exec symbols, however, unlike backward_info, its outgoings may be more complex (may contain outgoing flows to sum nodes).
+	ccv_nnc_autograd_tensor_version_t* autograd_tensor_versions; // Corresponding to forward tensor symbols, each may contain multiple versions (due to multi-write).
+	ccv_array_t* autograd_tensor_symbols; // The tensor symbols we need for automatic differentiation (it may not be 1:1 mapping).
+	ccv_array_t* sum_execs; // The sum nodes, because in reverse mode, a tensor could have multiple versions, we need to sum them up before use.
 } ccv_nnc_symbolic_graph_backward_prep_t;
 
 static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_prep(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_visit_t* const forward_visit, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)

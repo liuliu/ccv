@@ -94,12 +94,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		for (i = 0; i < new_graph->destinations->rnum; i++)
 			((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(new_graph->destinations, i))->graph = new_graph;
 	}
-	if (graph->cond_evals)
+	if (graph->breakpoints)
 	{
-		new_graph->cond_evals = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * graph->cond_eval_size);
-		memcpy(new_graph->cond_evals, graph->cond_evals, sizeof(ccv_nnc_graph_exec_symbol_t) * graph->cond_eval_size);
-		for (i = 0; i < graph->cond_eval_size; i++)
-			new_graph->cond_evals[i].graph = new_graph;
+		new_graph->breakpoints = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * graph->breakpoint_size);
+		memcpy(new_graph->breakpoints, graph->breakpoints, sizeof(ccv_nnc_graph_exec_symbol_t) * graph->breakpoint_size);
+		for (i = 0; i < graph->breakpoint_size; i++)
+			new_graph->breakpoints[i].graph = new_graph;
 	}
 	if (graph->backward_tensor_symbols)
 	{
@@ -1050,8 +1050,8 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		ccv_array_free(graph->sources);
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
-	if (graph->cond_evals)
-		ccfree(graph->cond_evals);
+	if (graph->breakpoints)
+		ccfree(graph->breakpoints);
 	ccv_array_free(graph->tensor_symbol_info);
 	ccv_array_free(graph->exec_symbol_info);
 	if (graph->backward_tensor_symbols)

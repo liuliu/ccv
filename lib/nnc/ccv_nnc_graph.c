@@ -883,8 +883,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		if (info->casts)
 			ccfree(info->casts);
 	}
-	if (graph->cond_evals)
-		ccfree(graph->cond_evals);
+	if (graph->breakpoints)
+		ccfree(graph->breakpoints);
 	if (graph->sources)
 		ccv_array_free(graph->sources);
 	if (graph->destinations)

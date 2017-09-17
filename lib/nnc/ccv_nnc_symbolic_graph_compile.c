@@ -2219,7 +2219,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	graph_exec_arena->sub_arenas = (ccv_nnc_graph_exec_arena_t**)(graph_exec_arena->graph_execs + symbolic_graph->exec_symbol_info->rnum);
 	memset(graph_exec_arena->sub_arenas, 0, sizeof(ccv_nnc_graph_exec_arena_t*) * graph_exec_arena->sub_arena_size);
 	ccv_nnc_graph_exec_t* graph_execs = graph_exec_arena->graph_execs;
-	int max_input_size = 0, max_output_size = 0, max_cond_eval_size = 0;
+	int max_input_size = 0, max_output_size = 0, max_breakpoint_size = 0;
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 	{
 		max_input_size = ccv_max(max_input_size, graph_prep->exec_symbol_info[i].input_size);
@@ -2227,10 +2227,10 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		graph_execs[i].graph = 0;
 	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
-		max_cond_eval_size = ccv_max(max_cond_eval_size, (*(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, i))->cond_eval_size);
+		max_breakpoint_size = ccv_max(max_breakpoint_size, (*(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, i))->breakpoint_size);
 	ccv_nnc_tensor_t** max_inputs = max_input_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_input_size) : 0;
 	ccv_nnc_tensor_t** max_outputs = max_output_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_output_size) : 0;
-	ccv_nnc_graph_exec_t* max_cond_evals = max_cond_eval_size > 0 ? (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * max_cond_eval_size) : 0;
+	ccv_nnc_graph_exec_t* max_breakpoints = max_breakpoint_size > 0 ? (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * max_breakpoint_size) : 0;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = graph_prep->exec_symbol_info;
 	ccv_nnc_graph_visit_for(graph_prep->visit, exec_symbol_info, node, idx) {
 		if (CCV_NO_GRAPH_EXEC(graph_execs[idx]))
@@ -2246,13 +2246,13 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph);
 				const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
 				const ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
-				for (i = 0; i < sub_symbolic_graph->cond_eval_size; i++)
-					max_cond_evals[i] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->cond_evals[i]);
+				for (i = 0; i < sub_symbolic_graph->breakpoint_size; i++)
+					max_breakpoints[i] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->breakpoints[i]);
 				ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena);
 				ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
 				ccv_nnc_graph_set_sources(sub_graph, &source, 1);
 				ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
-				ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_cond_evals, sub_symbolic_graph->cond_eval_size);
+				ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size);
 			} else {
 				graph_execs[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size);
@@ -2277,13 +2277,13 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					graph_execs[outgoing] = ccv_nnc_graph_while(graph, outgoing_node->cmd.cmd, sub_graph);
 					const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
 					const ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
-					for (j = 0; j < sub_symbolic_graph->cond_eval_size; j++)
-						max_cond_evals[j] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->cond_evals[j]);
+					for (j = 0; j < sub_symbolic_graph->breakpoint_size; j++)
+						max_breakpoints[j] = ccv_nnc_graph_exec_from_symbol(sub_arena, sub_symbolic_graph->breakpoints[j]);
 					ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena);
 					ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
 					ccv_nnc_graph_set_sources(sub_graph, &source, 1);
 					ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
-					ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_cond_evals, sub_symbolic_graph->cond_eval_size);
+					ccv_nnc_graph_set_while_expr(sub_graph, sub_symbolic_graph->while_expr, sub_symbolic_graph->while_data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 					ccv_nnc_graph_exec_set_io(graph, graph_execs[outgoing], max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 				} else {
 					graph_execs[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
@@ -2296,8 +2296,8 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		ccfree(max_inputs);
 	if (max_outputs)
 		ccfree(max_outputs);
-	if (max_cond_evals)
-		ccfree(max_cond_evals);
+	if (max_breakpoints)
+		ccfree(max_breakpoints);
 	int source_exec_created = 0;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
 	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;

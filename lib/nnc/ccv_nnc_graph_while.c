@@ -92,14 +92,14 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 	return while_exec;
 }
 
-void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const cond_evals, const int cond_eval_size)
+void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size)
 {
 	while_graph->while_data = while_data;
 	while_graph->while_expr = while_expr;
-	assert(cond_eval_size > 0);
-	while_graph->cond_eval_size = cond_eval_size;
-	while_graph->cond_evals = (ccv_nnc_graph_exec_t*)((while_graph->cond_evals) ? ccrealloc(while_graph->cond_evals, sizeof(ccv_nnc_graph_exec_t) * cond_eval_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * cond_eval_size));
-	memcpy(while_graph->cond_evals, cond_evals, sizeof(ccv_nnc_graph_exec_t) * cond_eval_size);
+	assert(breakpoint_size > 0);
+	while_graph->breakpoint_size = breakpoint_size;
+	while_graph->breakpoints = (ccv_nnc_graph_exec_t*)((while_graph->breakpoints) ? ccrealloc(while_graph->breakpoints, sizeof(ccv_nnc_graph_exec_t) * breakpoint_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * breakpoint_size));
+	memcpy(while_graph->breakpoints, breakpoints, sizeof(ccv_nnc_graph_exec_t) * breakpoint_size);
 }
 
 #define TAG_TENSOR_REQUIRE_BROADCAST(x) (ccv_nnc_tensor_t*)((intptr_t)(x) | 1)
@@ -314,10 +314,10 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 	{
 		// TODO: Need to do a broadcast when first entering this graph for all the inputs.
 		// This is a while loop.
-		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->cond_eval_size, 0);
-		for (i = 0; i < graph->cond_eval_size; i++)
+		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->breakpoint_size, 0);
+		for (i = 0; i < graph->breakpoint_size; i++)
 		{
-			const ccv_nnc_graph_exec_info_t* const exec_info = (const ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, graph->cond_evals->d);
+			const ccv_nnc_graph_exec_info_t* const exec_info = (const ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, graph->breakpoints->d);
 			if (exec_info->outgoings)
 				for (j = 0; j < exec_info->outgoings->rnum; j++)
 				{
@@ -334,8 +334,8 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		for (;; ++count)
 		{
 			_ccv_nnc_graph_unwrap(graph, count);
-			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->cond_evals, graph->cond_eval_size, visitor);
-			// Reached cond_evals, now check the cond_eval, if not met, break out.
+			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, visitor);
+			// Reached breakpoints, now check the breakpoint, if not met, break out.
 			if (!graph->while_expr(special_tensors, 1, inputs, input_size, outputs, output_size, graph->while_data))
 			{
 				_ccv_nnc_graph_rewrap(graph);

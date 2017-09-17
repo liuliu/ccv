@@ -11,6 +11,7 @@
 #define GUARD_ccv_nnc_symbolic_graph_internal_h
 
 #include "ccv_nnc.h"
+#include "ccv_nnc_internal.h"
 
 typedef struct {
 	// Start for while loop handling
@@ -54,8 +55,8 @@ struct ccv_nnc_symbolic_graph_s {
 	// Why some of these I choose to be flat int* array, some of these I choose to be ccv_array_t?
 	// for flat int* array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
-	int cond_eval_size;
-	ccv_nnc_graph_exec_symbol_t* cond_evals;
+	int breakpoint_size;
+	ccv_nnc_graph_exec_symbol_t* breakpoints;
 	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// Map between parent / sub-graph's tensor symbols.
@@ -65,6 +66,7 @@ struct ccv_nnc_symbolic_graph_s {
 	int* backward_tensor_symbols;
 	int backward_symbol_size;
 	int* backward_exec_symbols;
+	ccv_array_t* tape_variables; // The tensor symbols that will be backed by tape. If this is a backward graph, these tensor symbols won't be allocated on the tensor arena.
 	// End of backward (automatic differentiation) handling.
 };
 

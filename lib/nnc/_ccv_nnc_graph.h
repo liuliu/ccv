@@ -23,7 +23,7 @@ typedef struct {
 	int graph_ref; // Reference to the sub-graph. Starts at 1.
 	int io_wraps; // How many wraps for the inputs / outputs (thus, the inputs and outputs must contain multi-view tensor).
 	int io_wrap_ptr; // At which level of the wrap we are currently at. Starts at 0.
-	// In parallel with io wraps.
+	// In parallel with io wraps. These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	int cast_size;
 	ccv_nnc_tensor_t** casts;
 	int cast_wraps;
@@ -44,8 +44,8 @@ struct ccv_nnc_graph_s {
 	// Why some of these I choose to be flat * array, some of these I choose to be ccv_array_t?
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
-	int cond_eval_size;
-	ccv_nnc_graph_exec_t* cond_evals;
+	int breakpoint_size;
+	ccv_nnc_graph_exec_t* breakpoints;
 	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// End of while loop handling.
