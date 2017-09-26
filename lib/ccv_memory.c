@@ -49,13 +49,14 @@ ccv_dense_matrix_t* ccv_dense_matrix_new(int rows, int cols, int type, void* dat
 		mat->type |= data ? CCV_UNMANAGED : CCV_REUSABLE; // it still could be reusable because the signature could be derived one.
 		mat->data.u8 = (unsigned char*)mat + hdr_size;
 	}
+	mat->reserved0 = 0;
 	mat->sig = sig;
 #if CCV_NNC_TENSOR_TFB
 	mat->resides = CCV_TENSOR_CPU_MEMORY;
 	mat->format = CCV_TENSOR_FORMAT_NHWC;
 	mat->datatype = CCV_GET_DATA_TYPE(type);
 	mat->channels = CCV_GET_CHANNEL(type);
-	mat->reserved = 0;
+	mat->reserved1 = 0;
 #endif
 	mat->rows = rows;
 	mat->cols = cols;
@@ -110,6 +111,7 @@ void ccv_make_matrix_immutable(ccv_matrix_t* mat)
 ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, uint64_t sig)
 {
 	ccv_dense_matrix_t mat;
+	mat.reserved0 = 0;
 	mat.sig = sig;
 	mat.type = (CCV_GET_CHANNEL(type) | CCV_GET_DATA_TYPE(type) | CCV_MATRIX_DENSE | CCV_NO_DATA_ALLOC | CCV_UNMANAGED) & ~CCV_GARBAGE;
 	mat.rows = rows;
@@ -120,7 +122,7 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 	mat.resides = CCV_TENSOR_CPU_MEMORY;
 	mat.format = CCV_TENSOR_FORMAT_NHWC | CCV_GET_DATA_TYPE(type);
 	mat.channels = CCV_GET_CHANNEL(type);
-	mat.reserved = 0;
+	mat.reserved1 = 0;
 #endif
 	mat.data.u8 = (unsigned char*)data;
 	return mat;
