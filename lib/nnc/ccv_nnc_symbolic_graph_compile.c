@@ -540,9 +540,9 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 		if (mv->rtvs)
 			for (i = 0; i < mv->rtvs->rnum; i++)
 			{
-				ccv_nnc_tensor_reference_t* reference = (ccv_nnc_tensor_reference_t*)ccv_array_get(mv->rtvs, i);
-				reference->tensor = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, reference->tensor);
-				assert(!CCV_IS_TENSOR_MULTIVIEW(reference->tensor));
+				ccv_nnc_tensor_t** tensor = (ccv_nnc_tensor_t**)ccv_array_get(mv->rtvs, i);
+				*tensor = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, *tensor);
+				assert(!CCV_IS_TENSOR_MULTIVIEW(*tensor));
 			}
 	}
 	return tensor;
@@ -1106,7 +1106,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					if (is_multiview)
 					{
 						ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, alias_pos);
-						ccv_nnc_tensor_reference_to_multiview(mv, 0, (ccv_nnc_tensor_t*)(intptr_t)pos);
+						ccv_nnc_tensor_reference_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)pos);
 					}
 				} else {
 					const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
@@ -1126,9 +1126,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 					if (is_multiview)
 					{
-						off_t offset = ccv_nnc_tensor_view_offset(tensor_view, tensor_symbol_info[block_ref].ofs);
 						ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, alias_pos);
-						ccv_nnc_tensor_reference_to_multiview(mv, offset, (ccv_nnc_tensor_t*)(intptr_t)pos);
+						ccv_nnc_tensor_reference_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)pos);
 					}
 				}
 			}
@@ -1156,7 +1155,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 						const int ref_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 						ccv_nnc_tensor_t* const ref_tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, ref_pos);
 						ccv_nnc_tensor_multiview_t* multiview = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos);
-						ccv_nnc_tensor_reference_to_multiview(multiview, 0, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
+						ccv_nnc_tensor_reference_to_multiview(multiview, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
 						while (!multiview->tv)
 							multiview = (ccv_nnc_tensor_multiview_t*)(CCV_NNC_IS_METDATA_POS(multiview->data[0].ptr) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->data[0].ptr) : multiview->data[0].ptr);
 						ccv_nnc_tensor_t* const tv = CCV_NNC_IS_METDATA_POS(multiview->tv) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->tv) : multiview->tv;
@@ -1185,7 +1184,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[block_ref]))
 					continue;
 				int sub_arena_ref = block_ref;
-				off_t offset = 0;
 				if (TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
 				{
 					// Assigning out the tensor aliases.
@@ -1196,15 +1194,12 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					sub_arena_ref = alias_ref;
 					if (!sub_arena_out_tensors[sub_arena_ref])
 						continue;
-					ccv_nnc_tensor_view_t* tensor_view = (ccv_nnc_tensor_view_t*)tensor_arena->vt_tensors[block_ref];
-					if (CCV_IS_TENSOR_VIEW(tensor_view))
-						offset = ccv_nnc_tensor_view_offset(tensor_view, tensor_symbol_info[block_ref].ofs);
 				}
 				if (!sub_arena_out_tensors[sub_arena_ref])
 					continue;
 				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)sub_arena_out_tensors[sub_arena_ref];
 				assert(CCV_IS_TENSOR_MULTIVIEW(mv));
-				ccv_nnc_tensor_reference_to_multiview(mv, offset, tensor_arena->vt_tensors[block_ref]);
+				ccv_nnc_tensor_reference_to_multiview(mv, tensor_arena->vt_tensors[block_ref]);
 			}
 	ccfree(sub_arena_out_tensors);
 	// Handle binded tensors.

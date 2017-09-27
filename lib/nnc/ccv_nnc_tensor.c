@@ -15,6 +15,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	if (ptr)
 	{
 		tensor = (ccv_nnc_tensor_t*)ccmalloc(sizeof(ccv_nnc_tensor_t));
+		tensor->alias_ref = 0;
 		tensor->sig = 0;
 		tensor->refcount = 1;
 		tensor->info = params;
@@ -69,6 +70,7 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	// this specific form can be toll-free bridging to ccv_dense_matrix_t
 	int tfb = (CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY && params.format == CCV_TENSOR_FORMAT_NHWC && params.dim[2] > 0 && params.dim[2] <= CCV_MAX_CHANNEL && params.dim[0] > 0 && params.dim[1] > 0 && params.dim[3] == 0);
 	ccv_nnc_tensor_t tensor;
+	tensor.alias_ref = 0;
 	tensor.sig = 0;
 	tensor.refcount = 1;
 	tensor.info = params;
@@ -102,14 +104,16 @@ static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, con
 {
 	memcpy(tv->inc, tensor->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	uint8_t* p = tensor->data.u8;
-	tv->data.u8 = p + ccv_nnc_tensor_view_offset(tv, ofs);
+	uint8_t* const p = tensor->data.u8;
+	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv, ofs);
+	tv->data.u8 = p + off;
 }
 
 ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
+	tv->alias_ref = (uintptr_t)tensor;
 	tv->refcount = 1;
 	tv->sig = 0;
 	tv->info = tensor->info;
@@ -121,6 +125,7 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, 
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	ccv_nnc_tensor_view_t tv = {
+		.alias_ref = (uintptr_t)tensor,
 		.type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW, // clean up the channel bits, and then add CCV_TENSOR_VIEW identifier
 		.refcount = 1,
 		.sig = 0,

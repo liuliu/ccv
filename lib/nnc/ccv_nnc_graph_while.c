@@ -38,15 +38,11 @@ void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multi
 		ccv_array_free(tensor_multiview.rtvs);
 }
 
-void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, const off_t offset, ccv_nnc_tensor_t* const tensor)
+void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor)
 {
-	ccv_nnc_tensor_reference_t tensor_reference = {
-		.offset = offset,
-		.tensor = tensor,
-	};
 	if (!tensor_multiview->rtvs)
-		tensor_multiview->rtvs = ccv_array_new(sizeof(ccv_nnc_tensor_reference_t), 0, 0);
-	ccv_array_push(tensor_multiview->rtvs, &tensor_reference);
+		tensor_multiview->rtvs = ccv_array_new(sizeof(ccv_nnc_tensor_t*), 0, 0);
+	ccv_array_push(tensor_multiview->rtvs, &tensor);
 }
 
 void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const tensor_multiview)
@@ -62,8 +58,13 @@ void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const 
 		if (c->rtvs)
 			for (i = 0; i < c->rtvs->rnum; i++)
 			{
-				ccv_nnc_tensor_reference_t* reference = (ccv_nnc_tensor_reference_t*)ccv_array_get(c->rtvs, i);
-				reference->tensor->data.u8 = data + reference->offset;
+				ccv_nnc_tensor_t* tensor = *(ccv_nnc_tensor_t**)ccv_array_get(c->rtvs, i);
+				if (CCV_IS_TENSOR_VIEW(tensor))
+				{
+					ccv_nnc_tensor_view_t* tensor_view = (ccv_nnc_tensor_view_t*)tensor;
+					tensor_view->data.u8 = data + tensor_view->off;
+				} else
+					tensor->data.u8 = data;
 			}
 		c = c->p;
 	} while (c);
