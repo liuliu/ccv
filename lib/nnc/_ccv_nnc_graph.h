@@ -44,6 +44,7 @@ struct ccv_nnc_graph_s {
 	// Why some of these I choose to be flat * array, some of these I choose to be ccv_array_t?
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
+	uint64_t while_count;
 	int breakpoint_size;
 	ccv_nnc_graph_exec_t* breakpoints;
 	ccv_nnc_graph_while_f while_expr;

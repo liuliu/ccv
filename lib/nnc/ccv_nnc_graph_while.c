@@ -257,7 +257,7 @@ static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call th
 	}
 }
 
-static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	assert(tensor_tape == 0); // Cannot handle tensor tape yet.
 	int i, j;
@@ -334,6 +334,7 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
 		for (;; ++count)
 		{
+			graph->while_count = count;
 			_ccv_nnc_graph_unwrap(graph, count);
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, visitor);
 			// Reached breakpoints, now check the breakpoint, if not met, break out.
@@ -348,12 +349,13 @@ static int _ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_
 		}
 		ccv_array_free(follows);
 	} else {
+		graph->while_count = 0;
 		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-int ccv_nnc_graph_while_run(const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+int ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	return _ccv_nnc_graph_while_run(graph, 0, 0, 0, 0, tensor_tape, flags, sources, source_size, destinations, destination_size);
 }
