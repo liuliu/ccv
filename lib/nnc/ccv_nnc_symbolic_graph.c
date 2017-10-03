@@ -325,11 +325,15 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_g
 	}
 	// Otherwise, if the symbol is in the parent graph, this is a bit more expensive because I need to keep a trace stack.
 	curr_graph = graph;
-	ccv_array_t* trace = ccv_array_new(sizeof(int), 0, 0);
-	while (curr_graph && curr_graph != symbol.graph)
+	int d;
+	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
+		curr_graph = curr_graph->p;
+	curr_graph = graph;
+	int trace[d];
+	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
 	{
 		const int p_idx = curr_graph->p_idx - 1;
-		ccv_array_push(trace, &p_idx);
+		trace[d] = p_idx;
 		curr_graph = curr_graph->p;
 	}
 	// If it is not in both the parent graph and the sub-graph, the input is invalid.
@@ -341,9 +345,9 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_g
 	// that means it must be an input in these parent graphs. Otherwise, if we are connecting this symbol to an exec as output,
 	// it must be an output in these parent graphs.
 	int i;
-	for (i = trace->rnum - 1; i >= 0; i--)
+	for (i = d - 1; i >= 0; i--)
 	{
-		const int p_idx = *(int*)ccv_array_get(trace, i);
+		const int p_idx = trace[i];
 		assert(p_idx >= 0);
 		assert(curr_graph->sub_graphs);
 		if (!curr_symbol_info->s_ref)
@@ -391,7 +395,6 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_g
 		curr_symbol_info = new_symbol_info;
 		curr_graph = s;
 	}
-	ccv_array_free(trace);
 	return curr_symbol.d;
 }
 

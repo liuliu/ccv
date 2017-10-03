@@ -67,6 +67,7 @@ ccv_nnc_tensor_tape_t* ccv_nnc_tensor_tape_new(const ccv_nnc_graph_t* const grap
 
 void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int exec_index, const ccv_nnc_tensor_t** const inputs, const ccv_nnc_tensor_t** outputs, ccv_nnc_tensor_t*** const input_ref, ccv_nnc_tensor_t*** const output_ref)
 {
+	// Go to the root graph, record which was taken along the way.
 }
 
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
