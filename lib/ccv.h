@@ -78,11 +78,14 @@ enum {
 	CCV_REUSABLE      = 0x40000000, // matrix can be recycled
 	CCV_UNMANAGED     = 0x20000000, // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
 	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
+	CCV_TAPE_ALLOC    = 0x08000000, // matrix is allocated on a tape.
 };
 
+#define CCV_GET_TAPE_ALLOC(type) ((type) & CCV_TAPE_ALLOC)
+
 enum {
-	CCV_SPARSE_VECTOR = 0x01000000,
 	CCV_DENSE_VECTOR  = 0x02000000,
+	CCV_SPARSE_VECTOR = 0x01000000,
 };
 
 typedef struct {

@@ -275,6 +275,19 @@ void ccv_nnc_graph_exec_set_cast(ccv_nnc_graph_t* const graph, const ccv_nnc_gra
 	}
 }
 
+void ccv_nnc_graph_tensor_set_alias(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const tensor, const ccv_nnc_graph_exec_t alias_exec, const int io_idx)
+{
+	if (!graph->alias_finder)
+		graph->alias_finder = ccv_array_new(sizeof(ccv_nnc_alias_finder_t), 1, 0);
+	ccv_nnc_alias_finder_t alias_finder = {
+		.graph = alias_exec.graph,
+		.exec_index = alias_exec.d,
+		.io_index = io_idx,
+	};
+	ccv_array_push(graph->alias_finder, &alias_finder);
+	tensor->alias_ref = CCV_NNC_SET_ALIAS_FINDER_POS(graph->alias_finder->rnum - 1);
+}
+
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	int d = graph->exec_info->rnum;
@@ -891,6 +904,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->destinations);
 	if (graph->wraps)
 		ccv_array_free(graph->wraps);
+	if (graph->alias_finder)
+		ccv_array_free(graph->alias_finder);
 	if (graph->sub_graphs)
 	{
 		for (i = 0; i < graph->sub_graphs->rnum; i++)

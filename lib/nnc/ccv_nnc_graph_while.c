@@ -88,6 +88,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 	}
 	ccv_array_push(graph->sub_graphs, &while_graph);
 	while_graph->p = graph;
+	while_graph->p_idx = graph->sub_graphs->rnum;
 	while_graph->exec_idx = while_exec.d + 1;
 	while_exec_info->graph_ref = graph->sub_graphs->rnum;
 	return while_exec;

@@ -39,6 +39,7 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has wrapped nodes.
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
+	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
 	// Why some of these I choose to be flat * array, some of these I choose to be ccv_array_t?
@@ -50,6 +51,17 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// End of while loop handling.
+	ccv_array_t* alias_finder;
 };
+
+typedef struct {
+	const ccv_nnc_graph_t* graph; // In which graph this tensor is referenced to.
+	int exec_index; // At which exec.
+	int io_index; // For that exec, which index is this tensor (input? output?).
+} ccv_nnc_alias_finder_t;
+
+#define CCV_NNC_IS_ALIAS_FINDER_POS(alias_ref) ((alias_ref) & 1)
+#define CCV_NNC_SET_ALIAS_FINDER_POS(idx) (((idx) << 1) + 1)
+#define CCV_NNC_GET_ALIAS_FINDER_POS(alias_ref) (((alias_ref) >> 1) - 1)
 
 #endif
