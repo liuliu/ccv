@@ -13,6 +13,13 @@
 #include "ccv_nnc.h"
 
 typedef struct {
+	int broadcast_required;
+	int count;
+	int index;
+	ccv_nnc_tensor_t* tensors[1];
+} ccv_nnc_graph_tensor_nest_t;
+
+typedef struct {
 	int input_size;
 	int output_size;
 	ccv_nnc_tensor_t** inputs;
@@ -21,13 +28,11 @@ typedef struct {
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	int graph_ref; // Reference to the sub-graph. Starts at 1.
-	int io_wraps; // How many wraps for the inputs / outputs (thus, the inputs and outputs must contain multi-view tensor).
-	int io_wrap_ptr; // At which level of the wrap we are currently at. Starts at 0.
-	// In parallel with io wraps. These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
-	int cast_size;
-	ccv_nnc_tensor_t** casts;
-	int cast_wraps;
-	int cast_wrap_ptr;
+	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
+	int broadcast_size;
+	ccv_nnc_tensor_t** broadcasts;
+	int tensor_nest_size; // This should be input_size + output_size + rest that need to be broadcast.
+	ccv_nnc_graph_tensor_nest_t** tensor_nests;
 } ccv_nnc_graph_exec_info_t;
 
 struct ccv_nnc_graph_s {
@@ -36,7 +41,7 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* sources;
 	ccv_array_t* destinations;
 	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
-	ccv_array_t* wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has wrapped nodes.
+	ccv_array_t* nest_execs; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has nested tensors.
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
@@ -51,17 +56,6 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_graph_while_f while_expr;
 	const void* while_data;
 	// End of while loop handling.
-	ccv_array_t* alias_finder;
 };
-
-typedef struct {
-	const ccv_nnc_graph_t* graph; // In which graph this tensor is referenced to.
-	int exec_index; // At which exec.
-	int io_index; // For that exec, which index is this tensor (input? output?).
-} ccv_nnc_alias_finder_t;
-
-#define CCV_NNC_IS_ALIAS_FINDER_POS(alias_ref) ((alias_ref) & 1)
-#define CCV_NNC_SET_ALIAS_FINDER_POS(idx) (((idx) << 1) + 1)
-#define CCV_NNC_GET_ALIAS_FINDER_POS(alias_ref) (((alias_ref) >> 1) - 1)
 
 #endif

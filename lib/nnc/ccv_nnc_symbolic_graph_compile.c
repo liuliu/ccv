@@ -2360,8 +2360,8 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	// (we need that if it is not associated as inputs / outputs of any execs, this is possible if all execs associate
 	// with its alias).
 	assert(tensor_arena->vt_tensor_size == graph_prep->tensor_symbol_info_size);
-	ccv_nnc_tensor_t** max_casts = 0;
-	int max_cast_size = 0;
+	ccv_nnc_tensor_t** max_broadcasts = 0;
+	int max_broadcast_size = 0;
 	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
 	{
 		ccv_nnc_tensor_t* const mv = tensor_arena->vt_tensors[i];
@@ -2382,30 +2382,30 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					for (k = 0; k < exec_info->output_size && !flag; k++)
 						if (exec_info->outputs[k] == mv)
 							flag = 1;
-					for (k = 0; k < exec_info->cast_size && !flag; k++)
-						if (exec_info->casts[k] == mv)
+					for (k = 0; k < exec_info->broadcast_size && !flag; k++)
+						if (exec_info->broadcasts[k] == mv)
 							flag = 1;
 					// If non is in the flag, it need to be included in the cast.
 					if (!flag)
 					{
-						if (exec_info->cast_size + 1 > max_cast_size)
+						if (exec_info->broadcast_size + 1 > max_broadcast_size)
 						{
-							max_cast_size = exec_info->cast_size + 1;
-							if (max_casts)
-								max_casts = ccrealloc(max_casts, sizeof(ccv_nnc_tensor_t*) * max_cast_size);
+							max_broadcast_size = exec_info->broadcast_size + 1;
+							if (max_broadcasts)
+								max_broadcasts = ccrealloc(max_broadcasts, sizeof(ccv_nnc_tensor_t*) * max_broadcast_size);
 							else
-								max_casts = ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_cast_size);
+								max_broadcasts = ccmalloc(sizeof(ccv_nnc_tensor_t*) * max_broadcast_size);
 						}
-						if (exec_info->cast_size)
-							memcpy(max_casts, exec_info->casts, sizeof(ccv_nnc_tensor_t*) * exec_info->cast_size);
-						max_casts[exec_info->cast_size] = mv;
-						ccv_nnc_graph_exec_set_cast(graph, graph_execs[idx], max_casts, exec_info->cast_size + 1);
+						if (exec_info->broadcast_size)
+							memcpy(max_broadcasts, exec_info->broadcasts, sizeof(ccv_nnc_tensor_t*) * exec_info->broadcast_size);
+						max_broadcasts[exec_info->broadcast_size] = mv;
+						ccv_nnc_graph_exec_set_broadcast(graph, graph_execs[idx], max_broadcasts, exec_info->broadcast_size + 1);
 					}
 				}
 		}
 	}
-	if (max_casts)
-		ccfree(max_casts);
+	if (max_broadcasts)
+		ccfree(max_broadcasts);
 	// Create source / destination phony node. This is to facilitate use of compiled graph.
 	// Also, this is needed if you have init zero execs.
 	if (source_exec_created || source_size > 1)

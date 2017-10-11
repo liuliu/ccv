@@ -53,21 +53,6 @@ int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph)
 	return graph->destinations ? graph->destinations->rnum : 0;
 }
 
-static void _ccv_recursively_mark_as_anchored_for_multiview_wrap(ccv_nnc_tensor_multiview_t* const mv, intptr_t* const wrap_anchors, const int wrap_size)
-{
-	int i;
-	for (i = 0; i < wrap_size; i++)
-		if (mv->anchor == (wrap_anchors[i] & ~(intptr_t)1))
-		{
-			wrap_anchors[i] |= 1;
-			break;
-		}
-	const int count = mv->kind + mv->repeat;
-	for (i = 0; i < count; i++)
-		if (!mv->tv && CCV_IS_TENSOR_MULTIVIEW(mv->data[i].ptr))
-			_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)(mv->data[i].ptr), wrap_anchors, wrap_size);
-}
-
 void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_hint_t hint)
 {
 	assert(exec.d < graph->exec_info->rnum);
@@ -76,86 +61,184 @@ void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_gra
 	exec_info->hint = hint;
 }
 
-static void _ccv_nnc_graph_exec_info_set_io(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const info, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+static int _ccv_nnc_tensor_multiview_level_count(const ccv_nnc_tensor_multiview_t* const mv)
 {
-	assert(input_size > 0 || output_size > 0);
+	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
+	const int count = mv->kind + mv->repeat;
+	if (mv->tv)
+		return 2; // For both current level, and tv level.
+	int i, c = 0;
+	for (i = 0; i < count; i++)
+		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count(mv->data[i].ptr));
+	return c + 1;
+}
+
+static ccv_nnc_graph_tensor_nest_t* _ccv_nnc_graph_tensor_nest_new(const ccv_nnc_tensor_multiview_t* const mv)
+{
+	const int level_count = _ccv_nnc_tensor_multiview_level_count(mv);
+	ccv_nnc_graph_tensor_nest_t* tensor_nest = (ccv_nnc_graph_tensor_nest_t*)ccmalloc(sizeof(ccv_nnc_graph_tensor_nest_t) + sizeof(ccv_nnc_tensor_t*) * (level_count - 1));
+	tensor_nest->broadcast_required = 0;
+	tensor_nest->count = level_count;
+	tensor_nest->index = 0;
+	tensor_nest->tensors[0] = (ccv_nnc_tensor_t*)mv;
+	return tensor_nest;
+}
+
+static void _ccv_nnc_graph_exec_rewind(ccv_nnc_graph_exec_info_t* const info)
+{
+	if (!info->tensor_nest_size)
+		return;
 	int i;
-	int has_wraps = 0;
-	for (i = 0; i < input_size && !has_wraps; i++)
-		if (inputs[i] && CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
-			has_wraps = 1;
-	for (i = 0; i < output_size && !has_wraps; i++)
-		if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
-			has_wraps = 1;
-	// It need to be handled specifically if it contains a wrap.
-	info->io_wraps = 0;
-	if (has_wraps)
+	// Rewind from tensor nests.
+	for (i = 0; i < info->input_size; i++)
+		if (info->tensor_nests[i])
+			info->inputs[i] = info->tensor_nests[i]->tensors[0];
+	const int d = info->input_size;
+	for (i = 0; i < info->output_size; i++)
+		if (info->tensor_nests[d + i])
+			info->outputs[i] = info->tensor_nests[d + i]->tensors[0];
+	const int dd = info->input_size + info->output_size;
+	for (i = 0; i < info->broadcast_size; i++)
+		if (info->tensor_nests[dd + i])
+			info->broadcasts[i] = info->tensor_nests[dd + i]->tensors[0];
+}
+
+static void _ccv_nnc_graph_tensor_nest_free(ccv_nnc_graph_tensor_nest_t* const tensor_nest)
+{
+	ccfree(tensor_nest);
+}
+
+static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const info)
+{
+	int i;
+	int has_nest = 0;
+	for (i = 0; i < info->input_size && !has_nest; i++)
+		has_nest = (info->inputs[i] && CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]));
+	for (i = 0; i < info->output_size && !has_nest; i++)
+		has_nest = (info->outputs[i] && CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]));
+	for (i = 0; i < info->broadcast_size && !has_nest; i++)
+		has_nest = (info->broadcasts[i] && CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]));
+	if (has_nest)
 	{
-		// The logic as following, I assume I need to unwrap at each graph level (go through graph until reaches p = 0).
-		// and then go over each input / output to see at which level we actually do the unwrapping.
-		assert(graph->p);
-		// Graph has to have attached to it parent, otherwise we cannot figure out the anchor point the wrap is pointing to.
-		int wrap_size = 1;
-		ccv_nnc_graph_t* p = graph->p;
-		for (; p; p = p->p)
-			++wrap_size;
-		// I will take advantage of the fact that intptr are 4-bytes aligned.
-		assert(wrap_size < 512); // We can only go 512 layer deep.
-		intptr_t* wrap_anchors = (intptr_t*)alloca(sizeof(intptr_t) * wrap_size);
-		for (p = graph, i = 0; p; p = p->p, i++)
-			wrap_anchors[i] = (intptr_t)p;
-		for (i = 0; i < input_size; i++)
-			if (inputs[i] && CCV_IS_TENSOR_MULTIVIEW(inputs[i]))
-				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)inputs[i], wrap_anchors, wrap_size);
-		for (i = 0; i < output_size; i++)
-			if (outputs[i] && CCV_IS_TENSOR_MULTIVIEW(outputs[i]))
-				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)outputs[i], wrap_anchors, wrap_size);
-		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
-		for (i = 0; i < wrap_size; i++)
-			if (wrap_anchors[i] & 1)
-				++info->io_wraps;
+		const int tensor_nest_size = info->input_size + info->output_size + info->broadcast_size;
+		if (info->tensor_nests)
+		{
+			info->tensor_nests = (ccv_nnc_graph_tensor_nest_t**)ccrealloc(info->tensor_nests, sizeof(ccv_nnc_graph_tensor_nest_t*) * tensor_nest_size);
+			for (i = info->tensor_nest_size; i < tensor_nest_size; i++)
+				info->tensor_nests[i] = 0;
+		} else
+			info->tensor_nests = (ccv_nnc_graph_tensor_nest_t**)cccalloc(tensor_nest_size, sizeof(ccv_nnc_graph_tensor_nest_t*));
+		info->tensor_nest_size = tensor_nest_size;
+		for (i = 0; i < info->input_size; i++)
+			if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]))
+			{
+				if (!info->tensor_nests[i] || info->inputs[i] != info->tensor_nests[i]->tensors[0])
+				{
+					if (info->tensor_nests[i])
+						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
+					info->tensor_nests[i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
+				}
+			} else {
+				if (info->tensor_nests[i])
+					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
+				info->tensor_nests[i] = 0;
+			}
+		const int d = info->input_size;
+		for (i = 0; i < info->output_size; i++)
+			if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]))
+			{
+				if (!info->tensor_nests[d + i] || info->outputs[i] != info->tensor_nests[d + i]->tensors[0])
+				{
+					if (info->tensor_nests[d + i])
+						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
+					info->tensor_nests[d + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
+				}
+			} else {
+				if (info->tensor_nests[d + i])
+					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
+				info->tensor_nests[d + i] = 0;
+			}
+		const int dd = info->input_size + info->output_size;
+		for (i = 0; i < info->broadcast_size; i++)
+			if (CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]))
+			{
+				if (!info->tensor_nests[dd + i] || info->broadcasts[dd + i] != info->tensor_nests[i]->tensors[0])
+				{
+					if (info->tensor_nests[dd + i])
+						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
+					info->tensor_nests[dd + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->broadcasts[i]);
+				}
+			} else {
+				if (info->tensor_nests[dd + i])
+					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
+				info->tensor_nests[i] = 0;
+			}
+	} else {
+		for (i = 0; i < info->tensor_nest_size; i++)
+			if (info->tensor_nests[i])
+				_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
+		ccfree(info->tensor_nests);
+		info->tensor_nest_size = 0;
+		info->tensor_nests = 0;
 	}
-	// info.io_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
-	if (info->inputs)
-		info->inputs = (ccv_nnc_tensor_t**)ccrealloc(info->inputs, sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->io_wraps + 1));
-	else
-		info->inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size) * (info->io_wraps + 1));
-	info->outputs = info->inputs + input_size;
-	if (inputs)
-		memcpy(info->inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
-	if (outputs)
-		memcpy(info->outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
-	info->input_size = input_size;
-	info->output_size = output_size;
+}
+
+static void _ccv_nnc_graph_deregister_tensor_nests(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec)
+{
+	ccv_nnc_graph_t* p = graph;
+	do {
+		int i;
+		// Remove from the array.
+		if (p->nest_execs)
+			for (i = 0; i < p->nest_execs->rnum; i++)
+			{
+				ccv_nnc_graph_exec_t* const nest_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->nest_execs, i);
+				if (nest_exec->d == exec.d && nest_exec->graph == graph)
+				{
+					--p->nest_execs->rnum;
+					if (i < p->nest_execs->rnum)
+						memcpy(nest_exec, nest_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->nest_execs->rnum - i));
+					break;
+				}
+			}
+		p = p->p;
+	} while (p);
+}
+
+static void _ccv_nnc_graph_register_tensor_nests(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_exec_info_t* const info)
+{
+	assert(info->tensor_nest_size > 0);
+	ccv_nnc_graph_t* p = graph;
+	do {
+		if (!p->nest_execs)
+		{
+			p->nest_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
+			ccv_array_push(p->nest_execs, &exec);
+		} else {
+			int i;
+			int has_nest_exec = 0;
+			for (i = 0; !has_nest_exec && i < p->nest_execs->rnum; i++)
+			{
+				ccv_nnc_graph_exec_t* nest_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->nest_execs, i);
+				has_nest_exec = (nest_exec->d == exec.d && nest_exec->graph == exec.graph);
+			}
+			if (!has_nest_exec)
+				ccv_array_push(p->nest_execs, &exec);
+		}
+		p = p->p;
+	} while (p);
 }
 
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	assert(exec.d < graph->exec_info->rnum);
 	assert(exec.graph == graph);
-	int i;
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	// Remove only it doesn't have both io_wraps and cast_wraps.
-	if (info->io_wraps && !info->cast_wraps)
-	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			// Remove from the array.
-			if (p->wraps)
-				for (i = 0; i < p->wraps->rnum; i++)
-				{
-					ccv_nnc_graph_exec_t* const wrap_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->wraps, i);
-					if (wrap_exec->d == exec.d && wrap_exec->graph == graph)
-					{
-						--p->wraps->rnum;
-						if (i < p->wraps->rnum)
-							memcpy(wrap_exec, wrap_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->wraps->rnum - i));
-						break;
-					}
-				}
-			p = p->p;
-		} while (p);
-	}
+	// De-register from the graph if it contains multiview tensors.
+	if (info->tensor_nest_size)
+		_ccv_nnc_graph_deregister_tensor_nests(graph, exec);
+	// In case it is already executed, rewind.
+	_ccv_nnc_graph_exec_rewind(info);
 	if (input_size == 0 && output_size == 0)
 	{
 		if (info->input_size > 0 || info->output_size > 0)
@@ -164,128 +247,57 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		info->outputs = 0;
 		info->input_size = 0;
 		info->output_size = 0;
-		info->io_wraps = 0;
-		info->io_wrap_ptr = 0;
+		_ccv_nnc_graph_redo_tensor_nests(info);
+		if (info->tensor_nest_size)
+			_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
 		return;
 	}
-	_ccv_nnc_graph_exec_info_set_io(graph, info, inputs, input_size, outputs, output_size);
-	// If we don't remove it because cast_wraps is nil, then no need to add it back.
-	if (info->io_wraps && !info->cast_wraps)
-	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			if (!p->wraps)
-				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
-			ccv_array_push(p->wraps, &exec);
-			p = p->p;
-		} while (p);
-	}
-}
-static void _ccv_nnc_graph_exec_info_set_cast(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const info, ccv_nnc_tensor_t* const* const casts, const int cast_size)
-{
-	assert(cast_size > 0);
-	int i;
-	int has_wraps = 0;
-	for (i = 0; i < cast_size && !has_wraps; i++)
-		if (casts[i] && CCV_IS_TENSOR_MULTIVIEW(casts[i]))
-			has_wraps = 1;
-	// It need to be handled specifically if it contains a wrap.
-	info->cast_wraps = 0;
-	if (has_wraps)
-	{
-		// The logic as following, I assume I need to unwrap at each graph level (go through graph until reaches p = 0).
-		// and then go over each input / output to see at which level we actually do the unwrapping.
-		assert(graph->p);
-		// Graph has to have attached to it parent, otherwise we cannot figure out the anchor point the wrap is pointing to.
-		int wrap_size = 1;
-		ccv_nnc_graph_t* p = graph->p;
-		for (; p; p = p->p)
-			++wrap_size;
-		// I will take advantage of the fact that intptr are 4-bytes aligned.
-		assert(wrap_size < 512); // We can only go 512 layer deep.
-		intptr_t* wrap_anchors = (intptr_t*)alloca(sizeof(intptr_t) * wrap_size);
-		for (p = graph, i = 0; p; p = p->p, i++)
-			wrap_anchors[i] = (intptr_t)p;
-		for (i = 0; i < cast_size; i++)
-			if (casts[i] && CCV_IS_TENSOR_MULTIVIEW(casts[i]))
-				_ccv_recursively_mark_as_anchored_for_multiview_wrap((ccv_nnc_tensor_multiview_t*)casts[i], wrap_anchors, wrap_size);
-		// Now all wrap_anchors are marked (with the least significant bit to be 1), compute the depth we required.
-		for (i = 0; i < wrap_size; i++)
-			if (wrap_anchors[i] & 1)
-				++info->cast_wraps;
-	}
-	// info.cast_wraps gives out how deep the "stack" need to be. We "unwrap" tensors when we go deeper into each sub-graph (if it is wrapped into a multiview tensor structure), thus, a "stack" is a perfect analogy to express this kind of memory structure we use.
-	if (info->casts)
-		info->casts = (ccv_nnc_tensor_t**)ccrealloc(info->casts, sizeof(ccv_nnc_tensor_t*) * cast_size * (info->cast_wraps + 1));
+	if (info->inputs)
+		info->inputs = (ccv_nnc_tensor_t**)ccrealloc(info->inputs, sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
 	else
-		info->casts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * cast_size * (info->cast_wraps + 1));
-	if (casts)
-		memcpy(info->casts, casts, sizeof(ccv_nnc_tensor_t*) * cast_size);
-	info->cast_size = cast_size;
+		info->inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
+	info->outputs = info->inputs + input_size;
+	if (inputs)
+		memcpy(info->inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
+	if (outputs)
+		memcpy(info->outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
+	info->input_size = input_size;
+	info->output_size = output_size;
+	_ccv_nnc_graph_redo_tensor_nests(info);
+	// Register again if the tensor nests exist.
+	if (info->tensor_nest_size)
+		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
 }
 
-void ccv_nnc_graph_exec_set_cast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const casts, const int cast_size)
+void ccv_nnc_graph_exec_set_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const broadcasts, const int broadcast_size)
 {
 	assert(exec.d < graph->exec_info->rnum);
 	assert(exec.graph == graph);
-	int i;
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	// Remove only it doesn't have both io_wraps and cast_wraps.
-	if (info->cast_wraps && !info->io_wraps)
+	// De-register from the graph if it contains multiview tensors.
+	if (info->tensor_nest_size)
+		_ccv_nnc_graph_deregister_tensor_nests(graph, exec);
+	// In case it is already executed, rewind.
+	_ccv_nnc_graph_exec_rewind(info);
+	if (broadcast_size == 0)
 	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			// Remove from the array.
-			if (p->wraps)
-				for (i = 0; i < p->wraps->rnum; i++)
-				{
-					ccv_nnc_graph_exec_t* const wrap_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->wraps, i);
-					if (wrap_exec->d == exec.d && wrap_exec->graph == graph)
-					{
-						--p->wraps->rnum;
-						if (i < p->wraps->rnum)
-							memcpy(wrap_exec, wrap_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->wraps->rnum - i));
-						break;
-					}
-				}
-			p = p->p;
-		} while (p);
-	}
-	if (cast_size == 0)
-	{
-		if (info->cast_size > 0)
-			ccfree(info->casts);
-		info->casts = 0;
-		info->cast_size = 0;
-		info->cast_wraps = 0;
-		info->cast_wrap_ptr = 0;
+		if (info->broadcast_size > 0)
+			ccfree(info->broadcasts);
+		info->broadcasts = 0;
+		info->broadcast_size = 0;
 		return;
 	}
-	_ccv_nnc_graph_exec_info_set_cast(graph, info, casts, cast_size);
-	// If we don't remove it because io_wraps is nil, then no need to add it back.
-	if (info->cast_wraps && !info->io_wraps)
-	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			if (!p->wraps)
-				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
-			ccv_array_push(p->wraps, &exec);
-			p = p->p;
-		} while (p);
-	}
-}
-
-void ccv_nnc_graph_tensor_set_alias(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const tensor, const ccv_nnc_graph_exec_t alias_exec, const int io_idx)
-{
-	if (!graph->alias_finder)
-		graph->alias_finder = ccv_array_new(sizeof(ccv_nnc_alias_finder_t), 1, 0);
-	ccv_nnc_alias_finder_t alias_finder = {
-		.graph = alias_exec.graph,
-		.exec_index = alias_exec.d,
-		.io_index = io_idx,
-	};
-	ccv_array_push(graph->alias_finder, &alias_finder);
-	tensor->alias_ref = CCV_NNC_SET_ALIAS_FINDER_POS(graph->alias_finder->rnum - 1);
+	if (info->broadcasts)
+		info->broadcasts = (ccv_nnc_tensor_t**)ccrealloc(info->broadcasts, sizeof(ccv_nnc_tensor_t*) * broadcast_size);
+	else
+		info->broadcasts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * broadcast_size);
+	if (broadcasts)
+		memcpy(info->broadcasts, broadcasts, sizeof(ccv_nnc_tensor_t*) * broadcast_size);
+	info->broadcast_size = broadcast_size;
+	_ccv_nnc_graph_redo_tensor_nests(info);
+	// Register again if the tensor nests exist.
+	if (info->tensor_nest_size)
+		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -300,23 +312,25 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 	assert(inputs || input_size == 0);
 	assert(outputs || output_size == 0);
 	if (input_size > 0 || output_size > 0)
-		_ccv_nnc_graph_exec_info_set_io(graph, &info, inputs, input_size, outputs, output_size);
-	ccv_array_push(graph->exec_info, &info);
+	{
+		info.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size));
+		info.outputs = info.inputs + input_size;
+		if (inputs)
+			memcpy(info.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
+		if (outputs)
+			memcpy(info.outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
+		info.input_size = input_size;
+		info.output_size = output_size;
+	}
 	ccv_nnc_graph_exec_t exec = {
 		.d = d,
 		.graph = graph,
 	};
+	_ccv_nnc_graph_redo_tensor_nests(&info);
 	// Add itself to the graph's wraps array, this will help the run time when we run the graph and do unwrapping.
-	if (info.io_wraps)
-	{
-		ccv_nnc_graph_t* p = graph;
-		do {
-			if (!p->wraps)
-				p->wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
-			ccv_array_push(p->wraps, &exec);
-			p = p->p;
-		} while (p);
-	}
+	if (info.tensor_nest_size)
+		_ccv_nnc_graph_register_tensor_nests(graph, exec, &info);
+	ccv_array_push(graph->exec_info, &info);
 	return exec;
 }
 
@@ -883,7 +897,7 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* const graph, const int flags, cons
 
 void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 {
-	int i;
+	int i, j;
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
 		ccv_nnc_graph_exec_info_t *info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
@@ -893,8 +907,15 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
 		if (info->inputs)
 			ccfree(info->inputs);
-		if (info->casts)
-			ccfree(info->casts);
+		if (info->broadcasts)
+			ccfree(info->broadcasts);
+		if (info->tensor_nest_size)
+		{
+			for (j = 0; j < info->tensor_nest_size; j++)
+				if (info->tensor_nests[j])
+					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[j]);
+			ccfree(info->tensor_nests);
+		}
 	}
 	if (graph->breakpoints)
 		ccfree(graph->breakpoints);
@@ -902,10 +923,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->sources);
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
-	if (graph->wraps)
-		ccv_array_free(graph->wraps);
-	if (graph->alias_finder)
-		ccv_array_free(graph->alias_finder);
+	if (graph->nest_execs)
+		ccv_array_free(graph->nest_execs);
 	if (graph->sub_graphs)
 	{
 		for (i = 0; i < graph->sub_graphs->rnum; i++)

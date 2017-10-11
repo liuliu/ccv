@@ -196,9 +196,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_new(ccv_nnc_graph_t* co
 void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_hint_t hint);
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 // Casts are the tensors that not directly involved in the computation, but its pointers need to get updated along with this exec.
-void ccv_nnc_graph_exec_set_cast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const casts, const int cast_size);
-// Set tensor->alias_ref to specific tensor (by index) on a specific exec.
-void ccv_nnc_graph_tensor_set_alias(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const tensor, const ccv_nnc_graph_exec_t alias_exec, const int io_idx);
+void ccv_nnc_graph_exec_set_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const casts, const int cast_size);
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
