@@ -269,34 +269,22 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
 }
 
-void ccv_nnc_graph_exec_set_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const broadcasts, const int broadcast_size)
+void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const broadcast)
 {
+	assert(CCV_IS_TENSOR_MULTIVIEW(broadcast));
 	assert(exec.d < graph->exec_info->rnum);
 	assert(exec.graph == graph);
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	// De-register from the graph if it contains multiview tensors.
-	if (info->tensor_nest_size)
-		_ccv_nnc_graph_deregister_tensor_nests(graph, exec);
-	// In case it is already executed, rewind.
-	_ccv_nnc_graph_exec_rewind(info);
-	if (broadcast_size == 0)
-	{
-		if (info->broadcast_size > 0)
-			ccfree(info->broadcasts);
-		info->broadcasts = 0;
-		info->broadcast_size = 0;
-		return;
-	}
+	const int register_tensor_nests = !info->tensor_nest_size;
+	const int broadcast_index = info->broadcast_size;
+	++info->broadcast_size;
 	if (info->broadcasts)
-		info->broadcasts = (ccv_nnc_tensor_t**)ccrealloc(info->broadcasts, sizeof(ccv_nnc_tensor_t*) * broadcast_size);
+		info->broadcasts = (ccv_nnc_tensor_t**)ccrealloc(info->broadcasts, sizeof(ccv_nnc_tensor_t*) * info->broadcast_size);
 	else
-		info->broadcasts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * broadcast_size);
-	if (broadcasts)
-		memcpy(info->broadcasts, broadcasts, sizeof(ccv_nnc_tensor_t*) * broadcast_size);
-	info->broadcast_size = broadcast_size;
+		info->broadcasts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * info->broadcast_size);
+	info->broadcasts[broadcast_index] = broadcast;
 	_ccv_nnc_graph_redo_tensor_nests(info);
-	// Register again if the tensor nests exist.
-	if (info->tensor_nest_size)
+	if (register_tensor_nests)
 		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
 }
 
