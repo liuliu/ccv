@@ -503,16 +503,16 @@ static void _ccv_nnc_tensor_alloc_prep_free(ccv_nnc_tensor_alloc_prep_t* alloc_p
 // Simple allocator from ccv_array_t.
 static int _ccv_nnc_tensor_metadata_pos_new(ccv_array_t* const tensor_metadata, const size_t size)
 {
-	int pos = tensor_metadata->rnum + 1; // Appending 1 so it starts from non-zero.
+	int pos = tensor_metadata->rnum;
 	int rsize = (size + 15) / 16;
-	ccv_array_resize(tensor_metadata, pos + rsize - 1);
+	ccv_array_resize(tensor_metadata, pos + rsize);
 	return (pos << 1) + 1;
 }
 
 static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_get(const ccv_array_t* const tensor_metadata, const int pos)
 {
 	assert((pos >> 1) <= tensor_metadata->rnum);
-	return (ccv_nnc_tensor_t*)ccv_array_get(tensor_metadata, (pos >> 1) - 1);
+	return (ccv_nnc_tensor_t*)ccv_array_get(tensor_metadata, pos >> 1);
 }
 
 #define CCV_NNC_IS_METADATA_POS(ptr) ((uintptr_t)(ptr) & 1)

@@ -10,66 +10,86 @@
 #include "_ccv_nnc_tensor_tape.h"
 #include "_ccv_nnc_graph.h"
 
-static void _ccv_nnc_tape_graph_data_new(ccv_nnc_tape_graph_data_t* const graph_data, const ccv_nnc_graph_t* const graph)
-{
-	graph_data->while_max_count = 1;
-	graph_data->sub_graph_data_size = graph->sub_graphs ? graph->sub_graphs->rnum : 0;
-	graph_data->sub_graph_data = graph_data->sub_graph_data_size ? ccmalloc(sizeof(ccv_nnc_tape_graph_data_t) * graph_data->sub_graph_data_size) : 0;
-	int i;
-	for (i = 0; i < graph_data->sub_graph_data_size; i++)
-		_ccv_nnc_tape_graph_data_new(graph_data->sub_graph_data + i, *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, i));
-}
-
-static void _ccv_nnc_tape_graph_data_free(ccv_nnc_tape_graph_data_t* const graph_data)
-{
-	int i;
-	for (i = 0; i < graph_data->sub_graph_data_size; i++)
-		_ccv_nnc_tape_graph_data_free(graph_data->sub_graph_data + i);
-	ccfree(graph_data->sub_graph_data);
-}
-
 ccv_nnc_tensor_tape_t* ccv_nnc_tensor_tape_new(const ccv_nnc_graph_t* const graph)
 {
 	// Its parent should be nil (we make tape from the root graph).
 	assert(graph->p == 0);
-	ccv_nnc_tensor_tape_t* tape = (ccv_nnc_tensor_tape_t*)ccmalloc(sizeof(ccv_nnc_tensor_tape_t) + sizeof(ccv_nnc_tape_graph_data_t));
-	tape->graph_data = (ccv_nnc_tape_graph_data_t*)(tape + 1);
-	_ccv_nnc_tape_graph_data_new(tape->graph_data, graph);
+	ccv_nnc_tensor_tape_t* tape = (ccv_nnc_tensor_tape_t*)ccmalloc(sizeof(ccv_nnc_tensor_tape_t));
+	tape->tensor_data = ccv_array_new(sizeof(ccv_nnc_tape_tensor_data_t), 0, 0);
 	return tape;
 }
 
-void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int exec_index, ccv_nnc_tensor_t** const inputs, ccv_nnc_tensor_t** const outputs)
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_graph_t* const* const graphs, const int graph_size, ccv_nnc_tensor_multiview_t* const mv)
 {
-	// Go to the root graph, record which was taken along the way.
-	const ccv_nnc_graph_t* curr_graph = graph;
-	int d;
-	for (d = 0; curr_graph; d++)
-		curr_graph = curr_graph->p;
-	curr_graph = graph;
-	int trace[d];
-	for (d = 0; curr_graph; d++)
+	int i;
+	ccv_nnc_tensor_t* tensor = (ccv_nnc_tensor_t*)mv;
+	for (i = 0; i < graph_size; i++)
 	{
-		const int p_idx = curr_graph->p_idx - 1;
-		trace[d] = p_idx;
-		curr_graph = curr_graph->p;
+		const int count = (int)graphs[i]->while_count;
+		while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
+			   ((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i])
+		{
+			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
+			const int off = mv->kind;
+			const int mod = mv->repeat;
+			// If reached the root.
+			if (mv->tv)
+				tensor = mv->tv;
+			else
+				tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count].ptr; // Unwrap.
+		}
 	}
-	const ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec_index);
+	return tensor;
+}
+
+/*
+// Simple allocator from ccv_array_t.
+static int _ccv_nnc_tensor_metadata_pos_new(ccv_array_t* const tensor_metadata, const size_t size)
+{
+	int pos = tensor_metadata->rnum + 1; // Appending 1 so it starts from non-zero.
+	int rsize = (size + 15) / 16;
+	ccv_array_resize(tensor_metadata, pos + rsize - 1);
+	return (pos << 1) + 1;
+}
+
+static ccv_numeric_data_t _ccv_nnc_tape_tensor_data_get(const ccv_array_t* const tensor_data, const int pos)
+{
+	assert((pos >> 1) <= tensor_data->rnum);
+	return (ccv_nnc_)ccv_array_get(tensor_data, (pos >> 1) - 1);
+}
+
+#define CCV_NNC_IS_TAPE_TENSOR_DATA_POS(ptr) ((uintptr_t)(ptr) & 1)
+*/
+
+void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
 	int i, tape_io = 0;
-	for (i = 0; i < exec_info->input_size && !tape_io; i++)
+	for (i = 0; i < input_size && !tape_io; i++)
 		if (CCV_GET_TAPE_ALLOC(inputs[i]->type))
 			tape_io = 1;
-	for (i = 0; i < exec_info->output_size && !tape_io; i++)
+	for (i = 0; i < output_size && !tape_io; i++)
 		if (CCV_GET_TAPE_ALLOC(outputs[i]->type))
 			tape_io = 1;
 	// If doesn't need to update with tape io, just pointing to the inputs and outputs directly.
 	if (!tape_io)
 		return;
+	// Go to the root graph, record which was taken along the way.
+	// In this way, we can then unwrap multi-view tensors.
+	const ccv_nnc_graph_t* curr_graph = graph;
+	int d;
+	for (d = 0; curr_graph; d++)
+		curr_graph = curr_graph->p;
+	curr_graph = graph;
+	const int graph_size = d;
+	const ccv_nnc_graph_t* graphs[graph_size];
+	for (d = graph_size - 1; curr_graph; d--, curr_graph = curr_graph->p)
+		graphs[d] = curr_graph;
 	// Now, go through the inputs / outputs and update.
-	for (i = 0; i < exec_info->input_size; i++)
+	for (i = 0; i < input_size; i++)
 		if (CCV_GET_TAPE_ALLOC(inputs[i]->type))
 		{
 		}
-	for (i = 0; i < exec_info->output_size; i++)
+	for (i = 0; i < output_size; i++)
 		if (CCV_GET_TAPE_ALLOC(outputs[i]->type))
 		{
 		}
@@ -77,6 +97,6 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
 {
-	_ccv_nnc_tape_graph_data_free(tape->graph_data);
+	ccv_array_free(tape->tensor_data);
 	ccfree(tape);
 }

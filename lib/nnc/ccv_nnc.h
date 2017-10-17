@@ -404,7 +404,7 @@ typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, cons
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(const ccv_nnc_graph_t* const graph);
-void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int exec_index, ccv_nnc_tensor_t** const inputs, ccv_nnc_tensor_t** const outputs);
+void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
 typedef struct ccv_nnc_tensor_multiview_s {
