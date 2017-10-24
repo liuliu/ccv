@@ -1348,18 +1348,31 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* const
 	}
 	int i;
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
-	{
-		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_symbol(tensor_arena->sub_arenas[i], symbol);
-		if (tensor)
-			return tensor;
-	}
+		if (tensor_arena->sub_arenas[i])
+		{
+			ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_symbol(tensor_arena->sub_arenas[i], symbol);
+			if (tensor)
+				return tensor;
+		}
 	return 0;
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_from_symbol(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena, const ccv_nnc_graph_exec_symbol_t symbol)
 {
-	assert(symbol.d >= 0 && symbol.d < graph_exec_arena->graph_exec_size);
-	return graph_exec_arena->graph_execs[symbol.d];
+	if ((intptr_t)symbol.graph == graph_exec_arena->graph_ref)
+	{
+		assert(symbol.d >= 0 && symbol.d < graph_exec_arena->graph_exec_size);
+		return graph_exec_arena->graph_execs[symbol.d];
+	}
+	int i;
+	for (i = 0; i < graph_exec_arena->sub_arena_size; i++)
+		if (graph_exec_arena->sub_arenas[i])
+		{
+			ccv_nnc_graph_exec_t exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena->sub_arenas[i], symbol);
+			if (!CCV_NO_GRAPH_EXEC(exec))
+				return exec;
+		}
+	return (ccv_nnc_graph_exec_t){}; // 0.
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_source(const ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
@@ -2215,6 +2228,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	int i, j, k;
 	ccv_nnc_graph_t* const graph = graph_prep->graph;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = (ccv_nnc_graph_exec_arena_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_arena_t) + sizeof(ccv_nnc_graph_exec_arena_t*) * graph_prep->sub_prep_size + sizeof(ccv_nnc_graph_exec_t) * (symbolic_graph->exec_symbol_info->rnum - 1));
+	graph_exec_arena->graph_ref = (intptr_t)symbolic_graph;
 	graph_exec_arena->graph_exec_size = symbolic_graph->exec_symbol_info->rnum;
 	graph_exec_arena->sub_arena_size = graph_prep->sub_prep_size;
 	graph_exec_arena->sub_arenas = (ccv_nnc_graph_exec_arena_t**)(graph_exec_arena->graph_execs + symbolic_graph->exec_symbol_info->rnum);

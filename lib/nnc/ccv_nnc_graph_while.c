@@ -94,6 +94,19 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t 
 	return while_exec;
 }
 
+ccv_nnc_graph_t* ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec)
+{
+	assert(exec.graph == graph);
+	assert(exec.d < graph->exec_info->rnum);
+	assert(graph->sub_graphs);
+	ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
+	assert(exec_info->graph_ref);
+	const int graph_ref = exec_info->graph_ref - 1;
+	assert(graph_ref < graph->sub_graphs->rnum);
+	ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
+	return sub_graph;
+}
+
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size)
 {
 	while_graph->while_data = while_data;

@@ -52,6 +52,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor
 	ccmemalign((void **)&tensor, 16, tensor_hdr_size + size);
 	tensor->data.u8 = (uint8_t*)tensor + tensor_hdr_size;
 #endif
+	tensor->alias_ref = 0;
 	tensor->sig = 0;
 	tensor->refcount = 1;
 	tensor->info = params;

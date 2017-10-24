@@ -403,7 +403,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
 typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data);
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
-CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(const ccv_nnc_graph_t* const graph);
+CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
 void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
@@ -443,6 +443,7 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph
 // and parent graph).
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph);
+CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
