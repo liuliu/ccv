@@ -29,7 +29,8 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 	{
 		const int count = (int)graphs[i]->while_count;
 		while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
-			   ((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i])
+			   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i] ||
+				((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i]->mirror))
 		{
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 			const int off = mv->kind;
