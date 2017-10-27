@@ -46,6 +46,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 }
 
 #define CCV_NNC_IS_TAPE_TENSOR_DATA_ARRAY_POS(ptr) ((uintptr_t)(ptr) & 1)
+#define CCV_NUMERIC_DATA_NO_ALLOC(data) ((uintptr_t)(data.u8) & 1)
 
 // Simple allocator from ccv_array_t.
 static void _ccv_nnc_tape_tensor_data_array_pos_new(ccv_array_t* const tensor_data, int* const pos_ref, ccv_nnc_tape_tensor_data_array_t** const tape_tensor_data_ref)
@@ -183,20 +184,27 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	}
 	if (!data_array->data[idx].data.u8)
 	{
-		assert(create_if_missing);
-		const size_t size = ccv_nnc_tensor_data_size(tensor->info);
-		data_array->data[idx].type = tensor->info.type;
+		// If we cannot create, loop back idx until we find one that exists.
+		if (!create_if_missing)
+		{
+			for (i = idx - 1; !data_array->data[idx].data.u8 && i >= 0; i--)
+				if (data_array->data[i].data.u8)
+					data_array->data[idx].data.u8 = (unsigned char*)((uintptr_t)data_array->data[i].data.u8 | (uintptr_t)1);
+		} else {
+			const size_t size = ccv_nnc_tensor_data_size(tensor->info);
+			data_array->data[idx].type = tensor->info.type;
 #ifdef HAVE_CUDA
-		if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
-			data_array->data[idx].data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), size);
-		else
-			ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
+			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
+				data_array->data[idx].data.u8 = (uint8_t*)cumalloc(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), size);
+			else
+				ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
 #else
-		assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
-		ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
+			assert(CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY);
+			ccmemalign((void **)&data_array->data[idx].data.u8, 16, size);
 #endif
+		}
 	}
-	tensor->data.u8 = data_array->data[idx].data.u8;
+	tensor->data.u8 = (unsigned char*)((uintptr_t)data_array->data[idx].data.u8 & ~(uintptr_t)1);
 }
 
 void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -243,16 +251,17 @@ void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
 			for (j = 0; j < data_array->dim_count; j++)
 				size *= data_array->dim[j];
 			for (j = 0; j < size; j++)
-			{
+				if (!CCV_NUMERIC_DATA_NO_ALLOC(data_array->data[j].data))
+				{
 #ifdef HAVE_CUDA
-				if (CCV_TENSOR_GET_MEMORY(data_array->data[j].type) == CCV_TENSOR_GPU_MEMORY)
-					cufree(CCV_TENSOR_GET_DEVICE_ID(data_array->data[j].type), data_array->data[j].data.u8);
-				else
-					ccfree(data_array->data[j].data.u8);
+					if (CCV_TENSOR_GET_MEMORY(data_array->data[j].type) == CCV_TENSOR_GPU_MEMORY)
+						cufree(CCV_TENSOR_GET_DEVICE_ID(data_array->data[j].type), data_array->data[j].data.u8);
+					else
+						ccfree(data_array->data[j].data.u8);
 #else
-				ccfree(data_array->data[j].data.u8);
+					ccfree(data_array->data[j].data.u8);
 #endif
-			}
+				}
 			ccfree(data_array->dim);
 		}
 	}
