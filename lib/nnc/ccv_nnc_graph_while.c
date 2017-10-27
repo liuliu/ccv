@@ -45,11 +45,11 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 	ccv_array_push(tensor_multiview->rtvs, &tensor);
 }
 
-void ccv_nnc_tensor_multiview_broadcast(const ccv_nnc_tensor_multiview_t* const tensor_multiview)
+void ccv_nnc_tensor_multiview_broadcast(ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	assert(tensor_multiview->tv);
 	// Update the pointer on tv only if it is not a single tensor pointer.
-	if (!CCV_NNC_MULTIVIEW_K01(tensor_multiview))
+	if (!CCV_NNC_MULTIVIEW_K01(tensor_multiview) && !CCV_GET_TAPE_ALLOC(tensor_multiview->type))
 		tensor_multiview->tv->data = tensor_multiview->it;
 	unsigned char* const data = tensor_multiview->tv->data.u8 - tensor_multiview->offset;
 	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
@@ -145,8 +145,14 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				{
 					// If it is a single tensor view pointer wrapped into multi-view tensor, no need to update pointer at all.
 					if (!CCV_NNC_MULTIVIEW_K01(mv))
+					{
 						// Update the pointer
 						mv->it = mv->data[count >= off ? ((count - off) % mod) + off : count]; // See the comment of the CCV_NNC_MULTIVIEW_KXX enum for why the computation carried out this way.
+						// If this is a tape variable, it points to tensor directly.
+						if (CCV_GET_TAPE_ALLOC(mv->type))
+							// it pointer is actually a full tensor.
+							mv->tv = (ccv_nnc_tensor_t*)mv->it.ptr;
+					}
 					tensor = mv->tv;
 					tensor_nest->broadcast_required = 1; // Need to broadcast tensor updates.
 				} else
@@ -244,9 +250,9 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 		ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
 		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
 		// This is a forward while loop. Backward while loop will just consult its mirroring part.
-		ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->breakpoint_size, 0);
 		if (cmd == CCV_NNC_GRAPH_FORWARD)
 		{
+			ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->breakpoint_size, 0);
 			for (i = 0; i < graph->breakpoint_size; i++)
 			{
 				const ccv_nnc_graph_exec_info_t* const exec_info = (const ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, graph->breakpoints->d);
