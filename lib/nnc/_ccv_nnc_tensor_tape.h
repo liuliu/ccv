@@ -21,7 +21,14 @@ typedef struct {
 	ccv_nnc_tape_tensor_data_t* data;
 } ccv_nnc_tape_tensor_data_array_t;
 
+typedef struct {
+	int dim_count;
+	int* dim;
+	uint64_t* data;
+} ccv_nnc_tape_graph_data_array_t;
+
 // Tape's structure mimics the graph, but it only uses that to index into specific tensor.
 struct ccv_nnc_tensor_tape_s {
 	ccv_array_t* tensor_data; // struct of ccv_nnc_tape_tensor_data_array_t
+	ccv_array_t* graph_data; // struct of ccv_nnc_tape_graph_data_array_t
 };

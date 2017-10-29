@@ -135,7 +135,7 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 			ccv_nnc_tensor_t* tensor = tensor_nest->tensors[tensor_nest->index];
 			while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
 				   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
-					((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->mirror))
+					((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
 			{
 				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 				const int off = mv->kind;
@@ -182,7 +182,7 @@ static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call th
 				continue;
 			while (tensor_nest->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_nest->tensors[tensor_nest->index - 1]) &&
 					(((ccv_nnc_tensor_multiview_t*)tensor_nest->tensors[tensor_nest->index - 1])->anchor == (intptr_t)graph ||
-					 ((ccv_nnc_tensor_multiview_t*)tensor_nest->tensors[tensor_nest->index - 1])->anchor == (intptr_t)graph->mirror))
+					 ((ccv_nnc_tensor_multiview_t*)tensor_nest->tensors[tensor_nest->index - 1])->anchor == (intptr_t)graph->peer))
 				--tensor_nest->index;
 		}
 	}
@@ -199,7 +199,7 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 		{
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
-			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->mirror);
+			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);
 			ccv_nnc_tensor_multiview_broadcast(mv);
 			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
 		}
@@ -249,7 +249,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 		uint64_t count = 0;
 		ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
 		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
-		// This is a forward while loop. Backward while loop will just consult its mirroring part.
+		// This is a forward while loop. Backward while loop will just consult its peering part.
 		if (cmd == CCV_NNC_GRAPH_FORWARD)
 		{
 			ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->breakpoint_size, 0);
@@ -269,6 +269,8 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 			for (;; ++count)
 			{
 				graph->while_count = count;
+				if (tensor_tape)
+					ccv_nnc_tensor_tape_set_while_count(tensor_tape, graph, count);
 				_ccv_nnc_graph_unwrap(graph, count);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, visitor);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
@@ -285,8 +287,9 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 		} else {
 			// For backward graph, no need to evaluate the while expr.
 			assert(cmd == CCV_NNC_GRAPH_BACKWARD);
-			assert(graph->mirror);
-			graph->while_count = count = graph->mirror->while_count;
+			assert(graph->peer);
+			assert(tensor_tape);
+			graph->while_count = count = ccv_nnc_tensor_tape_while_count(tensor_tape, graph);
 			_ccv_nnc_graph_unwrap(graph, count);
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, destinations, destination_size, visitor);
 			_ccv_nnc_graph_rewrap(graph);

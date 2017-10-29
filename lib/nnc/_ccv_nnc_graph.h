@@ -38,6 +38,7 @@ typedef struct {
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
+	intptr_t alias_ref; // Link to some reference data.
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;
@@ -46,7 +47,7 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* nest_execs; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has nested tensors.
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
-	struct ccv_nnc_graph_s* mirror; // The mirrored graph (only useful for backward prop graph).
+	struct ccv_nnc_graph_s* peer; // The peer graph (only useful for backward prop graph).
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
 	// Why some of these I choose to be flat * array, some of these I choose to be ccv_array_t?
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
