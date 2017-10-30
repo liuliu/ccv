@@ -1014,6 +1014,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					  graph_prep->dup_tensor_block_ref[block_ref * nth_unroll] != block_ref) ||
 					 !tensor_arena->buffers[buffer_ref].ptr))
 				{
+					assert(graph_prep->p); // This must be in a sub-graph.
+					// If this is an input tensor, and it need to be preserved, wait until when we go through inputs to preserve.
+					if (graph_prep->tensor_blocks[block_ref].p_refs[0] && _ccv_nnc_tensor_block_check_preserve(graph_prep, block_ref))
+						continue;
 					const int pos = _ccv_nnc_tensor_multiview_gen(tensor_arena->tensor_metadata, 0, tensor_symbol_info[block_ref].info, graph_prep, tensor_arena, block_ref);
 					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 				} else {
@@ -1062,6 +1066,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					  graph_prep->dup_tensor_block_ref[block_ref * nth_unroll] != block_ref) ||
 					 !tensor_arena->buffers[buffer_ref].ptr))
 				{
+					// We haven't allocated anything for this yet.
+					assert(tensor_arena->vt_tensors[block_ref] == 0);
 					const int pos = _ccv_nnc_tensor_multiview_gen(tensor_arena->tensor_metadata, 1, tensor_symbol_info[block_ref].info, graph_prep, tensor_arena, block_ref);
 					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 				} else {
