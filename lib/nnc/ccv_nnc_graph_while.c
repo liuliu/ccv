@@ -139,9 +139,7 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				const int mod = mv->repeat;
 				tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
 				// If reached the root.
-				if (CCV_IS_TENSOR_MULTIVIEW(tensor))
-					mv->it = tensor;
-				else
+				if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
 					tensor_nest->broadcast_required = 1; // Need to broadcast tensor updates.
 				++tensor_nest->index;
 				tensor_nest->tensors[tensor_nest->index] = tensor;
@@ -181,15 +179,19 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 	int i;
 	ccv_nnc_graph_tensor_nest_t** const tensor_nests = node->tensor_nests;
 	for (i = 0; i < node->tensor_nest_size; i++)
-		if (tensor_nests[i] && tensor_nests[i]->broadcast_required)
+		if (tensor_nests[i])
 		{
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);
-			// Only now set the mv->it, because now it is accessed.
+			// Only now set the mv->it, because now this node is about to get executed.
 			mv->it = tensor_nests[i]->tensors[tensor_nests[i]->index];
-			ccv_nnc_tensor_multiview_broadcast(mv);
-			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
+			if (tensor_nests[i]->broadcast_required)
+			{
+				// Now broadcast the final pointer.
+				ccv_nnc_tensor_multiview_broadcast(mv);
+				tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
+			}
 		}
 	for (i = 0; i < node->input_size; i++)
 		if (tensor_nests[i])
