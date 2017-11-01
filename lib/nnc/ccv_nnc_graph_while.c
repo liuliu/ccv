@@ -19,12 +19,12 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, cons
 	tensor_multiview->p = 0;
 	tensor_multiview->offset = 0;
 	tensor_multiview->rtvs = 0;
-	assert(repeat + kind <= CCV_NNC_MAX_INLINE_UNROLL);
+	tensor_multiview->_heap_data = (repeat + kind <= CCV_NNC_MAX_INLINE_UNROLL) ? 0 : ccmalloc(sizeof(ccv_nnc_tensor_t*) * (repeat + kind));
 	int i;
 	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
 	for (i = 0; i < repeat + kind; i++)
 	{
-		tensor_multiview->data[i] = data[i];
+		CCV_NNC_MULTIVIEW_DATA(tensor_multiview)[i] = data[i];
 		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)data[i];
 		if (data[i] != CCV_NNC_TENSOR_PLACEHOLDER && CCV_IS_TENSOR_MULTIVIEW(mv))
 			mv->p = tensor_multiview;
@@ -35,6 +35,8 @@ void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multi
 {
 	if (tensor_multiview.rtvs)
 		ccv_array_free(tensor_multiview.rtvs);
+	if (tensor_multiview._heap_data)
+		ccfree(tensor_multiview._heap_data);
 }
 
 void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor)
@@ -137,7 +139,7 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 				const int off = mv->kind;
 				const int mod = mv->repeat;
-				tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
+				tensor = CCV_NNC_MULTIVIEW_DATA(mv)[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
 				// If reached the root.
 				if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
 					tensor_nest->broadcast_required = 1; // Need to broadcast tensor updates.
@@ -181,6 +183,7 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 	for (i = 0; i < node->tensor_nest_size; i++)
 		if (tensor_nests[i])
 		{
+			assert(tensor_nests[i]->index > 0);
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);

@@ -531,7 +531,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 		int i;
 		const int count = mv->kind + mv->repeat;
 		for (i = 0; i < count; i++)
-			mv->data[i] = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, mv->data[i]);
+			CCV_NNC_MULTIVIEW_DATA(mv)[i] = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, CCV_NNC_MULTIVIEW_DATA(mv)[i]);
 		// No need to recursively do parent pointer, otherwise we are in deep rewire.
 		if (mv->p && CCV_NNC_IS_METADATA_POS(mv->p))
 			mv->p = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)mv->p);
@@ -617,7 +617,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 				data[i] = _ccv_nnc_tensor_metadata_get(tensor_metadata, pos[i]);
 			ccv_nnc_tensor_multiview(data, CCV_NNC_MULTIVIEW_K0N, nth_unroll + 1, prep->graph, mv);
 			for (i = 0; i < nth_unroll + 1; i++)
-				mv->data[i] = (ccv_nnc_tensor_t*)(intptr_t)pos[i];
+				CCV_NNC_MULTIVIEW_DATA(mv)[i] = (ccv_nnc_tensor_t*)(intptr_t)pos[i];
 			*pos_ref = mv_pos;
 		} else {
 			*pos_ref = data_pos;
@@ -644,7 +644,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 				ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
 					tv,
 				}, CCV_NNC_MULTIVIEW_K0N, 1, prep->graph, mv);
-				mv->data[0] = (ccv_nnc_tensor_t*)(intptr_t)data_pos;
+				CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)data_pos;
 			}
 			const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
 			ccv_nnc_tensor_multiview_t* const prev_mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, prev_mv_pos);
@@ -654,8 +654,8 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 				(ccv_nnc_tensor_t*)prev_mv,
 			}, CCV_NNC_MULTIVIEW_K1N, 1, prep->graph, mv);
 			prev_mv->p = (void*)(intptr_t)mv_pos;
-			mv->data[0] = CCV_NNC_TENSOR_PLACEHOLDER;
-			mv->data[1] = (ccv_nnc_tensor_t*)(intptr_t)prev_mv_pos;
+			CCV_NNC_MULTIVIEW_DATA(mv)[0] = CCV_NNC_TENSOR_PLACEHOLDER;
+			CCV_NNC_MULTIVIEW_DATA(mv)[1] = (ccv_nnc_tensor_t*)(intptr_t)prev_mv_pos;
 			*pos_ref = mv_pos;
 		}
 		return 0;
@@ -695,7 +695,7 @@ static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_met
 		if (data[i] != CCV_NNC_TENSOR_PLACEHOLDER && CCV_IS_TENSOR_MULTIVIEW(data[i]))
 			((ccv_nnc_tensor_multiview_t*)data[i])->p = (void*)(intptr_t)mv_pos;
 	for (i = 0; i < nth_unroll + 1; i++)
-		mv->data[i] = (ccv_nnc_tensor_t*)(intptr_t)pos[i];
+		CCV_NNC_MULTIVIEW_DATA(mv)[i] = (ccv_nnc_tensor_t*)(intptr_t)pos[i];
 	*pos_ref = mv_pos;
 	return 0;
 }
@@ -752,10 +752,10 @@ static void _ccv_nnc_tensor_multiview_full_pos(ccv_nnc_tensor_multiview_t* const
 	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 	int i;
 	for (i = 0; i < mv->kind + mv->repeat; i++)
-		if (mv->data[i] == CCV_NNC_TENSOR_PLACEHOLDER)
-			mv->data[i] = tensor;
-		else if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
-			_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)mv->data[i], tensor);
+		if (CCV_NNC_MULTIVIEW_DATA(mv)[i] == CCV_NNC_TENSOR_PLACEHOLDER)
+			CCV_NNC_MULTIVIEW_DATA(mv)[i] = tensor;
+		else if (CCV_IS_TENSOR_MULTIVIEW(CCV_NNC_MULTIVIEW_DATA(mv)[i]))
+			_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i], tensor);
 }
 
 static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const tensor_metadata, ccv_nnc_tensor_multiview_t* const mv)
@@ -764,10 +764,10 @@ static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const t
 	int i;
 	for (i = 0; i < mv->kind + mv->repeat; i++)
 	{
-		if (CCV_NNC_IS_METADATA_POS((int)(intptr_t)mv->data[i]))
-			mv->data[i] = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)mv->data[i]);
-		if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
-			_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)mv->data[i]);
+		if (CCV_NNC_IS_METADATA_POS((int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i]))
+			CCV_NNC_MULTIVIEW_DATA(mv)[i] = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i]);
+		if (CCV_IS_TENSOR_MULTIVIEW(CCV_NNC_MULTIVIEW_DATA(mv)[i]))
+			_ccv_nnc_tensor_multiview_full_pos_rewire(tensor_metadata, (ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i]);
 	}
 }
 
@@ -804,8 +804,8 @@ static int _ccv_nnc_tensor_multiview_preserve_gen(ccv_array_t* const tensor_meta
 		CCV_NNC_TENSOR_PLACEHOLDER,
 		tv,
 	}, CCV_NNC_MULTIVIEW_K1N, 1, graph_prep->graph, mv);
-	mv->data[0] = CCV_NNC_TENSOR_PLACEHOLDER;
-	mv->data[1] = tensor;
+	CCV_NNC_MULTIVIEW_DATA(mv)[0] = CCV_NNC_TENSOR_PLACEHOLDER;
+	CCV_NNC_MULTIVIEW_DATA(mv)[1] = tensor;
 	return mv_pos;
 }
 
@@ -1061,7 +1061,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				while (CCV_IS_TENSOR_MULTIVIEW(alias_tensor_ptr))
 				{
 					const ccv_nnc_tensor_multiview_t* const mv = (const ccv_nnc_tensor_multiview_t*)alias_tensor_ptr;
-					alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)mv->data[0]);
+					alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[0]);
 				}
 				const ccv_nnc_tensor_t alias_tensor = *alias_tensor_ptr;
 				// If there is no ofs, and inc is the same as dim, we take a shortcut and just init as normal tensor.
@@ -1128,9 +1128,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 						ccv_nnc_tensor_multiview_t* multiview = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos);
 						ref_tensor->alias_ref = (uintptr_t)vt_pos;
 						ccv_nnc_tensor_reference_to_multiview(multiview, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
-						ccv_nnc_tensor_t* tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(multiview->data[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)multiview->data[0]) : multiview->data[0]);
+						ccv_nnc_tensor_t* tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(CCV_NNC_MULTIVIEW_DATA(multiview)[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(multiview)[0]) : CCV_NNC_MULTIVIEW_DATA(multiview)[0]);
 						while (CCV_IS_TENSOR_MULTIVIEW(tv))
-							tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(((ccv_nnc_tensor_multiview_t*)tv)->data[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)((ccv_nnc_tensor_multiview_t*)tv)->data[0]) : ((ccv_nnc_tensor_multiview_t*)tv)->data[0]);
+							tv = (ccv_nnc_tensor_t*)(CCV_NNC_IS_METADATA_POS(CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]) : CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)tv)[0]);
 						*ref_tensor = ccv_nnc_tensor(tv->data.ptr, tv->info, 0);
 						_ccv_nnc_tensor_multiview_full_pos((ccv_nnc_tensor_multiview_t*)sub_tensor, (ccv_nnc_tensor_t*)(intptr_t)ref_pos);
 					} else
@@ -1311,7 +1311,7 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_symbol(const ccv_nnc_tensor_arena_t* const
 		{
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 			while (CCV_IS_TENSOR_MULTIVIEW(mv))
-				mv = (ccv_nnc_tensor_multiview_t*)(mv->it ? mv->it : mv->data[0]);
+				mv = (ccv_nnc_tensor_multiview_t*)(mv->it ? mv->it : CCV_NNC_MULTIVIEW_DATA(mv)[0]);
 			return (ccv_nnc_tensor_t*)mv;
 		}
 		return tensor;
@@ -2419,8 +2419,8 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	for (i = 0; i < tensor_arena->m_tensor_size; i++)
 	{
 		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)tensor_arena->m_tensors[i];
-		if (mv && CCV_IS_TENSOR_MULTIVIEW(mv) && mv->rtvs)
-			ccv_array_free(mv->rtvs);
+		if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
+			ccv_nnc_tensor_multiview_free(*mv);
 	}
 	ccv_array_free(tensor_arena->tensor_metadata);
 	ccfree(tensor_arena);

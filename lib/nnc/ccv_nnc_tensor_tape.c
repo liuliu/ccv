@@ -9,6 +9,7 @@
 
 #include "_ccv_nnc_tensor_tape.h"
 #include "_ccv_nnc_graph.h"
+#include "ccv_nnc_internal.h"
 #include "ccv_nnc_easy.h"
 #ifdef HAVE_CUDA
 #include "gpu/ccv_nnc_compat.h"
@@ -37,7 +38,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 			const int off = mv->kind;
 			const int mod = mv->repeat;
 			// If reached the root.
-			tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
+			tensor = CCV_NNC_MULTIVIEW_DATA(mv)[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
 		}
 	}
 	return tensor;

@@ -65,6 +65,8 @@ TEST_CASE("graph for a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_free(graph);
 	REQUIRE_EQ_WITH_TOLERANCE(g->data.f32[0], 1.11 * 1.11 * 1.11 * 1.11 * 1.11, 1e-6, "back propagation of 0.34 * 1.11 ^ 5 should be 1.11 ^ 5");
 	ccv_nnc_tensor_tape_free(tape);
+	ccv_nnc_tensor_multiview_free(xx);
+	ccv_nnc_tensor_multiview_free(zz);
 	ccv_nnc_tensor_free(x0);
 	ccv_nnc_tensor_free(dx);
 	ccv_nnc_tensor_free(x);

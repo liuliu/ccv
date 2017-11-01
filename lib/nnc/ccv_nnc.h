@@ -425,8 +425,10 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	ccv_nnc_tensor_t* it; // Current tensor (tensor in use), this is updated along with the graph computation.
 	// This is useful because by just traverse tv, I can get the latest up-to-date reference to this multi-view tensor.
 	ccv_array_t* rtvs; // Referenced tensor view array. This corresponds to ccv_nnc_tensor_reference_to_multiview method, that records all the tensors registered for updates.
-	ccv_nnc_tensor_t* data[CCV_NNC_MAX_INLINE_UNROLL];
+	ccv_nnc_tensor_t* _inline_data[CCV_NNC_MAX_INLINE_UNROLL];
+	ccv_nnc_tensor_t** _heap_data;
 } ccv_nnc_tensor_multiview_t;
+#define CCV_NNC_MULTIVIEW_DATA(x) ((x)->_heap_data ? (x)->_heap_data : (x)->_inline_data)
 
 enum {
 	CCV_NNC_MULTIVIEW_K0N = 0, // All of them are repeated.

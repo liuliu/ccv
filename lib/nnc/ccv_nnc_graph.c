@@ -68,7 +68,7 @@ static int _ccv_nnc_tensor_multiview_level_count(const ccv_nnc_tensor_multiview_
 	const int count = mv->kind + mv->repeat;
 	int i, c = 0;
 	for (i = 0; i < count; i++)
-		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count((ccv_nnc_tensor_multiview_t*)mv->data[i]));
+		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i]));
 	return c + 1;
 }
 
@@ -437,7 +437,7 @@ static int _ccv_nnc_graph_dot_tensor_multiview_count(const ccv_nnc_tensor_multiv
 	const int count = mv->kind + mv->repeat;
 	int i, c = 0;
 	for (i = 0; i < count; i++)
-		c += _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)mv->data[i]);
+		c += _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i]);
 	return c;
 }
 
@@ -446,14 +446,14 @@ static void _ccv_nnc_graph_dot_tensor_multiview_tensor_dots(const ccv_nnc_tensor
 	const int count = mv->kind + mv->repeat;
 	int i;
 	for (i = 0; i < count; i++)
-		if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
-			_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)mv->data[i], tensor_dots, tensor_index);
+		if (CCV_IS_TENSOR_MULTIVIEW(CCV_NNC_MULTIVIEW_DATA(mv)[i]))
+			_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i], tensor_dots, tensor_index);
 		else {
 			tensor_dots[*tensor_index].name = *tensor_index;
-			tensor_dots[*tensor_index].start_ptr =  (uintptr_t)mv->data[i]->data.u8;
+			tensor_dots[*tensor_index].start_ptr =  (uintptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i]->data.u8;
 			// Because tv's pointer will get updated, it is not correct in this case to have one tensor_ref.
 			tensor_dots[*tensor_index].tensor_ref = tensor_dots[*tensor_index].start_ptr;
-			const size_t dim_size = ccv_nnc_dimension_count(mv->data[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->data[i]->type);
+			const size_t dim_size = ccv_nnc_dimension_count(CCV_NNC_MULTIVIEW_DATA(mv)[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(CCV_NNC_MULTIVIEW_DATA(mv)[i]->type);
 			tensor_dots[*tensor_index].end_ptr = tensor_dots[*tensor_index].start_ptr + dim_size - 1;
 			++(*tensor_index);
 		}
@@ -589,12 +589,12 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 	int i, j;
 	fputs("|{", out);
 	for (i = 0; i < count; i++)
-		if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
+		if (CCV_IS_TENSOR_MULTIVIEW(CCV_NNC_MULTIVIEW_DATA(mv)[i]))
 		{
 			fprintf(out, "{%d", i);
 			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
 				fputc('*', out); // Denotes that we loop on this.
-			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i], recovery, depth, tensor_index, out);
+			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i], recovery, depth, tensor_index, out);
 			if (i == count - 1)
 				fputc('}', out);
 			else
@@ -607,9 +607,9 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 			fprintf(out, "|zone%d", recovery.rename_zone[tensor_dot->zone]);
 			for (j = 0; j < depth; j++)
 				fputc('\'', out);
-			uintptr_t aptr = (uintptr_t)mv->data[i]->data.u8;
+			uintptr_t aptr = (uintptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i]->data.u8;
 			// For the last one, we don't extend to full ainc.
-			size_t dim_size = ccv_nnc_dimension_count(mv->data[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->data[i]->type);
+			size_t dim_size = ccv_nnc_dimension_count(CCV_NNC_MULTIVIEW_DATA(mv)[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(CCV_NNC_MULTIVIEW_DATA(mv)[i]->type);
 			// Print out the range as well.
 			fprintf(out, "|{%#010x|%#010x}", (uint32_t)aptr, (uint32_t)(aptr + dim_size - 1));
 			++(*tensor_index);
@@ -636,7 +636,7 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 		_ccv_nnc_graph_dot_tensor_multiview_one(mv, recovery, depth, tensor_index, out);
 		const ccv_nnc_tensor_t* root = (ccv_nnc_tensor_t*)mv;
 		while (CCV_IS_TENSOR_MULTIVIEW(root))
-			root = ((ccv_nnc_tensor_multiview_t*)root)->data[0];
+			root = CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)root)[0];
 		fprintf(out, "|%d", root->info.dim[0]);
 		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && root->info.dim[i]; i++)
 			fprintf(out, "x%d", root->info.dim[i]);
