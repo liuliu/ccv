@@ -63,13 +63,12 @@ void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_gra
 
 static int _ccv_nnc_tensor_multiview_level_count(const ccv_nnc_tensor_multiview_t* const mv)
 {
-	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
+	if (!CCV_IS_TENSOR_MULTIVIEW(mv))
+		return 1;
 	const int count = mv->kind + mv->repeat;
-	if (mv->tv)
-		return 2; // For both current level, and tv level.
 	int i, c = 0;
 	for (i = 0; i < count; i++)
-		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count(mv->data[i].ptr));
+		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count((ccv_nnc_tensor_multiview_t*)mv->data[i]));
 	return c + 1;
 }
 
@@ -433,13 +432,12 @@ static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_dot_sort_by_ptr, ccv_nnc_tensor_dot_t
 
 static int _ccv_nnc_graph_dot_tensor_multiview_count(const ccv_nnc_tensor_multiview_t* const mv)
 {
-	assert(CCV_IS_TENSOR_MULTIVIEW(mv));
+	if (!CCV_IS_TENSOR_MULTIVIEW(mv))
+		return 1;
 	const int count = mv->kind + mv->repeat;
-	if (mv->tv)
-		return count;
 	int i, c = 0;
 	for (i = 0; i < count; i++)
-		c += _ccv_nnc_graph_dot_tensor_multiview_count(mv->data[i].ptr);
+		c += _ccv_nnc_graph_dot_tensor_multiview_count((ccv_nnc_tensor_multiview_t*)mv->data[i]);
 	return c;
 }
 
@@ -447,26 +445,18 @@ static void _ccv_nnc_graph_dot_tensor_multiview_tensor_dots(const ccv_nnc_tensor
 {
 	const int count = mv->kind + mv->repeat;
 	int i;
-	if (mv->tv)
-		for (i = 0; i < count; i++)
-		{
+	for (i = 0; i < count; i++)
+		if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
+			_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)mv->data[i], tensor_dots, tensor_index);
+		else {
 			tensor_dots[*tensor_index].name = *tensor_index;
-			if (CCV_NNC_MULTIVIEW_K01(mv))
-			{
-				tensor_dots[*tensor_index].tensor_ref = (uintptr_t)mv->tv;
-				tensor_dots[*tensor_index].start_ptr =  (uintptr_t)mv->tv->data.u8;
-			} else {
-				tensor_dots[*tensor_index].start_ptr =  (uintptr_t)mv->data[i].ptr;
-				// Because tv's pointer will get updated, it is not correct in this case to have one tensor_ref.
-				tensor_dots[*tensor_index].tensor_ref = tensor_dots[*tensor_index].start_ptr;
-			}
-			const size_t dim_size = ccv_nnc_dimension_count(mv->tv->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->tv->type);
+			tensor_dots[*tensor_index].start_ptr =  (uintptr_t)mv->data[i]->data.u8;
+			// Because tv's pointer will get updated, it is not correct in this case to have one tensor_ref.
+			tensor_dots[*tensor_index].tensor_ref = tensor_dots[*tensor_index].start_ptr;
+			const size_t dim_size = ccv_nnc_dimension_count(mv->data[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->data[i]->type);
 			tensor_dots[*tensor_index].end_ptr = tensor_dots[*tensor_index].start_ptr + dim_size - 1;
 			++(*tensor_index);
 		}
-	else
-		for (i = 0; i < count; i++)
-			_ccv_nnc_graph_dot_tensor_multiview_tensor_dots((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, tensor_dots, tensor_index);
 }
 
 static ccv_nnc_tensor_dot_recovery_t _ccv_nnc_graph_tensor_dot_recovery(const ccv_nnc_graph_t* const graph)
@@ -598,10 +588,18 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 	const int count = mv->kind + mv->repeat;
 	int i, j;
 	fputs("|{", out);
-	if (mv->tv)
-	{
-		for (i = 0; i < count; i++)
+	for (i = 0; i < count; i++)
+		if (CCV_IS_TENSOR_MULTIVIEW(mv->data[i]))
 		{
+			fprintf(out, "{%d", i);
+			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
+				fputc('*', out); // Denotes that we loop on this.
+			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i], recovery, depth, tensor_index, out);
+			if (i == count - 1)
+				fputc('}', out);
+			else
+				fputs("}|", out);
+		} else {
 			fprintf(out, "{%d", i);
 			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
 				fputc('*', out); // Denotes that we loop on this.
@@ -609,9 +607,9 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 			fprintf(out, "|zone%d", recovery.rename_zone[tensor_dot->zone]);
 			for (j = 0; j < depth; j++)
 				fputc('\'', out);
-			uintptr_t aptr = (uintptr_t)(CCV_NNC_MULTIVIEW_K01(mv) ? mv->tv->data.u8 : mv->data[i].ptr);
+			uintptr_t aptr = (uintptr_t)mv->data[i]->data.u8;
 			// For the last one, we don't extend to full ainc.
-			size_t dim_size = ccv_nnc_dimension_count(mv->tv->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->tv->type);
+			size_t dim_size = ccv_nnc_dimension_count(mv->data[i]->info.dim) * CCV_GET_DATA_TYPE_SIZE(mv->data[i]->type);
 			// Print out the range as well.
 			fprintf(out, "|{%#010x|%#010x}", (uint32_t)aptr, (uint32_t)(aptr + dim_size - 1));
 			++(*tensor_index);
@@ -620,19 +618,6 @@ static void _ccv_nnc_graph_dot_tensor_multiview_one(const ccv_nnc_tensor_multivi
 			else
 				fputs("}|", out);
 		}
-	} else {
-		for (i = 0; i < count; i++)
-		{
-			fprintf(out, "{%d", i);
-			if (mv->kind == CCV_NNC_MULTIVIEW_K0N || (mv->kind == CCV_NNC_MULTIVIEW_K1N && i > 0))
-				fputc('*', out); // Denotes that we loop on this.
-			_ccv_nnc_graph_dot_tensor_multiview_one((ccv_nnc_tensor_multiview_t*)mv->data[i].ptr, recovery, depth, tensor_index, out);
-			if (i == count - 1)
-				fputc('}', out);
-			else
-				fputs("}|", out);
-		}
-	}
 	fputc('}', out);
 }
 
@@ -649,12 +634,12 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		_ccv_nnc_graph_dot_tensor_multiview_one(mv, recovery, depth, tensor_index, out);
-		const ccv_nnc_tensor_multiview_t* root = mv;
-		while (!root->tv)
-			root = (ccv_nnc_tensor_multiview_t*)(root->data[0].ptr);
-		fprintf(out, "|%d", root->tv->info.dim[0]);
-		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && root->tv->info.dim[i]; i++)
-			fprintf(out, "x%d", root->tv->info.dim[i]);
+		const ccv_nnc_tensor_t* root = (ccv_nnc_tensor_t*)mv;
+		while (CCV_IS_TENSOR_MULTIVIEW(root))
+			root = ((ccv_nnc_tensor_multiview_t*)root)->data[0];
+		fprintf(out, "|%d", root->info.dim[0]);
+		for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC && root->info.dim[i]; i++)
+			fprintf(out, "x%d", root->info.dim[i]);
 		fputc('}', out);
 	} else
 		*tensor_index += _ccv_nnc_graph_dot_tensor_multiview_count(mv);

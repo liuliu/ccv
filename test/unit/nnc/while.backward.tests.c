@@ -27,18 +27,16 @@ TEST_CASE("graph for a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	z->type |= CCV_TAPE_ALLOC;
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_t xd = ccv_nnc_tensor(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
 	ccv_nnc_tensor_multiview_t xx;
-	ccv_nnc_tensor_multiview(&xd, (ccv_numeric_data_t[]){
-			{ .ptr = x0 }, { .ptr = z }, { .ptr = x },
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+			x0, z, x
 	}, CCV_NNC_MULTIVIEW_K1N, 2, while_graph, &xx);
 	xx.type |= CCV_TAPE_ALLOC;
-	ccv_nnc_tensor_t zd = ccv_nnc_tensor(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_tensor_multiview_t zz;
-	ccv_nnc_tensor_multiview(&zd, (ccv_numeric_data_t[]){
-			{ .ptr = z }, { .ptr = x },
+	ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+			z, x
 	}, CCV_NNC_MULTIVIEW_K0N, 2, while_graph, &zz);
 	zz.type |= CCV_TAPE_ALLOC;
 	ccv_nnc_graph_exec_t noop = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, 0, 0, 0, 0);

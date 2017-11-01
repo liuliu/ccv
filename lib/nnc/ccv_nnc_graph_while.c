@@ -7,7 +7,7 @@
 #endif
 #include "_ccv_nnc_graph.h"
 
-void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	assert(kind == CCV_NNC_MULTIVIEW_K0N || kind == CCV_NNC_MULTIVIEW_K1N);
 	assert(repeat > 0);
@@ -15,20 +15,19 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t dat
 	tensor_multiview->kind = kind;
 	tensor_multiview->repeat = repeat;
 	tensor_multiview->anchor = (intptr_t)graph;
-	tensor_multiview->tv = tv;
+	tensor_multiview->it = 0;
 	tensor_multiview->p = 0;
 	tensor_multiview->offset = 0;
 	tensor_multiview->rtvs = 0;
+	assert(repeat + kind <= CCV_NNC_MAX_INLINE_UNROLL);
 	int i;
 	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
 	for (i = 0; i < repeat + kind; i++)
 	{
 		tensor_multiview->data[i] = data[i];
-		if (!tv)
-		{
-			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)data[i].ptr;
+		ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)data[i];
+		if (data[i] != CCV_NNC_TENSOR_PLACEHOLDER && CCV_IS_TENSOR_MULTIVIEW(mv))
 			mv->p = tensor_multiview;
-		}
 	}
 }
 
@@ -47,11 +46,9 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 
 void ccv_nnc_tensor_multiview_broadcast(ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
-	assert(tensor_multiview->tv);
+	assert(tensor_multiview->it && !CCV_IS_TENSOR_MULTIVIEW(tensor_multiview->it));
 	// Update the pointer on tv only if it is not a single tensor pointer.
-	if (!CCV_NNC_MULTIVIEW_K01(tensor_multiview) && !CCV_GET_TAPE_ALLOC(tensor_multiview->type))
-		tensor_multiview->tv->data = tensor_multiview->it;
-	unsigned char* const data = tensor_multiview->tv->data.u8 - tensor_multiview->offset;
+	unsigned char* const data = tensor_multiview->it->data.u8 - tensor_multiview->offset;
 	const ccv_nnc_tensor_multiview_t* c = tensor_multiview;
 	int i;
 	do {
@@ -140,23 +137,12 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 				const int off = mv->kind;
 				const int mod = mv->repeat;
+				tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
 				// If reached the root.
-				if (mv->tv)
-				{
-					// If it is a single tensor view pointer wrapped into multi-view tensor, no need to update pointer at all.
-					if (!CCV_NNC_MULTIVIEW_K01(mv))
-					{
-						// Update the pointer
-						mv->it = mv->data[count >= off ? ((count - off) % mod) + off : count]; // See the comment of the CCV_NNC_MULTIVIEW_KXX enum for why the computation carried out this way.
-						// If this is a tape variable, it points to tensor directly.
-						if (CCV_GET_TAPE_ALLOC(mv->type))
-							// it pointer is actually a full tensor.
-							mv->tv = (ccv_nnc_tensor_t*)mv->it.ptr;
-					}
-					tensor = mv->tv;
+				if (CCV_IS_TENSOR_MULTIVIEW(tensor))
+					mv->it = tensor;
+				else
 					tensor_nest->broadcast_required = 1; // Need to broadcast tensor updates.
-				} else
-					tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count].ptr; // Unwrap.
 				++tensor_nest->index;
 				tensor_nest->tensors[tensor_nest->index] = tensor;
 				assert(tensor_nest->index < tensor_nest->count);
@@ -200,6 +186,8 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);
+			// Only now set the mv->it, because now it is accessed.
+			mv->it = tensor_nests[i]->tensors[tensor_nests[i]->index];
 			ccv_nnc_tensor_multiview_broadcast(mv);
 			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
 		}

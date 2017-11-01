@@ -409,6 +409,7 @@ uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, cons
 void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const uint64_t while_count);
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
+#define CCV_NNC_MAX_INLINE_UNROLL (4)
 typedef struct ccv_nnc_tensor_multiview_s {
 	// This is an augmented ccv_nnc_tensor_view_t
 	// Namely, it can point to multiple versions of tensors.
@@ -421,12 +422,10 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	// If this tensor points to a tensor view, data.u8 - offset is the real pointer start.
 	off_t offset;
 	struct ccv_nnc_tensor_multiview_s* p; // If this is wrapped with another multiview tensor. Get to the parent one.
-	ccv_numeric_data_t it; // The updated pointer based on data.
-	// Since we only support 2 or 3 ways multi-view tensor, therefore, fixed allocation of 3.
-	ccv_numeric_data_t data[3];
-	ccv_nnc_tensor_t* tv; // Current tensor (tensor in use), this is updated along with the graph computation.
+	ccv_nnc_tensor_t* it; // Current tensor (tensor in use), this is updated along with the graph computation.
 	// This is useful because by just traverse tv, I can get the latest up-to-date reference to this multi-view tensor.
 	ccv_array_t* rtvs; // Referenced tensor view array. This corresponds to ccv_nnc_tensor_reference_to_multiview method, that records all the tensors registered for updates.
+	ccv_nnc_tensor_t* data[CCV_NNC_MAX_INLINE_UNROLL];
 } ccv_nnc_tensor_multiview_t;
 
 enum {
@@ -435,7 +434,7 @@ enum {
 };
 #define CCV_NNC_MULTIVIEW_K01(x) ((x)->kind == CCV_NNC_MULTIVIEW_K0N && (x)->repeat == 1)
 // Setup a tensor multiview with a given set of tensors.
-void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* const tv, ccv_numeric_data_t data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
+void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview);
 // Since tensor_multiview will never be allocated with *_new method, the *_free method simply frees anything that is dynamically allocated afterwards (such as the reference items).
 void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview);
 // Setup a tensor as a reference to a tensor multiview, thus, when tensor multiview's tu (current tensor) updates, the tensor reference's data.u8 will get update as well (point to the same memory region as the tu).

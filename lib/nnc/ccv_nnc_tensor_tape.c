@@ -26,7 +26,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 {
 	int i;
 	ccv_nnc_tensor_t* tensor = (ccv_nnc_tensor_t*)mv;
-	for (i = 0; i < graph_size; i++)
+	for (i = 0; CCV_IS_TENSOR_MULTIVIEW(tensor) && i < graph_size; i++)
 	{
 		const int count = (int)graphs[i]->while_count;
 		while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
@@ -37,10 +37,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 			const int off = mv->kind;
 			const int mod = mv->repeat;
 			// If reached the root.
-			if (mv->tv)
-				tensor = mv->tv;
-			else
-				tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count].ptr; // Unwrap.
+			tensor = (ccv_nnc_tensor_t*)mv->data[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
 		}
 	}
 	return tensor;
