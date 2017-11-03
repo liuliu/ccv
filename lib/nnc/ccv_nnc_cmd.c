@@ -375,14 +375,14 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		{
 			assert(api_registry.tensor_formats & inputs[i]->info.format);
 			assert(api_registry.tensor_datatypes & inputs[i]->info.datatype);
-			input_bitmasks[i / 64] |= (uint64_t)1 << i;
+			input_bitmasks[i >> 6] |= (uint64_t)1 << (i & 63);
 		}
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
 		{
 			assert(api_registry.tensor_formats & outputs[i]->info.format);
 			assert(api_registry.tensor_datatypes & outputs[i]->info.datatype);
-			output_bitmasks[i / 64] |= (uint64_t)1 << i;
+			output_bitmasks[i >> 6] |= (uint64_t)1 << (i & 63);
 		}
 	if (cmd_registry.bitmask)
 		// If cannot pass the bitmask check.
