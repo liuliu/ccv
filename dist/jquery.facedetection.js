@@ -16246,7 +16246,8 @@
                             name: funct.toString(),
                             shared: scope.shared,
                             id: i,
-                            worker: params.worker_num
+                            worker: params.worker_num,
+                            from: "jquery.facedetection"
                         };
                         try {
                             worker.postMessage(msg);
@@ -16493,15 +16494,27 @@
                 post: post
             };
         })
-    };
+    }, originalOnMessage = window.onmessage || function() {};
     onmessage = function(event) {
-        var data = "string" == typeof event.data ? JSON.parse(event.data) : event.data, scope = {
-            shared: data.shared
-        }, result = parallable.core[data.name].apply(scope, [ data.input, data.id, data.worker ]);
+        var data;
         try {
-            postMessage(result);
+            if (data = "string" == typeof event.data ? JSON.parse(event.data) : event.data, 
+            "jquery.facedetection" === data.type) {
+                var scope = {
+                    shared: data.shared
+                }, result = parallable.core[data.name].apply(scope, [ data.input, data.id, data.worker ]);
+                try {
+                    postMessage(result);
+                } catch (e) {
+                    postMessage(JSON.stringify(result));
+                }
+            } else {
+                var args = Array.prototype.slice.call(arguments);
+                originalOnMessage.apply(window, args);
+            }
         } catch (e) {
-            postMessage(JSON.stringify(result));
+            var args = Array.prototype.slice.call(arguments);
+            originalOnMessage.apply(window, args);
         }
     }, $.fn.faceDetection = function(settingsOrCallback) {
         "use strict";
