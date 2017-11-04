@@ -32,8 +32,8 @@ Download the plugin with the method of your choice.
 
 Include [jQuery](http://code.jquery.com/jquery-1.11.1.min.js) and the plugin.
 
-    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script> 
-    <script src="path/to/dist/jquery.facedetection.min.js"></script> 
+    <script src="http://code.jquery.com/jquery-1.11.1.min.js"></script>
+    <script src="path/to/dist/jquery.facedetection.min.js"></script>
 
 Set a picture with some faces in your HTML page.
 
@@ -47,7 +47,7 @@ Apply the plugin to this image and get the face coordinates.
                 console.log(faces);
             }
         });
-    </script> 
+    </script>
 
 Results
 -------
@@ -78,10 +78,9 @@ Settings
         complete: function (faces) {
             // ...
         }
-    
+
 - **error** — Callback function trigged on errors
 
         error: function (code, message) {
             // ...
         }
-        
