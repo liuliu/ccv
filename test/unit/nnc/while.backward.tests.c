@@ -17,7 +17,7 @@ static int while_5(ccv_nnc_tensor_t* const* const commons, const int common_size
 	return commons[0]->data.i64[0] < 5;
 }
 
-TEST_CASE("graph for a while loop to compute back propagation 0.34 * 1.11 ^ 5")
+TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 {
 	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
