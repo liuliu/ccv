@@ -21,7 +21,7 @@ Get started
 
 Download the plugin with the method of your choice.
 
-- Download the [last release](jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) manually
+- Download the [last release](http://jaysalvat.github.io/jquery.facedetection/releases/latest/jquery.facedetection.zip) manually
 - Or install it with [Bower](http://bower.io/).
 
         bower install jquery.facedetection
