@@ -1328,7 +1328,8 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	assert(exec_symbol_info_size > 0);
 	assert(tensor_symbol_info_size > 0);
 	ccv_nnc_symbolic_graph_backward_prep_t backward_prep = _ccv_nnc_symbolic_graph_backward_prep(graph, sources, source_size, destinations, destination_size);
-	_ccv_nnc_symbolic_graph_backward_prep_prune_ops(&backward_prep, sources, source_size, destinations, destination_size, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size);
+	const int flag = _ccv_nnc_symbolic_graph_backward_prep_prune_ops(&backward_prep, sources, source_size, destinations, destination_size, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size);
+	assert(flag && "must be able to generate path from f symbols to wrt symbols.");
 	_ccv_nnc_symbolic_graph_backward_prep_gen(&backward_prep, sources, source_size, destinations, destination_size, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size);
 	_ccv_nnc_symbolic_graph_backward_gen(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, graph);
 	_ccv_nnc_symbolic_graph_backward_prep_free(backward_prep);
