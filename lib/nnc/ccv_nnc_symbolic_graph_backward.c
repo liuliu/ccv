@@ -614,6 +614,7 @@ typedef struct ccv_nnc_symbolic_graph_backward_prep_s {
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
 	ccv_nnc_graph_backward_info_t* backward_info; // Corresponding to forward graph exec symbol info, it is exactly in reverse.
+	ccv_nnc_graph_visit_t* forward_visit; // The visitor structure (top sorted index) when doing traversal.
 	ccv_nnc_graph_visit_t* backward_visit; // The visitor structure (top sorted index) when doing reverse traversal.
 	ccv_nnc_autograd_graph_exec_symbol_t* autograd_execs; // The graph exec symbols we need for automatic differentiation. This is a 1:1 mapping for forward graph exec symbols, however, unlike backward_info, its outgoings may be more complex (may contain outgoing flows to sum nodes).
 	ccv_nnc_autograd_tensor_version_t* autograd_tensor_versions; // Corresponding to forward tensor symbols, each may contain multiple versions (due to multi-write).
@@ -624,7 +625,7 @@ typedef struct ccv_nnc_symbolic_graph_backward_prep_s {
 	ccv_nnc_symbolic_graph_t* graph;
 } ccv_nnc_symbolic_graph_backward_prep_t;
 
-static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_prep(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)
+static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_prep(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	const int exec_symbol_info_size = graph->exec_symbol_info->rnum;
 	const int tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
@@ -632,7 +633,7 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * tensor_symbol_info_size);
 	ccv_nnc_graph_visit_t* forward_visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), exec_symbol_info_size, sources, source_size, destinations, destination_size);
 	ccv_nnc_symbolic_graph_symbol_infer(graph, forward_visit, sources, source_size, destinations, destination_size, 0, 0, tensor_symbol_info, exec_symbol_info);
-	int i, j;
+	int i;
 	// Now, for each one of these, find a reverse graph.
 	ccv_nnc_graph_backward_info_t* backward_info = (ccv_nnc_graph_backward_info_t*)cccalloc(exec_symbol_info_size, sizeof(ccv_nnc_graph_backward_info_t));
 	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, node, idx) {
@@ -648,6 +649,39 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 	} ccv_nnc_graph_visit_endfor
 	// Find the f_symbols, and tag its flows.
 	ccv_nnc_graph_visit_t* backward_visit = ccv_nnc_graph_visit_new(graph, backward_info, exec_symbol_info_size, destinations, destination_size, sources, source_size);
+	const int sub_prep_size = graph->sub_graphs ? graph->sub_graphs->rnum : 0;
+	ccv_nnc_symbolic_graph_backward_prep_t* sub_preps = sub_prep_size > 0 ? (ccv_nnc_symbolic_graph_backward_prep_t*)cccalloc(sub_prep_size, sizeof(ccv_nnc_symbolic_graph_backward_prep_t)) : 0;
+	for (i = 0; i < sub_prep_size; i++)
+	{
+		const ccv_nnc_symbolic_graph_t* const sub_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, i);
+		sub_preps[i] = _ccv_nnc_symbolic_graph_backward_prep(sub_graph, ccv_nnc_symbolic_graph_sources(sub_graph), ccv_nnc_symbolic_graph_source_size(sub_graph), ccv_nnc_symbolic_graph_destinations(sub_graph), ccv_nnc_symbolic_graph_destination_size(sub_graph));
+	}
+	return (ccv_nnc_symbolic_graph_backward_prep_t){
+		.exec_symbol_info_size = exec_symbol_info_size,
+		.tensor_symbol_info_size = tensor_symbol_info_size,
+		.sub_prep_size = sub_prep_size,
+		.exec_symbol_info = exec_symbol_info,
+		.tensor_symbol_info = tensor_symbol_info,
+		.backward_info = backward_info,
+		.forward_visit = forward_visit,
+		.backward_visit = backward_visit,
+		.sub_preps = sub_preps,
+		.graph = (ccv_nnc_symbolic_graph_t*)graph,
+	};
+}
+
+static void _ccv_nnc_symbolic_graph_backward_prep_do(ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)
+{
+	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
+	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
+	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info =backward_prep->tensor_symbol_info;
+	const ccv_nnc_graph_visit_t* const forward_visit = backward_prep->forward_visit;
+	// Now, for each one of these, find a reverse graph.
+	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
+	const ccv_nnc_graph_visit_t* const backward_visit = backward_prep->backward_visit;
+	int i, j;
+	// Find the f_symbols, and tag its flows.
 	ccv_nnc_graph_visit_for(backward_visit, backward_info, node, idx) {
 		int f = node->f_wrt & 0x1;
 		for (i = 0; i < exec_symbol_info[idx].output_size && !f; i++)
@@ -732,7 +766,7 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 				node->output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 			int maybe_noop = 1;
 			for (i = 0; i < forw_exec->input_size; i++)
-				/* See if it is used. */
+				/* See if it is used as wrt, if not, no need to run this node at all. */
 				if (used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE)
 				{
 					maybe_noop = 0;
@@ -745,6 +779,10 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 				for (i = 0; i < node->output_bitmask_size; i++)
 					node->output_bitmasks[i] = 0;
 			} else if (cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD) {
+				// Clear out all potential outputs if we think it is not a wrt symbols.
+				for (i = 0; i < forw_exec->input_size; i++)
+					if (!(used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE))
+						node->output_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 				// Should recursively try it in the sub-graph to see whether we need these input gradients.
 				// But for now, assuming we need all input gradients.
 				// Clear out all inputs / outputs from forward op.
@@ -783,12 +821,11 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 			}
 			for (i = 0; i < forw_exec->output_size; i++)
 				if (node->input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
-					/* Mark it as used. */
+					/* Mark it is used as wrt. */
 					used_grad[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] |= WRT_SYMBOL_USE;
 		}
 	} ccv_nnc_graph_visit_endfor
 	ccfree(used_grad);
-	ccv_nnc_graph_visit_free(forward_visit);
 	// Now, only the flow from f_symbols back to wrt_symbols are interested to us.
 	// Visit the graph in reverse order, build the AD nodes.
 	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = (ccv_nnc_autograd_graph_exec_symbol_t*)cccalloc(exec_symbol_info_size, sizeof(ccv_nnc_autograd_graph_exec_symbol_t));
@@ -980,21 +1017,11 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 		// The tensor version should have ref_version, and only one now (after sum up).
 		assert(tensor_ver->c == tensor_ver->ref_version->rnum - 1);
 	}
-	ccv_nnc_symbolic_graph_backward_prep_t backward_prep = {
-		.exec_symbol_info_size = exec_symbol_info_size,
-		.tensor_symbol_info_size = tensor_symbol_info_size,
-		.sub_prep_size = graph->sub_graphs ? graph->sub_graphs->rnum : 0,
-		.exec_symbol_info = exec_symbol_info,
-		.tensor_symbol_info = tensor_symbol_info,
-		.backward_info = backward_info,
-		.backward_visit = backward_visit,
-		.autograd_execs = autograd_execs,
-		.autograd_tensor_versions = autograd_tensor_versions,
-		.autograd_tensor_symbols = autograd_tensor_symbols,
-		.sum_execs = sum_execs,
-		.graph = (ccv_nnc_symbolic_graph_t*)graph,
-	};
-	return backward_prep;
+	// Adding additional fields to backward_prep now.
+	backward_prep->autograd_execs = autograd_execs;
+	backward_prep->autograd_tensor_versions = autograd_tensor_versions;
+	backward_prep->autograd_tensor_symbols = autograd_tensor_symbols;
+	backward_prep->sum_execs = sum_execs;
 }
 
 static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_graph_backward_prep_t backward_prep)
@@ -1003,42 +1030,53 @@ static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_gr
 	const int exec_symbol_info_size = backward_prep.exec_symbol_info_size;
 	const int tensor_symbol_info_size = backward_prep.tensor_symbol_info_size;
 	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = backward_prep.autograd_execs;
-	for (i = 0; i < exec_symbol_info_size; i++)
+	if (autograd_execs)
 	{
-		if (autograd_execs[i].inputs)
-			ccfree(autograd_execs[i].inputs);
-		if (autograd_execs[i].outgoings)
-			ccv_array_free(autograd_execs[i].outgoings);
-	}
-	ccfree(autograd_execs);
-	ccv_nnc_autograd_tensor_version_t* const autograd_tensor_versions = backward_prep.autograd_tensor_versions;
-	for (i = 0; i < tensor_symbol_info_size; i++)
-	{
-		if (autograd_tensor_versions[i].ref_version)
+		for (i = 0; i < exec_symbol_info_size; i++)
 		{
-			for (j = 0; j < autograd_tensor_versions[i].ref_version->rnum; j++)
-			{
-				ccv_nnc_tensor_ref_t* ref_version = (ccv_nnc_tensor_ref_t*)ccv_array_get(autograd_tensor_versions[i].ref_version, j);
-				if (ref_version->exec_registry)
-					ccv_array_free(ref_version->exec_registry);
-				if (ref_version->alias_registry)
-					ccv_array_free(ref_version->alias_registry);
-			}
-			ccv_array_free(autograd_tensor_versions[i].ref_version);
+			if (autograd_execs[i].inputs)
+				ccfree(autograd_execs[i].inputs);
+			if (autograd_execs[i].outgoings)
+				ccv_array_free(autograd_execs[i].outgoings);
 		}
+		ccfree(autograd_execs);
 	}
-	ccfree(autograd_tensor_versions);
-	ccv_array_free(backward_prep.autograd_tensor_symbols);
-	ccv_array_t* const sum_execs = backward_prep.sum_execs;
-	for (i = 0; i < sum_execs->rnum; i++)
+	ccv_nnc_autograd_tensor_version_t* const autograd_tensor_versions = backward_prep.autograd_tensor_versions;
+	if (autograd_tensor_versions)
 	{
-		ccv_nnc_sum_graph_exec_symbol_t* sum_or_set = (ccv_nnc_sum_graph_exec_symbol_t*)ccv_array_get(sum_execs, i);
-		if (sum_or_set->inputs)
-			ccfree(sum_or_set->inputs);
-		if (sum_or_set->outgoings)
-			ccv_array_free(sum_or_set->outgoings);
+		for (i = 0; i < tensor_symbol_info_size; i++)
+		{
+			if (autograd_tensor_versions[i].ref_version)
+			{
+				for (j = 0; j < autograd_tensor_versions[i].ref_version->rnum; j++)
+				{
+					ccv_nnc_tensor_ref_t* ref_version = (ccv_nnc_tensor_ref_t*)ccv_array_get(autograd_tensor_versions[i].ref_version, j);
+					if (ref_version->exec_registry)
+						ccv_array_free(ref_version->exec_registry);
+					if (ref_version->alias_registry)
+						ccv_array_free(ref_version->alias_registry);
+				}
+				ccv_array_free(autograd_tensor_versions[i].ref_version);
+			}
+		}
+		ccfree(autograd_tensor_versions);
 	}
-	ccv_array_free(sum_execs);
+	if (backward_prep.autograd_tensor_symbols)
+		ccv_array_free(backward_prep.autograd_tensor_symbols);
+	ccv_array_t* const sum_execs = backward_prep.sum_execs;
+	if (sum_execs)
+	{
+		for (i = 0; i < sum_execs->rnum; i++)
+		{
+			ccv_nnc_sum_graph_exec_symbol_t* sum_or_set = (ccv_nnc_sum_graph_exec_symbol_t*)ccv_array_get(sum_execs, i);
+			if (sum_or_set->inputs)
+				ccfree(sum_or_set->inputs);
+			if (sum_or_set->outgoings)
+				ccv_array_free(sum_or_set->outgoings);
+		}
+		ccv_array_free(sum_execs);
+	}
+	// Now afterwards, these are mandatory.
 	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep.backward_info;
 	for (i = 0; i < exec_symbol_info_size; i++)
 	{
@@ -1049,18 +1087,21 @@ static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_gr
 	}
 	ccfree(backward_info);
 	ccv_nnc_graph_visit_free(backward_prep.backward_visit);
+	ccv_nnc_graph_visit_free(backward_prep.forward_visit);
 	ccfree(backward_prep.exec_symbol_info);
 	ccfree(backward_prep.tensor_symbol_info);
+	for (i = 0; i < backward_prep.sub_prep_size; i++)
+		_ccv_nnc_symbolic_graph_backward_prep_free(backward_prep.sub_preps[i]);
 }
 
-static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
+static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
 {
-	const int exec_symbol_info_size = backward_prep.exec_symbol_info_size;
-	const int tensor_symbol_info_size = backward_prep.tensor_symbol_info_size;
-	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep.exec_symbol_info;
-	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = backward_prep.tensor_symbol_info;
+	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
+	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
+	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = backward_prep->tensor_symbol_info;
 	int i, j;
-	ccv_array_t* const autograd_tensor_symbols = backward_prep.autograd_tensor_symbols;
+	ccv_array_t* const autograd_tensor_symbols = backward_prep->autograd_tensor_symbols;
 	// Generate required symbols based on the information gathered above.
 	for (i = 0; i < autograd_tensor_symbols->rnum; i++)
 	{
@@ -1081,8 +1122,8 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			symbol->symbol = ccv_nnc_tensor_symbol_alias_new(graph, ref->symbol, forw_symbol->ofs, forw_symbol->inc, forw_symbol->info, 0);
 		}
 	}
-	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep.backward_info;
-	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = backward_prep.autograd_execs;
+	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
+	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = backward_prep->autograd_execs;
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	for (i = 0; i < exec_symbol_info_size; i++)
 	{
@@ -1135,7 +1176,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 		back_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
 	}
-	ccv_array_t* const sum_execs = backward_prep.sum_execs;
+	ccv_array_t* const sum_execs = backward_prep->sum_execs;
 	for (i = 0; i < sum_execs->rnum; i++)
 	{
 		ccv_nnc_sum_graph_exec_symbol_t* exec = (ccv_nnc_sum_graph_exec_symbol_t*)ccv_array_get(sum_execs, i);
@@ -1194,7 +1235,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		graph->backward_tensor_symbols[i] = -1;
 	for (i = 0; i < graph->backward_symbol_size; i++)
 		graph->backward_exec_symbols[i] = -1;
-	ccv_nnc_autograd_tensor_version_t* const autograd_tensor_versions = backward_prep.autograd_tensor_versions;
+	ccv_nnc_autograd_tensor_version_t* const autograd_tensor_versions = backward_prep->autograd_tensor_versions;
 	// Assigning for wrt symbols.
 	for (i = 0; i < wrt_symbol_size; i++)
 	{
@@ -1270,8 +1311,9 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	const int tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
 	assert(exec_symbol_info_size > 0);
 	assert(tensor_symbol_info_size > 0);
-	ccv_nnc_symbolic_graph_backward_prep_t backward_prep = _ccv_nnc_symbolic_graph_backward_prep(graph, sources, source_size, destinations, destination_size, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size);
-	_ccv_nnc_symbolic_graph_backward_gen(backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, graph);
+	ccv_nnc_symbolic_graph_backward_prep_t backward_prep = _ccv_nnc_symbolic_graph_backward_prep(graph, sources, source_size, destinations, destination_size);
+	_ccv_nnc_symbolic_graph_backward_prep_do(&backward_prep, sources, source_size, destinations, destination_size, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size);
+	_ccv_nnc_symbolic_graph_backward_gen(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, graph);
 	_ccv_nnc_symbolic_graph_backward_prep_free(backward_prep);
 }
 
