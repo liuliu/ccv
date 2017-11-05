@@ -777,6 +777,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 					node->input_bitmasks[i] = 0;
 				for (i = 0; i < node->output_bitmask_size; i++)
 					node->output_bitmasks[i] = 0;
+				node->output_bitmask_size = 0;
 			} else if (cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD) {
 				// Clear out all potential outputs if we think it is not a wrt symbols.
 				for (i = 0; i < forw_exec->input_size; i++)
@@ -871,7 +872,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 			if (back_exec->cmd.cmd != CCV_NNC_NOOP)
 				back_exec->cmd.cmd += 1; /* Backward command is the one after forward command. */
 			assert(ccv_nnc_cmd_is_backward(back_exec->cmd) || back_exec->cmd.cmd == CCV_NNC_NOOP);
-			if (!back_info->output_bitmasks) /* This has no output, can be a noop. */
+			if (!back_info->output_bitmask_size) /* This has no output, can be a noop. */
 				back_exec->cmd.cmd = CCV_NNC_NOOP;
 			else {
 				back_exec->output_size = forw_exec->input_size;
