@@ -75,4 +75,54 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_tensor_free(g);
 }
 
+TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, then u = v * z")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
+	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t xy = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "xy");
+	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "z");
+	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
+	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
+	ccv_nnc_symbolic_graph_while(symbolic_graph, while_graph, "while0");
+	ccv_nnc_graph_exec_symbol_t prod0 = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(xy), "prod0");
+	ccv_nnc_graph_exec_symbol_t log0 = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(xy), TENSOR_SYMBOL_LIST(z), "log0");
+	ccv_nnc_graph_exec_symbol_autogen(while_graph, GRAPH_EXEC_SYMBOL_LIST(prod0, log0));
+	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
+	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, prod0);
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(z, v), TENSOR_SYMBOL_LIST(u), "prod1");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0);
+	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_5, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
+	ccv_nnc_symbolic_graph_set_while_params(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
+	ccv_nnc_symbolic_graph_set_sources(while_graph, GRAPH_EXEC_SYMBOL_LIST(noop));
+	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(log0));
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	ccv_nnc_tensor_t* v_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, v);
+	x_tensor->data.f32[0] = 1;
+	y_tensor->data.f32[0] = 3.2;
+	v_tensor->data.f32[0] = 0.22;
+	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
+	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
+	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_tensor_t* u_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, u);
+	float z0 = 1, y0 = 3.2;
+	int i;
+	for (i = 0; i < 5; i++)
+		z0 = log(z0 * y0);
+	z0 = 0.22 * z0;
+	REQUIRE_EQ_WITH_TOLERANCE(u_tensor->data.f32[0], z0, 1e-6, "u should match the for loop result");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+}
+
 #include "case_main.h"

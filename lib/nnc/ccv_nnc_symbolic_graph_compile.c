@@ -1001,10 +1001,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref)
 		{
-			// It must be available.
-			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[tensor_blocks[i].ref - 1]));
-			assert(tensor_arena->vt_tensors[tensor_blocks[i].ref - 1]);
-			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[tensor_blocks[i].ref - 1];
+			int ref = tensor_blocks[i].ref - 1;
+			while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
+				ref = tensor_blocks[ref].ref - 1;
+			assert(tensor_arena->vt_tensors[ref]);
+			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[ref];
 		}
 	// Now after refs assigned out, handle the case I need to preserve because I am a sub graph.
 	if (graph_prep->p)
@@ -2035,6 +2036,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, p_ref_1, p_ref_0);
 							for (j = 0; j < nth_unroll; j++) /* Fold its duplicates as well. */
 								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1 * nth_unroll + j], dup_tensor_block_ref[p_ref_0 * nth_unroll + j]);
+							p_ref_0 = p_ref_1; // p_ref_0 now folded into p_ref_1, therefore, pointing to p_ref_1 now.
 						}
 					}
 					/* Only proceed if it is folded (thus, the input / output tensor can be connected, reuse is not a problem
@@ -2046,8 +2048,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						(p_ref_0_is_in_or_out == 1 && _ccv_nnc_tensor_block_check_head(tensor_blocks + p_ref_0, idx)) ||
 						(p_ref_0_is_in_or_out == -1 && _ccv_nnc_tensor_block_check_tail(tensor_blocks + p_ref_0, idx)))
 					{
-						/* p_ref_0 is either the only one, or the output tensor, we always prefer the output tensor (the
-						 * is a long argument why that is the case, the digest is, it is much easier to control your outp
+						/* p_ref_0 is either the only one, or the output tensor, we always prefer the output tensor (there
+						 * is a long argument why that is the case, the digest is, it is much easier to control your output
 						 * than your input). */
 						s_alloc_prep->buffers[i].p_refs[0] = p_ref_0 + 1;
 						s_alloc_prep->buffers[i].p_refs[1] = 0;
