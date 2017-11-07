@@ -110,7 +110,6 @@ static int _ccv_nnc_ewprod_back_bitmask(const uint64_t* const input_bitmasks, co
 	for (i = 0; i < input_bitmask_size; i++)
 	{
 		for (j = 0; j < 64; j++)
-			// The first parameter can be absent.
 			if (input_bitmasks[i] & (uint64_t)1 << j)
 			{
 				if (input_flag)
