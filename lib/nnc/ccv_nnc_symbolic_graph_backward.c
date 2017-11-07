@@ -921,6 +921,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info =backward_prep->tensor_symbol_info;
+	const ccv_nnc_graph_visit_t* const forward_visit = backward_prep->forward_visit;
 	// Now, for each one of these, find a reverse graph.
 	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
 	const ccv_nnc_graph_visit_t* const backward_visit = backward_prep->backward_visit;
@@ -1121,6 +1122,53 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 	backward_prep->autograd_tensor_versions = autograd_tensor_versions;
 	backward_prep->autograd_tensor_symbols = autograd_tensor_symbols;
 	backward_prep->sum_execs = sum_execs;
+	ccv_array_t* sub_f_symbols = 0;
+	ccv_array_t* sub_wrt_symbols = 0;
+	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, _, idx) {
+		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
+		const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
+		/* Only interested in the ones on the f / wrt flow */
+		if (node->f_wrt == 0x3 && forw_exec->graph_ref)
+		{
+			// Now calling it recursively until we are sure no f_symbols can be removed.
+			const int graph_ref = forw_exec->graph_ref - 1;
+			ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep = backward_prep->sub_preps + graph_ref;
+			if (!sub_wrt_symbols)
+				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+			else
+				ccv_array_clear(sub_wrt_symbols);
+			for (i = 0; i < forw_exec->input_size; i++)
+				if (node->output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+				{
+					ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
+						.d = *(int*)ccv_array_get(tensor_symbol_info[forw_exec->inputs[i]].s_ref, graph_ref) - 1,
+						.graph = sub_prep->graph,
+						.info = tensor_symbol_info[forw_exec->inputs[i]].info
+					};
+					ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
+				}
+			// I am done, need to redo above for sub_prep, and it has to be successful now.
+			if (!sub_f_symbols)
+				sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+			else
+				ccv_array_clear(sub_f_symbols);
+			for (i = 0; i < forw_exec->output_size; i++)
+				if (node->input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+				{
+					ccv_nnc_tensor_symbol_t sub_f_symbol = {
+						.d = *(int*)ccv_array_get(tensor_symbol_info[forw_exec->outputs[i]].s_ref, graph_ref) - 1,
+						.graph = sub_prep->graph,
+						.info = tensor_symbol_info[forw_exec->outputs[i]].info
+					};
+					ccv_array_push(sub_f_symbols, &sub_f_symbol);
+				}
+			_ccv_nnc_symbolic_graph_backward_prep_gen(sub_prep, ccv_nnc_symbolic_graph_sources(sub_prep->graph), ccv_nnc_symbolic_graph_source_size(sub_prep->graph), ccv_nnc_symbolic_graph_destinations(sub_prep->graph), ccv_nnc_symbolic_graph_destination_size(sub_prep->graph), (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum);
+		}
+	} ccv_nnc_graph_visit_endfor
+	if (sub_f_symbols)
+		ccv_array_free(sub_f_symbols);
+	if (sub_wrt_symbols)
+		ccv_array_free(sub_wrt_symbols);
 }
 
 static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_graph_backward_prep_t backward_prep)
@@ -1393,8 +1441,6 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 
 void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)
 {
-	// First, fill all the "auto" holes.
-	// This is the symbol table that with "auto" info filled up.
 	int i;
 	// TODO: f symbols cannot be alias yet.
 	for (i = 0; i < f_symbol_size; i++)
