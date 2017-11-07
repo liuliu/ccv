@@ -2036,9 +2036,12 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, p_ref_1, p_ref_0);
 							if (folded)
 							{
-								for (j = 0; j < nth_unroll; j++) /* Fold its duplicates as well. */
-									_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1 * nth_unroll + j], dup_tensor_block_ref[p_ref_0 * nth_unroll + j]);
 								p_ref_0 = p_ref_1; // p_ref_0 now folded into p_ref_1, therefore, pointing to p_ref_1 now.
+								for (j = 0; j < nth_unroll; j++) /* Fold its duplicates as well. */
+								{
+									const int folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[p_ref_1 * nth_unroll + j], dup_tensor_block_ref[p_ref_0 * nth_unroll + j]);
+									assert(folded && "the subsequent duplicates can be folded too.");
+								}
 							}
 						}
 					}
