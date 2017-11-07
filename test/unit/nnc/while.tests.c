@@ -193,13 +193,13 @@ TEST_CASE("symbolic graph for a while loop to compute z * x ^ 5 * y + z")
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	ccv_nnc_tensor_t* z0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z0);
-	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z3);
 	x_tensor->data.f32[0] = 0.92;
 	y_tensor->data.f32[0] = 3.2;
 	z0_tensor->data.f32[0] = 1.2;
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
 	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z3);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.2 * 0.92 * 0.92 * 0.92 * 0.92 * 0.92 * 3.2 + 1.2, 1e-6, "z should be equal to z * x ^ 5 * y + z");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
