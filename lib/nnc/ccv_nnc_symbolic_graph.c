@@ -1007,11 +1007,11 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
 				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx] + 1, node_id[i], node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
 				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i] + 1, node_id[outgoing_idx], node_id[i]);
+					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
 				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
-					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx] + 1, node_id[outgoing_idx]);
+					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
 			}

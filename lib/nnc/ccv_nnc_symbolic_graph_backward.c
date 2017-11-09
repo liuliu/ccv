@@ -682,6 +682,33 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 	};
 }
 
+static void _ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(const ccv_nnc_graph_exec_symbol_info_t* const exec_info, const ccv_nnc_symbolic_graph_t* const sub_graph, const int graph_ref, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const uint64_t* const input_bitmasks, const uint64_t* const output_bitmasks, ccv_array_t* const sub_f_symbols, ccv_array_t* const sub_wrt_symbols)
+{
+	int i;
+	ccv_array_clear(sub_wrt_symbols);
+	for (i = 0; i < exec_info->input_size; i++)
+		if (output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+		{
+			ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
+				.d = *(int*)ccv_array_get(tensor_symbol_info[exec_info->inputs[i]].s_ref, graph_ref) - 1,
+				.graph = sub_graph,
+				.info = tensor_symbol_info[exec_info->inputs[i]].info
+			};
+			ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
+		}
+	ccv_array_clear(sub_f_symbols);
+	for (i = 0; i < exec_info->output_size; i++)
+		if (input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+		{
+			ccv_nnc_tensor_symbol_t sub_f_symbol = {
+				.d = *(int*)ccv_array_get(tensor_symbol_info[exec_info->outputs[i]].s_ref, graph_ref) - 1,
+				.graph = sub_graph,
+				.info = tensor_symbol_info[exec_info->outputs[i]].info
+			};
+			ccv_array_push(sub_f_symbols, &sub_f_symbol);
+		}
+}
+
 // Check whether for a given f_symbol, we can compute wrt_symbols at all, if we can, tag the minimal io and ops (some ops can be replaced with noop) required to do so.
 static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size)
 {
@@ -753,7 +780,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, _, idx) {
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
 		/* Only interested in the ones on the f / wrt flow */
-		if (node->f_wrt == 0x3)
+		if ((node->f_wrt & 0x3) == 0x3)
 		{
 			const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 			ccv_nnc_cmd_t cmd = forw_exec->cmd;
@@ -835,7 +862,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
 		const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 		/* Only interested in the ones on the f / wrt flow */
-		if (node->f_wrt == 0x3 && forw_exec->graph_ref)
+		if ((node->f_wrt & 0x3) == 0x3 && forw_exec->graph_ref)
 		{
 			// Now calling it recursively until we are sure no f_symbols can be removed.
 			const int graph_ref = forw_exec->graph_ref - 1;
@@ -930,7 +957,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 	// Visit the graph in reverse order, build the AD nodes.
 	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = (ccv_nnc_autograd_graph_exec_symbol_t*)cccalloc(exec_symbol_info_size, sizeof(ccv_nnc_autograd_graph_exec_symbol_t));
 	for (i = 0; i < exec_symbol_info_size; i++)
-		if (backward_info[i].f_wrt == 0x3 && backward_info[i].outgoings)
+		if ((backward_info[i].f_wrt & 0x3) == 0x3 && backward_info[i].outgoings)
 		{
 			// Copy over the outgoing bits.
 			autograd_execs[i].outgoings = ccv_array_new(sizeof(int), backward_info[i].outgoings->rnum, 0);
@@ -938,7 +965,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 			{
 				const int d = *(int*)ccv_array_get(backward_info[i].outgoings, j);
 				// Only push the outgoing node if it is in the f_wrt path.
-				if (backward_info[d].f_wrt == 0x3)
+				if ((backward_info[d].f_wrt & 0x3) == 0x3)
 					ccv_array_push(autograd_execs[i].outgoings, &d);
 			}
 		}
@@ -947,7 +974,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 	ccv_array_t* sum_execs = ccv_array_new(sizeof(ccv_nnc_sum_graph_exec_symbol_t), 0, 0);
 	ccv_nnc_graph_visit_for(backward_visit, backward_info, node, idx) {
 		/* This is required by both f flow and wrt flow, therefore, an interest to us */
-		if (node->f_wrt == 0x3)
+		if ((node->f_wrt & 0x3) == 0x3)
 		{
 			const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 			const ccv_nnc_graph_backward_info_t* back_info = backward_info + idx;
@@ -1128,40 +1155,16 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
 		const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 		/* Only interested in the ones on the f / wrt flow */
-		if (node->f_wrt == 0x3 && forw_exec->graph_ref)
+		if ((node->f_wrt & 0x3) == 0x3 && forw_exec->graph_ref)
 		{
 			// Now calling it recursively until we are sure no f_symbols can be removed.
 			const int graph_ref = forw_exec->graph_ref - 1;
 			ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep = backward_prep->sub_preps + graph_ref;
 			if (!sub_wrt_symbols)
 				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-			else
-				ccv_array_clear(sub_wrt_symbols);
-			for (i = 0; i < forw_exec->input_size; i++)
-				if (node->output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
-				{
-					ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
-						.d = *(int*)ccv_array_get(tensor_symbol_info[forw_exec->inputs[i]].s_ref, graph_ref) - 1,
-						.graph = sub_prep->graph,
-						.info = tensor_symbol_info[forw_exec->inputs[i]].info
-					};
-					ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
-				}
-			// I am done, need to redo above for sub_prep, and it has to be successful now.
 			if (!sub_f_symbols)
 				sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-			else
-				ccv_array_clear(sub_f_symbols);
-			for (i = 0; i < forw_exec->output_size; i++)
-				if (node->input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
-				{
-					ccv_nnc_tensor_symbol_t sub_f_symbol = {
-						.d = *(int*)ccv_array_get(tensor_symbol_info[forw_exec->outputs[i]].s_ref, graph_ref) - 1,
-						.graph = sub_prep->graph,
-						.info = tensor_symbol_info[forw_exec->outputs[i]].info
-					};
-					ccv_array_push(sub_f_symbols, &sub_f_symbol);
-				}
+			_ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(forw_exec, sub_prep->graph, graph_ref, tensor_symbol_info, node->input_bitmasks, node->output_bitmasks, sub_f_symbols, sub_wrt_symbols);
 			_ccv_nnc_symbolic_graph_backward_prep_gen(sub_prep, ccv_nnc_symbolic_graph_sources(sub_prep->graph), ccv_nnc_symbolic_graph_source_size(sub_prep->graph), ccv_nnc_symbolic_graph_destinations(sub_prep->graph), ccv_nnc_symbolic_graph_destination_size(sub_prep->graph), (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum);
 		}
 	} ccv_nnc_graph_visit_endfor
@@ -1243,9 +1246,62 @@ static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_gr
 		ccfree(backward_prep.sub_preps);
 }
 
+static int _ccv_nnc_noop_while_expr(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data)
+{
+	return 0;
+}
+
+static void _ccv_nnc_add_backward_breakpoint_for_symbol(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_graph_exec_symbol_t breakpoint, ccv_nnc_symbolic_graph_t* const graph, ccv_array_t* const sub_breakpoints)
+{
+	const ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, 0);
+	ccv_array_push(sub_breakpoints, &noop);
+	// Now need to hook this up to the graph.
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
+	const ccv_nnc_graph_visit_t* const forward_visit = backward_prep->forward_visit;
+	// Now, for each one of these, find a reverse graph.
+	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
+	int i;
+	// Clean up the high bit.
+	for (i = 0; i < backward_prep->exec_symbol_info_size; i++)
+		backward_info[i].f_wrt &= ~0x4;
+	assert((backward_info[breakpoint.d].f_wrt & 0x3) != 0x3);
+	backward_info[breakpoint.d].f_wrt |= 0x4;
+	const ccv_nnc_graph_visit_t* const backward_visit = backward_prep->backward_visit;
+	const ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = backward_prep->autograd_execs;
+	// Going forward to find whether this breakpoint is a source node to some f_wrt nodes.
+	ccv_nnc_graph_visit_for(forward_visit, exec_symbol_info, forw_exec, idx) {
+		ccv_nnc_graph_backward_info_t* const node = backward_info + idx;
+		// If it is tagged on breakpoint flow, but not as both f or wrt, flow through it.
+		if ((node->f_wrt & 0x4) && (node->f_wrt & 0x3) != 0x3)
+			for (i = 0; forw_exec->outgoings && i < forw_exec->outgoings->rnum; i++)
+			{
+				const int outgoing_idx = *(int*)ccv_array_get(forw_exec->outgoings, i);
+				ccv_nnc_graph_backward_info_t* const outgoing_node = backward_info + outgoing_idx;
+				// If this is a f_wrt node. Concatenate.
+				if (!(outgoing_node->f_wrt & 0x4) && (outgoing_node->f_wrt & 0x3) == 0x3)
+						ccv_nnc_graph_exec_symbol_concat(graph, autograd_execs[outgoing_idx].symbol, noop);
+				outgoing_node->f_wrt |= 0x4;
+			}
+	} ccv_nnc_graph_visit_endfor
+	// Going backward to find whether this breakpoint is a destination node for some f_wrt_nodes.
+	ccv_nnc_graph_visit_for(backward_visit, backward_info, node, idx) {
+		if ((node->f_wrt & 0x4) && (node->f_wrt & 0x3) != 0x3)
+			for (i = 0; node->outgoings && i < node->outgoings->rnum; i++)
+			{
+				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
+				ccv_nnc_graph_backward_info_t* const outgoing_node = backward_info + outgoing_idx;
+				// If this is a f_wrt node. Concatenate.
+				if (!(outgoing_node->f_wrt & 0x4) && (outgoing_node->f_wrt & 0x3) == 0x3)
+						ccv_nnc_graph_exec_symbol_concat(graph, noop, autograd_execs[outgoing_idx].symbol);
+				outgoing_node->f_wrt |= 0x4;
+			}
+	} ccv_nnc_graph_visit_endfor
+}
+
 static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
 {
 	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
+	const int forward_symbol_size = graph->tensor_symbol_info->rnum;
 	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = backward_prep->tensor_symbol_info;
@@ -1274,10 +1330,13 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 	ccv_nnc_graph_backward_info_t* const backward_info = backward_prep->backward_info;
 	ccv_nnc_autograd_graph_exec_symbol_t* const autograd_execs = backward_prep->autograd_execs;
 	ccv_array_t* symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+	ccv_array_t* sub_f_symbols = 0;
+	ccv_array_t* sub_wrt_symbols = 0;
+	ccv_array_t* sub_breakpoints = 0;
 	for (i = 0; i < exec_symbol_info_size; i++)
 	{
 		// This is not going to be an interesting node. Skip.
-		if (backward_info[i].f_wrt != 0x3)
+		if ((backward_info[i].f_wrt & 0x3) != 0x3)
 			continue;
 		ccv_nnc_graph_backward_info_t* const back_info = backward_info + i;
 		ccv_nnc_autograd_graph_exec_symbol_t* const back_exec = autograd_execs + i;
@@ -1323,8 +1382,41 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->outputs[j]))->symbol));
 			else
 				ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
-		back_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
+		if (forw_exec->graph_ref)
+		{
+			const int graph_ref = forw_exec->graph_ref - 1;
+			ccv_nnc_symbolic_graph_backward_prep_t* sub_prep = backward_prep->sub_preps + graph_ref;
+			ccv_nnc_symbolic_graph_t* sub_graph = ccv_nnc_symbolic_graph_new();
+			if (!sub_wrt_symbols)
+				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+			// I am done, need to redo above for sub_prep, and it has to be successful now.
+			if (!sub_f_symbols)
+				sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+			_ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(forw_exec, sub_prep->graph, graph_ref, tensor_symbol_info, back_info->input_bitmasks, back_info->output_bitmasks, sub_f_symbols, sub_wrt_symbols);
+			_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
+			back_exec->symbol = ccv_nnc_symbolic_graph_while(graph, sub_graph, forw_exec->name);
+			if (!sub_breakpoints)
+				sub_breakpoints = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
+			ccv_array_clear(sub_breakpoints);
+			// Find the breakpoints in forward graph, creating the reverse one.
+			for (j = 0; j < sub_prep->graph->breakpoint_size; j++)
+			{
+				const int d = sub_prep->graph->breakpoints[j].d;
+				if (sub_prep->autograd_execs[d].symbol.graph)
+					ccv_array_push(sub_breakpoints, &sub_prep->autograd_execs[d].symbol);
+				else
+					_ccv_nnc_add_backward_breakpoint_for_symbol(sub_prep, sub_prep->graph->breakpoints[j], sub_graph, sub_breakpoints);
+			}
+			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, _ccv_nnc_noop_while_expr, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_breakpoints, 0), sub_breakpoints->rnum);
+		} else
+			back_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
 	}
+	if (sub_f_symbols)
+		ccv_array_free(sub_f_symbols);
+	if (sub_wrt_symbols)
+		ccv_array_free(sub_wrt_symbols);
+	if (sub_breakpoints)
+		ccv_array_free(sub_breakpoints);
 	ccv_array_t* const sum_execs = backward_prep->sum_execs;
 	for (i = 0; i < sum_execs->rnum; i++)
 	{
@@ -1341,14 +1433,15 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 	for (i = 0; i < exec_symbol_info_size; i++)
 	{
 		// This is not going to be an interesting node. Skip.
-		if (backward_info[i].f_wrt != 0x3)
+		if ((backward_info[i].f_wrt & 0x3) != 0x3)
 			continue;
-		ccv_nnc_graph_exec_symbol_t forw_exec = {
-			.d = i,
-			.graph = graph
-		};
 		ccv_nnc_autograd_graph_exec_symbol_t* const back_exec = autograd_execs + i;
-		ccv_nnc_graph_exec_symbol_concat(graph, forw_exec, back_exec->symbol);
+		// If on the same graph, we cannot decide whether it is before or after the forw_exec, enforcing it is after forw_exec.
+		if (graph == backward_prep->graph)
+			ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
+				.d = i,
+				.graph = graph
+			}, back_exec->symbol);
 		if (back_exec->outgoings)
 			for (j = 0; j < back_exec->outgoings->rnum; j++)
 			{
@@ -1374,13 +1467,13 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 	}
 	// Now, everything is done, set the metadata on graph so that we can lookup later for backward symbols
 	if (graph->backward_tensor_symbols)
-		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * graph->tensor_symbol_info->rnum);
+		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
 	else
-		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * graph->tensor_symbol_info->rnum);
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_info_size;
-	graph->forward_symbol_size = tensor_symbol_info_size;
-	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - tensor_symbol_info_size;
-	for (i = 0; i < graph->forward_symbol_size; i++)
+	graph->forward_symbol_size = forward_symbol_size;
+	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - forward_symbol_size;
+	for (i = 0; i < tensor_symbol_info_size; i++)
 		graph->backward_tensor_symbols[i] = -1;
 	for (i = 0; i < graph->backward_symbol_size; i++)
 		graph->backward_exec_symbols[i] = -1;
@@ -1399,8 +1492,8 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
 		ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 		graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
-		assert(autograd_symbol->symbol.d >= tensor_symbol_info_size);
-		dd = autograd_symbol->symbol.d - tensor_symbol_info_size;
+		assert(autograd_symbol->symbol.d >= forward_symbol_size);
+		dd = autograd_symbol->symbol.d - forward_symbol_size;
 		const int x = tensor_ref->x;
 		if (tensor_ref->exec_registry && tensor_ref->exec_registry->rnum) // Create no-op node.
 		{
