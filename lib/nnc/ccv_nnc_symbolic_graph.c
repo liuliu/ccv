@@ -545,32 +545,41 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	return 0;
 }
 
-int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size)
+#define CCV_NNC_IS_AUTOGEN_ALL_EXECS(x) ((x) & CCV_NNC_AUTOGEN_ALL_EXECS)
+#define CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(x) ((x) & CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS)
+int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size, const int flags)
 {
 	int i, j, x, y;
 	for (i = 0; i < exec_size; i++)
-	{
-		assert(execs[i].graph == graph);
-		assert(execs[i].d >= 0);
-		assert(execs[i].d < graph->exec_symbol_info->rnum);
-	}
-	assert((execs && exec_size) || (!execs && !exec_size));
-	const int exec_total_size = exec_size ?: graph->exec_symbol_info->rnum;
+		if (execs[i].graph == graph)
+		{
+			assert(execs[i].d >= 0);
+			assert(execs[i].d < graph->exec_symbol_info->rnum);
+		}
+	if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && exec_size)
+		{ assert(execs); }
+	const int exec_total_size = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? graph->exec_symbol_info->rnum : exec_size;
 	for (i = 0; i < exec_total_size; i++)
 	{
-		int idx = execs ? execs[i].d : i;
+		if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[i].graph != graph)
+			continue;
+		int idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
 		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, idx);
 		// Autogen for sub-graphs.
 		if (symbol_info->graph_ref)
-			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1), 0, 0);
+			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1), execs, exec_size, flags);
 	}
 	for (i = 0; i < exec_total_size; i++)
 	{
-		int a_idx = execs ? execs[i].d : i;
+		if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[i].graph != graph)
+			continue;
+		int a_idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
 		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
 		for (j = i + 1; j < exec_total_size; j++)
 		{
-			int b_idx = execs ? execs[j].d : j;
+			if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[j].graph != graph)
+				continue;
+			int b_idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? j : execs[j].d;
 			// Skip if they are the same.
 			if (a_idx == b_idx)
 				continue;
@@ -645,8 +654,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			}
 		}
 	}
-	// If there is no inputs, loop over to find sources / destinations too.
-	if (!execs && !exec_size)
+	// If flag says so, loop over to find sources / destinations too.
+	if (CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(flags))
 	{
 		int* flags = (int*)cccalloc(sizeof(int), graph->exec_symbol_info->rnum);
 		for (i = 0; i < graph->exec_symbol_info->rnum; i++)

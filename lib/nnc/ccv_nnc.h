@@ -280,7 +280,11 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
 // nil for execs and 0 for exec_size means to loop over all the execs on the graph and autogen.
-int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size);
+enum {
+	CCV_NNC_AUTOGEN_ALL_EXECS = 0x1,
+	CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS = 0x2,
+};
+int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size, const int flags);
 // Generate a duplicate of the provided graph.
 // While generating the duplicate, it calls the function pointer to re-process the node type.
 typedef ccv_nnc_cmd_t(*ccv_nnc_symbolic_graph_subst_f)(const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd);
