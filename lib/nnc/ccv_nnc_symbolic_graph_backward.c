@@ -1200,10 +1200,8 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 			ccv_array_push(tensor_ver->ref_version, &tensor_ref);
 		}
 		// If there are more than one tensor in the list, it is possible to sum them up.
-		// TODO: doesn't support alias yet.
-		assert(!tensor_symbol_info[d].alias_ref);
 		if (tensor_ver->c < tensor_ver->ref_version->rnum - 1)
-			_ccv_nnc_graph_sum_autograd_tensor_versions(-1, d, exec_symbol_info_size, tensor_symbol_info, tensor_ver, autograd_execs, autograd_tensor_symbols, sum_execs);
+			_ccv_nnc_graph_sum_autograd_tensor_versions(-1, ref_d, exec_symbol_info_size, tensor_symbol_info, tensor_ver, autograd_execs, autograd_tensor_symbols, sum_execs);
 		// The tensor version should have ref_version, and only one now (after sum up).
 		assert(tensor_ver->c == tensor_ver->ref_version->rnum - 1);
 	}
