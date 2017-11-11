@@ -17,27 +17,28 @@ typedef struct {
 	// Start for while loop handling
 	int assign_ref; // Reference to the tensor that the value will be copied from (for parameter passing). Starts at 1.
 	int p_ref; // Reference to the tensor number in its parent graph. Starts at 1.
-	ccv_array_t* s_ref; // Reference to the tensor number in its sub graphs, Starts at 1.
 	// End of while loop handling.
 	int alias_ref; // Reference to the tensor. Starts at 1.
+	int peer_ref; // Reference to its peer. Starts at 1.
+	int flags;
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	int inc[CCV_NNC_MAX_DIM_ALLOC];
-	ccv_nnc_tensor_param_t info;
-	int flags;
+	ccv_array_t* s_ref; // Reference to the tensor number in its sub graphs, Starts at 1.
 	char* name;
+	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_symbol_info_t;
 
 typedef struct {
 	int input_size;
 	int output_size;
+	int graph_ref; // Reference to the sub-graph. Starts at 1.
+	int dead; // Mark this node as dead.
 	int* inputs;
 	int* outputs;
 	ccv_array_t* outgoings; // Outgoing nodes
-	int graph_ref; // Reference to the sub-graph. Starts at 1.
-	int dead; // Mark this node as dead.
+	char* name;
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
-	char* name;
 } ccv_nnc_graph_exec_symbol_info_t;
 
 struct ccv_nnc_symbolic_graph_s {
@@ -49,6 +50,7 @@ struct ccv_nnc_symbolic_graph_s {
 	// Some extra information piggy-back on symbolic graph struct.
 	// Start for while loop handling
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
+	struct ccv_nnc_symbolic_graph_s* peer; // The peer graph (only useful for backward prop graph).
 	struct ccv_nnc_symbolic_graph_s* p; // The parent graph (if current one is a sub-graph).
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.

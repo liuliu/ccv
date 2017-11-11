@@ -260,7 +260,19 @@ static void _ccv_nnc_graph_exec_add_output_if_needed(ccv_nnc_graph_exec_symbol_i
 	++exec_symbol_info->output_size;
 }
 
-void ccv_nnc_symbolic_graph_tensor_symbol_pass(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t sub_tensor_symbol)
+void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t peer_tensor_symbol)
+{
+	assert(tensor_symbol.graph == graph);
+	assert(tensor_symbol.d >= 0);
+	assert(tensor_symbol.d < graph->tensor_symbol_info->rnum);
+	assert(peer_tensor_symbol.graph == graph->peer);
+	assert(peer_tensor_symbol.d >= 0);
+	assert(peer_tensor_symbol.d < graph->peer->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol.d);
+	tensor_info->peer_ref = peer_tensor_symbol.d + 1;
+}
+
+void ccv_nnc_tensor_symbol_pass(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t sub_tensor_symbol)
 {
 	assert(sub_graph->p == graph);
 	assert(tensor_symbol.graph == graph);

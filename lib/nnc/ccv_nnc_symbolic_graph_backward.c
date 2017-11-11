@@ -1362,6 +1362,7 @@ static void _ccv_nnc_symbolic_graph_backward_while_params(const ccv_nnc_symbolic
 
 static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
 {
+	assert(graph == backward_prep->graph || graph->peer == backward_prep->graph);
 	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
 	const int forward_symbol_size = graph->tensor_symbol_info->rnum;
 	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
@@ -1414,6 +1415,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			const int graph_ref = forw_exec->graph_ref - 1;
 			ccv_nnc_symbolic_graph_backward_prep_t* sub_prep = backward_prep->sub_preps + graph_ref;
 			ccv_nnc_symbolic_graph_t* sub_graph = ccv_nnc_symbolic_graph_new();
+			sub_graph->peer = sub_prep->graph;
 			if (!sub_wrt_symbols)
 				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 			// I am done, need to redo above for sub_prep, and it has to be successful now.
@@ -1455,7 +1457,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					const int s_idx = *(int*)ccv_array_get(info->s_ref, p_idx) - 1;
 					assert(s_idx >= 0);
 					const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(sub_prep->autograd_tensor_symbols, sub_prep->autograd_tensor_versions + s_idx);
-					ccv_nnc_symbolic_graph_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
+					ccv_nnc_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
 					++k;
 				}
 			assert(back_exec->output_size == forw_exec->input_size);
@@ -1466,7 +1468,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					const int s_idx = *(int*)ccv_array_get(info->s_ref, p_idx) - 1;
 					assert(s_idx >= 0);
 					const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(sub_prep->autograd_tensor_symbols, sub_prep->autograd_tensor_versions + s_idx);
-					ccv_nnc_symbolic_graph_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
+					ccv_nnc_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
 					++k;
 				}
 			ccv_nnc_graph_exec_symbol_set_io(graph, back_exec->symbol, ccv_array_get(symbols, 0), input_size, ccv_array_get(symbols, input_size), output_size);
@@ -1482,24 +1484,36 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				if (!(back_info->input_bitmasks[(j + back_exec->input_size) >> 6] & ((uint64_t)1 << (j + back_exec->input_size))))
 					ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 				else {
-					ccv_nnc_tensor_symbol_t symbol = {
+					const ccv_nnc_tensor_symbol_t symbol = {
 						.info = tensor_symbol_info[forw_exec->inputs[j]].info,
 						.d = forw_exec->inputs[j],
-						.graph = graph
+						.graph = backward_prep->graph
 					};
-					ccv_array_push(symbols, &symbol);
+					if (graph == backward_prep->graph)
+						ccv_array_push(symbols, &symbol);
+					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
+						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->inputs[j]].info, tensor_symbol_info[forw_exec->inputs[j]].name);
+						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
+						ccv_array_push(symbols, &new_symbol);
+					}
 				}
 			// Outputs from forward function.
 			for (j = 0; j < forw_exec->output_size; j++)
 				if (!(back_info->input_bitmasks[(j + back_exec->input_size + forw_exec->input_size) >> 6] & ((uint64_t)1 << (j + back_exec->input_size + forw_exec->input_size))))
 					ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 				else {
-					ccv_nnc_tensor_symbol_t symbol = {
+					const ccv_nnc_tensor_symbol_t symbol = {
 						.info = tensor_symbol_info[forw_exec->outputs[j]].info,
 						.d = forw_exec->outputs[j],
-						.graph = graph
+						.graph = backward_prep->graph
 					};
-					ccv_array_push(symbols, &symbol);
+					if (graph == backward_prep->graph)
+						ccv_array_push(symbols, &symbol);
+					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
+						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->outputs[j]].info, tensor_symbol_info[forw_exec->outputs[j]].name);
+						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
+						ccv_array_push(symbols, &new_symbol);
+					}
 				}
 			for (j = 0; j < back_exec->output_size; j++)
 				if (back_info->output_bitmasks[j >> 6] & ((uint64_t)1 << j))
