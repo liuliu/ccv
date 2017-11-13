@@ -1410,6 +1410,33 @@ static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symb
 	}
 }
 
+static void _ccv_nnc_symbolic_graph_add_init_zeros(const ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, ccv_array_t* const symbols)
+{
+	int i;
+	for (i = 0; i < wrt_symbol_size; i++)
+	{
+		const int d = wrt_symbols[i].d;
+		const int ref_d = (!sub_prep->tensor_symbol_info[d].alias_ref) ? d : sub_prep->tensor_symbol_info[d].alias_ref - 1;
+		const ccv_nnc_autograd_tensor_version_t* const tensor_ver = sub_prep->autograd_tensor_versions + ref_d;
+		const int init_ref_ver = _ccv_nnc_tensor_ref_version_find_init(tensor_ver);
+		if (init_ref_ver >= 0)
+		{
+			// Need de-dup logic.
+			const int init_d = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, init_ref_ver))->d;
+			ccv_nnc_autograd_tensor_symbol_t* const init_autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(sub_prep->autograd_tensor_symbols, init_d);
+			const ccv_nnc_tensor_symbol_info_t* const sub_init_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, init_autograd_symbol->symbol.d);
+			// If it doesn't have a parent ref yet, create one.
+			if (!sub_init_symbol_info->p_ref)
+			{
+				ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, sub_prep->tensor_symbol_info[ref_d].info, 0);
+				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, CCV_NNC_SYM_TENSOR_INIT_ZEROS);
+				ccv_array_push(symbols, &new_symbol);
+				ccv_nnc_tensor_symbol_pass(graph, sub_graph, new_symbol, init_autograd_symbol->symbol);
+			}
+		}
+	}
+}
+
 static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
 {
 	assert(graph == backward_prep->graph || graph->peer == backward_prep->graph);
@@ -1492,6 +1519,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			for (j = 0; j < back_exec->input_size; j++)
 				if (back_info->input_bitmasks[j >> 6] & ((uint64_t)1 << j))
 					ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->inputs[j]))->symbol));
+			// Find whether in the wrt symbols, anything we need to init to zero, if there are, these need to be inputs here too.
+			_ccv_nnc_symbolic_graph_add_init_zeros(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, graph, sub_graph, symbols);
+			// input_size at this point, may be different from the back_exec->input_size, the reason is because we may added zeroing tensors as input tensors.
 			const int input_size = symbols->rnum;
 			for (j = 0; j < back_exec->output_size; j++)
 				if (back_info->output_bitmasks[j >> 6] & ((uint64_t)1 << j))
@@ -1510,6 +1540,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					ccv_nnc_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
 					++k;
 				}
+			k = input_size; // Reset k, the symbol pass already set up by add_init_zeros.
 			assert(back_exec->output_size == forw_exec->input_size);
 			for (j = 0; j < back_exec->output_size; j++)
 				if (back_info->output_bitmasks[j >> 6] & ((uint64_t)1 << j))
