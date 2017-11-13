@@ -32,6 +32,7 @@ enum {
 	WRITE_ONLY = 0x8,
 	READ_WRITE = 0xc,
 	ANONYMOUS = 0x10, // Mark this block as anonymous (thus, not reference to any specific tensor).
+	UNFOLDABLE = 0x20, // Mark this block cannot be folded into previous blocks.
 };
 
 #define TENSOR_EXPECT_ORDINARY(t) ((t.flags & 0x3) == 0)
@@ -45,6 +46,8 @@ enum {
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
 #define TENSOR_SET_ANONYMOUS(t) (t.flags = (t.flags & ~0x10 | ANONYMOUS))
 #define TENSOR_IS_ANONYMOUS(t) (t.flags & ANONYMOUS)
+#define TENSOR_SET_UNFOLDABLE(t) (t.flags = (t.flags & ~0x20 | UNFOLDABLE))
+#define TENSOR_IS_UNFOLDABLE(t) (t.flags & UNFOLDABLE)
 
 typedef struct {
 	int index;
@@ -553,8 +556,12 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 		return tensor_block_pos[block_ref];
 	int i;
 	const int nth_unroll = prep->nth_unroll;
-	int vt_ref = prep->alloc_prep->vt_blocks[block_ref];
-	assert(block_ref == prep->alloc_prep->blocks[vt_ref].block_ref);
+	int unref_block_ref = block_ref;
+	while (prep->tensor_blocks[unref_block_ref].ref)
+		unref_block_ref = prep->tensor_blocks[unref_block_ref].ref - 1;
+	int vt_ref = prep->alloc_prep->vt_blocks[unref_block_ref];
+	assert(vt_ref >= 0);
+	assert(unref_block_ref == prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = prep->alloc_prep->blocks[vt_ref].buffer_ref;
 	uint64_t offset = prep->alloc_prep->blocks[vt_ref].offset;
 	int p_ref = prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
@@ -580,8 +587,8 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 			ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, tv_pos);
 			*tv = ccv_nnc_tensor(graph_prep->tensor_arena->buffers[buffer_ref].ptr + offset, params, 0);
 			tensor_block_pos[block_ref] = tv_pos;
-			if (prep->tensor_blocks[block_ref].companion_ref)
-				tensor_block_pos[prep->tensor_blocks[block_ref].companion_ref - 1] = tv_pos;
+			if (prep->tensor_blocks[unref_block_ref].companion_ref)
+				tensor_block_pos[prep->tensor_blocks[unref_block_ref].companion_ref - 1] = tv_pos;
 			return tv_pos;
 		}
 		p_ref = graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
@@ -1019,6 +1026,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			if (!_ccv_nnc_tensor_block_check_preserve(graph_prep, block_ref))
 				continue;
 			const int vt_ref = alloc_prep->vt_blocks[block_ref];
+			assert(vt_ref >= 0);
 			const int buffer_ref = alloc_prep->blocks[vt_ref].buffer_ref;
 			assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[block_ref]));
 			if (!TENSOR_EXPECT_ALIAS(tensor_blocks[block_ref]))
@@ -1376,6 +1384,8 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 	// Now we are sure p_ref_0 points to the input, p_ref_1 points to the output.
 	if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) &&
 		!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_1]) &&
+		!TENSOR_IS_UNFOLDABLE(tensor_blocks[p_ref_0]) &&
+		!TENSOR_IS_UNFOLDABLE(tensor_blocks[p_ref_1]) &&
 		tensor_blocks[p_ref_0].tail->rnum == 1 &&
 		tensor_blocks[p_ref_1].head->rnum == 1 &&
 		*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0))
@@ -1471,6 +1481,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (node->outputs[i] >= 0)
 				tensor_blocks[node->outputs[i]].flags = 0;
 	} ccv_nnc_graph_visit_endfor
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
+		{
+			TENSOR_SET_UNFOLDABLE(tensor_blocks[i]);
+			TENSOR_SET_UNFOLDABLE(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+		}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -1639,9 +1655,9 @@ static ccv_nnc_graph_exec_symbol_t _ccv_nnc_dup_graph_exec_symbol(ccv_nnc_symbol
 	if (dup_exec_ref[idx * n_times] < 0)
 	{
 		for (i = 0; i < node->input_size; i++)
-			max_inputs[i] = _ccv_nnc_dup_tensor_symbol(dup_graph, n_times, dup_tensor_block_ref, tensor_symbol_info, node->inputs[i]);
+			max_inputs[i] = (node->inputs[i] >= 0) ? _ccv_nnc_dup_tensor_symbol(dup_graph, n_times, dup_tensor_block_ref, tensor_symbol_info, node->inputs[i]) : NO_TENSOR_SYMBOL;
 		for (i = 0; i < node->output_size; i++)
-			max_outputs[i] = _ccv_nnc_dup_tensor_symbol(dup_graph, n_times, dup_tensor_block_ref, tensor_symbol_info, node->outputs[i]);
+			max_outputs[i] = (node->outputs[i] >= 0) ? _ccv_nnc_dup_tensor_symbol(dup_graph, n_times, dup_tensor_block_ref, tensor_symbol_info, node->outputs[i]) : NO_TENSOR_SYMBOL;
 		ccv_nnc_graph_exec_symbol_t exec_symbol = ccv_nnc_graph_exec_symbol_new(dup_graph, node->cmd, max_inputs, node->input_size, max_outputs, node->output_size, 0);
 		dup_exec_ref[idx * n_times] = exec_symbol.d;
 	}
@@ -1814,6 +1830,19 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n_times(const ccv_nnc_sym
 	ccfree(max_outputs);
 }
 
+static void _ccv_nnc_fixup_assign_ref_after_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const int nth_unroll, const ccv_nnc_tensor_block_t* const tensor_blocks, const int* const dup_tensor_block_ref, ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info)
+{
+	int i;
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++) // symbolic graph is the old graph and tensor blocks is the old tensor blocks.
+		// Now can assign them (The dup) as companion.
+		// Get to the last one, which we will wrap over.
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && dup_tensor_symbol_info[i].assign_ref)
+		{
+			dup_tensor_symbol_info[i].assign_ref = dup_tensor_block_ref[(dup_tensor_symbol_info[i].assign_ref - 1) * nth_unroll + nth_unroll - 1] + 1;
+			assert(dup_tensor_symbol_info[i].assign_ref);
+		}
+}
+
 static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int* r_nth_unroll, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
 {
 	int i, j;
@@ -1835,6 +1864,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_visit_t* dup_visit = ccv_nnc_graph_visit_new(dup_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, 0), dup_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_tensor_symbol_info, dup_exec_symbol_info);
+	_ccv_nnc_fixup_assign_ref_after_unroll(symbolic_graph, nth_unroll, tensor_blocks, dup_tensor_block_ref, dup_tensor_symbol_info);
 	// Free out the old exec_dep
 	ccv_matrix_free(exec_dep);
 	// and the tensor blocks, prepare for the new.
@@ -1842,7 +1872,6 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, dup_visit, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, dup_exec_symbol_info, dup_tensor_symbol_info, &exec_dep, &tensor_blocks);
 	ccv_nnc_graph_visit_free(dup_visit);
 	ccfree(dup_exec_symbol_info);
-	ccfree(dup_tensor_symbol_info);
 	// Assign out dup_p_ref, which will be used to extended the anonymous block life-time.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		// Loop over all possible duplications to assign dup_p_ref properly.
@@ -1866,10 +1895,10 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	// companion_ref
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		// Now can assign them (The dup) as companion.
-		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && dup_tensor_symbol_info[i].assign_ref)
 		{
 			// Get to the last one, which we will wrap over.
-			const int assign_ref = dup_tensor_block_ref[(tensor_symbol_info[i].assign_ref - 1) * nth_unroll + nth_unroll - 1];
+			const int assign_ref = dup_tensor_symbol_info[i].assign_ref - 1;
 			if (assign_ref >= 0)
 			{
 				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[assign_ref]);
@@ -1881,6 +1910,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				tensor_blocks[assign_ref].companion_ref = i + 1;
 			}
 		}
+	ccfree(dup_tensor_symbol_info);
 	// Extend the dup tensor block ref, prepare for future extensions.
 	dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * dup_graph->tensor_symbol_info->rnum * nth_unroll);
 	for (i = symbolic_graph->tensor_symbol_info->rnum * nth_unroll; i < dup_graph->tensor_symbol_info->rnum * nth_unroll; i++)

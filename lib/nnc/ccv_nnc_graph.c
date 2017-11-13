@@ -129,33 +129,39 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 			info->tensor_nests = (ccv_nnc_graph_tensor_nest_t**)cccalloc(tensor_nest_size, sizeof(ccv_nnc_graph_tensor_nest_t*));
 		info->tensor_nest_size = tensor_nest_size;
 		for (i = 0; i < info->input_size; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]))
+			if (info->inputs[i])
 			{
-				if (!info->tensor_nests[i] || info->inputs[i] != info->tensor_nests[i]->tensors[0])
+				if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]))
 				{
+					if (!info->tensor_nests[i] || info->inputs[i] != info->tensor_nests[i]->tensors[0])
+					{
+						if (info->tensor_nests[i])
+							_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
+						info->tensor_nests[i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
+					}
+				} else {
 					if (info->tensor_nests[i])
 						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
-					info->tensor_nests[i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
+					info->tensor_nests[i] = 0;
 				}
-			} else {
-				if (info->tensor_nests[i])
-					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
-				info->tensor_nests[i] = 0;
 			}
 		const int d = info->input_size;
 		for (i = 0; i < info->output_size; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]))
+			if (info->outputs[i])
 			{
-				if (!info->tensor_nests[d + i] || info->outputs[i] != info->tensor_nests[d + i]->tensors[0])
+				if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]))
 				{
+					if (!info->tensor_nests[d + i] || info->outputs[i] != info->tensor_nests[d + i]->tensors[0])
+					{
+						if (info->tensor_nests[d + i])
+							_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
+						info->tensor_nests[d + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
+					}
+				} else {
 					if (info->tensor_nests[d + i])
 						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
-					info->tensor_nests[d + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
+					info->tensor_nests[d + i] = 0;
 				}
-			} else {
-				if (info->tensor_nests[d + i])
-					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
-				info->tensor_nests[d + i] = 0;
 			}
 		const int dd = info->input_size + info->output_size;
 		for (i = 0; i < info->broadcast_size; i++)
