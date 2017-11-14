@@ -547,6 +547,14 @@ int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const
 	return 0;
 }
 
+int ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	return symbol_info->flags;
+}
+
 int ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags)
 {
 	assert(graph == tensor.graph);
@@ -833,8 +841,17 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		fputs(symbol_info->name, out);
 	else
 		fprintf(out, "tensor%d", index);
-	if (flags == CCV_NNC_LONG_DOT_GRAPH && (symbol_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS))
-		fputs(" (0)", out); // Output if it is zero init'ed.
+	if (flags == CCV_NNC_LONG_DOT_GRAPH)
+	{
+		int flag = -1;
+		if (symbol_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS)
+			flag = fputs(" (0", out); // Output if it is zero init'ed.
+		if (symbol_info->flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
+			if (flag)
+				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
+		if (flag >= 0)
+			fputs(")", out);
+	}
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		int i;
@@ -855,8 +872,16 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 			fputs(alias_info->name, out);
 		else
 			fprintf(out, "tensor%d", symbol_info->alias_ref - 1);
-		if (flags == CCV_NNC_LONG_DOT_GRAPH && (alias_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS))
-			fputs(" (0)", out); // Output if it is zero init'ed.
+		if (flags == CCV_NNC_LONG_DOT_GRAPH)
+		{
+			int flag = -1;
+			if (alias_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS)
+				flag = fputs(" (0", out); // Output if it is zero init'ed.
+			if (alias_info->flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
+				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
+			if (flag >= 0)
+				fputs(")", out);
+		}
 	}
 	if ((flags == CCV_NNC_LONG_DOT_GRAPH || alias_info) && !html_like)
 		fputc('}', out);

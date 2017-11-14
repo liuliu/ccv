@@ -1575,6 +1575,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
 						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->inputs[j]].info, tensor_symbol_info[forw_exec->inputs[j]].name);
 						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
+						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_SYM_TENSOR_TAPE_VAR;
+						ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
+						ccv_nnc_tensor_symbol_set_flags(backward_prep->graph, symbol, flags);
 						ccv_array_push(symbols, &new_symbol);
 					}
 				}
@@ -1593,6 +1596,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
 						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->outputs[j]].info, tensor_symbol_info[forw_exec->outputs[j]].name);
 						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
+						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_SYM_TENSOR_TAPE_VAR;
+						ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
+						ccv_nnc_tensor_symbol_set_flags(backward_prep->graph, symbol, flags);
 						ccv_array_push(symbols, &new_symbol);
 					}
 				}

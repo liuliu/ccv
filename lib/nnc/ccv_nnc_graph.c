@@ -398,6 +398,8 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* c
 	int i;
 	for (i = 0; i < depth; i++) // Print subscription to denote depth.
 		fputc('\'', out);
+	if (CCV_GET_TAPE_ALLOC(tensor->type))
+		fputs(" (t)", out);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		fprintf(out, "|zone%d", zone);
@@ -637,6 +639,8 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 	int i;
 	for (i = 0; i < depth; i++) // Print subscription to denote depth.
 		fputc('\'', out);
+	if (CCV_GET_TAPE_ALLOC(mv->type))
+		fputs(" (t)", out);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		_ccv_nnc_graph_dot_tensor_multiview_one(mv, recovery, depth, tensor_index, out);

@@ -133,9 +133,9 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	y_tensor->data.f32[0] = 3.2;
 	v_tensor->data.f32[0] = 0.22;
 	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
-	source = ccv_nnc_graph_exec_source(graph_exec_arena);
-	destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, tape, 0, &source, 1, &destination, 1);
+	// source = ccv_nnc_graph_exec_source(graph_exec_arena);
+	// destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
+	// ccv_nnc_graph_while_run(graph, tape, 0, &source, 1, &destination, 1);
 	ccv_nnc_tensor_tape_free(tape);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
