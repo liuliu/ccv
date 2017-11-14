@@ -212,10 +212,10 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 {
 	int i, tape_io = 0;
 	for (i = 0; i < input_size && !tape_io; i++)
-		if (CCV_GET_TAPE_ALLOC(inputs[i]->type))
+		if (inputs[i] && CCV_GET_TAPE_ALLOC(inputs[i]->type))
 			tape_io = 1;
 	for (i = 0; i < output_size && !tape_io; i++)
-		if (CCV_GET_TAPE_ALLOC(outputs[i]->type))
+		if (outputs[i] && CCV_GET_TAPE_ALLOC(outputs[i]->type))
 			tape_io = 1;
 	// If doesn't need to update with tape io, just pointing to the inputs and outputs directly.
 	if (!tape_io)
@@ -233,10 +233,10 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 		graphs[d] = curr_graph;
 	// Now, go through the inputs / outputs and update.
 	for (i = 0; i < input_size; i++)
-		if (CCV_GET_TAPE_ALLOC(inputs[i]->type))
+		if (inputs[i] && CCV_GET_TAPE_ALLOC(inputs[i]->type))
 			_ccv_nnc_tensor_from_tape(tape->tensor_data, inputs[i], graphs, graph_size, 0);
 	for (i = 0; i < output_size; i++)
-		if (CCV_GET_TAPE_ALLOC(outputs[i]->type))
+		if (outputs[i] && CCV_GET_TAPE_ALLOC(outputs[i]->type))
 			_ccv_nnc_tensor_from_tape(tape->tensor_data, outputs[i], graphs, graph_size, 1); // Create if it is not found. This is OK for output tensor.
 }
 

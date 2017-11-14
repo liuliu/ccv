@@ -68,7 +68,6 @@ struct ccv_nnc_symbolic_graph_s {
 	int* backward_tensor_symbols;
 	int backward_symbol_size;
 	int* backward_exec_symbols;
-	ccv_array_t* tape_variables; // The tensor symbols that will be backed by tape. If this is a backward graph, these tensor symbols won't be allocated on the tensor arena.
 	// End of backward (automatic differentiation) handling.
 };
 

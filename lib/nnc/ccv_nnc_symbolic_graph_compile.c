@@ -99,7 +99,6 @@ typedef struct {
 } ccv_nnc_tensor_alloc_prep_t;
 
 typedef struct ccv_nnc_symbolic_graph_prep_s {
-	intptr_t graph_ref;
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx;
 	int nth_unroll; // How many times this graph is unrolled before we can have proper assignment.
@@ -116,8 +115,9 @@ typedef struct ccv_nnc_symbolic_graph_prep_s {
 	struct ccv_nnc_symbolic_graph_prep_s* p;
 	struct ccv_nnc_symbolic_graph_prep_s** sub_preps; // The preps of its sub-graphs.
 	// Structures that don't require to be freed after deallocation.
-	ccv_nnc_graph_t* graph; // materialized graph, not managed by prep.
-	ccv_nnc_tensor_arena_t* tensor_arena; // tensor arena, not managed by prep as well.
+	const ccv_nnc_symbolic_graph_t* symbolic_graph; // Constant because I cannot modify it.
+	ccv_nnc_graph_t* graph; // Materialized graph, not managed by prep after created.
+	ccv_nnc_tensor_arena_t* tensor_arena; // Tensor arena, not managed by prep as well.
 } ccv_nnc_symbolic_graph_prep_t;
 
 static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
@@ -842,7 +842,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			++m_tensor_size;
 	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_t*) * m_tensor_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	graph_prep->tensor_arena = tensor_arena;
-	tensor_arena->graph_ref = graph_prep->graph_ref;
+	tensor_arena->graph_ref = (intptr_t)graph_prep->symbolic_graph;
 	tensor_arena->buffers = (void*)(tensor_arena + 1);
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
@@ -1225,6 +1225,37 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	return tensor_arena;
 }
 
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_arena_find_peer_ref(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph, const int peer_ref)
+{
+	if ((intptr_t)graph == tensor_arena->graph_ref)
+	{
+		assert(peer_ref >= 0 && peer_ref < tensor_arena->vt_tensor_size);
+		return tensor_arena->vt_tensors[peer_ref];
+	}
+	int i;
+	for (i = 0; i < tensor_arena->sub_arena_size; i++)
+		if (tensor_arena->sub_arenas[i])
+		{
+			ccv_nnc_tensor_t* tensor = _ccv_nnc_tensor_arena_find_peer_ref(tensor_arena->sub_arenas[i], graph, peer_ref);
+			if (tensor)
+				return tensor;
+		}
+	return 0;
+}
+
+static void _ccv_nnc_tensor_arena_fixup_peer_ref(const ccv_nnc_tensor_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_tensor_arena_t* const tensor_arena)
+{
+	assert(tensor_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
+	int i;
+	if (graph_prep->symbolic_graph->peer)
+		for (i = 0; i < graph_prep->tensor_symbol_info_size; i++)
+			if (graph_prep->tensor_symbol_info[i].peer_ref)
+				tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_arena_find_peer_ref(root_arena, graph_prep->symbolic_graph->peer, graph_prep->tensor_symbol_info[i].peer_ref - 1);
+	for (i = 0; i < graph_prep->sub_prep_size; i++)
+		if (graph_prep->sub_preps[i])
+			_ccv_nnc_tensor_arena_fixup_peer_ref(root_arena, graph_prep->sub_preps[i], tensor_arena->sub_arenas[i]);
+}
+
 static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec_dep, const int idx, ccv_nnc_tensor_block_t tensor_blocks)
 {
 	int i, found = 0;
@@ -1483,12 +1514,20 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (node->outputs[i] >= 0)
 				tensor_blocks[node->outputs[i]].flags = 0;
 	} ccv_nnc_graph_visit_endfor
+	// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
+	// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
+	// fold to).
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
 			TENSOR_SET_UNFOLDABLE(tensor_blocks[i]);
 			TENSOR_SET_UNFOLDABLE(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 		}
+	// If it has a peer reference, we don't need to allocate this tensor at all,
+	// set it to be unassigned.
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		if (tensor_symbol_info[i].peer_ref)
+			TENSOR_EXPECT_SET_UNASSIGNED(tensor_blocks[i]);
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -1633,6 +1672,11 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 			if (dup_tensor_block_ref[alias_ref * n_times] < 0)
 			{
 				tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[alias_ref].info, 0);
+				if (tensor_symbol_info[alias_ref].peer_ref)
+					ccv_nnc_tensor_symbol_set_peer(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
+						.d = tensor_symbol_info[alias_ref].peer_ref - 1,
+						.graph = dup_graph->peer
+					});
 				dup_tensor_block_ref[alias_ref * n_times] = tensor_symbol.d;
 			} else {
 				tensor_symbol.d = dup_tensor_block_ref[alias_ref * n_times];
@@ -1642,6 +1686,11 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 			dup_tensor_block_ref[input * n_times] = alias_symbol.d;
 		} else {
 			ccv_nnc_tensor_symbol_t tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[input].info, 0);
+			if (tensor_symbol_info[input].peer_ref)
+				ccv_nnc_tensor_symbol_set_peer(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
+					.d = tensor_symbol_info[input].peer_ref - 1,
+					.graph = dup_graph->peer
+				});
 			dup_tensor_block_ref[input * n_times] = tensor_symbol.d;
 		}
 	}
@@ -2193,7 +2242,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
 	ccv_matrix_free(exec_dep);
 	prep->p = 0;
-	prep->graph_ref = (intptr_t)symbolic_graph;
+	prep->symbolic_graph = symbolic_graph;
 	prep->p_idx = symbolic_graph->p_idx;
 	prep->exec_idx = symbolic_graph->exec_idx;
 	prep->sub_prep_size = symbolic_graph->sub_graphs ? symbolic_graph->sub_graphs->rnum : 0;
@@ -2441,6 +2490,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 		{ assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor)); }
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
+	_ccv_nnc_tensor_arena_fixup_peer_ref(tensor_arena, graph_prep, tensor_arena);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
 	*graph_ref = graph_prep->graph;

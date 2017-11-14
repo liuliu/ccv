@@ -126,6 +126,17 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	ccv_nnc_graph_exec_symbol_t dyx = ccv_nnc_graph_exec_symbol_for_backward(symbolic_graph, dy);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), &dyx, 1, &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	v_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, v);
+	x_tensor->data.f32[0] = 1;
+	y_tensor->data.f32[0] = 3.2;
+	v_tensor->data.f32[0] = 0.22;
+	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
+	source = ccv_nnc_graph_exec_source(graph_exec_arena);
+	destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
+	ccv_nnc_graph_while_run(graph, tape, 0, &source, 1, &destination, 1);
+	ccv_nnc_tensor_tape_free(tape);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);
