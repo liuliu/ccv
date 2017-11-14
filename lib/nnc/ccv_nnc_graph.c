@@ -701,7 +701,7 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 {
 	int i;
 	fprintf(out, "label=<<b>while%d</b>>;\n", exec_index);
-	fputs("label [shape=record,label=\"{", out);
+	fprintf(out, "label%d [shape=record,label=\"{", exec_index);
 	int k = *tensor_index;
 	if (exec_info->input_size > 0)
 	{
