@@ -72,7 +72,7 @@ static void _ccv_nnc_tape_tensor_data_move(ccv_nnc_tape_tensor_data_t* const old
 	if (offset == ccv_max(dim_count, graph_size) - 1)
 	{
 		const int data_dim = offset < dim_count ? dim[offset] - 1 : 0;
-		const int graph_dim = offset < graph_size ? graphs[offset]->while_count : 0;
+		const int graph_dim = offset < graph_size ? graphs[offset]->while_count + 1 : 0;
 		assert(old_data <= new_data);
 		// Do the actual copy or set.
 		if (!old_data)
@@ -93,11 +93,11 @@ static void _ccv_nnc_tape_tensor_data_move(ccv_nnc_tape_tensor_data_t* const old
 		for (i = offset + 1; i < new_dim_count; i++)
 		{
 			int old_dim = (i < dim_count) ? dim[i] : 1;
-			int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 1) : 1;
+			int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 2) : 1;
 			new_data_step *= ccv_max(old_dim, graph_dim);
 		}
 		const int data_dim = offset < dim_count ? dim[offset] - 1 : 0;
-		const int graph_dim = offset < graph_size ? graphs[offset]->while_count : 0;
+		const int graph_dim = offset < graph_size ? graphs[offset]->while_count + 1 : 0;
 		for (i = ccv_max(data_dim, graph_dim); i >= 0; i--)
 			_ccv_nnc_tape_tensor_data_move((old_data && offset < dim_count && i < dim[offset]) ? old_data + i * old_data_step : 0, new_data + i * new_data_step, offset + 1, graphs, graph_size, dim, dim_count);
 	}
@@ -111,7 +111,7 @@ static void _ccv_nnc_tape_tensor_data_array_resize(ccv_nnc_tape_tensor_data_arra
 	for (i = 0; i < new_dim_count; i++)
 	{
 		int old_dim = (i < data_array->dim_count) ? data_array->dim[i] : 1;
-		int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 1) : 1;
+		int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 2) : 1;
 		size *= ccv_max(old_dim, graph_dim);
 	}
 	data_array->dim = ccrealloc(data_array->dim, sizeof(int) * ALIGN_16(new_dim_count) + sizeof(ccv_nnc_tape_tensor_data_t) * size);
@@ -128,7 +128,7 @@ static void _ccv_nnc_tape_tensor_data_array_resize(ccv_nnc_tape_tensor_data_arra
 	for (i = 0; i < new_dim_count; i++)
 	{
 		int old_dim = (i < data_array->dim_count) ? data_array->dim[i] : 1;
-		int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 1) : 1;
+		int graph_dim = (i < graph_size) ? (int)(graphs[i]->while_count + 2) : 1;
 		data_array->dim[i] = ccv_max(old_dim, graph_dim);
 	}
 	data_array->dim_count = new_dim_count;
@@ -146,33 +146,30 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	ccv_nnc_tape_tensor_data_array_t* data_array;
 	if (!tensor_ref->alias_ref)
 	{
-		// If it is not create if missing.
-		assert(create_if_missing);
+		// Create data array.
 		int pos;
 		_ccv_nnc_tape_tensor_data_array_pos_new(tensor_data, &pos, &data_array);
 		tensor_ref->alias_ref = pos;
 	} else
 		data_array = _ccv_nnc_tape_tensor_data_array_get(tensor_data, (int)tensor_ref->alias_ref);
 	// Either the data exists, or it doesn't and we need to create one.
-	assert(data_array->dim || (!data_array->dim && create_if_missing));
 	int i;
 	if (!data_array->dim)
 	{
-		assert(create_if_missing);
 		int size = 1;
 		for (i = 0; i < graph_size; i++)
-			size *= (int)(graphs[i]->while_count + 1);
+			size *= (int)(graphs[i]->while_count + 2);
 		data_array->dim_count = graph_size;
 		data_array->dim = (int*)ccmalloc(sizeof(int) * ALIGN_16(graph_size) + sizeof(ccv_nnc_tape_tensor_data_t) * size);
 		for (i = 0; i < graph_size; i++)
-			data_array->dim[i] = (int)(graphs[i]->while_count + 1);
+			data_array->dim[i] = (int)(graphs[i]->while_count + 2);
 		data_array->data = (ccv_nnc_tape_tensor_data_t*)(data_array->dim + ALIGN_16(graph_size));
 		for (i = 0; i < size; i++)
 			data_array->data[i].data.u8 = 0;
 	} else {
 		int flag = (data_array->dim_count < graph_size);
 		for (i = 0; !flag && i < graph_size; i++)
-			flag = (data_array->dim[i] <= graphs[i]->while_count);
+			flag = (data_array->dim[i] <= graphs[i]->while_count + 1);
 		if (flag)
 			_ccv_nnc_tape_tensor_data_array_resize(data_array, graphs, graph_size);
 	}
@@ -180,7 +177,7 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	int idx = 0, step = 1;
 	for (i = graph_size - 1; i >= 0; i--)
 	{
-		idx += graphs[i]->while_count * step;
+		idx += (graphs[i]->while_count + 1) * step;
 		step *= data_array->dim[i];
 	}
 	if (!data_array->data[idx].data.u8)
@@ -191,6 +188,9 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 			for (i = idx - 1; !data_array->data[idx].data.u8 && i >= 0; i--)
 				if (data_array->data[i].data.u8)
 					data_array->data[idx].data.u8 = (unsigned char*)((uintptr_t)data_array->data[i].data.u8 | (uintptr_t)1);
+					// Now looped back to 0, if still cannot find, using the original pointer.
+				else if (i == 0)
+					data_array->data[idx].data.u8 = data_array->data[0].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
 		} else {
 			const size_t size = ccv_nnc_tensor_data_size(tensor->info);
 			data_array->data[idx].type = tensor->info.type;
@@ -286,7 +286,7 @@ static void _ccv_nnc_tape_graph_data_move(uint64_t* const old_data, uint64_t* co
 		for (i = offset + 1; i < new_dim_count; i++)
 		{
 			int old_dim = (i < dim_count) ? dim[i] : 1;
-			int graph_dim = (i < graph_size) ? (int)(while_counts[i]+ 1) : 1;
+			int graph_dim = (i < graph_size) ? (int)(while_counts[i] + 1) : 1;
 			new_data_step *= ccv_max(old_dim, graph_dim);
 		}
 		const int data_dim = offset < dim_count ? dim[offset] - 1 : 0;

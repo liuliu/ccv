@@ -1242,7 +1242,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_arena_find_peer_ref(const ccv_nnc_tenso
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 		{
-			ccv_nnc_tensor_t* tensor = _ccv_nnc_tensor_arena_find_peer_ref(tensor_arena->sub_arenas[i], graph, peer_ref);
+			ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_arena_find_peer_ref(tensor_arena->sub_arenas[i], graph, peer_ref);
 			if (tensor)
 				return tensor;
 		}
@@ -2513,6 +2513,32 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	return graph_exec_arena;
 }
 
+static ccv_nnc_graph_t* _ccv_nnc_graph_find_peer(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_t* const peer)
+{
+	if (graph_prep->symbolic_graph == peer)
+		return graph_prep->graph;
+	int i;
+	for (i = 0; i < graph_prep->sub_prep_size; i++)
+		if (graph_prep->sub_preps[i])
+		{
+			ccv_nnc_graph_t* const graph = _ccv_nnc_graph_find_peer(graph_prep->sub_preps[i], peer);
+			if (graph)
+				return graph;
+		}
+	return 0;
+}
+
+static void _ccv_nnc_graph_fixup_peer(const ccv_nnc_symbolic_graph_prep_t* const root_prep, ccv_nnc_symbolic_graph_prep_t* const graph_prep)
+{
+	int i;
+	for (i = 0; i < graph_prep->sub_prep_size; i++)
+		if (graph_prep->sub_preps[i])
+		{
+			if (graph_prep->sub_preps[i]->symbolic_graph->peer)
+				graph_prep->sub_preps[i]->graph->peer = _ccv_nnc_graph_find_peer(root_prep, graph_prep->sub_preps[i]->symbolic_graph->peer);
+		}
+}
+
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref)
 {
 	assert(graph_ref);
@@ -2528,6 +2554,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	_ccv_nnc_tensor_arena_fixup_peer_ref_and_tape_var(tensor_arena, graph_prep, tensor_arena);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
+	_ccv_nnc_graph_fixup_peer(graph_prep, graph_prep);
 	*graph_ref = graph_prep->graph;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = _ccv_nnc_graph_exec_arena_new(symbolic_graph, sources, source_size, destinations, destination_size, graph_prep, tensor_arena);
 	*graph_exec_arena_ref = graph_exec_arena;
