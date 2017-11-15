@@ -938,7 +938,9 @@ static void _ccv_nnc_symbolic_graph_dot_while_label(const ccv_nnc_graph_exec_sym
 		fputs(exec_symbol_info->name, out);
 	else
 		fprintf(out, "while%d", index);
-	fputs("</b></td></tr>", out);
+	fputs(" </b>Command: ", out);
+	fputs(ccv_nnc_cmd_name(exec_symbol_info->cmd.cmd), out);
+	fputs("</td></tr>", out);
 	const int p_idx = while_graph->p_idx - 1;
 	assert(p_idx >= 0);
 	if (exec_symbol_info->input_size > 0)

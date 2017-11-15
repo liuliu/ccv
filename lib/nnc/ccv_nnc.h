@@ -456,7 +456,7 @@ void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const ten
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph
 // and parent graph).
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph);
 CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
@@ -468,7 +468,7 @@ int ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t*
 // for the symbolic graph has to be parameterized.
 
 // Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations will be moved from the giving graph to the sub-graph.
-ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
 // Set the expression to be evaluated, and at which nodes to be evaluated.
 void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
 

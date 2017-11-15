@@ -123,7 +123,7 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 // Defines common graph visit macros
 
 // The visitor function / macro takes parameter visitor(node_type* node, int index, int level, int term);
-#define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, visitor) \
+#define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, allow_subset, visitor) \
 	do { \
 		/* Use the same data structure to do topological ordering. */ \
 		typedef struct { \
@@ -203,7 +203,10 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 			if (_incomings_[(destinations)[_i_].d].r) \
 				continue; \
 			/* this destination node should have every incoming nodes consumed. */ \
-			assert(_incomings_[(destinations)[_i_].d].c == 0); \
+			if (!(allow_subset)) \
+				{ assert(_incomings_[(destinations)[_i_].d].c == 0); } \
+			else if (_incomings_[(destinations)[_i_].d].c > 0) /* Otherwise if incoming is not satisfied, no need to execute (allow subset to get executed, that is). */ \
+				continue; \
 			/* fetch the info for destination node and exec current node. */ \
 			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_, (_incomings_[(destinations)[_i_].d].d)); \
 		} \
@@ -244,10 +247,10 @@ static inline void ccv_nnc_graph_visit_free(ccv_nnc_graph_visit_t* graph_visit)
 	_visit_->node[_visit_->size].term = (_term_); \
 	++_visit_->size;
 
-#define ccv_nnc_graph_visit_new(_graph, nodes, node_size, sources, source_size, destinations, destination_size) ({\
+#define ccv_nnc_graph_visit_new(_graph, nodes, node_size, sources, source_size, destinations, destination_size, allow_subset) ({\
 	ccv_nnc_graph_visit_t* _visit_ = (ccv_nnc_graph_visit_t*)ccmalloc(sizeof(ccv_nnc_graph_visit_t) + sizeof(_visit_->node[0]) * ((node_size) - 1)); \
 	_visit_->size = 0; \
-	CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, CCV_NNC_GRAPH_VISIT_NEW_VISITOR1); \
+	CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, allow_subset, CCV_NNC_GRAPH_VISIT_NEW_VISITOR1); \
 	assert(_visit_->size <= (node_size)); \
 	_visit_; \
 })

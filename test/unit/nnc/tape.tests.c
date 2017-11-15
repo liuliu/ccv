@@ -24,7 +24,7 @@ TEST_CASE("new tape from a graph")
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
 	ccv_nnc_tensor_symbol_t z0 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z0");
 	ccv_nnc_symbolic_graph_t* while_symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_graph_exec_symbol_t while_symbol = ccv_nnc_symbolic_graph_while(symbolic_graph, while_symbolic_graph, "for 1..5");
+	ccv_nnc_graph_exec_symbol_t while_symbol = ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_symbolic_graph, "for 1..5");
 	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_new(while_symbolic_graph, ONE_CPU_TENSOR(1), "z1");
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_symbolic_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
 	ccv_nnc_graph_exec_symbol_t prod0 = ccv_nnc_graph_exec_symbol_new(while_symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(z0, x), TENSOR_SYMBOL_LIST(z1), "prod0");

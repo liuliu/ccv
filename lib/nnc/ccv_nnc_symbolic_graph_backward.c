@@ -647,7 +647,7 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 	const int tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * exec_symbol_info_size);
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * tensor_symbol_info_size);
-	ccv_nnc_graph_visit_t* forward_visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), exec_symbol_info_size, sources, source_size, destinations, destination_size);
+	ccv_nnc_graph_visit_t* forward_visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), exec_symbol_info_size, sources, source_size, destinations, destination_size, 0);
 	ccv_nnc_symbolic_graph_symbol_infer(graph, forward_visit, sources, source_size, destinations, destination_size, 0, 0, tensor_symbol_info, exec_symbol_info);
 	int i;
 	// Now, for each one of these, find a reverse graph.
@@ -676,7 +676,7 @@ static ccv_nnc_symbolic_graph_backward_prep_t _ccv_nnc_symbolic_graph_backward_p
 				backward_info[i].output_bitmasks = backward_info[i].input_bitmasks + backward_info[i].input_bitmask_size;
 		}
 	}
-	ccv_nnc_graph_visit_t* backward_visit = ccv_nnc_graph_visit_new(graph, backward_info, exec_symbol_info_size, destinations, destination_size, sources, source_size);
+	ccv_nnc_graph_visit_t* backward_visit = ccv_nnc_graph_visit_new(graph, backward_info, exec_symbol_info_size, destinations, destination_size, sources, source_size, 0);
 	const int sub_prep_size = graph->sub_graphs ? graph->sub_graphs->rnum : 0;
 	ccv_nnc_symbolic_graph_backward_prep_t* sub_preps = sub_prep_size > 0 ? (ccv_nnc_symbolic_graph_backward_prep_t*)cccalloc(sub_prep_size, sizeof(ccv_nnc_symbolic_graph_backward_prep_t)) : 0;
 	for (i = 0; i < sub_prep_size; i++)
@@ -1544,7 +1544,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 			_ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(forw_exec, sub_prep->graph, graph_ref, tensor_symbol_info, back_info->input_bitmasks, back_info->output_bitmasks, sub_f_symbols, sub_wrt_symbols);
 			_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
-			back_exec->symbol = ccv_nnc_symbolic_graph_while(graph, sub_graph, forw_exec->name);
+			back_exec->symbol = ccv_nnc_symbolic_graph_while(graph, back_exec->cmd.cmd, sub_graph, forw_exec->name);
 			if (!sub_execs)
 				sub_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
 			ccv_array_clear(sub_execs);

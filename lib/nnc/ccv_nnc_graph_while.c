@@ -69,7 +69,7 @@ void ccv_nnc_tensor_multiview_broadcast(ccv_nnc_tensor_multiview_t* const tensor
 	} while (c);
 }
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, uint32_t cmd, ccv_nnc_graph_t* const while_graph)
+ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph)
 {
 	assert(cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD);
 	ccv_nnc_graph_exec_t while_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(cmd, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, 0, 0, 0, 0);
@@ -265,7 +265,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 				if (tensor_tape)
 					ccv_nnc_tensor_tape_set_while_count(tensor_tape, graph, count);
 				_ccv_nnc_graph_unwrap(graph, count);
-				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, visitor);
+				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, 0, visitor);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
 				if (!graph->while_expr(special_tensors, 1, inputs, input_size, outputs, output_size, graph->while_data))
 				{
@@ -273,7 +273,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 					break;
 				}
 				if (follows->rnum > 0)
-					CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(follows, 0), follows->rnum, destinations, destination_size, visitor);
+					CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(follows, 0), follows->rnum, destinations, destination_size, 0, visitor);
 				_ccv_nnc_graph_rewrap(graph);
 			}
 			ccv_array_free(follows);
@@ -284,19 +284,19 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 			assert(tensor_tape);
 			graph->while_count = count = ccv_nnc_tensor_tape_while_count(tensor_tape, graph);
 			_ccv_nnc_graph_unwrap(graph, count);
-			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, destinations, destination_size, visitor);
+			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, destinations, destination_size, 1, visitor);
 			_ccv_nnc_graph_rewrap(graph);
 			if (count > 0)
 				do {
 					graph->while_count = --count;
 					_ccv_nnc_graph_unwrap(graph, count);
-					CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+					CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 					_ccv_nnc_graph_rewrap(graph);
 				} while (count > 0);
 		}
 	} else {
 		graph->while_count = 0;
-		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

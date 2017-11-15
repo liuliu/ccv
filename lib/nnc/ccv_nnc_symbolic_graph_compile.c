@@ -729,16 +729,22 @@ static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, cons
 
 static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref)
 {
+	assert(block_ref >= 0 && block_ref < graph_prep->tensor_symbol_info_size);
+	// If it is unassigned, no need to preserve.
+	if (TENSOR_EXPECT_UNASSIGNED(graph_prep->tensor_blocks[block_ref]))
+		return 0;
 	const int p_ref = graph_prep->tensor_blocks[block_ref].p_refs[0] - 1;
 	// If p is not input, no need to preserve at all.
 	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1)))
 		return 0;
 	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
 	// If this vt_blocks is unassigned, no need to check preserve.
-	if (vt_ref < 0)
-		return 0;
+	assert(vt_ref >= 0);
 	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
+	// If the buffer is a truly read-only one, no need to preserve.
+	if (TENSOR_READ_WRITE(graph_prep->alloc_prep->buffers[buffer_ref]) == READ_ONLY)
+		return 0;
 	/* This needs detailed explanation, what does preserve mean?
 	 * For a parameterized loop, such as while { y = x + 1 } (y => x), if tensor x is
 	 * also used outside of the while loop, we cannot reuse the memory region of x for
@@ -1600,9 +1606,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			int d = node->inputs[i];
 			if (d < 0)
 				continue;
-			tensor_blocks[d].flags |= READ_ONLY;
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d]))
 				d = tensor_symbol_info[d].alias_ref - 1;
+			tensor_blocks[d].flags |= READ_ONLY;
 			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]))
 				continue;
 			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]));
@@ -1613,7 +1619,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				for (j = 0; j < source_size; j++)
 					_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[d]);
 				/* If this is a read-only (based on SSA, if first encountered as read), and this is
-				 * sub-graph, it is not assign_ref from anywhere (not a parameterized loop).  We cann
+				 * sub-graph, it is not assign_ref from anywhere (not a parameterized loop).  We cannot
 				 * reuse this region of memory anyway (because on second loop, we want to read the sa
 				 * value out). Mark it to the end of the graph. */
 				if (symbolic_graph->p && !tensor_symbol_info[d].assign_ref)
@@ -1627,9 +1633,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			int d = node->outputs[i];
 			if (d < 0)
 				continue;
-			tensor_blocks[d].flags |= WRITE_ONLY;
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d]))
 				d = tensor_symbol_info[d].alias_ref - 1;
+			tensor_blocks[d].flags |= WRITE_ONLY;
 			if (TENSOR_EXPECT_CONST(tensor_blocks[d]) ||
 				TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]))
 				continue;
@@ -1948,7 +1954,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	_ccv_nnc_exec_dep_and_tensor_blocks_unroll_n_times(symbolic_graph, visit, nth_unroll, exec_symbol_info, tensor_symbol_info, exec_dep, tensor_blocks, dup_graph, dup_tensor_block_ref, dup_exec_ref);
 	ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * dup_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const dup_exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * dup_graph->exec_symbol_info->rnum);
-	ccv_nnc_graph_visit_t* dup_visit = ccv_nnc_graph_visit_new(dup_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, 0), dup_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum);
+	ccv_nnc_graph_visit_t* dup_visit = ccv_nnc_graph_visit_new(dup_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, 0), dup_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, 0);
 	ccv_nnc_symbolic_graph_symbol_infer(dup_graph, dup_visit, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_tensor_symbol_info, dup_exec_symbol_info);
 	_ccv_nnc_fixup_assign_ref_after_unroll(symbolic_graph, nth_unroll, tensor_blocks, dup_tensor_block_ref, dup_tensor_symbol_info);
 	// Free out the old exec_dep
@@ -2020,7 +2026,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// This is the symbol table that with "auto" info filled up.
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * symbolic_graph->tensor_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * symbolic_graph->exec_symbol_info->rnum);
-	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size);
+	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
 	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
 	int i, j, k;
 	ccv_sparse_matrix_t* exec_dep;
@@ -2162,14 +2168,18 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						}
 					}
 					/* Only proceed if it is folded (thus, the input / output tensor can be connected, reuse is not a problem
-					 * Or if the p_ref_0 is the output, it is the first started from this node (thus, I have full control ov
+					 * Or if the p_ref_0 is the output, it is the first started from this node (thus, I have full control over
 					 * its life-cycle). Or if the p_ref_0 is the input, it is ended in this node (thus, I can take over i
-					 * life-cycle freely within this sub-graph (otherwise, if it is used anywhere, I cannot change the conte
-					 * within its memory region)). */
+					 * life-cycle freely within this sub-graph (otherwise, if it is used anywhere, I cannot change the content
+					 * within its memory region)). Unless this buffer is used as read-only, and we don't have any output
+					 * associated with it, then we are good. */
 					if (folded ||
 						(p_ref_0_is_in_or_out == 1 && _ccv_nnc_tensor_block_check_head(tensor_blocks + p_ref_0, idx)) ||
-						(p_ref_0_is_in_or_out == -1 && _ccv_nnc_tensor_block_check_tail(tensor_blocks + p_ref_0, idx)))
+						(p_ref_0_is_in_or_out == -1 && _ccv_nnc_tensor_block_check_tail(tensor_blocks + p_ref_0, idx)) ||
+						TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
 					{
+						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
+							{ assert(s_alloc_prep->buffers[i].p_refs[1] == 0); }
 						/* p_ref_0 is either the only one, or the output tensor, we always prefer the output tensor (there
 						 * is a long argument why that is the case, the digest is, it is much easier to control your output
 						 * than your input). */

@@ -704,7 +704,9 @@ static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_
 static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const ccv_nnc_graph_t* const while_graph, const int flags, const int depth, FILE* out, int* tensor_index)
 {
 	int i;
-	fprintf(out, "label=<<b>while%d</b>>;\n", exec_index);
+	fprintf(out, "label=<<b>while%d </b>Command: ", exec_index);
+	fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
+	fputs(">;\n", out);
 	fprintf(out, "label%d [shape=record,label=\"{", exec_index);
 	int k = *tensor_index;
 	if (exec_info->input_size > 0)
@@ -857,7 +859,7 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
 	do { \
 		node->cmd = ccv_nnc_cmd_autotune(node->cmd, max_workspace_size, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
 	} while (0)
-	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 #undef visitor
 }
 
@@ -874,7 +876,7 @@ void ccv_nnc_graph_run(const ccv_nnc_graph_t* const graph, const int flags, cons
 			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
 	} while (0)
-	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, visitor);
+	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 #undef visitor
 }
 

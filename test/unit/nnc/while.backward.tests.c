@@ -85,7 +85,7 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "z");
 	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
-	ccv_nnc_symbolic_graph_while(symbolic_graph, while_graph, "while0");
+	ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph, "while0");
 	ccv_nnc_graph_exec_symbol_t prod0 = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(xy), "prod0");
 	ccv_nnc_graph_exec_symbol_t log0 = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(xy), TENSOR_SYMBOL_LIST(z), "log0");
 	ccv_nnc_graph_exec_symbol_autogen(while_graph, GRAPH_EXEC_SYMBOL_LIST(prod0, log0), 0);
@@ -132,6 +132,8 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	x_tensor->data.f32[0] = 1;
 	y_tensor->data.f32[0] = 3.2;
 	v_tensor->data.f32[0] = 0.22;
+	ccv_nnc_tensor_t* du_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_for_backward(symbolic_graph, u));
+	du_tensor->data.f32[0] = 1;
 	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
 	source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
