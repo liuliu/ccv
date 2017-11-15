@@ -738,7 +738,6 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1)))
 		return 0;
 	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
-	// If this vt_blocks is unassigned, no need to check preserve.
 	assert(vt_ref >= 0);
 	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
@@ -761,6 +760,30 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 	if (graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1 == p_ref)
 		return 0;
 	// Otherwise, return 1 because we now need to preserve.
+	return 1;
+}
+
+static int _ccv_nnc_tensor_block_check_force_broadcast(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref)
+{
+	assert(block_ref >= 0 && block_ref < graph_prep->tensor_symbol_info_size);
+	// If it is unassigned, no need to preserve.
+	if (TENSOR_EXPECT_UNASSIGNED(graph_prep->tensor_blocks[block_ref]))
+		return 0;
+	// Only tape var need to force broadcast, otherwise we already share the same memory region.
+	if (!(graph_prep->tensor_symbol_info[block_ref].flags & CCV_NNC_SYM_TENSOR_TAPE_VAR))
+		return 0;
+	const int p_ref = graph_prep->tensor_blocks[block_ref].p_refs[0] - 1;
+	// If p is not output, no need to broadcast at all.
+	if (1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1)))
+		return 0;
+	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
+	assert(vt_ref >= 0);
+	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
+	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
+	// If the buffer is a truly read-only one, no need to broadcast.
+	if (TENSOR_READ_WRITE(graph_prep->alloc_prep->buffers[buffer_ref]) == READ_ONLY)
+		return 0;
+	// Otherwise, return 1 because we now need to force broadcast for this tape var.
 	return 1;
 }
 
@@ -993,6 +1016,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				const int pos = _ccv_nnc_tensor_multiview_gen(tensor_arena->tensor_metadata, tensor_block_pos, 0, tensor_symbol_info[i].info, graph_prep, tensor_arena, i);
 				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 			} else if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i])) {
+				// When we want to allocate, we don't really need to if it need force broadcast, because we will handle that later.
 				const uint64_t offset = alloc_prep->blocks[vt_ref].offset;
 				// If already created, use the same tensor, and continue.
 				if (tensor_blocks[i].companion_ref &&
@@ -1001,17 +1025,31 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)tensor_block_pos[tensor_blocks[i].companion_ref - 1];
 					continue;
 				}
-				// Having ptr.
-				const int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+					// Having ptr.
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
 				tensor_block_pos[i] = pos;
-				if (tensor_blocks[i].companion_ref)
-					tensor_block_pos[tensor_blocks[i].companion_ref - 1] = pos;
-				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
 				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 				// Also, set its allocations.
 				// Since tensor view is bit compatible with tensor, we can just cast.
 				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[i].info, 0);
 				assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
+				// If we need to force broadcast, we need to wrap it in a multiview.
+				if (graph_prep->tensor_blocks[i].p_refs[0] &&
+					(_ccv_nnc_tensor_block_check_force_broadcast(graph_prep, i) ||
+					 (tensor_blocks[i].companion_ref && _ccv_nnc_tensor_block_check_force_broadcast(graph_prep, tensor_blocks[i].companion_ref - 1))))
+				{
+					const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, mv_pos);
+					ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+					ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+						tv,
+					}, 0, 1, graph_prep->graph, mv);
+					CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+					pos = mv_pos;
+				}
+				if (tensor_blocks[i].companion_ref)
+					tensor_block_pos[tensor_blocks[i].companion_ref - 1] = pos;
+				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
 			}
 		}
 	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
@@ -1034,9 +1072,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		{
 			const int idx = node->inputs[i];
 			const int block_ref = *(int*)ccv_array_get(graph_prep->p->tensor_symbol_info[idx].s_ref, p_idx) - 1;
+			const int vt_ref = alloc_prep->vt_blocks[block_ref];
 			if (!_ccv_nnc_tensor_block_check_preserve(graph_prep, block_ref))
 				continue;
-			const int vt_ref = alloc_prep->vt_blocks[block_ref];
 			assert(vt_ref >= 0);
 			const int buffer_ref = alloc_prep->blocks[vt_ref].buffer_ref;
 			assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[block_ref]));
