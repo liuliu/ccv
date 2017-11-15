@@ -734,6 +734,9 @@ static int _ccv_nnc_tensor_block_check_preserve(const ccv_nnc_symbolic_graph_pre
 	if (-1 != _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1)))
 		return 0;
 	const int vt_ref = graph_prep->alloc_prep->vt_blocks[block_ref];
+	// If this vt_blocks is unassigned, no need to check preserve.
+	if (vt_ref < 0)
+		return 0;
 	assert(block_ref == graph_prep->alloc_prep->blocks[vt_ref].block_ref);
 	const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
 	/* This needs detailed explanation, what does preserve mean?
@@ -1127,7 +1130,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assert(s_idx >= 0);
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
-				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
+				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its peer.
+				if (sub_tensor && CCV_IS_TENSOR_MULTIVIEW(sub_tensor) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
 				{
 					const int vt_pos = (int)(intptr_t)tensor_arena->vt_tensors[idx];
 					// If this tensor is also an multiview, we need to first generate a new tensor, and then generate a reference
@@ -1212,7 +1216,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assert(s_idx >= 0);
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
-				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
+				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its peer.
+				if (sub_tensor && CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
 				{
 					// This is binded tensor, bind it now.
 					if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
