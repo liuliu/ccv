@@ -174,7 +174,7 @@ static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call th
 	}
 }
 
-static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* node)
+static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node)
 {
 	if (!node->tensor_nest_size)
 		return;
@@ -189,12 +189,6 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);
 			// Only now set the mv->it, because now this node is about to get executed.
 			mv->it = tensor_nests[i]->tensors[tensor_nests[i]->index];
-			if (tensor_nests[i]->broadcast_required)
-			{
-				// Now broadcast the final pointer.
-				ccv_nnc_tensor_multiview_broadcast(mv);
-				tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
-			}
 		}
 	for (i = 0; i < node->input_size; i++)
 		if (tensor_nests[i])
@@ -203,6 +197,23 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 	for (i = 0; i < node->output_size; i++)
 		if (tensor_nests[d + i])
 			node->outputs[i] = tensor_nests[d + i]->tensors[tensor_nests[d + i]->index];
+}
+
+static void _ccv_nnc_graph_exec_broadcast(ccv_nnc_graph_exec_info_t* const node)
+{
+	if (!node->tensor_nest_size)
+		return;
+	int i;
+	ccv_nnc_graph_tensor_nest_t** const tensor_nests = node->tensor_nests;
+	for (i = 0; i < node->tensor_nest_size; i++)
+		if (tensor_nests[i] && tensor_nests[i]->broadcast_required)
+		{
+			assert(tensor_nests[i]->index > 0);
+			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
+			// Now broadcast the final pointer.
+			ccv_nnc_tensor_multiview_broadcast(mv);
+			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
+		}
 }
 
 static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
@@ -216,14 +227,14 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 			return CCV_NNC_EXEC_INVALID;
 #define visitor(node, idx, d, ...) \
 	do { \
-		/* Broadcast the updates to all subscribed references for input / output, even though at this
-		 * time output is not written yet, propagate pointer change is still valid. */ \
-		if (node->tensor_nest_size) \
-			_ccv_nnc_graph_exec_unwrap_io(graph, node); \
+		_ccv_nnc_graph_exec_unwrap_io(graph, node); \
 		ccv_nnc_tensor_t** inputs = node->inputs; \
 		ccv_nnc_tensor_t** outputs = inputs + node->input_size; \
 		if (tensor_tape) \
 			ccv_nnc_tensor_tape_io(tensor_tape, graph, inputs, node->input_size, outputs, node->output_size); \
+		/* Broadcast the updates to all subscribed references for input / output, even though at this
+		 * time output is not written yet, propagate pointer change is still valid. */ \
+		_ccv_nnc_graph_exec_broadcast(node); \
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
 		{ \
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, node->graph_ref - 1); \
@@ -231,10 +242,10 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 		} else { \
 			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, d, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
-			for (i = 0; i < node->output_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p) %f\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? inputs[i]->data.f32[0] : 0)); \
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
+			for (i = 0; i < node->output_size; i++) \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p) %f\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? outputs[i]->data.f32[0] : 0)); \
 		} \
 	} while (0)
 	if (graph->while_expr)

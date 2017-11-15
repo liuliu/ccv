@@ -1019,20 +1019,22 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				// When we want to allocate, we don't really need to if it need force broadcast, because we will handle that later.
 				const uint64_t offset = alloc_prep->blocks[vt_ref].offset;
 				// If already created, use the same tensor, and continue.
+				int pos = -1;
 				if (tensor_blocks[i].companion_ref &&
 					tensor_block_pos[tensor_blocks[i].companion_ref - 1])
-				{
-					tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)tensor_block_pos[tensor_blocks[i].companion_ref - 1];
-					continue;
-				}
+					pos = tensor_block_pos[tensor_blocks[i].companion_ref - 1];
+				else {
 					// Having ptr.
-				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
-				tensor_block_pos[i] = pos;
-				ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				// Also, set its allocations.
-				// Since tensor view is bit compatible with tensor, we can just cast.
-				*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[i].info, 0);
-				assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
+					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+					tensor_block_pos[i] = pos;
+					if (tensor_blocks[i].companion_ref)
+						tensor_block_pos[tensor_blocks[i].companion_ref - 1] = pos;
+					ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+					// Also, set its allocations.
+					// Since tensor view is bit compatible with tensor, we can just cast.
+					*tensor = ccv_nnc_tensor(tensor_arena->buffers[buffer_ref].ptr + offset, tensor_symbol_info[i].info, 0);
+					assert(offset + tensor_blocks[i].size <= tensor_arena->buffers[buffer_ref].size);
+				}
 				// If we need to force broadcast, we need to wrap it in a multiview.
 				if (graph_prep->tensor_blocks[i].p_refs[0] &&
 					(_ccv_nnc_tensor_block_check_force_broadcast(graph_prep, i) ||
@@ -1047,8 +1049,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 					pos = mv_pos;
 				}
-				if (tensor_blocks[i].companion_ref)
-					tensor_block_pos[tensor_blocks[i].companion_ref - 1] = pos;
 				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
 			}
 		}
