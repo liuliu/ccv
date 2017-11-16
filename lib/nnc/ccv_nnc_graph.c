@@ -234,6 +234,26 @@ static void _ccv_nnc_graph_register_tensor_nests(ccv_nnc_graph_t* graph, const c
 	} while (p);
 }
 
+void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const int* const input_flags, const int input_flag_size, const int* const output_flags, const int output_flag_size)
+{
+	assert(exec.d < graph->exec_info->rnum);
+	assert(exec.graph == graph);
+	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
+	assert(input_flag_size <= info->input_size);
+	assert(output_flag_size <= info->output_size);
+	if (info->input_size + info->output_size == 0)
+		return;
+	if (!info->input_flags)
+	{
+		info->input_flags = (int*)cccalloc(info->input_size + info->output_size, sizeof(int));
+		info->output_flags = info->input_flags + info->input_size;
+	}
+	if (input_flag_size > 0)
+		memcpy(info->input_flags, input_flags, sizeof(int) * input_flag_size);
+	if (output_flag_size > 0)
+		memcpy(info->output_flags, output_flags, sizeof(int) * output_flag_size);
+}
+
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	assert(exec.d < graph->exec_info->rnum);
@@ -272,6 +292,12 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	// Register again if the tensor nests exist.
 	if (info->tensor_nest_size)
 		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
+	// Free flags.
+	if (info->input_flags)
+	{
+		ccfree(info->input_flags);
+		info->input_flags = info->output_flags = 0;
+	}
 }
 
 void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const broadcast)
@@ -892,6 +918,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
 		if (info->inputs)
 			ccfree(info->inputs);
+		if (info->input_flags)
+			ccfree(info->input_flags);
 		if (info->broadcasts)
 			ccfree(info->broadcasts);
 		if (info->tensor_nest_size)

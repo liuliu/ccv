@@ -195,6 +195,8 @@ CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_new(void);
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_hint_t hint);
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+// This must be called after set_io, set additional flags for tensors related to this exec.
+void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const int* const input_flags, const int input_flag_size, const int* const output_flags, const int output_flag_size);
 // Broadcasts are the tensors that not directly involved in the computation, but its pointers need to get updated along with this exec, thus need to be "broadcast" to other exec nodes.
 void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const broadcast);
 // Concatenate input graph nodes with an output graph node to create a new graph.
@@ -245,6 +247,10 @@ typedef struct {
 enum {
 	CCV_NNC_SYM_TENSOR_INIT_ZEROS = 0x01, // Initialize underlying tensor for the symbol with zeros
 	CCV_NNC_SYM_TENSOR_TAPE_VAR = 0x02, // Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC)
+};
+
+enum {
+	CCV_NNC_TENSOR_PAST_VALUE = 0x01, // Retrieves the value of one loop before of the current tensor.
 };
 
 // Create an empty symbolic graph.
@@ -415,7 +421,7 @@ typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, cons
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
-void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int* const input_flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, const int* const output_flags, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph);
 void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const uint64_t while_count);
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);

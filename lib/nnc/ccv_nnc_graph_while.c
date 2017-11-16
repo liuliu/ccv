@@ -231,7 +231,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const int cmd,
 		ccv_nnc_tensor_t** inputs = node->inputs; \
 		ccv_nnc_tensor_t** outputs = inputs + node->input_size; \
 		if (tensor_tape) \
-			ccv_nnc_tensor_tape_io(tensor_tape, graph, inputs, node->input_size, outputs, node->output_size); \
+			ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size); \
 		/* Broadcast the updates to all subscribed references for input / output, even though at this
 		 * time output is not written yet, propagate pointer change is still valid. */ \
 		_ccv_nnc_graph_exec_broadcast(node); \

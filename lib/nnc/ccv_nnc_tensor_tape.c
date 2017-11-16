@@ -134,7 +134,7 @@ static void _ccv_nnc_tape_tensor_data_array_resize(ccv_nnc_tape_tensor_data_arra
 	data_array->dim_count = new_dim_count;
 }
 
-static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_tensor_t* const tensor, const ccv_nnc_graph_t* const* const graphs, const int graph_size, const int create_if_missing)
+static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_tensor_t* const tensor, const int flags, const ccv_nnc_graph_t* const* const graphs, const int graph_size, const int create_if_missing)
 {
 	ccv_nnc_tensor_t* tensor_ref = tensor;
 	while (tensor_ref->alias_ref && !CCV_NNC_IS_TAPE_TENSOR_DATA_ARRAY_POS(tensor_ref->alias_ref))
@@ -175,7 +175,15 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	}
 	// Compute the index.
 	int idx = 0, step = 1;
-	for (i = graph_size - 1; i >= 0; i--)
+	if (graph_size - 1 >= 0)
+	{
+		if (flags & CCV_NNC_TENSOR_PAST_VALUE)
+			idx += graphs[graph_size - 1]->while_count * step; // If we are using the past value, -1 on the while_count + 1.
+		else
+			idx += (graphs[graph_size - 1]->while_count + 1) * step;
+		step *= data_array->dim[graph_size - 1];
+	}
+	for (i = graph_size - 2; i >= 0; i--)
 	{
 		idx += (graphs[i]->while_count + 1) * step;
 		step *= data_array->dim[i];
@@ -189,9 +197,9 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 			for (i = idx - 1; !data.u8 && i >= 0; i--)
 				if (data_array->data[i].data.u8)
 					data.u8 = (unsigned char*)((uintptr_t)data_array->data[i].data.u8 | (uintptr_t)1);
-					// Now looped back to 0, if still cannot find, using the original pointer.
-				else if (i == 0)
-					data.u8 = data_array->data[0].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
+			// Now looped back to 0, if still cannot find, using the original pointer.
+			if (!data.u8)
+				data.u8 = data_array->data[0].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
 		} else {
 			const size_t size = ccv_nnc_tensor_data_size(tensor->info);
 			data_array->data[idx].type = tensor->info.type;
@@ -210,7 +218,7 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	tensor->data.u8 = (unsigned char*)((uintptr_t)data.u8 & ~(uintptr_t)1);
 }
 
-void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int* const input_flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, const int* const output_flags, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	int i, tape_io = 0;
 	for (i = 0; i < input_size && !tape_io; i++)
@@ -236,10 +244,10 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 	// Now, go through the inputs / outputs and update.
 	for (i = 0; i < input_size; i++)
 		if (inputs[i] && CCV_GET_TAPE_ALLOC(inputs[i]->type))
-			_ccv_nnc_tensor_from_tape(tape->tensor_data, inputs[i], graphs, graph_size, 0);
+			_ccv_nnc_tensor_from_tape(tape->tensor_data, inputs[i], input_flags ? input_flags[i] : 0, graphs, graph_size, 0);
 	for (i = 0; i < output_size; i++)
 		if (outputs[i] && CCV_GET_TAPE_ALLOC(outputs[i]->type))
-			_ccv_nnc_tensor_from_tape(tape->tensor_data, outputs[i], graphs, graph_size, 1); // Create if it is not found. This is OK for output tensor.
+			_ccv_nnc_tensor_from_tape(tape->tensor_data, outputs[i], output_flags ? output_flags[i] : 0, graphs, graph_size, 1); // Create if it is not found. This is OK for output tensor.
 }
 
 #define CCV_NNC_IS_TAPE_GRAPH_DATA_ARRAY_POS(ptr) ((uintptr_t)(ptr) & 1)

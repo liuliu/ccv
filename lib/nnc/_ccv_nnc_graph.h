@@ -23,7 +23,9 @@ typedef struct {
 	int input_size;
 	int output_size;
 	ccv_nnc_tensor_t** inputs;
+	int* input_flags;
 	ccv_nnc_tensor_t** outputs;
+	int* output_flags;
 	ccv_array_t* outgoings; // outgoing nodes
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
