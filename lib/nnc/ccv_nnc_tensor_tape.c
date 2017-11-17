@@ -140,7 +140,7 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	ccv_nnc_tensor_t* tensor_ref = tensor;
 	while (tensor_ref->alias_ref && !CCV_NNC_IS_TAPE_TENSOR_DATA_ARRAY_POS(tensor_ref->alias_ref))
 	{
-		ccv_nnc_tensor_t* tensor_ref = (ccv_nnc_tensor_t*)tensor->alias_ref;
+		tensor_ref = (ccv_nnc_tensor_t*)tensor->alias_ref;
 		if (CCV_IS_TENSOR_MULTIVIEW(tensor_ref))
 			tensor_ref = _ccv_nnc_tensor_from_tensor_multiview(graphs, graph_size, (ccv_nnc_tensor_multiview_t*)tensor_ref);
 	}
@@ -232,12 +232,14 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 		return;
 	// Go to the root graph, record which was taken along the way.
 	// In this way, we can then unwrap multi-view tensors.
+	assert(graph);
 	const ccv_nnc_graph_t* curr_graph = graph;
 	int d;
 	for (d = 0; curr_graph; d++)
 		curr_graph = curr_graph->p;
 	curr_graph = graph;
 	const int graph_size = d;
+	assert(graph_size > 0);
 	const ccv_nnc_graph_t* graphs[graph_size];
 	for (d = graph_size - 1; curr_graph; d--, curr_graph = curr_graph->p)
 		graphs[d] = curr_graph;
@@ -377,11 +379,13 @@ void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_
 		graph->alias_ref = pos;
 	}
 	const ccv_nnc_graph_t* curr_graph = graph->p;
+	assert(curr_graph);
 	int i;
 	for (i = 0; curr_graph; i++)
 		curr_graph = curr_graph->p;
 	curr_graph = graph->p;
 	const int graph_size = i;
+	assert(graph_size > 0);
 	uint64_t while_counts[graph_size];
 	for (i = graph_size - 1; curr_graph; i--, curr_graph = curr_graph->p)
 		while_counts[i] = curr_graph->while_count;

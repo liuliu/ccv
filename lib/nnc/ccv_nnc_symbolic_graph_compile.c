@@ -1753,7 +1753,7 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 		{
 			const int alias_ref = tensor_symbol_info[input].alias_ref - 1;
 			assert(tensor_symbol_info[alias_ref].alias_ref == 0);
-			ccv_nnc_tensor_symbol_t tensor_symbol;
+			ccv_nnc_tensor_symbol_t tensor_symbol = {};
 			if (dup_tensor_block_ref[alias_ref * n_times] < 0)
 			{
 				tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[alias_ref].info, 0);

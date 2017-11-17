@@ -367,6 +367,7 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_g
 	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
 		curr_graph = curr_graph->p;
 	curr_graph = graph;
+	assert(d > 0);
 	int trace[d];
 	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
 	{
