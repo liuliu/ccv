@@ -1317,11 +1317,6 @@ static void _ccv_nnc_symbolic_graph_backward_prep_free(const ccv_nnc_symbolic_gr
 		ccfree(backward_prep.sub_preps);
 }
 
-static int _ccv_nnc_noop_while_expr(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data)
-{
-	return 0;
-}
-
 static void _ccv_nnc_add_backward_breakpoint_for_symbol(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_graph_exec_symbol_t breakpoint, ccv_nnc_symbolic_graph_t* const graph, ccv_array_t* const sub_breakpoints)
 {
 	const ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, 0);
@@ -1557,7 +1552,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				else
 					_ccv_nnc_add_backward_breakpoint_for_symbol(sub_prep, sub_prep->graph->breakpoints[j], sub_graph, sub_execs);
 			}
-			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, _ccv_nnc_noop_while_expr, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_execs, 0), sub_execs->rnum);
+			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, NOOP_GRAPH_WHILE_EXPR, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_execs, 0), sub_execs->rnum);
 			ccv_nnc_graph_exec_symbol_autogen(sub_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 			_ccv_nnc_symbolic_graph_set_backward_while_params(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
 			for (j = 0; j < back_exec->input_size; j++)

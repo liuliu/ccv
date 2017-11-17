@@ -136,6 +136,7 @@ static void _ccv_nnc_tape_tensor_data_array_resize(ccv_nnc_tape_tensor_data_arra
 
 static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_tensor_t* const tensor, const int flags, const ccv_nnc_graph_t* const* const graphs, const int graph_size, const int create_if_missing)
 {
+	assert(graph_size > 0);
 	ccv_nnc_tensor_t* tensor_ref = tensor;
 	while (tensor_ref->alias_ref && !CCV_NNC_IS_TAPE_TENSOR_DATA_ARRAY_POS(tensor_ref->alias_ref))
 	{
@@ -174,15 +175,13 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 			_ccv_nnc_tape_tensor_data_array_resize(data_array, graphs, graph_size);
 	}
 	// Compute the index.
-	int idx = 0, step = 1;
-	if (graph_size - 1 >= 0)
-	{
-		if (flags & CCV_NNC_TENSOR_PAST_VALUE)
-			idx += graphs[graph_size - 1]->while_count * step; // If we are using the past value, -1 on the while_count + 1.
-		else
-			idx += (graphs[graph_size - 1]->while_count + 1) * step;
-		step *= data_array->dim[graph_size - 1];
-	}
+	int idx, step;
+	if (flags & CCV_NNC_TENSOR_PAST_VALUE)
+		idx = graphs[graph_size - 1]->while_count; // If we are using the past value, -1 on the while_count + 1.
+	else
+		idx = (graphs[graph_size - 1]->while_count + 1);
+	const int this_idx = idx; // The index at current level.
+	step = data_array->dim[graph_size - 1];
 	for (i = graph_size - 2; i >= 0; i--)
 	{
 		idx += (graphs[i]->while_count + 1) * step;
@@ -194,12 +193,13 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 		// If we cannot create, loop back idx until we find one that exists.
 		if (!create_if_missing)
 		{
-			for (i = idx - 1; !data.u8 && i >= 0; i--)
+			// Only go back to the beginning of this level, no more.
+			for (i = idx - 1; !data.u8 && i >= idx - this_idx; i--)
 				if (data_array->data[i].data.u8)
 					data.u8 = (unsigned char*)((uintptr_t)data_array->data[i].data.u8 | (uintptr_t)1);
 			// Now looped back to 0, if still cannot find, using the original pointer.
 			if (!data.u8)
-				data.u8 = data_array->data[0].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
+				data.u8 = data_array->data[idx - this_idx].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
 		} else {
 			const size_t size = ccv_nnc_tensor_data_size(tensor->info);
 			data_array->data[idx].type = tensor->info.type;
