@@ -236,7 +236,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	if (cube_size > 2048 * 8)
 		return 0;
 	// binary map to see if it fills up.
-	uint8_t* cube = (uint8_t*)alloca(sizeof(uint8_t) * ((cube_size + 7) >> 3));
+	uint8_t cube[(cube_size + 7) >> 3];
 	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 7) >> 3));
 	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {}; // Sparse coordinate map at dimension x.
 	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {};
@@ -368,29 +368,13 @@ static int _ccv_nnc_tensor_ref_version_involve_alias(const ccv_nnc_tensor_ref_t*
 	// No alias_registry, must conflict (owns the whole band).
 	if (!tensor_ref->alias_registry)
 		return 1;
-	int i, j;
+	int i;
 	for (i = 0; i < tensor_ref->alias_registry->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(tensor_ref->alias_registry, i);
 		assert(d < autograd_tensor_symbols->rnum);
 		ccv_nnc_autograd_tensor_symbol_t* autograd = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, d);
-		// This must reference to an alias.
-		assert(tensor_symbol_info[autograd->d].alias_ref);
-		const int* inc = tensor_symbol_info[autograd->d].inc;
-		// Only can compare if the inc is the same, otherwise, we can only assume it overlaps.
-		if (memcmp(inc, alias->inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
-			return 1;
-		const int* ofs = tensor_symbol_info[autograd->d].ofs;
-		const int* dim = tensor_symbol_info[autograd->d].info.dim;
-		int none = 0;
-		for (j = 0; j < CCV_NNC_MAX_DIM_ALLOC && dim[j] && alias->info.dim[j]; j++)
-			if (ccv_min(ofs[j] + dim[j], alias->ofs[j] + alias->info.dim[j]) <= ccv_max(ofs[j], alias->ofs[j]))
-			{
-				none = 1;
-				break;
-			}
-		// If it overlaps with this alias, nope.
-		if (!none)
+		if (ccv_nnc_over_tensor_symbol_aliases(tensor_symbol_info + autograd->d, alias))
 			return 1;
 	}
 	// All aliases referenced by this ref_version doesn't overlap with the provided one, thus, there is no conflict at all.

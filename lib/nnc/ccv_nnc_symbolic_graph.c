@@ -624,6 +624,21 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 #define CCV_NNC_IS_AUTOGEN_ALL_EXECS(x) ((x) & CCV_NNC_AUTOGEN_ALL_EXECS)
 #define CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(x) ((x) & CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS)
 
+int ccv_nnc_over_tensor_symbol_aliases(const ccv_nnc_tensor_symbol_info_t* const tensor_a, const ccv_nnc_tensor_symbol_info_t* const tensor_b)
+{
+	int i;
+	const int* inc = tensor_a->inc;
+	// Only can compare if the inc is the same, otherwise, we can only assume it overlaps.
+	if (memcmp(inc, tensor_b->inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) != 0)
+		return 1;
+	const int* ofs = tensor_a->ofs;
+	const int* dim = tensor_a->info.dim;
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && dim[i] && tensor_b->info.dim[i]; i++)
+		if (ccv_min(ofs[i] + dim[i], tensor_b->ofs[i] + tensor_b->info.dim[i]) <= ccv_max(ofs[i], tensor_b->ofs[i]))
+			return 0; // Cannot overlap.
+	return 1;
+}
+
 int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size, const int flags)
 {
 	int i, j, x, y;
@@ -675,8 +690,10 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
 					if (b_tensor_info->alias_ref)
 						b = b_tensor_info->alias_ref - 1;
-					if (a == b)
-						// This two have matching inputs and outputs, thus, you can concat b to a.
+					if (a == b && // This two have matching inputs and outputs.
+						(!a_tensor_info->alias_ref ||
+						 !b_tensor_info->alias_ref || // If any of them are not alias, the must overlap, you can concatenate.
+						 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
 						b_to_a = 1;
 				}
 			}
@@ -709,8 +726,10 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
 					if (b_tensor_info->alias_ref)
 						b = b_tensor_info->alias_ref - 1;
-					if (a == b)
-						// This two have matching inputs and outputs, thus, you can concat b to a.
+					if (a == b && // This two have matching inputs and outputs.
+						(!a_tensor_info->alias_ref ||
+						 !b_tensor_info->alias_ref || // If any of them are not alias, the must overlap, you can concatenate.
+						 ccv_nnc_over_tensor_symbol_aliases(a_tensor_info, b_tensor_info))) // Otherwise, we explicitly check whether it overlaps, if it does, concatenate.
 						a_to_b = 1;
 				}
 			}
