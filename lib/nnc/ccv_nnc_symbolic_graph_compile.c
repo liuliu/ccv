@@ -2401,8 +2401,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		max_breakpoint_size = ccv_max(max_breakpoint_size, (*(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, i))->breakpoint_size);
 	ccv_nnc_tensor_t** max_inputs = max_input_size + max_output_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (max_input_size + max_output_size)) : 0;
 	ccv_nnc_tensor_t** max_outputs = max_inputs + max_input_size;
-	int* const max_input_flags = max_input_size + max_output_size > 0 ? (int*)ccmalloc(sizeof(int) * (max_input_size + max_output_size)) : 0;
-	int* const max_output_flags = max_input_flags + max_input_size;
+	int* const max_input_flags = max_input_size + max_output_size > 0 ? (int*)ccmalloc(sizeof(int) * max_input_size) : 0;
 	ccv_nnc_graph_exec_t* max_breakpoints = max_breakpoint_size > 0 ? (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * max_breakpoint_size) : 0;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = graph_prep->exec_symbol_info;
 	ccv_nnc_graph_visit_for(graph_prep->visit, exec_symbol_info, node, idx) {
@@ -2423,19 +2422,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				}
 			}
 			for (i = 0; i < node->output_size; i++)
-			{
 				max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensors[node->outputs[i]] : 0;
-				max_output_flags[i] = 0;
-				if (node->outputs[i] >= 0 && graph_prep->tensor_symbol_info[node->outputs[i]].assign_ref)
-					max_output_flags[i] |= CCV_NNC_TENSOR_PAST_VALUE;
-				else if (node->outputs[i] >= 0 && graph_prep->tensor_symbol_info[node->outputs[i]].peer_ref)
-				{
-					const int peer_ref = graph_prep->tensor_symbol_info[node->outputs[i]].peer_ref - 1;
-					const ccv_nnc_tensor_symbol_info_t* const peer_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph_prep->symbolic_graph->peer->tensor_symbol_info, peer_ref);
-					if (peer_info->assign_ref)
-						max_output_flags[i] |= CCV_NNC_TENSOR_PAST_VALUE;
-				}
-			}
 			if (node->graph_ref)
 			{
 				const int graph_ref = node->graph_ref - 1;
@@ -2454,7 +2441,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			} else {
 				graph_execs[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size);
 			}
-			ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[idx], max_input_flags, node->input_size, max_output_flags, node->output_size);
+			ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[idx], max_input_flags, node->input_size, 0, 0);
 		}
 		if (!node->outgoings)
 			break;
@@ -2479,19 +2466,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					}
 				}
 				for (j = 0; j < outgoing_node->output_size; j++)
-				{
 					max_outputs[j] = outgoing_node->outputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->outputs[j]] : 0;
-					max_output_flags[j] = 0;
-					if (outgoing_node->outputs[j] >= 0 && graph_prep->tensor_symbol_info[outgoing_node->outputs[j]].assign_ref)
-						max_output_flags[j] |= CCV_NNC_TENSOR_PAST_VALUE;
-					else if (outgoing_node->outputs[j] >= 0 && graph_prep->tensor_symbol_info[outgoing_node->outputs[j]].peer_ref)
-					{
-						const int peer_ref = graph_prep->tensor_symbol_info[outgoing_node->outputs[j]].peer_ref - 1;
-						const ccv_nnc_tensor_symbol_info_t* const peer_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph_prep->symbolic_graph->peer->tensor_symbol_info, peer_ref);
-						if (peer_info->assign_ref)
-							max_output_flags[j] |= CCV_NNC_TENSOR_PAST_VALUE;
-					}
-				}
 				if (outgoing_node->graph_ref)
 				{
 					const int graph_ref = outgoing_node->graph_ref - 1;
@@ -2510,7 +2485,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				} else {
 					graph_execs[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 				}
-				ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[outgoing], max_input_flags, outgoing_node->input_size, max_output_flags, outgoing_node->output_size);
+				ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[outgoing], max_input_flags, outgoing_node->input_size, 0, 0);
 			}
 			ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[outgoing]);
 		}
