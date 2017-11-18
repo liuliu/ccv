@@ -342,8 +342,7 @@ static void _ccv_nnc_tape_graph_data_array_resize(ccv_nnc_tape_graph_data_array_
 uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph)
 {
 	assert(graph->p);
-	assert(graph->peer);
-	const ccv_nnc_graph_t* const peer = graph->peer;
+	const ccv_nnc_graph_t* const peer = graph->peer ? graph->peer : graph;
 	assert(peer->alias_ref);
 	ccv_nnc_tape_graph_data_array_t* data_array = _ccv_nnc_tape_graph_data_array_get(tape->graph_data, (int)peer->alias_ref);
 	const ccv_nnc_graph_t* curr_graph = graph->p;

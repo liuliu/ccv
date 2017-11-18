@@ -42,6 +42,10 @@ TEST_CASE("new tape from a graph")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_t while_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, while_symbol);
 	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_from_graph_exec(graph, while_exec);
+	ccv_nnc_graph_t* sub_while_graph = ccv_nnc_graph_new();
+	ccv_nnc_graph_exec_t sub_while_exec = ccv_nnc_graph_while(while_graph, CCV_NNC_GRAPH_FORWARD, sub_while_graph);
+	ccv_nnc_graph_exec_t noop_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, noop);
+	ccv_nnc_graph_exec_concat(while_graph, noop_exec, sub_while_exec);
 	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
 	ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_numeric_data_t data = tensor->data; // Preserve the data field.
@@ -101,6 +105,20 @@ TEST_CASE("new tape from a graph")
 	ccv_nnc_tensor_tape_io(tape, while_graph, 0, TENSOR_LIST(tensor), 0, TENSOR_LIST());
 	REQUIRE_EQ_WITH_TOLERANCE(tensor->data.f32[0], 1.29, 1e-5, "Tensor should retain 1.29 with (2, 4).");
 	tensor->data = data;
+	// Verify while count
+	ccv_nnc_tensor_tape_set_while_count(tape, while_graph, 0);
+	ccv_nnc_tensor_tape_set_while_count(tape, while_graph, 1);
+	ccv_nnc_tensor_tape_set_while_count(tape, while_graph, 2);
+	ccv_nnc_tensor_tape_set_while_count(tape, sub_while_graph, 1);
+	ccv_nnc_tensor_tape_set_while_count(tape, sub_while_graph, 2);
+	ccv_nnc_tensor_tape_set_while_count(tape, sub_while_graph, 3);
+	REQUIRE_EQ(ccv_nnc_tensor_tape_while_count(tape, while_graph), 2, "First while graph should have count to 2");
+	REQUIRE_EQ(ccv_nnc_tensor_tape_while_count(tape, sub_while_graph), 3, "Second while graph should have count to 3");
+	ccv_nnc_tensor_tape_set_while_count(tape, sub_while_graph, 4);
+	REQUIRE_EQ(ccv_nnc_tensor_tape_while_count(tape, sub_while_graph), 4, "Second while graph should have count to 4");
+	ccv_nnc_tensor_tape_set_while_count(tape, while_graph, 3);
+	REQUIRE_EQ(ccv_nnc_tensor_tape_while_count(tape, while_graph), 3, "First while graph should have count to 3");
+	REQUIRE_EQ(ccv_nnc_tensor_tape_while_count(tape, sub_while_graph), 4, "Second while graph should have count to 4");
 	ccv_nnc_tensor_free(tensor);
 	ccv_nnc_tensor_tape_free(tape);
 	ccv_nnc_tensor_arena_free(tensor_arena);
