@@ -383,37 +383,49 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
 //
 // To construct a while loop for existing NNC graph, you need to be able to separate the existing graph into two sub-graphs.
 //
-// The while-loop sub-graph (WL sub-graph) contains a set of incoming nodes (I-nodes), Condition false output nodes (CFO-nodes) and end nodes (E-nodes).
-// Each set have its own properties, but in short, all incoming edges to the WL sub-graph connect to one of the I-nodes, but nothing else. All outgoing
-// edges from the WL sub-graph connect to one of the CFO-nodes, but nothing else. A nodes can be either a I-node, CFO-node or E-node, non-exclusively.
-// There are also 3 types of tensors used for all nodes in WL sub-graph: Input tensors (I-tensors) are tensors that are inputs to some nodes, and will
-// never be outputs. Output tensors (O-tensors) are tensors that are outputs from some nodes, but never be inputs to any nodes. I-tensors can be outputs
-// from some nodes that outside of WL sub-graph. O-tensors can be inputs to some nodes that outside of WL sub-graph. Internal tensors (IN-tensors) are
-// not visible outside of WL sub-graph, therefore, they can be both inputs and outputs of some nodes inside the sub-graph. Some tensors can be feedback
-// into the WL sub-graph, given either O-tensors or IN-tensors. A parameter map can be given in these cases to describe which maps to what.
+// The while-loop sub-graph (WL sub-graph) contains a set of incoming nodes (I-nodes), Condition false output nodes (CFO-nodes) and end
+// nodes (E-nodes). Each set have its own properties, but in short, all incoming edges to the WL sub-graph connect to one of the I-nodes,
+// but nothing else. All outgoing edges from the WL sub-graph connect to one of the CFO-nodes, but nothing else. A nodes can be either a
+// I-node, CFO-node or E-node, non-exclusively.
 //
-// The way to drive a WL sub-graph like this: the WL sub-graph runs until all CFO-nodes are reached. At this point, the while_f condition is checked.
-// If true, we continue until all the end-nodes are reached. At this point, we increase the counter, reconfigure the WL sub-graph with parameter map,
-// and run from I-nodes all over again. When reached all CFO-nodes, the condition is checked again, if false, WL sub-graph terminates, and the graph
-// continues from the nodes that are pointed by CFO-nodes.
+// There are also 3 types of tensors used for all nodes in WL sub-graph: Input tensors (I-tensors) are tensors that are inputs to some
+// nodes, and will never be outputs. Output tensors (O-tensors) are tensors that are outputs from some nodes, but never be inputs to any
+// nodes. I-tensors can be outputs from some nodes that outside of WL sub-graph. O-tensors can be inputs to some nodes that outside of
+// WL sub-graph. Internal tensors (IN-tensors) are not visible outside of WL sub-graph, therefore, they can be both inputs and outputs of
+// some nodes inside the sub-graph. Some tensors can be feedback into the WL sub-graph, given either O-tensors or IN-tensors. A parameter
+// map can be given in these cases to describe which maps to what.
 //
-// Given these constraints, doing automatic differentiation is not that hard any more. A WL sub-graph, from the whole graph's point of view, is just
-// a giant command supports both forward / backward operations, with some extra information passed around in the form of userdata (tape).
+// The way to drive a WL sub-graph like this: the WL sub-graph runs until all CFO-nodes are reached. At this point, the while_f condition
+// is checked. If true, we continue until all the end-nodes are reached. At this point, we increase the counter, reconfigure the WL
+// sub-graph with parameter map, and run from I-nodes all over again. When reached all CFO-nodes, the condition is checked again, if false,
+// WL sub-graph terminates, and the graph continues from the nodes that are pointed by CFO-nodes.
+//
+// Given these constraints, doing automatic differentiation is not that hard any more. A WL sub-graph, from the whole graph's point of view,
+// is just a giant command supports both forward / backward operations, with some extra information passed around in the form of userdata
+// (tape).
 //
 // For WL sub-graph, we can continue to leverage the compile / backward function that already written for symbolic graph as well.
+//
 // For compile function, we just need to take care of parameter maps (these need to be converted into binded tensors).
+//
 // For backward function, we need to convert parameter maps from assigner (thus, y = x) to accumulator (x += y).
 //
 // This function will replace the nodes that it affects to one sub-graph node.
 // Thus, how to drive this sub-graph is opaque. Its backward form is opaque as well.
 //
-// There are no connection between its nodes and the outside graph nodes other than the
-// three sets:
-// 1). Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges points by inside nodes. The sub-graph computation starts from these incoming nodes;
-// 2). Condition false output nodes, when condition is false, we will break out of this while loop, these nodes pointing to the outside nodes, but no inside nodes;
-// 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed, we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes (OK if end nodes are condition true output nodes as well);
+// There are no connection between its nodes and the outside graph nodes other than the three sets:
 //
-// Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs and outputs. Besides that, the loop body needs to be parameterized to be SSA compliant (see: https://www.cs.cmu.edu/~fp/courses/15411-f13/lectures/06-ssa.pdf). Thus, a list of body parameters need to be provided.
+// 1). Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges points by inside nodes.
+//     The sub-graph computation starts from these incoming nodes;
+// 2). Condition false output nodes, when condition is false, we will break out of this while loop, these nodes pointing to the outside
+//     nodes, but no inside nodes;
+// 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed, we will return to the
+//     incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes (OK if end nodes are condition true output nodes
+//     as well);
+//
+// Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs and outputs. Besides that,
+// the loop body needs to be parameterized to be SSA compliant (see: https://www.cs.cmu.edu/~fp/courses/15411-f13/lectures/06-ssa.pdf).
+// Thus, a list of body parameters need to be provided.
 
 // The given tensors contains all the common / input / output tensors specified in the sub-graph.
 // Currently, the special_size should always be 1, and contains only the loop counter.
@@ -473,7 +485,8 @@ int ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t*
 // The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while loops
 // for the symbolic graph has to be parameterized.
 
-// Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations will be moved from the giving graph to the sub-graph.
+// Return a while exec symbol (backed by a sub-graph) of the giving graph. The exec nodes on the way from sources to destinations
+// will be moved from the giving graph to the sub-graph.
 ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
 // Set the expression to be evaluated, and at which nodes to be evaluated.
 void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
@@ -490,5 +503,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(c
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_find_tensor_symbol_from_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 // Extract the sub-graph of the while loop from a symbol.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+
+// Construct "which" control structure in symbolic graph.
 
 #endif
