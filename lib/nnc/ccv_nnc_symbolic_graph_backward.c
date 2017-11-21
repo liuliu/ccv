@@ -900,10 +900,10 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
 		const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 		/* Only interested in the ones on the f / wrt flow */
-		if ((node->f_wrt & 0x3) == 0x3 && forw_exec->graph_ref)
+		if ((node->f_wrt & 0x3) == 0x3 && CCV_NNC_GRAPH_REF(forw_exec)[0])
 		{
 			// Now calling it recursively until we are sure no f_symbols can be removed.
-			const int graph_ref = forw_exec->graph_ref - 1;
+			const int graph_ref = CCV_NNC_GRAPH_REF(forw_exec)[0] - 1;
 			ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep = backward_prep->sub_preps + graph_ref;
 			if (!sub_wrt_symbols)
 				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
@@ -1210,10 +1210,10 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 		ccv_nnc_graph_backward_info_t* node = backward_info + idx;
 		const ccv_nnc_graph_exec_symbol_info_t* forw_exec = exec_symbol_info + idx;
 		/* Only interested in the ones on the f / wrt flow */
-		if ((node->f_wrt & 0x3) == 0x3 && forw_exec->graph_ref)
+		if ((node->f_wrt & 0x3) == 0x3 && CCV_NNC_GRAPH_REF(forw_exec)[0])
 		{
 			// Now calling it recursively until we are sure no f_symbols can be removed.
-			const int graph_ref = forw_exec->graph_ref - 1;
+			const int graph_ref = CCV_NNC_GRAPH_REF(forw_exec)[0] - 1;
 			ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep = backward_prep->sub_preps + graph_ref;
 			if (!sub_wrt_symbols)
 				sub_wrt_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
@@ -1510,9 +1510,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		}
 		ccv_array_clear(symbols);
 		const ccv_nnc_graph_exec_symbol_info_t* const forw_exec = exec_symbol_info + i;
-		if (forw_exec->graph_ref)
+		if (CCV_NNC_GRAPH_REF(forw_exec)[0])
 		{
-			const int graph_ref = forw_exec->graph_ref - 1;
+			const int graph_ref = CCV_NNC_GRAPH_REF(forw_exec)[0] - 1;
 			ccv_nnc_symbolic_graph_backward_prep_t* sub_prep = backward_prep->sub_preps + graph_ref;
 			ccv_nnc_symbolic_graph_t* sub_graph = ccv_nnc_symbolic_graph_new();
 			sub_graph->peer = sub_prep->graph;

@@ -2128,12 +2128,12 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	// TODO: I should be able to express that you cannot fold / or reuse certain tensor blocks.
 	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
-		if (node->graph_ref)
+		if (CCV_NNC_GRAPH_REF(node)[0])
 		{
-			ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, node->graph_ref - 1);
+			ccv_nnc_symbolic_graph_t* while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1);
 			ccv_nnc_symbolic_graph_prep_t* const sub_prep = _ccv_nnc_symbolic_graph_prep_new(while_graph, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->sources, 0), while_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(while_graph->destinations, 0), while_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum);
 			sub_prep->p = prep;
-			sub_preps[node->graph_ref - 1] = sub_prep;
+			sub_preps[CCV_NNC_GRAPH_REF(node)[0] - 1] = sub_prep;
 			const ccv_nnc_tensor_alloc_prep_t* const s_alloc_prep = sub_prep->alloc_prep;
 			const ccv_nnc_tensor_block_t* const s_tensor_blocks = sub_prep->tensor_blocks;
 			for (i = 0; i < s_alloc_prep->block_size; i++)
@@ -2265,7 +2265,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
 						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
-						tensor_blocks[tensor_block_size].graph_ref = node->graph_ref;
+						tensor_blocks[tensor_block_size].graph_ref = CCV_NNC_GRAPH_REF(node)[0];
 						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
 						ccv_array_push(tensor_blocks[tensor_block_size].head, &idx);
 						const int dup_p_ref = s_alloc_prep->buffers[i].dup_p_ref - 1;
@@ -2423,9 +2423,9 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			}
 			for (i = 0; i < node->output_size; i++)
 				max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensors[node->outputs[i]] : 0;
-			if (node->graph_ref)
+			if (CCV_NNC_GRAPH_REF(node)[0])
 			{
-				const int graph_ref = node->graph_ref - 1;
+				const int graph_ref = CCV_NNC_GRAPH_REF(node)[0] - 1;
 				ccv_nnc_graph_t* const sub_graph = graph_prep->sub_preps[graph_ref]->graph;
 				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph);
 				const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
@@ -2467,9 +2467,9 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				}
 				for (j = 0; j < outgoing_node->output_size; j++)
 					max_outputs[j] = outgoing_node->outputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->outputs[j]] : 0;
-				if (outgoing_node->graph_ref)
+				if (CCV_NNC_GRAPH_REF(outgoing_node)[0])
 				{
-					const int graph_ref = outgoing_node->graph_ref - 1;
+					const int graph_ref = CCV_NNC_GRAPH_REF(outgoing_node)[0] - 1;
 					ccv_nnc_graph_t* const sub_graph = graph_prep->sub_preps[graph_ref]->graph;
 					graph_execs[outgoing] = ccv_nnc_graph_while(graph, outgoing_node->cmd.cmd, sub_graph);
 					const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);

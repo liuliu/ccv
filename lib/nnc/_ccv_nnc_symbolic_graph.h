@@ -31,7 +31,6 @@ typedef struct {
 typedef struct {
 	int input_size;
 	int output_size;
-	int graph_ref; // Reference to the sub-graph. Starts at 1.
 	int dead; // Mark this node as dead.
 	int* inputs;
 	int* outputs;
@@ -39,7 +38,10 @@ typedef struct {
 	char* name;
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
+	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
+	int* _heap_graph_ref;
 } ccv_nnc_graph_exec_symbol_info_t;
+#define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)
 
 struct ccv_nnc_symbolic_graph_s {
 	ccv_array_t* tensor_symbol_info; // A lit of info for tensor symbols.

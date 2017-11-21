@@ -26,7 +26,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 	// Note the extra allocation (the ccv_array_t only holds a pointer to ccv_nnc_symbolic_graph_t*).
 	// In this way, we can get the while graph and don't have to worry about it will be an invalid pointer once
 	// the array expands (another while graph allocated).
-	symbol_info->graph_ref = graph->sub_graphs->rnum;
+	CCV_NNC_GRAPH_REF(symbol_info)[0] = graph->sub_graphs->rnum;
 	while_graph->p_idx = graph->sub_graphs->rnum;
 	while_graph->exec_idx = symbol.d + 1;
 	while_graph->p = graph;
@@ -141,6 +141,6 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc
 	assert(while_symbol.graph == graph);
 	assert(while_symbol.d < graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, while_symbol.d);
-	assert(symbol_info->graph_ref <= graph->sub_graphs->rnum);
-	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1);
+	assert(CCV_NNC_GRAPH_REF(symbol_info)[0] <= graph->sub_graphs->rnum);
+	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(symbol_info)[0] - 1);
 }

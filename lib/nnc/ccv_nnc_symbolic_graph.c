@@ -122,7 +122,7 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 					.graph = graph,
 				}, symbol_info->cmd);
 				if (symbol_info->cmd.cmd != CCV_NNC_GRAPH_FORWARD && symbol_info->cmd.cmd != CCV_NNC_GRAPH_BACKWARD)
-					symbol_info->graph_ref = 0;
+					CCV_NNC_GRAPH_REF(symbol_info)[0] = 0;
 			}
 		}
 	}
@@ -658,8 +658,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 		int idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
 		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, idx);
 		// Autogen for sub-graphs.
-		if (symbol_info->graph_ref)
-			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, symbol_info->graph_ref - 1), execs, exec_size, flags);
+		if (CCV_NNC_GRAPH_REF(symbol_info)[0])
+			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(symbol_info)[0] - 1), execs, exec_size, flags);
 	}
 	for (i = 0; i < exec_total_size; i++)
 	{
@@ -1076,9 +1076,9 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 		// Skip the dead one.
 		if (exec_symbol_info->dead)
 			continue;
-		if (exec_symbol_info->graph_ref)
+		if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0])
 		{
-			const ccv_nnc_symbolic_graph_t* const graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->sub_graphs, exec_symbol_info->graph_ref - 1);
+			const ccv_nnc_symbolic_graph_t* const graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(while_graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_symbol_info)[0] - 1);
 			_ccv_nnc_symbolic_graph_dot_sub_graph(exec_symbol_info, while_graph->tensor_symbol_info, graph, flags, out, c);
 		} else {
 			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, *c, while_graph->tensor_symbol_info, flags, out);
@@ -1098,11 +1098,11 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 				const int outgoing_idx = *(int*)ccv_array_get(exec_symbol_info->outgoings, j);
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
-				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+				if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
-				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
+				else if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
-				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+				else if (!CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
@@ -1126,9 +1126,9 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 		// Skip the dead one.
 		if (exec_symbol_info->dead)
 			continue;
-		if (exec_symbol_info->graph_ref)
+		if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0])
 		{
-			const ccv_nnc_symbolic_graph_t* const while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, exec_symbol_info->graph_ref - 1);
+			const ccv_nnc_symbolic_graph_t* const while_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_symbol_info)[0] - 1);
 			_ccv_nnc_symbolic_graph_dot_sub_graph(exec_symbol_info, graph->tensor_symbol_info, while_graph, flags, out, &c);
 		} else {
 			_ccv_nnc_symbolic_graph_dot_node(exec_symbol_info, c, graph->tensor_symbol_info, flags, out);
@@ -1148,11 +1148,11 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 				const int outgoing_idx = *(int*)ccv_array_get(exec_symbol_info->outgoings, j);
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
-				if (exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+				if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
-				else if (exec_symbol_info->graph_ref && !outgoing_symbol_info->graph_ref)
+				else if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
-				else if (!exec_symbol_info->graph_ref && outgoing_symbol_info->graph_ref)
+				else if (!CCV_NNC_GRAPH_REF(exec_symbol_info)[0] && CCV_NNC_GRAPH_REF(outgoing_symbol_info)[0])
 					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
