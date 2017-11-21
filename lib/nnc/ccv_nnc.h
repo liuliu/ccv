@@ -209,8 +209,6 @@ int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE* out);
 // Run the autotune function for all the inputs / outputs, afterwards, assigning the optimized cmd back.
 void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
-// Run the graph from source nodes all the way to the destination nodes.
-void ccv_nnc_graph_run(const ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // The sources / destinations.
 void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const sources, const int source_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph);
@@ -479,7 +477,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_graph_exec(const ccv_nnc_gr
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
-int ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 
 // The API to operate on the symbolic graph is more involved than the concrete graph for while loops.
 // The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while loops
@@ -504,6 +502,28 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_find_tensor_symbol_from_graph(c
 // Extract the sub-graph of the while loop from a symbol.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 
-// Construct "which" control structure in symbolic graph.
+// Construct "switch" control structure in symbolic graph. Here I use the keyword case_of.
+//
+// Providing a "switch" control structure within NNC has some nice properties even though you can simulate this with a while loop technically.
+//
+// 1. More optimal memory allocation: with "switch" control structure, memory can be multiplexed for each code path because they are mutually
+//    exclusive.
+// 2. No tape should be used within each branch: if we simulate with a "while" loop, any results from within the "switch" statement has to be
+//    kept on the tape, which is inefficient because you don't need any tape for the "switch" statement other than record which path it is
+//    taken.
+//
+// The particular "switch" control structure provided here is a multi-way structured "switch". Each branch is a sub-graph, so it is well-scoped.
+// A node branch over based on the case_of condition return value to either of the branch (numbering from 0 to n, -1 means no path taken). If no
+// path taken, the output tensors will be assigned with the default tensors and continue. Otherwise the computation within the sub-graph will bb
+// carried out and the output tensors will be assigned with the tensors specified within that sub-graph and continue.
+//
+// If we want to consider speculative execution in the future, we need to revisit our memory allocation scheme.
+
+typedef int(*ccv_nnc_graph_case_of_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data);
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_case_new(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size, const char* const name);
+void ccv_nnc_symbolic_graph_set_case_of(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, ccv_nnc_symbolic_graph_t* const case_graph, const int case_of, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
+
+ccv_nnc_graph_exec_t ccv_nnc_graph_case_new(ccv_nnc_graph_t* const graph, const uint32_t cmd);
+void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of);
 
 #endif

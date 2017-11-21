@@ -45,7 +45,7 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_tensor_t* tdz = ccv_nnc_tensor_from_symbol(tensor_arena, dz);
 	// Seed the initialization vector.
 	tdz->data.f32[0] = 1;
-	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, sum)));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, sum)));
 	ccv_nnc_tensor_t* tz = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	REQUIRE_EQ_WITH_TOLERANCE(tz->data.f32[0], 0.84 * 0.84 + logf(1.0 / 0.84), 1e-6, "computed result of x * x + Log[1 / x] should be the same");
@@ -93,7 +93,7 @@ TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.3
 	ccv_nnc_tensor_t* tdv = ccv_nnc_tensor_from_symbol(tensor_arena, dv);
 	// Seed the initialization vector.
 	tdv->data.f32[0] = 1;
-	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, minus), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, plus)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dyc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod)));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, minus), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, plus)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dxc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dyc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod)));
 	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	ccv_nnc_tensor_t* tdy = ccv_nnc_tensor_from_symbol(tensor_arena, dy);
@@ -144,7 +144,7 @@ TEST_CASE("partial autograd with D[y * x + Log[1 / x], y] when x = 0.84 and y = 
 	ccv_nnc_tensor_t* tdz = ccv_nnc_tensor_from_symbol(tensor_arena, dz);
 	// Seed the initialization vector.
 	tdz->data.f32[0] = 1;
-	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dyc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, sum)));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, inv)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dyc), ccv_nnc_graph_exec_from_symbol(graph_exec_arena, sum)));
 	ccv_nnc_tensor_t* tz = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	ccv_nnc_tensor_t* tdy = ccv_nnc_tensor_from_symbol(tensor_arena, dy);
 	REQUIRE_EQ_WITH_TOLERANCE(tz->data.f32[0], 1.23 * 0.84 + logf(1.0 / 0.84), 1e-6, "computed result of y * x + Log[1 / x] should be the same");

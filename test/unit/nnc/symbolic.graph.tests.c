@@ -31,7 +31,7 @@ TEST_CASE("compile symbolic graph of one node")
 	a_tensor->data.f32[0] = 1.2;
 	b_tensor->data.f32[0] = 2.3;
 	ccv_nnc_graph_exec_t prod_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod);
-	ccv_nnc_graph_run(graph, 0, GRAPH_EXEC_LIST(prod_exec), GRAPH_EXEC_LIST(prod_exec));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(prod_exec), GRAPH_EXEC_LIST(prod_exec));
 	REQUIRE(a_tensor->data.f32 == c_tensor->data.f32, "trivially in-place operation, should point to the same memory region");
 	REQUIRE_EQ_WITH_TOLERANCE(c_tensor->data.f32[0], 1.2 * 2.3, 1e-6, "should be equal to 1.2 * 2.3");
 	ccv_nnc_graph_free(graph);

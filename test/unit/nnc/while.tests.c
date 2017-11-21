@@ -36,7 +36,7 @@ TEST_CASE("graph for a while loop to compute 0.34 * 1.11 ^ 5")
 	x->data.f32[0] = 0.34;
 	y->data.f32[0] = 1.11;
 	z->data.f32[0] = 1;
-	ccv_nnc_graph_while_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(prod1));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(prod1));
 	ccv_nnc_graph_free(graph);
 	REQUIRE_EQ_WITH_TOLERANCE(z->data.f32[0], 0.34 * 1.11 * 1.11 * 1.11 * 1.11 * 1.11, 1e-6, "computed result of 0.34 * 1.11 ^ 5 should be the same");
 	ccv_nnc_tensor_free(x);
@@ -71,7 +71,7 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	x->data.f32[0] = 0.32;
 	y->data.f32[0] = 2.8;
-	ccv_nnc_graph_while_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
 	REQUIRE_EQ_WITH_TOLERANCE(z->data.f32[0], 0.32 * 2.8 * 2.8 * 2.8 * 2.8 * 2.8, 1e-5, "computed result of 0.32 * 2.8 ^ 5 should be the same");
 	REQUIRE(z->data.f32 == zbb.data.f32, "Two pointers should be the same");
 	ccv_nnc_tensor_multiview_free(xx);
@@ -110,7 +110,7 @@ TEST_CASE("while graph add and re-add reuse tensor allocations for 0.47 * 5.5 ^ 
 	x->data.f32[0] = 0.32;
 	z->data.f32[0] = 0.47;
 	y->data.f32[0] = 5.5;
-	ccv_nnc_graph_while_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
+	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(loop));
 	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 0.47 * 5.5 * 5.5 * 5.5 * 5.5 * 5.5, 1e-2, "computed result of 0.47 * 5.5 ^ 5 should be the same");
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_free(x);
@@ -155,7 +155,7 @@ TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 	z0_tensor->data.f32[0] = 1;
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 0.92 * 0.92 * 0.92 * 0.92 * 0.92 * 3.2, 1e-6, "z should be equal to x ^ 5 * y");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
@@ -198,7 +198,7 @@ TEST_CASE("symbolic graph for a while loop to compute z * x ^ 5 * y + z")
 	z0_tensor->data.f32[0] = 1.2;
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z3);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.2 * 0.92 * 0.92 * 0.92 * 0.92 * 0.92 * 3.2 + 1.2, 1e-6, "z should be equal to z * x ^ 5 * y + z");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
@@ -254,7 +254,7 @@ TEST_CASE("symbolic graph for a while loop to compute x = max(conv(x, w, b), 3x3
 	}
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_MATRIX_EQ(x1, z_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x1);
@@ -318,7 +318,7 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times"
 	}
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_MATRIX_EQ(y1, y_tensor, "5x5x4 matrix should be exactly the same");
 	REQUIRE(z0_tensor->data.f32 == y_tensor->data.f32 + 1, "z0 should point to the same memory region as y, offset by 1");
 	// z0 and z1 trigger different code path (z1 will trigger one additional tensor setup).
@@ -390,7 +390,7 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times 
 	ccv_nnc_tensor_t z0 = ccv_nnc_tensor(x0->data.f32, ONE_CPU_TENSOR(5 * 5 * 4), 0);
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_MATRIX_EQ(&z0, z_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x0);
 	ccv_nnc_tensor_free(x1);
@@ -472,7 +472,7 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	}
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_MATRIX_EQ(x0, z_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x0);
 	ccv_nnc_tensor_free(x1);
@@ -544,7 +544,7 @@ TEST_CASE("symbolic graph for a while loop to compute y = conv(x1, w, b) 5 times
 	}
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_while_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	ccv_nnc_tensor_t* x2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x2);
 	REQUIRE_MATRIX_EQ(x2t, x2_tensor, "5x5x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(x0t);

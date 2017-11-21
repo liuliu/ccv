@@ -143,7 +143,7 @@ TEST_CASE("run vgg-d graph from its symbolic representation")
 			memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
 		}
 	}
-	ccv_nnc_graph_run(run_graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
+	ccv_nnc_graph_run(run_graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, b->data.f32, c->data.f32, 1000, 1e-4, "output should be the same from convnet and from the symbolic graph");
 	ccv_nnc_tensor_free(c);
 	ccv_matrix_free(sliced);
