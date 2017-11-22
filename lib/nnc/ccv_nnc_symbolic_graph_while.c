@@ -35,8 +35,11 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 
 void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size)
 {
-	while_graph->while_expr = while_expr;
-	while_graph->while_data = while_data;
+	const int exec_idx = while_graph->exec_idx - 1;
+	assert(exec_idx >= 0 && exec_idx < while_graph->p->exec_symbol_info->rnum);
+	ccv_nnc_graph_exec_symbol_info_t* const exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->p->exec_symbol_info, exec_idx);
+	exec_info->while_data = while_data;
+	exec_info->while_expr = while_expr;
 	if (breakpoint_size > 0)
 	{
 		assert(breakpoints);

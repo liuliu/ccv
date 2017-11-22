@@ -40,6 +40,14 @@ typedef struct {
 	ccv_nnc_hint_t hint;
 	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
 	int* _heap_graph_ref;
+	union {
+		ccv_nnc_graph_while_f while_expr;
+		ccv_nnc_graph_case_of_f case_expr;
+	};
+	union {
+		const void* while_data;
+		const void* case_data;
+	};
 } ccv_nnc_graph_exec_symbol_info_t;
 #define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)
 
@@ -61,8 +69,6 @@ struct ccv_nnc_symbolic_graph_s {
 	// for ccv_array_t, we can continue to modify what's inside.
 	int breakpoint_size;
 	ccv_nnc_graph_exec_symbol_t* breakpoints;
-	ccv_nnc_graph_while_f while_expr;
-	const void* while_data;
 	// Map between parent / sub-graph's tensor symbols.
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling
