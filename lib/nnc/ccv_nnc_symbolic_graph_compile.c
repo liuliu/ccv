@@ -32,7 +32,8 @@ enum {
 	WRITE_ONLY = 0x8,
 	READ_WRITE = 0xc,
 	ANONYMOUS = 0x10, // Mark this block as anonymous (thus, not reference to any specific tensor).
-	UNFOLDABLE = 0x20, // Mark this block cannot be folded into previous blocks.
+	UNFOLDABLE_AS_INPUT = 0x20, // If this block is used as input, it cannot be folded into any output blocks.
+	UNFOLDABLE_AS_OUTPUT = 0x40, // If this block is used as output, it cannot be folded into any input blocks.
 };
 
 #define TENSOR_EXPECT_ORDINARY(t) ((t.flags & 0x3) == 0)
@@ -47,8 +48,10 @@ enum {
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
 #define TENSOR_SET_ANONYMOUS(t) (t.flags = (t.flags & ~0x10 | ANONYMOUS))
 #define TENSOR_IS_ANONYMOUS(t) (t.flags & ANONYMOUS)
-#define TENSOR_SET_UNFOLDABLE(t) (t.flags = (t.flags & ~0x20 | UNFOLDABLE))
-#define TENSOR_IS_UNFOLDABLE(t) (t.flags & UNFOLDABLE)
+#define TENSOR_SET_UNFOLDABLE_AS_INPUT(t) (t.flags = (t.flags & ~0x60 | UNFOLDABLE_AS_INPUT))
+#define TENSOR_IS_UNFOLDABLE_AS_INPUT(t) (t.flags & UNFOLDABLE_AS_INPUT)
+#define TENSOR_SET_UNFOLDABLE_AS_OUTPUT(t) (t.flags = (t.flags & ~0x60 | UNFOLDABLE_AS_OUTPUT))
+#define TENSOR_IS_UNFOLDABLE_AS_OUTPUT(t) (t.flags & UNFOLDABLE_AS_OUTPUT)
 
 typedef struct {
 	int index;
@@ -719,11 +722,11 @@ static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, cons
 	for (i = 0; i < node->output_size && !is_output; i++)
 		if (p_ref == node->outputs[i])
 			is_output = 1;
-	assert(!(is_input && is_output));
-	if (is_input)
-		return -1;
+	// Prefer it is an output if it is both the input and the output.
 	if (is_output)
 		return 1;
+	if (is_input)
+		return -1;
 	return 0;
 }
 
@@ -1497,8 +1500,8 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 	// Now we are sure p_ref_0 points to the input, p_ref_1 points to the output.
 	if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) &&
 		!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_1]) &&
-		!TENSOR_IS_UNFOLDABLE(tensor_blocks[p_ref_0]) &&
-		!TENSOR_IS_UNFOLDABLE(tensor_blocks[p_ref_1]) &&
+		!TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_0]) &&
+		!TENSOR_IS_UNFOLDABLE_AS_OUTPUT(tensor_blocks[p_ref_1]) &&
 		tensor_blocks[p_ref_0].tail->rnum == 1 &&
 		tensor_blocks[p_ref_1].head->rnum == 1 &&
 		*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0))
@@ -1600,9 +1603,16 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
-			TENSOR_SET_UNFOLDABLE(tensor_blocks[i]);
-			TENSOR_SET_UNFOLDABLE(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			// TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+			// It can be folded as input (it is fine to be overwritten), but it cannot as output (when folded as input,
+			// it kept its own representation, which is not the case for output).
+			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
+			// But for where it comes from, it cannot be folded as output because its representation has to be kept, and
+			// it cannot be folded as input, because it cannot be overwritten any time.
+			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 		}
+	const ccv_nnc_graph_exec_symbol_info_t* const  p_node = symbolic_graph->p ? (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1) : 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// If it has a peer reference, we don't need to allocate this tensor at all,
@@ -1611,7 +1621,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			TENSOR_EXPECT_SET_UNASSIGNED(tensor_blocks[i]);
 		// If it is a tape variable, set it to be un-foldable as too (otherwise we cannot use tape properly).
 		else if (tensor_symbol_info[i].flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
-			TENSOR_SET_UNFOLDABLE(tensor_blocks[i]);
+			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]), TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
+		else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node) == 1)
+			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
@@ -1695,6 +1707,14 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]);
 		}
 	} ccv_nnc_graph_visit_endfor
+	// For any assign_ref, its life-time kept until the end and wrap over.
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		// If this tensor is not unassigned (or alias) and it is assigned from somewhere else,
+		// that "somewhere else" need to keep its life-time til the end.
+		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) &&
+			symbolic_graph->p && tensor_symbol_info[i].assign_ref)
+			for (j = 0; j < destination_size; j++)
+				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */
 		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_CMD_ATTR_INPLACE))
@@ -1987,6 +2007,32 @@ static void _ccv_nnc_fixup_assign_ref_after_unroll(const ccv_nnc_symbolic_graph_
 		}
 }
 
+// If the tensor blocks are the outputs of this graph, its life-time should be extended to the end of this graph.
+// However, it is not that simple if the graph is unrolled. For unrolled graph, it needs to reach the end of
+// the "original" graph and all its duplicated ends (for their duplicated tensor blocks).
+static void _ccv_nnc_fixup_tensor_blocks_for_outputs(ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_nnc_graph_exec_symbol_info_t* const  p_node, const int nth_unroll, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const int p_idx, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int* const dup_exec_ref, const int* const dup_tensor_block_ref)
+{
+	int i, j, k;
+	for (i = 0; i < p_node->output_size; i++)
+	{
+		const int d = p_node->outputs[i];
+		const int s_ref = *(int*)ccv_array_get(p_tensor_symbol_info[d].s_ref, p_idx) - 1;
+		if (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[s_ref]))
+			continue;
+		for (k = 0; k < destination_size; k++)
+			_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[k].d, tensor_blocks[s_ref]);
+		// Add the duplicated destinations to the tensor_block_ref.
+		for (j = 0; j < nth_unroll; j++)
+			for (k = 0; k < destination_size; k++)
+			{
+				const int dup_exec_idx = dup_exec_ref[destinations[k].d * nth_unroll + j];
+				const int dup_tensor_block_idx = dup_tensor_block_ref[s_ref * nth_unroll + j];
+				if (dup_exec_idx >= 0 && dup_tensor_block_idx >= 0)
+					_ccv_nnc_tensor_block_add_exec(exec_dep, dup_exec_idx, tensor_blocks[dup_tensor_block_idx]);
+			}
+	}
+}
+
 static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int* r_nth_unroll, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
 {
 	int i, j;
@@ -2026,7 +2072,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 			{
 				const int p_ref_0 = tensor_blocks[i].p_refs[0] - 1;
 				const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
-				if (p_ref_0_is_in_or_out == 1)
+				if (p_ref_0_is_in_or_out == 1) // If it is out tensor, mark dup_p_ref for this.
 					tensor_blocks[dup_idx].dup_p_ref = p_ref_0 + 1;
 				if (p_ref_0_is_in_or_out == 1 || tensor_blocks[i].p_refs[1] == 0)
 					continue;
@@ -2122,6 +2168,11 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	int nth_unroll = 0;
 	// Cannot handle dup a node that is a graph as well.
 	_ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(symbolic_graph, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &nth_unroll, &dup_exec_ref, &dup_tensor_block_ref);
+	if (symbolic_graph->p)
+	{
+		const ccv_nnc_graph_exec_symbol_info_t* const  p_node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1);
+		_ccv_nnc_fixup_tensor_blocks_for_outputs(exec_dep, tensor_blocks, p_node, nth_unroll, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, dup_exec_ref, dup_tensor_block_ref);
+	}
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
 	ccv_nnc_symbolic_graph_prep_t* prep = (ccv_nnc_symbolic_graph_prep_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_prep_t));
 	prep->graph = ccv_nnc_graph_new(); // Just allocate the graph right now.
@@ -2166,10 +2217,10 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						}
 					}
 				} else if (s_tensor_blocks[block_ref].dup_p_ref) {
-					/* In this case, only relevant bit is dup_p_ref. dup_p_ref extends the life-time of anonymous bloc
-					 * which by default only has life-cycle shared with this sub-graph node. The reason to extend is th
-					 * these anonymous blocks that has dup_p_ref may contain data that will be used as output (thus, dup_p_r
-					 * always points to an output tensor of this sub-graph node) therefore, the memory region must exte
+					/* In this case, only relevant bit is dup_p_ref. dup_p_ref extends the life-time of anonymous block
+					 * which by default only has life-cycle shared with this sub-graph node. The reason to extend is that
+					 * these anonymous blocks that has dup_p_ref may contain data that will be used as output (thus, dup_p_ref
+					 * always points to an output tensor of this sub-graph node) therefore, the memory region must extend
 					 * its life-time to the end of the output tensor. */
 					if (!s_alloc_prep->buffers[buffer_ref].dup_p_ref)
 						s_alloc_prep->buffers[buffer_ref].dup_p_ref = s_tensor_blocks[block_ref].dup_p_ref;

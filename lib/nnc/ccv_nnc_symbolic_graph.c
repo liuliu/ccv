@@ -195,19 +195,77 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	return alias;
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve_alias(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias)
+// Resolve this tensor symbol to the current graph.
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
 {
-	assert(graph == tensor_alias.graph);
-	assert(tensor_alias.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* alias_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_alias.d);
-	assert(alias_info->alias_ref);
-	ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, alias_info->alias_ref - 1);
-	ccv_nnc_tensor_symbol_t symbol = {
-		.info = symbol_info->info,
-		.d = alias_info->alias_ref - 1,
-		.graph = graph
-	};
-	return symbol;
+	if (graph == tensor_symbol.graph)
+		return tensor_symbol;
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(tensor_symbol.graph->tensor_symbol_info, tensor_symbol.d);
+	assert(!symbol_info->alias_ref);
+	// Find if the symbol is in the sub-graph.
+	const ccv_nnc_symbolic_graph_t* curr_graph = tensor_symbol.graph;
+	assert(tensor_symbol.d >= 0 && tensor_symbol.d < curr_graph->tensor_symbol_info->rnum);
+	while (curr_graph && curr_graph != graph)
+		curr_graph = curr_graph->p;
+	if (curr_graph)
+	{
+		// The graph is a parent of the symbol passed in.
+		curr_graph = tensor_symbol.graph;
+		ccv_nnc_tensor_symbol_info_t* curr_symbol_info = symbol_info;
+		ccv_nnc_tensor_symbol_t curr_symbol = tensor_symbol;
+		while (curr_graph != graph)
+		{
+			ccv_nnc_symbolic_graph_t* const p = curr_graph->p;
+			// I need to find the symbol whether it exists or not before creating new one.
+			assert(curr_symbol_info->p_ref);
+			curr_symbol.d = curr_symbol_info->p_ref - 1;
+			curr_symbol.graph = p;
+			assert(curr_symbol.d >= 0 && curr_symbol.d < p->tensor_symbol_info->rnum);
+			curr_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(p->tensor_symbol_info, curr_symbol.d);
+			// Move on.
+			curr_graph = p;
+		}
+		return curr_symbol;
+	}
+	// Otherwise, if the symbol is in the parent graph, this is a bit more expensive because I need to keep a trace stack.
+	curr_graph = graph;
+	int d;
+	for (d = 0; curr_graph && curr_graph != tensor_symbol.graph; d++)
+		curr_graph = curr_graph->p;
+	curr_graph = graph;
+	assert(d > 0);
+	int trace[d];
+	for (d = 0; curr_graph && curr_graph != tensor_symbol.graph; d++)
+	{
+		const int p_idx = curr_graph->p_idx - 1;
+		trace[d] = p_idx;
+		curr_graph = curr_graph->p;
+	}
+	// If it is not in both the parent graph and the sub-graph, the input is invalid.
+	assert(curr_graph);
+	curr_graph = tensor_symbol.graph;
+	ccv_nnc_tensor_symbol_info_t* curr_symbol_info = symbol_info;
+	ccv_nnc_tensor_symbol_t curr_symbol = tensor_symbol;
+	// The graph is a sub graph of the symbol passed in.
+	int i;
+	for (i = d - 1; i >= 0; i--)
+	{
+		const int p_idx = trace[i];
+		assert(p_idx >= 0);
+		assert(curr_graph->sub_graphs);
+		assert(curr_symbol_info->s_ref);
+		assert(curr_symbol_info->s_ref->rnum == curr_graph->sub_graphs->rnum);
+		assert(p_idx >= 0 && p_idx < curr_symbol_info->s_ref->rnum);
+		const int s_idx = *(int*)ccv_array_get(curr_symbol_info->s_ref, p_idx);
+		ccv_nnc_symbolic_graph_t* const s = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(curr_graph->sub_graphs, p_idx);
+		curr_symbol.d = s_idx - 1;
+		curr_symbol.graph = s;
+		assert(curr_symbol.d >= 0 && curr_symbol.d < s->tensor_symbol_info->rnum);
+		curr_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(s->tensor_symbol_info, curr_symbol.d);
+		// Move on.
+		curr_graph = s;
+	}
+	return curr_symbol;
 }
 
 // This method generate tensor symbols and their links along the way when traverse the graph.

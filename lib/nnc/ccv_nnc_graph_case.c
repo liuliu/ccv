@@ -14,6 +14,10 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_new(ccv_nnc_graph_t* const graph, const 
 	return case_exec;
 }
 
+void ccv_nnc_graph_set_case_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_case_of_f case_of, const void* cases_data)
+{
+}
+
 void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of)
 {
 }
