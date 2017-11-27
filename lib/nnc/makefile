@@ -3,7 +3,7 @@ include ../config.mk
 CFLAGS := -O3 -Wall -I"../" $(CFLAGS)
 NVFLAGS := -O3 $(NVFLAGS)
 
-SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c ccv_nnc_symbolic_graph_compile.c ccv_nnc_symbolic_graph_backward.c ccv_nnc_symbolic_graph_while.c ccv_nnc_graph_while.c ccv_nnc_tensor_tape.c ccv_nnc_symbolic_graph_case.c ccv_nnc_graph_case.c
+SRCS := ccv_nnc_cmd.c ccv_nnc_tensor.c ccv_nnc_graph.c ccv_nnc_symbolic_graph.c ccv_nnc_symbolic_graph_compile.c ccv_nnc_symbolic_graph_backward.c ccv_nnc_symbolic_graph_while.c ccv_nnc_graph_while.c ccv_nnc_tensor_tape.c ccv_nnc_symbolic_graph_case_of.c ccv_nnc_graph_case_of.c
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
