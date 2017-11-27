@@ -4,24 +4,23 @@
 #include <string.h>
 #include <assert.h>
 
-static void case_print_hi(char* str, const char* const hi)
+static int case_print_hi(char* str, const char* const hi)
 {
 	if (!hi)
-	{
-		printf("%s", str);
-		return;
-	}
+		return printf("%s", str);
 	const size_t hilen = strlen(hi);
 	char* savestr = strstr(str, hi);
+	int nchr = 0;
 	while (savestr)
 	{
-		for (;str < savestr; ++str)
+		for (;str < savestr; ++str, ++nchr)
 			putchar(str[0]);
-		printf("\033[7m%s\033[0m", hi); // decorate with underline.
+		nchr += printf("\033[7m%s\033[0m", hi); // decorate with underline.
 		str += hilen;
 		savestr = strstr(str, hi);
 	}
-	printf("%s", str);
+	nchr += printf("%s", str);
+	return nchr;
 }
 
 static void case_run(case_t* test_case, const char* const match_test, int i, int total, int* pass, int* fail)
@@ -29,19 +28,22 @@ static void case_run(case_t* test_case, const char* const match_test, int i, int
 	// Change the current directory.
 	if (test_case->dir && test_case->dir[0] != 0 && strcmp(test_case->dir, ".") != 0)
 		chdir(test_case->dir);
+	int clr = 0;
 	if (isatty(fileno(stdout)))
 	{
-		printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m ", i + 1, total);
-		case_print_hi(test_case->name, match_test);
-		printf(" ...");
+		clr += printf("\033[0;34m[%d/%d]\033[0;0m \033[1;33m[RUN]\033[0;0m ", i + 1, total);
+		clr += case_print_hi(test_case->name, match_test);
+		clr += printf(" ...");
 	} else
-		printf("[%d/%d] [RUN] %s ...", i + 1, total, test_case->name);
+		clr += printf("[%d/%d] [RUN] %s ...", i + 1, total, test_case->name);
 	fflush(stdout);
 	int result = 0;
 	test_case->func(test_case->name, &result);
 	if (result == 0)
 	{
 		(*pass)++;
+		for (; clr > 0; --clr)
+			printf("\b");
 		if (isatty(fileno(stdout)))
 		{
 			printf("\r\033[0;34m[%d/%d]\033[0;0m \033[1;32m[PASS]\033[0;0m ", i + 1, total);
