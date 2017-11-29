@@ -38,8 +38,8 @@ void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while
 	const int exec_idx = while_graph->exec_idx - 1;
 	assert(exec_idx >= 0 && exec_idx < while_graph->p->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->p->exec_symbol_info, exec_idx);
-	exec_info->while_data = while_data;
-	exec_info->while_expr = while_expr;
+	exec_info->p_while.data = while_data;
+	exec_info->p_while.expr = while_expr;
 	if (breakpoint_size > 0)
 	{
 		assert(breakpoints);

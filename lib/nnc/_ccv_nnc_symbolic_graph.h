@@ -38,15 +38,19 @@ typedef struct {
 	char* name;
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
+	// Below are only relevant to sub-graph nodes (case_of, while).
 	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
 	int* _heap_graph_ref;
 	union {
-		ccv_nnc_graph_while_f while_expr;
-		ccv_nnc_graph_case_of_f case_expr;
-	};
-	union {
-		const void* while_data;
-		const void* case_data;
+		struct {
+			ccv_nnc_graph_case_of_f expr;
+			const void* data;
+			ccv_nnc_tensor_symbol_map_t* pass_through;
+		} case_of;
+		struct {
+			ccv_nnc_graph_while_f expr;
+			const void* data;
+		} p_while;
 	};
 } ccv_nnc_graph_exec_symbol_info_t;
 #define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)

@@ -112,8 +112,8 @@ void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_
 	const int exec_idx = while_graph->exec_idx - 1;
 	assert(exec_idx >= 0 && exec_idx < while_graph->p->exec_info->rnum);
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(while_graph->p->exec_info, exec_idx);
-	exec_info->while_expr = while_expr;
-	exec_info->while_data = while_data;
+	exec_info->p_while.expr = while_expr;
+	exec_info->p_while.data = while_data;
 	assert(breakpoint_size > 0);
 	while_graph->breakpoint_size = breakpoint_size;
 	while_graph->breakpoints = (ccv_nnc_graph_exec_t*)((while_graph->breakpoints) ? ccrealloc(while_graph->breakpoints, sizeof(ccv_nnc_graph_exec_t) * breakpoint_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * breakpoint_size));
@@ -252,7 +252,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const ccv_nnc_
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
 		} \
 	} while (0)
-	if (exec && exec->while_expr)
+	if (exec && exec->p_while.expr)
 	{
 		uint64_t count = 0;
 		ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
@@ -282,7 +282,7 @@ static int _ccv_nnc_graph_while_run(ccv_nnc_graph_t* const graph, const ccv_nnc_
 				_ccv_nnc_graph_unwrap(graph, count);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, 0, visitor);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
-				if (!exec->while_expr(special_tensors, 1, inputs, input_size, outputs, output_size, exec->while_data))
+				if (!exec->p_while.expr(special_tensors, 1, inputs, input_size, outputs, output_size, exec->p_while.data))
 				{
 					_ccv_nnc_graph_rewrap(graph);
 					break;

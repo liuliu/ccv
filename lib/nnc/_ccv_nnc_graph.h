@@ -36,12 +36,14 @@ typedef struct {
 	int tensor_nest_size; // This should be input_size + output_size + rest that need to be broadcast.
 	ccv_nnc_graph_tensor_nest_t** tensor_nests;
 	union {
-		ccv_nnc_graph_while_f while_expr;
-		ccv_nnc_graph_case_of_f case_expr;
-	};
-	union {
-		const void* while_data;
-		const void* case_data;
+		struct {
+			ccv_nnc_graph_case_of_f expr;
+			const void* data;
+		} case_of;
+		struct {
+			ccv_nnc_graph_while_f expr;
+			const void* data;
+		} p_while;
 	};
 } ccv_nnc_graph_exec_info_t;
 

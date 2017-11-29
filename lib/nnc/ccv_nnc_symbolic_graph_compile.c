@@ -2499,7 +2499,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
 				ccv_nnc_graph_set_sources(sub_graph, &source, 1);
 				ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
-				ccv_nnc_graph_set_while_expr(sub_graph, node->while_expr, node->while_data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
+				ccv_nnc_graph_set_while_expr(sub_graph, node->p_while.expr, node->p_while.data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size);
 			} else {
 				graph_execs[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size);
@@ -2543,7 +2543,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
 					ccv_nnc_graph_set_sources(sub_graph, &source, 1);
 					ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
-					ccv_nnc_graph_set_while_expr(sub_graph, outgoing_node->while_expr, outgoing_node->while_data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
+					ccv_nnc_graph_set_while_expr(sub_graph, outgoing_node->p_while.expr, outgoing_node->p_while.data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 					ccv_nnc_graph_exec_set_io(graph, graph_execs[outgoing], max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 				} else {
 					graph_execs[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);

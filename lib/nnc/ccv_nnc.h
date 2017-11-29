@@ -514,8 +514,8 @@ CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_sym
 //    taken.
 //
 // The particular "switch" control structure provided here is a multi-way structured "switch". Each branch is a sub-graph, so it is well-scoped.
-// A node branch over based on the case_of condition return value to either of the branch (numbering from 0 to n, -1 means no path taken). If no
-// path taken, the output tensors will be assigned with the default tensors and continue. Otherwise the computation within the sub-graph will bb
+// A node branch out based on the case_of condition return value to either of the branch (numbering from 0 to n, -1 means no path taken). If no
+// path taken, the output tensors will be assigned with the default tensors and continue. Otherwise the computation within the sub-graph will be
 // carried out and the output tensors will be assigned with the tensors specified within that sub-graph and continue.
 //
 // If we want to consider speculative execution in the future, we need to revisit our memory allocation scheme.
