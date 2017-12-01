@@ -31,7 +31,8 @@ typedef struct {
 typedef struct {
 	int input_size;
 	int output_size;
-	int dead; // Mark this node as dead.
+	int graph_ref_size;
+	int flags; // Mark this node as dead.
 	int* inputs;
 	int* outputs;
 	ccv_array_t* outgoings; // Outgoing nodes
@@ -53,7 +54,6 @@ typedef struct {
 		} p_while;
 	};
 } ccv_nnc_graph_exec_symbol_info_t;
-#define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)
 
 struct ccv_nnc_symbolic_graph_s {
 	ccv_array_t* tensor_symbol_info; // A lit of info for tensor symbols.

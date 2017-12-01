@@ -23,6 +23,8 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
 	ccv_array_push(graph->sub_graphs, &while_graph);
 	ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	symbol_info->flags |= CCV_NNC_GRAPH_EXEC_P_WHILE;
+	symbol_info->graph_ref_size = 1;
 	// Note the extra allocation (the ccv_array_t only holds a pointer to ccv_nnc_symbolic_graph_t*).
 	// In this way, we can get the while graph and don't have to worry about it will be an invalid pointer once
 	// the array expands (another while graph allocated).

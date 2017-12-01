@@ -798,9 +798,9 @@ static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const 
 	{
 		node_id[i] = *exec_index;
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
-		if (exec_info->graph_ref)
+		if (CCV_NNC_GRAPH_REF(exec_info)[0])
 		{
-			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, exec_info->graph_ref - 1);
+			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[0] - 1);
 			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, depth + 1, out, &k, exec_index);
 		} else {
 			_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, depth, out, &k);
@@ -817,11 +817,11 @@ static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const 
 				const int outgoing_idx = *(int*)ccv_array_get(exec_info->outgoings, j);
 				const ccv_nnc_graph_exec_info_t* const outgoing_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
-				if (exec_info->graph_ref && outgoing_info->graph_ref)
+				if (CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
-				else if (exec_info->graph_ref && !outgoing_info->graph_ref)
+				else if (CCV_NNC_GRAPH_REF(exec_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
-				else if (!exec_info->graph_ref && outgoing_info->graph_ref)
+				else if (!CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
@@ -844,9 +844,9 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 	{
 		node_id[i] = c;
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
-		if (exec_info->graph_ref)
+		if (CCV_NNC_GRAPH_REF(exec_info)[0])
 		{
-			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, exec_info->graph_ref - 1);
+			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[0] - 1);
 			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, 1, out, &k, &c);
 		} else {
 			_ccv_nnc_graph_dot_node(exec_info, c, recovery, flags, 0, out, &k);
@@ -863,11 +863,11 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 				const int outgoing_idx = *(int*)ccv_array_get(exec_info->outgoings, j);
 				const ccv_nnc_graph_exec_info_t* const outgoing_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, outgoing_idx);
 				// If both are sub-graphs, have both tail and head specified.
-				if (exec_info->graph_ref && outgoing_info->graph_ref)
+				if (CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
-				else if (exec_info->graph_ref && !outgoing_info->graph_ref)
+				else if (CCV_NNC_GRAPH_REF(exec_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
-				else if (!exec_info->graph_ref && outgoing_info->graph_ref)
+				else if (!CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
 					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
 				else
 					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);

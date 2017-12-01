@@ -115,7 +115,7 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		for (i = 0; i < new_graph->exec_symbol_info->rnum; i++)
 		{
 			ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(new_graph->exec_symbol_info, i);
-			if (!symbol_info->dead)
+			if (!CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags))
 			{
 				symbol_info->cmd = subst((ccv_nnc_graph_exec_symbol_t){
 					.d = i,
@@ -1132,7 +1132,7 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 		node_id[i] = *c;
 		const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, i);
 		// Skip the dead one.
-		if (exec_symbol_info->dead)
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info->flags))
 			continue;
 		if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0])
 		{
@@ -1148,7 +1148,7 @@ static void _ccv_nnc_symbolic_graph_dot_sub_graph(const ccv_nnc_graph_exec_symbo
 	{
 		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(while_graph->exec_symbol_info, i);
 		// Skip the dead one.
-		if (exec_symbol_info->dead)
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info->flags))
 			continue;
 		if (exec_symbol_info->outgoings)
 			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)
@@ -1182,7 +1182,7 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 		node_id[i] = c;
 		const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
 		// Skip the dead one.
-		if (exec_symbol_info->dead)
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info->flags))
 			continue;
 		if (CCV_NNC_GRAPH_REF(exec_symbol_info)[0])
 		{
@@ -1198,7 +1198,7 @@ void ccv_nnc_symbolic_graph_dot(const ccv_nnc_symbolic_graph_t* const graph, con
 	{
 		const ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
 		// Skip the dead one.
-		if (exec_symbol_info->dead)
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info->flags))
 			continue;
 		if (exec_symbol_info->outgoings)
 			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)

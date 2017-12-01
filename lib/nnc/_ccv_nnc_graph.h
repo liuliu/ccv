@@ -22,6 +22,8 @@ typedef struct {
 typedef struct {
 	int input_size;
 	int output_size;
+	int flags;
+	int graph_ref_size;
 	ccv_nnc_tensor_t** inputs;
 	int* input_flags;
 	ccv_nnc_tensor_t** outputs;
@@ -29,12 +31,14 @@ typedef struct {
 	ccv_array_t* outgoings; // outgoing nodes
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
-	int graph_ref; // Reference to the sub-graph. Starts at 1.
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	int broadcast_size;
 	ccv_nnc_tensor_t** broadcasts;
 	int tensor_nest_size; // This should be input_size + output_size + rest that need to be broadcast.
 	ccv_nnc_graph_tensor_nest_t** tensor_nests;
+	// Below are only relevant to sub-graph nodes (case_of, while).
+	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
+	int* _heap_graph_ref;
 	union {
 		struct {
 			ccv_nnc_graph_case_of_f expr;
