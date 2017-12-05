@@ -19,7 +19,7 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, cons
 	tensor_multiview->p = 0;
 	tensor_multiview->offset = 0;
 	tensor_multiview->rtvs = 0;
-	tensor_multiview->_heap_data = (repeat + kind <= CCV_NNC_MAX_INLINE_UNROLL) ? 0 : ccmalloc(sizeof(ccv_nnc_tensor_t*) * (repeat + kind));
+	tensor_multiview->_heap_data = (repeat + kind <= sizeof(tensor_multiview->_inline_data) / sizeof(tensor_multiview->_inline_data[0])) ? 0 : ccmalloc(sizeof(ccv_nnc_tensor_t*) * (repeat + kind));
 	int i;
 	// Currently, only CCV_NNC_MULTIVIEW_K12 uses 3 tensors.
 	for (i = 0; i < repeat + kind; i++)
