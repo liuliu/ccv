@@ -468,6 +468,8 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, cons
 void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview);
 // Setup a tensor as a reference to a tensor multiview, thus, when tensor multiview's tu (current tensor) updates, the tensor reference's data.u8 will get update as well (point to the same memory region as the tu).
 void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor);
+// Send broadcast to subscribers of the multiview
+void ccv_nnc_tensor_multiview_broadcast(ccv_nnc_tensor_multiview_t* const tensor_multiview);
 // Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic graph. The reason
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph
