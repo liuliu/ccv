@@ -2,7 +2,7 @@ include ../../../lib/config.mk
 
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
-TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests winograd.tests transform.tests symbolic.graph.tests autograd.tests autograd.vector.tests while.tests tape.tests while.backward.tests
+TARGETS = tfb.tests tensor.tests forward.tests backward.tests gradient.tests graph.tests winograd.tests transform.tests symbolic.graph.tests autograd.tests autograd.vector.tests while.tests tape.tests while.backward.tests case_of.tests
 
 TARGET_SRCS := $(patsubst %,%.c,$(TARGETS))
 

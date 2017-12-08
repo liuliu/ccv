@@ -197,6 +197,8 @@ void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_gra
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 // This must be called after set_io, set additional flags for tensors related to this exec.
 void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const int* const input_flags, const int input_flag_size, const int* const output_flags, const int output_flag_size);
+// Set the peer reference for exec.
+void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec);
 // Broadcasts are the tensors that not directly involved in the computation, but its pointers need to get updated along with this exec, thus need to be "broadcast" to other exec nodes.
 void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const broadcast);
 // Concatenate input graph nodes with an output graph node to create a new graph.
@@ -263,7 +265,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(ccv_nnc_symbo
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
 // For a given tensor symbol, this method resolve to its local reference inside the given graph.
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
-// Set the peer reference.
+// Set the peer reference for tensor.
 void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t peer_tensor_symbol);
 // Pass graph's tensor symbol into its sub graph.
 void ccv_nnc_tensor_symbol_pass(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t sub_tensor_symbol);
@@ -275,6 +277,8 @@ CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbo
 // However, you can also set your own hints. Return non-zero if cannot set successfully.
 int ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_hint_t hint);
 void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
+// Set the peer reference for exec.
+void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
 int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
@@ -433,8 +437,8 @@ typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, cons
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
 void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int* const input_flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, const int* const output_flags, ccv_nnc_tensor_t* const* const outputs, const int output_size);
-uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph);
-void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const uint64_t while_count);
+uint64_t ccv_nnc_tensor_tape_numbering(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec);
+void ccv_nnc_tensor_tape_set_numbering(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const uint64_t numbering);
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);
 // Augmented function to run a graph with while loop (An obvious example is dynamic RNN).
 typedef struct ccv_nnc_tensor_multiview_s {

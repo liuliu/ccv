@@ -33,6 +33,7 @@ typedef struct {
 	int output_size;
 	int graph_ref_size;
 	int flags; // Mark this node as dead.
+	int peer_ref; // Reference to its peer. Starts at 1.
 	int* inputs;
 	int* outputs;
 	ccv_array_t* outgoings; // Outgoing nodes

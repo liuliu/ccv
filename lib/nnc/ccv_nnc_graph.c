@@ -254,6 +254,21 @@ void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc
 		memcpy(info->output_flags, output_flags, sizeof(int) * output_flag_size);
 }
 
+void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec)
+{
+	assert(exec.graph == graph);
+	assert(exec.d >= 0);
+	assert(exec.d < graph->exec_info->rnum);
+	assert(peer_exec.graph == graph || peer_exec.graph == graph->peer);
+	assert(peer_exec.d >= 0);
+	if (peer_exec.graph == graph)
+		{ assert(peer_exec.d < graph->exec_info->rnum); }
+	else
+		{ assert(peer_exec.d < graph->peer->exec_info->rnum); }
+	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
+	exec_info->peer_ref = peer_exec.d + 1;
+}
+
 void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	assert(exec.d < graph->exec_info->rnum);

@@ -19,7 +19,7 @@ ccv_nnc_tensor_tape_t* ccv_nnc_tensor_tape_new(void)
 {
 	ccv_nnc_tensor_tape_t* tape = (ccv_nnc_tensor_tape_t*)ccmalloc(sizeof(ccv_nnc_tensor_tape_t));
 	tape->tensor_data = ccv_array_new(sizeof(ccv_nnc_tape_tensor_data_array_t), 0, 0);
-	tape->graph_data = ccv_array_new(sizeof(ccv_nnc_tape_graph_data_array_t), 0, 0);
+	tape->exec_data = ccv_array_new(sizeof(ccv_nnc_tape_exec_data_array_t), 0, 0);
 	return tape;
 }
 
@@ -252,26 +252,26 @@ void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_gra
 			_ccv_nnc_tensor_from_tape(tape->tensor_data, outputs[i], output_flags ? output_flags[i] : 0, graphs, graph_size, 1); // Create if it is not found. This is OK for output tensor.
 }
 
-#define CCV_NNC_IS_TAPE_GRAPH_DATA_ARRAY_POS(ptr) ((uintptr_t)(ptr) & 1)
+#define CCV_NNC_IS_TAPE_EXEC_DATA_ARRAY_POS(ptr) ((uintptr_t)(ptr) & 1)
 
 // Simple allocator from ccv_array_t.
-static void _ccv_nnc_tape_graph_data_array_pos_new(ccv_array_t* const graph_data, int* const pos_ref, ccv_nnc_tape_graph_data_array_t** const tape_graph_data_ref)
+static void _ccv_nnc_tape_exec_data_array_pos_new(ccv_array_t* const exec_data, int* const pos_ref, ccv_nnc_tape_exec_data_array_t** const tape_exec_data_ref)
 {
-	int pos = graph_data->rnum;
-	ccv_array_resize(graph_data, pos + 1);
+	int pos = exec_data->rnum;
+	ccv_array_resize(exec_data, pos + 1);
 	*pos_ref = (pos << 1) | 1;
-	ccv_nnc_tape_graph_data_array_t* const tape_graph_data = (ccv_nnc_tape_graph_data_array_t*)ccv_array_get(graph_data, pos);
-	memset(tape_graph_data, 0, sizeof(ccv_nnc_tape_graph_data_array_t));
-	*tape_graph_data_ref = tape_graph_data;
+	ccv_nnc_tape_exec_data_array_t* const tape_exec_data = (ccv_nnc_tape_exec_data_array_t*)ccv_array_get(exec_data, pos);
+	memset(tape_exec_data, 0, sizeof(ccv_nnc_tape_exec_data_array_t));
+	*tape_exec_data_ref = tape_exec_data;
 }
 
-static ccv_nnc_tape_graph_data_array_t* _ccv_nnc_tape_graph_data_array_get(const ccv_array_t* const graph_data, const int pos)
+static ccv_nnc_tape_exec_data_array_t* _ccv_nnc_tape_exec_data_array_get(const ccv_array_t* const exec_data, const int pos)
 {
-	assert((pos >> 1) <= graph_data->rnum);
-	return (ccv_nnc_tape_graph_data_array_t*)ccv_array_get(graph_data, pos >> 1);
+	assert((pos >> 1) <= exec_data->rnum);
+	return (ccv_nnc_tape_exec_data_array_t*)ccv_array_get(exec_data, pos >> 1);
 }
 
-static void _ccv_nnc_tape_graph_data_move(uint64_t* const old_data, uint64_t* const new_data, const int offset, const uint64_t* const while_counts, const int graph_size, const int* const dim, const int dim_count)
+static void _ccv_nnc_tape_exec_data_move(uint64_t* const old_data, uint64_t* const new_data, const int offset, const uint64_t* const while_counts, const int graph_size, const int* const dim, const int dim_count)
 {
 	int i;
 	if (offset == ccv_max(dim_count, graph_size) - 1)
@@ -304,11 +304,11 @@ static void _ccv_nnc_tape_graph_data_move(uint64_t* const old_data, uint64_t* co
 		const int data_dim = offset < dim_count ? dim[offset] - 1 : 0;
 		const int graph_dim = offset < graph_size ? while_counts[offset] : 0;
 		for (i = ccv_max(data_dim, graph_dim); i >= 0; i--)
-			_ccv_nnc_tape_graph_data_move((old_data && offset < dim_count && i < dim[offset]) ? old_data + i * old_data_step : 0, new_data + i * new_data_step, offset + 1, while_counts, graph_size, dim, dim_count);
+			_ccv_nnc_tape_exec_data_move((old_data && offset < dim_count && i < dim[offset]) ? old_data + i * old_data_step : 0, new_data + i * new_data_step, offset + 1, while_counts, graph_size, dim, dim_count);
 	}
 }
 
-static void _ccv_nnc_tape_graph_data_array_resize(ccv_nnc_tape_graph_data_array_t* const data_array, const uint64_t* const while_counts, const int graph_size)
+static void _ccv_nnc_tape_exec_data_array_resize(ccv_nnc_tape_exec_data_array_t* const data_array, const uint64_t* const while_counts, const int graph_size)
 {
 	const int new_dim_count = ccv_max(graph_size, data_array->dim_count);
 	int i;
@@ -327,7 +327,7 @@ static void _ccv_nnc_tape_graph_data_array_resize(ccv_nnc_tape_graph_data_array_
 	// overwrite issues.
 	assert(graph_size > 0);
 	assert(data_array->dim_count > 0);
-	_ccv_nnc_tape_graph_data_move(old_data, new_data, 0, while_counts, graph_size, data_array->dim, data_array->dim_count);
+	_ccv_nnc_tape_exec_data_move(old_data, new_data, 0, while_counts, graph_size, data_array->dim, data_array->dim_count);
 	data_array->data = new_data;
 	// We are done, update the dim.
 	for (i = 0; i < new_dim_count; i++)
@@ -339,17 +339,18 @@ static void _ccv_nnc_tape_graph_data_array_resize(ccv_nnc_tape_graph_data_array_
 	data_array->dim_count = new_dim_count;
 }
 
-uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph)
+uint64_t ccv_nnc_tensor_tape_numbering(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec)
 {
-	assert(graph->p);
-	const ccv_nnc_graph_t* const peer = graph->peer ? graph->peer : graph;
-	assert(peer->alias_ref);
-	ccv_nnc_tape_graph_data_array_t* data_array = _ccv_nnc_tape_graph_data_array_get(tape->graph_data, (int)peer->alias_ref);
-	const ccv_nnc_graph_t* curr_graph = graph->p;
+	assert(exec.graph == graph);
+	ccv_nnc_graph_exec_info_t* exec_info = ccv_array_get(graph->exec_info, exec.d);
+	if (!exec_info->alias_ref && exec_info->peer_ref)
+		exec_info = ccv_array_get(graph->exec_info, exec_info->peer_ref - 1);
+	ccv_nnc_tape_exec_data_array_t* const data_array = _ccv_nnc_tape_exec_data_array_get(tape->exec_data, (int)exec_info->alias_ref);
+	const ccv_nnc_graph_t* curr_graph = graph;
 	int i;
 	for (i = 0; curr_graph; i++)
 		curr_graph = curr_graph->p;
-	curr_graph = graph->p;
+	curr_graph = graph;
 	const int graph_size = i;
 	uint64_t while_counts[graph_size];
 	for (i = graph_size - 1; curr_graph; i--, curr_graph = curr_graph->p)
@@ -365,24 +366,26 @@ uint64_t ccv_nnc_tensor_tape_while_count(ccv_nnc_tensor_tape_t* const tape, cons
 	return data_array->data[idx];
 }
 
-void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const uint64_t while_count)
+void ccv_nnc_tensor_tape_set_numbering(ccv_nnc_tensor_tape_t* const tape, ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const uint64_t numbering)
 {
-	ccv_nnc_tape_graph_data_array_t* data_array;
-	if (graph->alias_ref)
+	ccv_nnc_tape_exec_data_array_t* data_array;
+	assert(exec.graph == graph);
+	ccv_nnc_graph_exec_info_t* const exec_info = ccv_array_get(graph->exec_info, exec.d);
+	if (exec_info->alias_ref)
 	{
-		assert(CCV_NNC_IS_TAPE_GRAPH_DATA_ARRAY_POS(graph->alias_ref));
-		data_array = _ccv_nnc_tape_graph_data_array_get(tape->graph_data, (int)graph->alias_ref);
+		assert(CCV_NNC_IS_TAPE_EXEC_DATA_ARRAY_POS(exec_info->alias_ref));
+		data_array = _ccv_nnc_tape_exec_data_array_get(tape->exec_data, (int)exec_info->alias_ref);
 	} else {
 		int pos;
-		_ccv_nnc_tape_graph_data_array_pos_new(tape->graph_data, &pos, &data_array);
-		graph->alias_ref = pos;
+		_ccv_nnc_tape_exec_data_array_pos_new(tape->exec_data, &pos, &data_array);
+		exec_info->alias_ref = pos;
 	}
-	const ccv_nnc_graph_t* curr_graph = graph->p;
+	const ccv_nnc_graph_t* curr_graph = graph;
 	assert(curr_graph);
 	int i;
 	for (i = 0; curr_graph; i++)
 		curr_graph = curr_graph->p;
-	curr_graph = graph->p;
+	curr_graph = graph;
 	const int graph_size = i;
 	assert(graph_size > 0);
 	uint64_t while_counts[graph_size];
@@ -405,7 +408,7 @@ void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_
 		for (i = 0; !flag && i < graph_size; i++)
 			flag = (data_array->dim[i] <= while_counts[i]);
 		if (flag)
-			_ccv_nnc_tape_graph_data_array_resize(data_array, while_counts, graph_size);
+			_ccv_nnc_tape_exec_data_array_resize(data_array, while_counts, graph_size);
 	}
 	int idx = 0, step = 1;
 	for (i = graph_size - 1; i >= 0; i--)
@@ -414,7 +417,7 @@ void ccv_nnc_tensor_tape_set_while_count(ccv_nnc_tensor_tape_t* const tape, ccv_
 		idx += while_counts[i] * step;
 		step *= data_array->dim[i];
 	}
-	data_array->data[idx] = while_count;
+	data_array->data[idx] = numbering;
 }
 
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
@@ -444,12 +447,12 @@ void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
 		}
 	}
 	ccv_array_free(tape->tensor_data);
-	for (i = 0; i < tape->graph_data->rnum; i++)
+	for (i = 0; i < tape->exec_data->rnum; i++)
 	{
-		ccv_nnc_tape_graph_data_array_t* const data_array = (ccv_nnc_tape_graph_data_array_t*)ccv_array_get(tape->graph_data, i);
+		ccv_nnc_tape_exec_data_array_t* const data_array = (ccv_nnc_tape_exec_data_array_t*)ccv_array_get(tape->exec_data, i);
 		if (data_array->dim)
 			ccfree(data_array->dim);
 	}
-	ccv_array_free(tape->graph_data);
+	ccv_array_free(tape->exec_data);
 	ccfree(tape);
 }

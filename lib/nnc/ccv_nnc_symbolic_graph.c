@@ -571,6 +571,21 @@ void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, con
 	_ccv_nnc_graph_exec_symbol_set_io(graph, exec_info, inputs, input_size, outputs, output_size);
 }
 
+void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol)
+{
+	assert(exec_symbol.graph == graph);
+	assert(exec_symbol.d >= 0);
+	assert(exec_symbol.d < graph->exec_symbol_info->rnum);
+	assert(peer_exec_symbol.graph == graph || peer_exec_symbol.graph == graph->peer);
+	assert(peer_exec_symbol.d >= 0);
+	if (peer_exec_symbol.graph == graph)
+		{ assert(peer_exec_symbol.d < graph->exec_symbol_info->rnum); }
+	else
+		{ assert(peer_exec_symbol.d < graph->peer->exec_symbol_info->rnum); }
+	ccv_nnc_graph_exec_symbol_info_t* const exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, exec_symbol.d);
+	exec_info->peer_ref = peer_exec_symbol.d + 1;
+}
+
 ccv_nnc_cmd_t ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec)
 {
 	assert(graph == exec.graph);

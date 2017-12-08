@@ -23,12 +23,14 @@ typedef struct {
 	int input_size;
 	int output_size;
 	int flags;
+	int peer_ref; // Reference to its peer. Starts at 1.
 	int graph_ref_size;
 	ccv_nnc_tensor_t** inputs;
 	int* input_flags;
 	ccv_nnc_tensor_t** outputs;
 	int* output_flags;
 	ccv_array_t* outgoings; // outgoing nodes
+	intptr_t alias_ref; // Link to some reference data.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
@@ -54,7 +56,6 @@ typedef struct {
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
-	intptr_t alias_ref; // Link to some reference data.
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;

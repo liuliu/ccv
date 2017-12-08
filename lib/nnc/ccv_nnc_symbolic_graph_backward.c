@@ -1632,6 +1632,10 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				else
 					ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 			back_exec->symbol = ccv_nnc_graph_exec_symbol_new(graph, back_exec->cmd, ccv_array_get(symbols, 0), back_exec->input_size + forw_exec->input_size + forw_exec->output_size, ccv_array_get(symbols, back_exec->input_size + forw_exec->input_size + forw_exec->output_size), back_exec->output_size, 0);
+			ccv_nnc_graph_exec_symbol_set_peer(graph, back_exec->symbol, (ccv_nnc_graph_exec_symbol_t){
+				.d = i,
+				.graph = backward_prep->graph,
+			});
 		}
 	}
 	if (sub_f_symbols)

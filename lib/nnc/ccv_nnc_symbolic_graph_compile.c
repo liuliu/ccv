@@ -2691,6 +2691,25 @@ static void _ccv_nnc_graph_fixup_peer(const ccv_nnc_symbolic_graph_prep_t* const
 		}
 }
 
+static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
+{
+	assert(graph_exec_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
+	int i;
+	for (i = 0; i < graph_prep->exec_symbol_info_size; i++)
+		if (graph_prep->exec_symbol_info[i].peer_ref)
+		{
+			ccv_nnc_graph_exec_t peer_exec = ccv_nnc_graph_exec_from_symbol(root_arena, (ccv_nnc_graph_exec_symbol_t){
+				.d = graph_prep->exec_symbol_info[i].peer_ref - 1,
+				.graph = graph_prep->symbolic_graph->peer ? graph_prep->symbolic_graph->peer : graph_prep->symbolic_graph,
+			});
+			assert(peer_exec.graph);
+			ccv_nnc_graph_exec_set_peer(graph_prep->graph, graph_exec_arena->graph_execs[i], peer_exec);
+		}
+	for (i = 0; i < graph_prep->sub_prep_size; i++)
+		if (graph_prep->sub_preps[i])
+			_ccv_nnc_graph_exec_arena_fixup_peer_ref(root_arena, graph_prep->sub_preps[i], graph_exec_arena->sub_arenas[i]);
+}
+
 void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_graph_t** const graph_ref, ccv_nnc_tensor_arena_t** const tensor_arena_ref, ccv_nnc_graph_exec_arena_t** const graph_exec_arena_ref)
 {
 	assert(graph_ref);
@@ -2709,6 +2728,7 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	_ccv_nnc_graph_fixup_peer(graph_prep, graph_prep);
 	*graph_ref = graph_prep->graph;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = _ccv_nnc_graph_exec_arena_new(symbolic_graph, sources, source_size, destinations, destination_size, graph_prep, tensor_arena);
+	_ccv_nnc_graph_exec_arena_fixup_peer_ref(graph_exec_arena, graph_prep, graph_exec_arena);
 	*graph_exec_arena_ref = graph_exec_arena;
 	_ccv_nnc_symbolic_graph_prep_free(graph_prep);
 }
