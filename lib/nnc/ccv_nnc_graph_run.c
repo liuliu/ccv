@@ -116,7 +116,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 	for (i = 0; i < destination_size; i++)
 		if (destinations[i].graph != graph)
 			return CCV_NNC_EXEC_INVALID;
-#define visitor(node, idx, d, ...) \
+#define visitor(node, idx, depth, ...) \
 	do { \
 		_ccv_nnc_graph_exec_unwrap_io(graph, node); \
 		ccv_nnc_tensor_t** inputs = node->inputs; \
@@ -130,7 +130,23 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 		{ \
 			if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) \
 			{ \
-				const int ref = node->case_of.expr(inputs, node->input_size, node->case_of.data); \
+				int ref; \
+				if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD) \
+				{ \
+					ref = node->case_of.expr(inputs, node->input_size, node->case_of.data); \
+					if (tensor_tape) \
+						ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
+							.d = idx, \
+							.graph = graph, \
+						}, ref); \
+				} else { \
+					assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD); \
+					assert(tensor_tape); \
+					ref = ccv_nnc_tensor_tape_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
+							.d = idx, \
+							.graph = graph, \
+						}); \
+				} \
 				if (ref >= 0) \
 				{ \
 					assert(ref < node->graph_ref_size); \
@@ -142,7 +158,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
 			} \
 		} else { \
-			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, d, node->input_size, node->output_size); \
+			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, depth, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
 				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
 			for (i = 0; i < node->output_size; i++) \
