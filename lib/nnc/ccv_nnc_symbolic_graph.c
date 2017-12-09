@@ -1243,6 +1243,8 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
 		if (symbol_info->name)
 			ccfree(symbol_info->name);
+		if (symbol_info->_heap_graph_ref)
+			ccfree(symbol_info->_heap_graph_ref);
 		ccv_array_t* outgoings = symbol_info->outgoings;
 		if (outgoings)
 			ccv_array_free(outgoings);

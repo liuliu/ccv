@@ -910,6 +910,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 	for (i = 0; i < graph->exec_info->rnum; i++)
 	{
 		ccv_nnc_graph_exec_info_t *info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+		if (info->_heap_graph_ref)
+			ccfree(info->_heap_graph_ref);
 		ccv_array_t* outgoings = info->outgoings;
 		if (outgoings)
 			ccv_array_free(outgoings);
