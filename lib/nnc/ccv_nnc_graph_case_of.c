@@ -2,9 +2,6 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#ifdef HAVE_CUDA
-#include "gpu/ccv_nnc_compat.h"
-#endif
 #include "_ccv_nnc_graph.h"
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size)

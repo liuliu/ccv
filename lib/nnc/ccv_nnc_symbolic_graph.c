@@ -2,9 +2,6 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#ifdef HAVE_CUDA
-#include "gpu/ccv_nnc_compat.h"
-#endif
 #include "_ccv_nnc_symbolic_graph.h"
 
 const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {};

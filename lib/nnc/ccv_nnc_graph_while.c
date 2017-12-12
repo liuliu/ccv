@@ -2,9 +2,6 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#ifdef HAVE_CUDA
-#include "gpu/ccv_nnc_compat.h"
-#endif
 #include "_ccv_nnc_graph.h"
 
 void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
