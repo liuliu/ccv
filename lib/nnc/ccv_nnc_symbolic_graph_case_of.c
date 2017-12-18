@@ -42,7 +42,6 @@ void ccv_nnc_symbolic_graph_set_case_of(ccv_nnc_symbolic_graph_t* const graph, c
 	assert(symbol.d >= 0);
 	assert(symbol.d < graph->exec_symbol_info->rnum);
 	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
-	// TODO: How to handle the symbol_map?
 	assert(symbol_map_size <= symbol_info->output_size);
 	assert(symbol_info->flags == CCV_NNC_GRAPH_EXEC_CASE_OF);
 	if (!graph->sub_graphs)
@@ -69,4 +68,7 @@ void ccv_nnc_symbolic_graph_set_case_of(ccv_nnc_symbolic_graph_t* const graph, c
 	}
 	// Set the branch with the graph.
 	CCV_NNC_GRAPH_REF(symbol_info)[case_of] = graph->sub_graphs->rnum;
+	int i;
+	for (i = 0; i < symbol_map_size; i++)
+		ccv_nnc_tensor_symbol_hookup(case_graph, graph, symbol_map[i].source, symbol_map[i].destination);
 }

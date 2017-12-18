@@ -1407,7 +1407,7 @@ static void _ccv_nnc_symbolic_graph_add_init_zeros(const ccv_nnc_symbolic_graph_
 				ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, sub_prep->tensor_symbol_info[ref_d].info, 0);
 				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, CCV_NNC_SYM_TENSOR_INIT_ZEROS);
 				ccv_array_push(symbols, &new_symbol);
-				ccv_nnc_tensor_symbol_pass(graph, sub_graph, new_symbol, init_autograd_symbol->symbol);
+				ccv_nnc_tensor_symbol_hookup(graph, sub_graph, new_symbol, init_autograd_symbol->symbol);
 			}
 		}
 	}
@@ -1446,7 +1446,7 @@ static void _ccv_nnc_symbolic_graph_add_tape_vars(const ccv_nnc_symbolic_graph_b
 						.info = sub_prep->tensor_symbol_info[peer_ref].info
 					};
 					ccv_array_push(symbols, &p_symbol);
-					ccv_nnc_tensor_symbol_pass(graph, sub_graph, p_symbol, (ccv_nnc_tensor_symbol_t){
+					ccv_nnc_tensor_symbol_hookup(graph, sub_graph, p_symbol, (ccv_nnc_tensor_symbol_t){
 						.d = i,
 						.graph = sub_graph,
 						.info = symbol_info->info
@@ -1558,7 +1558,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					const int s_idx = *(int*)ccv_array_get(info->s_ref, p_idx) - 1;
 					assert(s_idx >= 0);
 					const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(sub_prep->autograd_tensor_symbols, sub_prep->autograd_tensor_versions + s_idx);
-					ccv_nnc_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
+					ccv_nnc_tensor_symbol_hookup(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
 					++k;
 				}
 			k = input_size; // Reset k, the symbol pass already set up by add_init_zeros.
@@ -1570,7 +1570,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					const int s_idx = *(int*)ccv_array_get(info->s_ref, p_idx) - 1;
 					assert(s_idx >= 0);
 					const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(sub_prep->autograd_tensor_symbols, sub_prep->autograd_tensor_versions + s_idx);
-					ccv_nnc_tensor_symbol_pass(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
+					ccv_nnc_tensor_symbol_hookup(graph, sub_graph, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(symbols, k), autograd_symbol->symbol);
 					++k;
 				}
 			ccv_nnc_graph_exec_symbol_set_io(graph, back_exec->symbol, ccv_array_get(symbols, 0), input_size, ccv_array_get(symbols, input_size), output_size);

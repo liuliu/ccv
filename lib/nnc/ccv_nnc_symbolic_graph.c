@@ -327,32 +327,6 @@ void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const
 	tensor_info->peer_ref = peer_tensor_symbol.d + 1;
 }
 
-void ccv_nnc_tensor_symbol_pass(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t sub_tensor_symbol)
-{
-	assert(sub_graph->p == graph);
-	assert(tensor_symbol.graph == graph);
-	assert(sub_tensor_symbol.graph == sub_graph);
-	assert(tensor_symbol.d >= 0);
-	assert(sub_tensor_symbol.d >= 0);
-	assert(tensor_symbol.d < graph->tensor_symbol_info->rnum);
-	assert(sub_tensor_symbol.d < sub_graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const sub_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, sub_tensor_symbol.d);
-	sub_tensor_info->p_ref = tensor_symbol.d + 1;
-	ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol.d);
-	if (!tensor_info->s_ref)
-	{
-		tensor_info->s_ref = ccv_array_new(sizeof(int), graph->sub_graphs->rnum, 0);
-		tensor_info->s_ref->rnum = graph->sub_graphs->rnum;
-		ccv_array_zero(tensor_info->s_ref);
-	} else if (tensor_info->s_ref->rnum != graph->sub_graphs->rnum)
-		ccv_array_resize(tensor_info->s_ref, graph->sub_graphs->rnum);
-	const int p_idx = sub_graph->p_idx - 1;
-	assert(p_idx >= 0 && p_idx < tensor_info->s_ref->rnum);
-	const int s_idx = *(int*)ccv_array_get(tensor_info->s_ref, p_idx);
-	assert(s_idx == 0); // Otherwise it is assigned before
-	*(int*)ccv_array_get(tensor_info->s_ref, p_idx) = sub_tensor_symbol.d + 1;
-}
-
 static int _ccv_nnc_symbolic_graph_map_tensor_symbol_no_alias(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int map_use)
 {
 	assert(graph && symbol.graph);
@@ -510,6 +484,56 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 		.d = map_d
 	}, symbol_info->ofs, symbol_info->inc, symbol_info->info, symbol_info->name);
 	return alias.d;
+}
+
+void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol)
+{
+	assert(src_graph->p == dest_graph || dest_graph->p == src_graph);
+	assert(src_tensor_symbol.d >= 0);
+	assert(dest_tensor_symbol.d >= 0);
+	ccv_nnc_tensor_symbol_t tensor_symbol = src_tensor_symbol;
+	if (tensor_symbol.graph != src_graph)
+		tensor_symbol = (ccv_nnc_tensor_symbol_t){
+			.graph = src_graph,
+			.d = _ccv_nnc_symbolic_graph_map_tensor_symbol(src_graph, tensor_symbol, MAP_TENSOR_USE_AS_INPUT),
+		};
+	ccv_nnc_tensor_symbol_t sub_tensor_symbol = dest_tensor_symbol;
+	if (sub_tensor_symbol.graph != dest_graph)
+		sub_tensor_symbol = (ccv_nnc_tensor_symbol_t){
+			.graph = dest_graph,
+			.d = _ccv_nnc_symbolic_graph_map_tensor_symbol(dest_graph, sub_tensor_symbol, MAP_TENSOR_USE_AS_OUTPUT),
+		};
+	ccv_nnc_symbolic_graph_t* graph;
+	ccv_nnc_symbolic_graph_t* sub_graph;
+	if (src_graph->p == dest_graph)
+	{
+		graph = dest_graph;
+		sub_graph = src_graph;
+		// Swap tensor_symbol and sub_tensor_symbol
+		ccv_nnc_tensor_symbol_t x;
+		CCV_SWAP(tensor_symbol, sub_tensor_symbol, x);
+	} else {
+		assert(dest_graph->p == src_graph);
+		graph = src_graph;
+		sub_graph = dest_graph;
+	}
+	assert(tensor_symbol.d < graph->tensor_symbol_info->rnum);
+	assert(sub_tensor_symbol.d < sub_graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const sub_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, sub_tensor_symbol.d);
+	sub_tensor_info->p_ref = tensor_symbol.d + 1;
+	ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_symbol.d);
+	if (!tensor_info->s_ref)
+	{
+		tensor_info->s_ref = ccv_array_new(sizeof(int), graph->sub_graphs->rnum, 0);
+		tensor_info->s_ref->rnum = graph->sub_graphs->rnum;
+		ccv_array_zero(tensor_info->s_ref);
+	} else if (tensor_info->s_ref->rnum != graph->sub_graphs->rnum)
+		ccv_array_resize(tensor_info->s_ref, graph->sub_graphs->rnum);
+	const int p_idx = sub_graph->p_idx - 1;
+	assert(p_idx >= 0 && p_idx < tensor_info->s_ref->rnum);
+	const int s_idx = *(int*)ccv_array_get(tensor_info->s_ref, p_idx);
+	assert(s_idx == 0); // Otherwise it is assigned before
+	*(int*)ccv_array_get(tensor_info->s_ref, p_idx) = sub_tensor_symbol.d + 1;
 }
 
 static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_info_t* const exec_info, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)

@@ -268,7 +268,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve(const ccv
 // Set the peer reference for tensor.
 void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t peer_tensor_symbol);
 // Pass graph's tensor symbol into its sub graph.
-void ccv_nnc_tensor_symbol_pass(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t sub_tensor_symbol);
+void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol);
 // Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
 // Return the command on this exec symbol
