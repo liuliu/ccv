@@ -49,6 +49,7 @@ TEST_CASE("graph for a piece-wise linear function")
 	ccv_nnc_graph_set_sources(graph_2, GRAPH_EXEC_LIST(set_2));
 	ccv_nnc_graph_set_destinations(graph_2, GRAPH_EXEC_LIST(set_2));
 	ccv_nnc_graph_set_case_of(graph, case_of, graph_2, 2);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	x->data.f32[0] = -1;
 	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(case_of), GRAPH_EXEC_LIST(case_of));
 	REQUIRE_EQ_WITH_TOLERANCE(x->data.f32[0], 0, 1e-5, "in negative region should equal to 0");

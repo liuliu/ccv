@@ -798,53 +798,127 @@ static void _ccv_nnc_graph_dot_while_label(const ccv_nnc_graph_exec_info_t* cons
 	*tensor_index = k;
 }
 
-static void _ccv_nnc_graph_dot_sub_graph(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_nnc_graph_t* const graph, const int flags, const int depth, FILE* out, int* tensor_index, int* exec_index)
+static void _ccv_nnc_graph_dot_case_of_label(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* tensor_index)
 {
-	fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];\n", *exec_index, *exec_index);
-	// Output this node info within this subgraph.
-	_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, graph, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
-	++(*exec_index);
-	ccv_nnc_tensor_dot_recovery_t recovery = _ccv_nnc_graph_tensor_dot_recovery(graph);
-	int i, j;
-	int k = 0;
-	int* node_id = (int*)ccmalloc(sizeof(int) * graph->exec_info->rnum);
-	// Output styles.
-	for (i = 0; i < graph->exec_info->rnum; i++)
+	int i;
+	fprintf(out, "label=<<b>caseof%d </b>Command: ", exec_index);
+	fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
+	fputs(">;\n", out);
+	fprintf(out, "label%d [shape=record,label=\"{", exec_index);
+	int k = *tensor_index;
+	if (exec_info->input_size > 0)
 	{
-		node_id[i] = *exec_index;
-		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
-		if (CCV_NNC_GRAPH_REF(exec_info)[0])
+		fputs("{Input|{", out);
+		for (i = 0; i < exec_info->input_size; i++)
 		{
-			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[0] - 1);
-			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, depth + 1, out, &k, exec_index);
-		} else {
-			_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, depth, out, &k);
+			if (i > 0)
+				fputc('|', out);
+			if (exec_info->inputs[i])
+			{
+				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->inputs[i]))
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->inputs[i], recovery, flags, depth, &k, out);
+				else {
+					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->inputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
+					++k;
+				}
+			} else
+				fputc('-', out);
+		}
+		fputs("}}", out);
+	}
+	if (exec_info->output_size > 0)
+	{
+		if (exec_info->input_size > 0)
+			fputs("|", out);
+		fputs("{Output|{", out);
+		for (i = 0; i < exec_info->output_size; i++)
+		{
+			if (i > 0)
+				fputc('|', out);
+			if (exec_info->outputs[i])
+			{
+				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[i]))
+					_ccv_nnc_graph_dot_tensor_multiview((ccv_nnc_tensor_multiview_t*)exec_info->outputs[i], recovery, flags, depth, &k, out);
+				else {
+					const ccv_nnc_tensor_dot_t* const tensor_dot = recovery.dots + recovery.remap[k];
+					_ccv_nnc_graph_dot_tensor(recovery.rename_index[tensor_dot->index], exec_info->outputs[i], recovery.rename_zone[tensor_dot->zone], flags, depth, out);
+					++k;
+				}
+			} else
+				fputc('-', out);
+		}
+		fputs("}}", out);
+	}
+	fputs("}\"];\n", out);
+	*tensor_index = k;
+}
+
+static void _ccv_nnc_graph_dot_sub_graphs(const ccv_nnc_graph_exec_info_t* const exec_info, const ccv_nnc_tensor_dot_recovery_t p_recovery, const ccv_array_t* const sub_graphs, const int flags, const int depth, FILE* out, int* tensor_index, int* exec_index)
+{
+	if (exec_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
+	{
+		fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];\n", *exec_index, *exec_index);
+		const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[0] - 1);
+		// Output this node info within this subgraph.
+		_ccv_nnc_graph_dot_while_label(exec_info, *exec_index, p_recovery, while_graph, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
+	} else if (exec_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
+		fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];\n", *exec_index, *exec_index);
+		_ccv_nnc_graph_dot_case_of_label(exec_info, *exec_index, p_recovery, flags, depth - 1 /* Label all references to its level above. */, out, tensor_index);
+	}
+	++(*exec_index);
+	int p;
+	for (p = 0; p < exec_info->graph_ref_size; p++)
+	{
+		if (exec_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+		{
+			fprintf(out, "subgraph cluster%d {\nstyle=\"rounded\";\nnode%d [style=invisible];\nlabel=\"\"\n", *exec_index, *exec_index);
 			++(*exec_index);
 		}
-	}
-	// Output connections.
-	for (i = 0; i < graph->exec_info->rnum; i++)
-	{
-		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
-		if (exec_info->outgoings)
-			for (j = 0; j < exec_info->outgoings->rnum; j++)
-			{
-				const int outgoing_idx = *(int*)ccv_array_get(exec_info->outgoings, j);
-				const ccv_nnc_graph_exec_info_t* const outgoing_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, outgoing_idx);
-				// If both are sub-graphs, have both tail and head specified.
-				if (CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
-					fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
-				else if (CCV_NNC_GRAPH_REF(exec_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_info)[0])
-					fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
-				else if (!CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
-					fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
-				else
-					fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
+		const ccv_nnc_graph_t* const graph = *(ccv_nnc_graph_t**)ccv_array_get(sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[p] - 1);
+		ccv_nnc_tensor_dot_recovery_t recovery = _ccv_nnc_graph_tensor_dot_recovery(graph);
+		int i, j;
+		int k = 0;
+		int* node_id = (int*)ccmalloc(sizeof(int) * graph->exec_info->rnum);
+		// Output styles.
+		for (i = 0; i < graph->exec_info->rnum; i++)
+		{
+			node_id[i] = *exec_index;
+			ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+			if (CCV_NNC_GRAPH_REF(exec_info)[0])
+				_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, depth + 1, out, &k, exec_index);
+			else {
+				_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, depth, out, &k);
+				++(*exec_index);
 			}
+		}
+		// Output connections.
+		for (i = 0; i < graph->exec_info->rnum; i++)
+		{
+			ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
+			if (exec_info->outgoings)
+				for (j = 0; j < exec_info->outgoings->rnum; j++)
+				{
+					const int outgoing_idx = *(int*)ccv_array_get(exec_info->outgoings, j);
+					const ccv_nnc_graph_exec_info_t* const outgoing_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, outgoing_idx);
+					// If both are sub-graphs, have both tail and head specified.
+					if (CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
+						fprintf(out, "node%d -> node%d [ltail=cluster%d,lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i], node_id[outgoing_idx]);
+					else if (CCV_NNC_GRAPH_REF(exec_info)[0] && !CCV_NNC_GRAPH_REF(outgoing_info)[0])
+						fprintf(out, "node%d -> node%d [ltail=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[i]);
+					else if (!CCV_NNC_GRAPH_REF(exec_info)[0] && CCV_NNC_GRAPH_REF(outgoing_info)[0])
+						fprintf(out, "node%d -> node%d [lhead=cluster%d];\n", node_id[i], node_id[outgoing_idx], node_id[outgoing_idx]);
+					else
+						fprintf(out, "node%d -> node%d;\n", node_id[i], node_id[outgoing_idx]);
+				}
+		}
+		fputs("}\n", out);
+		_ccv_nnc_graph_tensor_dot_recovery_free(recovery);
+		ccfree(node_id);
 	}
-	fputs("}\n", out);
-	_ccv_nnc_graph_tensor_dot_recovery_free(recovery);
-	ccfree(node_id);
+	// Extra subgraph cluster.
+	if (exec_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+		fputs("}\n", out);
 }
 
 void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE* out)
@@ -860,10 +934,8 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 		node_id[i] = c;
 		ccv_nnc_graph_exec_info_t* exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i);
 		if (CCV_NNC_GRAPH_REF(exec_info)[0])
-		{
-			const ccv_nnc_graph_t* const while_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec_info)[0] - 1);
-			_ccv_nnc_graph_dot_sub_graph(exec_info, recovery, while_graph, flags, 1, out, &k, &c);
-		} else {
+			_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, 1, out, &k, &c);
+		else {
 			_ccv_nnc_graph_dot_node(exec_info, c, recovery, flags, 0, out, &k);
 			++c;
 		}
