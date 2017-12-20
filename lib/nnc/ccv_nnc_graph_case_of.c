@@ -49,7 +49,7 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	// If case_of is larger than the inline graph_ref, we need to allocate.
 	if (case_of >= sizeof(exec_info->_inline_graph_ref) / sizeof(exec_info->_inline_graph_ref[0]))
 	{
-		if (!exec_info->graph_ref_size)
+		if (!exec_info->_heap_graph_ref)
 		{
 			exec_info->_heap_graph_ref = cccalloc(case_of + 1, sizeof(int));
 			// Copy from inline data.
@@ -61,7 +61,8 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 			memset(exec_info->_heap_graph_ref + exec_info->graph_ref_size, 0, sizeof(int) * (case_of + 1 - exec_info->graph_ref_size));
 			exec_info->graph_ref_size = case_of + 1;
 		}
-	}
+	} else
+		exec_info->graph_ref_size = ccv_max(exec_info->graph_ref_size, case_of + 1);
 	// Set the branch with the graph.
 	CCV_NNC_GRAPH_REF(exec_info)[case_of] = graph->sub_graphs->rnum;
 }
