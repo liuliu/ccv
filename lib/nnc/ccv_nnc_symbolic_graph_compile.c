@@ -48,9 +48,9 @@ enum {
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
 #define TENSOR_SET_ANONYMOUS(t) (t.flags = (t.flags & ~0x10 | ANONYMOUS))
 #define TENSOR_IS_ANONYMOUS(t) (t.flags & ANONYMOUS)
-#define TENSOR_SET_UNFOLDABLE_AS_INPUT(t) (t.flags = (t.flags & ~0x60 | UNFOLDABLE_AS_INPUT))
+#define TENSOR_SET_UNFOLDABLE_AS_INPUT(t) (t.flags = (t.flags | UNFOLDABLE_AS_INPUT))
 #define TENSOR_IS_UNFOLDABLE_AS_INPUT(t) (t.flags & UNFOLDABLE_AS_INPUT)
-#define TENSOR_SET_UNFOLDABLE_AS_OUTPUT(t) (t.flags = (t.flags & ~0x60 | UNFOLDABLE_AS_OUTPUT))
+#define TENSOR_SET_UNFOLDABLE_AS_OUTPUT(t) (t.flags = (t.flags | UNFOLDABLE_AS_OUTPUT))
 #define TENSOR_IS_UNFOLDABLE_AS_OUTPUT(t) (t.flags & UNFOLDABLE_AS_OUTPUT)
 
 typedef struct {
@@ -1610,10 +1610,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			// It can be folded as input (it is fine to be overwritten), but it cannot as output (when folded as input,
 			// it kept its own representation, which is not the case for output).
 			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
-			// But for where it comes from, it cannot be folded as output because its representation has to be kept, and
-			// it cannot be folded as input, because it cannot be overwritten any time.
+			// But for where it comes from, it cannot be folded as input, because it cannot be overwritten any time.
 			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
-			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			// TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 		}
 	const ccv_nnc_graph_exec_symbol_info_t* const  p_node = symbolic_graph->p ? (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1) : 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
@@ -2071,7 +2070,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 		for (j = 0; j < nth_unroll; j++)
 		{
 			const int dup_idx = dup_tensor_block_ref[j + i * nth_unroll];
-			if (dup_idx >= 0 && (tensor_blocks[i].p_refs[0] || tensor_blocks[i].p_refs[1]))
+			if (dup_idx >= 3 && (tensor_blocks[i].p_refs[0] || tensor_blocks[i].p_refs[1]))
 			{
 				const int p_ref_0 = tensor_blocks[i].p_refs[0] - 1;
 				const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
@@ -2094,13 +2093,16 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 			const int assign_ref = dup_tensor_symbol_info[i].assign_ref - 1;
 			if (assign_ref >= 0)
 			{
-				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[assign_ref]);
-				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[assign_ref], tensor_blocks[i]);
+				int b_ref = assign_ref;
+				while (tensor_blocks[b_ref].ref)
+					b_ref = tensor_blocks[b_ref].ref - 1;
+				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[b_ref]);
+				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[i]);
 				// It cannot be that both i can hop to j can j can hop to i.
 				// And it can be hop from one to another now after duplication.
 				assert(a_hop_b > 0 || b_hop_a > 0);
-				tensor_blocks[i].companion_ref = assign_ref + 1;
-				tensor_blocks[assign_ref].companion_ref = i + 1;
+				tensor_blocks[i].companion_ref = b_ref + 1;
+				tensor_blocks[b_ref].companion_ref = i + 1;
 			}
 		}
 	ccfree(dup_tensor_symbol_info);
