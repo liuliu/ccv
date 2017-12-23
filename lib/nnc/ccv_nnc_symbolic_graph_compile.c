@@ -14,6 +14,7 @@ typedef struct {
 	int ref; // Reference to another tensor block. Start with 1.
 	int graph_ref; // Reference to a particular graph. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
+	int unfoldable_except_ref; // Reference to a tensor block that can be the exception to unfoldable (as output). Start with 1.
 	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
 	uint64_t size; // The size of the tensor expected.
 	int p_refs[2]; // Reference to the parent tensor block, at max there will be only two. Start with 1.
@@ -1504,7 +1505,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 	if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) &&
 		!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_1]) &&
 		!TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_0]) &&
-		!TENSOR_IS_UNFOLDABLE_AS_OUTPUT(tensor_blocks[p_ref_1]) &&
+		(!TENSOR_IS_UNFOLDABLE_AS_OUTPUT(tensor_blocks[p_ref_1]) || tensor_blocks[p_ref_1].unfoldable_except_ref == p_ref_0 + 1) &&
 		tensor_blocks[p_ref_0].tail->rnum == 1 &&
 		tensor_blocks[p_ref_1].head->rnum == 1 &&
 		*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0))
@@ -1611,9 +1612,11 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			// it kept its own representation, which is not the case for output).
 			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
 			// But for where it comes from, it cannot be folded as input, because it cannot be overwritten any time.
-			// It also cannot be output, because we need to keep its own representation.
 			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			// It also cannot be folded as output (except i), because we need to keep its own representation.
 			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			assert(tensor_blocks[tensor_symbol_info[i].assign_ref - 1].unfoldable_except_ref == 0);
+			tensor_blocks[tensor_symbol_info[i].assign_ref - 1].unfoldable_except_ref = i + 1;
 			for (j = 0; j < unroll_count; j++)
 			{
 				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
@@ -1628,9 +1631,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		if (tensor_symbol_info[i].peer_ref)
 			TENSOR_EXPECT_SET_UNASSIGNED(tensor_blocks[i]);
 		// If it is a tape variable, set it to be un-foldable as too (otherwise we cannot use tape properly).
-		else if (tensor_symbol_info[i].flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
-			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]), TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
-		else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node) == 1)
+		else if (tensor_symbol_info[i].flags & CCV_NNC_SYM_TENSOR_TAPE_VAR) {
+			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
+			// For this case, there is no exception.
+			tensor_blocks[i].unfoldable_except_ref = 0;
+		} else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node) == 1)
 			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
