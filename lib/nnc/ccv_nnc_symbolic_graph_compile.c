@@ -1860,10 +1860,40 @@ static void _ccv_nnc_tensor_blocks_free(ccv_nnc_tensor_block_t* const tensor_blo
 	ccfree(tensor_blocks);
 }
 
+static void _ccv_nnc_tensor_blocks_companion_ref_hookup(const int p_idx, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_sparse_matrix_t* const exec_dep, const int* const p_inputs, const int* const p_outputs, const int p_io_size, ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
+{
+	int i;
+	for (i = 0; i < p_io_size; i++)
+	{
+		const int s_in_idx = (p_tensor_symbol_info[p_inputs[i]].s_ref && p_tensor_symbol_info[p_inputs[i]].s_ref->rnum > p_idx) ? *(int*)ccv_array_get(p_tensor_symbol_info[p_inputs[i]].s_ref, p_idx) - 1 : -1;
+		const int s_out_idx = (p_tensor_symbol_info[p_outputs[i]].s_ref && p_tensor_symbol_info[p_outputs[i]].s_ref->rnum > p_idx) ? *(int*)ccv_array_get(p_tensor_symbol_info[p_outputs[i]].s_ref, p_idx) - 1 : -1;
+		if (s_in_idx < 0 || s_out_idx < 0)
+			continue;
+		int a_ref = s_in_idx;
+		while (tensor_blocks[a_ref].ref)
+			a_ref = tensor_blocks[a_ref].ref - 1;
+		int b_ref = s_out_idx;
+		while (tensor_blocks[b_ref].ref)
+			b_ref = tensor_blocks[b_ref].ref - 1;
+		if (a_ref == b_ref || !TENSOR_EXPECT_ORDINARY(tensor_blocks[a_ref]) || !TENSOR_EXPECT_ORDINARY(tensor_blocks[b_ref]))
+			continue;
+		int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[a_ref]);
+		int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a_ref], tensor_blocks[b_ref]);
+		// It cannot be that both i can hop to j can j can hop to i.
+		assert(!(a_hop_b > 0 && b_hop_a > 0));
+		// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere).
+		if (a_hop_b || b_hop_a)
+		{
+			tensor_blocks[a_ref].companion_ref = b_ref + 1;
+			tensor_blocks[b_ref].companion_ref = a_ref + 1;
+		}
+	}
+}
+
 // Find tensors that cannot be solved by co-allocating to the same location.
 static int _ccv_nnc_exec_dep_and_tensor_blocks_unroll_count(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks)
 {
-	int i, j, nth = 0;
+	int i, j, unroll_count = 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
 		{
@@ -1903,14 +1933,14 @@ static int _ccv_nnc_exec_dep_and_tensor_blocks_unroll_count(const ccv_nnc_symbol
 						c_ref = tensor_blocks[c_ref].ref - 1;
 					c_ref = tensor_symbol_info[c_ref].assign_ref - 1;
 				}
-				nth = ccv_max(nth, j + 1);
+				unroll_count = ccv_max(unroll_count, j + 1);
 			}
 		}
 	// Reset companion_ref if need to unroll.
-	if (nth)
+	if (unroll_count)
 		for (j = 0; j < symbolic_graph->tensor_symbol_info->rnum; j++)
 			tensor_blocks[j].companion_ref = 0;
-	return nth;
+	return unroll_count;
 }
 
 static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const int unroll_count, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, ccv_nnc_symbolic_graph_t* const dup_graph, int* const r_dup_tensor_block_ref, int* const r_dup_exec_ref)
@@ -2194,6 +2224,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			_ccv_nnc_fixup_tensor_blocks_for_outputs(exec_dep, tensor_blocks, p_node, unroll_count, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, dup_exec_ref, dup_tensor_block_ref);
 		} else if (p_node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
 			// We will try our best to fit as much of its corresponding inputs / outputs into companion_ref group.
+			_ccv_nnc_tensor_blocks_companion_ref_hookup(symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_dep, p_node->inputs, p_node->outputs, ccv_min(p_node->input_size, p_node->output_size), tensor_blocks, tensor_block_size);
 		}
 	}
 	// In true recursive fashion, I need to call all the sub graphs and do the pre compilation for them one by one.
