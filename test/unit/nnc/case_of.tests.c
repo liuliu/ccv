@@ -77,9 +77,9 @@ TEST_CASE("symbolic graph for piece-wise function")
 	ccv_nnc_symbolic_graph_set_case_of_expr(symbolic_graph, case_of, piecewise_case_of, 0);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_0 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(1), "y0");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_0, 0, TENSOR_SYMBOL_MAP(KV(y0, y)));
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), 0, 0, TENSOR_SYMBOL_LIST(y0), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_0, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_0, 0, TENSOR_SYMBOL_MAP(KV(y0, y)));
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_1 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(1), "y1");
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_1, 1, TENSOR_SYMBOL_MAP(KV(y1, y)));
@@ -91,9 +91,9 @@ TEST_CASE("symbolic graph for piece-wise function")
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_1, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_2 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph_2, ONE_CPU_TENSOR(1), "y2");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph_2, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1.5), 0), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -117,6 +117,47 @@ TEST_CASE("symbolic graph for piece-wise function")
 	x_tensor->data.f32[0] = 2.1;
 	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 1.5, 1e-5, "y = 1.5 if x > 2");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+}
+
+TEST_CASE("symbolic graph case..of when reuse intermediate tensors")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(2), "y");
+	ccv_nnc_graph_exec_symbol_t case_of = ccv_nnc_symbolic_graph_case_of_new(symbolic_graph, CCV_NNC_GRAPH_FORWARD, TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_MAP(KV(x, y)), "piece-wise linear vector");
+	ccv_nnc_symbolic_graph_set_case_of_expr(symbolic_graph, case_of, piecewise_case_of, 0);
+	ccv_nnc_symbolic_graph_t* const symbolic_graph_0 = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t z0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2), "z0");
+	ccv_nnc_tensor_symbol_t u0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2, 2), "u0");
+	ccv_nnc_tensor_symbol_t w0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2, 2), "w0");
+	ccv_nnc_tensor_symbol_t b0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2), "b0");
+	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2), "c0");
+	ccv_nnc_tensor_symbol_t y0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(2), "y0");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_0, 0, TENSOR_SYMBOL_MAP(KV(y0, y)));
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(2), 0), TENSOR_SYMBOL_LIST(x, u0, b0), TENSOR_SYMBOL_LIST(z0), "mmu");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(2), 0), TENSOR_SYMBOL_LIST(z0, w0, c0), TENSOR_SYMBOL_LIST(y0), "mmw");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_0, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_t* const symbolic_graph_1 = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2), "z1");
+	ccv_nnc_tensor_symbol_t u1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2, 2), "u1");
+	ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2, 2), "w1");
+	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2), "b1");
+	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2), "c1");
+	ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(2), "y1");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_1, 1, TENSOR_SYMBOL_MAP(KV(y1, y)));
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(2), 0), TENSOR_SYMBOL_LIST(x, u1, b1), TENSOR_SYMBOL_LIST(z1), "mmu1");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(2), 0), TENSOR_SYMBOL_LIST(z1, w1, c1), TENSOR_SYMBOL_LIST(y1), "mmw1");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_1, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, &case_of, 1, &case_of, 1, &graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);
