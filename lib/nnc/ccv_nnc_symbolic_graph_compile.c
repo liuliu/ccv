@@ -12,7 +12,6 @@ typedef struct {
 	int flags;
 	int type;
 	int ref; // Reference to another tensor block. Start with 1.
-	int graph_ref; // Reference to a particular graph. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
 	int unfoldable_except_ref; // Reference to a tensor block that can be the exception to unfoldable (as output). Start with 1.
 	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
@@ -2286,11 +2285,15 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				}
 			}
 		}
+		const int init_tensor_block_size = tensor_block_size;
+		int rw_anonymous_buffer_size_cap = 0;
+		int ro_anonymous_buffer_size_cap = 0;
 		for (p = 0; p < node->graph_ref_size; p++)
 		{
 			ccv_nnc_symbolic_graph_prep_t* const sub_prep = sub_preps[CCV_NNC_GRAPH_REF(node)[p] - 1];
 			const ccv_nnc_tensor_alloc_prep_t* const s_alloc_prep = sub_prep->alloc_prep;
-			int anonymous_buffer_size = 0;
+			int rw_anonymous_buffer_size = 0;
+			int ro_anonymous_buffer_size = 0;
 			for (i = 0; i < s_alloc_prep->buffer_size; i++)
 				if (s_alloc_prep->buffers[i].p_refs[0])
 				{
@@ -2358,19 +2361,30 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							tensor_blocks[dup_tensor_block_ref[p_ref_0 * unroll_count + j]].size = tensor_blocks[p_ref_0].size;
 					} else {
 						s_alloc_prep->buffers[i].p_refs[0] = s_alloc_prep->buffers[i].p_refs[1] = 0;
-						++anonymous_buffer_size;
+						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
+							++ro_anonymous_buffer_size;
+						else
+							++rw_anonymous_buffer_size;
 					}
-				} else
-					++anonymous_buffer_size;
-			if (anonymous_buffer_size)
+				} else {
+					if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
+						++ro_anonymous_buffer_size;
+					else
+						++rw_anonymous_buffer_size;
+				}
+			if (ro_anonymous_buffer_size || rw_anonymous_buffer_size)
 			{
+				// All read-write buffer can be reused between each case..of branch.
+				rw_anonymous_buffer_size_cap += rw_anonymous_buffer_size;
+				// Read-only buffer cannot be reused between each case..of branch.
+				ro_anonymous_buffer_size_cap += ro_anonymous_buffer_size;
 				/* Anonymous block, allocate additional tensor blocks for this. */
 				/* This is either because this is an internal tensor (don't have p_ref) */
 				/* or it is an anonymous block itself within the sub graphs of this while graph. */
-				tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (tensor_block_size + (unroll_count + 1) * anonymous_buffer_size));
-				memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * (unroll_count + 1) * anonymous_buffer_size);
+				tensor_blocks = (ccv_nnc_tensor_block_t*)ccrealloc(tensor_blocks, sizeof(ccv_nnc_tensor_block_t) * (init_tensor_block_size + (unroll_count + 1) * rw_anonymous_buffer_size_cap + ro_anonymous_buffer_size_cap));
+				memset(tensor_blocks + tensor_block_size, 0, sizeof(ccv_nnc_tensor_block_t) * (init_tensor_block_size + (unroll_count + 1) * rw_anonymous_buffer_size_cap + ro_anonymous_buffer_size_cap - tensor_block_size));
 				if (dup_tensor_block_ref)
-					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * unroll_count * (tensor_block_size + anonymous_buffer_size));
+					dup_tensor_block_ref = (int*)ccrealloc(dup_tensor_block_ref, sizeof(int) * unroll_count * (init_tensor_block_size + rw_anonymous_buffer_size_cap + ro_anonymous_buffer_size_cap));
 				for (i = 0; i < s_alloc_prep->buffer_size; i++)
 					if (!s_alloc_prep->buffers[i].p_refs[0])
 					{
@@ -2379,7 +2393,6 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
 						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
 						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
-						tensor_blocks[tensor_block_size].graph_ref = CCV_NNC_GRAPH_REF(node)[0];
 						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
 						ccv_array_push(tensor_blocks[tensor_block_size].head, &idx);
 						ccv_array_t* const dup_p_refs = s_alloc_prep->buffers[i].dup_p_refs;
