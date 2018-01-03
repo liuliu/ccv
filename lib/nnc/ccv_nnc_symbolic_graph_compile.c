@@ -2374,7 +2374,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				}
 			if (ro_anonymous_buffer_size || rw_anonymous_buffer_size)
 			{
-				// All read-write buffer can be reused between each case..of branch.
+				// All read-write buffer (potentially) can be reused between each case..of branch.
 				rw_anonymous_buffer_size_cap += rw_anonymous_buffer_size;
 				// Read-only buffer cannot be reused between each case..of branch.
 				ro_anonymous_buffer_size_cap += ro_anonymous_buffer_size;
@@ -2388,31 +2388,31 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				for (i = 0; i < s_alloc_prep->buffer_size; i++)
 					if (!s_alloc_prep->buffers[i].p_refs[0])
 					{
-						TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]);
-						TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i]));
-						tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
-						tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
-						s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
-						tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
-						ccv_array_push(tensor_blocks[tensor_block_size].head, &idx);
-						ccv_array_t* const dup_p_refs = s_alloc_prep->buffers[i].dup_p_refs;
-						if (dup_p_refs && dup_p_refs->rnum > 0)
-						{
-							for (j = 0; j < dup_p_refs->rnum; j++)
-							{
-								const int dup_p_ref = *(int*)ccv_array_get(dup_p_refs, j) - 1;
-								assert(tensor_blocks[dup_p_ref].tail);
-								if (!tensor_blocks[tensor_block_size].tail)
-									tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_p_ref].tail->rnum, 0);
-								for (k = 0; k < tensor_blocks[dup_p_ref].tail->rnum; k++)
-									_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[dup_p_ref].tail, k), tensor_blocks[tensor_block_size]);
-							}
-						} else {
-							tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0);
-							ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx);
-						}
 						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, add all sources (destinations) to it. */
 						{
+							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]);
+							TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i]));
+							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
+							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
+							s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
+							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_push(tensor_blocks[tensor_block_size].head, &idx);
+							ccv_array_t* const dup_p_refs = s_alloc_prep->buffers[i].dup_p_refs;
+							if (dup_p_refs && dup_p_refs->rnum > 0)
+							{
+								for (j = 0; j < dup_p_refs->rnum; j++)
+								{
+									const int dup_p_ref = *(int*)ccv_array_get(dup_p_refs, j) - 1;
+									assert(tensor_blocks[dup_p_ref].tail);
+									if (!tensor_blocks[tensor_block_size].tail)
+										tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_p_ref].tail->rnum, 0);
+									for (k = 0; k < tensor_blocks[dup_p_ref].tail->rnum; k++)
+										_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[dup_p_ref].tail, k), tensor_blocks[tensor_block_size]);
+								}
+							} else {
+								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0);
+								ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx);
+							}
 							for (j = 0; j < source_size; j++)
 								_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[tensor_block_size]);
 							/* If this is a read-only (based on SSA, if first encountered as read), and this is
@@ -2420,22 +2420,43 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							if (symbolic_graph->p)
 								for (j = 0; j < destination_size; j++)
 									_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_block_size]);
-						}
-						++tensor_block_size;
-						/* ref and flags are both 0. */
-						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, it is self-reflecting. */
-						{
+							/* If it is read-only, it is self-reflecting. */
 							for (k = 0; k < unroll_count; k++)
 							{
 								for (j = 0; j < destination_size; j++)
 									if (dup_exec_ref[destinations[j].d * unroll_count + k] >= 0)
-									_ccv_nnc_tensor_block_add_exec(exec_dep, dup_exec_ref[destinations[j].d * unroll_count + k], tensor_blocks[tensor_block_size - 1]);
+									_ccv_nnc_tensor_block_add_exec(exec_dep, dup_exec_ref[destinations[j].d * unroll_count + k], tensor_blocks[tensor_block_size]);
 								/* No need to extend life-time, because this is a sub-graph and we already extended read-only to the end of destination. */
 								assert(symbolic_graph->p);
-								dup_tensor_block_ref[(tensor_block_size - 1) * unroll_count + k] = tensor_block_size - 1;
+								dup_tensor_block_ref[tensor_block_size * unroll_count + k] = tensor_block_size;
 							}
+							++tensor_block_size;
 						} else {
-							const int prev_tensor_block_idx = tensor_block_size - 1;
+							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]);
+							TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i]));
+							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
+							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
+							s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
+							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
+							ccv_array_push(tensor_blocks[tensor_block_size].head, &idx);
+							ccv_array_t* const dup_p_refs = s_alloc_prep->buffers[i].dup_p_refs;
+							if (dup_p_refs && dup_p_refs->rnum > 0)
+							{
+								for (j = 0; j < dup_p_refs->rnum; j++)
+								{
+									const int dup_p_ref = *(int*)ccv_array_get(dup_p_refs, j) - 1;
+									assert(tensor_blocks[dup_p_ref].tail);
+									if (!tensor_blocks[tensor_block_size].tail)
+										tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_p_ref].tail->rnum, 0);
+									for (k = 0; k < tensor_blocks[dup_p_ref].tail->rnum; k++)
+										_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[dup_p_ref].tail, k), tensor_blocks[tensor_block_size]);
+								}
+							} else {
+								tensor_blocks[tensor_block_size].tail = ccv_array_new(sizeof(int), 1, 0);
+								ccv_array_push(tensor_blocks[tensor_block_size].tail, &idx);
+							}
+							const int prev_tensor_block_idx = tensor_block_size;
+							++tensor_block_size;
 							for (k = 0; k < unroll_count; k++)
 							{
 								dup_tensor_block_ref[prev_tensor_block_idx * unroll_count + k] = tensor_block_size;
