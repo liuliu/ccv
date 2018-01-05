@@ -64,21 +64,56 @@ typedef struct {
 static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
-// If every a's head is deterministically after b's tail
-static int _ccv_nnc_tensor_block_head_after_tail(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t a, const ccv_nnc_tensor_block_t b)
+// If b has items overlap with a, a is still after b (inclusive).
+static int _ccv_nnc_tensor_block_a_after_b_inclusively(const ccv_sparse_matrix_t* const exec_dep, const ccv_array_t* const a, const ccv_array_t* const b)
 {
-	assert(a.head);
-	assert(b.tail);
+	assert(a);
+	assert(b);
 	int x, y;
-	for (x = 0; x < a.head->rnum; x++)
-		for (y = 0; y < b.tail->rnum; y++)
+	for (x = 0; x < b->rnum; x++)
+	{
+		const int p = *(int*)ccv_array_get(b, x);
+		int flag = 0;
+		// In extreme cases where a is a superset of b, then a is still after b, we are good.
+		for (y = 0; !flag && y < a->rnum; y++)
 		{
-			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a.head, x), *(int*)ccv_array_get(b.tail, y));
+			const int q = *(int*)ccv_array_get(a, y);
+			flag = (p == q);
+		}
+		if (!flag)
+			for (y = 0; y < a->rnum; y++)
+			{
+				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a, y), p);
+				if (!cell.i32 || cell.i32[0] == 0)
+					return 0;
+			}
+	}
+	// If b->rnum == 0, a is after b for sure.
+	// Otherwise, if a->rnum == 0, we don't check any, buf if b->rnum > 0, then we cannot say a is after b.
+	// if both a->rnum > 0 and b->rnum > 0, above logic should checked all.
+	return (a->rnum > 0 || b->rnum == 0);
+}
+
+static int _ccv_nnc_tensor_block_a_after_b_exclusively(const ccv_sparse_matrix_t* const exec_dep, const ccv_array_t* const a, const ccv_array_t* const b)
+{
+	assert(a);
+	assert(b);
+	int x, y;
+	for (x = 0; x < a->rnum; x++)
+		for (y = 0; y < b->rnum; y++)
+		{
+			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a, x), *(int*)ccv_array_get(b, y));
 			if (!cell.i32 || cell.i32[0] == 0)
 				return 0;
 		}
-	// We've entered this nested-for loop, therefore, it must be verifiably, deterministically after b's tail now.
-	return (a.head->rnum > 0 && b.tail->rnum > 0);
+	// We've entered this nested-for loop, therefore, it must be verifiably, deterministically after b now.
+	return (a->rnum > 0 && b->rnum > 0);
+}
+
+// If every a's head is deterministically after b's tail
+static int _ccv_nnc_tensor_block_head_after_tail(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t a, const ccv_nnc_tensor_block_t b)
+{
+	return _ccv_nnc_tensor_block_a_after_b_exclusively(exec_dep, a.head, b.tail);
 }
 
 typedef struct {
@@ -2190,16 +2225,84 @@ static int _ccv_nnc_anonymous_tensor_block_from_free_list(const ccv_nnc_tensor_b
 		if (CCV_TENSOR_GET_MEMORY(tensor_blocks[idx].type) != CCV_TENSOR_GET_MEMORY(type) ||
 			CCV_TENSOR_GET_DEVICE_ID(tensor_blocks[idx].type) != CCV_TENSOR_GET_DEVICE_ID(type))
 			continue;
+		// Heuristic about how to select the best tensor block to move forward.
 		// If the size is larger, and no dup_p_refs, found, I cannot do better than this, just return directly.
-		if (tensor_blocks[idx].size >= size && no_dup_p_refs)
-			return idx;
-		// TODO: implement heuristic about how to select the best tensor block to move forward.
-		if (found_idx == tensor_block_size) // If no found_idx yet, set the current one to be the found one, and continue.
+		if (tensor_blocks[idx].size >= size)
+		{
+			if (no_dup_p_refs)
+				return idx;
+			// Otherwise, only if the current tensor block's dup_p_refs is after (or at) the dup_p_refs,
+			// then we cannot do better than this, if that is the case, just return.
+			if (tensor_blocks[idx].dup_p_refs && tensor_blocks[idx].dup_p_refs->rnum &&
+				_ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[idx].dup_p_refs, dup_p_refs))
+				return idx;
+		}
+		int64_t found_idx_size_diff;
+		int64_t idx_size_diff;
+		if (found_idx == tensor_block_size || // If no found_idx yet, set the current one to be the found one, and continue.
+			// Now, compare whether this one or the found_idx one is better.
+			// At this point, there is no point of comparing the dup_p_refs, we only care about which one
+			// is closer to the size we request. Only on a tie, dup_p_refs or not is important again.
+			(found_idx_size_diff = llabs((int64_t)tensor_blocks[found_idx].size - (int64_t)size)) < (idx_size_diff = llabs((int64_t)tensor_blocks[idx].size - (int64_t)size)))
 		{
 			found_idx = idx;
 			continue;
 		}
-		// Now, compare whether this one or the found_idx one is better.
+		// No need to update if found_idx is better than idx.
+		if (found_idx_size_diff > idx_size_diff)
+			continue;
+		// We bias towards the bigger one in case of similar.
+		if (found_idx_size_diff == idx_size_diff && tensor_blocks[idx].size > tensor_blocks[found_idx].size)
+		{
+			found_idx = idx;
+			continue;
+		}
+		assert(tensor_blocks[idx].size == tensor_blocks[found_idx].size);
+		// On a tie, check which one has tighter life-cycle.
+		if (tensor_blocks[idx].size >= size) // If this block size covers the size we request, we prefer longer life-cycle ones.
+		{
+			// Check whether the current tensor blocks life-cycle is longer than the previous one.
+			if (tensor_blocks[idx].dup_p_refs && tensor_blocks[idx].dup_p_refs->rnum > 0 &&
+				(!tensor_blocks[found_idx].dup_p_refs || !tensor_blocks[found_idx].dup_p_refs->rnum ||
+				 _ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[idx].dup_p_refs, tensor_blocks[found_idx].dup_p_refs)))
+				found_idx = idx;
+			continue;
+		}
+		// Now both our size is smaller than requested size, in this case, we need to increase the tensor block size.
+		// We prefer to choose the one that has life-cycle closer to the expected ones.
+		if (no_dup_p_refs)
+		{
+			// Whoever is shorter wins.
+			if (tensor_blocks[found_idx].dup_p_refs && tensor_blocks[found_idx].dup_p_refs->rnum > 0 &&
+				(!tensor_blocks[idx].dup_p_refs || !tensor_blocks[idx].dup_p_refs->rnum ||
+				 _ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[found_idx].dup_p_refs, tensor_blocks[idx].dup_p_refs)))
+				found_idx = idx;
+			continue;
+		}
+		if (!tensor_blocks[idx].dup_p_refs || !tensor_blocks[idx].dup_p_refs->rnum)
+			continue;
+		if (!tensor_blocks[found_idx].dup_p_refs || !tensor_blocks[found_idx].dup_p_refs->rnum)
+		{
+			found_idx = idx;
+			continue;
+		}
+		// If both covers the request dup_p_refs, we prefer the shorter one, otherwise we prefer the longer one.
+		const int idx_after_request = _ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[idx].dup_p_refs, dup_p_refs);
+		const int found_idx_after_request = _ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[found_idx].dup_p_refs, dup_p_refs);
+		if (idx_after_request && found_idx_after_request)
+		{
+			if (_ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[found_idx].dup_p_refs, tensor_blocks[idx].dup_p_refs))
+				found_idx = idx;
+			continue;
+		} else {
+			// We entered this branch must be either idx_after_request is false or found_idx_after_request is false or both.
+			// If found_idx_after_request is not false, we are currently doing fine, no need to proceed.
+			// Otherwise, if idx_after_request is true, it is preferred. If both are false, then prefer the longer one.
+			if (!found_idx_after_request && (idx_after_request ||
+				_ccv_nnc_tensor_block_a_after_b_inclusively(exec_dep, tensor_blocks[idx].dup_p_refs, tensor_blocks[found_idx].dup_p_refs)))
+				found_idx = idx;
+			continue;
+		}
 	}
 	return found_idx;
 }
