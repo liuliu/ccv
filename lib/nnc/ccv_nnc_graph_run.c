@@ -87,6 +87,20 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 			node->outputs[i] = tensor_nests[d + i]->tensors[tensor_nests[d + i]->index];
 }
 
+static void _ccv_nnc_graph_exec_unwrap_phi(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const node, const int ref)
+{
+	int i;
+	// If the output tensor is a phi multi-view tensor, we broadcast our selection to all the subscribers.
+	for (i = 0; i < node->output_size; i++)
+		if (CCV_IS_TENSOR_MULTIVIEW(node->outputs[i]) &&
+			((ccv_nnc_tensor_multiview_t*)node->outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)
+		{
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)node->outputs[i];
+			mv->it = CCV_NNC_MULTIVIEW_DATA(mv)[ref >= 0];
+			ccv_nnc_tensor_multiview_broadcast(mv);
+		}
+}
+
 static void _ccv_nnc_graph_exec_broadcast(ccv_nnc_graph_exec_info_t* const node)
 {
 	if (!node->tensor_nest_size)
@@ -97,7 +111,7 @@ static void _ccv_nnc_graph_exec_broadcast(ccv_nnc_graph_exec_info_t* const node)
 		if (tensor_nests[i] && tensor_nests[i]->broadcast_required)
 		{
 			assert(tensor_nests[i]->index > 0);
-			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			// Now broadcast the final pointer.
 			ccv_nnc_tensor_multiview_broadcast(mv);
 			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
@@ -150,6 +164,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 					ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[ref] - 1); \
 					_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
 				} \
+				_ccv_nnc_graph_exec_unwrap_phi(graph, node, ref); \
 			} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) { \
 				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1); \
 				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \

@@ -460,6 +460,7 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	ccv_nnc_tensor_t** _heap_data;
 } ccv_nnc_tensor_multiview_t;
 #define CCV_NNC_MULTIVIEW_DATA(x) ((x)->_heap_data ? (x)->_heap_data : (x)->_inline_data)
+#define CCV_NNC_MULTIVIEW_PHI (intptr_t)0x1 // Denote this is a phi multi-view tensor.
 
 enum {
 	CCV_NNC_MULTIVIEW_K0N = 0, // All of them are repeated.

@@ -112,11 +112,17 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 	int i;
 	int has_nest = 0;
 	for (i = 0; i < info->input_size && !has_nest; i++)
-		has_nest = (info->inputs[i] && CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]));
+		has_nest = (info->inputs[i] &&
+			CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
+			((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
 	for (i = 0; i < info->output_size && !has_nest; i++)
-		has_nest = (info->outputs[i] && CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]));
+		has_nest = (info->outputs[i] &&
+			CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
+			((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
 	for (i = 0; i < info->broadcast_size && !has_nest; i++)
-		has_nest = (info->broadcasts[i] && CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]));
+		has_nest = (info->broadcasts[i] &&
+			CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]) &&
+			((ccv_nnc_tensor_multiview_t*)info->broadcasts[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
 	if (has_nest)
 	{
 		const int tensor_nest_size = info->input_size + info->output_size + info->broadcast_size;
@@ -131,7 +137,8 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 		for (i = 0; i < info->input_size; i++)
 			if (info->inputs[i])
 			{
-				if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]))
+				if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
+					((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 				{
 					if (!info->tensor_nests[i] || info->inputs[i] != info->tensor_nests[i]->tensors[0])
 					{
@@ -149,7 +156,8 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 		for (i = 0; i < info->output_size; i++)
 			if (info->outputs[i])
 			{
-				if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]))
+				if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
+					((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 				{
 					if (!info->tensor_nests[d + i] || info->outputs[i] != info->tensor_nests[d + i]->tensors[0])
 					{
@@ -165,7 +173,8 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 			}
 		const int dd = info->input_size + info->output_size;
 		for (i = 0; i < info->broadcast_size; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]))
+			if (CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]) &&
+				((ccv_nnc_tensor_multiview_t*)info->broadcasts[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 			{
 				if (!info->tensor_nests[dd + i] || info->broadcasts[dd + i] != info->tensor_nests[i]->tensors[0])
 				{
