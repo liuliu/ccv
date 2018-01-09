@@ -27,7 +27,7 @@ TEST_CASE("graph for a piece-wise linear function")
 {
 	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x));
+	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x), 0, 0);
 	ccv_nnc_graph_set_case_of_expr(graph, case_of, piecewise_case_of, 0);
 	ccv_nnc_graph_t* graph_0 = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t set_0 = ccv_nnc_graph_exec_new(graph_0, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(x));
@@ -111,6 +111,9 @@ TEST_CASE("symbolic graph for piece-wise function")
 	x_tensor->data.f32[0] = -1;
 	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 0, 1e-5, "in negative region should equal to 0");
+	x_tensor->data.f32[0] = 0.76;
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 0.76, 1e-5, "y = x in (0, 1)");
 	x_tensor->data.f32[0] = 1.226;
 	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], (1.226 - 1) * 0.5 + 1, 1e-5, "y = (x - 1) * 0.5 + 1 in (1, 2)");

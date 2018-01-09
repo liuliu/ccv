@@ -891,6 +891,27 @@ static int _ccv_nnc_tensor_multiview_preserve_gen(ccv_array_t* const tensor_meta
 	return mv_pos;
 }
 
+static int _ccv_nnc_tensor_flat_if_multiview(ccv_array_t* const tensor_metadata, const int pos)
+{
+	ccv_nnc_tensor_t* tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
+	const int is_multiview = CCV_IS_TENSOR_MULTIVIEW(tensor_ptr);
+	if (!is_multiview)
+		return pos;
+	while (CCV_IS_TENSOR_MULTIVIEW(tensor_ptr))
+	{
+		const ccv_nnc_tensor_multiview_t* const mv = (const ccv_nnc_tensor_multiview_t*)tensor_ptr;
+		tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[0]);
+	}
+	const ccv_nnc_tensor_t tensor = *tensor_ptr;
+	const int new_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
+	ccv_nnc_tensor_t* const new_tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, new_pos);
+	*new_tensor = ccv_nnc_tensor(tensor.data.u8, tensor.info, 0);
+	ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, pos);
+	new_tensor->alias_ref = (uintptr_t)pos;
+	ccv_nnc_tensor_reference_to_multiview(mv, (ccv_nnc_tensor_t*)(intptr_t)new_pos);
+	return new_pos;
+}
+
 static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const p_arena, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size)
 {
 	// All tensors assigned out, now, the num_assigned is the number of dis-continuous buffers,
@@ -1034,7 +1055,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assert(sub_arena_out_tensors[idx] == 0);
 				// Only assign if it is a multiview tensor.
 				if (CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
+				{
+					assert(node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE);
 					sub_arena_out_tensors[idx] = sub_tensor;
+				}
 			}
 		}
 	// Assigning out the tensors (in case of sharing tensors / in-place ops).
@@ -1141,6 +1165,32 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			}
 		}
 	}
+	// For case..of statement, the output is a phi variable, thus, if we take the skip branch, we will select the original input.
+	// This created the multi-view tensor to achieve that.
+	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
+		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+			for (i = 0; i < node->output_size; i++)
+			{
+				const int idx = node->outputs[i];
+				if (tensor_arena->vt_tensors[idx])
+				{
+					// Create phi multi-view.
+					const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+					const int intv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[node->inputs[i]]);
+					const int outv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
+					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, mv_pos);
+					ccv_nnc_tensor_t* const intv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, intv_pos);
+					ccv_nnc_tensor_t* const outv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, outv_pos);
+					ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+						intv,
+						outv,
+					}, CCV_NNC_MULTIVIEW_K0N, 2, (ccv_nnc_graph_t*)CCV_NNC_MULTIVIEW_PHI, mv);
+					CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)intv_pos;
+					CCV_NNC_MULTIVIEW_DATA(mv)[1] = (ccv_nnc_tensor_t*)(intptr_t)outv_pos;
+					tensor_arena->vt_tensors[idx] = (ccv_nnc_tensor_t*)(intptr_t)mv_pos;
+				}
+			}
+	} ccv_nnc_graph_visit_endfor
 	// Now it is time to handle alias.
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
@@ -1184,14 +1234,17 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					// Otherwise initialize a tensor view
 					// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
 					if (memcmp(alias_tensor.info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+					{
 						*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
-					else {
+						tensor_view->alias_ref = (uintptr_t)alias_pos;
+					} else {
 						// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
 						ccv_nnc_tensor_param_t info = tensor_symbol_info[block_ref].info;
 						memcpy(info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(alias_tensor.info));
 						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(alias_tensor.data.u8, info, 0);
 						*tensor_view = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+						tensor_view->alias_ref = (uintptr_t)alias_pos;
 					}
 					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 					if (is_multiview)
@@ -1240,10 +1293,41 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 			}
 		}
+	// After alias created, for case..of statement, we now revert back to flat tensor rather than multi-view.
+	// No worries though, this new tensor is subscribed for the phi multi-view. More over, we have logic
+	// when initialize case..of node, which will take the phi multi-view again.
+	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
+		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+			for (i = 0; i < node->output_size; i++)
+			{
+				const int idx = node->outputs[i];
+				if (tensor_arena->vt_tensors[idx])
+				{
+					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
+					assert(mv->anchor == CCV_NNC_MULTIVIEW_PHI);
+					tensor_arena->vt_tensors[idx] = (ccv_nnc_tensor_t*)(intptr_t)_ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
+				}
+			}
+	} ccv_nnc_graph_visit_endfor
 	// Everything is done, rewire vt_tensor to real locations. From now on, no push to tensor_metadata is possible.
 	for (i = 0, j = 0; i < tensor_symbol_info_size; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_arena->vt_tensors[i])
-			tensor_arena->m_tensors[j++] = tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor_arena->vt_tensors[i]);
+		{
+			ccv_nnc_tensor_t* const tensor = CCV_NNC_IS_METADATA_POS(tensor_arena->vt_tensors[i]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]) : tensor_arena->vt_tensors[i];
+			// Handle the alias_ref differently for phi multi-view. Lookahead of alias_ref first.
+			if (tensor->alias_ref)
+			{
+				ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, (ccv_nnc_tensor_t*)tensor->alias_ref);
+				// If this is the phi node, rewire.
+				if (CCV_IS_TENSOR_MULTIVIEW(mv) && mv->anchor == CCV_NNC_MULTIVIEW_PHI)
+					tensor_arena->m_tensors[j++] = (ccv_nnc_tensor_t*)mv; // the m_tensors will just hold the phi multi-view node.
+				else
+					tensor_arena->m_tensors[j++] = tensor;
+			} else
+				tensor_arena->m_tensors[j++] = tensor;
+			// Performing rewire.
+			_ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor);
+		}
 	assert(j == m_tensor_size);
 	// rewire the rest. I can rewire multiple times because I can identify whether this is wired or not.
 	for (i = 0; i < tensor_symbol_info_size; i++)
@@ -2820,7 +2904,10 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				ccv_nnc_graph_set_while_expr(sub_graph, node->p_while.expr, node->p_while.data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size);
 			} else if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
-				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs, node->input_size);
+				for (i = 0; i < node->output_size; i++)
+					if (max_outputs[i] && max_outputs[i]->alias_ref)
+						max_outputs[i] = (ccv_nnc_tensor_t*)max_outputs[i]->alias_ref;
+				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs, node->input_size, max_outputs, node->output_size);
 				ccv_nnc_graph_set_case_of_expr(graph, graph_execs[idx], node->case_of.expr, node->case_of.data);
 				for (i = 0; i < node->graph_ref_size; i++)
 				{
@@ -2881,7 +2968,10 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					ccv_nnc_graph_set_while_expr(sub_graph, outgoing_node->p_while.expr, outgoing_node->p_while.data, max_breakpoints, sub_symbolic_graph->breakpoint_size);
 					ccv_nnc_graph_exec_set_io(graph, graph_execs[outgoing], max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 				} else if (outgoing_node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
-					graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, outgoing_node->cmd.cmd, max_inputs, outgoing_node->input_size);
+					for (j = 0; j < outgoing_node->output_size; j++)
+						if (max_outputs[j] && max_outputs[j]->alias_ref)
+							max_outputs[j] = (ccv_nnc_tensor_t*)max_outputs[j]->alias_ref;
+					graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, outgoing_node->cmd.cmd, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 					ccv_nnc_graph_set_case_of_expr(graph, graph_execs[idx], outgoing_node->case_of.expr, outgoing_node->case_of.data);
 					for (i = 0; i < outgoing_node->graph_ref_size; i++)
 					{
