@@ -74,6 +74,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 			symbol_info->outputs = symbol_info->inputs + symbol_info->input_size;
 			memcpy(symbol_info->inputs, inputs, sizeof(int) * (symbol_info->input_size + symbol_info->output_size));
 		}
+		if (symbol_info->_heap_graph_ref)
+		{
+			int* const heap_graph_ref = symbol_info->_heap_graph_ref;
+			symbol_info->_heap_graph_ref = (int*)ccmalloc(sizeof(int) * symbol_info->graph_ref_size);
+			memcpy(symbol_info->_heap_graph_ref, heap_graph_ref, sizeof(int) * symbol_info->graph_ref_size);
+		}
 	}
 	if (graph->sources)
 	{
@@ -119,7 +125,14 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 					.graph = graph,
 				}, symbol_info->cmd);
 				if (symbol_info->cmd.cmd != CCV_NNC_GRAPH_FORWARD && symbol_info->cmd.cmd != CCV_NNC_GRAPH_BACKWARD)
-					CCV_NNC_GRAPH_REF(symbol_info)[0] = 0;
+				{
+					symbol_info->graph_ref_size = 0;
+					if (symbol_info->_heap_graph_ref)
+					{
+						ccfree(symbol_info->_heap_graph_ref);
+						symbol_info->_heap_graph_ref = 0;
+					}
+				}
 			}
 		}
 	}

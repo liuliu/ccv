@@ -93,8 +93,6 @@ struct ccv_nnc_tensor_arena_s {
 	// This is a table of tensor references to real allocated tensors.
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
-	int m_tensor_size;
-	ccv_nnc_tensor_t** m_tensors;
 	// This is the allocated non-continuous buffers.
 	int buffer_size;
 	struct {
@@ -104,6 +102,7 @@ struct ccv_nnc_tensor_arena_s {
 	// Real allocated tensor header metadata (this is a mixed pool of ccv_tensor_t, ccv_tensor_view_t,
 	// ccv_tensor_multiview_t, thus, it is aligned to a 16-byte boundary).
 	ccv_array_t* tensor_metadata;
+	ccv_array_t* m_tensor_idx; // The index into multi-view tensors in tensor_metadata.
 };
 
 struct ccv_nnc_graph_exec_arena_s {
