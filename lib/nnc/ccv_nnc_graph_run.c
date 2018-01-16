@@ -74,9 +74,9 @@ static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, cc
 			assert(tensor_nests[i]->index > 0);
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
-			assert(mv->anchor == (intptr_t)graph || mv->anchor == (intptr_t)graph->peer);
 			// Only now set the mv->it, because now this node is about to get executed.
 			mv->it = tensor_nests[i]->tensors[tensor_nests[i]->index];
+			assert(!CCV_IS_TENSOR_MULTIVIEW(mv->it));
 		}
 	for (i = 0; i < node->input_size; i++)
 		if (tensor_nests[i])

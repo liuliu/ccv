@@ -185,6 +185,7 @@ TEST_CASE("symbolic while graph contains a case..of graph and multiply its outpu
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "y");
 	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_5, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_graph_exec_symbol_t case_of = ccv_nnc_symbolic_graph_case_of_new(while_graph, CCV_NNC_GRAPH_FORWARD, TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_MAP(KV(x, y)), "piece-wise linear vector");
+	ccv_nnc_symbolic_graph_set_case_of_expr(while_graph, case_of, piecewise_case_of, 0);
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, case_of);
 	ccv_nnc_symbolic_graph_set_sources(while_graph, GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(case_of));
@@ -218,6 +219,19 @@ TEST_CASE("symbolic while graph contains a case..of graph and multiply its outpu
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
+	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
+	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	ccv_nnc_tensor_t* s1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, s1);
+	s1_tensor->data.f32[0] = 0.5;
+	ccv_nnc_tensor_t* p1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, p1);
+	p1_tensor->data.f32[0] = 0.5;
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, a);
+	a_tensor->data.f32[0] = 0.3;
+	x_tensor->data.f32[0] = 1.226;
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
+	REQUIRE_EQ_WITH_TOLERANCE((1 + 0.226 * 0.5 * 0.5 * 0.5 * 0.5 * 0.5) * 0.3, z_tensor->data.f32[0], 1e-6, "The piece-wise linear function applied 5 times");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);

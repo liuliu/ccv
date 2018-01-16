@@ -598,7 +598,6 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 	if (tensor_block_pos[block_ref])
 		return tensor_block_pos[block_ref];
 	int i;
-	const int unroll_count = prep->unroll_count;
 	int unref_block_ref = block_ref;
 	while (prep->tensor_blocks[unref_block_ref].ref)
 		unref_block_ref = prep->tensor_blocks[unref_block_ref].ref - 1;
@@ -612,8 +611,11 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 	{
 		assert(p_ref >= 0);
 		const ccv_nnc_symbolic_graph_prep_t* const graph_prep = preps[i];
+		const int unroll_count = graph_prep->unroll_count;
 		if (ch[i]) // Prefer the dup side of things.
 			p_ref = graph_prep->dup_tensor_block_ref[p_ref * unroll_count + ch[i] - 1];
+		while (graph_prep->tensor_blocks[p_ref].ref)
+			p_ref = graph_prep->tensor_blocks[p_ref].ref - 1;
 		vt_ref = graph_prep->alloc_prep->vt_blocks[p_ref];
 		const int buffer_ref = graph_prep->alloc_prep->blocks[vt_ref].buffer_ref;
 		offset += graph_prep->alloc_prep->blocks[vt_ref].offset;
@@ -629,9 +631,10 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 			const int tv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 			ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, tv_pos);
 			*tv = ccv_nnc_tensor(graph_prep->tensor_arena->buffers[buffer_ref].ptr + offset, params, 0);
-			tensor_block_pos[block_ref] = tv_pos;
-			if (prep->tensor_blocks[unref_block_ref].companion_ref)
-				tensor_block_pos[prep->tensor_blocks[unref_block_ref].companion_ref - 1] = tv_pos;
+			// TODO: The tensor_block_pos reuse logic breaks down once it loop over to the parent tensor arena.
+			// tensor_block_pos[block_ref] = tv_pos;
+			// if (prep->tensor_blocks[unref_block_ref].companion_ref)
+			// 	tensor_block_pos[prep->tensor_blocks[unref_block_ref].companion_ref - 1] = tv_pos;
 			return tv_pos;
 		}
 		p_ref = graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
@@ -975,10 +978,10 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		{
 			const int p_ref = alloc_prep->buffers[i].p_refs[0] - 1;
 			assert(p_ref >= 0);
-			const int p_nth_unroll = p_graph_prep->unroll_count;
+			const int p_unroll_count = p_graph_prep->unroll_count;
 			if (p_graph_prep->dup_tensor_block_ref &&
-				p_graph_prep->dup_tensor_block_ref[p_ref * p_nth_unroll] >= 0 &&
-				p_graph_prep->dup_tensor_block_ref[p_ref * p_nth_unroll] != p_ref)
+				p_graph_prep->dup_tensor_block_ref[p_ref * p_unroll_count] >= 0 &&
+				p_graph_prep->dup_tensor_block_ref[p_ref * p_unroll_count] != p_ref)
 			{
 				// This condition means in the parent graph, we point to multiple tensor blocks for the same
 				// buffer, therefore, we cannot have one single pointer assigned in this case.
