@@ -592,12 +592,14 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 	return tensor;
 }
 
-static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata, int* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const int block_ref, const int* const ch, const int idx, const ccv_nnc_symbolic_graph_prep_t* prep)
+typedef struct {
+	const uint8_t* ptr;
+	int pos;
+} ccv_nnc_tensor_block_pos_t;
+
+static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata, intptr_t* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const int block_ref, const int* const ch, const int idx, const ccv_nnc_symbolic_graph_prep_t* prep)
 {
-	// If already have pos assigned, return.
-	if (tensor_block_pos[block_ref])
-		return tensor_block_pos[block_ref];
-	int i;
+	int i, j;
 	int unref_block_ref = block_ref;
 	while (prep->tensor_blocks[unref_block_ref].ref)
 		unref_block_ref = prep->tensor_blocks[unref_block_ref].ref - 1;
@@ -628,13 +630,29 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 			for (--i; i >= 0; i--)
 				if (ch[i] != 0)
 					return 0;
+			ccv_array_t* tensor_block_pos_ptr = (ccv_array_t*)tensor_block_pos[unref_block_ref];
+			if (!tensor_block_pos_ptr)
+			{
+				tensor_block_pos_ptr = ccv_array_new(sizeof(ccv_nnc_tensor_block_pos_t), 1, 0);
+				tensor_block_pos[unref_block_ref] = (intptr_t)tensor_block_pos_ptr;
+				if (prep->tensor_blocks[unref_block_ref].companion_ref)
+					tensor_block_pos[prep->tensor_blocks[unref_block_ref].companion_ref - 1] = (intptr_t)tensor_block_pos_ptr;
+			}
+			// Try to find the created tensor block pos in the array, just linear scan.
+			for (j = 0; j < tensor_block_pos_ptr->rnum; j++)
+			{
+				ccv_nnc_tensor_block_pos_t* const pos_ptr = (ccv_nnc_tensor_block_pos_t*)ccv_array_get(tensor_block_pos_ptr, j);
+				if (pos_ptr->ptr == ptr)
+					return pos_ptr->pos;
+			}
 			const int tv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_t));
 			ccv_nnc_tensor_t* const tv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, tv_pos);
 			*tv = ccv_nnc_tensor(graph_prep->tensor_arena->buffers[buffer_ref].ptr + offset, params, 0);
-			// TODO: The tensor_block_pos reuse logic breaks down once it loop over to the parent tensor arena.
-			// tensor_block_pos[block_ref] = tv_pos;
-			// if (prep->tensor_blocks[unref_block_ref].companion_ref)
-			// 	tensor_block_pos[prep->tensor_blocks[unref_block_ref].companion_ref - 1] = tv_pos;
+			const ccv_nnc_tensor_block_pos_t pos_ptr = {
+				.ptr = ptr,
+				.pos = tv_pos,
+			};
+			ccv_array_push(tensor_block_pos_ptr, &pos_ptr);
 			return tv_pos;
 		}
 		p_ref = graph_prep->alloc_prep->buffers[buffer_ref].p_refs[0] - 1;
@@ -643,7 +661,7 @@ static int _ccv_nnc_tensor_multiview_find_pos(ccv_array_t* const tensor_metadata
 }
 
 // Descent from root to the prep level, and compose multiview from there.
-static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_metadata, int* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const int preserve, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref, int* ch, const int idx, int* const pos_ref)
+static int _ccv_nnc_tensor_multiview_down_find_pos(ccv_array_t* const tensor_metadata, intptr_t* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const int preserve, const ccv_nnc_symbolic_graph_prep_t* const *const preps, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int block_ref, int* ch, const int idx, int* const pos_ref)
 {
 	assert(pos_ref);
 	int i;
@@ -865,7 +883,7 @@ static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const t
 	}
 }
 
-static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, int* const tensor_block_pos, const int preserve, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena, const int block_ref)
+static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, intptr_t* const tensor_block_pos, const int preserve, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_arena_t* const tensor_arena, const int block_ref)
 {
 	// Go to the root of the graph.
 	const ccv_nnc_symbolic_graph_prep_t* prep = graph_prep;
@@ -889,7 +907,7 @@ static int _ccv_nnc_tensor_multiview_gen(ccv_array_t* const tensor_metadata, int
 	return pos;
 }
 
-static int _ccv_nnc_tensor_multiview_preserve_gen(ccv_array_t* const tensor_metadata, int* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_tensor_t* const tensor)
+static int _ccv_nnc_tensor_multiview_preserve_gen(ccv_array_t* const tensor_metadata, intptr_t* const tensor_block_pos, const ccv_nnc_tensor_param_t params, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_tensor_t* const tensor)
 {
 	const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
 	ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, mv_pos);
@@ -1044,7 +1062,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		else
 			tensor_arena->sub_arenas[i] = 0;
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);
-	int* const tensor_block_pos = tensor_block_size > 0 ? (int*)cccalloc(tensor_block_size, sizeof(int)) : 0;
+	intptr_t* const tensor_block_pos = tensor_block_size > 0 ? (intptr_t*)cccalloc(tensor_block_size, sizeof(intptr_t)) : 0;
 	// Now sub-arenas are all assigned, go over its outputs to assign out tensors from its output directly.
 	ccv_nnc_tensor_t** sub_arena_out_tensors = tensor_arena->sub_arena_size ? (ccv_nnc_tensor_t**)cccalloc(tensor_symbol_info_size, sizeof(ccv_nnc_tensor_t*)) : 0;
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
@@ -1095,13 +1113,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				int pos = -1;
 				if (tensor_blocks[i].companion_ref &&
 					tensor_block_pos[tensor_blocks[i].companion_ref - 1])
-					pos = tensor_block_pos[tensor_blocks[i].companion_ref - 1];
+					pos = (int)tensor_block_pos[tensor_blocks[i].companion_ref - 1];
 				else {
 					// Having ptr.
 					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
-					tensor_block_pos[i] = pos;
+					tensor_block_pos[i] = (intptr_t)pos;
 					if (tensor_blocks[i].companion_ref)
-						tensor_block_pos[tensor_blocks[i].companion_ref - 1] = pos;
+						tensor_block_pos[tensor_blocks[i].companion_ref - 1] = (intptr_t)pos;
 					ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 					// Also, set its allocations.
 					// Since tensor view is bit compatible with tensor, we can just cast.
@@ -1367,7 +1385,16 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	if (sub_arena_out_tensors)
 		ccfree(sub_arena_out_tensors);
 	if (tensor_block_pos)
+	{
+		for (i = 0; i < tensor_block_size; i++)
+			if (tensor_block_pos[i] && !CCV_NNC_IS_METADATA_POS(tensor_block_pos[i]))
+			{
+				ccv_array_free((ccv_array_t*)tensor_block_pos[i]);
+				if (tensor_blocks[i].companion_ref)
+					tensor_block_pos[tensor_blocks[i].companion_ref - 1] = 0;
+			}
 		ccfree(tensor_block_pos);
+	}
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
