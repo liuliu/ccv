@@ -10,6 +10,15 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, con
 	ccv_nnc_graph_exec_t exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(cmd, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, inputs, input_size, outputs, output_size);
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
 	exec_info->flags |= CCV_NNC_GRAPH_EXEC_CASE_OF;
+	int i, j;
+	for (i = 0; i < output_size; i++)
+		if (((ccv_nnc_tensor_multiview_t*)outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)
+			for (j = 0; j < ((ccv_nnc_tensor_multiview_t*)outputs[i])->kind + ((ccv_nnc_tensor_multiview_t*)outputs[i])->repeat; j++)
+			{
+				ccv_nnc_tensor_t* const mv = (ccv_nnc_tensor_t*)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)outputs[i])[j]->alias_ref;
+				if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
+					ccv_nnc_graph_exec_add_broadcast(graph, exec, mv);
+			}
 	return exec;
 }
 

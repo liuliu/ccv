@@ -570,14 +570,25 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 		return vt_tensor;
 	ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)vt_tensor);
 	if (tensor->alias_ref && CCV_NNC_IS_METADATA_POS(tensor->alias_ref))
+	{
+		const int alias_ref = tensor->alias_ref;
 		tensor->alias_ref = (uintptr_t)_ccv_nnc_tensor_metadata_get(tensor_metadata, (int)tensor->alias_ref);
+		_ccv_nnc_tensor_metadata_rewire(tensor_metadata, (ccv_nnc_tensor_t*)(intptr_t)alias_ref);
+	}
 	if (CCV_IS_TENSOR_MULTIVIEW(tensor))
 	{
 		ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 		int i;
 		const int count = mv->kind + mv->repeat;
 		for (i = 0; i < count; i++)
-			CCV_NNC_MULTIVIEW_DATA(mv)[i] = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, CCV_NNC_MULTIVIEW_DATA(mv)[i]);
+		{
+			if (CCV_NNC_IS_METADATA_POS(CCV_NNC_MULTIVIEW_DATA(mv)[i]))
+			{
+				const int pos = (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i];
+				CCV_NNC_MULTIVIEW_DATA(mv)[i] = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)CCV_NNC_MULTIVIEW_DATA(mv)[i]);
+				_ccv_nnc_tensor_metadata_rewire(tensor_metadata, (ccv_nnc_tensor_t*)(intptr_t)pos);
+			}
+		}
 		// No need to recursively do parent pointer, otherwise we are in deep rewire.
 		if (mv->p && CCV_NNC_IS_METADATA_POS(mv->p))
 			mv->p = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)mv->p);
@@ -585,8 +596,13 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_rewire(const ccv_array_t* cons
 			for (i = 0; i < mv->rtvs->rnum; i++)
 			{
 				ccv_nnc_tensor_t** tensor = (ccv_nnc_tensor_t**)ccv_array_get(mv->rtvs, i);
-				*tensor = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, *tensor);
-				assert(!CCV_IS_TENSOR_MULTIVIEW(*tensor));
+				if (CCV_NNC_IS_METADATA_POS(*tensor))
+				{
+					const int pos = (int)(intptr_t)*tensor;
+					*tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)*tensor);
+					assert(!CCV_IS_TENSOR_MULTIVIEW(*tensor));
+					_ccv_nnc_tensor_metadata_rewire(tensor_metadata, (ccv_nnc_tensor_t*)(intptr_t)pos);
+				}
 			}
 	}
 	return tensor;
@@ -869,8 +885,13 @@ static void _ccv_nnc_tensor_multiview_full_pos_rewire(const ccv_array_t* const t
 		for (i = 0; i < mv->rtvs->rnum; i++)
 		{
 			ccv_nnc_tensor_t** tensor = (ccv_nnc_tensor_t**)ccv_array_get(mv->rtvs, i);
-			*tensor = _ccv_nnc_tensor_metadata_rewire(tensor_metadata, *tensor);
-			assert(!CCV_IS_TENSOR_MULTIVIEW(*tensor));
+			if (CCV_NNC_IS_METADATA_POS(*tensor))
+			{
+				const int pos = (int)(intptr_t)*tensor;
+				*tensor = _ccv_nnc_tensor_metadata_get(tensor_metadata, (int)(intptr_t)*tensor);
+				assert(!CCV_IS_TENSOR_MULTIVIEW(*tensor));
+				_ccv_nnc_tensor_metadata_rewire(tensor_metadata, (ccv_nnc_tensor_t*)(intptr_t)pos);
+			}
 		}
 	for (i = 0; i < mv->kind + mv->repeat; i++)
 	{
@@ -1340,17 +1361,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				}
 			}
 	} ccv_nnc_graph_visit_endfor
-	// Everything is done, rewire vt_tensor to real locations. From now on, no push to tensor_metadata is possible.
-	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_arena->vt_tensors[i])
-		{
-			ccv_nnc_tensor_t* const tensor = CCV_NNC_IS_METADATA_POS(tensor_arena->vt_tensors[i]) ? _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]) : tensor_arena->vt_tensors[i];
-			// Handle the alias_ref differently for phi multi-view. Lookahead of alias_ref first.
-			if (tensor->alias_ref)
-				_ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, (ccv_nnc_tensor_t*)tensor->alias_ref);
-			// Performing rewire.
-			_ccv_nnc_tensor_metadata_rewire(tensor_arena->tensor_metadata, tensor);
-		}
 	// rewire the rest. I can rewire multiple times because I can identify whether this is wired or not.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (tensor_arena->vt_tensors[i])
@@ -3104,7 +3114,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	assert(tensor_arena->vt_tensor_size == graph_prep->tensor_symbol_info_size);
 	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
 	{
-		ccv_nnc_tensor_t* const mv = tensor_arena->vt_tensors[i];
+		ccv_nnc_tensor_t* mv = tensor_arena->vt_tensors[i];
 		// If it is multiview tensor, inspect all its head to see whether we already associated with the node.
 		if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
 		{
@@ -3118,7 +3128,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					int flag = 0;
 					for (k = 0; k < exec_info->tensor_nest_size && !flag; k++)
 						flag = (exec_info->tensor_nests[k] && exec_info->tensor_nests[k]->tensors[0] == mv);
-					// If non is in the flag, it need to be included in the cast.
+					// If none is in the flag, it need to be included in the cast.
 					if (!flag)
 						ccv_nnc_graph_exec_add_broadcast(graph, graph_execs[idx], mv);
 				}

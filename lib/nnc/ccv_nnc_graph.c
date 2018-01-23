@@ -176,7 +176,7 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 			if (CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]) &&
 				((ccv_nnc_tensor_multiview_t*)info->broadcasts[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 			{
-				if (!info->tensor_nests[dd + i] || info->broadcasts[dd + i] != info->tensor_nests[i]->tensors[0])
+				if (!info->tensor_nests[dd + i] || info->broadcasts[i] != info->tensor_nests[dd + i]->tensors[0])
 				{
 					if (info->tensor_nests[dd + i])
 						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
@@ -185,7 +185,7 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 			} else {
 				if (info->tensor_nests[dd + i])
 					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
-				info->tensor_nests[i] = 0;
+				info->tensor_nests[dd + i] = 0;
 			}
 	} else {
 		for (i = 0; i < info->tensor_nest_size; i++)
