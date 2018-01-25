@@ -1363,8 +1363,9 @@ static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symb
 			const int assign_ref = tensor_symbol_info->assign_ref - 1;
 			ccv_nnc_autograd_tensor_symbol_t* const destination_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + assign_ref);
 			ccv_nnc_autograd_tensor_symbol_t* const source_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + i);
-			ccv_nnc_tensor_symbol_info_t* const destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, destination_autograd_symbol->symbol.d);
-			destination_tensor_symbol_info->assign_ref = source_autograd_symbol->symbol.d + 1;
+			ccv_nnc_symbolic_graph_set_while_params(graph, (ccv_nnc_tensor_symbol_map_t []){
+				{ .source = source_autograd_symbol->symbol, .destination = destination_autograd_symbol->symbol }
+			}, 1);
 		}
 	}
 	for (i = 0; i < wrt_symbol_size; i++)
@@ -1378,10 +1379,9 @@ static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symb
 			const int init_d = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, init_ref_ver))->d;
 			ccv_nnc_autograd_tensor_symbol_t* const destination_autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(backward_prep->autograd_tensor_symbols, init_d);
 			ccv_nnc_autograd_tensor_symbol_t* const source_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + ref_d);
-			ccv_nnc_tensor_symbol_info_t* const destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, destination_autograd_symbol->symbol.d);
-			if (destination_tensor_symbol_info->assign_ref)
-				{ assert(destination_tensor_symbol_info->assign_ref == source_autograd_symbol->symbol.d + 1); }
-			destination_tensor_symbol_info->assign_ref = source_autograd_symbol->symbol.d + 1;
+			ccv_nnc_symbolic_graph_set_while_params(graph, (ccv_nnc_tensor_symbol_map_t []){
+				{ .source = source_autograd_symbol->symbol, .destination = destination_autograd_symbol->symbol }
+			}, 1);
 		}
 	}
 }

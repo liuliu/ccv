@@ -1223,31 +1223,26 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	}
 	// For case..of statement, the output is a phi variable, thus, if we take the skip branch, we will select the original input.
 	// This created the multi-view tensor to achieve that.
-	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
-		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
-			for (i = 0; i < node->output_size; i++)
-			{
-				const int idx = node->outputs[i];
-				if (tensor_arena->vt_tensors[idx])
-				{
-					// Create phi multi-view.
-					const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
-					const int intv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[node->inputs[i]]);
-					const int outv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
-					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, mv_pos);
-					ccv_nnc_tensor_t* const intv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, intv_pos);
-					ccv_nnc_tensor_t* const outv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, outv_pos);
-					ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
-						intv,
-						outv,
-					}, CCV_NNC_MULTIVIEW_K0N, 2, (ccv_nnc_graph_t*)CCV_NNC_MULTIVIEW_PHI, mv);
-					CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)intv_pos;
-					CCV_NNC_MULTIVIEW_DATA(mv)[1] = (ccv_nnc_tensor_t*)(intptr_t)outv_pos;
-					tensor_arena->vt_tensors[idx] = (ccv_nnc_tensor_t*)(intptr_t)mv_pos;
-					ccv_array_push(tensor_arena->m_tensor_idx, &mv_pos);
-				}
-			}
-	} ccv_nnc_graph_visit_endfor
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		if (tensor_symbol_info[i].bypass_ref && tensor_arena->vt_tensors[i])
+		{
+			const int bypass_ref = tensor_symbol_info[i].bypass_ref - 1;
+			// Create phi multi-view.
+			const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
+			const int intv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[bypass_ref]);
+			const int outv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, mv_pos);
+			ccv_nnc_tensor_t* const intv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, intv_pos);
+			ccv_nnc_tensor_t* const outv = (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, outv_pos);
+			ccv_nnc_tensor_multiview((ccv_nnc_tensor_t*[]){
+				intv,
+				outv,
+			}, CCV_NNC_MULTIVIEW_K0N, 2, (ccv_nnc_graph_t*)CCV_NNC_MULTIVIEW_PHI, mv);
+			CCV_NNC_MULTIVIEW_DATA(mv)[0] = (ccv_nnc_tensor_t*)(intptr_t)intv_pos;
+			CCV_NNC_MULTIVIEW_DATA(mv)[1] = (ccv_nnc_tensor_t*)(intptr_t)outv_pos;
+			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)mv_pos;
+			ccv_array_push(tensor_arena->m_tensor_idx, &mv_pos);
+		}
 	// Now it is time to handle alias.
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
@@ -1355,19 +1350,13 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// After alias created, for case..of statement, we now revert back to flat tensor rather than multi-view.
 	// No worries though, this new tensor is subscribed for the phi multi-view. More over, we have logic
 	// when initialize case..of node, which will take the phi multi-view again.
-	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
-		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
-			for (i = 0; i < node->output_size; i++)
-			{
-				const int idx = node->outputs[i];
-				if (tensor_arena->vt_tensors[idx])
-				{
-					ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
-					assert(mv->anchor == CCV_NNC_MULTIVIEW_PHI);
-					tensor_arena->vt_tensors[idx] = (ccv_nnc_tensor_t*)(intptr_t)_ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[idx]);
-				}
-			}
-	} ccv_nnc_graph_visit_endfor
+	for (i = 0; i < tensor_symbol_info_size; i++)
+		if (tensor_symbol_info[i].bypass_ref && tensor_arena->vt_tensors[i])
+		{
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
+			assert(mv->anchor == CCV_NNC_MULTIVIEW_PHI);
+			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)_ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
+		}
 	// rewire the rest. I can rewire multiple times because I can identify whether this is wired or not.
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (tensor_arena->vt_tensors[i])
@@ -1867,7 +1856,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 					_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[d]);
 				/* If this is a read-only (based on SSA, if first encountered as read), and this is
 				 * sub-graph, it is not assign_ref from anywhere (not a parameterized loop).  We cannot
-				 * reuse this region of memory anyway (because on second loop, we want to read the sa
+				 * reuse this region of memory anyway (because on second loop, we want to read the same
 				 * value out). Mark it to the end of the graph. */
 				if (symbolic_graph->p && !tensor_symbol_info[d].assign_ref)
 					for (j = 0; j < destination_size; j++)
@@ -2031,36 +2020,6 @@ static void _ccv_nnc_tensor_blocks_free(ccv_nnc_tensor_block_t* const tensor_blo
 	ccfree(tensor_blocks);
 }
 
-static void _ccv_nnc_tensor_blocks_companion_ref_hookup(const int p_idx, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_sparse_matrix_t* const exec_dep, const int* const p_inputs, const int* const p_outputs, const int p_io_size, ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
-{
-	int i;
-	for (i = 0; i < p_io_size; i++)
-	{
-		const int s_in_idx = (p_tensor_symbol_info[p_inputs[i]].s_ref && p_tensor_symbol_info[p_inputs[i]].s_ref->rnum > p_idx) ? *(int*)ccv_array_get(p_tensor_symbol_info[p_inputs[i]].s_ref, p_idx) - 1 : -1;
-		const int s_out_idx = (p_tensor_symbol_info[p_outputs[i]].s_ref && p_tensor_symbol_info[p_outputs[i]].s_ref->rnum > p_idx) ? *(int*)ccv_array_get(p_tensor_symbol_info[p_outputs[i]].s_ref, p_idx) - 1 : -1;
-		if (s_in_idx < 0 || s_out_idx < 0)
-			continue;
-		int a_ref = s_in_idx;
-		while (tensor_blocks[a_ref].ref)
-			a_ref = tensor_blocks[a_ref].ref - 1;
-		int b_ref = s_out_idx;
-		while (tensor_blocks[b_ref].ref)
-			b_ref = tensor_blocks[b_ref].ref - 1;
-		if (a_ref == b_ref || !TENSOR_EXPECT_ORDINARY(tensor_blocks[a_ref]) || !TENSOR_EXPECT_ORDINARY(tensor_blocks[b_ref]))
-			continue;
-		int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], tensor_blocks[a_ref]);
-		int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a_ref], tensor_blocks[b_ref]);
-		// It cannot be that both i can hop to j can j can hop to i.
-		assert(!(a_hop_b > 0 && b_hop_a > 0));
-		// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere).
-		if (a_hop_b || b_hop_a)
-		{
-			tensor_blocks[a_ref].companion_ref = b_ref + 1;
-			tensor_blocks[b_ref].companion_ref = a_ref + 1;
-		}
-	}
-}
-
 // Find tensors that cannot be solved by co-allocating to the same location.
 static int _ccv_nnc_exec_dep_and_tensor_blocks_unroll_count(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks)
 {
@@ -2218,8 +2177,10 @@ static void _ccv_nnc_fixup_assign_ref_after_unroll(const ccv_nnc_symbolic_graph_
 		// Get to the last one, which we will wrap over.
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && dup_tensor_symbol_info[i].assign_ref)
 		{
+			dup_tensor_symbol_info[dup_tensor_symbol_info[i].assign_ref - 1].r_assign_ref = 0;
 			dup_tensor_symbol_info[i].assign_ref = dup_tensor_block_ref[(dup_tensor_symbol_info[i].assign_ref - 1) * unroll_count + unroll_count - 1] + 1;
 			assert(dup_tensor_symbol_info[i].assign_ref);
+			dup_tensor_symbol_info[dup_tensor_symbol_info[i].assign_ref - 1].r_assign_ref = i + 1;
 		}
 }
 
@@ -2504,8 +2465,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			_ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(symbolic_graph, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &unroll_count, &dup_exec_ref, &dup_tensor_block_ref);
 			_ccv_nnc_fixup_tensor_blocks_for_outputs(exec_dep, tensor_blocks, p_node, unroll_count, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, dup_exec_ref, dup_tensor_block_ref);
 		} else if (p_node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
-			// We will try our best to fit as much of its corresponding inputs / outputs into companion_ref group.
-			_ccv_nnc_tensor_blocks_companion_ref_hookup(symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_dep, p_node->inputs, p_node->outputs, ccv_min(p_node->input_size, p_node->output_size), tensor_blocks, tensor_block_size);
+			// TODO: We want to try our best to fit as much of its corresponding inputs / outputs into companion_ref group.
 		}
 	}
 	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;

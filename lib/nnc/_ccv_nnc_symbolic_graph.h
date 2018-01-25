@@ -16,6 +16,8 @@
 typedef struct {
 	// Start for while loop handling
 	int assign_ref; // Reference to the tensor that the value will be copied from (for parameter passing). Starts at 1.
+	int r_assign_ref; // It is a reverse of the assign_ref. Starts at 1.
+	int bypass_ref; // Some exec may not generate output for this tensor. In that case, use the content from tensor bypass (typical case for case..of). Starts at 1.
 	int p_ref; // Reference to the tensor number in its parent graph. Starts at 1.
 	// End of while loop handling.
 	int alias_ref; // Reference to the tensor. Starts at 1.

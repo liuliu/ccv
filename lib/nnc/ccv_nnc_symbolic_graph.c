@@ -549,6 +549,30 @@ void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv
 	*(int*)ccv_array_get(tensor_info->s_ref, p_idx) = sub_tensor_symbol.d + 1;
 }
 
+void ccv_nnc_tensor_symbol_set_bypass(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
+{
+	int i;
+	for (i = 0; i < symbol_map_size; i++)
+	{
+		const ccv_nnc_tensor_symbol_t source = ccv_nnc_find_tensor_symbol_from_graph(graph, symbol_map[i].source);
+		const ccv_nnc_tensor_symbol_t destination = ccv_nnc_find_tensor_symbol_from_graph(graph, symbol_map[i].destination);
+		assert(source.graph == graph);
+		assert(destination.graph == graph);
+		assert(source.d < graph->tensor_symbol_info->rnum);
+		assert(destination.d < graph->tensor_symbol_info->rnum);
+		ccv_nnc_tensor_symbol_info_t* source_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, source.d);
+		ccv_nnc_tensor_symbol_info_t* destination_tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, destination.d);
+		// Don't support parameterize with alias. The reason is that to support parameterized loop (for SSA), I choose
+		// to simply reuse the piece of memory (allocating the same memory region to both, therefore to enable parameter
+		// passing). For alias, it is not possible because alias can pointing to the tensors with different sizes, thus,
+		// these pointed tensors cannot share the same memory region. The best way for alias to be parameterized is to
+		// create a new tensor of the same size, transfer value over, and parameterized on that tensor instead.
+		assert(!destination_tensor_symbol_info->alias_ref);
+		assert(!source_tensor_symbol_info->alias_ref);
+		destination_tensor_symbol_info->bypass_ref = source.d + 1;
+	}
+}
+
 static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_info_t* const exec_info, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	exec_info->input_size = input_size;
