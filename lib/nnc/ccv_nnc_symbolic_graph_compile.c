@@ -2521,12 +2521,24 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			sub_preps[CCV_NNC_GRAPH_REF(node)[p] - 1] = sub_prep;
 			const ccv_nnc_tensor_alloc_prep_t* const s_alloc_prep = sub_prep->alloc_prep;
 			const ccv_nnc_tensor_block_t* const s_tensor_blocks = sub_prep->tensor_blocks;
+			const ccv_nnc_tensor_symbol_info_t* const s_tensor_symbol_info = sub_prep->tensor_symbol_info;
 			for (i = 0; i < s_alloc_prep->block_size; i++)
 			{
 				const int block_ref = s_alloc_prep->blocks[i].block_ref;
 				const int buffer_ref = s_alloc_prep->blocks[i].buffer_ref;
 				if (block_ref < sub_prep->tensor_symbol_info_size)
 				{
+					// If this block has a bypass, and its bypass has a different p_refs, then it doesn't matter.
+					// I cannot assign p_refs to its parent buffer, and that buffer has to be anonymous.
+					if (s_tensor_symbol_info[block_ref].bypass_ref)
+					{
+						int bypass_ref = s_tensor_symbol_info[block_ref].bypass_ref - 1;
+						while (s_tensor_blocks[bypass_ref].ref)
+							bypass_ref = s_tensor_blocks[bypass_ref].ref - 1;
+						if (s_tensor_blocks[block_ref].p_refs[0] != s_tensor_blocks[bypass_ref].p_refs[0] ||
+							s_tensor_blocks[block_ref].p_refs[1] != s_tensor_blocks[bypass_ref].p_refs[1])
+							continue;
+					}
 					if (s_tensor_blocks[block_ref].p_refs[0])
 					{
 						/* If it is already properly assigned, next. */
