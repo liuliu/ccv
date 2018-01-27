@@ -30,6 +30,10 @@ typedef struct {
 	ccv_nnc_tensor_param_t info;
 } ccv_nnc_tensor_symbol_info_t;
 
+enum {
+	CCV_NNC_GRAPH_EXEC_CASE_OF_NO_BYPASS = 0x01, // If this flag is set, this case..of won't have any bypass.
+};
+
 typedef struct {
 	int input_size;
 	int output_size;
@@ -49,7 +53,7 @@ typedef struct {
 		struct {
 			ccv_nnc_graph_case_of_f expr;
 			const void* data;
-			ccv_nnc_tensor_symbol_map_t* pass_through;
+			int flags;
 		} case_of;
 		struct {
 			ccv_nnc_graph_while_f expr;

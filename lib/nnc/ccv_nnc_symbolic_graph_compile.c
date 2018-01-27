@@ -12,6 +12,7 @@ typedef struct {
 	int flags;
 	int type;
 	int ref; // Reference to another tensor block. Start with 1.
+	int bypass_ref; // Copy over the bypass_ref from tensor symbol underneath. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
 	int unfoldable_except_ref; // Reference to a tensor block that can be the exception to unfoldable (as output). Start with 1.
 	ccv_array_t* r_refs; // If this is referenced by another block, the array point back to these blocks. Start with 1.
@@ -1224,9 +1225,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// For case..of statement, the output is a phi variable, thus, if we take the skip branch, we will select the original input.
 	// This created the multi-view tensor to achieve that.
 	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (tensor_symbol_info[i].bypass_ref && tensor_arena->vt_tensors[i])
+		if (tensor_blocks[i].bypass_ref && tensor_arena->vt_tensors[i])
 		{
-			const int bypass_ref = tensor_symbol_info[i].bypass_ref - 1;
+			const int bypass_ref = tensor_blocks[i].bypass_ref - 1;
 			// Create phi multi-view.
 			const int mv_pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_multiview_t));
 			const int intv_pos = _ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[bypass_ref]);
@@ -1351,7 +1352,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// No worries though, this new tensor is subscribed for the phi multi-view. More over, we have logic
 	// when initialize case..of node, which will take the phi multi-view again.
 	for (i = 0; i < tensor_symbol_info_size; i++)
-		if (tensor_symbol_info[i].bypass_ref && tensor_arena->vt_tensors[i])
+		if (tensor_blocks[i].bypass_ref && tensor_arena->vt_tensors[i])
 		{
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
 			assert(mv->anchor == CCV_NNC_MULTIVIEW_PHI);
@@ -1750,7 +1751,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	// The reason is that I need to make everyone of them to be unassigned unless it is used somewhere. It
 	// happens that I have to loop through all relevant node to find out if one is used or not.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
-		tensor_blocks[i].flags = UNASSIGNED, tensor_blocks[i].type = tensor_symbol_info[i].info.type;
+		tensor_blocks[i].flags = UNASSIGNED, tensor_blocks[i].type = tensor_symbol_info[i].info.type, tensor_blocks[i].bypass_ref = tensor_symbol_info[i].bypass_ref;
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		for (i = 0; i < node->input_size; i++)
 			if (node->inputs[i] >= 0)
@@ -1781,11 +1782,11 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
 				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
 			}
-			if (tensor_symbol_info[assign_ref].bypass_ref)
+			if (tensor_blocks[assign_ref].bypass_ref)
 			{
 				// If it contains a bypass_ref, that means we can fold into both the bypass and except_ref, making it untenable.
 				tensor_blocks[assign_ref].unfoldable_except_ref = 0;
-				const int bypass_ref = tensor_symbol_info[assign_ref].bypass_ref - 1;
+				const int bypass_ref = tensor_blocks[assign_ref].bypass_ref - 1;
 				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[bypass_ref]);
 				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[bypass_ref]);
 				// On the other hand, it can be folded into the except_ref for the bypass_ref.
@@ -1947,6 +1948,30 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			}
 		}
 	} ccv_nnc_graph_visit_endfor
+	// Specifically handle the bypass. This need to be done after the first pass.
+	// I need to extend the bypass life-time to the same as the one I am going with.
+	/*
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		for (i = 0; i < node->output_size; i++)
+		{
+			int d = node->outputs[i];
+			if (d < 0)
+				continue;
+			if (!tensor_blocks[d].bypass_ref)
+				continue;
+			while (tensor_blocks[d].ref)
+				d = tensor_blocks[d].ref - 1;
+			int bypass_ref = tensor_blocks[node->outputs[i]].bypass_ref - 1;
+			while (tensor_blocks[bypass_ref].ref)
+				bypass_ref = tensor_blocks[bypass_ref].ref - 1;
+			// It can only be unfoldable due to while constraint.
+			for (j = 0; tensor_blocks[d].head && j < tensor_blocks[d].head->rnum; j++)
+				_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].head, j), tensor_blocks[bypass_ref]);
+			for (j = 0; tensor_blocks[d].tail && j < tensor_blocks[d].tail->rnum; j++)
+				_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].tail, j), tensor_blocks[bypass_ref]);
+		}
+	} ccv_nnc_graph_visit_endfor
+	*/
 	*r_exec_dep = exec_dep;
 	*r_tensor_blocks = tensor_blocks;
 }
@@ -2532,7 +2557,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					// I cannot assign p_refs to its parent buffer, and that buffer has to be anonymous.
 					if (s_tensor_symbol_info[block_ref].bypass_ref)
 					{
-						int bypass_ref = s_tensor_symbol_info[block_ref].bypass_ref - 1;
+						int bypass_ref = s_tensor_blocks[block_ref].bypass_ref - 1;
 						while (s_tensor_blocks[bypass_ref].ref)
 							bypass_ref = s_tensor_blocks[bypass_ref].ref - 1;
 						if (s_tensor_blocks[block_ref].p_refs[0] != s_tensor_blocks[bypass_ref].p_refs[0] ||
