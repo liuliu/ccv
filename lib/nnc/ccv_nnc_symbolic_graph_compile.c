@@ -1950,28 +1950,79 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	} ccv_nnc_graph_visit_endfor
 	// Specifically handle the bypass. This need to be done after the first pass.
 	// I need to extend the bypass life-time to the same as the one I am going with.
-	/*
+	// It is important we visit these nodes and assign bypass_ref to its dependents in topological order.
+	ccv_nnc_tensor_block_t empty_block = {};
+	empty_block.head = ccv_array_new(sizeof(int), 0, 0);
+	empty_block.tail = ccv_array_new(sizeof(int), 0, 0);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
-		for (i = 0; i < node->output_size; i++)
+		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
 		{
-			int d = node->outputs[i];
-			if (d < 0)
-				continue;
-			if (!tensor_blocks[d].bypass_ref)
-				continue;
-			while (tensor_blocks[d].ref)
-				d = tensor_blocks[d].ref - 1;
-			int bypass_ref = tensor_blocks[node->outputs[i]].bypass_ref - 1;
-			while (tensor_blocks[bypass_ref].ref)
-				bypass_ref = tensor_blocks[bypass_ref].ref - 1;
-			// It can only be unfoldable due to while constraint.
-			for (j = 0; tensor_blocks[d].head && j < tensor_blocks[d].head->rnum; j++)
-				_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].head, j), tensor_blocks[bypass_ref]);
-			for (j = 0; tensor_blocks[d].tail && j < tensor_blocks[d].tail->rnum; j++)
-				_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].tail, j), tensor_blocks[bypass_ref]);
+			int can_bypass = 1;
+			for (i = 0; can_bypass && i < node->output_size; i++)
+			{
+				int d = node->outputs[i];
+				if (d < 0)
+					continue;
+				if (!tensor_blocks[d].bypass_ref)
+					continue;
+				while (tensor_blocks[d].ref)
+					d = tensor_blocks[d].ref - 1;
+				int bypass_ref = tensor_blocks[node->outputs[i]].bypass_ref - 1;
+				while (tensor_blocks[bypass_ref].ref)
+					bypass_ref = tensor_blocks[bypass_ref].ref - 1;
+				// If this doesn't participate in the while loop, we don't need to check the while loop constraint.
+				if (!tensor_symbol_info[bypass_ref].assign_ref && !tensor_symbol_info[bypass_ref].r_assign_ref)
+					continue;
+				ccv_array_clear(empty_block.head);
+				for (j = 0; tensor_blocks[bypass_ref].head && j < tensor_blocks[bypass_ref].head->rnum; j++)
+					ccv_array_push(empty_block.head, ccv_array_get(tensor_blocks[bypass_ref].head, j));
+				ccv_array_clear(empty_block.tail);
+				for (j = 0; tensor_blocks[bypass_ref].tail && j < tensor_blocks[bypass_ref].tail->rnum; j++)
+					ccv_array_push(empty_block.tail, ccv_array_get(tensor_blocks[bypass_ref].tail, j));
+				for (j = 0; tensor_blocks[d].head && j < tensor_blocks[d].head->rnum; j++)
+					_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].head, j), empty_block);
+				for (j = 0; tensor_blocks[d].tail && j < tensor_blocks[d].tail->rnum; j++)
+					_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].tail, j), empty_block);
+				// It can only be unfoldable due to while constraint. Check whether this satisfies the while loop constraint.
+				assert(!(tensor_symbol_info[bypass_ref].assign_ref && tensor_symbol_info[bypass_ref].r_assign_ref));
+				int b_ref = (tensor_symbol_info[bypass_ref].assign_ref) ? tensor_symbol_info[bypass_ref].assign_ref - 1 : tensor_symbol_info[bypass_ref].r_assign_ref - 1;
+				while (tensor_blocks[b_ref].ref)
+					b_ref = tensor_blocks[b_ref].ref - 1;
+				int a_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, empty_block, tensor_blocks[b_ref]);
+				int b_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[b_ref], empty_block);
+				// These two can be assigned to the same region of memory without issue (because their life-time doesn't interfere)
+				// even after we extend the life-time of bypass_ref. Then we are in a good shape.
+				can_bypass = can_bypass && (a_hop_b || b_hop_a);
+			}
+			if (can_bypass)
+			{
+				for (i = 0; i < node->output_size; i++)
+				{
+					int d = node->outputs[i];
+					if (d < 0)
+						continue;
+					if (!tensor_blocks[d].bypass_ref)
+						continue;
+					while (tensor_blocks[d].ref)
+						d = tensor_blocks[d].ref - 1;
+					int bypass_ref = tensor_blocks[node->outputs[i]].bypass_ref - 1;
+					while (tensor_blocks[bypass_ref].ref)
+						bypass_ref = tensor_blocks[bypass_ref].ref - 1;
+					// The bypass_ref can extend its life-time.
+					for (j = 0; tensor_blocks[d].head && j < tensor_blocks[d].head->rnum; j++)
+						_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].head, j), tensor_blocks[bypass_ref]);
+					for (j = 0; tensor_blocks[d].tail && j < tensor_blocks[d].tail->rnum; j++)
+						_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[d].tail, j), tensor_blocks[bypass_ref]);
+				}
+			} else {
+				for (i = 0; i < node->output_size; i++)
+					tensor_blocks[node->outputs[i]].bypass_ref = 0;
+				// Mark this exec node as not be able to bypass (therefore, requires an extra transfer).
+			}
 		}
 	} ccv_nnc_graph_visit_endfor
-	*/
+	ccv_array_free(empty_block.head);
+	ccv_array_free(empty_block.tail);
 	*r_exec_dep = exec_dep;
 	*r_tensor_blocks = tensor_blocks;
 }
@@ -2546,7 +2597,6 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 			sub_preps[CCV_NNC_GRAPH_REF(node)[p] - 1] = sub_prep;
 			const ccv_nnc_tensor_alloc_prep_t* const s_alloc_prep = sub_prep->alloc_prep;
 			const ccv_nnc_tensor_block_t* const s_tensor_blocks = sub_prep->tensor_blocks;
-			const ccv_nnc_tensor_symbol_info_t* const s_tensor_symbol_info = sub_prep->tensor_symbol_info;
 			for (i = 0; i < s_alloc_prep->block_size; i++)
 			{
 				const int block_ref = s_alloc_prep->blocks[i].block_ref;
@@ -2555,7 +2605,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 				{
 					// If this block has a bypass, and its bypass has a different p_refs, then it doesn't matter.
 					// I cannot assign p_refs to its parent buffer, and that buffer has to be anonymous.
-					if (s_tensor_symbol_info[block_ref].bypass_ref)
+					if (s_tensor_blocks[block_ref].bypass_ref)
 					{
 						int bypass_ref = s_tensor_blocks[block_ref].bypass_ref - 1;
 						while (s_tensor_blocks[bypass_ref].ref)
