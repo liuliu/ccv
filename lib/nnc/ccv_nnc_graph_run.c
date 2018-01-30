@@ -144,7 +144,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 				int ref; \
 				if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD) \
 				{ \
-					ref = node->case_of.expr(inputs, node->input_size, node->case_of.data); \
+					ref = node->case_of.offset + node->case_of.expr(inputs, node->input_size, node->case_of.data); \
 					if (tensor_tape) \
 						ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
 							.d = idx, \

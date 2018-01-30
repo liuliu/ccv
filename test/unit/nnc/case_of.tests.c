@@ -38,7 +38,7 @@ TEST_CASE("graph for a piece-wise linear function")
 	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
 	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x), 0, 0);
-	ccv_nnc_graph_set_case_of_expr(graph, case_of, piecewise_case_of, 0);
+	ccv_nnc_graph_set_case_of_expr(graph, case_of, piecewise_case_of, 0, 0);
 	ccv_nnc_graph_t* graph_0 = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t set_0 = ccv_nnc_graph_exec_new(graph_0, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(x));
 	ccv_nnc_graph_set_sources(graph_0, GRAPH_EXEC_LIST(set_0));
@@ -237,6 +237,11 @@ TEST_CASE("symbolic while graph contains a case..of graph and multiply its outpu
 	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE((1 + 0.226 * 0.5 * 0.5 * 0.5 * 0.5) * 0.3, z_tensor->data.f32[0], 1e-6, "The piece-wise linear function applied 4 times");
+	a_tensor->data.f32[0] = 0.3;
+	x_tensor->data.f32[0] = 0.8;
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
+	z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
+	REQUIRE_EQ_WITH_TOLERANCE(0.8 * 0.3, z_tensor->data.f32[0], 1e-6, "The piece-wise linear function applied 4 times");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);

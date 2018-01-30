@@ -22,7 +22,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, con
 	return exec;
 }
 
-void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_case_of_f case_of, const void* case_of_data)
+void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_case_of_f case_of, const void* case_of_data, const int offset)
 {
 	assert(exec.graph == graph);
 	assert(exec.d >= 0);
@@ -31,6 +31,7 @@ void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_
 	assert(exec_info->flags == CCV_NNC_GRAPH_EXEC_CASE_OF);
 	exec_info->case_of.data = case_of_data;
 	exec_info->case_of.expr = case_of;
+	exec_info->case_of.offset = offset;
 }
 
 void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of)
