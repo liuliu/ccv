@@ -2896,6 +2896,15 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 										tensor_blocks[tensor_block_idx].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_p_ref].tail->rnum, 0);
 									for (k = 0; k < tensor_blocks[dup_p_ref].tail->rnum; k++)
 										_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[dup_p_ref].tail, k), tensor_blocks[tensor_block_idx]);
+										// We have to add it to the warp around companion_ref as well.
+										if (tensor_blocks[dup_p_ref].companion_ref)
+										{
+											const int companion_ref = tensor_blocks[dup_p_ref].companion_ref - 1;
+											for (q = 0; tensor_blocks[companion_ref].head && q < tensor_blocks[companion_ref].head->rnum; q++)
+												_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[companion_ref].head, q), tensor_blocks[tensor_block_idx]);
+											for (q = 0; tensor_blocks[companion_ref].tail && q < tensor_blocks[companion_ref].tail->rnum; q++)
+												_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[companion_ref].tail, q), tensor_blocks[tensor_block_idx]);
+										}
 								}
 							} else if (new_anonymous_tensor_block) {
 								tensor_blocks[tensor_block_idx].tail = ccv_array_new(sizeof(int), 1, 0);
@@ -2957,8 +2966,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 											tensor_blocks[tensor_block_idx].tail = ccv_array_new(sizeof(int), tensor_blocks[dup_dup_p_ref].tail->rnum, 0);
 										for (q = 0; q < tensor_blocks[dup_dup_p_ref].tail->rnum; q++)
 											_ccv_nnc_tensor_block_add_exec(exec_dep, *(int*)ccv_array_get(tensor_blocks[dup_dup_p_ref].tail, q), tensor_blocks[tensor_block_idx]);
-										// For the last unrolled one, we have to add it to the warp around companion_ref as well.
-										if (k == unroll_count - 1 && tensor_blocks[dup_dup_p_ref].companion_ref)
+										// We have to add it to the warp around companion_ref as well.
+										if (tensor_blocks[dup_dup_p_ref].companion_ref)
 										{
 											const int companion_ref = tensor_blocks[dup_dup_p_ref].companion_ref - 1;
 											for (q = 0; tensor_blocks[companion_ref].head && q < tensor_blocks[companion_ref].head->rnum; q++)
