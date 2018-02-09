@@ -62,7 +62,7 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 			z, x
 	}, CCV_NNC_MULTIVIEW_K0N, 2, while_graph, &zz);
 	ccv_nnc_tensor_t zbb = ccv_nnc_tensor(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_reference_to_multiview(&zz, &zbb);
+	ccv_nnc_tensor_synchronize_to_multiview(&zz, &zbb, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
 	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));
@@ -401,7 +401,7 @@ TEST_CASE("symbolic graph for a while loop to compute x = conv(x, w, b) 5 times 
 	ccv_nnc_graph_free(graph);
 }
 
-TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times, z = x0 + x (x <- z)) 5 times, then u = x0 + z")
+TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times, z = x0 + x (x <- z)) 5 times")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();

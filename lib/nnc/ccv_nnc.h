@@ -218,6 +218,8 @@ int ccv_nnc_graph_source_size(const ccv_nnc_graph_t* const graph);
 void ccv_nnc_graph_set_destinations(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_destinations(const ccv_nnc_graph_t* const graph);
 int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph);
+// add tensor pair that can be used for "move". (move: passing a tensor from current loop to the next loop).
+void ccv_nnc_graph_add_move(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
 void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph);
 
@@ -462,7 +464,7 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	struct ccv_nnc_tensor_multiview_s* p; // If this is wrapped with another multiview tensor. Get to the parent one.
 	ccv_nnc_tensor_t* it; // Current tensor (tensor in use), this is updated along with the graph computation.
 	// This is useful because by just traverse tv, I can get the latest up-to-date reference to this multi-view tensor.
-	ccv_array_t* rtvs; // Referenced tensor view array. This corresponds to ccv_nnc_tensor_reference_to_multiview method, that records all the tensors registered for updates.
+	ccv_array_t* sp; // Synchronized tensor views. This corresponds to ccv_nnc_tensor_synchronize_to_multiview method, that records all the tensors registered for updates.
 	ccv_nnc_tensor_t* _inline_data[4];
 	ccv_nnc_tensor_t** _heap_data;
 } ccv_nnc_tensor_multiview_t;
@@ -479,9 +481,15 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, cons
 // Since tensor_multiview will never be allocated with *_new method, the *_free method simply frees anything that is dynamically allocated afterwards (such as the reference items).
 void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview);
 // Setup a tensor as a reference to a tensor multiview, thus, when tensor multiview's tu (current tensor) updates, the tensor reference's data.u8 will get update as well (point to the same memory region as the tu).
-void ccv_nnc_tensor_reference_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor);
+enum {
+	CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC, // Sync when begin to execute a node.
+	// CCV_NNC_MULTIVIEW_GRAPH_END_SYNC, These three are not implemented yet.
+	// CCV_NNC_MULTIVIEW_EXEC_END_SYNC,
+	// CCV_NNC_MULTIVIEW_GRAPH_BEGIN_SYNC,
+};
+void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor, const int sync_mode);
 // Send broadcast to subscribers of the multiview
-void ccv_nnc_tensor_multiview_broadcast(ccv_nnc_tensor_multiview_t* const tensor_multiview);
+void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview, const int sync_mode);
 // Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic graph. The reason
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph

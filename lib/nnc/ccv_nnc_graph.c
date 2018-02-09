@@ -68,88 +68,94 @@ static int _ccv_nnc_tensor_multiview_level_count(const ccv_nnc_tensor_multiview_
 	const int count = mv->kind + mv->repeat;
 	int i, c = 0;
 	for (i = 0; i < count; i++)
-		c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count((ccv_nnc_tensor_multiview_t*)CCV_NNC_MULTIVIEW_DATA(mv)[i]));
+	{
+		ccv_nnc_tensor_t* tv = CCV_NNC_MULTIVIEW_DATA(mv)[i];
+		if (tv == CCV_NNC_TENSOR_PLACEHOLDER)
+			c = ccv_max(c, 1);
+		else
+			c = ccv_max(c, _ccv_nnc_tensor_multiview_level_count((ccv_nnc_tensor_multiview_t*)tv));
+	}
 	return c + 1;
 }
 
-static ccv_nnc_graph_tensor_nest_t* _ccv_nnc_graph_tensor_nest_new(const ccv_nnc_tensor_multiview_t* const mv)
+static ccv_nnc_graph_tensor_tree_t* _ccv_nnc_graph_tensor_tree_new(const ccv_nnc_tensor_multiview_t* const mv)
 {
 	const int level_count = _ccv_nnc_tensor_multiview_level_count(mv);
-	ccv_nnc_graph_tensor_nest_t* tensor_nest = (ccv_nnc_graph_tensor_nest_t*)ccmalloc(sizeof(ccv_nnc_graph_tensor_nest_t) + sizeof(ccv_nnc_tensor_t*) * (level_count - 1));
-	tensor_nest->broadcast_required = 0;
-	tensor_nest->count = level_count;
-	tensor_nest->index = 0;
-	tensor_nest->tensors[0] = (ccv_nnc_tensor_t*)mv;
-	return tensor_nest;
+	ccv_nnc_graph_tensor_tree_t* tensor_tree = (ccv_nnc_graph_tensor_tree_t*)ccmalloc(sizeof(ccv_nnc_graph_tensor_tree_t) + sizeof(ccv_nnc_tensor_t*) * (level_count - 1));
+	tensor_tree->broadcast_required = 0;
+	tensor_tree->count = level_count;
+	tensor_tree->index = 0;
+	tensor_tree->tensors[0] = (ccv_nnc_tensor_t*)mv;
+	return tensor_tree;
 }
 
 static void _ccv_nnc_graph_exec_rewind(ccv_nnc_graph_exec_info_t* const info)
 {
-	if (!info->tensor_nest_size)
+	if (!info->tensor_tree_size)
 		return;
 	int i;
-	// Rewind from tensor nests.
+	// Rewind from tensor trees.
 	for (i = 0; i < info->input_size; i++)
-		if (info->tensor_nests[i])
-			info->inputs[i] = info->tensor_nests[i]->tensors[0];
+		if (info->tensor_trees[i])
+			info->inputs[i] = info->tensor_trees[i]->tensors[0];
 	const int d = info->input_size;
 	for (i = 0; i < info->output_size; i++)
-		if (info->tensor_nests[d + i])
-			info->outputs[i] = info->tensor_nests[d + i]->tensors[0];
+		if (info->tensor_trees[d + i])
+			info->outputs[i] = info->tensor_trees[d + i]->tensors[0];
 	const int dd = info->input_size + info->output_size;
 	for (i = 0; i < info->broadcast_size; i++)
-		if (info->tensor_nests[dd + i])
-			info->broadcasts[i] = info->tensor_nests[dd + i]->tensors[0];
+		if (info->tensor_trees[dd + i])
+			info->broadcasts[i] = info->tensor_trees[dd + i]->tensors[0];
 }
 
-static void _ccv_nnc_graph_tensor_nest_free(ccv_nnc_graph_tensor_nest_t* const tensor_nest)
+static void _ccv_nnc_graph_tensor_tree_free(ccv_nnc_graph_tensor_tree_t* const tensor_tree)
 {
-	ccfree(tensor_nest);
+	ccfree(tensor_tree);
 }
 
-static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const info)
+static void _ccv_nnc_graph_redo_tensor_trees(ccv_nnc_graph_exec_info_t* const info)
 {
 	int i;
-	int has_nest = 0;
-	for (i = 0; i < info->input_size && !has_nest; i++)
-		has_nest = (info->inputs[i] &&
+	int has_tree = 0;
+	for (i = 0; i < info->input_size && !has_tree; i++)
+		has_tree = (info->inputs[i] &&
 			CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
 			((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
-	for (i = 0; i < info->output_size && !has_nest; i++)
-		has_nest = (info->outputs[i] &&
+	for (i = 0; i < info->output_size && !has_tree; i++)
+		has_tree = (info->outputs[i] &&
 			CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
 			((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
-	for (i = 0; i < info->broadcast_size && !has_nest; i++)
-		has_nest = (info->broadcasts[i] &&
+	for (i = 0; i < info->broadcast_size && !has_tree; i++)
+		has_tree = (info->broadcasts[i] &&
 			CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]) &&
 			((ccv_nnc_tensor_multiview_t*)info->broadcasts[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
-	if (has_nest)
+	if (has_tree)
 	{
-		const int tensor_nest_size = info->input_size + info->output_size + info->broadcast_size;
-		if (info->tensor_nests)
+		const int tensor_tree_size = info->input_size + info->output_size + info->broadcast_size;
+		if (info->tensor_trees)
 		{
-			info->tensor_nests = (ccv_nnc_graph_tensor_nest_t**)ccrealloc(info->tensor_nests, sizeof(ccv_nnc_graph_tensor_nest_t*) * tensor_nest_size);
-			for (i = info->tensor_nest_size; i < tensor_nest_size; i++)
-				info->tensor_nests[i] = 0;
+			info->tensor_trees = (ccv_nnc_graph_tensor_tree_t**)ccrealloc(info->tensor_trees, sizeof(ccv_nnc_graph_tensor_tree_t*) * tensor_tree_size);
+			for (i = info->tensor_tree_size; i < tensor_tree_size; i++)
+				info->tensor_trees[i] = 0;
 		} else
-			info->tensor_nests = (ccv_nnc_graph_tensor_nest_t**)cccalloc(tensor_nest_size, sizeof(ccv_nnc_graph_tensor_nest_t*));
-		info->tensor_nest_size = tensor_nest_size;
+			info->tensor_trees = (ccv_nnc_graph_tensor_tree_t**)cccalloc(tensor_tree_size, sizeof(ccv_nnc_graph_tensor_tree_t*));
+		info->tensor_tree_size = tensor_tree_size;
 		for (i = 0; i < info->input_size; i++)
 			if (info->inputs[i])
 			{
 				if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
 					((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 				{
-					if (!info->tensor_nests[i] || info->inputs[i] != info->tensor_nests[i]->tensors[0])
+					if (!info->tensor_trees[i] || info->inputs[i] != info->tensor_trees[i]->tensors[0])
 					{
-						if (info->tensor_nests[i])
-							_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
-						info->tensor_nests[i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
+						if (info->tensor_trees[i])
+							_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[i]);
+						info->tensor_trees[i] = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
 					}
 				} else {
-					if (info->tensor_nests[i])
-						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
-					info->tensor_nests[i] = 0;
+					if (info->tensor_trees[i])
+						_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[i]);
+					info->tensor_trees[i] = 0;
 				}
 			}
 		const int d = info->input_size;
@@ -159,16 +165,16 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 				if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
 					((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 				{
-					if (!info->tensor_nests[d + i] || info->outputs[i] != info->tensor_nests[d + i]->tensors[0])
+					if (!info->tensor_trees[d + i] || info->outputs[i] != info->tensor_trees[d + i]->tensors[0])
 					{
-						if (info->tensor_nests[d + i])
-							_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
-						info->tensor_nests[d + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
+						if (info->tensor_trees[d + i])
+							_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[d + i]);
+						info->tensor_trees[d + i] = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
 					}
 				} else {
-					if (info->tensor_nests[d + i])
-						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[d + i]);
-					info->tensor_nests[d + i] = 0;
+					if (info->tensor_trees[d + i])
+						_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[d + i]);
+					info->tensor_trees[d + i] = 0;
 				}
 			}
 		const int dd = info->input_size + info->output_size;
@@ -176,42 +182,42 @@ static void _ccv_nnc_graph_redo_tensor_nests(ccv_nnc_graph_exec_info_t* const in
 			if (CCV_IS_TENSOR_MULTIVIEW(info->broadcasts[i]) &&
 				((ccv_nnc_tensor_multiview_t*)info->broadcasts[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
 			{
-				if (!info->tensor_nests[dd + i] || info->broadcasts[i] != info->tensor_nests[dd + i]->tensors[0])
+				if (!info->tensor_trees[dd + i] || info->broadcasts[i] != info->tensor_trees[dd + i]->tensors[0])
 				{
-					if (info->tensor_nests[dd + i])
-						_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
-					info->tensor_nests[dd + i] = _ccv_nnc_graph_tensor_nest_new((ccv_nnc_tensor_multiview_t*)info->broadcasts[i]);
+					if (info->tensor_trees[dd + i])
+						_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[dd + i]);
+					info->tensor_trees[dd + i] = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)info->broadcasts[i]);
 				}
 			} else {
-				if (info->tensor_nests[dd + i])
-					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[dd + i]);
-				info->tensor_nests[dd + i] = 0;
+				if (info->tensor_trees[dd + i])
+					_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[dd + i]);
+				info->tensor_trees[dd + i] = 0;
 			}
 	} else {
-		for (i = 0; i < info->tensor_nest_size; i++)
-			if (info->tensor_nests[i])
-				_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[i]);
-		ccfree(info->tensor_nests);
-		info->tensor_nest_size = 0;
-		info->tensor_nests = 0;
+		for (i = 0; i < info->tensor_tree_size; i++)
+			if (info->tensor_trees[i])
+				_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[i]);
+		ccfree(info->tensor_trees);
+		info->tensor_tree_size = 0;
+		info->tensor_trees = 0;
 	}
 }
 
-static void _ccv_nnc_graph_deregister_tensor_nests(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec)
+static void _ccv_nnc_graph_deregister_tensor_trees(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec)
 {
 	ccv_nnc_graph_t* p = graph;
 	do {
 		int i;
 		// Remove from the array.
-		if (p->nest_execs)
-			for (i = 0; i < p->nest_execs->rnum; i++)
+		if (p->tree_execs)
+			for (i = 0; i < p->tree_execs->rnum; i++)
 			{
-				ccv_nnc_graph_exec_t* const nest_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->nest_execs, i);
-				if (nest_exec->d == exec.d && nest_exec->graph == graph)
+				ccv_nnc_graph_exec_t* const tree_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->tree_execs, i);
+				if (tree_exec->d == exec.d && tree_exec->graph == graph)
 				{
-					--p->nest_execs->rnum;
-					if (i < p->nest_execs->rnum)
-						memcpy(nest_exec, nest_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->nest_execs->rnum - i));
+					--p->tree_execs->rnum;
+					if (i < p->tree_execs->rnum)
+						memcpy(tree_exec, tree_exec + 1, sizeof(ccv_nnc_graph_exec_t) * (p->tree_execs->rnum - i));
 					break;
 				}
 			}
@@ -219,25 +225,25 @@ static void _ccv_nnc_graph_deregister_tensor_nests(ccv_nnc_graph_t* graph, const
 	} while (p);
 }
 
-static void _ccv_nnc_graph_register_tensor_nests(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_exec_info_t* const info)
+static void _ccv_nnc_graph_register_tensor_trees(ccv_nnc_graph_t* graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_exec_info_t* const info)
 {
-	assert(info->tensor_nest_size > 0);
+	assert(info->tensor_tree_size > 0);
 	ccv_nnc_graph_t* p = graph;
 	do {
-		if (!p->nest_execs)
+		if (!p->tree_execs)
 		{
-			p->nest_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
-			ccv_array_push(p->nest_execs, &exec);
+			p->tree_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), 0, 0);
+			ccv_array_push(p->tree_execs, &exec);
 		} else {
 			int i;
-			int has_nest_exec = 0;
-			for (i = 0; !has_nest_exec && i < p->nest_execs->rnum; i++)
+			int has_tree_exec = 0;
+			for (i = 0; !has_tree_exec && i < p->tree_execs->rnum; i++)
 			{
-				ccv_nnc_graph_exec_t* nest_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->nest_execs, i);
-				has_nest_exec = (nest_exec->d == exec.d && nest_exec->graph == exec.graph);
+				ccv_nnc_graph_exec_t* tree_exec = (ccv_nnc_graph_exec_t*)ccv_array_get(p->tree_execs, i);
+				has_tree_exec = (tree_exec->d == exec.d && tree_exec->graph == exec.graph);
 			}
-			if (!has_nest_exec)
-				ccv_array_push(p->nest_execs, &exec);
+			if (!has_tree_exec)
+				ccv_array_push(p->tree_execs, &exec);
 		}
 		p = p->p;
 	} while (p);
@@ -284,8 +290,8 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	assert(exec.graph == graph);
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
 	// De-register from the graph if it contains multiview tensors.
-	if (info->tensor_nest_size)
-		_ccv_nnc_graph_deregister_tensor_nests(graph, exec);
+	if (info->tensor_tree_size)
+		_ccv_nnc_graph_deregister_tensor_trees(graph, exec);
 	// In case it is already executed, rewind.
 	_ccv_nnc_graph_exec_rewind(info);
 	if (input_size == 0 && output_size == 0)
@@ -296,9 +302,9 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		info->outputs = 0;
 		info->input_size = 0;
 		info->output_size = 0;
-		_ccv_nnc_graph_redo_tensor_nests(info);
-		if (info->tensor_nest_size)
-			_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
+		_ccv_nnc_graph_redo_tensor_trees(info);
+		if (info->tensor_tree_size)
+			_ccv_nnc_graph_register_tensor_trees(graph, exec, info);
 		return;
 	}
 	if (info->inputs)
@@ -312,10 +318,10 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		memcpy(info->outputs, outputs, sizeof(ccv_nnc_tensor_t*) * output_size);
 	info->input_size = input_size;
 	info->output_size = output_size;
-	_ccv_nnc_graph_redo_tensor_nests(info);
-	// Register again if the tensor nests exist.
-	if (info->tensor_nest_size)
-		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
+	_ccv_nnc_graph_redo_tensor_trees(info);
+	// Register again if the tensor trees exist.
+	if (info->tensor_tree_size)
+		_ccv_nnc_graph_register_tensor_trees(graph, exec, info);
 	// Free flags.
 	if (info->input_flags)
 	{
@@ -330,7 +336,7 @@ void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nn
 	assert(exec.d < graph->exec_info->rnum);
 	assert(exec.graph == graph);
 	ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	const int register_tensor_nests = !info->tensor_nest_size;
+	const int register_tensor_trees = !info->tensor_tree_size;
 	const int broadcast_index = info->broadcast_size;
 	++info->broadcast_size;
 	if (info->broadcasts)
@@ -338,9 +344,9 @@ void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nn
 	else
 		info->broadcasts = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * info->broadcast_size);
 	info->broadcasts[broadcast_index] = broadcast;
-	_ccv_nnc_graph_redo_tensor_nests(info);
-	if (register_tensor_nests)
-		_ccv_nnc_graph_register_tensor_nests(graph, exec, info);
+	_ccv_nnc_graph_redo_tensor_trees(info);
+	if (register_tensor_trees)
+		_ccv_nnc_graph_register_tensor_trees(graph, exec, info);
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -369,12 +375,23 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 		.d = d,
 		.graph = graph,
 	};
-	_ccv_nnc_graph_redo_tensor_nests(&info);
+	_ccv_nnc_graph_redo_tensor_trees(&info);
 	// Add itself to the graph's wraps array, this will help the run time when we run the graph and do unwrapping.
-	if (info.tensor_nest_size)
-		_ccv_nnc_graph_register_tensor_nests(graph, exec, &info);
+	if (info.tensor_tree_size)
+		_ccv_nnc_graph_register_tensor_trees(graph, exec, &info);
 	ccv_array_push(graph->exec_info, &info);
 	return exec;
+}
+
+void ccv_nnc_graph_add_move(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to)
+{
+	ccv_nnc_graph_tensor_move_t move = {
+		.from = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)from),
+		.to = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)to)
+	};
+	if (!graph->mv)
+		graph->mv = ccv_array_new(sizeof(ccv_nnc_graph_tensor_move_t), 0, 0);
+	ccv_array_push(graph->mv, &move);
 }
 
 int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
@@ -1003,12 +1020,12 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccfree(info->input_flags);
 		if (info->broadcasts)
 			ccfree(info->broadcasts);
-		if (info->tensor_nest_size)
+		if (info->tensor_tree_size)
 		{
-			for (j = 0; j < info->tensor_nest_size; j++)
-				if (info->tensor_nests[j])
-					_ccv_nnc_graph_tensor_nest_free(info->tensor_nests[j]);
-			ccfree(info->tensor_nests);
+			for (j = 0; j < info->tensor_tree_size; j++)
+				if (info->tensor_trees[j])
+					_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[j]);
+			ccfree(info->tensor_trees);
 		}
 	}
 	if (graph->breakpoints)
@@ -1017,8 +1034,18 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->sources);
 	if (graph->destinations)
 		ccv_array_free(graph->destinations);
-	if (graph->nest_execs)
-		ccv_array_free(graph->nest_execs);
+	if (graph->tree_execs)
+		ccv_array_free(graph->tree_execs);
+	if (graph->mv)
+	{
+		for (i = 0; i < graph->mv->rnum; i++)
+		{
+			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->mv, i);
+			_ccv_nnc_graph_tensor_tree_free(move->from);
+			_ccv_nnc_graph_tensor_tree_free(move->to);
+		}
+		ccv_array_free(graph->mv);
+	}
 	if (graph->sub_graphs)
 	{
 		for (i = 0; i < graph->sub_graphs->rnum; i++)

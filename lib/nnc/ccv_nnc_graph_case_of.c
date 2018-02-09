@@ -44,13 +44,13 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	if (!graph->sub_graphs)
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_graph_t*), 1, 0);
 	int i;
-	if (case_graph->nest_execs)
+	if (case_graph->tree_execs)
 	{
 		// Copy wraps from sub graph to parent graph.
-		if (!graph->nest_execs)
-			graph->nest_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), case_graph->nest_execs->rnum, 0);
-		for (i = 0; i < case_graph->nest_execs->rnum; i++)
-			ccv_array_push(graph->nest_execs, ccv_array_get(case_graph->nest_execs, i));
+		if (!graph->tree_execs)
+			graph->tree_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), case_graph->tree_execs->rnum, 0);
+		for (i = 0; i < case_graph->tree_execs->rnum; i++)
+			ccv_array_push(graph->tree_execs, ccv_array_get(case_graph->tree_execs, i));
 	}
 	ccv_array_push(graph->sub_graphs, &case_graph);
 	case_graph->p = graph;

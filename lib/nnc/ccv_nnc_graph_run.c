@@ -4,90 +4,114 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
+static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, const int count, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
+{
+	ccv_nnc_tensor_t* tensor = tensor_tree->tensors[tensor_tree->index];
+	while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
+		   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
+			((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
+	{
+		ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
+		const int off = mv->kind;
+		const int mod = mv->repeat;
+		tensor = CCV_NNC_MULTIVIEW_DATA(mv)[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
+		// If reached the root.
+		if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
+			tensor_tree->broadcast_required = 1; // Need to broadcast tensor updates.
+		++tensor_tree->index;
+		tensor_tree->tensors[tensor_tree->index] = tensor;
+		assert(tensor_tree->index < tensor_tree->count);
+	}
+}
+
 static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int count)
 {
-	if (!graph->nest_execs)
+	if (!graph->tree_execs)
 		return;
 	int i, j;
-	for (i = 0; i < graph->nest_execs->rnum; i++)
+	for (i = 0; i < graph->tree_execs->rnum; i++)
 	{
-		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->nest_execs, i);
+		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->tree_execs, i);
 		const ccv_nnc_graph_t* const sub_graph = exec->graph;
 		ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(sub_graph->exec_info, exec->d);
-		for (j = 0; j < exec_info->tensor_nest_size; j++)
+		for (j = 0; j < exec_info->tensor_tree_size; j++)
 		{
-			ccv_nnc_graph_tensor_nest_t* const tensor_nest = exec_info->tensor_nests[j];
-			if (!tensor_nest)
+			ccv_nnc_graph_tensor_tree_t* const tensor_tree = exec_info->tensor_trees[j];
+			if (!tensor_tree)
 				continue;
-			ccv_nnc_tensor_t* tensor = tensor_nest->tensors[tensor_nest->index];
-			while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
-				   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
-					((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
-			{
-				ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
-				const int off = mv->kind;
-				const int mod = mv->repeat;
-				tensor = CCV_NNC_MULTIVIEW_DATA(mv)[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
-				// If reached the root.
-				if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
-					tensor_nest->broadcast_required = 1; // Need to broadcast tensor updates.
-				++tensor_nest->index;
-				tensor_nest->tensors[tensor_nest->index] = tensor;
-				assert(tensor_nest->index < tensor_nest->count);
-			}
+			_ccv_nnc_unwrap_tensor_tree(graph, count, tensor_tree);
 		}
 	}
+	if (graph->mv)
+		for (i = 0; i < graph->mv->rnum; i++)
+		{
+			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->mv, i);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, move->from);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, move->to);
+		}
+}
+
+static void _ccv_nnc_rewrap_tensor_tree(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
+{
+	while (tensor_tree->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_tree->tensors[tensor_tree->index - 1]) &&
+			(((ccv_nnc_tensor_multiview_t*)tensor_tree->tensors[tensor_tree->index - 1])->anchor == (intptr_t)graph ||
+			 ((ccv_nnc_tensor_multiview_t*)tensor_tree->tensors[tensor_tree->index - 1])->anchor == (intptr_t)graph->peer))
+		--tensor_tree->index;
 }
 
 static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call this method at the end to roll the wrap_ptr back
 {
-	if (!graph->nest_execs)
+	if (!graph->tree_execs)
 		return;
 	int i, j;
-	for (i = 0; i < graph->nest_execs->rnum; i++)
+	for (i = 0; i < graph->tree_execs->rnum; i++)
 	{
-		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->nest_execs, i);
+		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->tree_execs, i);
 		const ccv_nnc_graph_t* const sub_graph = exec->graph;
 		ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(sub_graph->exec_info, exec->d);
-		for (j = 0; j < exec_info->tensor_nest_size; j++)
+		for (j = 0; j < exec_info->tensor_tree_size; j++)
 		{
-			ccv_nnc_graph_tensor_nest_t* const tensor_nest = exec_info->tensor_nests[j];
-			if (!tensor_nest)
+			ccv_nnc_graph_tensor_tree_t* const tensor_tree = exec_info->tensor_trees[j];
+			if (!tensor_tree)
 				continue;
-			while (tensor_nest->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_nest->tensors[tensor_nest->index - 1]) &&
-					(((ccv_nnc_tensor_multiview_t*)tensor_nest->tensors[tensor_nest->index - 1])->anchor == (intptr_t)graph ||
-					 ((ccv_nnc_tensor_multiview_t*)tensor_nest->tensors[tensor_nest->index - 1])->anchor == (intptr_t)graph->peer))
-				--tensor_nest->index;
+			_ccv_nnc_rewrap_tensor_tree(graph, tensor_tree);
 		}
 	}
+	if (graph->mv)
+		for (i = 0; i < graph->mv->rnum; i++)
+		{
+			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->mv, i);
+			_ccv_nnc_rewrap_tensor_tree(graph, move->from);
+			_ccv_nnc_rewrap_tensor_tree(graph, move->to);
+		}
 }
 
 static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node)
 {
-	if (!node->tensor_nest_size)
+	if (!node->tensor_tree_size)
 		return;
 	int i;
-	ccv_nnc_graph_tensor_nest_t** const tensor_nests = node->tensor_nests;
-	for (i = 0; i < node->tensor_nest_size; i++)
-		if (tensor_nests[i])
+	ccv_nnc_graph_tensor_tree_t** const tensor_trees = node->tensor_trees;
+	for (i = 0; i < node->tensor_tree_size; i++)
+		if (tensor_trees[i])
 		{
-			assert(tensor_nests[i]->index > 0);
-			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
+			assert(tensor_trees[i]->index > 0);
+			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_trees[i]->tensors[tensor_trees[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			// Only now set the mv->it, because now this node is about to get executed.
-			mv->it = tensor_nests[i]->tensors[tensor_nests[i]->index];
+			mv->it = tensor_trees[i]->tensors[tensor_trees[i]->index];
 			assert(!CCV_IS_TENSOR_MULTIVIEW(mv->it));
 		}
 	for (i = 0; i < node->input_size; i++)
-		if (tensor_nests[i])
-			node->inputs[i] = tensor_nests[i]->tensors[tensor_nests[i]->index];
+		if (tensor_trees[i])
+			node->inputs[i] = tensor_trees[i]->tensors[tensor_trees[i]->index];
 	const int d = node->input_size;
 	for (i = 0; i < node->output_size; i++)
-		if (tensor_nests[d + i])
-			node->outputs[i] = tensor_nests[d + i]->tensors[tensor_nests[d + i]->index];
+		if (tensor_trees[d + i])
+			node->outputs[i] = tensor_trees[d + i]->tensors[tensor_trees[d + i]->index];
 }
 
-static void _ccv_nnc_graph_exec_unwrap_phi(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const node, const int ref)
+static void _ccv_nnc_graph_exec_unwrap_phi(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const node, const int ref)
 {
 	int i;
 	// If the output tensor is a phi multi-view tensor, we broadcast our selection to all the subscribers.
@@ -97,24 +121,24 @@ static void _ccv_nnc_graph_exec_unwrap_phi(const ccv_nnc_graph_t* const graph, c
 		{
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)node->outputs[i];
 			mv->it = CCV_NNC_MULTIVIEW_DATA(mv)[ref >= 0];
-			ccv_nnc_tensor_multiview_broadcast(mv);
+			ccv_nnc_tensor_multiview_synchronize(mv, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
 		}
 }
 
-static void _ccv_nnc_graph_exec_broadcast(ccv_nnc_graph_exec_info_t* const node)
+static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node)
 {
-	if (!node->tensor_nest_size)
+	if (!node->tensor_tree_size)
 		return;
 	int i;
-	ccv_nnc_graph_tensor_nest_t** const tensor_nests = node->tensor_nests;
-	for (i = 0; i < node->tensor_nest_size; i++)
-		if (tensor_nests[i] && tensor_nests[i]->broadcast_required)
+	ccv_nnc_graph_tensor_tree_t** const tensor_trees = node->tensor_trees;
+	for (i = 0; i < node->tensor_tree_size; i++)
+		if (tensor_trees[i] && tensor_trees[i]->broadcast_required)
 		{
-			assert(tensor_nests[i]->index > 0);
-			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)(tensor_nests[i]->tensors[tensor_nests[i]->index - 1]);
+			assert(tensor_trees[i]->index > 0);
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)(tensor_trees[i]->tensors[tensor_trees[i]->index - 1]);
 			// Now broadcast the final pointer.
-			ccv_nnc_tensor_multiview_broadcast(mv);
-			tensor_nests[i]->broadcast_required = 0; // Reset, no need to broadcast.
+			ccv_nnc_tensor_multiview_synchronize(mv, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
+			tensor_trees[i]->broadcast_required = 0; // Reset, no need to broadcast.
 		}
 }
 
@@ -136,7 +160,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size); \
 		/* Broadcast the updates to all subscribed references for input / output, even though at this
 		 * time output is not written yet, propagate pointer change is still valid. */ \
-		_ccv_nnc_graph_exec_broadcast(node); \
+		_ccv_nnc_graph_exec_begin_synchronize_multiviews(graph, node); \
 		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
 		{ \
 			if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) \
@@ -172,10 +196,10 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 		} else { \
 			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, depth, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
-			for (i = 0; i < node->output_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p) %f\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? inputs[i]->data.f32[0] : 0)); \
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
+			for (i = 0; i < node->output_size; i++) \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p) %f\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? outputs[i]->data.f32[0] : 0)); \
 		} \
 	} while (0)
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
