@@ -186,6 +186,36 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 		}
 }
 
+static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
+{
+	int i;
+	switch (tensor->info.datatype)
+	{
+		case CCV_32F:
+			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+				PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
+			break;
+		case CCV_64F:
+			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+				PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f64[i]);
+			break;
+		case CCV_32S:
+			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+				PRINT(CCV_CLI_VERBOSE, " %d", tensor->data.i32[i]);
+			break;
+		case CCV_64S:
+			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+				PRINT(CCV_CLI_VERBOSE, " %ld", tensor->data.i64[i]);
+			break;
+		case CCV_8U:
+			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+				PRINT(CCV_CLI_VERBOSE, " %d", (int)tensor->data.u8[i]);
+			break;
+	}
+	if (ccv_nnc_tensor_count(tensor->info) > 3)
+		PRINT(CCV_CLI_VERBOSE, " ..");
+}
+
 static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	int i, j;
@@ -240,10 +270,20 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 		} else { \
 			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, depth, node->input_size, node->output_size); \
 			for (i = 0; i < node->input_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p) %f\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0), (inputs[i] ? inputs[i]->data.f32[0] : 0)); \
+			{ \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
+				if (inputs[i]) \
+					_ccv_nnc_print_tensor_verbose(inputs[i]); \
+				PRINT(CCV_CLI_VERBOSE, "\n"); \
+			} \
 			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
 			for (i = 0; i < node->output_size; i++) \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p) %f\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0), (outputs[i] ? outputs[i]->data.f32[0] : 0)); \
+			{ \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
+				if (outputs[i]) \
+					_ccv_nnc_print_tensor_verbose(outputs[i]); \
+				PRINT(CCV_CLI_VERBOSE, "\n"); \
+			} \
 		} \
 	} while (0)
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
