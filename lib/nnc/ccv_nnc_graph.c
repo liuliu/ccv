@@ -389,9 +389,9 @@ void ccv_nnc_graph_add_move(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t
 		.from = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)from),
 		.to = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)to)
 	};
-	if (!graph->mv)
-		graph->mv = ccv_array_new(sizeof(ccv_nnc_graph_tensor_move_t), 0, 0);
-	ccv_array_push(graph->mv, &move);
+	if (!graph->moves)
+		graph->moves = ccv_array_new(sizeof(ccv_nnc_graph_tensor_move_t), 0, 0);
+	ccv_array_push(graph->moves, &move);
 }
 
 int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
@@ -1036,15 +1036,15 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->destinations);
 	if (graph->tree_execs)
 		ccv_array_free(graph->tree_execs);
-	if (graph->mv)
+	if (graph->moves)
 	{
-		for (i = 0; i < graph->mv->rnum; i++)
+		for (i = 0; i < graph->moves->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->mv, i);
+			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->moves, i);
 			_ccv_nnc_graph_tensor_tree_free(move->from);
 			_ccv_nnc_graph_tensor_tree_free(move->to);
 		}
-		ccv_array_free(graph->mv);
+		ccv_array_free(graph->moves);
 	}
 	if (graph->sub_graphs)
 	{

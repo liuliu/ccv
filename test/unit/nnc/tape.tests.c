@@ -99,11 +99,6 @@ TEST_CASE("new tape from a graph")
 	while_graph->while_count = 2;
 	ccv_nnc_tensor_tape_io(tape, while_graph, 0, TENSOR_LIST(tensor), 0, TENSOR_LIST());
 	REQUIRE_EQ_WITH_TOLERANCE(tensor->data.f32[0], 0.18, 1e-5, "Tensor should retain 0.02 with (1, 2).");
-	// In next loop, try to access data (it will return the data from previous loop).
-	graph->while_count = 2;
-	while_graph->while_count = 4;
-	ccv_nnc_tensor_tape_io(tape, while_graph, 0, TENSOR_LIST(tensor), 0, TENSOR_LIST());
-	REQUIRE_EQ_WITH_TOLERANCE(tensor->data.f32[0], 1.29, 1e-5, "Tensor should retain 1.29 with (2, 4).");
 	tensor->data = data;
 	// Verify while count
 	while_graph->while_count = 0;

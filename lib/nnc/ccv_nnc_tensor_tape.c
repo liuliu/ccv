@@ -176,11 +176,7 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 	}
 	// Compute the index.
 	int idx, step;
-	if (flags & CCV_NNC_TENSOR_PAST_VALUE)
-		idx = graphs[graph_size - 1]->while_count; // If we are using the past value, -1 on the while_count + 1.
-	else
-		idx = (graphs[graph_size - 1]->while_count + 1);
-	const int this_idx = idx; // The index at current level.
+	idx = (graphs[graph_size - 1]->while_count + 1);
 	step = data_array->dim[graph_size - 1];
 	for (i = graph_size - 2; i >= 0; i--)
 	{
@@ -193,13 +189,11 @@ static void _ccv_nnc_tensor_from_tape(ccv_array_t* const tensor_data, ccv_nnc_te
 		// If we cannot create, loop back idx until we find one that exists.
 		if (!create_if_missing)
 		{
-			// Only go back to the beginning of this level, no more.
-			for (i = idx - 1; !data.u8 && i >= idx - this_idx; i--)
-				if (data_array->data[i].data.u8)
-					data.u8 = (unsigned char*)((uintptr_t)data_array->data[i].data.u8 | (uintptr_t)1);
+			if (data_array->data[idx].data.u8)
+				data.u8 = (unsigned char*)((uintptr_t)data_array->data[idx].data.u8 | (uintptr_t)1);
+			else
 			// Now looped back to 0, if still cannot find, using the original pointer.
-			if (!data.u8)
-				data.u8 = data_array->data[idx - this_idx].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
+				data.u8 = data_array->data[idx].data.u8 = (unsigned char*)((uintptr_t)tensor_ref->data.u8 | (uintptr_t)1);
 		} else {
 			const size_t size = ccv_nnc_tensor_data_size(tensor->info);
 			data_array->data[idx].type = tensor->info.type;

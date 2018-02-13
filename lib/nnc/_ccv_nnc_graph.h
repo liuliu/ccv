@@ -90,7 +90,7 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_graph_exec_t* breakpoints;
 	// End of while loop handling.
 	// Extra metadata, useful when we don't want extra memory allocation.
-	ccv_array_t* mv; // The array of tensor moves.
+	ccv_array_t* moves; // The array of tensor moves.
 };
 
 #endif

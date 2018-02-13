@@ -251,10 +251,6 @@ enum {
 	CCV_NNC_SYM_TENSOR_TAPE_VAR = 0x02, // Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC)
 };
 
-enum {
-	CCV_NNC_TENSOR_PAST_VALUE = 0x01, // Retrieves the value of one loop before of the current tensor.
-};
-
 typedef struct {
 	ccv_nnc_tensor_symbol_t source;
 	ccv_nnc_tensor_symbol_t destination;

@@ -1386,18 +1386,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			ccv_nnc_tensor_t* assign_tensor;
 			if (sub_arena_out_tensors && sub_arena_out_tensors[assign_ref])
 				assign_tensor = CCV_IS_TENSOR_MULTIVIEW(sub_arena_out_tensors[assign_ref]) ? sub_arena_out_tensors[assign_ref] : (ccv_nnc_tensor_t*)sub_arena_out_tensors[assign_ref]->alias_ref;
-			else {
+			else
 				assign_tensor = tensor_arena->vt_tensors[assign_ref];
-				// Do our best to find whether assign tensor is a phi.
-				if (!CCV_IS_TENSOR_MULTIVIEW(assign_tensor))
-				{
-					ccv_nnc_tensor_multiview_t* const phi = (ccv_nnc_tensor_multiview_t*)(assign_tensor->alias_ref);
-					if (phi && CCV_IS_TENSOR_MULTIVIEW(phi) && phi->anchor == CCV_NNC_MULTIVIEW_PHI)
-						assign_tensor = (ccv_nnc_tensor_t*)phi;
-				}
-			}
-			if (!CCV_IS_TENSOR_MULTIVIEW(assign_tensor))
-				continue;
 			ccv_nnc_graph_add_move(graph_prep->graph, assign_tensor, tensor_arena->vt_tensors[i]);
 		}
 	if (sub_arena_out_tensors)
@@ -3053,7 +3043,6 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		max_breakpoint_size = ccv_max(max_breakpoint_size, (*(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, i))->breakpoint_size);
 	ccv_nnc_tensor_t** max_inputs = max_input_size + max_output_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (max_input_size + max_output_size)) : 0;
 	ccv_nnc_tensor_t** max_outputs = max_inputs + max_input_size;
-	int* const max_input_flags = max_input_size + max_output_size > 0 ? (int*)ccmalloc(sizeof(int) * max_input_size) : 0;
 	ccv_nnc_graph_exec_t* max_breakpoints = max_breakpoint_size > 0 ? (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * max_breakpoint_size) : 0;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = graph_prep->exec_symbol_info;
 	const ccv_nnc_graph_exec_attr_t* const exec_attrs = graph_prep->exec_attrs;
@@ -3061,19 +3050,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		if (CCV_NO_GRAPH_EXEC(graph_execs[idx]))
 		{
 			for (i = 0; i < node->input_size; i++)
-			{
 				max_inputs[i] = node->inputs[i] >= 0 ? tensor_arena->vt_tensors[node->inputs[i]] : 0;
-				max_input_flags[i] = 0;
-				if (node->inputs[i] >= 0 && graph_prep->tensor_symbol_info[node->inputs[i]].assign_ref)
-					max_input_flags[i] |= CCV_NNC_TENSOR_PAST_VALUE;
-				else if (node->inputs[i] >= 0 && graph_prep->tensor_symbol_info[node->inputs[i]].peer_ref)
-				{
-					const int peer_ref = graph_prep->tensor_symbol_info[node->inputs[i]].peer_ref - 1;
-					const ccv_nnc_tensor_symbol_info_t* const peer_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph_prep->symbolic_graph->peer->tensor_symbol_info, peer_ref);
-					if (peer_info->assign_ref)
-						max_input_flags[i] |= CCV_NNC_TENSOR_PAST_VALUE;
-				}
-			}
 			for (i = 0; i < node->output_size; i++)
 				max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensors[node->outputs[i]] : 0;
 			if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
@@ -3126,7 +3103,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			} else {
 				graph_execs[idx] = ccv_nnc_graph_exec_new(graph, node->cmd, node->hint, max_inputs, node->input_size, max_outputs, node->output_size);
 			}
-			ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[idx], max_input_flags, node->input_size, 0, 0);
+			ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[idx], 0, 0, 0, 0);
 		}
 		if (!node->outgoings)
 			break;
@@ -3137,19 +3114,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			{
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_node = exec_symbol_info + outgoing;
 				for (j = 0; j < outgoing_node->input_size; j++)
-				{
 					max_inputs[j] = outgoing_node->inputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->inputs[j]] : 0;
-					max_input_flags[j] = 0;
-					if (outgoing_node->inputs[j] >= 0 && graph_prep->tensor_symbol_info[outgoing_node->inputs[j]].assign_ref)
-						max_input_flags[j] |= CCV_NNC_TENSOR_PAST_VALUE;
-					else if (outgoing_node->inputs[j] >= 0 && graph_prep->tensor_symbol_info[outgoing_node->inputs[j]].peer_ref)
-					{
-						const int peer_ref = graph_prep->tensor_symbol_info[outgoing_node->inputs[j]].peer_ref - 1;
-						const ccv_nnc_tensor_symbol_info_t* const peer_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph_prep->symbolic_graph->peer->tensor_symbol_info, peer_ref);
-						if (peer_info->assign_ref)
-							max_input_flags[j] |= CCV_NNC_TENSOR_PAST_VALUE;
-					}
-				}
 				for (j = 0; j < outgoing_node->output_size; j++)
 					max_outputs[j] = outgoing_node->outputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->outputs[j]] : 0;
 				if (outgoing_node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
@@ -3203,15 +3168,13 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				} else {
 					graph_execs[outgoing] = ccv_nnc_graph_exec_new(graph, outgoing_node->cmd, outgoing_node->hint, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
 				}
-				ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[outgoing], max_input_flags, outgoing_node->input_size, 0, 0);
+				ccv_nnc_graph_exec_set_io_flags(graph, graph_execs[outgoing], 0, 0, 0, 0);
 			}
 			ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[outgoing]);
 		}
 	} ccv_nnc_graph_visit_endfor
 	if (max_inputs)
 		ccfree(max_inputs);
-	if (max_input_flags)
-		ccfree(max_input_flags);
 	if (max_breakpoints)
 		ccfree(max_breakpoints);
 	int source_exec_created = 0;
