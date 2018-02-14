@@ -341,8 +341,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			assert(graph->peer);
 			assert(tensor_tape);
 			count = 0;
-			uint64_t reverse_count;
-			graph->while_count = reverse_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
+			int64_t reverse_count = graph->while_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
 					.d = exec_idx,
 					.graph = graph->p,
 				});
@@ -350,12 +349,11 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, destinations, destination_size, 1, visitor);
 			_ccv_nnc_graph_from_move_transit(graph);
 			_ccv_nnc_graph_rewrap(graph);
-			for (; reverse_count > 0; ++count)
+			for (count = 1; reverse_count > 0; ++count)
 			{
 				graph->while_count = --reverse_count;
 				_ccv_nnc_graph_unwrap(graph, count, reverse_count);
-				if (count > 0)
-					_ccv_nnc_graph_transit_move_to(graph);
+				_ccv_nnc_graph_transit_move_to(graph);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
