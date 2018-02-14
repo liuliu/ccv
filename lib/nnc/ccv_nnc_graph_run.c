@@ -207,7 +207,7 @@ static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 			break;
 		case CCV_64S:
 			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %ld", tensor->data.i64[i]);
+				PRINT(CCV_CLI_VERBOSE, " %lld", (long long)tensor->data.i64[i]);
 			break;
 		case CCV_8U:
 			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
