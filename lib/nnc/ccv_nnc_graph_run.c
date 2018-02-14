@@ -4,17 +4,19 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
-static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, const int count, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
+static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
 {
 	ccv_nnc_tensor_t* tensor = tensor_tree->tensors[tensor_tree->index];
 	while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
 		   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
 			((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
 	{
+		// If the anchor is from the peer, we use the reverse_count instead (we are looking it up).
+		const int i = (int)((((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph) ? count : reverse_count);
 		ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 		const int off = mv->kind;
 		const int mod = mv->repeat;
-		tensor = CCV_NNC_MULTIVIEW_DATA(mv)[count >= off ? ((count - off) % mod) + off : count]; // Unwrap.
+		tensor = CCV_NNC_MULTIVIEW_DATA(mv)[i >= off ? ((i - off) % mod) + off : i]; // Unwrap.
 		// If reached the root.
 		if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
 			tensor_tree->broadcast_required = 1; // Need to broadcast tensor updates.
@@ -24,22 +26,22 @@ static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, cons
 	}
 }
 
-static void _ccv_nnc_graph_unwrap_sub_graph(const ccv_nnc_graph_t* const graph, const int count, const ccv_nnc_graph_t* const sub_graph)
+static void _ccv_nnc_graph_unwrap_sub_graph(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, const ccv_nnc_graph_t* const sub_graph)
 {
 	int i;
 	if (sub_graph->moves)
 		for (i = 0; i < sub_graph->moves->rnum; i++)
 		{
 			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(sub_graph->moves, i);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, move->from);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, move->to);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, move->from);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, move->to);
 		}
 	if (sub_graph->sub_graphs)
 		for (i = 0; i < sub_graph->sub_graphs->rnum; i++)
-			_ccv_nnc_graph_unwrap_sub_graph(graph, count, *(ccv_nnc_graph_t**)ccv_array_get(sub_graph->sub_graphs, i));
+			_ccv_nnc_graph_unwrap_sub_graph(graph, count, reverse_count, *(ccv_nnc_graph_t**)ccv_array_get(sub_graph->sub_graphs, i));
 }
 
-static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int count)
+static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count)
 {
 	if (!graph->tree_execs)
 		return;
@@ -54,10 +56,10 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int 
 			ccv_nnc_graph_tensor_tree_t* const tensor_tree = exec_info->tensor_trees[j];
 			if (!tensor_tree)
 				continue;
-			_ccv_nnc_unwrap_tensor_tree(graph, count, tensor_tree);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, tensor_tree);
 		}
 	}
-	_ccv_nnc_graph_unwrap_sub_graph(graph, count, graph);
+	_ccv_nnc_graph_unwrap_sub_graph(graph, count, reverse_count, graph);
 }
 
 static void _ccv_nnc_graph_transit_move_to(const ccv_nnc_graph_t* const graph)
@@ -289,9 +291,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
 		assert(exec->p_while.expr);
-		uint64_t count = 0;
-		ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
-		ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
+		int64_t count = 0;
 		// This is a forward while loop. Backward while loop will just consult its peering part.
 		if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 		{
@@ -309,6 +309,8 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 						ccv_array_push(follows, &exec);
 					}
 			}
+			ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
+			ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
 			for (;; ++count)
 			{
 				graph->while_count = count;
@@ -317,7 +319,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 						.d = exec_idx,
 						.graph = graph->p,
 					}, count);
-				_ccv_nnc_graph_unwrap(graph, count);
+				_ccv_nnc_graph_unwrap(graph, count, 0);
 				if (count > 0)
 					_ccv_nnc_graph_transit_move_to(graph);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, 0, visitor);
@@ -338,23 +340,26 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD);
 			assert(graph->peer);
 			assert(tensor_tape);
-			graph->while_count = count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
+			count = 0;
+			uint64_t reverse_count;
+			graph->while_count = reverse_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
 					.d = exec_idx,
 					.graph = graph->p,
 				});
-			_ccv_nnc_graph_unwrap(graph, count);
+			_ccv_nnc_graph_unwrap(graph, count, reverse_count);
 			CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, destinations, destination_size, 1, visitor);
 			_ccv_nnc_graph_from_move_transit(graph);
 			_ccv_nnc_graph_rewrap(graph);
-			if (count > 0)
-				do {
-					graph->while_count = --count;
-					_ccv_nnc_graph_unwrap(graph, count);
+			for (; reverse_count > 0; ++count)
+			{
+				graph->while_count = --reverse_count;
+				_ccv_nnc_graph_unwrap(graph, count, reverse_count);
+				if (count > 0)
 					_ccv_nnc_graph_transit_move_to(graph);
-					CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
-					_ccv_nnc_graph_from_move_transit(graph);
-					_ccv_nnc_graph_rewrap(graph);
-				} while (count > 0);
+				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
+				_ccv_nnc_graph_from_move_transit(graph);
+				_ccv_nnc_graph_rewrap(graph);
+			}
 		}
 	} else {
 		graph->while_count = 0;
