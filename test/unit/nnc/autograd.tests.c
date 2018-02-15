@@ -56,6 +56,44 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 }
 
+TEST_CASE("autograd with D[y, x] when x = 10 and y = 1 (no x presence in the formula)")
+{
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
+	ccv_nnc_graph_exec_symbol_t set = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1), 0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(y), "set");
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(set), GRAPH_EXEC_SYMBOL_LIST(set), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x));
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, ccv_nnc_symbolic_graph_sources(symbolic_graph), ccv_nnc_symbolic_graph_source_size(symbolic_graph), ccv_nnc_symbolic_graph_destinations(symbolic_graph), ccv_nnc_symbolic_graph_destination_size(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* tx = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	if (tx)
+		tx->data.f32[0] = 10;
+	ccv_nnc_tensor_t* ty = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	if (ty)
+		ty->data.f32[0] = 1;
+	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, y);
+	ccv_nnc_tensor_t* tdy = ccv_nnc_tensor_from_symbol(tensor_arena, dy);
+	// Seed the initialization vector if needed.
+	if (tdy)
+		tdy->data.f32[0] = 1;
+	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
+	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
+	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 0, 1e-6, "computed result of D[y, x] should be 0");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+}
+
 TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.38")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
