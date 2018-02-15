@@ -75,7 +75,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_tensor_free(g);
 }
 
-TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, then u = v * z")
+TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, then u = v * z, compute y'")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");

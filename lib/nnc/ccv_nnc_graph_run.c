@@ -274,7 +274,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			for (i = 0; i < node->input_size; i++) \
 			{ \
 				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
-				if (inputs[i]) \
+				if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
 					_ccv_nnc_print_tensor_verbose(inputs[i]); \
 				PRINT(CCV_CLI_VERBOSE, "\n"); \
 			} \
@@ -282,7 +282,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 			for (i = 0; i < node->output_size; i++) \
 			{ \
 				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
-				if (outputs[i]) \
+				if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
 					_ccv_nnc_print_tensor_verbose(outputs[i]); \
 				PRINT(CCV_CLI_VERBOSE, "\n"); \
 			} \
