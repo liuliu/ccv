@@ -12,7 +12,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, con
 	exec_info->flags |= CCV_NNC_GRAPH_EXEC_CASE_OF;
 	int i, j;
 	for (i = 0; i < output_size; i++)
-		if (((ccv_nnc_tensor_multiview_t*)outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)
+		if (outputs[i] && ((ccv_nnc_tensor_multiview_t*)outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)
 			for (j = 0; j < ((ccv_nnc_tensor_multiview_t*)outputs[i])->kind + ((ccv_nnc_tensor_multiview_t*)outputs[i])->repeat; j++)
 			{
 				ccv_nnc_tensor_t* const mv = (ccv_nnc_tensor_t*)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)outputs[i])[j]->alias_ref;
