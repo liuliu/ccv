@@ -13,8 +13,7 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_case_of_new(ccv_nnc_symbolic_
 	assert(cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD);
 	// A case_if statement must have meaningful outputs / inputs.
 	assert(symbol_map_size > 0);
-	assert(input_size > 0);
-	ccv_nnc_tensor_symbol_t* const all_inputs = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * (symbol_map_size * 2 + input_size));
+	ccv_nnc_tensor_symbol_t all_inputs[symbol_map_size * 2 + input_size];
 	ccv_nnc_tensor_symbol_t* const outputs = all_inputs + (symbol_map_size + input_size);
 	int i;
 	for (i = 0; i < symbol_map_size; i++)
@@ -24,7 +23,6 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_case_of_new(ccv_nnc_symbolic_
 	// Added one more symbol.
 	const ccv_nnc_graph_exec_symbol_t symbol = ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(cmd, 0, CMD_GENERIC(), 0), all_inputs, symbol_map_size + input_size, outputs, symbol_map_size, name);
 	ccv_nnc_tensor_symbol_set_bypass(graph, symbol_map, symbol_map_size);
-	ccfree(all_inputs);
 	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
 	symbol_info->flags |= CCV_NNC_GRAPH_EXEC_CASE_OF;
 	return symbol;

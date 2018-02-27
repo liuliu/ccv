@@ -251,7 +251,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 							.graph = graph, \
 						}, ref); \
 				} else { \
-					assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD); \
+					assert(node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD); \
 					assert(tensor_tape); \
 					ref = ccv_nnc_tensor_tape_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
 							.d = idx, \
