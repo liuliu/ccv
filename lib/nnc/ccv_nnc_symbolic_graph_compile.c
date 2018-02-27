@@ -2188,8 +2188,8 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_
 		max_input_size = ccv_max(exec_symbol_info[i].input_size, max_input_size);
 		max_output_size = ccv_max(exec_symbol_info[i].output_size, max_output_size);
 	}
-	ccv_nnc_tensor_symbol_t* max_inputs = max_input_size > 0 ? (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * max_input_size) : 0;
-	ccv_nnc_tensor_symbol_t* max_outputs = max_output_size > 0 ? (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * max_output_size) : 0;
+	ccv_nnc_tensor_symbol_t max_inputs[ccv_max(1, max_input_size)];
+	ccv_nnc_tensor_symbol_t max_outputs[ccv_max(1, max_output_size)];
 	// Doing graph expansion
 	// It goes without saying, we must have more than one tensors / execs (otherwise I cannot use 0 as no exec ref).
 	assert(dup_graph->exec_symbol_info->rnum > 0);
@@ -2268,8 +2268,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_
 #undef INCOMING_NODE
 #undef OUTGOING_NODE
 	ccfree(inout);
-	ccfree(max_inputs);
-	ccfree(max_outputs);
 }
 
 static void _ccv_nnc_fixup_assign_ref_after_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const int unroll_count, const ccv_nnc_tensor_block_t* const tensor_blocks, const int* const dup_tensor_block_ref, ccv_nnc_tensor_symbol_info_t* const dup_tensor_symbol_info)
@@ -3041,9 +3039,9 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		max_breakpoint_size = ccv_max(max_breakpoint_size, (*(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, i))->breakpoint_size);
-	ccv_nnc_tensor_t** max_inputs = max_input_size + max_output_size > 0 ? (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * (max_input_size + max_output_size)) : 0;
-	ccv_nnc_tensor_t** max_outputs = max_inputs + max_input_size;
-	ccv_nnc_graph_exec_t* max_breakpoints = max_breakpoint_size > 0 ? (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * max_breakpoint_size) : 0;
+	ccv_nnc_tensor_t* max_inputs[ccv_max(1, max_input_size)];
+	ccv_nnc_tensor_t* max_outputs[ccv_max(1, max_output_size)];
+	ccv_nnc_graph_exec_t max_breakpoints[ccv_max(1, max_breakpoint_size)];
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = graph_prep->exec_symbol_info;
 	const ccv_nnc_graph_exec_flag_t* const exec_flags = graph_prep->exec_flags;
 	ccv_nnc_graph_visit_for(graph_prep->visit, exec_symbol_info, node, idx) {
@@ -3175,10 +3173,6 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[outgoing]);
 		}
 	} ccv_nnc_graph_visit_endfor
-	if (max_inputs)
-		ccfree(max_inputs);
-	if (max_breakpoints)
-		ccfree(max_breakpoints);
 	int source_exec_created = 0;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
 	const ccv_nnc_tensor_block_t* const tensor_blocks = graph_prep->tensor_blocks;
