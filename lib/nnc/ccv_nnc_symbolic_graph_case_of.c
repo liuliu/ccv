@@ -25,6 +25,8 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_case_of_new(ccv_nnc_symbolic_
 	ccv_nnc_tensor_symbol_set_bypass(graph, symbol_map, symbol_map_size);
 	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
 	symbol_info->flags |= CCV_NNC_GRAPH_EXEC_CASE_OF;
+	symbol_info->case_of.argument.offset = symbol_map_size;
+	symbol_info->case_of.argument.size = input_size;
 	return symbol;
 }
 

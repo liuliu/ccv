@@ -54,6 +54,10 @@ typedef struct {
 			ccv_nnc_graph_case_of_f expr;
 			const void* data;
 			int flags;
+			struct {
+				int offset;
+				int size;
+			} argument; // range for which data as inputs from input section.
 		} case_of;
 		struct {
 			ccv_nnc_graph_while_f expr;

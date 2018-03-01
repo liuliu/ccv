@@ -3070,7 +3070,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				for (i = 0; i < node->output_size; i++)
 					if (max_outputs[i] && max_outputs[i]->alias_ref)
 						max_outputs[i] = (ccv_nnc_tensor_t*)max_outputs[i]->alias_ref;
-				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs, node->input_size, max_outputs, node->output_size);
+				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs, node->input_size, max_outputs, node->output_size, node->case_of.argument.offset, node->case_of.argument.size);
 				const int offset = (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO) ? 1 : 0;
 				ccv_nnc_graph_set_case_of_expr(graph, graph_execs[idx], node->case_of.expr, node->case_of.data, offset);
 				if (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO)
@@ -3134,7 +3134,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					for (j = 0; j < outgoing_node->output_size; j++)
 						if (max_outputs[j] && max_outputs[j]->alias_ref)
 							max_outputs[j] = (ccv_nnc_tensor_t*)max_outputs[j]->alias_ref;
-					graph_execs[outgoing] = ccv_nnc_graph_case_of_new(graph, outgoing_node->cmd.cmd, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size);
+					graph_execs[outgoing] = ccv_nnc_graph_case_of_new(graph, outgoing_node->cmd.cmd, max_inputs, outgoing_node->input_size, max_outputs, outgoing_node->output_size, outgoing_node->case_of.argument.offset, outgoing_node->case_of.argument.size);
 					const int offset = (exec_flags[outgoing].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO) ? 1 : 0;
 					ccv_nnc_graph_set_case_of_expr(graph, graph_execs[outgoing], outgoing_node->case_of.expr, outgoing_node->case_of.data, offset);
 					if (exec_flags[outgoing].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO)

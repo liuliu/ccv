@@ -13,6 +13,7 @@ TEST_SETUP()
 
 static int piecewise_case_of(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data)
 {
+	assert(input_size == 1);
 	if (inputs[0]->data.f32[0] < 0)
 		return 0;
 	else if (inputs[0]->data.f32[0] < 1)

@@ -686,10 +686,14 @@ static void _ccv_nnc_symbolic_graph_backward_exec_io(const ccv_nnc_graph_exec_sy
 	{
 		*back_input_map = node->outputs;
 		*back_input_size = node->output_size;
-		const int min_size = ccv_min(node->input_size, node->output_size);
-		for (i = 0; i < min_size; i++)
+		for (i = 0; i < node->case_of.argument.offset; i++)
 			(*back_output_map)[i] = node->inputs[i];
-		*back_output_size = min_size;
+		const int argument_offset = node->case_of.argument.offset;
+		const int argument_size = node->case_of.argument.size;
+		// Skip the argument range.
+		for (i = argument_offset + argument_size; i < node->input_size; i++)
+			(*back_output_map)[i - argument_size] = node->inputs[i];
+		*back_output_size = node->input_size - node->case_of.argument.size;
 	} else { // if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
 		*back_input_map = node->outputs;
 		*back_input_size = node->output_size;
