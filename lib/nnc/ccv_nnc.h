@@ -510,7 +510,6 @@ void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while
 void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
 // Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_find_tensor_symbol_from_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 // Extract the sub-graph of the while loop from a symbol.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 

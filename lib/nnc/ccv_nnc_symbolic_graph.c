@@ -554,8 +554,8 @@ void ccv_nnc_tensor_symbol_set_bypass(ccv_nnc_symbolic_graph_t* const graph, con
 	int i;
 	for (i = 0; i < symbol_map_size; i++)
 	{
-		const ccv_nnc_tensor_symbol_t source = ccv_nnc_find_tensor_symbol_from_graph(graph, symbol_map[i].source);
-		const ccv_nnc_tensor_symbol_t destination = ccv_nnc_find_tensor_symbol_from_graph(graph, symbol_map[i].destination);
+		const ccv_nnc_tensor_symbol_t source = ccv_nnc_tensor_symbol_resolve(graph, symbol_map[i].source);
+		const ccv_nnc_tensor_symbol_t destination = ccv_nnc_tensor_symbol_resolve(graph, symbol_map[i].destination);
 		assert(source.graph == graph);
 		assert(destination.graph == graph);
 		assert(source.d < graph->tensor_symbol_info->rnum);

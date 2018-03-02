@@ -1691,6 +1691,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				}
 			const int symbol_map_size = symbol_map->rnum;
 			back_exec->symbol = ccv_nnc_symbolic_graph_case_of_new(graph, back_exec->cmd.cmd, 0, 0, ccv_array_get(symbol_map, 0), symbol_map_size, forw_exec->name);
+			ccv_nnc_symbolic_graph_set_case_of_expr(graph, back_exec->symbol, NOOP_GRAPH_CASE_OF_EXPR, 0);
 			for (p = 0; p < forw_exec->graph_ref_size; p++)
 			{
 				const int graph_ref = CCV_NNC_GRAPH_REF(forw_exec)[p] - 1;
