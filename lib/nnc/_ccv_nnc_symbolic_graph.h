@@ -62,6 +62,8 @@ typedef struct {
 		struct {
 			ccv_nnc_graph_while_f expr;
 			const void* data;
+			ccv_nnc_tensor_symbol_t* inputs;
+			int input_size;
 		} p_while;
 	};
 } ccv_nnc_graph_exec_symbol_info_t;

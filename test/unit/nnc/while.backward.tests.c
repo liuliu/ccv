@@ -12,9 +12,9 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-static int while_4(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data)
+static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data)
 {
-	return commons[0]->data.i64[0] < 4;
+	return inputs[0]->data.i64[0] < 4;
 }
 
 TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
@@ -44,7 +44,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_exec_concat(while_graph, prod0, noop);
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(prod0));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(noop));
-	ccv_nnc_graph_set_while_expr(while_graph, while_4, 0, GRAPH_EXEC_LIST(noop));
+	ccv_nnc_graph_set_while_expr(while_graph, while_4, 0, 0, 0, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_t* while_back_graph = ccv_nnc_graph_new();
 	while_back_graph->peer = while_graph;
 	ccv_nnc_graph_exec_t back_loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_BACKWARD, while_back_graph);
@@ -54,7 +54,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_exec_concat(while_back_graph, back_noop, back_prod0);
 	ccv_nnc_graph_set_sources(while_back_graph, GRAPH_EXEC_LIST(back_noop));
 	ccv_nnc_graph_set_destinations(while_back_graph, GRAPH_EXEC_LIST(back_prod0));
-	ccv_nnc_graph_set_while_expr(while_back_graph, while_4, 0, GRAPH_EXEC_LIST(back_noop));
+	ccv_nnc_graph_set_while_expr(while_back_graph, while_4, 0, 0, 0, GRAPH_EXEC_LIST(back_noop));
 	ccv_nnc_graph_exec_concat(graph, loop, back_loop);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	x0->data.f32[0] = 0.34;
@@ -93,7 +93,7 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	ccv_nnc_graph_exec_symbol_concat(while_graph, log0, noop);
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(z, v), TENSOR_SYMBOL_LIST(u), "prod1");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
+	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_symbolic_graph_set_while_params(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
 	ccv_nnc_symbolic_graph_set_sources(while_graph, GRAPH_EXEC_SYMBOL_LIST(prod0));
 	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(noop));

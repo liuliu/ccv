@@ -1027,6 +1027,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 					_ccv_nnc_graph_tensor_tree_free(info->tensor_trees[j]);
 			ccfree(info->tensor_trees);
 		}
+		if ((info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) && info->p_while.inputs)
+			ccfree(info->p_while.inputs);
 	}
 	if (graph->breakpoints)
 		ccfree(graph->breakpoints);

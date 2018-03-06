@@ -113,7 +113,7 @@ ccv_nnc_graph_t* ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const grap
 	return sub_graph;
 }
 
-void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size)
+void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size)
 {
 	assert(while_graph->p);
 	const int exec_idx = while_graph->exec_idx - 1;
@@ -121,6 +121,12 @@ void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(while_graph->p->exec_info, exec_idx);
 	exec_info->p_while.expr = while_expr;
 	exec_info->p_while.data = while_data;
+	if (input_size > 0)
+	{
+		exec_info->p_while.input_size = input_size;
+		exec_info->p_while.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * input_size);
+		memcpy(exec_info->p_while.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
+	}
 	assert(breakpoint_size > 0);
 	while_graph->breakpoint_size = breakpoint_size;
 	while_graph->breakpoints = (ccv_nnc_graph_exec_t*)((while_graph->breakpoints) ? ccrealloc(while_graph->breakpoints, sizeof(ccv_nnc_graph_exec_t) * breakpoint_size) : ccmalloc(sizeof(ccv_nnc_graph_exec_t) * breakpoint_size));

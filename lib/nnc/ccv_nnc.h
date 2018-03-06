@@ -247,8 +247,22 @@ typedef struct {
 } ccv_nnc_graph_exec_symbol_t;
 
 enum {
-	CCV_NNC_SYM_TENSOR_INIT_ZEROS = 0x01, // Initialize underlying tensor for the symbol with zeros
-	CCV_NNC_SYM_TENSOR_TAPE_VAR = 0x02, // Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC)
+	CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS = 0x01, // Initialize underlying tensor for the symbol with zeros
+	CCV_NNC_TENSOR_SYMBOL_TAPE_VAR = 0x02, // Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC)
+};
+
+enum {
+	CCV_NNC_GRAPH_EXEC_DEAD = 0x1, // Mark this node as dead.
+	CCV_NNC_GRAPH_EXEC_P_WHILE = 0x10, // Mark this node keyword is while
+	CCV_NNC_GRAPH_EXEC_CASE_OF = 0x20, // Mark this node keyword is case_of
+};
+
+#define CCV_NNC_GRAPH_EXEC_IS_DEAD(x) ((x) & CCV_NNC_GRAPH_EXEC_DEAD)
+#define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)
+
+enum {
+	CCV_NNC_NO_TENSOR_SYMBOL = -1,
+	CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL = -1009, // "1009" == "LOOP"
 };
 
 typedef struct {
@@ -296,6 +310,9 @@ int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, cons
 // Manually disconnect input graph nodes with an output graph node for this graph.
 // Return non-zero if cannot disjoin successfully.
 int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+// Manually delete a exec symbol off the symbolic graph.
+// Return non-zero if cannot free.
+int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_t symbol);
 // Automatic concatenate these nodes together based on its inputs / outputs.
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
@@ -437,7 +454,7 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
 
 // The given tensors contains all the common / input / output tensors specified in the sub-graph.
 // Currently, the special_size should always be 1, and contains only the loop counter.
-typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data);
+typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data);
 // Opaque pointer to the tape of tensors. The tape are used by the while loop.
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
@@ -492,7 +509,7 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 // and parent graph).
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph);
 CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
-void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
+void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
@@ -505,11 +522,11 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 // will be moved from the giving graph to the sub-graph.
 ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
 // Set the expression to be evaluated, and at which nodes to be evaluated.
-void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
+void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
 // Set the loop parameters when reuse. (parameterized loop).
 void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
 // Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const while_graph);
 // Extract the sub-graph of the while loop from a symbol.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 

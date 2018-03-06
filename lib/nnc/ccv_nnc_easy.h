@@ -30,7 +30,7 @@
 #define TENSOR_PARAM_LIST_X(...) (ccv_nnc_tensor_param_t []){__VA_ARGS__}
 #define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
-#define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = -1}
+#define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = CCV_NNC_NO_TENSOR_SYMBOL}
 
 #define NOOP_GRAPH_WHILE_EXPR (ccv_nnc_graph_while_f)(1)
 #define NOOP_GRAPH_CASE_OF_EXPR (ccv_nnc_graph_case_of_f)(1)

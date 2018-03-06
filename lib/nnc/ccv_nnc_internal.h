@@ -19,15 +19,6 @@
 #define CCV_NNC_STACK_BITMASK_ALLOC (2)
 #define CCV_NNC_TENSOR_PLACEHOLDER ((ccv_nnc_tensor_t*)(intptr_t)(0x10))
 
-enum {
-	CCV_NNC_GRAPH_EXEC_DEAD = 0x1, // Mark this node as dead.
-	CCV_NNC_GRAPH_EXEC_P_WHILE = 0x10, // Mark this node keyword is while
-	CCV_NNC_GRAPH_EXEC_CASE_OF = 0x20, // Mark this node keyword is case_of
-};
-
-#define CCV_NNC_GRAPH_EXEC_IS_DEAD(x) ((x) & CCV_NNC_GRAPH_EXEC_DEAD)
-#define CCV_NNC_GRAPH_REF(x) ((x)->_heap_graph_ref ? (x)->_heap_graph_ref : (x)->_inline_graph_ref)
-
 typedef void (*ccv_nnc_cmd_tensor_auto_f)(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 typedef int (*ccv_nnc_cmd_bitmask_f)(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
 

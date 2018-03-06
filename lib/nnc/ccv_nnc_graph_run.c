@@ -324,7 +324,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 					_ccv_nnc_graph_transit_move_to(graph);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, 0, visitor);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
-				if (!exec->p_while.expr(special_tensors, 1, inputs, input_size, outputs, output_size, exec->p_while.data))
+				if (!exec->p_while.expr(special_tensors, 1, exec->p_while.data))
 				{
 					_ccv_nnc_graph_rewrap(graph);
 					break;

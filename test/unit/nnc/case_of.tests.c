@@ -24,9 +24,9 @@ static int piecewise_case_of(ccv_nnc_tensor_t* const* const inputs, const int in
 		return 2;
 }
 
-static int while_4(ccv_nnc_tensor_t* const* const commons, const int common_size, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const void* const data)
+static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data)
 {
-	return commons[0]->data.i64[0] < 4;
+	return inputs[0]->data.i64[0] < 4;
 }
 
 TEST_CASE("graph for a piece-wise linear function")
@@ -184,7 +184,7 @@ TEST_CASE("symbolic while graph contains a case..of graph and multiply its outpu
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_NOOP, 0, CMD_GENERIC(), 0), 0, 0, 0, 0, "noop");
 	ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph, "while 4");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "y");
-	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
+	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_graph_exec_symbol_t case_of = ccv_nnc_symbolic_graph_case_of_new(while_graph, CCV_NNC_GRAPH_FORWARD, TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_MAP(KV(x, y)), "piece-wise linear vector");
 	ccv_nnc_symbolic_graph_set_case_of_expr(while_graph, case_of, piecewise_case_of, 0);
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, case_of);
@@ -255,7 +255,7 @@ TEST_CASE("symbolic while graph contains a case..of graph takes input by multipl
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "x");
 	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(while_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(b, s0), TENSOR_SYMBOL_LIST(x), "prod");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "y");
-	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
+	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_graph_exec_symbol_t case_of = ccv_nnc_symbolic_graph_case_of_new(while_graph, CCV_NNC_GRAPH_FORWARD, TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_MAP(KV(x, y)), "piece-wise linear vector");
 	ccv_nnc_symbolic_graph_set_case_of_expr(while_graph, case_of, piecewise_case_of, 0);
 	ccv_nnc_graph_exec_symbol_concat(while_graph, noop, prod);

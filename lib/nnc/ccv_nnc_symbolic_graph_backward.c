@@ -335,7 +335,7 @@ static void _ccv_nnc_graph_sum_autograd_tensor_versions(const int idx, const int
 			ccv_nnc_autograd_tensor_symbol_t* tensor_sym = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 			// By having alias_registry, what this symbol represents must not by an alias.
 			assert(tensor_sym->alias_ref == 0);
-			tensor_sym->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+			tensor_sym->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 		}
 		if (tensor_ref->exec_registry)
 			for (j = 0; j < tensor_ref->exec_registry->rnum; j++)
@@ -464,11 +464,11 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 		{
 			ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, ref->alias_ref - 1);
 			assert(ref->alias_ref == 0); // This is original.
-			ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+			ref->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 		} else if (tensor_ref->alias_registry && // Otherwise, to see if this symbol is fully occupied.
 				// Loop over to see if this tensor is fully occupied to avoid extra zero step.
 				!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbols, tensor_symbol_info)) {
-			ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+			ref->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 		}
 		ccv_nnc_autograd_tensor_symbol_t tensor_sym = {
 			.d = d,
@@ -536,11 +536,11 @@ static int _ccv_nnc_graph_sum_autograd_tensor_versions_alias(const int idx, cons
 				// Find the original tensor_sym and set its flags (I prefer to set flags on its original).
 				ccv_nnc_autograd_tensor_symbol_t* ref = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_sym->alias_ref - 1);
 				assert(ref->alias_ref == 0); // This is original.
-				ref->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+				ref->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 			} else if (tensor_ref->alias_registry && // Otherwise, to see if this symbol is fully occupied.
 					// Loop over to see if this tensor is fully occupied to avoid extra zero step.
 					!_ccv_nnc_tensor_ref_fully_assigned_with_aliases(tensor_ref, autograd_tensor_symbols, tensor_symbol_info)) {
-				tensor_sym->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+				tensor_sym->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 			}
 		}
 		// Check to see if any of these tensors doesn't have alias.
@@ -1155,7 +1155,7 @@ static void _ccv_nnc_symbolic_graph_backward_prep_gen(ccv_nnc_symbolic_graph_bac
 							{
 								ccv_nnc_autograd_tensor_symbol_t* tensor_sym = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 								assert(tensor_sym->alias_ref == 0);
-								tensor_sym->flags = CCV_NNC_SYM_TENSOR_INIT_ZEROS;
+								tensor_sym->flags = CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS;
 							}
 							back_exec->inputs[i] = tensor_ref->d;
 						} else {
@@ -1508,7 +1508,7 @@ static void _ccv_nnc_symbolic_graph_add_init_zeros(const ccv_nnc_symbolic_graph_
 			if (!sub_init_symbol_info->p_ref)
 			{
 				ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, sub_prep->tensor_symbol_info[ref_d].info, 0);
-				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, CCV_NNC_SYM_TENSOR_INIT_ZEROS);
+				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
 				ccv_array_push(symbols, &new_symbol);
 				ccv_nnc_tensor_symbol_hookup(graph, sub_graph, new_symbol, init_autograd_symbol->symbol);
 			}
@@ -1522,7 +1522,7 @@ static void _ccv_nnc_symbolic_graph_add_tape_vars(const ccv_nnc_symbolic_graph_b
 	for (i = 0; i < sub_graph->tensor_symbol_info->rnum; i++)
 	{
 		const ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, i);
-		if ((symbol_info->flags & CCV_NNC_SYM_TENSOR_TAPE_VAR) && symbol_info->peer_ref)
+		if ((symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR) && symbol_info->peer_ref)
 		{
 			const int peer_ref = symbol_info->peer_ref - 1;
 			if (sub_prep->tensor_symbol_info[peer_ref].p_ref)
@@ -1637,7 +1637,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				else
 					_ccv_nnc_add_backward_breakpoint_for_symbol(sub_prep, sub_prep->graph->breakpoints[j], sub_graph, sub_execs);
 			}
-			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, NOOP_GRAPH_WHILE_EXPR, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_execs, 0), sub_execs->rnum);
+			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, NOOP_GRAPH_WHILE_EXPR, 0, 0, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_execs, 0), sub_execs->rnum);
 			ccv_nnc_graph_exec_symbol_autogen(sub_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 			_ccv_nnc_symbolic_graph_set_backward_while_params(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
 			for (j = 0; j < back_exec->input_size; j++)
@@ -1776,7 +1776,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
 						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->inputs[j]].info, tensor_symbol_info[forw_exec->inputs[j]].name);
 						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
-						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_SYM_TENSOR_TAPE_VAR;
+						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_TENSOR_SYMBOL_TAPE_VAR;
 						ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
 						ccv_nnc_tensor_symbol_set_flags(backward_prep->graph, symbol, flags);
 						ccv_array_push(symbols, &new_symbol);
@@ -1797,7 +1797,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					else { // Otherwise, create a new symbol, and set its peer to the old symbol.
 						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, tensor_symbol_info[forw_exec->outputs[j]].info, tensor_symbol_info[forw_exec->outputs[j]].name);
 						ccv_nnc_tensor_symbol_set_peer(graph, new_symbol, symbol);
-						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_SYM_TENSOR_TAPE_VAR;
+						const int flags = ccv_nnc_tensor_symbol_flags(backward_prep->graph, symbol) | CCV_NNC_TENSOR_SYMBOL_TAPE_VAR;
 						ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
 						ccv_nnc_tensor_symbol_set_flags(backward_prep->graph, symbol, flags);
 						ccv_array_push(symbols, &new_symbol);

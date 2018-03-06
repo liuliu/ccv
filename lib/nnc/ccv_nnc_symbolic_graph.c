@@ -80,6 +80,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 			symbol_info->_heap_graph_ref = (int*)ccmalloc(sizeof(int) * symbol_info->graph_ref_size);
 			memcpy(symbol_info->_heap_graph_ref, heap_graph_ref, sizeof(int) * symbol_info->graph_ref_size);
 		}
+		if ((symbol_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) && symbol_info->input_size > 0)
+		{
+			ccv_nnc_tensor_symbol_t* const inputs = symbol_info->p_while.inputs;
+			symbol_info->p_while.inputs = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * symbol_info->p_while.input_size);
+			memcpy(symbol_info->p_while.inputs, inputs, sizeof(ccv_nnc_tensor_symbol_t) * symbol_info->p_while.input_size);
+		}
 	}
 	if (graph->sources)
 	{
@@ -727,6 +733,64 @@ int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, cons
 	return 0;
 }
 
+static inline void _ccv_nnc_graph_exec_symbol_free(ccv_nnc_graph_exec_symbol_info_t* const symbol_info, const int zeroing)
+{
+	if (symbol_info->name)
+		ccfree(symbol_info->name);
+	if (symbol_info->_heap_graph_ref)
+		ccfree(symbol_info->_heap_graph_ref);
+	ccv_array_t* outgoings = symbol_info->outgoings;
+	if (outgoings)
+		ccv_array_free(outgoings);
+	// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
+	if (symbol_info->inputs)
+		ccfree(symbol_info->inputs);
+	if (symbol_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
+		if (symbol_info->p_while.inputs)
+			ccfree(symbol_info->p_while.inputs);
+	if (zeroing)
+	{
+		symbol_info->name = 0;
+		symbol_info->_heap_graph_ref = 0;
+		symbol_info->outgoings = 0;
+		symbol_info->inputs = 0;
+		symbol_info->outputs = 0;
+	}
+}
+
+int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol)
+{
+	assert(graph == symbol.graph);
+	assert(symbol.d < graph->exec_symbol_info->rnum);
+	// If any of the exec symbol have reference to it, has to remove that.
+	int i, j;
+	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
+		if (i != symbol.d)
+		{
+			ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+			for (j = 0; j < symbol_info->outgoings->rnum; j++)
+				if (*(int*)ccv_array_get(symbol_info->outgoings, i) == symbol.d)
+				{
+					if (j < symbol_info->outgoings->rnum - 1)
+						*(int*)ccv_array_get(symbol_info->outgoings, j) = *(int*)ccv_array_get(symbol_info->outgoings, symbol_info->outgoings->rnum - 1);
+					--symbol_info->outgoings->rnum;
+					break;
+				}
+		}
+	// Deallocate any memory for exec symbol.
+	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	_ccv_nnc_graph_exec_symbol_free(symbol_info, 1);
+	symbol_info->flags = CCV_NNC_GRAPH_EXEC_DEAD; // Mark this as dead.
+	int dead = 1;
+	for (i = symbol.d; i < graph->exec_symbol_info->rnum && dead; i++)
+		if (!CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
+			dead = 0;
+	// If everything from symbol.d to the end of the graph is dead, we can reclaim this memory.
+	if (dead)
+		graph->exec_symbol_info->rnum = symbol.d;
+	return 0;
+}
+
 int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)
 {
 	assert(graph == source.graph);
@@ -736,20 +800,17 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	ccv_nnc_graph_exec_symbol_info_t* src_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, source.d);
 	if (!src_symbol_info->outgoings)
 		return -1;
-	int i, j = -1;
+	int i;
 	// Check if this is already connected, if so, skip.
 	for (i = 0; i < src_symbol_info->outgoings->rnum; i++)
 		if (*(int*)ccv_array_get(src_symbol_info->outgoings, i) == destination.d)
 		{
-			j = i;
-			break;
+			if (i < src_symbol_info->outgoings->rnum - 1)
+				*(int*)ccv_array_get(src_symbol_info->outgoings, i) = *(int*)ccv_array_get(src_symbol_info->outgoings, src_symbol_info->outgoings->rnum - 1);
+			--src_symbol_info->outgoings->rnum;
+			return 0;
 		}
-	if (j < 0)
-		return -1;
-	if (j < src_symbol_info->outgoings->rnum - 1)
-		*(int*)ccv_array_get(src_symbol_info->outgoings, j) = *(int*)ccv_array_get(src_symbol_info->outgoings, src_symbol_info->outgoings->rnum - 1);
-	--src_symbol_info->outgoings->rnum;
-	return 0;
+	return -1;
 }
 
 #define CCV_NNC_IS_AUTOGEN_ALL_EXECS(x) ((x) & CCV_NNC_AUTOGEN_ALL_EXECS)
@@ -1007,9 +1068,9 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
 		int flag = -1;
-		if (symbol_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS)
+		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
 			flag = fputs(" (0", out); // Output if it is zero init'ed.
-		if (symbol_info->flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
+		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
 			if (flag)
 				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
 		if (flag >= 0)
@@ -1038,9 +1099,9 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		{
 			int flag = -1;
-			if (alias_info->flags & CCV_NNC_SYM_TENSOR_INIT_ZEROS)
+			if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
 				flag = fputs(" (0", out); // Output if it is zero init'ed.
-			if (alias_info->flags & CCV_NNC_SYM_TENSOR_TAPE_VAR)
+			if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
 				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
 			if (flag >= 0)
 				fputs(")", out);
@@ -1373,19 +1434,7 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 {
 	int i;
 	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
-	{
-		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
-		if (symbol_info->name)
-			ccfree(symbol_info->name);
-		if (symbol_info->_heap_graph_ref)
-			ccfree(symbol_info->_heap_graph_ref);
-		ccv_array_t* outgoings = symbol_info->outgoings;
-		if (outgoings)
-			ccv_array_free(outgoings);
-		// We allocate inputs & outputs in continuous fashion, therefore, only need to free the input array.
-		if (symbol_info->inputs)
-			ccfree(symbol_info->inputs);
-	}
+		_ccv_nnc_graph_exec_symbol_free((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i), 0);
 	for (i = 0; i < graph->tensor_symbol_info->rnum; i++)
 	{
 		ccv_nnc_tensor_symbol_info_t* symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
