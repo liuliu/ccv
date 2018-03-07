@@ -309,8 +309,6 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 						ccv_array_push(follows, &exec);
 					}
 			}
-			ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor(&count, ONE_CPU_TENSOR(1, 1, 1), 0);
-			ccv_nnc_tensor_t* special_tensors[] = { &count_tensor };
 			for (;; ++count)
 			{
 				graph->while_count = count;
@@ -324,7 +322,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 					_ccv_nnc_graph_transit_move_to(graph);
 				CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, graph->breakpoints, graph->breakpoint_size, 0, visitor);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
-				if (!exec->p_while.expr(special_tensors, 1, exec->p_while.data))
+				if (!exec->p_while.expr(exec->p_while.inputs, exec->p_while.input_size, exec->p_while.data))
 				{
 					_ccv_nnc_graph_rewrap(graph);
 					break;

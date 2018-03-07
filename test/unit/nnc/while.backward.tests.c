@@ -44,7 +44,8 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_exec_concat(while_graph, prod0, noop);
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(prod0));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(noop));
-	ccv_nnc_graph_set_while_expr(while_graph, while_4, 0, 0, 0, GRAPH_EXEC_LIST(noop));
+	ccv_nnc_tensor_t count_tensor = ccv_nnc_tensor_for_while_count(while_graph);
+	ccv_nnc_graph_set_while_expr(while_graph, while_4, 0, TENSOR_LIST(&count_tensor), GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_t* while_back_graph = ccv_nnc_graph_new();
 	while_back_graph->peer = while_graph;
 	ccv_nnc_graph_exec_t back_loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_BACKWARD, while_back_graph);

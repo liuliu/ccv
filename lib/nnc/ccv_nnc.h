@@ -510,6 +510,7 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph);
 CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor_for_while_count(const ccv_nnc_graph_t* const while_graph);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
