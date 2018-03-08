@@ -262,8 +262,10 @@ enum {
 
 enum {
 	CCV_NNC_NO_TENSOR_SYMBOL = -1,
-	CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL = -1009, // "1009" == "LOOP"
+	CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL = -2,
 };
+
+#define CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(d) (((uint32_t)(d) & 0xf) == 0xe)
 
 typedef struct {
 	ccv_nnc_tensor_symbol_t source;

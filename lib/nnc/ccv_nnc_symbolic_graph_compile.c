@@ -3031,7 +3031,7 @@ static void _ccv_nnc_symbolic_graph_prep_free(ccv_nnc_symbolic_graph_prep_t* con
 
 static void _ccv_nnc_symbolic_graph_prep_while_count_tensor(ccv_nnc_symbolic_graph_prep_t* const graph_prep)
 {
-	int i;
+	int i, j;
 	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
 		if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
 		{
@@ -3039,15 +3039,13 @@ static void _ccv_nnc_symbolic_graph_prep_while_count_tensor(ccv_nnc_symbolic_gra
 			assert(graph_ref >= 0);
 			ccv_nnc_symbolic_graph_prep_t* const sub_prep = graph_prep->sub_preps[graph_ref];
 			for (i = 0; i < node->p_while.input_size; i++)
-				// Currently, we only support while count tensor for while expr.
-				// TODO: Refactoring so we can carry this for normal nodes.
-				if (node->p_while.inputs[i].d == CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL)
+				if (CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(node->p_while.inputs[i]))
 				{
 					ccv_nnc_symbolic_graph_prep_t* prep = sub_prep;
-					while (prep && node->p_while.inputs[i].graph != prep->symbolic_graph)
+					const int d = ((~(uint32_t)(node->p_while.inputs[i])) >> 4);
+					for (j = 0; j < d; j++)
 						prep = prep->p;
-					if (prep)
-						prep->while_count_tensor = 1;
+					prep->while_count_tensor = 1;
 				}
 		}
 		for (i = 0; i < node->graph_ref_size; i++)
@@ -3059,15 +3057,17 @@ static void _ccv_nnc_symbolic_graph_prep_while_count_tensor(ccv_nnc_symbolic_gra
 	} ccv_nnc_graph_visit_endfor
 }
 
-static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_graph_prep(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_tensor_symbol_t symbol)
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_graph_prep(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const int symbol)
 {
-	if (symbol.d >= 0)
-		return graph_prep->tensor_arena->vt_tensors[symbol.d];
-	if (symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
+	if (symbol >= 0)
+		return graph_prep->tensor_arena->vt_tensors[symbol];
+	if (symbol == CCV_NNC_NO_TENSOR_SYMBOL)
 		return 0;
-	assert(symbol.d == CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL);
+	assert(CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(symbol));
 	const ccv_nnc_symbolic_graph_prep_t* prep = graph_prep;
-	while (prep && symbol.graph != prep->symbolic_graph)
+	int i;
+	const int d = ((~(uint32_t)(symbol)) >> 4);
+	for (i = 0; i < d; i++)
 		prep = prep->p;
 	assert(prep->while_count_tensor);
 	return (ccv_nnc_tensor_t*)_ccv_nnc_tensor_metadata_get(prep->tensor_arena->tensor_metadata, (0 << 1) + 1);

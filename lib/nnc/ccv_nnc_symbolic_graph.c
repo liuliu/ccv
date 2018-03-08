@@ -82,9 +82,9 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		}
 		if ((symbol_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) && symbol_info->input_size > 0)
 		{
-			ccv_nnc_tensor_symbol_t* const inputs = symbol_info->p_while.inputs;
-			symbol_info->p_while.inputs = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * symbol_info->p_while.input_size);
-			memcpy(symbol_info->p_while.inputs, inputs, sizeof(ccv_nnc_tensor_symbol_t) * symbol_info->p_while.input_size);
+			int* const inputs = symbol_info->p_while.inputs;
+			symbol_info->p_while.inputs = (int*)ccmalloc(sizeof(int) * symbol_info->p_while.input_size);
+			memcpy(symbol_info->p_while.inputs, inputs, sizeof(int) * symbol_info->p_while.input_size);
 		}
 	}
 	if (graph->sources)
@@ -503,6 +503,19 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 		.d = map_d
 	}, symbol_info->ofs, symbol_info->inc, symbol_info->info, symbol_info->name);
 	return alias.d;
+}
+
+int ccv_nnc_tensor_symbol_map_raw(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
+{
+	if (symbol.d >= 0)
+		return _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, symbol, MAP_TENSOR_USE_AS_INPUT);
+	if (symbol.graph == graph || symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
+		return symbol.d;
+	ccv_nnc_symbolic_graph_t* curr_graph = graph;
+	int d;
+	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
+		curr_graph = curr_graph->p;
+	return (int)((~(uint32_t)d) << 4 | 0xe);
 }
 
 void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol)

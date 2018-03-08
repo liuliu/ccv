@@ -43,9 +43,9 @@ void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while
 	if (input_size > 0)
 	{
 		assert(inputs);
-		exec_info->p_while.inputs = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * input_size);
+		exec_info->p_while.inputs = (int*)ccmalloc(sizeof(int) * input_size);
 		for (i = 0; i < input_size; i++)
-			exec_info->p_while.inputs[i] = (inputs[i].d >= 0) ? ccv_nnc_tensor_symbol_resolve(while_graph, inputs[i]) : inputs[i];
+			exec_info->p_while.inputs[i] = ccv_nnc_tensor_symbol_map_raw(while_graph, inputs[i]);
 		exec_info->p_while.input_size = input_size;
 	}
 	if (breakpoint_size > 0)
