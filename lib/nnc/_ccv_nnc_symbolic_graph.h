@@ -127,6 +127,9 @@ struct ccv_nnc_graph_exec_arena_s {
 	ccv_nnc_graph_exec_t graph_execs[1];
 };
 
+#define CCV_NNC_ENCODE_WHILE_COUNT_SYMBOL(d) ((int)((~(uint32_t)d) << 4 | 0xe))
+#define CCV_NNC_DECODE_WHILE_COUNT_SYMBOL(symbol) ((~(uint32_t)(symbol)) >> 4)
+
 inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const int outgoing)
 {
 	int i;

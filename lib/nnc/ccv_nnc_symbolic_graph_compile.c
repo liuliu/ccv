@@ -3042,7 +3042,7 @@ static void _ccv_nnc_symbolic_graph_prep_while_count_tensor(ccv_nnc_symbolic_gra
 				if (CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(node->p_while.inputs[i]))
 				{
 					ccv_nnc_symbolic_graph_prep_t* prep = sub_prep;
-					const int d = ((~(uint32_t)(node->p_while.inputs[i])) >> 4);
+					const int d = CCV_NNC_DECODE_WHILE_COUNT_SYMBOL(node->p_while.inputs[i]);
 					for (j = 0; j < d; j++)
 						prep = prep->p;
 					prep->while_count_tensor = 1;
@@ -3066,7 +3066,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_graph_prep(const ccv_nnc_symbolic_
 	assert(CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(symbol));
 	const ccv_nnc_symbolic_graph_prep_t* prep = graph_prep;
 	int i;
-	const int d = ((~(uint32_t)(symbol)) >> 4);
+	const int d = CCV_NNC_DECODE_WHILE_COUNT_SYMBOL(symbol);
 	for (i = 0; i < d; i++)
 		prep = prep->p;
 	assert(prep->while_count_tensor);
@@ -3104,7 +3104,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		if (CCV_NO_GRAPH_EXEC(graph_execs[idx]))
 		{
 			for (i = 0; i < node->input_size; i++)
-				max_inputs[i] = node->inputs[i] >= 0 ? tensor_arena->vt_tensors[node->inputs[i]] : 0;
+				max_inputs[i] = _ccv_nnc_tensor_from_graph_prep(graph_prep, node->inputs[i]);
 			for (i = 0; i < node->output_size; i++)
 				max_outputs[i] = node->outputs[i] >= 0 ? tensor_arena->vt_tensors[node->outputs[i]] : 0;
 			if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
@@ -3172,7 +3172,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 			{
 				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_node = exec_symbol_info + outgoing;
 				for (j = 0; j < outgoing_node->input_size; j++)
-					max_inputs[j] = outgoing_node->inputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->inputs[j]] : 0;
+					max_inputs[j] = _ccv_nnc_tensor_from_graph_prep(graph_prep, outgoing_node->inputs[j]);
 				for (j = 0; j < outgoing_node->output_size; j++)
 					max_outputs[j] = outgoing_node->outputs[j] >= 0 ? tensor_arena->vt_tensors[outgoing_node->outputs[j]] : 0;
 				if (outgoing_node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)

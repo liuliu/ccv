@@ -508,14 +508,15 @@ static int _ccv_nnc_symbolic_graph_map_tensor_symbol(ccv_nnc_symbolic_graph_t* c
 int ccv_nnc_tensor_symbol_map_raw(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
 {
 	if (symbol.d >= 0)
-		return _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, symbol, MAP_TENSOR_USE_AS_INPUT);
+		return symbol.graph != graph ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, symbol, MAP_TENSOR_USE_AS_INPUT) : symbol.d;
 	if (symbol.graph == graph || symbol.d == CCV_NNC_NO_TENSOR_SYMBOL)
 		return symbol.d;
 	ccv_nnc_symbolic_graph_t* curr_graph = graph;
 	int d;
 	for (d = 0; curr_graph && curr_graph != symbol.graph; d++)
 		curr_graph = curr_graph->p;
-	return (int)((~(uint32_t)d) << 4 | 0xe);
+	assert(curr_graph == symbol.graph);
+	return CCV_NNC_ENCODE_WHILE_COUNT_SYMBOL(d);
 }
 
 void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol)
@@ -607,7 +608,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 	int i;
 	for (i = 0; i < input_size; i++)
 	{
-		const int d = (inputs[i].graph != graph && inputs[i].d >= 0) ? _ccv_nnc_symbolic_graph_map_tensor_symbol(graph, inputs[i], MAP_TENSOR_USE_AS_INPUT) : inputs[i].d;
+		const int d = ccv_nnc_tensor_symbol_map_raw(graph, inputs[i]);
 		exec_info->inputs[i] = d;
 	}
 	for (i = 0; i < output_size; i++)
