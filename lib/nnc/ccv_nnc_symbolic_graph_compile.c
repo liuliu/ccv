@@ -1696,7 +1696,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 	return 0;
 }
 
-static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int unroll_count, const int* const dup_tensor_block_ref, const int* const dup_tensor_from_ref, const int* const dup_exec_from_ref, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
+static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const p_node_info, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int unroll_count, const int* const dup_tensor_block_ref, const int* const dup_tensor_from_ref, const int* const dup_exec_from_ref, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
 {
 	int i, j;
 	// Generate exec dependencies (or, in other words, partial ordering of executions).
@@ -1759,6 +1759,11 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (node->outputs[i] >= 0)
 				tensor_blocks[node->outputs[i]].flags = 0;
 	} ccv_nnc_graph_visit_endfor
+	// If this tensor is used with the while expr, mark it as used.
+	if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
+		for (i = 0; i < p_node_info->p_while.input_size; i++)
+			if (p_node_info->p_while.inputs[i] >= 0)
+				tensor_blocks[p_node_info->p_while.inputs[i]].flags = 0;
 	// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
 	// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
 	// fold to).
@@ -1808,7 +1813,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				}
 			}
 		}
-	const ccv_nnc_graph_exec_symbol_info_t* const  p_node = symbolic_graph->p ? (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1) : 0;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// If it has a peer reference, we don't need to allocate this tensor at all,
@@ -1821,7 +1825,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
 			// For this case, there is no exception.
 			tensor_blocks[i].unfoldable_except_ref = 0;
-		} else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node) == 1)
+		} else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node_info) == 1)
 			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
@@ -1906,6 +1910,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]);
 		}
 	} ccv_nnc_graph_visit_endfor
+	// Treat everything used by while expr as input for every breakpoints, and go through the same process as input.
+	if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
+		for (i = 0; i < p_node_info->p_while.input_size; i++)
+			if (p_node_info->p_while.inputs[i] >= 0)
+			{
+			}
 	// For any assign_ref, its life-time kept until the end and wrap over.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		// If this tensor is not unassigned (or alias) and it is assigned from somewhere else,
@@ -2297,12 +2307,12 @@ static void _ccv_nnc_fixup_assign_ref_after_unroll(const ccv_nnc_symbolic_graph_
 // If the tensor blocks are the outputs of this graph, its life-time should be extended to the end of this graph.
 // However, it is not that simple if the graph is unrolled. For unrolled graph, it needs to reach the end of
 // the "original" graph and all its duplicated ends (for their duplicated tensor blocks).
-static void _ccv_nnc_fixup_tensor_blocks_for_outputs(ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_nnc_graph_exec_symbol_info_t* const  p_node, const int unroll_count, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const int p_idx, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int* const dup_exec_ref, const int* const dup_tensor_block_ref)
+static void _ccv_nnc_fixup_tensor_blocks_for_outputs(ccv_sparse_matrix_t* const exec_dep, ccv_nnc_tensor_block_t* const tensor_blocks, const ccv_nnc_graph_exec_symbol_info_t* const  p_node_info, const int unroll_count, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const int p_idx, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int* const dup_exec_ref, const int* const dup_tensor_block_ref)
 {
 	int i, j, k;
-	for (i = 0; i < p_node->output_size; i++)
+	for (i = 0; i < p_node_info->output_size; i++)
 	{
-		const int d = p_node->outputs[i];
+		const int d = p_node_info->outputs[i];
 		const int s_ref = *(int*)ccv_array_get(p_tensor_symbol_info[d].s_ref, p_idx) - 1;
 		if (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[s_ref]))
 			continue;
@@ -2320,7 +2330,7 @@ static void _ccv_nnc_fixup_tensor_blocks_for_outputs(ccv_sparse_matrix_t* const 
 	}
 }
 
-static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int* r_unroll_count, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
+static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const p_node_info, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks, int* r_tensor_block_size, ccv_nnc_symbolic_graph_t** r_dup_graph, int* r_unroll_count, int** r_dup_exec_ref, int** r_dup_tensor_block_ref)
 {
 	int i, j;
 	ccv_sparse_matrix_t* exec_dep = *r_exec_dep;
@@ -2366,7 +2376,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	}
 	// Reset all attr.
 	memset(exec_flags, 0, sizeof(ccv_nnc_graph_exec_flag_t) * symbolic_graph->exec_symbol_info->rnum);
-	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, dup_visit, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, dup_exec_symbol_info, dup_tensor_symbol_info, unroll_count, dup_tensor_block_ref, dup_tensor_from_ref, dup_exec_from_ref, exec_flags, &exec_dep, &tensor_blocks);
+	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, p_node_info, dup_visit, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, dup_exec_symbol_info, dup_tensor_symbol_info, unroll_count, dup_tensor_block_ref, dup_tensor_from_ref, dup_exec_from_ref, exec_flags, &exec_dep, &tensor_blocks);
 	ccv_nnc_graph_visit_free(dup_visit);
 	ccfree(dup_exec_symbol_info);
 	ccfree(dup_exec_from_ref);
@@ -2545,9 +2555,10 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
 	ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, exec_symbol_info);
 	int i, j, k, p, q;
+	const ccv_nnc_graph_exec_symbol_info_t* const  p_node_info = p_exec_symbol_info ? p_exec_symbol_info + (symbolic_graph->exec_idx - 1) : 0;
 	ccv_sparse_matrix_t* exec_dep;
 	ccv_nnc_tensor_block_t* tensor_blocks;
-	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, 0, 0, 0, 0, exec_flags, &exec_dep, &tensor_blocks);
+	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, p_node_info, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, 0, 0, 0, 0, exec_flags, &exec_dep, &tensor_blocks);
 	int tensor_block_size = symbolic_graph->tensor_symbol_info->rnum;
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in, and all the sub-graphs are processed.
@@ -2590,15 +2601,14 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	prep->flags = 0;
 	prep->while_count_tensor = 0;
 	// Cannot handle dup a node that is a graph as well.
-	const ccv_nnc_graph_exec_symbol_info_t* const  p_node = symbolic_graph->p ? (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1) : 0;
 	if (symbolic_graph->p)
 	{
-		prep->flags = p_node->flags;
-		if (p_node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
+		prep->flags = p_node_info->flags;
+		if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
 		{
-			_ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(symbolic_graph, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, exec_flags, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &unroll_count, &dup_exec_ref, &dup_tensor_block_ref);
-			_ccv_nnc_fixup_tensor_blocks_for_outputs(exec_dep, tensor_blocks, p_node, unroll_count, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, dup_exec_ref, dup_tensor_block_ref);
-		} else if (p_node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
+			_ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(symbolic_graph, p_node_info, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, exec_flags, &exec_dep, &tensor_blocks, &tensor_block_size, &dup_graph, &unroll_count, &dup_exec_ref, &dup_tensor_block_ref);
+			_ccv_nnc_fixup_tensor_blocks_for_outputs(exec_dep, tensor_blocks, p_node_info, unroll_count, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, symbolic_graph->p_idx - 1, p_tensor_symbol_info, p_tensor_symbol_info_size, tensor_symbol_info, dup_exec_ref, dup_tensor_block_ref);
+		} else if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) {
 			// TODO: We want to try our best to fit as much of its corresponding inputs / outputs into companion_ref group.
 		}
 	}
@@ -2806,8 +2816,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 									if (tensor_symbol_info[dup_p_ref].p_ref)
 									{
 										const int p_ref_0 = tensor_symbol_info[dup_p_ref].p_ref - 1;
-										assert(p_node);
-										const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node);
+										assert(p_node_info);
+										const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node_info);
 										if (p_ref_0_is_in_or_out == 1) // If it is out tensor, mark dup_p_ref for this.
 										{
 											if (!tensor_blocks[tensor_block_size].dup_p_refs)
@@ -2870,8 +2880,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 									if (tensor_symbol_info[dup_p_ref].p_ref)
 									{
 										const int p_ref_0 = tensor_symbol_info[dup_p_ref].p_ref - 1;
-										assert(p_node);
-										const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node);
+										assert(p_node_info);
+										const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node_info);
 										if (p_ref_0_is_in_or_out == 1) // If it is out tensor, mark dup_p_ref for this.
 										{
 											if (!tensor_blocks[tensor_block_idx].dup_p_refs)
@@ -2942,8 +2952,8 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 										if (tensor_symbol_info[dup_p_ref].p_ref)
 										{
 											const int p_ref_0 = tensor_symbol_info[dup_p_ref].p_ref - 1;
-											assert(p_node);
-											const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node);
+											assert(p_node_info);
+											const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node_info);
 											if (p_ref_0_is_in_or_out == 1) // If it is out tensor, mark dup_p_ref for this.
 											{
 												if (!tensor_blocks[tensor_block_idx].dup_p_refs)
