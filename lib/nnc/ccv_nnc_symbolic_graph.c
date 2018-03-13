@@ -782,14 +782,15 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 		if (i != symbol.d)
 		{
 			ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
-			for (j = 0; j < symbol_info->outgoings->rnum; j++)
-				if (*(int*)ccv_array_get(symbol_info->outgoings, i) == symbol.d)
-				{
-					if (j < symbol_info->outgoings->rnum - 1)
-						*(int*)ccv_array_get(symbol_info->outgoings, j) = *(int*)ccv_array_get(symbol_info->outgoings, symbol_info->outgoings->rnum - 1);
-					--symbol_info->outgoings->rnum;
-					break;
-				}
+			if (symbol_info->outgoings)
+				for (j = 0; j < symbol_info->outgoings->rnum; j++)
+					if (*(int*)ccv_array_get(symbol_info->outgoings, i) == symbol.d)
+					{
+						if (j < symbol_info->outgoings->rnum - 1)
+							*(int*)ccv_array_get(symbol_info->outgoings, j) = *(int*)ccv_array_get(symbol_info->outgoings, symbol_info->outgoings->rnum - 1);
+						--symbol_info->outgoings->rnum;
+						break;
+					}
 		}
 	// Deallocate any memory for exec symbol.
 	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
@@ -1522,8 +1523,8 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 			exec_symbol_info[i].hint = ccv_nnc_hint_auto(exec_symbol_info[i].cmd.info, tensor_symbol_info[exec_symbol_info[i].inputs[0]].info, tensor_symbol_info[exec_symbol_info[i].outputs[0]].info);
 	}
 
-	ccv_nnc_tensor_param_t* input_params = max_input_size > 0 ? (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t) * max_input_size) : 0;
-	ccv_nnc_tensor_param_t* output_params = max_output_size > 0 ? (ccv_nnc_tensor_param_t*)ccmalloc(sizeof(ccv_nnc_tensor_param_t) * max_output_size) : 0;
+	ccv_nnc_tensor_param_t input_params[ccv_max(1, max_input_size)];
+	ccv_nnc_tensor_param_t output_params[ccv_max(1, max_output_size)];
 
 	// Materialize auto tensors. This need to go with the topological order.
 	// TODO: Need to proper handle sub-graphs (thus, run sub-graph to figure out the tensor properties).
@@ -1539,8 +1540,4 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 					tensor_symbol_info[node->outputs[i]].info = output_params[i];
 		}
 	} ccv_nnc_graph_visit_endfor
-	if (input_params)
-		ccfree(input_params);
-	if (output_params)
-		ccfree(output_params);
 }
