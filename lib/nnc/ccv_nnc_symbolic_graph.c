@@ -796,13 +796,13 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
 	_ccv_nnc_graph_exec_symbol_free(symbol_info, 1);
 	symbol_info->flags = CCV_NNC_GRAPH_EXEC_DEAD; // Mark this as dead.
-	int dead = 1;
-	for (i = symbol.d; i < graph->exec_symbol_info->rnum && dead; i++)
-		if (!CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
-			dead = 0;
 	// If everything from symbol.d to the end of the graph is dead, we can reclaim this memory.
-	if (dead)
-		graph->exec_symbol_info->rnum = symbol.d;
+	for (i = graph->exec_symbol_info->rnum - 1; i >= 0; i--)
+		if (!CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
+		{
+			graph->exec_symbol_info->rnum = i + 1;
+			break;
+		}
 	// Loop over sources and destinations to remove this.
 	if (graph->sources)
 		for (i = 0; i < graph->sources->rnum; i++)
