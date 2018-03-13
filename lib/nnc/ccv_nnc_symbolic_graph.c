@@ -802,6 +802,25 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 	// If everything from symbol.d to the end of the graph is dead, we can reclaim this memory.
 	if (dead)
 		graph->exec_symbol_info->rnum = symbol.d;
+	// Loop over sources and destinations to remove this.
+	if (graph->sources)
+		for (i = 0; i < graph->sources->rnum; i++)
+			if (*(int*)ccv_array_get(graph->sources, i) == symbol.d)
+			{
+				if (i < graph->sources->rnum - 1)
+					*(int*)ccv_array_get(graph->sources, i) = *(int*)ccv_array_get(graph->sources, graph->sources->rnum - 1);
+				--graph->sources->rnum;
+				break;
+			}
+	if (graph->destinations)
+		for (i = 0; i < graph->destinations->rnum; i++)
+			if (*(int*)ccv_array_get(graph->destinations, i) == symbol.d)
+			{
+				if (i < graph->destinations->rnum - 1)
+					*(int*)ccv_array_get(graph->destinations, i) = *(int*)ccv_array_get(graph->destinations, graph->destinations->rnum - 1);
+				--graph->destinations->rnum;
+				break;
+			}
 	return 0;
 }
 

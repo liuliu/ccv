@@ -1759,11 +1759,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (node->outputs[i] >= 0)
 				tensor_blocks[node->outputs[i]].flags = 0;
 	} ccv_nnc_graph_visit_endfor
-	// If this tensor is used with the while expr, mark it as used.
-	if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
-		for (i = 0; i < p_node_info->p_while.input_size; i++)
-			if (p_node_info->p_while.inputs[i] >= 0)
-				tensor_blocks[p_node_info->p_while.inputs[i]].flags = 0;
 	// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
 	// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
 	// fold to).
@@ -1889,7 +1884,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				 * sub-graph, it is not assign_ref from anywhere (not a parameterized loop).  We cannot
 				 * reuse this region of memory anyway (because on second loop, we want to read the same
 				 * value out). Mark it to the end of the graph. */
-				if (symbolic_graph->p && !tensor_symbol_info[d].assign_ref)
+				if (p_node_info && !tensor_symbol_info[d].assign_ref)
 					for (j = 0; j < destination_size; j++)
 						_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
 			}
@@ -1910,18 +1905,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]);
 		}
 	} ccv_nnc_graph_visit_endfor
-	// Treat everything used by while expr as input for every breakpoints, and go through the same process as input.
-	if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
-		for (i = 0; i < p_node_info->p_while.input_size; i++)
-			if (p_node_info->p_while.inputs[i] >= 0)
-			{
-			}
 	// For any assign_ref, its life-time kept until the end and wrap over.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		// If this tensor is not unassigned (or alias) and it is assigned from somewhere else,
 		// that "somewhere else" need to keep its life-time til the end.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) &&
-			symbolic_graph->p && tensor_symbol_info[i].assign_ref)
+			p_node_info && tensor_symbol_info[i].assign_ref)
 			for (j = 0; j < destination_size; j++)
 				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
@@ -2390,7 +2379,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 			if (dup_idx >= 0 && (tensor_blocks[i].p_refs[0] || tensor_blocks[i].p_refs[1]))
 			{
 				const int p_ref_0 = tensor_blocks[i].p_refs[0] - 1;
-				const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
+				const int p_ref_0_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_0, p_node_info);
 				if (p_ref_0_is_in_or_out == 1) // If it is out tensor, mark dup_p_ref for this.
 				{
 					if (!tensor_blocks[dup_idx].dup_p_refs)
@@ -2400,7 +2389,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				if (p_ref_0_is_in_or_out == 1 || tensor_blocks[i].p_refs[1] == 0)
 					continue;
 				const int p_ref_1 = tensor_blocks[i].p_refs[1] - 1;
-				const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1));
+				const int p_ref_1_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref_1, p_node_info);
 				if (p_ref_1_is_in_or_out == 1)
 				{
 					if (!tensor_blocks[dup_idx].dup_p_refs)
@@ -2601,7 +2590,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	prep->flags = 0;
 	prep->while_count_tensor = 0;
 	// Cannot handle dup a node that is a graph as well.
-	if (symbolic_graph->p)
+	if (p_exec_symbol_info)
 	{
 		prep->flags = p_node_info->flags;
 		if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
@@ -2838,7 +2827,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 								_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[tensor_block_size]);
 							/* If this is a read-only (based on SSA, if first encountered as read), and this is
 							 * sub-graph. Mark it to the end of the graph. */
-							if (symbolic_graph->p)
+							if (p_exec_symbol_info)
 								for (j = 0; j < destination_size; j++)
 									_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_block_size]);
 							/* If it is read-only, it is self-reflecting. */
