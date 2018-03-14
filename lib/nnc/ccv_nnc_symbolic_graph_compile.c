@@ -3504,13 +3504,20 @@ static void _ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(ccv_nnc_symbolic_g
 		ccv_array_free(graph_prep->dup_breakpoints);
 		graph_prep->dup_breakpoints = 0;
 		graph_prep->exec_symbol_info_size = symbolic_graph->exec_symbol_info->rnum;
+		// Afterwards, we have to regenerate the exec_symbol_info, fill in the information (through symbol_infer).
 		memcpy(graph_prep->exec_symbol_info, ccv_array_get(symbolic_graph->exec_symbol_info, 0), sizeof(ccv_nnc_graph_exec_symbol_info_t) * graph_prep->exec_symbol_info_size);
 		// Since exec_symbol_info changed, create a new visit object.
 		assert(symbolic_graph->sources);
 		assert(symbolic_graph->destinations);
-		ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->sources, 0), symbolic_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0), symbolic_graph->destinations->rnum, 0);
+		ccv_nnc_graph_exec_symbol_t* const sources = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->sources, 0);
+		const int source_size = symbolic_graph->sources->rnum;
+		ccv_nnc_graph_exec_symbol_t* const destinations = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(symbolic_graph->destinations, 0);
+		const int destination_size = symbolic_graph->destinations->rnum;
+		ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(symbolic_graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, 0), symbolic_graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
 		ccv_nnc_graph_visit_free(graph_prep->visit);
 		graph_prep->visit = visit;
+		assert(graph_prep->p);
+		ccv_nnc_symbolic_graph_symbol_infer(symbolic_graph, visit, sources, source_size, destinations, destination_size, graph_prep->p->tensor_symbol_info, graph_prep->p->tensor_symbol_info_size, graph_prep->tensor_symbol_info, graph_prep->exec_symbol_info);
 	}
 	ccv_nnc_graph_visit_for(graph_prep->visit, graph_prep->exec_symbol_info, node, idx) {
 		for (i = 0; i < node->graph_ref_size; i++)
