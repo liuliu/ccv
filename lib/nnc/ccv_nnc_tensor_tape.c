@@ -426,7 +426,7 @@ void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape)
 			for (j = 0; j < data_array->dim_count; j++)
 				size *= data_array->dim[j];
 			for (j = 0; j < size; j++)
-				if (!CCV_NUMERIC_DATA_NO_ALLOC(data_array->data[j].data))
+				if (data_array->data[j].data.u8 && !CCV_NUMERIC_DATA_NO_ALLOC(data_array->data[j].data))
 				{
 #ifdef HAVE_CUDA
 					if (CCV_TENSOR_GET_MEMORY(data_array->data[j].type) == CCV_TENSOR_GPU_MEMORY)
