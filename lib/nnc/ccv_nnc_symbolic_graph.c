@@ -1538,6 +1538,14 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 				/* Only assign the output parameters if the symbol itself is auto. */
 				if (node->outputs[i] >= 0 && ccv_nnc_is_tensor_auto(tensor_symbol_info[node->outputs[i]].info))
 					tensor_symbol_info[node->outputs[i]].info = output_params[i];
+			for (i = 0; i < node->input_size; i++)
+				// If still point to any device, assign default device 00 to it.
+				if (node->inputs[i] >= 0 && CCV_TENSOR_GET_DEVICE(tensor_symbol_info[node->inputs[i]].info.type) == CCV_ANY_COMPUTE_DEVICE)
+					tensor_symbol_info[node->inputs[i]].info.type = (~CCV_ANY_COMPUTE_DEVICE & tensor_symbol_info[node->inputs[i]].info.type) | CCV_COMPUTE_DEVICE_00;
+			for (i = 0; i < node->output_size; i++)
+				// If still point to any device, assign default device 00 to it.
+				if (node->outputs[i] >= 0 && CCV_TENSOR_GET_DEVICE(tensor_symbol_info[node->outputs[i]].info.type) == CCV_ANY_COMPUTE_DEVICE)
+					tensor_symbol_info[node->outputs[i]].info.type = (~CCV_ANY_COMPUTE_DEVICE & tensor_symbol_info[node->outputs[i]].info.type) | CCV_COMPUTE_DEVICE_00;
 		}
 	} ccv_nnc_graph_visit_endfor
 }

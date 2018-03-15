@@ -97,8 +97,6 @@ struct ccv_nnc_symbolic_graph_s {
 };
 
 struct ccv_nnc_tensor_arena_s {
-	int memory_type;
-	int device_id;
 	intptr_t graph_ref; // A value contains the pointer name of the graph.
 	int sub_arena_size;
 	struct ccv_nnc_tensor_arena_s** sub_arenas; // Corresponding to sub graphs.
@@ -108,6 +106,7 @@ struct ccv_nnc_tensor_arena_s {
 	// This is the allocated non-continuous buffers.
 	int buffer_size;
 	struct {
+		int type; // The type from tensor blocks.
 		uint64_t size;
 		uint8_t* ptr;
 	}* buffers;

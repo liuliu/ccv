@@ -67,6 +67,7 @@ typedef struct {
 	int index;
 	int companion; // The companion node index (the node that doesn't interfere with current one).
 	int oc;
+	int type;
 	uint64_t size;
 } ccv_nnc_tensor_opt_t;
 
@@ -133,11 +134,11 @@ typedef struct {
 	int block_size;
 	int* vt_blocks; // A reference to the block, because blocks only contains available block (thus, doesn't consider alias etc.). -1 means no block pointed to. Starts at 0.
 	struct {
+		int type; // The type from tensor blocks.
+		int flags; // The flags (currently for READ_ONLY or not).
 		uint64_t size; // The size of the buffer allocated.
 		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
 		ccv_array_t* dup_p_refs; // Reference to the parent tensor block from the duplicated tensor blocks. From buffer, it can point to multiple because it can be associated with multiple tensor blocks that points to different outputs (for example, in 1st unroll, pointing to one block while in 2nd unroll, pointing to another). Start with 0.
-		int type; // The type from tensor blocks.
-		int flags; // The flags (currently for READ_ONLY or not).
 	}* buffers;
 	struct {
 		int buffer_ref; // A reference for block to which buffer to use. Starts at 0.
@@ -246,6 +247,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					.index = i,
 					.companion = -1, // If already have a designated companion, use that.
 					.oc = oc[i],
+					.type = tensor_blocks[i].type,
 				};
 				if (tensor_blocks[i].companion_ref)
 				{
@@ -270,7 +272,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			const int companion_ref = tensor_blocks[i].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
-				if (k != a.index && !tensor_blocks[k].companion_ref && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size)
+				if (k != a.index && !tensor_blocks[k].companion_ref && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size && tensor_blocks[k].type == a.type)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
@@ -293,7 +295,6 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		}
 		// Order opt array by the size.
 		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
-		// Assuming all tensors has the same data format (32F), therefore, we only need to consider the dimensional size.
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
 		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;
 		uint64_t min_val[2] = {
@@ -335,11 +336,15 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					}
 				}
 			}
+			assert(tensor_blocks[q].type == tensor_blocks[p].type);
+			const int type = tensor_blocks[p].type;
 #define for_block(y, x, val) do { \
 				/* y is always earlier than x, but this is hard to assert now. */ \
 				/* If this edge satisfy the requirement, now we need to find the ones with tightest possible bounds. */ \
 				/* Thus, the hop between y and x (through a) should be smallest ones. */ \
-				if (((uint64_t*)val)[0] >= a.size) \
+				if (((uint64_t*)val)[0] >= a.size && \
+					(y == 0 || tensor_blocks[y - 1].type == type) /* check the tensor block type matches. */ && \
+					(x == tensor_block_size + 1 || tensor_blocks[x - 1].type == type)) \
 				{ \
 					int y_hop_p = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[y - 1]); \
 					int q_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[q]); \
@@ -405,6 +410,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
 		{
 			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
+			assert(tensor_blocks[a.index].type == tensor_blocks[companion_ref].type);
 			const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[0] - 1], tensor_blocks[companion_ref]);
 			if (b_hop_p > 0)
 			{
@@ -991,21 +997,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
 	for (i = 0; i < alloc_prep->buffer_size; i++)
-		tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
-	int memory_type = CCV_TENSOR_GET_MEMORY(alloc_prep->buffers[0].type);
-	int device_id = CCV_TENSOR_GET_DEVICE_ID(alloc_prep->buffers[0].type);
-	for (i = 1; i < alloc_prep->buffer_size; i++)
-	{
-		assert(CCV_TENSOR_GET_MEMORY(alloc_prep->buffers[i].type) == memory_type);
-		assert(CCV_TENSOR_GET_DEVICE_ID(alloc_prep->buffers[i].type) == device_id);
-	}
-	for (i = 0; i < graph_prep->tensor_block_size; i++)
-	{
-		assert(CCV_TENSOR_GET_MEMORY(tensor_blocks[i].type) == memory_type);
-		assert(CCV_TENSOR_GET_DEVICE_ID(tensor_blocks[i].type) == device_id);
-	}
-	tensor_arena->memory_type = memory_type;
-	tensor_arena->device_id = device_id;
+		tensor_arena->buffers[i].type = alloc_prep->buffers[i].type, tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
 	if (graph_prep->while_count_tensor)
 	{
 		// If we need to have a while count tensor, allocate that first, set its pointer to point the while_count variable.
@@ -1056,30 +1048,26 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	} else {
 		// Now, allocate actual buffers.
 		PRINT(CCV_CLI_VERBOSE, "Buffer allocation for arena %p\n", tensor_arena);
-#ifdef HAVE_CUDA
-		if (memory_type == CCV_TENSOR_GPU_MEMORY)
+		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
-			for (i = 0; i < tensor_arena->buffer_size; i++)
+			const int memory_type = CCV_TENSOR_GET_MEMORY(tensor_arena->buffers[i].type);
+#ifdef HAVE_CUDA
+			if (memory_type == CCV_TENSOR_GPU_MEMORY)
 			{
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_arena->buffers[i].type);
 				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
-			}
-		} else {
-			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-			for (i = 0; i < tensor_arena->buffer_size; i++)
-			{
+			} else {
+				assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 				ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
-		}
 #else
-		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-		for (i = 0; i < tensor_arena->buffer_size; i++)
-		{
+			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 			ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
-		}
 #endif
+		}
 	}
 	// Go over sub_preps and allocate arenas for them. Do it this early because
 	// we may reference tensors from sub arenas, the reason why we need to reference
@@ -1667,6 +1655,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 		(!TENSOR_IS_UNFOLDABLE_AS_OUTPUT(tensor_blocks[p_ref_1]) || tensor_blocks[p_ref_1].unfoldable_except_ref == p_ref_0 + 1) &&
 		tensor_blocks[p_ref_0].tail->rnum == 1 &&
 		tensor_blocks[p_ref_1].head->rnum == 1 &&
+		tensor_blocks[p_ref_0].type == tensor_blocks[p_ref_1].type && // Must be the same type.
 		*(int*)ccv_array_get(tensor_blocks[p_ref_0].tail, 0) == *(int*)ccv_array_get(tensor_blocks[p_ref_1].head, 0))
 	{
 		// If the two parent refs matches (thus, they meet at the same node), we can concatenate with each other and mark one as a ref. This is very similar to in-place operation combining.
@@ -2447,8 +2436,7 @@ static int _ccv_nnc_anonymous_tensor_block_from_free_list(const ccv_nnc_tensor_b
 		const int idx = *(int*)ccv_array_get(anonymous_block_free_list, i);
 		assert(idx < tensor_block_size);
 		// If the type doesn't match, ignore.
-		if (CCV_TENSOR_GET_MEMORY(tensor_blocks[idx].type) != CCV_TENSOR_GET_MEMORY(type) ||
-			CCV_TENSOR_GET_DEVICE_ID(tensor_blocks[idx].type) != CCV_TENSOR_GET_DEVICE_ID(type))
+		if (tensor_blocks[idx].type != type)
 			continue;
 		// Heuristic about how to select the best tensor block to move forward.
 		// If the size is larger, and no dup_p_refs, found, I cannot do better than this, just return directly.
@@ -3511,21 +3499,22 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	int i;
-#ifdef HAVE_CUDA
-	if (tensor_arena->memory_type == CCV_TENSOR_GPU_MEMORY)
-	{
-		for (i = 0; i < tensor_arena->buffer_size; i++)
-			cufree(tensor_arena->device_id, tensor_arena->buffers[i].ptr);
-	} else {
-		assert(tensor_arena->memory_type == CCV_TENSOR_CPU_MEMORY);
-		for (i = 0; i < tensor_arena->buffer_size; i++)
-			ccfree(tensor_arena->buffers[i].ptr);
-	}
-#else
-	assert(tensor_arena->memory_type == CCV_TENSOR_CPU_MEMORY);
 	for (i = 0; i < tensor_arena->buffer_size; i++)
+	{
+		const int memory_type = CCV_TENSOR_GET_MEMORY(tensor_arena->buffers[i].type);
+#ifdef HAVE_CUDA
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_arena->buffers[i].type);
+		if (memory_type == CCV_TENSOR_GPU_MEMORY)
+			cufree(device_id, tensor_arena->buffers[i].ptr);
+		else {
+			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
+			ccfree(tensor_arena->buffers[i].ptr);
+		}
+#else
+		assert(memory_type == CCV_TENSOR_CPU_MEMORY);
 		ccfree(tensor_arena->buffers[i].ptr);
 #endif
+	}
 	_ccv_nnc_tensor_arena_free(tensor_arena);
 }
 
