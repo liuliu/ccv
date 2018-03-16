@@ -52,8 +52,15 @@
 #define GRAPH_EXEC_SYMBOL_LIST_X(...) (ccv_nnc_graph_exec_symbol_t []){__VA_ARGS__}
 #define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
-#define CPU_TENSOR_NHWC(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define CPU_TENSOR_NCHW(...) ((ccv_nnc_tensor_param_t){.type=CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
+#define SYMBOLIC_GRAPH_SOURCES(x) ccv_nnc_symbolic_graph_sources(x), ccv_nnc_symbolic_graph_source_size(x)
+#define SYMBOLIC_GRAPH_DESTINATIONS(x) ccv_nnc_symbolic_graph_destinations(x), ccv_nnc_symbolic_graph_destination_size(x)
+
+// We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
+#define CPU_NUMA_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
+#define CPU_NUMA_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
+#define ONE_CPU_NUMA_TENSOR CPU_NUMA_TENSOR_NHWC // The default is NHWC
+#define CPU_TENSOR_NHWC(...) CPU_NUMA_TENSOR_NHWC(00, __VA_ARGS__)
+#define CPU_TENSOR_NCHW(...) CPU_NUMA_TENSOR_NCHW(00, __VA_ARGS__)
 #define ONE_CPU_TENSOR CPU_TENSOR_NHWC // The default is NHWC
 // This way, we can do error check on the device type :)
 #define GPU_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})

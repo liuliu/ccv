@@ -3,7 +3,7 @@ include ../lib/config.mk
 LDFLAGS := -L"../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../lib" -I"." $(CFLAGS)
 
-SRCS := regression/defects.l0.1.tests.c unit/3rdparty.tests.c unit/io.tests.c unit/algebra.tests.c unit/memory.tests.c unit/convnet.tests.c unit/transform.tests.c unit/image_processing.tests.c unit/output.tests.c unit/nnc/while.tests.c unit/nnc/case_of.tests.c unit/nnc/backward.tests.c unit/nnc/winograd.tests.c unit/nnc/tape.tests.c unit/nnc/tensor.tests.c unit/nnc/case_of.backward.tests.c unit/nnc/forward.tests.c unit/nnc/autograd.tests.c unit/nnc/tfb.tests.c unit/nnc/gradient.tests.c unit/nnc/transform.tests.c unit/nnc/while.backward.tests.c unit/nnc/graph.tests.c unit/nnc/autograd.vector.tests.c unit/nnc/symbolic.graph.tests.c unit/util.tests.c unit/basic.tests.c unit/numeric.tests.c int/nnc/cudnn.tests.c int/nnc/graph.vgg.d.tests.c int/nnc/symbolic.graph.vgg.d.tests.c int/nnc/dense.net.tests.c
+SRCS := regression/defects.l0.1.tests.c unit/3rdparty.tests.c unit/io.tests.c unit/algebra.tests.c unit/memory.tests.c unit/convnet.tests.c unit/transform.tests.c unit/image_processing.tests.c unit/output.tests.c unit/nnc/while.tests.c unit/nnc/case_of.tests.c unit/nnc/backward.tests.c unit/nnc/winograd.tests.c unit/nnc/tape.tests.c unit/nnc/tensor.tests.c unit/nnc/numa.tests.c unit/nnc/case_of.backward.tests.c unit/nnc/forward.tests.c unit/nnc/autograd.tests.c unit/nnc/tfb.tests.c unit/nnc/gradient.tests.c unit/nnc/transform.tests.c unit/nnc/while.backward.tests.c unit/nnc/graph.tests.c unit/nnc/autograd.vector.tests.c unit/nnc/symbolic.graph.tests.c unit/util.tests.c unit/basic.tests.c unit/numeric.tests.c int/nnc/cudnn.tests.c int/nnc/graph.vgg.d.tests.c int/nnc/symbolic.graph.vgg.d.tests.c int/nnc/dense.net.tests.c
 
 SRC_OBJS := $(patsubst %.c,%.o,$(SRCS))
 
@@ -58,6 +58,9 @@ unit/nnc/tape.tests.o: unit/nnc/tape.tests.c
 	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit/nnc"' -o $@ -c $(CFLAGS)
 
 unit/nnc/tensor.tests.o: unit/nnc/tensor.tests.c
+	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit/nnc"' -o $@ -c $(CFLAGS)
+
+unit/nnc/numa.tests.o: unit/nnc/numa.tests.c
 	$(CC) $< -D CASE_DISABLE_MAIN -D CASE_TEST_DIR='"unit/nnc"' -o $@ -c $(CFLAGS)
 
 unit/nnc/case_of.backward.tests.o: unit/nnc/case_of.backward.tests.c

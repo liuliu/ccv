@@ -43,7 +43,7 @@ enum {
 	CCV_COMPUTE_DEVICE_05  = 0x0500,
 	CCV_COMPUTE_DEVICE_06  = 0x0600,
 	CCV_COMPUTE_DEVICE_07  = 0x0700,
-	CCV_ANY_COMPUTE_DEVICE = 0xff00, // The optimal allocation will be found by the algorithm.
+	CCV_COMPUTE_DEVICE_ANY = 0xff00, // The optimal allocation will be found by the algorithm.
 };
 
 #define CCV_TENSOR_GET_MEMORY(type) ((type) & 0x3)
