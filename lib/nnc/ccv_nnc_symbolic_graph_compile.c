@@ -28,7 +28,6 @@ typedef struct {
 enum {
 	UNASSIGNED = 0x1,
 	ALIAS = 0x2,
-	CONST_TENSOR = 0x3,
 	READ_ONLY = 0x4,
 	WRITE_ONLY = 0x8,
 	READ_WRITE = 0xc,
@@ -43,7 +42,6 @@ enum {
 #define TENSOR_EXPECT_SET_UNASSIGNED(t) (t.flags = ((t.flags & ~0x3) | UNASSIGNED))
 #define TENSOR_EXPECT_UNSET_UNASSIGNED(t) (t.flags = (t.flags & ~0x1))
 #define TENSOR_EXPECT_ALIAS(t) ((t.flags & 0x3) == ALIAS)
-#define TENSOR_EXPECT_CONST(t) ((t.flags & 0x3) == CONST_TENSOR)
 #define TENSOR_EXPECT_COMPUTABLE(t) (!TENSOR_EXPECT_ALIAS(t) && !TENSOR_EXPECT_UNASSIGNED(t))
 #define TENSOR_READ_WRITE(t) (t.flags & 0xc)
 #define TENSOR_SET_READ_WRITE(t, rw) (t.flags = ((t.flags & ~0xc) | rw))
@@ -197,21 +195,16 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		for (j = i + 1; j < tensor_block_size; j++)
 			if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[j]))
 			{
-				// If either of the tensor is const, it must interfere with each other.
+				// Check to see if they interfere (default to yes).
+				// If any of the i's head is deterministically later than j's tail
+				// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
 				const uint8_t one = 1;
-				if (TENSOR_EXPECT_CONST(tensor_blocks[i]) || TENSOR_EXPECT_CONST(tensor_blocks[j]))
+				int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
+				int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
+				// It cannot be that both i can hop to j can j can hop to i.
+				assert(!(i_hop_j > 0 && j_hop_i > 0));
+				if (!i_hop_j && !j_hop_i)
 					ccv_set_sparse_matrix_cell(tensor_itf, i, j, &one);
-				else {
-					// Otherwise, check to see if they interfere (default to yes).
-					// If any of the i's head is deterministically later than j's tail
-					// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
-					int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
-					int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
-					// It cannot be that both i can hop to j can j can hop to i.
-					assert(!(i_hop_j > 0 && j_hop_i > 0));
-					if (!i_hop_j && !j_hop_i)
-						ccv_set_sparse_matrix_cell(tensor_itf, i, j, &one);
-				}
 			}
 	int* oc = (int*)cccalloc(tensor_block_size, sizeof(int));
 	for (i = 0; i < tensor_block_size; i++)
@@ -1393,8 +1386,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// Handle binded tensors.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
-		if (!tensor_binds[i].tensor) // If there is no tensor binded, it is a constant, we allocated in arena.
-			continue;
+		assert(tensor_binds[i].tensor);
 		// For binded tensors, it shouldn't be assigned yet.
 		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
 		// I have to cast this, unfortunately.
@@ -1649,9 +1641,7 @@ static int _ccv_nnc_tensor_block_check_tail(const ccv_nnc_tensor_block_t* const 
 static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_blocks, const int p_ref_0, const int p_ref_1)
 {
 	// Now we are sure p_ref_0 points to the input, p_ref_1 points to the output.
-	if (!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_0]) &&
-		!TENSOR_EXPECT_CONST(tensor_blocks[p_ref_1]) &&
-		!TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_0]) &&
+	if (!TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_0]) &&
 		(!TENSOR_IS_UNFOLDABLE_AS_OUTPUT(tensor_blocks[p_ref_1]) || tensor_blocks[p_ref_1].unfoldable_except_ref == p_ref_0 + 1) &&
 		tensor_blocks[p_ref_0].tail->rnum == 1 &&
 		tensor_blocks[p_ref_1].head->rnum == 1 &&
@@ -1835,7 +1825,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
 		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
-		tensor_blocks[tensor_binds[i].symbol.d].flags = tensor_binds[i].tensor ? UNASSIGNED : CONST_TENSOR;
+		tensor_blocks[tensor_binds[i].symbol.d].flags = UNASSIGNED;
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
@@ -1889,8 +1879,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (TENSOR_EXPECT_ALIAS(tensor_blocks[d]))
 				d = tensor_symbol_info[d].alias_ref - 1;
 			tensor_blocks[d].flags |= WRITE_ONLY;
-			if (TENSOR_EXPECT_CONST(tensor_blocks[d]) ||
-				TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]))
+			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]))
 				continue;
 			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]));
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]);
@@ -1919,15 +1908,13 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 					ref = tensor_blocks[ref].ref - 1;
 				assert(tensor_blocks[ref].ref == 0);
 				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref];
-				if (!TENSOR_EXPECT_CONST(tensor_blocks[ref]) &&
-					TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
+				if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
 					tensor_blocks[ref].tail->rnum == 1)
 					for (y = 0; y < node->output_size; y++)
 						/* Only proceed if the input symbol is different from the output symbol, */
 						/* and the input symbol meets the output symbol exactly at the same spot. */
 						if (node->outputs[y] >= 0 &&
 							ref != node->outputs[y] &&
-							!TENSOR_EXPECT_CONST(tensor_blocks[node->outputs[y]]) &&
 							TENSOR_EXPECT_COMPUTABLE(tensor_blocks[node->outputs[y]]))
 						{
 							const int node_output_y = node->outputs[y];
@@ -3461,8 +3448,10 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	int i;
 	// Cannot bind the multi-view.
 	for (i = 0; i < tensor_bind_size; i++)
-		if (tensor_binds[i].tensor)
-		{ assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor)); }
+	{
+		assert(tensor_binds[i].tensor);
+		assert(!CCV_IS_TENSOR_MULTIVIEW(tensor_binds[i].tensor));
+	}
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, 0, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	_ccv_nnc_symbolic_graph_prep_while_count_tensor(graph_prep);
 	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
