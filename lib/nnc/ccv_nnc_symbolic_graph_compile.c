@@ -1387,10 +1387,14 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	for (i = 0; i < tensor_bind_size; i++)
 	{
 		assert(tensor_binds[i].tensor);
-		// For binded tensors, it shouldn't be assigned yet.
-		assert(tensor_arena->vt_tensors[tensor_binds[i].symbol.d] == 0);
-		// I have to cast this, unfortunately.
-		tensor_arena->vt_tensors[tensor_binds[i].symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
+		if (resolved_symbol.d >= 0)
+		{
+			// For binded tensors, it shouldn't be assigned yet.
+			assert(tensor_arena->vt_tensors[resolved_symbol.d] == 0);
+			// I have to cast this, unfortunately.
+			tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+		}
 	}
 	// Rewire sub arena's tensor references.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
@@ -1824,8 +1828,16 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	}
 	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
-		// If there is a tensor binded, then it is unassigned, otherwise, we will allocate as constant.
-		tensor_blocks[tensor_binds[i].symbol.d].flags = UNASSIGNED;
+	{
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(symbolic_graph, tensor_binds[i].symbol);
+		// If there is a tensor binded, then it is unassigned.
+		if (resolved_symbol.d >= 0)
+		{
+			// Doesn't work if this is a loop carrying variable.
+			assert(!tensor_symbol_info[resolved_symbol.d].assign_ref);
+			tensor_blocks[resolved_symbol.d].flags = UNASSIGNED;
+		}
+	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// Check no tensor info is auto now.
