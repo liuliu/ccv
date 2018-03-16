@@ -59,8 +59,8 @@
 #define CPU_NUMA_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
 #define CPU_NUMA_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
 #define ONE_CPU_NUMA_TENSOR CPU_NUMA_TENSOR_NHWC // The default is NHWC
-#define CPU_TENSOR_NHWC(...) CPU_NUMA_TENSOR_NHWC(00, __VA_ARGS__)
-#define CPU_TENSOR_NCHW(...) CPU_NUMA_TENSOR_NCHW(00, __VA_ARGS__)
+#define CPU_TENSOR_NHWC(...) CPU_NUMA_TENSOR_NHWC(ANY, __VA_ARGS__)
+#define CPU_TENSOR_NCHW(...) CPU_NUMA_TENSOR_NCHW(ANY, __VA_ARGS__)
 #define ONE_CPU_TENSOR CPU_TENSOR_NHWC // The default is NHWC
 // This way, we can do error check on the device type :)
 #define GPU_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
