@@ -34,7 +34,7 @@ TEST_CASE("symbolic graph for piece-wise function y = f(x), compute y'")
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_0 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, ONE_CPU_TENSOR(1), "y0");
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_0, 0, TENSOR_SYMBOL_MAP(KV(y0, y)));
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), 0, 0, TENSOR_SYMBOL_LIST(y0), "set");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, CMD_SET_FORWARD(0), 0, 0, TENSOR_SYMBOL_LIST(y0), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_0, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_1 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(1), "y1");
@@ -42,13 +42,13 @@ TEST_CASE("symbolic graph for piece-wise function y = f(x), compute y'")
 	ccv_nnc_tensor_symbol_t s1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(1), "s");
 	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(1), "z1");
 	ccv_nnc_tensor_symbol_t p1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, ONE_CPU_TENSOR(1), "p");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, s1), TENSOR_SYMBOL_LIST(z1), "prod");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(z1, p1), TENSOR_SYMBOL_LIST(y1), "sum");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(x, s1), TENSOR_SYMBOL_LIST(z1), "prod");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(z1, p1), TENSOR_SYMBOL_LIST(y1), "sum");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_1, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_2 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph_2, ONE_CPU_TENSOR(1), "y2");
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_2, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1.5), 0), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_2, CMD_SET_FORWARD(1.5), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(case_of), GRAPH_EXEC_SYMBOL_LIST(case_of), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x));
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);

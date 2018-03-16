@@ -33,7 +33,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t softmax_cmd = CMD_SOFTMAX_FORWARD();
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m), 0);
 	ccv_nnc_cmd_t back_cmd = CMD_CONVOLUTION_BACKWARD(4, 5, 3, 2);

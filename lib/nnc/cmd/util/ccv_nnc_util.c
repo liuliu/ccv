@@ -23,6 +23,11 @@ REGISTER_COMMAND(CCV_NNC_SET_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
 
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SET_FORWARD)
+#define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(_val), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SET_BACKWARD)
+#define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, CMD_BLAS(_val), 0)
+
 static int _ccv_nnc_data_transfer_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
@@ -80,6 +85,11 @@ REGISTER_COMMAND(CCV_NNC_DATA_TRANSFER_BACKWARD)(ccv_nnc_cmd_registry_t* const r
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
 
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_DATA_TRANSFER_FORWARD)
+#define CMD_DATA_TRANSFER_FORWARD() ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_DATA_TRANSFER_BACKWARD)
+#define CMD_DATA_TRANSFER_BACKWARD() ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+
 REGISTER_COMMAND(CCV_NNC_FORMAT_TRANSFORM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, ccv_nnc_util_gpu_cudnn.cu)
 {
@@ -93,3 +103,8 @@ REGISTER_COMMAND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD)(ccv_nnc_cmd_registry_t* cons
 	registry->bitmask = _ccv_nnc_data_transfer_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
 }
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_FORMAT_TRANSFORM_FORWARD)
+#define CMD_FORMAT_TRANSFORM_FORWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_FORMAT_TRANSFORM_BACKWARD)
+#define CMD_FORMAT_TRANSFORM_BACKWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, 0, ccv_nnc_cmd_auto, 0)

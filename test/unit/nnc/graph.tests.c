@@ -43,11 +43,11 @@ TEST_CASE("run simple graph network")
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_graph_exec_t forw_node = ccv_nnc_graph_exec_new(graph, forw_cmd, hint, TENSOR_LIST(a, w, bias), TENSOR_LIST(b));
-	ccv_nnc_cmd_t softmax_cmd = ccv_nnc_cmd(CCV_NNC_SOFTMAX_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t softmax_cmd = CMD_SOFTMAX_FORWARD();
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
 	ccv_nnc_graph_exec_t softmax_node = ccv_nnc_graph_exec_new(graph, softmax_cmd, hint, TENSOR_LIST(b), TENSOR_LIST(m));
 	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, b->info, 0);
-	ccv_nnc_cmd_t loss_cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, _ccv_nnc_custom_24_loss_exec, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t loss_cmd = CMD_CUSTOM_FORWARD(_ccv_nnc_custom_24_loss_exec);
 	ccv_nnc_graph_exec_t loss_node = ccv_nnc_graph_exec_new(graph, loss_cmd, hint, TENSOR_LIST(m), TENSOR_LIST(g));
 	ccv_nnc_cmd_t back_cmd = CMD_CONVOLUTION_BACKWARD(4, 2, 3, 5);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);

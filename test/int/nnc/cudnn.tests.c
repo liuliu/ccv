@@ -48,14 +48,14 @@ TEST_CASE("cudnn forward convolution")
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(00, OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM), 0);
 	ccv_nnc_tensor_t* gwo = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(00, OUTPUT_DIM, INPUT_DIM, KERNEL_SIZE, KERNEL_SIZE), 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(00, OUTPUT_DIM), 0);
-	ccv_nnc_cmd_t move = ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t move = CMD_DATA_TRANSFER_FORWARD();
 	move.backend = CCV_NNC_BACKEND_GPU_REF;
 	assert(move.backend >= 0);
 	ccv_nnc_cmd_exec(move, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(ga, gw, gbias), 0);
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* gc = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(00, BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
 
-	ccv_nnc_cmd_t transform = ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t transform = CMD_FORMAT_TRANSFORM_FORWARD();
 	transform.backend = CCV_NNC_BACKEND_GPU_CUDNN;
 	assert(transform.backend >= 0);
 	ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);

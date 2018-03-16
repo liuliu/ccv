@@ -31,3 +31,8 @@ REGISTER_COMMAND(CCV_NNC_RELU_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	registry->bitmask = _ccv_nnc_relu_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RELU_FORWARD)
+#define CMD_RELU_FORWARD() ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_RELU_BACKWARD)
+#define CMD_RELU_BACKWARD() ccv_nnc_cmd(CCV_NNC_RELU_BACKWARD, 0, ccv_nnc_cmd_auto, 0)

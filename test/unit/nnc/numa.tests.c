@@ -19,8 +19,8 @@ TEST_CASE("simple graph x * 0.3 + 3 compiled with NUMA")
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_NUMA_TENSOR(00, 1), "x");
 	const ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_NUMA_TENSOR(01, 1), "y");
 	const ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_NUMA_TENSOR(02, 1), "z");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, a), TENSOR_SYMBOL_LIST(y), "prod");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y, b), TENSOR_SYMBOL_LIST(z), "sum");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(x, a), TENSOR_SYMBOL_LIST(y), "prod");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(y, b), TENSOR_SYMBOL_LIST(z), "sum");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;

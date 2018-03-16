@@ -23,10 +23,10 @@ TEST_CASE("simple autograd with D[x * x + Log[1 / x], x] when x = 0.84")
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
 	// z = w + v
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z");
-	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(x, x), TENSOR_SYMBOL_LIST(w), "prod");
-	ccv_nnc_graph_exec_symbol_t inv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWDIV_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(one, x), TENSOR_SYMBOL_LIST(u), "inv");
-	ccv_nnc_graph_exec_symbol_t log = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(u), TENSOR_SYMBOL_LIST(v), "log");
-	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, v), TENSOR_SYMBOL_LIST(z), "sum");
+	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(x, x), TENSOR_SYMBOL_LIST(w), "prod");
+	ccv_nnc_graph_exec_symbol_t inv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWDIV_FORWARD(), TENSOR_SYMBOL_LIST(one, x), TENSOR_SYMBOL_LIST(u), "inv");
+	ccv_nnc_graph_exec_symbol_t log = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(u), TENSOR_SYMBOL_LIST(v), "log");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(w, v), TENSOR_SYMBOL_LIST(z), "sum");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv, log, sum), 0);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(z), TENSOR_SYMBOL_LIST(x));
 	ccv_nnc_graph_t* graph = 0;
@@ -61,7 +61,7 @@ TEST_CASE("autograd with D[y, x] when x = 10 and y = 1 (no x presence in the for
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
 	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
-	ccv_nnc_graph_exec_symbol_t set = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1), 0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(y), "set");
+	ccv_nnc_graph_exec_symbol_t set = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(1), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(y), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(set), GRAPH_EXEC_SYMBOL_LIST(set), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x));
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
@@ -106,9 +106,9 @@ TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.3
 	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
 	// v = w * u
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
-	ccv_nnc_graph_exec_symbol_t minus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AXPY_FORWARD, 0, CMD_BLAS(1, -1), 0), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(w), "minus");
-	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_AXPY_FORWARD, 0, CMD_BLAS(1, 1), 0), TENSOR_SYMBOL_LIST(y, one), TENSOR_SYMBOL_LIST(u), "plus");
-	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, u), TENSOR_SYMBOL_LIST(v), "prod");
+	ccv_nnc_graph_exec_symbol_t minus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AXPY_FORWARD(1, -1), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(w), "minus");
+	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AXPY_FORWARD(1, 1), TENSOR_SYMBOL_LIST(y, one), TENSOR_SYMBOL_LIST(u), "plus");
+	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(w, u), TENSOR_SYMBOL_LIST(v), "prod");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus, prod), 0);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus), GRAPH_EXEC_SYMBOL_LIST(prod), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x, y));
 	ccv_nnc_graph_t* graph = 0;
@@ -158,10 +158,10 @@ TEST_CASE("partial autograd with D[y * x + Log[1 / x], y] when x = 0.84 and y = 
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
 	// z = w + v
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z");
-	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWPROD_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(y, x), TENSOR_SYMBOL_LIST(w), "prod");
-	ccv_nnc_graph_exec_symbol_t inv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWDIV_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(one, x), TENSOR_SYMBOL_LIST(u), "inv");
-	ccv_nnc_graph_exec_symbol_t log = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(u), TENSOR_SYMBOL_LIST(v), "log");
-	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, CMD_GENERIC(), 0), TENSOR_SYMBOL_LIST(w, v), TENSOR_SYMBOL_LIST(z), "sum");
+	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(y, x), TENSOR_SYMBOL_LIST(w), "prod");
+	ccv_nnc_graph_exec_symbol_t inv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWDIV_FORWARD(), TENSOR_SYMBOL_LIST(one, x), TENSOR_SYMBOL_LIST(u), "inv");
+	ccv_nnc_graph_exec_symbol_t log = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(u), TENSOR_SYMBOL_LIST(v), "log");
+	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(w, v), TENSOR_SYMBOL_LIST(z), "sum");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv, log, sum), 0);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod, inv), GRAPH_EXEC_SYMBOL_LIST(sum), TENSOR_SYMBOL_LIST(z), TENSOR_SYMBOL_LIST(y));
 	ccv_nnc_graph_t* graph = 0;

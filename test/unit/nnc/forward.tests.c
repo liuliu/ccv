@@ -306,7 +306,7 @@ TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(55, 55, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(3, 3, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_MAX_POOL_FORWARD(3, 3);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;
@@ -328,7 +328,7 @@ TEST_CASE("maximum pool network of 57x57 with window of 3x3 and stride of 3")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(57, 57, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(19, 19, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(3, 3, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_MAX_POOL_FORWARD(3, 3);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;
@@ -350,7 +350,7 @@ TEST_CASE("maximum pool network of 54x54 with window of 2x2 and stride of 2")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(54, 54, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(2, 2, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_MAX_POOL_FORWARD(2, 2);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;
@@ -372,7 +372,7 @@ TEST_CASE("average pool network of 55x55 with window of 3x3 and stride of 2")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(55, 55, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(3, 3, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_AVERAGE_POOL_FORWARD(3, 3);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;
@@ -394,7 +394,7 @@ TEST_CASE("average pool network of 57x57 with window of 3x3 and stride of 3")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(57, 57, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(19, 19, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(3, 3, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_AVERAGE_POOL_FORWARD(3, 3);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;
@@ -416,7 +416,7 @@ TEST_CASE("average pool network of 54x54 with window of 2x2 and stride of 2")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(54, 54, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_AVERAGE_POOL_FORWARD, 0, CMD_GENERIC(2, 2, 1), 0);
+	ccv_nnc_cmd_t cmd = CMD_AVERAGE_POOL_FORWARD(2, 2);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	// configure the inlets.
 	int i;

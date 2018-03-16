@@ -46,6 +46,11 @@ REGISTER_COMMAND(CCV_NNC_GEMM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
 }
 
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GEMM_FORWARD)
+#define CMD_GEMM_FORWARD(_count) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(_count), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GEMM_BACKWARD)
+#define CMD_GEMM_BACKWARD(_count) ccv_nnc_cmd(CCV_NNC_GEMM_BACKWARD, 0, CMD_GEMM(_count), 0)
+
 static int _ccv_nnc_axpy_forw_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
@@ -84,3 +89,8 @@ REGISTER_COMMAND(CCV_NNC_AXPY_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	registry->bitmask = _ccv_nnc_axpy_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 }
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_AXPY_FORWARD)
+#define CMD_AXPY_FORWARD(...) ccv_nnc_cmd(CCV_NNC_AXPY_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_AXPY_BACKWARD)
+#define CMD_AXPY_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_AXPY_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)

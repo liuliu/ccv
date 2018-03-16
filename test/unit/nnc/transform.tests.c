@@ -15,7 +15,7 @@ TEST_CASE("data transfer between different tensor views")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(56, 56, 128), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(24, 32, 64), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_DATA_TRANSFER_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t cmd = CMD_DATA_TRANSFER_FORWARD();
 	int i;
 	for (i = 0; i < 128 * 56 * 56; i++)
 		a->data.f32[i] = i;
@@ -60,7 +60,7 @@ TEST_CASE("format transform between NHWC and NCHW tensors")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(4, 3, 2), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(2, 4, 3), 0);
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t cmd = CMD_FORMAT_TRANSFORM_FORWARD();
 	int i;
 	for (i = 0; i < 2 * 3 * 4; i++)
 		a->data.f32[i] = i;
@@ -108,7 +108,7 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 10, 8), 0);
 	memset(b->data.f32, 0, sizeof(float) * 8 * 10 * 8);
 	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, DIM_ALLOC(0, 0, 0), DIM_ALLOC(2, 4, 3));
-	ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0);
+	ccv_nnc_cmd_t cmd = CMD_FORMAT_TRANSFORM_FORWARD();
 	int i, j, k;
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 3; j++)
