@@ -95,7 +95,7 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(z, v), TENSOR_SYMBOL_LIST(u), "prod1");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(noop));
-	ccv_nnc_symbolic_graph_set_while_params(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
+	ccv_nnc_symbolic_graph_set_while_carries(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
 	ccv_nnc_symbolic_graph_set_sources(while_graph, GRAPH_EXEC_SYMBOL_LIST(prod0));
 	ccv_nnc_symbolic_graph_set_destinations(while_graph, GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_graph_t* graph = 0;

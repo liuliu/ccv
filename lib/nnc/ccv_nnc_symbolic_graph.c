@@ -211,7 +211,7 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	return alias;
 }
 
-// Resolve this tensor symbol to the current graph.
+// Resolve this tensor symbol to the current graph. If cannot find, return no symbol.
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
 {
 	if (graph == tensor_symbol.graph)
@@ -232,8 +232,12 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_gra
 		while (curr_graph != graph)
 		{
 			ccv_nnc_symbolic_graph_t* const p = curr_graph->p;
-			// I need to find the symbol whether it exists or not before creating new one.
-			assert(curr_symbol_info->p_ref);
+			// Cannot find the relevant one in the parent graph, return no symbol.
+			if (!curr_symbol_info->p_ref)
+				return (ccv_nnc_tensor_symbol_t){
+					.d = CCV_NNC_NO_TENSOR_SYMBOL,
+					.graph = graph,
+				};
 			curr_symbol.d = curr_symbol_info->p_ref - 1;
 			curr_symbol.graph = p;
 			assert(curr_symbol.d >= 0 && curr_symbol.d < p->tensor_symbol_info->rnum);
@@ -268,9 +272,13 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_gra
 	{
 		const int p_idx = trace[i];
 		assert(p_idx >= 0);
-		assert(curr_graph->sub_graphs);
-		assert(curr_symbol_info->s_ref);
-		assert(curr_symbol_info->s_ref->rnum == curr_graph->sub_graphs->rnum);
+		// Cannot find the relevant one in the sub-graph, return no symbol.
+		if (!curr_graph->sub_graphs || !curr_symbol_info->s_ref ||
+			curr_symbol_info->s_ref->rnum != curr_graph->sub_graphs->rnum)
+				return (ccv_nnc_tensor_symbol_t){
+					.d = CCV_NNC_NO_TENSOR_SYMBOL,
+					.graph = graph,
+				};
 		assert(p_idx >= 0 && p_idx < curr_symbol_info->s_ref->rnum);
 		const int s_idx = *(int*)ccv_array_get(curr_symbol_info->s_ref, p_idx);
 		ccv_nnc_symbolic_graph_t* const s = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(curr_graph->sub_graphs, p_idx);

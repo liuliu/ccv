@@ -526,8 +526,8 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
 // Set the expression to be evaluated, and at which nodes to be evaluated.
 void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
-// Set the loop parameters when reuse. (parameterized loop).
-void ccv_nnc_symbolic_graph_set_while_params(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
+// Set the loop carry parameters when reuse. (parameterized loop, these will be carried over to the next loop).
+void ccv_nnc_symbolic_graph_set_while_carries(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
 // Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const while_graph);
 // Extract the sub-graph of the while loop from a symbol.

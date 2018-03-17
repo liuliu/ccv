@@ -1451,7 +1451,7 @@ static ccv_nnc_autograd_tensor_symbol_t* _ccv_nnc_autograd_tensor_symbol_from_te
 	return (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 }
 
-static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
+static void _ccv_nnc_symbolic_graph_set_backward_while_carries(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
 {
 	int i;
 	for (i = 0; i < backward_prep->graph->tensor_symbol_info->rnum; i++)
@@ -1462,7 +1462,7 @@ static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symb
 			const int assign_ref = tensor_symbol_info->assign_ref - 1;
 			ccv_nnc_autograd_tensor_symbol_t* const destination_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + assign_ref);
 			ccv_nnc_autograd_tensor_symbol_t* const source_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + i);
-			ccv_nnc_symbolic_graph_set_while_params(graph, (ccv_nnc_tensor_symbol_map_t []){
+			ccv_nnc_symbolic_graph_set_while_carries(graph, (ccv_nnc_tensor_symbol_map_t []){
 				{ .source = source_autograd_symbol->symbol, .destination = destination_autograd_symbol->symbol }
 			}, 1);
 		}
@@ -1480,7 +1480,7 @@ static void _ccv_nnc_symbolic_graph_set_backward_while_params(const ccv_nnc_symb
 			const int init_d = ((ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, init_ref_ver))->d;
 			ccv_nnc_autograd_tensor_symbol_t* const destination_autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(backward_prep->autograd_tensor_symbols, init_d);
 			ccv_nnc_autograd_tensor_symbol_t* const source_autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(backward_prep->autograd_tensor_symbols, backward_prep->autograd_tensor_versions + ref_d);
-			ccv_nnc_symbolic_graph_set_while_params(graph, (ccv_nnc_tensor_symbol_map_t []){
+			ccv_nnc_symbolic_graph_set_while_carries(graph, (ccv_nnc_tensor_symbol_map_t []){
 				{ .source = source_autograd_symbol->symbol, .destination = destination_autograd_symbol->symbol }
 			}, 1);
 		}
@@ -1639,7 +1639,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			}
 			ccv_nnc_symbolic_graph_set_while_expr(sub_graph, NOOP_GRAPH_WHILE_EXPR, 0, 0, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_execs, 0), sub_execs->rnum);
 			ccv_nnc_graph_exec_symbol_autogen(sub_graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-			_ccv_nnc_symbolic_graph_set_backward_while_params(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
+			_ccv_nnc_symbolic_graph_set_backward_while_carries(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
 			for (j = 0; j < back_exec->input_size; j++)
 				if (back_info->input_bitmasks[j >> 6] & ((uint64_t)1 << j))
 					ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->inputs[j]))->symbol));

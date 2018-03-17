@@ -1067,9 +1067,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// tensors from sub arenas is because for output tensors, sub arena's tensor
 	// will have automatic reference updates.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
-		// TODO: I also need to pass binded tensor properly to the lower level.
 		if (graph_prep->sub_preps[i])
-			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, 0, 0);
+			tensor_arena->sub_arenas[i] = _ccv_nnc_tensor_arena_new(graph_prep->sub_preps[i], tensor_arena, tensor_binds, tensor_bind_size);
 		else
 			tensor_arena->sub_arenas[i] = 0;
 	memset(tensor_arena->vt_tensors, 0, sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size);

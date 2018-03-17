@@ -30,7 +30,7 @@ TEST_CASE("new tape from a graph")
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(z2, z0), TENSOR_SYMBOL_LIST(z3), "sum");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_set_while_expr(while_symbolic_graph, NOOP_GRAPH_WHILE_EXPR, 0, 0, 0, GRAPH_EXEC_SYMBOL_LIST(noop));
-	ccv_nnc_symbolic_graph_set_while_params(while_symbolic_graph, TENSOR_SYMBOL_MAP(KV(z1, z0)));
+	ccv_nnc_symbolic_graph_set_while_carries(while_symbolic_graph, TENSOR_SYMBOL_MAP(KV(z1, z0)));
 	ccv_nnc_symbolic_graph_set_sources(while_symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(noop));
 	ccv_nnc_symbolic_graph_set_destinations(while_symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(prod0));
 	ccv_nnc_graph_t* graph = 0;
