@@ -209,7 +209,7 @@ TEST_CASE("symbolic while graph contains a case..of graph and multiply its outpu
 	ccv_nnc_symbolic_graph_set_case_of(while_graph, case_of, case_of_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
 	ccv_nnc_graph_exec_symbol_new(case_of_2, CMD_SET_FORWARD(1.5), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
 	ccv_nnc_graph_exec_symbol_autogen(case_of_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_set_while_carries(while_graph, TENSOR_SYMBOL_MAP(KV(y, x)));
+	ccv_nnc_symbolic_graph_set_carry_overs(while_graph, TENSOR_SYMBOL_MAP(KV(y, x)));
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z");
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "a");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(a, y), TENSOR_SYMBOL_LIST(z), "prod1");
@@ -280,7 +280,7 @@ TEST_CASE("symbolic while graph contains a case..of graph takes input by multipl
 	ccv_nnc_symbolic_graph_set_case_of(while_graph, case_of, case_of_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
 	ccv_nnc_graph_exec_symbol_new(case_of_2, CMD_SET_FORWARD(1.5), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
 	ccv_nnc_graph_exec_symbol_autogen(case_of_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_set_while_carries(while_graph, TENSOR_SYMBOL_MAP(KV(y, b)));
+	ccv_nnc_symbolic_graph_set_carry_overs(while_graph, TENSOR_SYMBOL_MAP(KV(y, b)));
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "z");
 	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "a");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(a, y), TENSOR_SYMBOL_LIST(z), "prod1");

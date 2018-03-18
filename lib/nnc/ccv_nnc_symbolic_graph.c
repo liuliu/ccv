@@ -577,7 +577,7 @@ void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv
 	*(int*)ccv_array_get(tensor_info->s_ref, p_idx) = sub_tensor_symbol.d + 1;
 }
 
-void ccv_nnc_tensor_symbol_set_bypass(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
+void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
 {
 	int i;
 	for (i = 0; i < symbol_map_size; i++)

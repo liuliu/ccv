@@ -33,7 +33,7 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	ccv_nnc_graph_exec_symbol_concat(while_graph, sum, noop);
 	ccv_nnc_graph_exec_symbol_autogen(while_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_set_while_expr(while_graph, while_4, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(noop));
-	ccv_nnc_symbolic_graph_set_while_carries(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
+	ccv_nnc_symbolic_graph_set_carry_overs(while_graph, TENSOR_SYMBOL_MAP(KV(z, x)));
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;

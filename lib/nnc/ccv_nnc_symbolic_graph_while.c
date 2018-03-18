@@ -57,7 +57,7 @@ void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while
 	}
 }
 
-void ccv_nnc_symbolic_graph_set_while_carries(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
+void ccv_nnc_symbolic_graph_set_carry_overs(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
 {
 	int i;
 	for (i = 0; i < symbol_map_size; i++)
