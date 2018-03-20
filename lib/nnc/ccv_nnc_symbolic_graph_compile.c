@@ -3203,10 +3203,6 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				graph_execs[idx] = ccv_nnc_graph_while(graph, node->cmd.cmd, sub_graph);
 				const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
 				const ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
-				ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena);
-				ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
-				ccv_nnc_graph_set_sources(sub_graph, &source, 1);
-				ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
 				ccv_nnc_graph_exec_set_io(graph, graph_execs[idx], max_inputs, node->input_size, max_outputs, node->output_size);
 				for (i = 0; i < node->p_while.input_size; i++)
 					max_inputs[i] = _ccv_nnc_tensor_from_graph_prep(sub_prep, node->p_while.inputs[i]);
@@ -3238,11 +3234,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 						continue;
 					ccv_nnc_graph_t* const sub_graph = graph_prep->sub_preps[graph_ref]->graph;
 					const ccv_nnc_symbolic_graph_t* const sub_symbolic_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, graph_ref);
-					const ccv_nnc_graph_exec_arena_t* const sub_arena = graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
-					ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(sub_arena);
-					ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(sub_arena);
-					ccv_nnc_graph_set_sources(sub_graph, &source, 1);
-					ccv_nnc_graph_set_destinations(sub_graph, &destination, 1);
+					graph_exec_arena->sub_arenas[graph_ref] = _ccv_nnc_graph_exec_arena_new(sub_symbolic_graph, ccv_nnc_symbolic_graph_sources(sub_symbolic_graph), ccv_nnc_symbolic_graph_source_size(sub_symbolic_graph), ccv_nnc_symbolic_graph_destinations(sub_symbolic_graph), ccv_nnc_symbolic_graph_destination_size(sub_symbolic_graph), graph_prep->sub_preps[graph_ref], tensor_arena->sub_arenas[graph_ref]);
 					ccv_nnc_graph_set_case_of(graph, graph_execs[idx], sub_graph, i + offset);
 				}
 			} else {
@@ -3366,6 +3358,8 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		for (i = 0; i < destination_size; i++)
 			ccv_nnc_graph_exec_concat(graph, graph_execs[destinations[i].d], graph_exec_arena->destination);
 	}
+	ccv_nnc_graph_set_sources(graph, &graph_exec_arena->source, 1);
+	ccv_nnc_graph_set_destinations(graph, &graph_exec_arena->destination, 1);
 	return graph_exec_arena;
 }
 
