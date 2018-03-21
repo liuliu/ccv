@@ -20,6 +20,7 @@ void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	int i;
 	for (i = 0; i < source_size; i++)
 		ccv_array_push(graph->sources, sources + i);
+	graph->sequential = 0;
 }
 
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph)
@@ -41,6 +42,7 @@ void ccv_nnc_graph_set_destinations(ccv_nnc_graph_t* const graph, const ccv_nnc_
 	int i;
 	for (i = 0; i < destination_size; i++)
 		ccv_array_push(graph->destinations, destinations + i);
+	graph->sequential = 0;
 }
 
 ccv_nnc_graph_exec_t* ccv_nnc_graph_destinations(const ccv_nnc_graph_t* const graph)
@@ -411,6 +413,7 @@ int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_
 				return -1;
 	}
 	ccv_array_push(src_info->outgoings, &destination.d);
+	graph->sequential = 0;
 	return 0;
 }
 
@@ -436,7 +439,64 @@ int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	if (j < src_info->outgoings->rnum - 1)
 		*(int*)ccv_array_get(src_info->outgoings, j) = *(int*)ccv_array_get(src_info->outgoings, src_info->outgoings->rnum - 1);
 	--src_info->outgoings->rnum;
+	graph->sequential = 0;
 	return 0;
+}
+
+int ccv_nnc_graph_exec_size(const ccv_nnc_graph_t* const graph)
+{
+	return graph->exec_info ? graph->exec_info->rnum : 0;
+}
+
+void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size)
+{
+	assert(exec_cvt_size == graph->exec_info->rnum);
+	assert(graph->sources && graph->sources->rnum);
+	assert(graph->destinations && graph->destinations->rnum);
+	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+	int i, j;
+	for (i = 0; i < exec_cvt_size; i++)
+		exec_cvt[i] = -1;
+	ccv_array_t* exec_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_info_t), graph->exec_info->rnum, 0);
+	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+		assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+		// Loop over node and push to the array.
+		ccv_array_push(exec_info, node);
+		// Go to its sub-graph to fix exec_idx
+		for (i = 0; i < node->graph_ref_size; i++)
+		{
+			const int graph_ref = CCV_NNC_GRAPH_REF(node)[i] - 1;
+			if (graph_ref >= 0)
+			{
+				ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
+				sub_graph->exec_idx = exec_info->rnum;
+			}
+		}
+		exec_cvt[idx] = exec_info->rnum - 1;
+	} ccv_nnc_graph_visit_endfor
+	ccv_nnc_graph_visit_free(visit);
+	assert(graph->exec_info->rnum == exec_info->rnum);
+	ccv_array_free(graph->exec_info);
+	graph->exec_info = exec_info;
+	for (i = 0; i < graph->sources->rnum; i++)
+	{
+		ccv_nnc_graph_exec_t* const source = (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, i);
+		source->d = exec_cvt[source->d];
+	}
+	for (i = 0; i < graph->destinations->rnum; i++)
+	{
+		ccv_nnc_graph_exec_t* const destination = (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, i);
+		destination->d = exec_cvt[destination->d];
+	}
+	// Update all outgoings to reflect the latest.
+	for (i = 0; i < exec_info->rnum; i++)
+	{
+		ccv_nnc_graph_exec_info_t* const info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(exec_info, i);
+		if (info->outgoings)
+			for (j = 0; j < info->outgoings->rnum; j++)
+				*(int*)ccv_array_get(info->outgoings, j) = exec_cvt[*(int*)ccv_array_get(info->outgoings, j)];
+	}
+	graph->sequential = 1;
 }
 
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)

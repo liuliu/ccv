@@ -218,6 +218,71 @@ static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 		PRINT(CCV_CLI_VERBOSE, " ..");
 }
 
+static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+
+static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node, const int idx, const int depth, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags)
+{
+	int i;
+	_ccv_nnc_graph_exec_unwrap_io(graph, node);
+	ccv_nnc_tensor_t** inputs = node->inputs;
+	ccv_nnc_tensor_t** outputs = inputs + node->input_size;
+	if (tensor_tape)
+		ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size);
+	/* Broadcast the updates to all subscribed references for input / output, even though at th
+	 * time output is not written yet, propagate pointer change is still valid. */
+	_ccv_nnc_graph_exec_begin_synchronize_multiviews(graph, node);
+	if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
+	{
+		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+		{
+			int ref;
+			if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
+			{
+				ref = node->case_of.offset + node->case_of.expr(inputs + node->case_of.argument.offset, node->case_of.argument.size, node->case_of.data);
+				if (tensor_tape)
+					ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){
+						.d = idx,
+						.graph = graph,
+					}, ref);
+			} else {
+				assert(node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD);
+				assert(tensor_tape);
+				ref = ccv_nnc_tensor_tape_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){
+						.d = idx,
+						.graph = graph,
+					});
+			}
+			if (ref >= 0)
+			{
+				assert(ref < node->graph_ref_size);
+				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[ref] - 1);
+				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum);
+			}
+			_ccv_nnc_graph_exec_unwrap_phi(graph, node, ref);
+		} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
+			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1);
+			_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum);
+		}
+	} else {
+		PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, depth, node->input_size, node->output_size);
+		for (i = 0; i < node->input_size; i++)
+		{
+			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0));
+			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+				_ccv_nnc_print_tensor_verbose(inputs[i]);
+			PRINT(CCV_CLI_VERBOSE, "\n");
+		}
+		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0);
+		for (i = 0; i < node->output_size; i++)
+		{
+			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
+			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+				_ccv_nnc_print_tensor_verbose(outputs[i]);
+			PRINT(CCV_CLI_VERBOSE, "\n");
+		}
+	}
+}
+
 static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
 	int i, j;
@@ -228,66 +293,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 		if (destinations[i].graph != graph)
 			return CCV_NNC_EXEC_INVALID;
 #define visitor(node, idx, depth, ...) \
-	do { \
-		_ccv_nnc_graph_exec_unwrap_io(graph, node); \
-		ccv_nnc_tensor_t** inputs = node->inputs; \
-		ccv_nnc_tensor_t** outputs = inputs + node->input_size; \
-		if (tensor_tape) \
-			ccv_nnc_tensor_tape_io(tensor_tape, graph, node->input_flags, inputs, node->input_size, node->output_flags, outputs, node->output_size); \
-		/* Broadcast the updates to all subscribed references for input / output, even though at this
-		 * time output is not written yet, propagate pointer change is still valid. */ \
-		_ccv_nnc_graph_exec_begin_synchronize_multiviews(graph, node); \
-		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
-		{ \
-			if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) \
-			{ \
-				int ref; \
-				if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD) \
-				{ \
-					ref = node->case_of.offset + node->case_of.expr(inputs + node->case_of.argument.offset, node->case_of.argument.size, node->case_of.data); \
-					if (tensor_tape) \
-						ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
-							.d = idx, \
-							.graph = graph, \
-						}, ref); \
-				} else { \
-					assert(node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD); \
-					assert(tensor_tape); \
-					ref = ccv_nnc_tensor_tape_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){ \
-							.d = idx, \
-							.graph = graph, \
-						}); \
-				} \
-				if (ref >= 0) \
-				{ \
-					assert(ref < node->graph_ref_size); \
-					ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[ref] - 1); \
-					_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
-				} \
-				_ccv_nnc_graph_exec_unwrap_phi(graph, node, ref); \
-			} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) { \
-				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1); \
-				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, flags, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum); \
-			} \
-		} else { \
-			PRINT(CCV_CLI_VERBOSE, "%s [%d, %d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, depth, node->input_size, node->output_size); \
-			for (i = 0; i < node->input_size; i++) \
-			{ \
-				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0)); \
-				if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
-					_ccv_nnc_print_tensor_verbose(inputs[i]); \
-				PRINT(CCV_CLI_VERBOSE, "\n"); \
-			} \
-			ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, 0); \
-			for (i = 0; i < node->output_size; i++) \
-			{ \
-				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0)); \
-				if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE)) \
-					_ccv_nnc_print_tensor_verbose(outputs[i]); \
-				PRINT(CCV_CLI_VERBOSE, "\n"); \
-			} \
-		} \
-	} while (0)
+	_ccv_nnc_graph_exec_run(graph, node, idx, depth, tensor_tape, flags)
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
 		assert(exec->p_while.expr);
@@ -361,6 +367,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 		graph->while_count = 0;
 		CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, sources, source_size, destinations, destination_size, 0, visitor);
 	}
+#undef visitor
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

@@ -207,12 +207,14 @@ int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_
 // Disconnect input graph nodes with an output graph nodes in this graph.
 // Return non-zero if cannot disjoin successfully.
 int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
+// Number of exec in the graph.
+int ccv_nnc_graph_exec_size(const ccv_nnc_graph_t* const graph);
 // Generate output that can be parsed by GraphViz (DOT language).
 void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE* out);
 // Run the autotune function for all the inputs / outputs, afterwards, assigning the optimized cmd back.
 void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // Make the graph sequential, thus, do a topological sort so when run the graph, no additional memory will be allocated.
-void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph);
+void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size);
 // The sources / destinations.
 void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const sources, const int source_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph);

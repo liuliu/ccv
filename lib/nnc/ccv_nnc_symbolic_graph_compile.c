@@ -3360,6 +3360,14 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	}
 	ccv_nnc_graph_set_sources(graph, &graph_exec_arena->source, 1);
 	ccv_nnc_graph_set_destinations(graph, &graph_exec_arena->destination, 1);
+	int* const exec_cvt = (int*)ccmalloc(sizeof(int) * graph->exec_info->rnum);
+	ccv_nnc_graph_sequential(graph, exec_cvt, graph->exec_info->rnum);
+	graph_exec_arena->source.d = exec_cvt[graph_exec_arena->source.d];
+	graph_exec_arena->destination.d = exec_cvt[graph_exec_arena->destination.d];
+	for (i = 0; i < graph_exec_arena->graph_exec_size; i++)
+		if (graph_execs[i].graph == graph)
+			graph_execs[i].d = exec_cvt[graph_execs[i].d];
+	ccfree(exec_cvt);
 	return graph_exec_arena;
 }
 

@@ -78,6 +78,7 @@ typedef struct {
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
+	int sequential; // Whether this graph is ordered sequentially.
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;
