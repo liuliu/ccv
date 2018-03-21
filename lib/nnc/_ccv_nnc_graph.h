@@ -93,6 +93,7 @@ struct ccv_nnc_graph_s {
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
 	int64_t while_count;
+	int breakpoint_offset; // If the graph is in sequential mode, offset denotes the first node that is the breakpoint.
 	int breakpoint_size;
 	ccv_nnc_graph_exec_t* breakpoints;
 	// End of while loop handling.

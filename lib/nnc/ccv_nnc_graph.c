@@ -453,28 +453,76 @@ void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt,
 	assert(exec_cvt_size == graph->exec_info->rnum);
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
-	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
 	int i, j;
 	for (i = 0; i < exec_cvt_size; i++)
 		exec_cvt[i] = -1;
 	ccv_array_t* exec_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_info_t), graph->exec_info->rnum, 0);
-	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
-		assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
-		// Loop over node and push to the array.
-		ccv_array_push(exec_info, node);
-		// Go to its sub-graph to fix exec_idx
-		for (i = 0; i < node->graph_ref_size; i++)
-		{
-			const int graph_ref = CCV_NNC_GRAPH_REF(node)[i] - 1;
-			if (graph_ref >= 0)
+	// If there are breakpoints, it is more complicated, we first start to the breakpoints, and then continue from the breakpoints to the destinations.
+	if (graph->breakpoint_size)
+	{
+		ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, graph->breakpoints, graph->breakpoint_size, 0);
+		for (i = 0; i < graph->breakpoint_size; i++)
+			exec_cvt[graph->breakpoints[i].d] = -2; // Mark this as breakpoints, so we will skip the first round.
+		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			if (exec_cvt[idx] == -2) // Skip breakpoint.
+				continue;
+			// Loop over node and push to the array.
+			ccv_array_push(exec_info, node);
+			// Go to its sub-graph to fix exec_idx
+			for (i = 0; i < node->graph_ref_size; i++)
 			{
-				ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
-				sub_graph->exec_idx = exec_info->rnum;
+				const int graph_ref = CCV_NNC_GRAPH_REF(node)[i] - 1;
+				if (graph_ref >= 0)
+				{
+					ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
+					sub_graph->exec_idx = exec_info->rnum;
+				}
 			}
-		}
-		exec_cvt[idx] = exec_info->rnum - 1;
-	} ccv_nnc_graph_visit_endfor
-	ccv_nnc_graph_visit_free(visit);
+			exec_cvt[idx] = exec_info->rnum - 1;
+		} ccv_nnc_graph_visit_endfor
+		ccv_nnc_graph_visit_free(visit);
+		graph->breakpoint_offset = exec_info->rnum;
+		visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			// Loop over node and push to the array.
+			ccv_array_push(exec_info, node);
+			// Go to its sub-graph to fix exec_idx
+			for (i = 0; i < node->graph_ref_size; i++)
+			{
+				const int graph_ref = CCV_NNC_GRAPH_REF(node)[i] - 1;
+				if (graph_ref >= 0)
+				{
+					ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
+					sub_graph->exec_idx = exec_info->rnum;
+				}
+			}
+			exec_cvt[idx] = exec_info->rnum - 1;
+		} ccv_nnc_graph_visit_endfor
+		ccv_nnc_graph_visit_free(visit);
+		for (i = 0; i < graph->breakpoint_size; i++)
+			{ assert(exec_cvt[graph->breakpoints[i].d] >= 0); } // All breakpoints should be assigned.
+	} else {
+		ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			// Loop over node and push to the array.
+			ccv_array_push(exec_info, node);
+			// Go to its sub-graph to fix exec_idx
+			for (i = 0; i < node->graph_ref_size; i++)
+			{
+				const int graph_ref = CCV_NNC_GRAPH_REF(node)[i] - 1;
+				if (graph_ref >= 0)
+				{
+					ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, graph_ref);
+					sub_graph->exec_idx = exec_info->rnum;
+				}
+			}
+			exec_cvt[idx] = exec_info->rnum - 1;
+		} ccv_nnc_graph_visit_endfor
+		ccv_nnc_graph_visit_free(visit);
+	}
 	assert(graph->exec_info->rnum == exec_info->rnum);
 	ccv_array_free(graph->exec_info);
 	graph->exec_info = exec_info;
