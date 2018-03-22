@@ -3296,6 +3296,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				const int outgoing = *(int*)ccv_array_get(tensor_blocks[ref].head, j);
 				if (outgoing >= exec_symbol_info_size)
 					continue;
+				assert(outgoing >= 0);
 				assert(graph_execs[outgoing].graph);
 				ccv_nnc_graph_exec_concat(graph, set_exec, graph_execs[outgoing]);
 			}
@@ -3312,6 +3313,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 							const int incoming = *(int*)ccv_array_get(tensor_blocks[d].tail, j);
 							if (incoming >= exec_symbol_info_size)
 								continue;
+							assert(incoming >= 0);
 							assert(graph_execs[incoming].graph);
 							ccv_nnc_graph_exec_concat(graph, graph_execs[incoming], set_exec);
 							flags = 1;
@@ -3346,6 +3348,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					const int idx = *(int*)ccv_array_get(head, j);
 					if (idx >= exec_symbol_info_size)
 						continue;
+					assert(idx >= 0);
 					const int d = graph_execs[idx].d;
 					ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, d);
 					int flag = 0;
