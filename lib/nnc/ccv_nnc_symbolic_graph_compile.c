@@ -3192,6 +3192,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 		max_output_size = ccv_max(max_input_size, graph_prep->exec_symbol_info[i].output_size);
 		if (graph_prep->exec_symbol_info[i].flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
 			max_input_size = ccv_max(max_input_size, graph_prep->exec_symbol_info[i].p_while.input_size);
+		graph_execs[i].d = CCV_NNC_NO_TENSOR_SYMBOL;
 		graph_execs[i].graph = 0;
 	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
