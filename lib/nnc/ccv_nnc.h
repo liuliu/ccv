@@ -17,14 +17,13 @@
 #include "cmd/ccv_nnc_backend.h"
 
 enum {
-	// Attributes that enable tensor allocation optimization
-	CCV_NNC_CMD_ATTR_INPLACE      = 0x01, // Is it a inplace operation? (Thus, the input tensor can be the same as the output tensor). This is actually a stronger assumption than it seems. It says that the input tensors can be the same as any of the output tensors. Thus, input tensors of [a, b] and output tensors of [b, a] or [a, a] or [b, b] are perfectly supported if your compute node supports this flag.
 	// Attributes that enable symbolic graph simplification
-	CCV_NNC_CMD_ATTR_PASSTHROUGH  = 0x02, // This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical).
-	CCV_NNC_CMD_ATTR_OUTPUT_ONES  = 0x04, // All the output tensors are 1s (unit).
-	CCV_NNC_CMD_ATTR_NULL_IS_ONES = 0x08, // Accept nullptr input as if these are tensors with 1s (unit).
+	CCV_NNC_CMD_ATTR_PASSTHROUGH  = 0x01, // This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical).
+	CCV_NNC_CMD_ATTR_OUTPUT_ONES  = 0x02, // All the output tensors are 1s (unit).
+	CCV_NNC_CMD_ATTR_NULL_IS_ONES = 0x04, // Accept nullptr input as if these are tensors with 1s (unit).
 };
 
+// Flags pass into cmd when executing.
 enum {
 	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
 	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
@@ -142,9 +141,14 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
-CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
+// Check this command against listed attributes.
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
+// Check whether this command allow inplace operation against a particular input and output (index from 0).
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
+// Check whether this command need to enforce inplace operation against a particular input and output (index from 0).
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
 
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.

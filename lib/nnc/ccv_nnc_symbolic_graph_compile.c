@@ -1906,35 +1906,33 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */
-		if (ccv_nnc_cmd_attr(node->cmd, CCV_NNC_CMD_ATTR_INPLACE))
+		int x, y;
+		for (x = 0; x < node->input_size; x++)
 		{
-			int x, y;
-			for (x = 0; x < node->input_size; x++)
-			{
-				/* If the input is not assigned, it can be referenced, find the referenced one */
-				int ref = node->inputs[x];
-				if (ref < 0)
-					continue;
-				while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
-					ref = tensor_blocks[ref].ref - 1;
-				assert(tensor_blocks[ref].ref == 0);
-				const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref];
-				if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
-					tensor_blocks[ref].tail->rnum == 1)
-					for (y = 0; y < node->output_size; y++)
-						/* Only proceed if the input symbol is different from the output symbol, */
-						/* and the input symbol meets the output symbol exactly at the same spot. */
-						if (node->outputs[y] >= 0 &&
-							ref != node->outputs[y] &&
-							TENSOR_EXPECT_COMPUTABLE(tensor_blocks[node->outputs[y]]))
-						{
-							const int node_output_y = node->outputs[y];
-							const ccv_nnc_tensor_symbol_info_t y_symbol = tensor_symbol_info[node_output_y];
-							/* If dimension matches perfectly, then we can assign y_symbol to x. */
-							if (memcmp(x_symbol.info.dim, y_symbol.info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-								_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y);
-						}
-			}
+			/* If the input is not assigned, it can be referenced, find the referenced one */
+			int ref = node->inputs[x];
+			if (ref < 0)
+				continue;
+			while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
+				ref = tensor_blocks[ref].ref - 1;
+			assert(tensor_blocks[ref].ref == 0);
+			const ccv_nnc_tensor_symbol_info_t x_symbol = tensor_symbol_info[ref];
+			if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
+				tensor_blocks[ref].tail->rnum == 1)
+				for (y = 0; y < node->output_size; y++)
+					/* Only proceed if the input symbol is different from the output symbol, */
+					/* and the input symbol meets the output symbol exactly at the same spot. */
+					if (ccv_nnc_cmd_allow_inplace(node->cmd, x, y) &&
+						node->outputs[y] >= 0 &&
+						ref != node->outputs[y] &&
+						TENSOR_EXPECT_COMPUTABLE(tensor_blocks[node->outputs[y]]))
+					{
+						const int node_output_y = node->outputs[y];
+						const ccv_nnc_tensor_symbol_info_t y_symbol = tensor_symbol_info[node_output_y];
+						/* If dimension matches perfectly, then we can assign y_symbol to x. */
+						if (memcmp(x_symbol.info.dim, y_symbol.info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+							_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y);
+					}
 		}
 	} ccv_nnc_graph_visit_endfor
 	// Specifically handle the bypass. This need to be done after the first pass.

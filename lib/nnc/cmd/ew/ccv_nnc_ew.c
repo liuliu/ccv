@@ -2,6 +2,11 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_internal.h>
 
+static int _ccv_nnc_arbitary_inplace(const int input_idx, const int output_idx)
+{
+	return 1;
+}
+
 static int _ccv_nnc_ewsum_forw_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (output_bitmasks[0] == 1)
@@ -61,17 +66,18 @@ static int _ccv_nnc_ewsum_back_bitmask(const uint64_t* const input_bitmasks, con
 REGISTER_COMMAND(CCV_NNC_EWSUM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_ewsum_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_EWSUM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE | CCV_NNC_CMD_ATTR_PASSTHROUGH;
+	registry->flags = CCV_NNC_CMD_ATTR_PASSTHROUGH;
 	registry->bitmask = _ccv_nnc_ewsum_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWSUM_FORWARD)
@@ -153,9 +159,9 @@ static int _ccv_nnc_ewprod_back_bitmask(const uint64_t* const input_bitmasks, co
 REGISTER_COMMAND(CCV_NNC_EWPROD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_ewprod_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_EWPROD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -194,9 +200,10 @@ static int _ccv_nnc_ewdiv_back_bitmask(const uint64_t* const input_bitmasks, con
 REGISTER_COMMAND(CCV_NNC_EWDIV_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE | CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_ewdiv_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_EWDIV_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -229,17 +236,18 @@ static int _ccv_nnc_ewexp_back_bitmask(const uint64_t* const input_bitmasks, con
 REGISTER_COMMAND(CCV_NNC_EWEXP_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_ewexp_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_EWEXP_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE | CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_ewexp_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWEXP_FORWARD)
@@ -265,17 +273,18 @@ static int _ccv_nnc_ewlog_back_bitmask(const uint64_t* const input_bitmasks, con
 REGISTER_COMMAND(CCV_NNC_EWLOG_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE;
 	registry->bitmask = _ccv_nnc_ewlog_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 REGISTER_COMMAND(CCV_NNC_EWLOG_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_INPLACE | CCV_NNC_CMD_ATTR_NULL_IS_ONES;
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_ewlog_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+	registry->allow_inplace = _ccv_nnc_arbitary_inplace;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_EWLOG_FORWARD)
