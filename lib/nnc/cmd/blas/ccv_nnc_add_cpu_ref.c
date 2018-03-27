@@ -13,7 +13,7 @@
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
 
-static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size == 1 || inputs[1] == 0)
 	{
@@ -183,7 +183,7 @@ static int _ccv_nnc_axpy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (inputs[0] == 0)
 	{
@@ -193,36 +193,36 @@ static int _ccv_nnc_axpy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[1], cmd.info.blas.a[1]);
 	} else {
 		ccv_nnc_cmd_t forw_cmd = cmd;
-		forw_cmd.cmd = CCV_NNC_AXPY_FORWARD;
+		forw_cmd.cmd = CCV_NNC_ADD_FORWARD;
 		memset(forw_cmd.info.blas.a, 0, sizeof(forw_cmd.info.blas.a));
 		if (outputs[0])
 		{
 			forw_cmd.info.blas.a[0] = cmd.info.blas.a[0];
-			_ccv_nnc_axpy_forw(forw_cmd, hint, flags, inputs, 1, outputs, 1, stream_context);
+			_ccv_nnc_add_forw(forw_cmd, hint, flags, inputs, 1, outputs, 1, stream_context);
 		}
 		if (output_size > 1 && outputs[1])
 		{
 			forw_cmd.info.blas.a[0] = cmd.info.blas.a[1];
-			_ccv_nnc_axpy_forw(forw_cmd, hint, flags, inputs, 1, outputs + 1, 1, stream_context);
+			_ccv_nnc_add_forw(forw_cmd, hint, flags, inputs, 1, outputs + 1, 1, stream_context);
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_ADD_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_axpy_forw;
+	registry->exec = _ccv_nnc_add_forw;
 }
 
-REGISTER_COMMAND_BACKEND(CCV_NNC_AXPY_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+REGISTER_COMMAND_BACKEND(CCV_NNC_ADD_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_axpy_back;
+	registry->exec = _ccv_nnc_add_back;
 }

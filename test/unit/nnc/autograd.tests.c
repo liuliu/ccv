@@ -106,8 +106,8 @@ TEST_CASE("autograd with D[(x - y) * (x + 1), [x, y]] when x = 43.24 and y = 0.3
 	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
 	// v = w * u
 	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
-	ccv_nnc_graph_exec_symbol_t minus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AXPY_FORWARD(1, -1), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(w), "minus");
-	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AXPY_FORWARD(1, 1), TENSOR_SYMBOL_LIST(y, one), TENSOR_SYMBOL_LIST(u), "plus");
+	ccv_nnc_graph_exec_symbol_t minus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_ADD_FORWARD(1, -1), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(w), "minus");
+	ccv_nnc_graph_exec_symbol_t plus = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_ADD_FORWARD(1, 1), TENSOR_SYMBOL_LIST(y, one), TENSOR_SYMBOL_LIST(u), "plus");
 	ccv_nnc_graph_exec_symbol_t prod = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(w, u), TENSOR_SYMBOL_LIST(v), "prod");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus, prod), 0);
 	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(minus, plus), GRAPH_EXEC_SYMBOL_LIST(prod), TENSOR_SYMBOL_LIST(v), TENSOR_SYMBOL_LIST(x, y));
