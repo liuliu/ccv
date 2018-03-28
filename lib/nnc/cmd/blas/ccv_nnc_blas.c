@@ -92,7 +92,7 @@ REGISTER_COMMAND(CCV_NNC_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_add_cpu_ref.c)
 {
 	registry->bitmask = _ccv_nnc_add_back_bitmask;
-	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
+	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_ADD_FORWARD)

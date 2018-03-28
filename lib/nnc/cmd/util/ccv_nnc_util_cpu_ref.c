@@ -26,7 +26,7 @@ void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_
 		return;
 	}
 	ccv_nnc_tensor_view_get_dim(a, dim);
-	ccv_nnc_tensor_view_check_dim(b, dim);
+	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	ccv_nnc_tensor_view_get_inc(a, ainc);
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.

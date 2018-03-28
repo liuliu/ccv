@@ -46,8 +46,8 @@ int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(a, dim);
-		ccv_nnc_tensor_view_check_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
+		assert(ccv_nnc_tensor_view_check_dim(b, dim));
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
 		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
 		{
 			// Super optimal case, just do one for-loop for sum.
@@ -162,8 +162,8 @@ static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(a, dim);
-		ccv_nnc_tensor_view_check_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
+		assert(ccv_nnc_tensor_view_check_dim(b, dim));
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
 		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
 		{
 			// Super optimal case, just do one for-loop for sum.
@@ -248,8 +248,8 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[z];
 			assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 			assert(h->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-			ccv_nnc_tensor_view_check_dim(a, dim);
-			ccv_nnc_tensor_view_check_dim(h, dim);
+			assert(ccv_nnc_tensor_view_check_dim(a, dim));
+			assert(ccv_nnc_tensor_view_check_dim(h, dim));
 			ccv_nnc_tensor_view_get_inc(a, ainc);
 			ccv_nnc_tensor_view_get_inc(h, hinc);
 			if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(h))
@@ -311,7 +311,7 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		assert(g->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(g, dim);
+		assert(ccv_nnc_tensor_view_check_dim(g, dim));
 		ccv_nnc_tensor_view_get_inc(b, binc);
 		ccv_nnc_tensor_view_get_inc(g, ginc);
 		for (z = 0; z < output_size; z++)
@@ -320,8 +320,8 @@ static int _ccv_nnc_ewprod_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[z];
 			assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 			assert(h->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-			ccv_nnc_tensor_view_check_dim(a, dim);
-			ccv_nnc_tensor_view_check_dim(h, dim);
+			assert(ccv_nnc_tensor_view_check_dim(a, dim));
+			assert(ccv_nnc_tensor_view_check_dim(h, dim));
 			ccv_nnc_tensor_view_get_inc(a, ainc);
 			ccv_nnc_tensor_view_get_inc(h, hinc);
 			if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(h))
@@ -404,7 +404,7 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
 		int x;
 		if (!CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
 		{
@@ -461,8 +461,8 @@ static int _ccv_nnc_ewdiv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(a, dim);
-		ccv_nnc_tensor_view_check_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
+		assert(ccv_nnc_tensor_view_check_dim(b, dim));
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
 		int x;
 		if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c))
 		{
@@ -553,9 +553,9 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		assert(ha->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(hb->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
-		ccv_nnc_tensor_view_check_dim(ha, dim);
-		ccv_nnc_tensor_view_check_dim(hb, dim);
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
+		assert(ccv_nnc_tensor_view_check_dim(ha, dim));
+		assert(ccv_nnc_tensor_view_check_dim(hb, dim));
 		int x;
 		if (!CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && !CCV_IS_TENSOR_VIEW(ha) && !CCV_IS_TENSOR_VIEW(hb))
 		{
@@ -640,10 +640,10 @@ static int _ccv_nnc_ewdiv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		assert(ha->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(hb->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		ccv_nnc_tensor_view_get_dim(b, dim);
-		ccv_nnc_tensor_view_check_dim(g, dim);
-		ccv_nnc_tensor_view_check_dim(c, dim);
-		ccv_nnc_tensor_view_check_dim(ha, dim);
-		ccv_nnc_tensor_view_check_dim(hb, dim);
+		assert(ccv_nnc_tensor_view_check_dim(g, dim));
+		assert(ccv_nnc_tensor_view_check_dim(c, dim));
+		assert(ccv_nnc_tensor_view_check_dim(ha, dim));
+		assert(ccv_nnc_tensor_view_check_dim(hb, dim));
 		int x;
 		if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(c) && !CCV_IS_TENSOR_VIEW(ha) && !CCV_IS_TENSOR_VIEW(hb))
 		{
@@ -743,7 +743,7 @@ static int _ccv_nnc_ewexp_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	ccv_nnc_tensor_view_get_dim(a, dim);
-	ccv_nnc_tensor_view_check_dim(b, dim);
+	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
 	{
@@ -823,7 +823,7 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	ccv_nnc_tensor_view_get_dim(a, dim);
-	ccv_nnc_tensor_view_check_dim(b, dim);
+	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
 	{

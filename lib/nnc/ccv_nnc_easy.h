@@ -108,19 +108,40 @@ static inline void ccv_nnc_tensor_view_get_dim(const ccv_nnc_tensor_view_t* cons
 		dim[x] = tv->info.dim[x - offset];
 }
 
-static inline void ccv_nnc_tensor_view_check_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+static inline CCV_WARN_UNUSED(int) ccv_nnc_tensor_view_check_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int x;
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
 	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
 	for (x = 0; x < offset; x++)
-	{
-		assert(dim[x] == 1);
-	}
+		if (dim[x] != 1)
+			return 0;
 	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
-	{
-		assert(dim[x] == tv->info.dim[x - offset]);
-	}
+		if (dim[x] != tv->info.dim[x - offset])
+			return 0;
+	return 1;
+}
+
+static inline void ccv_nnc_tensor_view_get_broadcast_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	for (x = 0; x < offset; x++)
+		dim[x] = ccv_max(1, dim[x]);
+	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
+		dim[x] = ccv_max(dim[x], tv->info.dim[x - offset]);
+}
+
+static inline CCV_WARN_UNUSED(int) ccv_nnc_tensor_view_check_broadcast_dim(const ccv_nnc_tensor_view_t* const tv, int dim[CCV_NNC_MAX_DIM_ALLOC])
+{
+	int x;
+	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
+	const int offset = CCV_NNC_MAX_DIM + 2 - nd;
+	for (x = offset; x < CCV_NNC_MAX_DIM + 2; x++)
+		if (dim[x] != tv->info.dim[x - offset] && tv->info.dim[x - offset] != 1)
+			return 0;
+	return 1;
 }
 
 static inline void ccv_nnc_tensor_view_get_inc(const ccv_nnc_tensor_view_t* const tv, int inc[CCV_NNC_MAX_DIM_ALLOC])
