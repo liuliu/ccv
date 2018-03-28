@@ -213,6 +213,7 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	ccv_nnc_tensor_view_get_dim(g, gdim);
 	ccv_nnc_cmd_t forw_cmd = cmd;
 	forw_cmd.cmd = CCV_NNC_ADD_FORWARD;
+	memset(forw_cmd.info.blas.a, 0, sizeof(forw_cmd.info.blas.a));
 	if (outputs[0])
 	{
 		ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[0];
