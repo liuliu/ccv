@@ -236,6 +236,7 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 #define CMD_GENERIC_X_SEL(_0, _1, _2, _3, _FX, ...) _FX
 // Using ## so that if it is empty, we omit one comma.
 #define CMD_GENERIC(...) CMD_GENERIC_X_SEL(CMD_GENERIC_X_F, ##__VA_ARGS__, CMD_GENERIC_X_3, CMD_GENERIC_X_F, CMD_GENERIC_X_F, CMD_GENERIC_X_0)(__VA_ARGS__)
+#define CMD_REDUCE(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.dim={__VA_ARGS__}}})
 #define CMD_NOOP() ccv_nnc_cmd(CCV_NNC_NOOP, 0, ccv_nnc_cmd_auto, 0)
 #define CMD_CUSTOM_FORWARD(f) ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, f, ccv_nnc_cmd_auto, 0)
 

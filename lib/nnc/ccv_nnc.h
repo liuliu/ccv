@@ -56,6 +56,10 @@ typedef struct {
 			float a[3]; /**< BLAS scalars. */
 			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
+		struct {
+			int dim[CCV_NNC_MAX_DIM_ALLOC];
+			int count;
+		} reduce;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;
