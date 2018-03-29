@@ -24,7 +24,7 @@ static void _ccv_nnc_reduce_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, cons
 	outputs[0] = inputs[0];
 	int i;
 	for (i = 0; i < cmd.reduce.count; i++)
-		outputs[0].dim[cmd.reduce.dim[i]] = 1; // Reduce the dimension to 1.
+		outputs[0].dim[cmd.reduce.axis[i]] = 1; // Reduce the dimension to 1.
 }
 
 REGISTER_COMMAND(CCV_NNC_REDUCE_SUM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

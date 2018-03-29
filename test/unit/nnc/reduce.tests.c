@@ -10,7 +10,7 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-TEST_CASE("reduce sum for [[1, 2, 3], [4, 5, 6]] on dimension 1")
+TEST_CASE("reduce sum for [[1, 2, 3], [4, 5, 6]] on axis 1")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 1), 0);
@@ -31,7 +31,7 @@ TEST_CASE("reduce sum for [[1, 2, 3], [4, 5, 6]] on dimension 1")
 	ccv_nnc_tensor_free(b);
 }
 
-TEST_CASE("reduce sum for [[1, 2, 3], [4, 5, 6]] on dimension 0")
+TEST_CASE("reduce sum for [[1, 2, 3], [4, 5, 6]] on axis 0")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
 	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3), 0);

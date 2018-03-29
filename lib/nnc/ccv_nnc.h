@@ -57,7 +57,7 @@ typedef struct {
 			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
 		struct {
-			int dim[CCV_NNC_MAX_DIM_ALLOC];
+			int axis[CCV_NNC_MAX_DIM_ALLOC];
 			int count;
 		} reduce;
 		void* userdata;
