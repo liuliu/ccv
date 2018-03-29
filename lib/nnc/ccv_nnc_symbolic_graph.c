@@ -914,6 +914,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
 			{
 				int a = a_symbol_info->inputs[x];
+				if (a < 0)
+					continue;
 				// Handle alias as well.
 				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
 				if (a_tensor_info->alias_ref)
@@ -921,6 +923,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 				for (y = 0; y < b_symbol_info->output_size && !b_to_a; y++)
 				{
 					int b = b_symbol_info->outputs[y];
+					if (b < 0)
+						continue;
 					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
 					if (b_tensor_info->alias_ref)
 						b = b_tensor_info->alias_ref - 1;
@@ -950,6 +954,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			for (x = 0; x < a_symbol_info->output_size && !a_to_b; x++)
 			{
 				int a = a_symbol_info->outputs[x];
+				if (a < 0)
+					continue;
 				// Handle alias as well.
 				ccv_nnc_tensor_symbol_info_t* a_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, a);
 				if (a_tensor_info->alias_ref)
@@ -957,6 +963,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 				for (y = 0; y < b_symbol_info->input_size && !a_to_b; y++)
 				{
 					int b = b_symbol_info->inputs[y];
+					if (b < 0)
+						continue;
 					ccv_nnc_tensor_symbol_info_t* b_tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, b);
 					if (b_tensor_info->alias_ref)
 						b = b_tensor_info->alias_ref - 1;
