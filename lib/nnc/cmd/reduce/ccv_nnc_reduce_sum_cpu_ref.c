@@ -25,6 +25,7 @@ static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	int bdim[CCV_NNC_MAX_DIM + 2];
 	ccv_nnc_tensor_view_get_dim(a, adim);
 	ccv_nnc_tensor_view_get_dim(b, bdim);
+	assert(ccv_nnc_tensor_view_check_broadcast_dim(b, adim));
 	int ainc[CCV_NNC_MAX_DIM + 2];
 	int binc[CCV_NNC_MAX_DIM + 2];
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.

@@ -53,12 +53,19 @@ typedef struct {
 			float beta; /**< [rnorm.beta] See **rnorm.kappa**. */
 		} rnorm;
 		struct {
-			float a[3]; /**< BLAS scalars. */
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [bnorm.axis[]] The axis selected to compute mean / variance. */
+			int count; /**< [bnorm.count] The number of axis selected. */
+			float epsilon; /**< [bnorm.epsilon] The epsilon for standard derivation. */
+			int is_test; /**< [bnorm.is_test] Whether in test mode. */
+			float momentum; /**< [bnorm.momentum] running_mean = running_mean * momentum + mean * (1 - momentum). */
+		} bnorm;
+		struct {
+			float a[3]; /**< [blas.a[3]] BLAS scalars. */
 			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
 		struct {
-			int axis[CCV_NNC_MAX_DIM_ALLOC];
-			int count;
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
+			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;
 		void* userdata;
 	};

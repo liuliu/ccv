@@ -1905,8 +1905,30 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			for (j = 0; j < destination_size; j++)
 				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
-		/* Remove tensor symbols that is for in-place operations (and it matches the start, end tensor). */
+		/* Maximum tensor reuse by collapse tensors allows in-place operations (and it matches the start, end tensor). */
 		int x, y;
+		for (x = 0; x < node->input_size; x++)
+			for (y = 0; y < node->output_size; y++)
+				/* Some operations enforces some tensors to be the same for inputs / outputs. */
+				if (ccv_nnc_cmd_enforce_inplace(node->cmd, x, y))
+				{
+					// If both unassigned, it is fine.
+					if (node->inputs[x] < 0 && node->outputs[y] < 0)
+						continue;
+					int ref = node->inputs[x];
+					assert(ref >= 0);
+					while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
+						ref = tensor_blocks[ref].ref - 1;
+					const int node_output_y = node->outputs[y];
+					assert(node_output_y >= 0);
+					// If both are not computable, it is fine, we don't need to enforce.
+					if (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) &&
+						!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[node_output_y]))
+						continue;
+					// Otherwise, enforce and error out if failed.
+					if (!_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y))
+						{ assert(0 && "cannot enforce inplace for the two tensors"); }
+				}
 		for (x = 0; x < node->input_size; x++)
 		{
 			/* If the input is not assigned, it can be referenced, find the referenced one */

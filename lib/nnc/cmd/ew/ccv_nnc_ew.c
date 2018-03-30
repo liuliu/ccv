@@ -74,7 +74,7 @@ REGISTER_COMMAND(CCV_NNC_EWSUM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 REGISTER_COMMAND(CCV_NNC_EWSUM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_ew_cpu_ref.c)
 {
-	registry->flags = CCV_NNC_CMD_ATTR_PASSTHROUGH;
+	registry->flags = CCV_NNC_CMD_ATTR_PASSTHROUGH | CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_ewsum_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
 	registry->allow_inplace = _ccv_nnc_arbitary_inplace;

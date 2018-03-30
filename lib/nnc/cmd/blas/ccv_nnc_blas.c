@@ -91,6 +91,7 @@ REGISTER_COMMAND(CCV_NNC_ADD_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 REGISTER_COMMAND(CCV_NNC_ADD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_add_cpu_ref.c)
 {
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_add_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
 }
@@ -135,6 +136,7 @@ REGISTER_COMMAND(CCV_NNC_MUL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 REGISTER_COMMAND(CCV_NNC_MUL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_mul_cpu_ref.c)
 {
+	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_mul_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_inputs;
 }

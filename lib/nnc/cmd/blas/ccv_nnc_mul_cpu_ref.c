@@ -13,7 +13,7 @@
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
 
-static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+int _ccv_nnc_mul_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	if (input_size == 1 || inputs[1] == 0)
 	{
@@ -212,20 +212,20 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		if (outputs[0])
 		{
 			if (inputs[0] == 0)
-				_ccv_nnc_mul_forw(forw_cmd, hint, flags, inputs + 2, 1, outputs, 1, stream_context);
+				_ccv_nnc_mul_forw_cpu_ref(forw_cmd, hint, flags, inputs + 2, 1, outputs, 1, stream_context);
 			else {
 				ccv_nnc_tensor_t* const forw_inputs[2] = {
 					inputs[0], inputs[2],
 				};
-				_ccv_nnc_mul_forw(forw_cmd, hint, flags, forw_inputs, 2, outputs, 1, stream_context);
+				_ccv_nnc_mul_forw_cpu_ref(forw_cmd, hint, flags, forw_inputs, 2, outputs, 1, stream_context);
 			}
 		}
 		if (output_size > 1 && outputs[1])
 		{
 			if (inputs[0] == 0)
-				_ccv_nnc_mul_forw(forw_cmd, hint, flags, inputs + 1, 1, outputs + 1, 1, stream_context);
+				_ccv_nnc_mul_forw_cpu_ref(forw_cmd, hint, flags, inputs + 1, 1, outputs + 1, 1, stream_context);
 			else
-				_ccv_nnc_mul_forw(forw_cmd, hint, flags, inputs, 2, outputs + 1, 1, stream_context);
+				_ccv_nnc_mul_forw_cpu_ref(forw_cmd, hint, flags, inputs, 2, outputs + 1, 1, stream_context);
 		}
 		return CCV_NNC_EXEC_SUCCESS;
 	}
@@ -405,7 +405,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_MUL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_c
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_mul_forw;
+	registry->exec = _ccv_nnc_mul_forw_cpu_ref;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
