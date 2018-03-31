@@ -12,12 +12,12 @@
 
 #include "../_ccv_nnc_cpu_ref.h"
 
-int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+void _ccv_nnc_ewsum_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size)
 {
 	if (input_size == 1 && output_size == 1)
 	{
-		_ccv_nnc_tensor_transfer_cpu_ref((const ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[0]);
-		return CCV_NNC_EXEC_SUCCESS;
+		_ccv_nnc_tensor_transfer_cpu_ref(inputs[0], outputs[0]);
+		return;
 	}
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
@@ -29,8 +29,8 @@ int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	// Bad, I promised this can be inplace operation. Need to first find out if there are share the same pointer first.
 	for (z = 1; z < input_size; z++)
 	{
-		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
-		ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[z];
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = inputs[z];
 		if (c->data.f32 == a->data.f32)
 		{
 			k = z;
@@ -39,9 +39,9 @@ int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	}
 	for (z = 0; z < input_size - 1; z++)
 	{
-		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
-		ccv_nnc_tensor_view_t* a = z > 0 ? c : (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z >= k ? inputs[z + 1] : inputs[z]);
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = z > 0 ? c : inputs[k];
+		ccv_nnc_tensor_view_t* b = z >= k ? inputs[z + 1] : inputs[z];
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -106,6 +106,11 @@ int _ccv_nnc_ewsum_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 			cp += (cinc[1] - dim[1]) * cinc[2] * cinc[3];
 		}
 	}
+}
+
+static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+{
+	_ccv_nnc_ewsum_forw_cpu_ref((ccv_nnc_tensor_view_t**)inputs, input_size, (ccv_nnc_tensor_view_t**)outputs, output_size);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -128,12 +133,12 @@ static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-int _ccv_nnc_ewprod_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+void _ccv_nnc_ewprod_forw_cpu_ref(ccv_nnc_tensor_view_t* const* const inputs, const int input_size, ccv_nnc_tensor_view_t* const* const outputs, const int output_size)
 {
 	if (input_size == 1 && output_size == 1)
 	{
-		_ccv_nnc_tensor_transfer_cpu_ref((const ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)outputs[0]);
-		return CCV_NNC_EXEC_SUCCESS;
+		_ccv_nnc_tensor_transfer_cpu_ref(inputs[0], outputs[0]);
+		return;
 	}
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
@@ -145,8 +150,8 @@ int _ccv_nnc_ewprod_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	// Bad, I promised this can be inplace operation. Need to first find out if there are share the same pointer first.
 	for (z = 1; z < input_size; z++)
 	{
-		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
-		ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[z];
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = inputs[z];
 		if (c->data.f32 == a->data.f32)
 		{
 			k = z;
@@ -155,9 +160,9 @@ int _ccv_nnc_ewprod_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	}
 	for (z = 0; z < input_size - 1; z++)
 	{
-		ccv_nnc_tensor_view_t* c = (ccv_nnc_tensor_view_t*)outputs[0];
-		ccv_nnc_tensor_view_t* a = z > 0 ? c : (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)(z >= k ? inputs[z + 1] : inputs[z]);
+		ccv_nnc_tensor_view_t* c = outputs[0];
+		ccv_nnc_tensor_view_t* a = z > 0 ? c : inputs[k];
+		ccv_nnc_tensor_view_t* b = z >= k ? inputs[z + 1] : inputs[z];
 		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 		assert(c->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
@@ -222,6 +227,11 @@ int _ccv_nnc_ewprod_forw_cpu_ref(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			cp += (cinc[1] - dim[1]) * cinc[2] * cinc[3];
 		}
 	}
+}
+
+static int _ccv_nnc_ewprod_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+{
+	_ccv_nnc_ewprod_forw_cpu_ref((ccv_nnc_tensor_view_t**)inputs, input_size, (ccv_nnc_tensor_view_t**)outputs, output_size);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -802,14 +812,12 @@ static int _ccv_nnc_ewexp_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	// D[Exp[x], x] = Exp[x]
 	if (inputs[0] == 0)
-	{
 		_ccv_nnc_tensor_transfer_cpu_ref((ccv_nnc_tensor_view_t*)inputs[2], (ccv_nnc_tensor_view_t*)outputs[0]);
-		return CCV_NNC_EXEC_SUCCESS;
-	} else {
-		ccv_nnc_cmd_t forw_cmd = cmd;
-		forw_cmd.cmd = CCV_NNC_EWPROD_FORWARD;
-		return _ccv_nnc_ewprod_forw_cpu_ref(cmd, ccv_nnc_no_hint, flags, TENSOR_LIST(inputs[0], inputs[2]), outputs, output_size, stream_context);
-	}
+	else
+		_ccv_nnc_ewprod_forw_cpu_ref((ccv_nnc_tensor_view_t*[]){
+			(ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[2]
+		}, 2, (ccv_nnc_tensor_view_t**)outputs, output_size);
+	return CCV_NNC_EXEC_SUCCESS;
 }
 
 static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
@@ -894,7 +902,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_ewsum_forw_cpu_ref;
+	registry->exec = _ccv_nnc_ewsum_forw;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_EWSUM_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
@@ -912,7 +920,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nn
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
-	registry->exec = _ccv_nnc_ewprod_forw_cpu_ref;
+	registry->exec = _ccv_nnc_ewprod_forw;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_EWPROD_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)

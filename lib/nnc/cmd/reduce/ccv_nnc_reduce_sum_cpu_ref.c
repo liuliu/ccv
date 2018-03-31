@@ -13,11 +13,8 @@
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
 
-static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+void _ccv_nnc_reduce_sum_forw_cpu_ref(ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b)
 {
-	assert(input_size == 1);
-	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	// Assuming this is float 32.
@@ -58,6 +55,14 @@ static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		}
 		ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
 	}
+}
+
+static int _ccv_nnc_reduce_sum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(input_size == 1);
+	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	_ccv_nnc_reduce_sum_forw_cpu_ref(a, b);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

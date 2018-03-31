@@ -27,13 +27,10 @@ static int _ccv_nnc_batch_norm_enforce_inplace(const int input_idx, const int ou
 
 static int _ccv_nnc_batch_norm_back_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// Inputs (gradient, x, scale, saved_mean, saved_inv_var)
-	// Output the propagated error.
-	if ((input_bitmasks[0] & 31u) == 31u && output_bitmasks[0] == 1u)
-		return 1;
-	// Inputs (gradient, x, scale, saved_mean, saved_inv_var)
+	// 0b11000000111
+	// Inputs (gradient, x, scale, 0, 0, 0, 0, 0, 0, saved_mean, saved_inv_var)
 	// Output the propagated error, dscale and dbias
-	if ((input_bitmasks[0] & 31u) == 31u && output_bitmasks[0] == 7u)
+	if ((input_bitmasks[0] & 1543u) == 1543u && output_bitmasks[0] == 7u)
 		return 1;
 	return 0;
 }
@@ -56,11 +53,9 @@ static void _ccv_nnc_batch_norm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, 
 
 static void _ccv_nnc_batch_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
 {
-	assert(input_size == 5);
-	assert(output_size == 1 || output_size == 3);
+	assert(input_size == 11);
+	assert(output_size == 3);
 	outputs[0] = inputs[0];
-	if (output_size == 1)
-		return;
 	int i, j;
 	for (i = 1; i < output_size; i++)
 	{

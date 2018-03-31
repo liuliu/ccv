@@ -16,44 +16,45 @@
 static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 5);
+	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[1];
+	ccv_nnc_tensor_view_t* const bias = (ccv_nnc_tensor_view_t*)inputs[2];
+	ccv_nnc_tensor_view_t* const mean = (ccv_nnc_tensor_view_t*)inputs[3];
+	ccv_nnc_tensor_view_t* const var = (ccv_nnc_tensor_view_t*)inputs[4];
+	ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
+	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	// Assuming this is float 32.
+	int adim[CCV_NNC_MAX_DIM + 2];
+	int rdim[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_dim(a, adim);
+	ccv_nnc_tensor_view_get_dim(scale, rdim);
+	assert(ccv_nnc_tensor_view_check_dim(bias, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(mean, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(var, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(b, adim));
+	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
+	int ainc[CCV_NNC_MAX_DIM + 2];
+	int binc[CCV_NNC_MAX_DIM + 2];
+	int scale_inc[CCV_NNC_MAX_DIM + 2];
+	int bias_inc[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(scale, scale_inc);
+	ccv_nnc_tensor_view_get_inc(bias, bias_inc);
+	ccv_nnc_tensor_view_get_inc(b, binc);
+	const float epsilon = cmd.info.bnorm.epsilon;
 	if (!cmd.info.bnorm.is_test)
 	{
 		assert(output_size == 5);
 		// Both are inplace.
 		assert(inputs[3]->data.f32 == outputs[1]->data.f32);
 		assert(inputs[4]->data.f32 == outputs[2]->data.f32);
-		ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
-		ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[1];
-		ccv_nnc_tensor_view_t* const bias = (ccv_nnc_tensor_view_t*)inputs[2];
-		ccv_nnc_tensor_view_t* const mean = (ccv_nnc_tensor_view_t*)inputs[3];
-		ccv_nnc_tensor_view_t* const var = (ccv_nnc_tensor_view_t*)inputs[4];
-		ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[0];
 		ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)outputs[3];
 		ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)outputs[4];
-		assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-		assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-		// Assuming this is float 32.
-		int adim[CCV_NNC_MAX_DIM + 2];
-		int rdim[CCV_NNC_MAX_DIM + 2];
-		ccv_nnc_tensor_view_get_dim(a, adim);
-		ccv_nnc_tensor_view_get_dim(scale, rdim);
-		assert(ccv_nnc_tensor_view_check_dim(bias, rdim));
-		assert(ccv_nnc_tensor_view_check_dim(mean, rdim));
-		assert(ccv_nnc_tensor_view_check_dim(var, rdim));
-		assert(ccv_nnc_tensor_view_check_dim(b, adim));
 		assert(ccv_nnc_tensor_view_check_dim(saved_mean, rdim));
 		assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
-		int ainc[CCV_NNC_MAX_DIM + 2];
-		int binc[CCV_NNC_MAX_DIM + 2];
-		int scale_inc[CCV_NNC_MAX_DIM + 2];
-		int bias_inc[CCV_NNC_MAX_DIM + 2];
 		int saved_mean_inc[CCV_NNC_MAX_DIM + 2];
 		int saved_inv_std_inc[CCV_NNC_MAX_DIM + 2];
-		assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
-		ccv_nnc_tensor_view_get_inc(a, ainc);
-		ccv_nnc_tensor_view_get_inc(scale, scale_inc);
-		ccv_nnc_tensor_view_get_inc(bias, bias_inc);
-		ccv_nnc_tensor_view_get_inc(b, binc);
 		ccv_nnc_tensor_view_get_inc(saved_mean, saved_mean_inc);
 		ccv_nnc_tensor_view_get_inc(saved_inv_std, saved_inv_std_inc);
 		int i[CCV_NNC_MAX_DIM + 2];
@@ -103,18 +104,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 		}
 		// Copy this into running mean / var.
-		ccv_nnc_cmd_t mul_cmd = {
-			.cmd = CCV_NNC_MUL_FORWARD,
-			.backend = cmd.backend,
-			.info = {
-				.blas = {
-					.a = {
-						cmd.info.bnorm.momentum, 1. - cmd.info.bnorm.momentum
-					}
-				}
-			}
-		};
-		_ccv_nnc_mul_forw_cpu_ref(mul_cmd, ccv_nnc_no_hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)mean, (ccv_nnc_tensor_t*)saved_mean }, 2, (ccv_nnc_tensor_t**)&mean, 1, stream_context);
+		_ccv_nnc_add_forw_cpu_ref(cmd.info.bnorm.momentum, 1. - cmd.info.bnorm.momentum, mean, saved_mean, mean);
 		ccv_nnc_tensor_zero(saved_inv_std);
 		ap = a->data.f32;
 		float* const varp = saved_inv_std->data.f32;
@@ -162,8 +152,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				}
 			}
 		}
-		_ccv_nnc_mul_forw_cpu_ref(mul_cmd, ccv_nnc_no_hint, flags, (ccv_nnc_tensor_t*[]){ (ccv_nnc_tensor_t*)var, (ccv_nnc_tensor_t*)saved_inv_std }, 2, (ccv_nnc_tensor_t**)&var, 1, stream_context);
-		const float epsilon = cmd.info.bnorm.epsilon;
+		_ccv_nnc_add_forw_cpu_ref(cmd.info.bnorm.momentum, 1. - cmd.info.bnorm.momentum, var, saved_inv_std, var);
 		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
 		{
 			float* const varp0 = varp + i[0] * saved_inv_std_inc[1] * saved_inv_std_inc[2] * saved_inv_std_inc[3];
@@ -294,12 +283,113 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		}
 	} else {
 		assert(output_size == 1);
+		int mean_inc[CCV_NNC_MAX_DIM + 2];
+		int var_inc[CCV_NNC_MAX_DIM + 2];
+		ccv_nnc_tensor_view_get_inc(mean, mean_inc);
+		ccv_nnc_tensor_view_get_inc(var, var_inc);
+		int i[CCV_NNC_MAX_DIM + 2];
+		int x;
+		assert(!(flags & CCV_NNC_ZERO_MEMORY_ALLOC));
+		int count = 1;
+		for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+			count *= rdim[x];
+		float* const meanp = mean->data.f32;
+		float* const varp = var->data.f32;
+		float* const scalep = scale->data.f32;
+		float* const biasp = bias->data.f32;
+		float* const nscalep = ccmalloc(sizeof(float) * count * 2);
+		float* const nbiasp = nscalep + count;
+		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
+		{
+			float* const meanp0 = meanp + i[0] * mean_inc[1] * mean_inc[2] * mean_inc[3];
+			float* const varp0 = varp + i[0] * var_inc[1] * var_inc[2] * var_inc[3];
+			float* const scalep0 = scalep + i[0] * scale_inc[1] * scale_inc[2] * scale_inc[3];
+			float* const biasp0 = biasp + i[0] * bias_inc[1] * bias_inc[2] * bias_inc[3];
+			float* const nscalep0 = nscalep + i[0] * rdim[1] * rdim[2] * rdim[3];
+			float* const nbiasp0 = nbiasp + i[0] * rdim[1] * rdim[2] * rdim[3];
+			for (i[1] = 0; i[1] < rdim[1]; i[1]++)
+			{
+				float* const meanp1 = meanp0 + i[1] * mean_inc[2] * mean_inc[3];
+				float* const varp1 = varp0 + i[1] * var_inc[2] * var_inc[3];
+				float* const scalep1 = scalep0 + i[1] * scale_inc[2] * scale_inc[3];
+				float* const biasp1 = biasp0 + i[1] * bias_inc[2] * bias_inc[3];
+				float* const nscalep1 = nscalep0 + i[1] * rdim[2] * rdim[3];
+				float* const nbiasp1 = nbiasp0 + i[1] * rdim[2] * rdim[3];
+				for (i[2] = 0; i[2] < rdim[2]; i[2]++)
+				{
+					float* const meanp2 = meanp1 + i[2] * mean_inc[3];
+					float* const varp2 = varp1 + i[2] * var_inc[3];
+					float* const scalep2 = scalep1 + i[2] * scale_inc[3];
+					float* const biasp2 = biasp1 + i[2] * bias_inc[3];
+					float* const nscalep2 = nscalep1 + i[2] * rdim[3];
+					float* const nbiasp2 = nbiasp1 + i[2] * rdim[3];
+					for (x = 0; x < rdim[3]; x++)
+					{
+						const float w = scalep2[x] / (sqrtf(varp2[x]) + epsilon);
+						nscalep2[x] = w;
+						nbiasp2[x] = biasp2[x] - meanp2[x] * w;
+					}
+				}
+			}
+		}
+		float* ap = a->data.f32;
+		float* bp = b->data.f32;
+		for (i[0] = 0; i[0] < adim[0]; i[0]++)
+		{
+			float* const nscalep0 = rdim[0] == 1 ? nscalep : scalep + i[0] * rdim[1] * rdim[2] * rdim[3];
+			float* const nbiasp0 = rdim[0] == 1 ? nbiasp : biasp + i[0] * rdim[1] * rdim[2] * rdim[3];
+			for (i[1] = 0; i[1] < adim[1]; i[1]++)
+			{
+				float* const nscalep1 = rdim[1] == 1 ? nscalep0 : nscalep0 + i[1] * rdim[2] * rdim[3];
+				float* const nbiasp1 = rdim[1] == 1 ? nbiasp0 : nbiasp0 + i[1] * rdim[2] * rdim[3];
+				for (i[2] = 0; i[2] < adim[2]; i[2]++)
+				{
+					float* const nscalep2 = rdim[2] == 1 ? nscalep1 : nscalep1 + i[2] * rdim[3];
+					float* const nbiasp2 = rdim[2] == 1 ? nbiasp1 : nbiasp1 + i[2] * rdim[3];
+					if (rdim[3] == 1)
+						for (x = 0; x < adim[3]; x++)
+							bp[x] = ap[x] * nscalep2[0] + nbiasp2[0];
+					else
+						for (x = 0; x < adim[3]; x++)
+							bp[x] = ap[x] * nscalep2[x] + nbiasp2[x];
+					ap += ainc[3];
+					bp += binc[3];
+				}
+				ap += (ainc[2] - adim[2]) * ainc[3];
+				bp += (binc[2] - adim[2]) * binc[3];
+			}
+			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
+			bp += (binc[1] - adim[1]) * binc[2] * binc[3];
+		}
+		ccfree(nscalep);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
 static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
+	assert(input_size == 11);
+	assert(output_size == 3);
+	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[1];
+	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[2];
+	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[9];
+	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[10];
+	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
+	ccv_nnc_tensor_view_t* const dscale = (ccv_nnc_tensor_view_t*)outputs[1];
+	ccv_nnc_tensor_view_t* const dbias = (ccv_nnc_tensor_view_t*)outputs[2];
+	assert(g->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(h->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	// Assuming this is float 32.
+	int gdim[CCV_NNC_MAX_DIM + 2];
+	int rdim[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_dim(g, gdim);
+	ccv_nnc_tensor_view_get_dim(scale, rdim);
+	assert(ccv_nnc_tensor_view_check_dim(saved_mean, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(dscale, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(dbias, rdim));
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
