@@ -191,10 +191,11 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 {
 	int i;
+	int count = ccv_nnc_tensor_count(tensor->info);
 	switch (tensor->info.datatype)
 	{
 		case CCV_32F:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
+			for (i = 0; i < count; i++)
 				PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
 			break;
 		case CCV_64F:

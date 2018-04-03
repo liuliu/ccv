@@ -858,7 +858,7 @@ static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_
 	{
 		fputs("|{Output", out);
 		for (i = 0; i < exec_info->output_size; i++)
-			if (exec_info->inputs[i])
+			if (exec_info->outputs[i])
 			{
 				fputc('|', out);
 				if (CCV_IS_TENSOR_MULTIVIEW(exec_info->outputs[i]))

@@ -18,6 +18,10 @@
 #define CMD_EWLOG_FORWARD() ccv_nnc_cmd(CCV_NNC_EWLOG_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWLOG_BACKWARD
 #define CMD_EWLOG_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWLOG_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSQRT_FORWARD
+#define CMD_EWSQRT_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_EWSQRT_BACKWARD
+#define CMD_EWSQRT_BACKWARD() ccv_nnc_cmd(CCV_NNC_EWSQRT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_MAX_POOL_FORWARD
 #define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_MAX_POOL_BACKWARD
@@ -58,6 +62,10 @@
 #define CMD_MUL_FORWARD(...) ccv_nnc_cmd(CCV_NNC_MUL_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
 // CCV_NNC_MUL_BACKWARD
 #define CMD_MUL_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_MUL_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+// CCV_NNC_SCALAR_MUL_FORWARD
+#define CMD_SCALAR_MUL_FORWARD(...) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_FORWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
+// CCV_NNC_SCALAR_MUL_BACKWARD
+#define CMD_SCALAR_MUL_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_SCALAR_MUL_BACKWARD, 0, CMD_BLAS(__VA_ARGS__), 0)
 // CCV_NNC_SET_FORWARD
 #define CMD_SET_FORWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(_val), 0)
 // CCV_NNC_SET_BACKWARD

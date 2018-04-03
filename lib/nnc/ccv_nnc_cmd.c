@@ -414,6 +414,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 				ccfree(input_bitmasks);
 			if (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
 				ccfree(output_bitmasks);
+			PRINT(CCV_CLI_VERBOSE, "ccv_nnc_cmd_exec: Invalid I/O\n");
 			return CCV_NNC_EXEC_INVALID; // Return invalid input.
 		}
 	// TODO: Print out warning message.

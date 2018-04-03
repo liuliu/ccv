@@ -184,25 +184,28 @@ void _ccv_nnc_mul_forw_cpu_ref(const float p, ccv_nnc_tensor_view_t* const a, cc
 
 static int _ccv_nnc_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], input_size > 1 ? (ccv_nnc_tensor_view_t*)inputs[1] : 0, (ccv_nnc_tensor_view_t*)outputs[0]);
+	assert(input_size == 2);
+	_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], (ccv_nnc_tensor_view_t*)inputs[1], (ccv_nnc_tensor_view_t*)outputs[0]);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
 static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	int gdim[CCV_NNC_MAX_DIM + 2];
-	int no_broadcasting;
+	int no_broadcasting = 1;
 	if (outputs[0])
 	{
 		assert(input_size >= 3 && inputs[2]);
 		ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim);
 		ccv_nnc_tensor_view_get_broadcast_dim((ccv_nnc_tensor_view_t*)inputs[2], gdim);
-		no_broadcasting = (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[2], gdim));
-	} else {
-		assert(inputs[1] && outputs[1]);
+		no_broadcasting = no_broadcasting && (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[0], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[2], gdim));
+	}
+	if (no_broadcasting && output_size > 1 && outputs[1])
+	{
+		assert(inputs[1]);
 		ccv_nnc_tensor_view_get_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim);
 		ccv_nnc_tensor_view_get_broadcast_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim);
-		no_broadcasting = (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim));
+		no_broadcasting = no_broadcasting && (ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)inputs[1], gdim) && ccv_nnc_tensor_view_check_dim((ccv_nnc_tensor_view_t*)outputs[1], gdim));
 	}
 	if (no_broadcasting)
 	{
@@ -241,8 +244,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			ccv_nnc_tensor_view_get_inc(a, ainc);
 			ccv_nnc_tensor_view_get_inc(b, binc);
 			ccv_nnc_tensor_zero(a);
-			float* ap = a->data.f32;
-			float* bp = b->data.f32;
+			float* const ap = a->data.f32;
+			float* const bp = b->data.f32;
 			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 			{
 				float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
@@ -260,10 +263,10 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 								ap2[0] += p * bp2[x];
 						else if (bdim[3] == 1)
 							for (x = 0; x < gdim[3]; x++)
-								ap2[x] = p * bp2[0];
+								ap2[x] += p * bp2[0];
 						else
 							for (x = 0; x < gdim[3]; x++)
-								ap2[x] = p * bp2[x];
+								ap2[x] += p * bp2[x];
 					}
 				}
 			}
@@ -277,8 +280,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			ccv_nnc_tensor_view_get_inc(a, ainc);
 			ccv_nnc_tensor_view_get_inc(b, binc);
 			ccv_nnc_tensor_zero(a);
-			float* ap = a->data.f32;
-			float* bp = b->data.f32;
+			float* const ap = a->data.f32;
+			float* const bp = b->data.f32;
 			for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 			{
 				float* const ap0 = adim[0] == 1 ? ap : ap + i[0] * ainc[1] * ainc[2] * ainc[3];
@@ -296,10 +299,10 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 								ap2[0] += p * bp2[x];
 						else if (bdim[3] == 1)
 							for (x = 0; x < gdim[3]; x++)
-								ap2[x] = p * bp2[0];
+								ap2[x] += p * bp2[0];
 						else
 							for (x = 0; x < gdim[3]; x++)
-								ap2[x] = p * bp2[x];
+								ap2[x] += p * bp2[x];
 					}
 				}
 			}
@@ -308,6 +311,7 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	}
 	int ginc[CCV_NNC_MAX_DIM + 2];
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
+	ccv_nnc_tensor_view_get_dim(g, gdim);
 	ccv_nnc_tensor_view_get_inc(g, ginc);
 	if (outputs[0])
 	{
@@ -318,8 +322,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		ccv_nnc_tensor_view_get_inc(a, ainc);
 		ccv_nnc_tensor_view_get_inc(b, binc);
 		ccv_nnc_tensor_zero(a);
-		float* ap = a->data.f32;
-		float* bp = b->data.f32;
+		float* const ap = a->data.f32;
+		float* const bp = b->data.f32;
 		float* gp = g->data.f32;
 		for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 		{
@@ -338,10 +342,10 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							ap2[0] += p * gp[x] * bp2[x];
 					else if (bdim[3] == 1)
 						for (x = 0; x < gdim[3]; x++)
-							ap2[x] = p * gp[x] * bp2[0];
+							ap2[x] += p * gp[x] * bp2[0];
 					else
 						for (x = 0; x < gdim[3]; x++)
-							ap2[x] = p * gp[x] * bp2[x];
+							ap2[x] += p * gp[x] * bp2[x];
 					gp += ginc[3];
 				}
 				gp += (ginc[2] - gdim[2]) * ginc[3];
@@ -358,8 +362,8 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		ccv_nnc_tensor_view_get_inc(a, ainc);
 		ccv_nnc_tensor_view_get_inc(b, binc);
 		ccv_nnc_tensor_zero(a);
-		float* ap = a->data.f32;
-		float* bp = b->data.f32;
+		float* const ap = a->data.f32;
+		float* const bp = b->data.f32;
 		float* gp = g->data.f32;
 		for (i[0] = 0; i[0] < gdim[0]; i[0]++)
 		{
@@ -378,10 +382,10 @@ static int _ccv_nnc_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 							ap2[0] += p * gp[x] * bp2[x];
 					else if (bdim[3] == 1)
 						for (x = 0; x < gdim[3]; x++)
-							ap2[x] = p * gp[x] * bp2[0];
+							ap2[x] += p * gp[x] * bp2[0];
 					else
 						for (x = 0; x < gdim[3]; x++)
-							ap2[x] = p * gp[x] * bp2[x];
+							ap2[x] += p * gp[x] * bp2[x];
 					gp += ginc[3];
 				}
 				gp += (ginc[2] - gdim[2]) * ginc[3];
@@ -408,4 +412,36 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_MUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_mul_back;
+}
+
+static int _ccv_nnc_scalar_mul_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+{
+	_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], 0, (ccv_nnc_tensor_view_t*)outputs[0]);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+static int _ccv_nnc_scalar_mul_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+{
+	if (inputs[0])
+		_ccv_nnc_mul_forw_cpu_ref(cmd.info.blas.a[0], (ccv_nnc_tensor_view_t*)inputs[0], 0, (ccv_nnc_tensor_view_t*)outputs[0]);
+	else
+		_ccv_nnc_tensor_set_cpu_ref((ccv_nnc_tensor_view_t*)outputs[0], cmd.info.blas.a[0]);
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_SCALAR_MUL_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_scalar_mul_forw;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_SCALAR_MUL_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_scalar_mul_back;
 }

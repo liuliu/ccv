@@ -3287,7 +3287,11 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	ccv_nnc_graph_visit_for(graph_prep->visit, exec_symbol_info, node, idx) {
 		if (node->outgoings)
 			for (i = 0; i < node->outgoings->rnum; i++)
-				ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[*(int*)ccv_array_get(node->outgoings, i)]);
+			{
+				const int outgoing = *(int*)ccv_array_get(node->outgoings, i);
+				if (graph_execs[outgoing].graph)
+					ccv_nnc_graph_exec_concat(graph, graph_execs[idx], graph_execs[outgoing]);
+			}
 	} ccv_nnc_graph_visit_endfor
 	int source_exec_created = 0;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = graph_prep->tensor_symbol_info;
@@ -3437,7 +3441,7 @@ static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_ar
 	assert(graph_exec_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
 	int i;
 	for (i = 0; i < graph_prep->exec_symbol_info_size; i++)
-		if (graph_prep->exec_symbol_info[i].peer_ref)
+		if (graph_exec_arena->graph_execs[i].graph && graph_prep->exec_symbol_info[i].peer_ref)
 		{
 			ccv_nnc_graph_exec_t peer_exec = ccv_nnc_graph_exec_from_symbol(root_arena, (ccv_nnc_graph_exec_symbol_t){
 				.d = graph_prep->exec_symbol_info[i].peer_ref - 1,

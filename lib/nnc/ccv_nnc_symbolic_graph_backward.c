@@ -798,6 +798,8 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 		for (i = 0; i < exec_symbol_info[idx].output_size && !f; i++)
 		{
 			int d = exec_symbol_info[idx].outputs[i];
+			if (d < 0)
+				continue;
 			while (tensor_symbol_info[d].alias_ref)
 				d = tensor_symbol_info[d].alias_ref - 1;
 			for (j = 0; j < f_symbol_size && !f; j++)
@@ -821,6 +823,8 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 		for (i = 0; i < node->input_size && !wrt; i++)
 		{
 			int d = node->inputs[i];
+			if (d < 0)
+				continue;
 			while (tensor_symbol_info[d].alias_ref)
 				d = tensor_symbol_info[d].alias_ref - 1;
 			for (j = 0; j < wrt_symbol_size && !wrt; j++)
@@ -862,13 +866,16 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 				cmd.cmd += 1; /* Backward command is the one after forward command. */
 			assert(ccv_nnc_cmd_is_backward(cmd) || cmd.cmd == CCV_NNC_NOOP);
 			for (i = 0; i < forw_exec->output_size * 2 + forw_exec->input_size; i++)
-				node->input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+				if (!(i >= forw_exec->output_size && i < forw_exec->output_size + forw_exec->input_size &&
+					forw_exec->inputs[i - forw_exec->output_size] < 0)) // If the inputs is empty, no need.
+					node->input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 			for (i = 0; i < forw_exec->input_size; i++)
-				node->output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+				if (!(forw_exec->inputs[i] < 0)) // If the inputs is empty, no need.
+					node->output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 			int maybe_noop = 1;
 			for (i = 0; i < forw_exec->input_size; i++)
 				/* See if it is used as wrt, if not, no need to run this node at all. */
-				if (used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE)
+				if (forw_exec->inputs[i] >= 0 && used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE)
 				{
 					maybe_noop = 0;
 					break;
@@ -883,7 +890,8 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 			} else if (cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD) {
 				// Clear out all potential outputs if we think it is not a wrt symbols.
 				for (i = 0; i < forw_exec->input_size; i++)
-					if (!(used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE))
+					if ((node->output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))) &&
+						!(used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE))
 						node->output_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 				// But for now, assuming we need all input gradients.
 				// Clear out all inputs / outputs from forward op.
@@ -896,8 +904,8 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 					/* Check if the output first */
 					for (i = 0; i < forw_exec->input_size; i++)
 						/* Only try to eliminate the one that is not used. */
-						if (!(used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE) &&
-							(node->output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))))
+						if ((node->output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))) &&
+							!(used_grad[tensor_symbol_info[forw_exec->inputs[i]].alias_ref ? tensor_symbol_info[forw_exec->inputs[i]].alias_ref - 1 : forw_exec->inputs[i]] & WRT_SYMBOL_USE))
 						{
 							node->output_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 							/* If it worked, mark it as flagged. */
@@ -907,9 +915,9 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 								node->output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 						}
 					for (i = 0; i < forw_exec->output_size * 2 + forw_exec->input_size; i++)
-						if ((i >= forw_exec->output_size ||
-							 !(used_grad[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] & F_SYMBOL_USE)) &&
-							node->input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+						if ((node->input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))) &&
+							(i >= forw_exec->output_size ||
+							 !(used_grad[tensor_symbol_info[forw_exec->outputs[i]].alias_ref ? tensor_symbol_info[forw_exec->outputs[i]].alias_ref - 1 : forw_exec->outputs[i]] & F_SYMBOL_USE)))
 						{ /* Try to eliminate one of the input. */
 							node->input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 							/* If it worked, mark it as flagged. */

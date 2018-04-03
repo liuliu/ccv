@@ -64,49 +64,14 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			batch_size *= adim[x];
 		for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
 			batch_size /= rdim[x];
-		ccv_nnc_tensor_zero(saved_mean);
-		float* ap = a->data.f32;
-		float* const meanp = saved_mean->data.f32;
-		for (i[0] = 0; i[0] < adim[0]; i[0]++)
-		{
-			float* const meanp0 = rdim[0] == 1 ? meanp : meanp + i[0] * saved_mean_inc[1] * saved_mean_inc[2] * saved_mean_inc[3];
-			for (i[1] = 0; i[1] < adim[1]; i[1]++)
-			{
-				float* const meanp1 = rdim[1] == 1 ? meanp0 : meanp0 + i[1] * saved_mean_inc[2] * saved_mean_inc[3];
-				for (i[2] = 0; i[2] < adim[2]; i[2]++)
-				{
-					float* const meanp2 = rdim[2] == 1 ? meanp1 : meanp1 + i[2] * saved_mean_inc[3];
-					if (rdim[3] == 1)
-						for (x = 0; x < adim[3]; x++)
-							meanp2[0] += ap[x];
-					else
-						for (x = 0; x < adim[3]; x++)
-							meanp2[x] += ap[x];
-					ap += ainc[3];
-				}
-				ap += (ainc[2] - adim[2]) * ainc[3];
-			}
-			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
-		}
-		float inv_batch_size = 1.0 / batch_size;
-		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
-		{
-			float* const meanp0 = meanp + i[0] * saved_mean_inc[1] * saved_mean_inc[2] * saved_mean_inc[3];
-			for (i[1] = 0; i[1] < rdim[1]; i[1]++)
-			{
-				float* const meanp1 = meanp0 + i[1] * saved_mean_inc[2] * saved_mean_inc[3];
-				for (i[2] = 0; i[2] < rdim[2]; i[2]++)
-				{
-					float* const meanp2 = meanp1 + i[2] * saved_mean_inc[3];
-					for (x = 0; x < rdim[3]; x++)
-						meanp2[x] = meanp2[x] * inv_batch_size;
-				}
-			}
-		}
+		float inv_batch_size = 1. / batch_size;
+		_ccv_nnc_reduce_sum_forw_cpu_ref(a, saved_mean);
+		_ccv_nnc_mul_forw_cpu_ref(inv_batch_size, saved_mean, 0, saved_mean);
 		// Copy this into running mean / var.
 		_ccv_nnc_add_forw_cpu_ref(cmd.info.bnorm.momentum, 1. - cmd.info.bnorm.momentum, mean, saved_mean, mean);
 		ccv_nnc_tensor_zero(saved_inv_std);
-		ap = a->data.f32;
+		float* ap = a->data.f32;
+		float* const meanp = saved_mean->data.f32;
 		float* const varp = saved_inv_std->data.f32;
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
@@ -163,7 +128,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				{
 					float* const varp2 = varp1 + i[2] * saved_inv_std_inc[3];
 					for (x = 0; x < rdim[3]; x++)
-						varp2[x] = 1.0 / (sqrtf(varp2[x]) + epsilon);
+						varp2[x] = 1. / sqrtf(varp2[x] + epsilon);
 				}
 			}
 		}
@@ -368,13 +333,13 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 
 static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 11);
-	assert(output_size == 3);
+	assert(input_size == 15);
+	assert(output_size == 5);
 	ccv_nnc_tensor_view_t* const g = (ccv_nnc_tensor_view_t*)inputs[0];
-	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[1];
-	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[2];
-	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[9];
-	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[10];
+	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[5];
+	ccv_nnc_tensor_view_t* const scale = (ccv_nnc_tensor_view_t*)inputs[6];
+	ccv_nnc_tensor_view_t* const saved_mean = (ccv_nnc_tensor_view_t*)inputs[13];
+	ccv_nnc_tensor_view_t* const saved_inv_std = (ccv_nnc_tensor_view_t*)inputs[14];
 	ccv_nnc_tensor_view_t* const h = (ccv_nnc_tensor_view_t*)outputs[0];
 	ccv_nnc_tensor_view_t* const dscale = (ccv_nnc_tensor_view_t*)outputs[1];
 	ccv_nnc_tensor_view_t* const dbias = (ccv_nnc_tensor_view_t*)outputs[2];
@@ -390,6 +355,138 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(ccv_nnc_tensor_view_check_dim(saved_inv_std, rdim));
 	assert(ccv_nnc_tensor_view_check_dim(dscale, rdim));
 	assert(ccv_nnc_tensor_view_check_dim(dbias, rdim));
+	assert(ccv_nnc_tensor_view_check_dim(a, gdim));
+	assert(ccv_nnc_tensor_view_check_dim(h, gdim));
+	_ccv_nnc_reduce_sum_forw_cpu_ref(g, dbias);
+	int ainc[CCV_NNC_MAX_DIM + 2];
+	int ginc[CCV_NNC_MAX_DIM + 2];
+	int hinc[CCV_NNC_MAX_DIM + 2];
+	int mean_inc[CCV_NNC_MAX_DIM + 2];
+	int inv_std_inc[CCV_NNC_MAX_DIM + 2];
+	int dscale_inc[CCV_NNC_MAX_DIM + 2];
+	int dbias_inc[CCV_NNC_MAX_DIM + 2];
+	ccv_nnc_tensor_view_get_inc(a, ainc);
+	ccv_nnc_tensor_view_get_inc(g, ginc);
+	ccv_nnc_tensor_view_get_inc(h, hinc);
+	ccv_nnc_tensor_view_get_inc(saved_mean, mean_inc);
+	ccv_nnc_tensor_view_get_inc(saved_inv_std, inv_std_inc);
+	ccv_nnc_tensor_view_get_inc(dscale, dscale_inc);
+	ccv_nnc_tensor_view_get_inc(dbias, dbias_inc);
+	// Need to allocate two additional memory:
+	// 1. normalized a;
+	// 2. scale * inv_std / batch_size;
+	assert(!(flags & CCV_NNC_ZERO_MEMORY_ALLOC));
+	int x;
+	int batch_size = 1;
+	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+		batch_size *= gdim[x];
+	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+		batch_size /= rdim[x];
+	int gcount = 1, rcount = 1;
+	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
+		gcount *= gdim[x], rcount *= rdim[x];
+	float* const ah = ccmalloc(sizeof(float) * gcount + sizeof(float) * rcount);
+	float* const sisb = ah + gcount;
+	ccv_nnc_tensor_t sisbt = ccv_nnc_tensor(sisb, scale->info, 0);
+	_ccv_nnc_mul_forw_cpu_ref(1. / batch_size, scale, saved_inv_std, (ccv_nnc_tensor_view_t*)&sisbt);
+	int i[CCV_NNC_MAX_DIM + 2];
+	float* ap = a->data.f32;
+	float* ahp = ah;
+	float* const meanp = saved_mean->data.f32;
+	float* const inv_stdp = saved_inv_std->data.f32;
+	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+	{
+		float* const meanp0 = rdim[0] == 1 ? meanp : meanp + i[0] * mean_inc[1] * mean_inc[2] * mean_inc[3];
+		float* const inv_stdp0 = rdim[0] == 1 ? inv_stdp : inv_stdp + i[0] * inv_std_inc[1] * inv_std_inc[2] * inv_std_inc[3];
+		for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+		{
+			float* const meanp1 = rdim[1] == 1 ? meanp0 : meanp0 + i[1] * mean_inc[2] * mean_inc[3];
+			float* const inv_stdp1 = rdim[1] == 1 ? inv_stdp0 : inv_stdp0 + i[1] * inv_std_inc[2] * inv_std_inc[3];
+			for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+			{
+				float* const meanp2 = rdim[2] == 1 ? meanp1 : meanp1 + i[2] * mean_inc[3];
+				float* const inv_stdp2 = rdim[2] == 1 ? inv_stdp1 : inv_stdp1 + i[2] * inv_std_inc[3];
+				if (rdim[3] == 1)
+					for (x = 0; x < gdim[3]; x++)
+						ahp[x] = (ap[x] - meanp2[0]) * inv_stdp2[0];
+				else
+					for (x = 0; x < gdim[3]; x++)
+						ahp[x] = (ap[x] - meanp2[x]) * inv_stdp2[x];
+				ap += ainc[3];
+				ahp += gdim[3];
+			}
+			ap += (ainc[2] - gdim[2]) * ainc[3];
+		}
+		ap += (ainc[1] - gdim[1]) * ainc[2] * ainc[3];
+	}
+	ccv_nnc_tensor_zero(dscale);
+	ahp = ah;
+	float* gp = g->data.f32;
+	float* const dscalep = dscale->data.f32;
+	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+	{
+		float* const dscalep0 = rdim[0] == 1 ? dscalep : dscalep + i[0] * dscale_inc[1] * dscale_inc[2] * dscale_inc[3];
+		for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+		{
+			float* const dscalep1 = rdim[1] == 1 ? dscalep0 : dscalep0 + i[1] * dscale_inc[2] * dscale_inc[3];
+			for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+			{
+				float* const dscalep2 = rdim[2] == 1 ? dscalep1 : dscalep1 + i[2] * dscale_inc[3];
+				if (rdim[3] == 1)
+					for (x = 0; x < gdim[3]; x++)
+						dscalep2[0] += ahp[x] * gp[x];
+				else
+					for (x = 0; x < gdim[3]; x++)
+						dscalep2[x] += ahp[x] * gp[x];
+				gp += ginc[3];
+				ahp += gdim[3];
+			}
+			gp += (ginc[2] - gdim[2]) * ginc[3];
+		}
+		gp += (ginc[1] - gdim[1]) * ginc[2] * ginc[3];
+	}
+	// Now the part to compute dx (h).
+	ap = a->data.f32;
+	gp = g->data.f32;
+	float* hp = h->data.f32;
+	ahp = ah;
+	float* const sisbp = sisb;
+	float* const dbiasp = dbias->data.f32;
+	for (i[0] = 0; i[0] < gdim[0]; i[0]++)
+	{
+		float* const sisbp0 = rdim[0] == 1 ? sisbp : sisbp + i[0] * rdim[1] * rdim[2] * rdim[3];
+		float* const dscalep0 = rdim[0] == 1 ? dscalep : dscalep + i[0] * dscale_inc[1] * dscale_inc[2] * dscale_inc[3];
+		float* const dbiasp0 = rdim[0] == 1 ? dbiasp : dbiasp + i[0] * dbias_inc[1] * dbias_inc[2] * dbias_inc[3];
+		for (i[1] = 0; i[1] < gdim[1]; i[1]++)
+		{
+			float* const sisbp1 = rdim[1] == 1 ? sisbp0 : sisbp0 + i[1] * rdim[2] * rdim[3];
+			float* const dscalep1 = rdim[1] == 1 ? dscalep0 : dscalep0 + i[1] * dscale_inc[2] * dscale_inc[3];
+			float* const dbiasp1 = rdim[1] == 1 ? dbiasp0 : dbiasp0 + i[1] * dbias_inc[2] * dbias_inc[3];
+			for (i[2] = 0; i[2] < gdim[2]; i[2]++)
+			{
+				float* const sisbp2 = rdim[2] == 1 ? sisbp1 : sisbp1 + i[2] * rdim[3];
+				float* const dscalep2 = rdim[2] == 1 ? dscalep1 : dscalep1 + i[2] * dscale_inc[3];
+				float* const dbiasp2 = rdim[2] == 1 ? dbiasp1 : dbiasp1 + i[2] * dbias_inc[3];
+				if (rdim[3] == 1)
+					for (x = 0; x < gdim[3]; x++)
+						hp[x] = sisbp2[0] * (batch_size * gp[x] - dbiasp2[0] - ahp[x] * dscalep2[0]);
+				else
+					for (x = 0; x < gdim[3]; x++)
+						hp[x] = sisbp2[x] * (batch_size * gp[x] - dbiasp2[x] - ahp[x] * dscalep2[x]);
+				ap += ainc[3];
+				gp += ginc[3];
+				hp += hinc[3];
+				ahp += gdim[3];
+			}
+			ap += (ainc[2] - gdim[2]) * ainc[3];
+			gp += (ginc[2] - gdim[2]) * ginc[3];
+			hp += (hinc[2] - gdim[2]) * hinc[3];
+		}
+		ap += (ainc[1] - gdim[1]) * ainc[2] * ainc[3];
+		gp += (ginc[1] - gdim[1]) * ginc[2] * ginc[3];
+		hp += (hinc[1] - gdim[1]) * hinc[2] * hinc[3];
+	}
+	ccfree(ah);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
