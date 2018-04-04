@@ -66,7 +66,7 @@ static void _ccv_nnc_batch_norm_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, 
 }
 
 REGISTER_COMMAND(CCV_NNC_BATCH_NORM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_batch_norm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_batch_norm_cpu_ref.c, gpu/ccv_nnc_batch_norm_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_batch_norm_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_batch_norm_tensor_auto_forw;
@@ -74,7 +74,7 @@ REGISTER_COMMAND(CCV_NNC_BATCH_NORM_FORWARD)(ccv_nnc_cmd_registry_t* const regis
 }
 
 REGISTER_COMMAND(CCV_NNC_BATCH_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_batch_norm_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_batch_norm_cpu_ref.c, gpu/ccv_nnc_batch_norm_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_batch_norm_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_batch_norm_tensor_auto_back;
