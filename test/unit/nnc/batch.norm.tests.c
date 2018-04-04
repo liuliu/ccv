@@ -132,6 +132,8 @@ TEST_CASE("compare batch norm gradient with fine-grained symbolic graph")
 	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "bias");
 	ccv_nnc_tensor_symbol_t bmean = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "mean");
 	ccv_nnc_tensor_symbol_t bvar = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "var");
+	ccv_nnc_tensor_symbol_set_flags(batch_norm_symbolic_graph, bmean, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
+	ccv_nnc_tensor_symbol_set_flags(batch_norm_symbolic_graph, bvar, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
 	ccv_nnc_tensor_symbol_t bmean_out = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "mean");
 	ccv_nnc_tensor_symbol_t bvar_out = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "var");
 	ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(batch_norm_symbolic_graph, ONE_CPU_TENSOR(10), "saved_mean");
