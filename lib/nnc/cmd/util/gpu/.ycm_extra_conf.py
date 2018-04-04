@@ -19,7 +19,7 @@ flags = [
         '-D HAVE_CUDA',
         '-D HAVE_CUDNN',
 	'-I',
-	'../..',
+	'../../../..',
         '-I',
         '/usr/local/cuda/include',
         '-x',
