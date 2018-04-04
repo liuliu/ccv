@@ -31,9 +31,9 @@ At runtime, a command will select the appropriate backend based on the input typ
 
 ## 2. Computation Graph
 
-**Computation graph** expresses how the computation carries out. The output tensors can be used as input for the next command, so on and so forth. That is where *Tensorflow* got its name from. At this layer, **computation graph** knows the execution orders (data dependencies) between each command instances, and will schedule them on proper streams to ensure these execution orders are respected. Tensors themselves are not associated with the execution order at this point.
+**Computation graph** expresses how the computation carries out. The output tensors can be used as input for the next command, so on and so forth. That is where *TensorFlow* got its name from. At this layer, **computation graph** knows the execution orders (data dependencies) between each command instances, and will schedule them on proper streams to ensure these execution orders are respected. Tensors themselves are not associated with the execution order at this point.
 
-A **computation graph** can contain a sub-graph, which is a **computation graph** itself. It is executed as a single command instance by the parent **computation graph**. As of now, only a *`while` type sub-graph* is supported. Actually, branching and looping are supported through the *`while` type sub-graph*.
+A **computation graph** can contain a sub-graph, which is a **computation graph** itself. It is executed as a single command instance by the parent **computation graph**. As of now, a *`while` type sub-graph* (for looping) and a *`case..of` type sub-graph* (for branching) are supported.
 
 A **computation graph** can be auto-tuned to find the best backend implementations that minimize the total execution time. There may be future optimizations to allow modifying the graph itself to do more aggressive tuning (such as including tensor conversions to trade between slower implementation and conversion + faster implementation).
 
@@ -53,11 +53,11 @@ In fact, **symbolic graph** doesn't take tensors. It takes tensor symbols. The t
 
 It may feel like the tensor metadata is over-specified. For example, why precision or layout, or which GPU it resides is relevant? Because tensor symbols have many to 1 mapping with the actual tensors. Specifications on the tensor symbol avoid processes on the **symbolic graph** resulting a tensor symbol that needs to be backed with conversions. Any conversions on the **symbolic graph** has to be explicit command instances.
 
-Having that in mind, however, you can take an *alias* of a tensor symbol, which is a sliced / reshaped tensor symbol from the original. It allows several operations to be zero effort on the actual **computation graph**. The *alias* itself still have to follow the same *SSA* rule, which means all the *aliases* and the original tensor symbol can only be written once.
+Having that in mind, however, you can take an *alias* of a tensor symbol, which is a sliced / reshaped tensor symbol from the original. It allows several operations to be zero effort on the actual **computation graph**. The *alias* itself still have to follow the same *SSA* rule, which means all the *aliases* and the original tensor symbol can only be written once (if two *aliases* as outputs point to non-overlapping parts of the original tensor, the written-once rule is not violated).
 
 Processes can be carried out on the **symbolic graph** ranging from *automatic differentiation*, to *common sub-expression elimination* (CSE), or *operator fusion* (finer-grained set of commands be replaced by a combined command implementation).
 
-When the actual computation is needed. A **symbolic graph** can be compiled to a **computation graph**. The compilation process can involve optimizations that previously already possible on the given **computation graph** (such as CSE). More importantly, this step performs additional optimization passes that will violate the *SSA* rule above. Currently, it will perform following processes that are not available as optimization passes:
+When the actual computation is needed. A **symbolic graph** can be compiled to a **computation graph**. The compilation process can involve optimizations that previously already possible on the given **computation graph** (such as CSE). More importantly, this step performs additional optimization passes that will violate the *SSA* rule above. Currently, it will perform following processes that are not available as pure optimization passes:
 
  1. In-place safe command instance will operate on the same tensor symbol inputs / outputs whenever possible (for example, `1.23 * x => y` will be re-written to `1.23 * x => x` if no other places use `x`);
 
@@ -65,7 +65,7 @@ When the actual computation is needed. A **symbolic graph** can be compiled to a
 
  3. Emit implicit commands for tensor initialization. Certain tensor symbols need to be initialized before use (zero init for now), which is impossible to know when until tensor allocation was taken place. This is one reason why there is no 1:1 mapping between **symbolic graph** and **computation graph**.
 
-All above steps are carried out recursively for its *`while` type sub-graphs* too.
+All above steps are carried out recursively for its *`while` / `case..of` type sub-graphs* too.
 
 ## 4. Dynamic Graph
 
@@ -108,9 +108,23 @@ The loop execution within a *`while` type sub-graph* looks like this:
  3. The evaluation function is called, and depends on the result, the execution within the sub-graph will either abort (break), or continue, until all the destination command instances executed and reached;
  4. Once all destination command instances executed and reached, we will start from step 1. again.
 
-For *`while` type symbolic sub-graph*, the obvious question would be how *SSA* rule plays out in the loop structure. We allow in the sub-graph to specify certain output tensor symbols map to the input tensor symbols in the loop, practically made these input tensor symbols parameters. The *compilation* step will handle this properly and allocate the input tensors at the same memory locations as the output tensors (there are `ccv_nnc_tensor_multiview_t` workaround if the condition cannot be satisfied).
+For *`while` type symbolic sub-graph*, the obvious question would be how *SSA* rule plays out in the loop structure. We allow in the sub-graph to specify certain output tensor symbols carry over to the input tensor symbols in the next round, practically made these input tensor symbols parameters. The *compilation* step will handle this properly and allocate the input tensors at the same memory locations as the output tensors (there are `ccv_nnc_tensor_multiview_t` workaround if the condition cannot be satisfied).
 
 When doing *automatic differentiation*, a `ccv_nnc_tensor_tape_t` need to be provided for the *`while` type sub-graph* to record the outputs properly.
+
+### `case..of` Type Sub-Graph
+
+The *`case..of` type sub-graph* is another special type of a **symbolic graph** or a **computation graph**. It expresses a generic branch structure with custom evaluation function supplied.
+
+The *`case..of` type sub-graph* contains several separate sub-graphs identified by indexes from 0 to n:
+
+ 1. The evaluation function is called, if the result is >= 0, a sub-graph is selected for execution, otherwise, jump to step 3.;
+ 2. The selected sub-graph executed from beginning to end;
+ 3. If the result is < 0, no sub-graph executed.
+
+For *`case..of` type symbolic sub-graph*, if a tensor symbol is *written-once*, how to proceed if all sub-graphs skipped (in typical case, if a sub-graph executed, presumably, the tensor you want will be written by a command in that sub-graph)? We allow you to specify for these output tensor symbols, which symbol from the input can be supplied as *replacement*. The *compilation* step will ensure a `ccv_nnc_tensor_multiview_t` is created to handle these cases.
+
+When doing *automatic differentiation*, a `ccv_nnc_tensor_tape_t` need to be provided for the *`case..of` type sub-graph* to record the outputs properly.
 
 ### Limits and Constraints
 
