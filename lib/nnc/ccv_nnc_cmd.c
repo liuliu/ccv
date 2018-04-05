@@ -275,12 +275,40 @@ uint64_t ccv_nnc_cmd_mono_time(void)
 #endif
 }
 
+ccv_nnc_cmd_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memory, const int tensor_formats, const int tensor_datatypes)
+{
+	if (cmd.cmd == CCV_NNC_NOOP ||
+		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
+		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+		return cmd;
+	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	int i;
+	for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
+	{
+		const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
+		// We have the exec kernel, and support all the tensor memory types.
+		if (api_registry.exec &&
+			(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
+			(api_registry.tensor_formats & tensor_formats) == tensor_formats &&
+			(api_registry.tensor_datatypes & tensor_datatypes) == tensor_datatypes)
+		{
+			ccv_nnc_cmd_t new_cmd = cmd;
+			new_cmd.backend = backend_init_map[i].backend;
+			return new_cmd;
+		}
+	}
+	return cmd;
+}
+
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
 ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	// This is a custom cmd kernel, no need to autotune.
-	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD || cmd.cmd == CCV_NNC_NOOP)
+	if (cmd.cmd == CCV_NNC_NOOP ||
+		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
+		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 		return cmd;
 	int i, j, k;
 	// Go through all the backends that supports the same type of memory input / output tensors support.
@@ -298,6 +326,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	ccv_nnc_cmd_t tuned_cmd = cmd;
 	int64_t best_measured = -1;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
+	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
 	// We need to have trial loop through all the data.
 	for (k = 0; k < AUTO_TUNE_TRIAL_SIZE; k++)
 	{

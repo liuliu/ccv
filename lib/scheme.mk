@@ -1,17 +1,30 @@
-.PHONY: debug cover
+.PHONY: debug undef asan cover
 
 # Debug Scheme
 
 DEBUG ?= 0
 ifeq ($(DEBUG), 1)
+	CFLAGS += -g -fno-omit-frame-pointer -O0
+	LDFLAGS += -g -fno-omit-frame-pointer -O0
+endif
+
+debug: CFLAGS += -g -fno-omit-frame-pointer -O0
+debug: LDFLAGS += -g -fno-omit-frame-pointer -O0
+debug: export DEBUG = 1
+debug: all
+
+# Asan Scheme
+
+ASAN ?= 0
+ifeq ($(ASAN), 1)
 	CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 	LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
 endif
 
-debug: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-debug: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
-debug: export DEBUG = 1
-debug: all
+asan: CFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+asan: LDFLAGS += -g -fno-omit-frame-pointer -fsanitize=address
+asan: export ASAN = 1
+asan: all
 
 # Undefined Scheme
 
