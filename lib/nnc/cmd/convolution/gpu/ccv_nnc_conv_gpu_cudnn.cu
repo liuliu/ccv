@@ -196,6 +196,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_3:
 			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3;
 			break;
+#if CUDNN_VERSION >= 6000
 		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT_TILING:
 			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING;
 			break;
@@ -205,6 +206,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_WINOGRAD_NONFUSED:
 			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED;
 			break;
+#endif
 		default: // -1: Using preferences to find a suitable algorithm
 			assert_cudnn(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
 	}
@@ -337,6 +339,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_3:
 			filter = CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_3;
 			break;
+#if CUDNN_VERSION >= 6000
 		case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_FFT_TILING:
 			filter = CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_FFT_TILING;
 			break;
@@ -348,6 +351,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			break;
 		case CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT:
 			break;
+#endif
 	}
 	switch (data_algorithm)
 	{
@@ -369,8 +373,10 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 		case CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED:
 			data = CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_WINOGRAD_NONFUSED;
 			break;
+#if CUDNN_VERSION >= 6000
 		case CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT:
 			break;
+#endif
 	}
 	return data * CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT + filter;
 }
