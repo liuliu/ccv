@@ -137,8 +137,10 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_WINOGRAD;
 		case CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED:
 			return CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_WINOGRAD_NONFUSED;
+#if CUDNN_VERSION >= 6000
 		case CUDNN_CONVOLUTION_FWD_ALGO_COUNT:
 			break;
+#endif
 	}
 	return -1; // Return the most efficient algorithm, return -1 if cannot find one.
 }
