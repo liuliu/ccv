@@ -622,7 +622,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		if (d >= 0)
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
-			tensor_memory |= tensor_info->info.type, tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
 		}
 	}
 	for (i = 0; i < output_size; i++)
@@ -632,10 +632,10 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		if (d >= 0)
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
-			tensor_memory |= tensor_info->info.type, tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
 		}
 	}
-	exec_info->cmd = ccv_nnc_cmd_find_backend(exec_info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
+	exec_info->cmd.backend = ccv_nnc_cmd_find_backend(exec_info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
 }
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)

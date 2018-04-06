@@ -26,6 +26,11 @@ typedef struct {
 #endif
 } ccv_nnc_stream_context_compat_t;
 
+static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
+	.type = CCV_STREAM_CONTEXT_GPU,
+	.stream = cudaStreamPerThread
+};
+
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
@@ -64,6 +69,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 
 int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context)
 {
+	if (!stream_context)
+		return 0;
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
 	return CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 }
@@ -71,12 +78,16 @@ int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stre
 cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	return stream_compat->stream;
 }
 
 cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	if (!stream_compat->cublas)
 	{
 		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
@@ -91,6 +102,8 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	if (!stream_compat->cudnn)
 	{
 		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
@@ -196,7 +209,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[0];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[0];
+					stride[i] = 1;
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;

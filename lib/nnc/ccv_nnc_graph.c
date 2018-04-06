@@ -322,8 +322,8 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
 	for (i = 0; i < input_size + output_size; i++)
 		if (info->inputs[i])
-			tensor_memory |= info->inputs[i]->info.type, tensor_formats |= info->inputs[i]->info.format, tensor_datatypes |= info->inputs[i]->info.datatype;
-	info->cmd = ccv_nnc_cmd_find_backend(info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(info->inputs[i]->info.type), tensor_formats |= info->inputs[i]->info.format, tensor_datatypes |= info->inputs[i]->info.datatype;
+	info->cmd.backend = ccv_nnc_cmd_find_backend(info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	info->input_size = input_size;
 	info->output_size = output_size;
 	_ccv_nnc_graph_redo_tensor_trees(info);
@@ -382,8 +382,8 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 		int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
 		for (i = 0; i < input_size + output_size; i++)
 			if (info.inputs[i])
-				tensor_memory |= info.inputs[i]->info.type, tensor_formats |= info.inputs[i]->info.format, tensor_datatypes |= info.inputs[i]->info.datatype;
-		info.cmd = ccv_nnc_cmd_find_backend(info.cmd, tensor_memory, tensor_formats, tensor_datatypes);
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(info.inputs[i]->info.type), tensor_formats |= info.inputs[i]->info.format, tensor_datatypes |= info.inputs[i]->info.datatype;
+		info.cmd.backend = ccv_nnc_cmd_find_backend(info.cmd, tensor_memory, tensor_formats, tensor_datatypes);
 	}
 	ccv_nnc_graph_exec_t exec = {
 		.d = d,

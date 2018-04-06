@@ -55,6 +55,8 @@ const char* ccv_nnc_cmd_name(const uint32_t cmd)
 
 const char* ccv_nnc_cmd_backend_name(const uint32_t backend)
 {
+	if (backend == CCV_NNC_NO_BACKEND)
+		return "CCV_NNC_NO_BACKEND";
 	const int idx = _ccv_nnc_cmd_backend_ph(backend);
 	assert(idx >= 0);
 	assert(idx < CCV_NNC_BACKEND_COUNT);
@@ -118,8 +120,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const cc
 {
 	ccv_nnc_cmd_t cmd;
 	cmd.info = params;
-	// Default to CPU ref implementation if the type is CPU memory, otherwise use GPU ref.
-	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
+	cmd.backend = CCV_NNC_NO_BACKEND;
 	assert((_cmd == CCV_NNC_CUSTOM_FORWARD && exec) || (_cmd != CCV_NNC_CUSTOM_FORWARD && !exec));
 	cmd.cmd = _cmd;
 	cmd.algorithm = -1; // This is default.
@@ -275,12 +276,12 @@ uint64_t ccv_nnc_cmd_mono_time(void)
 #endif
 }
 
-ccv_nnc_cmd_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memory, const int tensor_formats, const int tensor_datatypes)
+uint32_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memory, const int tensor_formats, const int tensor_datatypes)
 {
 	if (cmd.cmd == CCV_NNC_NOOP ||
 		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
 		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
-		return cmd;
+		return cmd.backend;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
 	int i;
@@ -292,13 +293,9 @@ ccv_nnc_cmd_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor
 			(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
 			(api_registry.tensor_formats & tensor_formats) == tensor_formats &&
 			(api_registry.tensor_datatypes & tensor_datatypes) == tensor_datatypes)
-		{
-			ccv_nnc_cmd_t new_cmd = cmd;
-			new_cmd.backend = backend_init_map[i].backend;
-			return new_cmd;
-		}
+			return backend_init_map[i].backend;
 	}
-	return cmd;
+	return cmd.backend;
 }
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
@@ -315,10 +312,10 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
 	for (i = 0; i < input_size; i++)
 		if (inputs[i])
-			tensor_memory |= inputs[i]->info.type, tensor_formats |= inputs[i]->info.format, tensor_datatypes |= inputs[i]->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= inputs[i]->info.datatype;
 	for (i = 0; i < output_size; i++)
 		if (outputs[i])
-			tensor_memory |= outputs[i]->info.type, tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
+			tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
 	// In this case, we cannot determine the type of the tensor, skip auto-tune.
 	if (!tensor_memory)
 		return cmd;
@@ -408,14 +405,28 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
-	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	int i;
+	uint32_t backend = cmd.backend;
+	if (backend == CCV_NNC_NO_BACKEND)
+	{
+		// Find a suitable backend.
+		int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
+		for (i = 0; i < input_size; i++)
+			if (inputs[i])
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(inputs[i]->info.type), tensor_formats |= inputs[i]->info.format, tensor_datatypes |= inputs[i]->info.datatype;
+		for (i = 0; i < output_size; i++)
+			if (outputs[i])
+				tensor_memory |= CCV_TENSOR_GET_MEMORY(outputs[i]->info.type), tensor_formats |= outputs[i]->info.format, tensor_datatypes |= outputs[i]->info.datatype;
+		backend = ccv_nnc_cmd_find_backend(cmd, tensor_memory, tensor_formats, tensor_datatypes);
+	}
+	assert(backend != CCV_NNC_NO_BACKEND);
+	const int backend_idx = _ccv_nnc_cmd_backend_ph(backend);
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
-	int i;
 	uint64_t stack_input_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
 	uint64_t stack_output_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
 	assert(CCV_NNC_STACK_BITMASK_ALLOC > 0);
@@ -465,9 +476,7 @@ int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
 		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
-	const int backend_idx = _ccv_nnc_cmd_backend_ph(cmd.backend);
 	assert(cmd_idx >= 0 && cmd_idx <sizeof(init_map) / sizeof(init_map[0]));
-	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	return !!(cmd_registry.flags & flags);
 }

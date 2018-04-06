@@ -1,4 +1,5 @@
 enum {
-	<%= backends.join ",\t\n" %>,
+	CCV_NNC_NO_BACKEND = 0,
+	<%= backends.join ",\n\t" %>,
 	CCV_NNC_BACKEND_COUNT = <%= backends.count %>,
 };

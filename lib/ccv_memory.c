@@ -2,15 +2,6 @@
 #include "ccv_internal.h"
 #include "3rdparty/siphash/siphash24.h"
 
-#ifdef __APPLE__
-#include "TargetConditionals.h"
-#if (TARGET_OS_IPHONE || TARGET_IPHONE_SIMULATOR)
-// Temporary fix: __thread is not supported on iOS so define it to nothing.
-#define __thread
-#endif
-#endif
-
-
 static __thread ccv_cache_t ccv_cache;
 
 /**
