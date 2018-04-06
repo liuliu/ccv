@@ -155,7 +155,7 @@ TEST_CASE("compare batch norm with cudnn")
 	memcpy(cx_tensor->data.f32, x_tensor->data.f32, sizeof(float) * 2 * 2 * 2 * 10);
 	ccv_nnc_graph_run(cpu_graph, 0, 0, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* const cy_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, cy);
-	REQUIRE_TENSOR_EQ(y_tensor, cy_tensor, "batch norm result from cudnn should match the one from reference implementation");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, y_tensor->data.f32, cy_tensor->data.f32, 2 * 2 * 2 * 10, 1e-5, "batch norm result from cudnn should match the one from reference implementation");
 	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
 	ccv_nnc_tensor_arena_free(cpu_tensor_arena);
 	ccv_nnc_graph_exec_arena_free(cpu_graph_exec_arena);
@@ -250,6 +250,7 @@ TEST_CASE("compare batch norm gradient with cudnn")
 	memcpy(dcy_tensor->data.f32, dy_tensor->data.f32, sizeof(float) * 2 * 2 * 2 * 10);
 	ccv_nnc_graph_run(cpu_graph, 0, 0, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* const dcx_tensor = ccv_nnc_tensor_from_symbol(cpu_tensor_arena, dcx);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, dx_tensor->data.f32, dcx_tensor->data.f32, 2 * 2 * 2 * 10, 1e-5, "batch norm result from cudnn should match the one from reference implementation");
 	REQUIRE_TENSOR_EQ(dx_tensor, dcx_tensor, "batch norm gradient result from cudnn should match the one from reference implementation");
 	ccv_nnc_symbolic_graph_free(cpu_symbolic_graph);
 	ccv_nnc_tensor_arena_free(cpu_tensor_arena);

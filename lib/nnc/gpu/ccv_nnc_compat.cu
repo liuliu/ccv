@@ -28,7 +28,9 @@ typedef struct {
 
 static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
 	.type = CCV_STREAM_CONTEXT_GPU,
+#ifdef cudaStreamPerThread
 	.stream = cudaStreamPerThread
+#endif
 };
 
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
