@@ -1060,6 +1060,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 			PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 #endif
+			assert(tensor_arena->buffers[i].ptr);
 		}
 	}
 	// Go over sub_preps and allocate arenas for them. Do it this early because
