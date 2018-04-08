@@ -9,7 +9,7 @@ The NNC tensor allocation algorithm is a take on the problem, it has the followi
 
  2. Support loop structure, thus, if there is a while loop, this allocation algorithm will handle tensor reuse properly, without introduce any extra data transfer operation;
 
- 3. Doesn't enable efficient memory reuse when branching. It is certainly can be imagined how such efficient memory reuse can be enabled from the current algorithm.
+ 3. Enable efficient memory reuse when branching.
 
 Tensor Representation
 ---------------------
@@ -162,4 +162,4 @@ Sub-computation graph's tensor allocation generated number of buffers and each b
 Conclusion
 ----------
 
-I believe the above algorithm is the first to address the tensor allocation problem with partial memory reuse and loop efficiency in mind. The algorithm also is presented as an extensible framework that can be considered in the future to support more control structures (such as *switch* statement).
+I believe the above algorithm is the first to address the tensor allocation problem with partial memory reuse and loop efficiency in mind. This algorithm is also presented as an extensible framework that can be considered in the future to support more control structures.

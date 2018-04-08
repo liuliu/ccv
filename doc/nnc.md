@@ -135,3 +135,7 @@ When doing *automatic differentiation*, a `ccv_nnc_tensor_tape_t` need to be pro
  3. The limit on number of inputs and output tensors is `INT_MAX`. To perform *automatic differentiation* properly, this number drops to `floor(INT_MAX / 3)`. However, for more than 64 parameters, there are internal heap allocation required, which makes previously deterministic execution none-deterministic (it may take arbitrarily long depending on the `malloc` you use).
 
  4. The allocated tensor size can go up to `min(UINT64_MAX, SIZE_MAX)`.
+
+ 5. The sub-graph can go as deep as `2^(31 - 4)`, otherwise the outer-most while count tensor cannot be referenced by the inner-most sub-graph.
+
+ 6. The maximum number of GPU devices per machine or NUMA nodes per machine is 4095. This is defined in `CCV_COMPUTE_DEVICE_ANY`.
