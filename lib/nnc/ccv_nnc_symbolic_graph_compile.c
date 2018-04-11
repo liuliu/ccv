@@ -1252,7 +1252,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
 					if (memcmp(alias_tensor.info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 					{
-						*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+						*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
 						tensor_view->alias_ref = (uintptr_t)alias_pos;
 					} else {
 						// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
@@ -1260,7 +1260,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 						memcpy(info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(alias_tensor.info));
 						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(alias_tensor.data.u8, info, 0);
-						*tensor_view = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].info.dim);
+						*tensor_view = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
 						tensor_view->alias_ref = (uintptr_t)alias_pos;
 					}
 				}

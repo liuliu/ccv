@@ -126,9 +126,9 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, con
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 // Allocating on stack
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view);
 // All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
 void ccv_nnc_tensor_zero(void* const tensor);
@@ -324,8 +324,12 @@ void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, c
 int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
 int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
+// Get all the flags for a tensor
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
-CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flag(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
+// Get the ofs parameter on a tensor alias if it is.
+CCV_WARN_UNUSED(int*) ccv_nnc_tensor_symbol_alias_ofs(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias);
+// Get the inc parameter on a tensor alias if it is.
+CCV_WARN_UNUSED(int*) ccv_nnc_tensor_symbol_alias_inc(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias);
 // Manually concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
@@ -582,5 +586,28 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 /**
  * Level-4 API
  */
+
+// Opaque pointer to the dynamic graph structure.
+typedef struct ccv_nnc_dynamic_graph_s ccv_nnc_dynamic_graph_t;
+
+// Masquerade this as if it is a on stack variable, there is a heap allocation but managed by the dynamic graph.
+typedef struct ccv_nnc_tensor_variable_s* ccv_nnc_tensor_variable_t;
+
+// Create a dynamic graph.
+CCV_WARN_UNUSED(ccv_nnc_dynamic_graph_t*) ccv_nnc_dynamic_graph_new(void);
+// Get a new tensor variable.
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+// Create a new tensor variable that is an alias of a given tensor variable.
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
+// Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this method.
+CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+// Execute a command with given tensor variables, the output is in the output tensor variables.
+int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
+// Compute the gradient of given tensor, with respect to the f. Thus, df / dt.
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_backward(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t tensor_variable);
+// Dispose a tensor variable. You cannot do any computation against this tensor variable afterwards.
+void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+// Free the dynamic graph.
+void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph);
 
 #endif

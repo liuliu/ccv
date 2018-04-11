@@ -101,16 +101,16 @@ void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 	ccfree(tensor);
 }
 
-static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+static inline void _ccv_nnc_tensor_view_set(ccv_nnc_tensor_view_t* const tv, const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
 {
-	memcpy(tv->inc, tensor->info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	memcpy(tv->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(tv->info.dim, dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	uint8_t* const p = tensor->data.u8;
 	const off_t off = tv->off = ccv_nnc_tensor_view_offset(tv, ofs);
 	tv->data.u8 = p + off;
 }
 
-ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_nnc_tensor_view_t* tv = (ccv_nnc_tensor_view_t*)ccmalloc(sizeof(ccv_nnc_tensor_view_t));
 	tv->type = (tensor->type & ~0xfff) | CCV_TENSOR_VIEW;
@@ -118,11 +118,11 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const ten
 	tv->refcount = 1;
 	tv->sig = 0;
 	tv->info = tensor->info;
-	_ccv_nnc_tensor_view_set(tv, tensor, ofs, dim);
+	_ccv_nnc_tensor_view_set(tv, tensor, dim, ofs, inc);
 	return tv;
 }
 
-ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int dim[CCV_NNC_MAX_DIM_ALLOC])
+ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC])
 {
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
 	ccv_nnc_tensor_view_t tv = {
@@ -132,7 +132,7 @@ ccv_nnc_tensor_view_t ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, 
 		.sig = 0,
 		.info = tensor->info,
 	};
-	_ccv_nnc_tensor_view_set(&tv, tensor, ofs, dim);
+	_ccv_nnc_tensor_view_set(&tv, tensor, dim, ofs, inc);
 	return tv;
 }
 
