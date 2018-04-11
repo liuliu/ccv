@@ -74,7 +74,7 @@ ccv_nnc_tensor_view_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* con
 	assert(!variable_to->alias_ref);
 	if (!variable_to->tensor_view)
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(0, variable_to->symbol.info, 0);
-	tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)variable_to->tensor_view, tensor_variable->symbol.info.dim, ccv_nnc_tensor_symbol_alias_ofs(graph->symbolic, tensor_variable->symbol), ccv_nnc_tensor_symbol_alias_inc(graph->symbolic, tensor_variable->symbol));
+	tensor_variable->tensor_view = 0; // ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)variable_to->tensor_view, tensor_variable->symbol.info.dim, ccv_nnc_tensor_symbol_alias_ofs(graph->symbolic, tensor_variable->symbol), ccv_nnc_tensor_symbol_alias_inc(graph->symbolic, tensor_variable->symbol));
 	return 0;
 }
 
@@ -83,6 +83,20 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	int i;
 	for (i = 0; i < input_size; i++)
 		{ assert(inputs[i]->tensor_view); }
+	ccv_nnc_tensor_t* input_tensors[ccv_max(1, input_size)];
+	for (i = 0; i < input_size; i++)
+		input_tensors[i] = (ccv_nnc_tensor_t*)ccv_nnc_tensor_from_variable(graph, inputs[i]);
+	ccv_nnc_tensor_t* output_tensors[ccv_max(1, output_size)];
+	for (i = 0; i < output_size; i++)
+		output_tensors[i] = (ccv_nnc_tensor_t*)ccv_nnc_tensor_from_variable(graph, outputs[i]);
+	ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, input_size, output_tensors, output_size, 0);
+	ccv_nnc_tensor_symbol_t input_symbols[ccv_max(1, input_size)];
+	for (i = 0; i < input_size; i++)
+		input_symbols[i] = inputs[i]->symbol;
+	ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
+	for (i = 0; i < output_size; i++)
+		output_symbols[i] = outputs[i]->symbol;
+	ccv_nnc_graph_exec_symbol_new(graph->symbolic, cmd, input_symbols, input_size, output_symbols, output_size, 0);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

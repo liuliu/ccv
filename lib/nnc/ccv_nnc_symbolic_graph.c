@@ -739,22 +739,6 @@ int ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv
 	return symbol_info->flags;
 }
 
-int* ccv_nnc_tensor_symbol_alias_ofs(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias)
-{
-	assert(graph == tensor_alias.graph);
-	assert(tensor_alias.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const alias_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_alias.d);
-	return alias_info->ofs;
-}
-
-int* ccv_nnc_tensor_symbol_alias_inc(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_alias)
-{
-	assert(graph == tensor_alias.graph);
-	assert(tensor_alias.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const alias_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_alias.d);
-	return alias_info->inc;
-}
-
 int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)
 {
 	assert(graph == source.graph);

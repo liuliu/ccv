@@ -196,8 +196,8 @@ TEST_CASE("autograd with sliced tensors for convolution doesn't require zeros (s
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
 	ccv_nnc_tensor_symbol_t dc = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, c);
-	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, db, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for b doesn't need to be zero init");
-	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, dc, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
+	REQUIRE(!(ccv_nnc_tensor_symbol_flags(symbolic_graph, db) & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for b doesn't need to be zero init");
+	REQUIRE(!(ccv_nnc_tensor_symbol_flags(symbolic_graph, dc) & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
@@ -229,8 +229,8 @@ TEST_CASE("autograd with sliced tensors for convolution require zeros")
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_SHORT_DOT_GRAPH);
 	ccv_nnc_tensor_symbol_t db = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b);
 	ccv_nnc_tensor_symbol_t dc = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, c);
-	REQUIRE(ccv_nnc_tensor_symbol_flag(symbolic_graph, db, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for b needs to be zero init");
-	REQUIRE(!ccv_nnc_tensor_symbol_flag(symbolic_graph, dc, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
+	REQUIRE((ccv_nnc_tensor_symbol_flags(symbolic_graph, db) & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for b needs to be zero init");
+	REQUIRE(!(ccv_nnc_tensor_symbol_flags(symbolic_graph, dc) & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS), "The gradient for c doesn't need to be zero init");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 }
 
