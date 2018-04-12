@@ -587,6 +587,8 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 typedef struct ccv_nnc_dynamic_graph_s ccv_nnc_dynamic_graph_t;
 
 // Masquerade this as if it is a on stack variable, there is a heap allocation but managed by the dynamic graph.
+// The fact that ccv_nnc_tensor_variable_t is a pointer is an implementation detail. It should be treated as an
+// opaque type throughout. We may later extends this to be some on-stack information or even just a uid.
 typedef struct ccv_nnc_tensor_variable_s* ccv_nnc_tensor_variable_t;
 
 // Create a dynamic graph.

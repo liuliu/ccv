@@ -86,7 +86,6 @@ struct ccv_nnc_symbolic_graph_s {
 	// for ccv_array_t, we can continue to modify what's inside.
 	int breakpoint_size;
 	ccv_nnc_graph_exec_symbol_t* breakpoints;
-	// Map between parent / sub-graph's tensor symbols.
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;

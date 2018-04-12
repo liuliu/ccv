@@ -38,6 +38,9 @@
 #define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
 #define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
+#define TENSOR_VARIABLE_LIST_X(...) (ccv_nnc_tensor_variable_t []){__VA_ARGS__}
+#define TENSOR_VARIABLE_LIST(...) TENSOR_VARIABLE_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
 #define KV_X(_x, _y, ...) {(_x), (_y)}
 #define KV(...) KV_X(__VA_ARGS__, 0)
 #define TENSOR_BIND_MAP_X(...) (ccv_nnc_tensor_bind_t []){__VA_ARGS__}
