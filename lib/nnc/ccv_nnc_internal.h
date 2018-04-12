@@ -185,7 +185,7 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
 					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
 					{ \
-						int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
 						--_incomings_[d].c; \
 						/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
 						if (_incomings_[d].c == 0 && _d_ < (destination_size)) \

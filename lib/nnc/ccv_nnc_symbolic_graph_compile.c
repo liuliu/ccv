@@ -3448,8 +3448,8 @@ static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_ar
 				.d = graph_prep->exec_symbol_info[i].peer_ref - 1,
 				.graph = graph_prep->symbolic_graph->peer ? graph_prep->symbolic_graph->peer : graph_prep->symbolic_graph,
 			});
-			assert(peer_exec.graph);
-			ccv_nnc_graph_exec_set_peer(graph_prep->graph, graph_exec_arena->graph_execs[i], peer_exec);
+			if (peer_exec.d >= 0)
+				ccv_nnc_graph_exec_set_peer(graph_prep->graph, graph_exec_arena->graph_execs[i], peer_exec);
 		}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
