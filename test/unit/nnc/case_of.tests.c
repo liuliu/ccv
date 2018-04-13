@@ -47,6 +47,7 @@ TEST_CASE("graph for a piece-wise linear function")
 	s1->data.f32[0] = 0.5;
 	ccv_nnc_graph_exec_t prod_1 = ccv_nnc_graph_exec_new(graph_1, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, TENSOR_LIST(x, p1), TENSOR_LIST(x));
 	ccv_nnc_graph_exec_t sum_1 = ccv_nnc_graph_exec_new(graph_1, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, TENSOR_LIST(x, s1), TENSOR_LIST(x));
+	ccv_nnc_graph_exec_concat(graph_1, prod_1, sum_1);
 	ccv_nnc_graph_set_sources(graph_1, GRAPH_EXEC_LIST(prod_1));
 	ccv_nnc_graph_set_destinations(graph_1, GRAPH_EXEC_LIST(sum_1));
 	ccv_nnc_graph_set_case_of(graph, case_of, graph_1, 1);

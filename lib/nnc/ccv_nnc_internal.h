@@ -132,7 +132,7 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 		typedef struct { \
 			int8_t d; /* tag if this is the destination node. */ \
 			int8_t r; /* tag if this is reached as destination node. */ \
-			int32_t c; /* number of incoming edges. */ \
+			uint16_t c; /* number of incoming edges. */ \
 		} ccv_nnc_incoming_t; \
 		/* Statistics of how many incoming edges for all nodes of a graph. */ \
 		int _heap_mem_ = (node_size > 1024); \
@@ -143,17 +143,44 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 		else \
 			_incomings_ = (ccv_nnc_incoming_t*)alloca(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
 		memset(_incomings_, 0, sizeof(ccv_nnc_incoming_t) * (node_size)); \
-		for (_i_ = 0; _i_ < (node_size); _i_++) \
-		{ \
-			if ((nodes)[_i_].outgoings) \
-				for (_j_ = 0; _j_ < (nodes)[_i_].outgoings->rnum; _j_++) \
-					++_incomings_[*(int*)ccv_array_get((nodes)[_i_].outgoings, _j_)].c; \
-		} \
-		/* After we have that statistics, we can do topsort and run the command. */ \
+		for (_i_ = 0; _i_ < (node_size); _i_++) /* assuming it is all reached */ \
+			_incomings_[_i_].r = 1; \
 		int32_t* _exists_[2] = { \
 			(int32_t*)(_incomings_ + (node_size)), \
 			(int32_t*)(_incomings_ + (node_size)) + (node_size), \
 		}; \
+		for (_i_ = 0; _i_ < (source_size); _i_++) \
+		{ \
+			assert((sources)[_i_].graph == _graph); \
+			_exists_[0][_i_] = (sources)[_i_].d; \
+		} \
+		int _exist_size_[2] = { \
+			(source_size), \
+			0, \
+		}; \
+		int _p_ = 0, _q_ = 1; /* ping, pong swap. */ \
+		/* Gather statistics. */ \
+		while (_exist_size_[_p_] > 0) \
+		{ \
+			_exist_size_[_q_] = 0; \
+			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
+			{ \
+				if (!_incomings_[_exists_[_p_][_i_]].r) \
+					continue; \
+				_incomings_[_exists_[_p_][_i_]].r = 0; \
+				/* mark as not reached */ \
+				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
+					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
+					{ \
+						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+						++_incomings_[d].c; \
+						_exists_[_q_][_exist_size_[_q_]] = d; \
+						++_exist_size_[_q_]; \
+					} \
+			} \
+			/* swap p and q. */ \
+			CCV_SWAP(_p_, _q_, _i_ /* using i as temp holder */); \
+		} \
 		for (_i_ = 0; _i_ < (destination_size); _i_++) \
 		{ \
 			assert((destinations)[_i_].graph == _graph); \
@@ -165,11 +192,12 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 			assert((sources)[_i_].graph == _graph); \
 			_exists_[0][_i_] = (sources)[_i_].d; \
 		} \
-		int _exist_size_[2] = { \
-			(source_size), \
-			0, \
-		}; \
-		int _p_ = 0, _q_ = 1, _k_ = 0, _d_ = 0; /* ping, pong swap. */ \
+		_p_ = 0; \
+		_q_ = 1; \
+		_exist_size_[0] = (source_size); \
+		_exist_size_[1] = 0; \
+		int _k_ = 0, _d_ = 0; \
+		/* After we have that statistics, we can do topsort and run the command. */ \
 		while (_exist_size_[_p_] > 0) \
 		{ \
 			_exist_size_[_q_] = 0; \

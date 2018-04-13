@@ -189,11 +189,11 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static void _ccv_nnc_insert_if_prior_to_any(const ccv_nnc_symbolic_graph_t* const graph, const int d, ccv_array_t* const sources, uint8_t* const visited, int* const buf0, int* const buf1)
+static void _ccv_nnc_insert_if_prior_to_any(const ccv_nnc_symbolic_graph_t* const graph, const int d, ccv_array_t* const sources, uint32_t* const visited, int* const buf0, int* const buf1)
 {
-	if (visited[(d >> 3)] & (1 << (d & 7)))
+	if (visited[(d >> 5)] & (1u << (d & 31)))
 		return;
-	visited[(d >> 3)] |= (1 << (d & 7));
+	visited[(d >> 5)] |= (1u << (d & 31));
 	buf0[0] = d;
 	int* buf[2] = {
 		buf0, buf1
@@ -233,9 +233,9 @@ static void _ccv_nnc_insert_if_prior_to_any(const ccv_nnc_symbolic_graph_t* cons
 							break;
 						}
 					}
-					if (visited[(outgoing_idx >> 3)] & (1 << (outgoing_idx & 7)))
+					if (visited[(outgoing_idx >> 5)] & (1u << (outgoing_idx & 31)))
 						continue;
-					visited[(outgoing_idx >> 3)] |= (1 << (outgoing_idx & 7));
+					visited[(outgoing_idx >> 5)] |= (1u << (outgoing_idx & 31));
 					buf[q][buf_size[q]] = outgoing_idx;
 					++buf_size[q];
 				}
@@ -277,18 +277,16 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	const int exec_symbol_info_size = dynamic_graph->symbolic->exec_symbol_info->rnum;
 	ccv_array_t* const sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
 	ccv_array_t* const ws = dynamic_graph->ws;
-	uint8_t* const visited = (uint8_t*)cccalloc((exec_symbol_info_size + 7) >> 3, sizeof(uint8_t));
-	ccv_array_resize(ws, exec_symbol_info_size * 2);
+	ccv_array_resize(ws, exec_symbol_info_size * 2 + ((exec_symbol_info_size + 31) >> 5));
 	for (i = 0; i < input_size; i++)
 	{
 		ccv_array_t* const binded_destinations = inputs[i]->binded_destinations;
 		for (j = 0; j < binded_destinations->rnum; j++)
 			_ccv_nnc_insert_if_prior_to_any(dynamic_graph->symbolic,
 				((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(binded_destinations, j))->d,
-				sources, visited,
+				sources, (uint32_t*)ccv_array_get(ws, exec_symbol_info_size * 2),
 				(int*)ccv_array_get(ws, 0), (int*)ccv_array_get(ws, exec_symbol_info_size));
 	}
-	ccfree(visited);
 	ccv_nnc_tensor_symbol_t input_symbols[input_size];
 	for (i = 0; i < input_size; i++)
 		input_symbols[i] = inputs[i]->symbol;
@@ -355,31 +353,6 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		.tensor = df_tensor
 	};
 	ccv_array_push(tensor_binds, &df_bind);
-	for (i = 0; i < exec_symbol_info_size; i++)
-	{
-		// Skip the one for f_variable so make everything still connected somewhat.
-		if (i == f_variable->binded_source.d)
-			continue;
-		ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dynamic_graph->symbolic->exec_symbol_info, i);
-		if (exec_symbol_info->outgoings)
-		{
-			ccv_array_clear(dynamic_graph->ws);
-			for (j = 0; j < exec_symbol_info->outgoings->rnum; j++)
-			{
-				const int outgoing_idx = *(int*)ccv_array_get(exec_symbol_info->outgoings, j);
-				if (outgoing_idx >= exec_symbol_info_size) // It is backward exec
-					ccv_array_push(dynamic_graph->ws, &outgoing_idx);
-			}
-			for (j = 0; j < dynamic_graph->ws->rnum; j++)
-				ccv_nnc_graph_exec_symbol_disjoin(dynamic_graph->symbolic, (ccv_nnc_graph_exec_symbol_t){
-					.d = i,
-					.graph = dynamic_graph->symbolic
-				}, (ccv_nnc_graph_exec_symbol_t){
-					.d = *(int*)ccv_array_get(dynamic_graph->ws, j),
-					.graph = dynamic_graph->symbolic
-				});
-		}
-	}
 	ccv_nnc_graph_exec_symbol_t destinations[output_size];
 	for (i = 0; i < output_size; i++)
 		destinations[i] = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->symbolic, outputs[i]->symbol);
