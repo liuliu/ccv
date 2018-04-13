@@ -46,7 +46,7 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	ccfree(graph);
 }
 
-ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
+ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
 {
 	ccv_nnc_tensor_variable_t tensor_variable = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
 	ccv_array_push(graph->var, &tensor_variable);
@@ -147,7 +147,22 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	ccv_nnc_graph_exec_symbol_t input_sources[ccv_max(1, input_size)];
 	for (i = 0; i < input_size; i++)
 		input_sources[i] = inputs[i]->binded_source;
-
+	int flag = 0;
+	for (i = 0; !flag && i < output_size; i++)
+		flag = ccv_nnc_is_tensor_auto(outputs[i]->symbol.info);
+	// One extra step, infer the parameters for outputs.
+	if (flag)
+	{
+		ccv_nnc_tensor_param_t input_params[ccv_max(1, input_size)];
+		for (i = 0; i < input_size; i++)
+			input_params[i] = inputs[i]->symbol.info;
+		ccv_nnc_tensor_param_t output_params[ccv_max(1, output_size)];
+		for (i = 0; i < output_size; i++)
+			output_params[i] = outputs[i]->symbol.info;
+		ccv_nnc_hint_tensor_auto(cmd, input_params, input_size, hint, output_params, output_size);
+		for (i = 0; i < output_size; i++)
+			outputs[i]->symbol.info = output_params[i];
+	}
 	// Refresh the symbol if it is binded to an existing exec. Otherwise we cannot keep the SSA guarantee.
 	for (i = 0; i < output_size; i++)
 		if (outputs[i]->binded_source.d >= 0)

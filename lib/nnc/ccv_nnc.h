@@ -594,7 +594,11 @@ typedef struct ccv_nnc_tensor_variable_s* ccv_nnc_tensor_variable_t;
 // Create a dynamic graph.
 CCV_WARN_UNUSED(ccv_nnc_dynamic_graph_t*) ccv_nnc_dynamic_graph_new(void);
 // Get a new tensor variable.
-CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+#define CCV_NNC_TENSOR_VARIABLE_NEW_X_1(graph) ccv_nnc_tensor_variable_new_impl(graph, ccv_nnc_tensor_auto)
+#define CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(_1, _2, _FX, ...) _FX
+// Making so that this new method can take parameters for both no parameter or with tensor_param.
+#define ccv_nnc_tensor_variable_new(...) CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(__VA_ARGS__, ccv_nnc_tensor_variable_new_impl, CCV_NNC_TENSOR_VARIABLE_NEW_X_1)(__VA_ARGS__)
 // Create a new tensor variable that is an alias of a given tensor variable.
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 // Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this method.
