@@ -136,7 +136,7 @@ When doing *automatic differentiation*, a `ccv_nnc_tensor_tape_t` need to be pro
 
  4. The allocated tensor size can go up to `min(UINT64_MAX, SIZE_MAX)`.
 
- 5. A computation can only depend on no more than 2^16 other computations. This is determined by a core macro `CCV_NNC_GRAPH_VISIT`.
+ 5. A computation can only depend on no more than `2^16` other computations. This is determined by a core macro `CCV_NNC_GRAPH_VISIT`.
 
  6. The sub-graph can go as deep as `2^(31 - 4)`, otherwise the outer-most while count tensor cannot be referenced by the inner-most sub-graph.
 

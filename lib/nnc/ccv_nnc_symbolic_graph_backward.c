@@ -1455,7 +1455,7 @@ static void _ccv_nnc_add_backward_breakpoint_for_symbol(const ccv_nnc_symbolic_g
 static ccv_nnc_autograd_tensor_symbol_t* _ccv_nnc_autograd_tensor_symbol_from_tensor_version(ccv_array_t* const autograd_tensor_symbols, const ccv_nnc_autograd_tensor_version_t* const tensor_ver)
 {
 	assert(tensor_ver->ref_version);
-	ccv_nnc_tensor_ref_t* const tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
+	const ccv_nnc_tensor_ref_t* const tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
 	return (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 }
 
@@ -1944,7 +1944,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		const ccv_nnc_autograd_tensor_version_t* const tensor_ver = autograd_tensor_versions + d;
 		if (tensor_ver->ref_version)
 		{
-			ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = _ccv_nnc_autograd_tensor_symbol_from_tensor_version(autograd_tensor_symbols, tensor_ver);
+			// We don't use _ccv_nnc_autograd_tensor_symbol_from_tensor_version because that select the last version, but for us, we need the first version.
+			const ccv_nnc_tensor_ref_t* const tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, 0);
+			const ccv_nnc_autograd_tensor_symbol_t* const autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 			graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
 			// Cannot find relevant backward exec symbols for f, it could be many.
 		}
