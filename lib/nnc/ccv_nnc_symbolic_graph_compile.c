@@ -1214,6 +1214,19 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)mv_pos;
 			ccv_array_push(tensor_arena->m_tensor_idx, &mv_pos);
 		}
+	// Handle binded tensors. We handle it here so the alias can reference to binded tensors.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		assert(tensor_binds[i].tensor);
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
+		if (resolved_symbol.d >= 0)
+		{
+			// For binded tensors, it shouldn't be assigned yet.
+			assert(tensor_arena->vt_tensors[resolved_symbol.d] == 0);
+			// I have to cast this, unfortunately.
+			tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+		}
+	}
 	// Now it is time to handle alias.
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
@@ -1226,6 +1239,26 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				const int alias_ref = tensor_symbol_info[block_ref].alias_ref - 1;
 				// It referenced to is not an alias.
 				assert(tensor_arena->vt_tensors[alias_ref]);
+				// If this is not alias (it is binded then).
+				if (!CCV_NNC_IS_METADATA_POS(tensor_arena->vt_tensors[alias_ref]))
+				{
+					int pos;
+					if (memcmp(ccv_nnc_no_ofs, tensor_symbol_info[block_ref].ofs, sizeof(ccv_nnc_no_ofs)) == 0 &&
+						memcmp(tensor_symbol_info[block_ref].inc, tensor_symbol_info[block_ref].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
+					{
+						pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+						ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+						*tensor = ccv_nnc_tensor(tensor_arena->vt_tensors[alias_ref]->data.u8, tensor_symbol_info[block_ref].info, 0);
+					} else {
+						pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+						ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+						// Otherwise initialize a tensor view
+						*tensor_view = ccv_nnc_tensor_view(tensor_arena->vt_tensors[alias_ref], tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
+						tensor_view->alias_ref = (uintptr_t)tensor_arena->vt_tensors[alias_ref];
+					}
+					tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+					continue;
+				}
 				const int alias_pos = (int)(intptr_t)tensor_arena->vt_tensors[alias_ref];
 				const ccv_nnc_tensor_t* alias_tensor_ptr = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, alias_pos);
 				assert(!CCV_IS_TENSOR_VIEW(alias_tensor_ptr));
@@ -1249,20 +1282,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
 					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
 					// Otherwise initialize a tensor view
-					// 1). Simple case, if the inc is equal to original tensor, just init a tensor view.
-					if (memcmp(alias_tensor.info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
-					{
-						*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
-						tensor_view->alias_ref = (uintptr_t)alias_pos;
-					} else {
-						// Otherwise, create the tensor first, and then create the tensor view off the new tensor.
-						ccv_nnc_tensor_param_t info = tensor_symbol_info[block_ref].info;
-						memcpy(info.dim, tensor_symbol_info[block_ref].inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-						assert(ccv_nnc_tensor_count(info) <= ccv_nnc_tensor_count(alias_tensor.info));
-						ccv_nnc_tensor_t tensor = ccv_nnc_tensor(alias_tensor.data.u8, info, 0);
-						*tensor_view = ccv_nnc_tensor_view(&tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
-						tensor_view->alias_ref = (uintptr_t)alias_pos;
-					}
+					*tensor_view = ccv_nnc_tensor_view(&alias_tensor, tensor_symbol_info[block_ref].info.dim, tensor_symbol_info[block_ref].ofs, tensor_symbol_info[block_ref].inc);
+					tensor_view->alias_ref = (uintptr_t)alias_pos;
 				}
 				tensor_arena->vt_tensors[block_ref] = (ccv_nnc_tensor_t*)(intptr_t)pos;
 				if (is_multiview)
@@ -1383,19 +1404,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		}
 	if (sub_arena_out_tensors)
 		ccfree(sub_arena_out_tensors);
-	// Handle binded tensors.
-	for (i = 0; i < tensor_bind_size; i++)
-	{
-		assert(tensor_binds[i].tensor);
-		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
-		if (resolved_symbol.d >= 0)
-		{
-			// For binded tensors, it shouldn't be assigned yet.
-			assert(tensor_arena->vt_tensors[resolved_symbol.d] == 0);
-			// I have to cast this, unfortunately.
-			tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
-		}
-	}
 	// Rewire sub arena's tensor references.
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])

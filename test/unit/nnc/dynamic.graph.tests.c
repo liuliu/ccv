@@ -91,10 +91,8 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 	xt->data.f32[3] = xt->data.f32[0] * 0.484 + xt->data.f32[1] * 0.912 + xt->data.f32[2] * 0.235 + 0.3;
 	REQUIRE_MATRIX_EQ(ccv_nnc_tensor_from_variable(graph, x), xt, "1x4 matrix should be exactly the same");
 	ccv_nnc_tensor_free(xt);
-	/*
 	ccv_nnc_tensor_variable_t dw1 = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_backward(graph, x, TENSOR_VARIABLE_LIST(w1), TENSOR_VARIABLE_LIST(dw1));
-	*/
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
