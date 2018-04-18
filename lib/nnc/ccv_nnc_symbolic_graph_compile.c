@@ -1680,7 +1680,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 	return 0;
 }
 
-static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const p_node_info, const int all_p_node_flags, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int unroll_count, const int* const dup_tensor_block_ref, const int* const dup_tensor_from_ref, const int* const dup_exec_from_ref, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
+static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const p_node_info, const int all_p_node_flags, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int unroll_count, const int* const dup_tensor_block_ref, const int* const dup_tensor_from_ref, const int* const dup_exec_from_ref, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
 {
 	int i, j;
 	// Generate exec dependencies (or, in other words, partial ordering of executions).
@@ -1743,6 +1743,33 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (node->outputs[i] >= 0)
 				tensor_blocks[node->outputs[i]].flags = 0;
 	} ccv_nnc_graph_visit_endfor
+	if (p_node_info)
+	{
+		assert(p_tensor_symbol_info);
+		// Mark it as used if it is used in either input or output.
+		for (i = 0; i < p_node_info->input_size; i++)
+			if (p_node_info->inputs[i] >= 0)
+			{
+				const int d = p_node_info->inputs[i];
+				if (p_tensor_symbol_info[d].s_ref && p_tensor_symbol_info[d].s_ref->rnum >= symbolic_graph->p_idx)
+				{
+					const int dd = *(int*)ccv_array_get(p_tensor_symbol_info[d].s_ref, symbolic_graph->p_idx - 1) - 1;
+					if (dd >= 0) // If this exists in this sub-graph, great.
+						tensor_blocks[dd].flags = 0;
+				}
+			}
+		for (i = 0; i < p_node_info->output_size; i++)
+			if (p_node_info->outputs[i] >= 0)
+			{
+				const int d = p_node_info->outputs[i];
+				if (p_tensor_symbol_info[d].s_ref && p_tensor_symbol_info[d].s_ref->rnum >= symbolic_graph->p_idx)
+				{
+					const int dd = *(int*)ccv_array_get(p_tensor_symbol_info[d].s_ref, symbolic_graph->p_idx - 1) - 1;
+					if (dd >= 0) // If this exists in this sub-graph, great.
+						tensor_blocks[dd].flags = 0;
+				}
+			}
+	}
 	// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
 	// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
 	// fold to).
@@ -1813,19 +1840,31 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
 		if (tensor_symbol_info[i].alias_ref)
 		{
-			// An alias cannot ref to another alias.
-			assert(!tensor_symbol_info[tensor_symbol_info[i].alias_ref - 1].alias_ref);
-			tensor_blocks[i].flags = ALIAS;
-			tensor_blocks[i].ref = tensor_symbol_info[i].alias_ref; // Assign the ref.
-			const int ref = tensor_blocks[i].ref - 1;
-			// If the referenced one is unassigned, at list first make it assigned.
-			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]))
+			const int ref = tensor_symbol_info[i].alias_ref - 1;
+			// If the referenced one is unassigned, mark this as assigned only if current one is assigned.
+			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
 				tensor_blocks[ref].flags = 0;
+			// An alias cannot ref to another alias.
+			assert(!tensor_symbol_info[ref].alias_ref);
+			tensor_blocks[i].flags = ALIAS;
+			tensor_blocks[i].ref = ref + 1; // Assign the ref.
 			if (!tensor_blocks[ref].r_refs)
 				tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0);
 			ccv_array_replace_int(tensor_blocks[ref].r_refs, i + 1, i + 1);
 		}
 	}
+	// Scan again and if the ref is not assigned, mark the alias not assigned.
+	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
+		if (TENSOR_EXPECT_ALIAS(tensor_blocks[i]))
+		{
+			const int ref = tensor_blocks[i].ref - 1;
+			if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]))
+			{
+				// Mark this as unassigned.
+				tensor_blocks[i].flags = UNASSIGNED;
+				tensor_blocks[i].ref = 0;
+			}
+		}
 	// Ignore tensors that are already binded, no matter if it is used or not.
 	for (i = 0; i < tensor_bind_size; i++)
 	{
@@ -1836,6 +1875,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			// Doesn't work if this is a loop carrying variable.
 			assert(!tensor_symbol_info[resolved_symbol.d].assign_ref);
 			tensor_blocks[resolved_symbol.d].flags = UNASSIGNED;
+			tensor_blocks[resolved_symbol.d].ref = 0; // No need to have ref as well.
 		}
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
@@ -2375,7 +2415,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 	}
 	// Reset all attr.
 	memset(exec_flags, 0, sizeof(ccv_nnc_graph_exec_flag_t) * symbolic_graph->exec_symbol_info->rnum);
-	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, p_node_info, all_p_node_flags, dup_visit, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, dup_exec_symbol_info, dup_tensor_symbol_info, unroll_count, dup_tensor_block_ref, dup_tensor_from_ref, dup_exec_from_ref, exec_flags, &exec_dep, &tensor_blocks);
+	_ccv_nnc_exec_dep_and_tensor_blocks_prep(dup_graph, p_node_info, all_p_node_flags, dup_visit, tensor_binds, tensor_bind_size, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->sources, 0), dup_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(dup_graph->destinations, 0), dup_graph->destinations->rnum, p_tensor_symbol_info, p_tensor_symbol_info_size, dup_exec_symbol_info, dup_tensor_symbol_info, unroll_count, dup_tensor_block_ref, dup_tensor_from_ref, dup_exec_from_ref, exec_flags, &exec_dep, &tensor_blocks);
 	ccv_nnc_graph_visit_free(dup_visit);
 	ccfree(dup_exec_symbol_info);
 	ccfree(dup_exec_from_ref);
@@ -2652,7 +2692,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	const ccv_nnc_graph_exec_symbol_info_t* const  p_node_info = p_exec_symbol_info ? p_exec_symbol_info + (symbolic_graph->exec_idx - 1) : 0;
 	ccv_sparse_matrix_t* exec_dep;
 	ccv_nnc_tensor_block_t* tensor_blocks;
-	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, p_node_info, all_p_node_flags, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, exec_symbol_info, tensor_symbol_info, 0, 0, 0, 0, exec_flags, &exec_dep, &tensor_blocks);
+	_ccv_nnc_exec_dep_and_tensor_blocks_prep(symbolic_graph, p_node_info, all_p_node_flags, visit, tensor_binds, tensor_bind_size, sources, source_size, destinations, destination_size, p_tensor_symbol_info, p_tensor_symbol_info_size, exec_symbol_info, tensor_symbol_info, 0, 0, 0, 0, exec_flags, &exec_dep, &tensor_blocks);
 	int tensor_block_size = symbolic_graph->tensor_symbol_info->rnum;
 	// Now, everything is prepared, tensor life is analyzed, inplace operations are collapsed, all tensor symbols and hints
 	// are automatically filled in, and all the sub-graphs are processed.
