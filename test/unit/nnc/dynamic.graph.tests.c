@@ -93,6 +93,7 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 	ccv_nnc_tensor_free(xt);
 	ccv_nnc_tensor_variable_t dw1 = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_backward(graph, x, TENSOR_VARIABLE_LIST(w1), TENSOR_VARIABLE_LIST(dw1));
+	REQUIRE_EQ_WITH_TOLERANCE((0.235 * 0.886 + 0.912) * 0.472, ccv_nnc_tensor_from_variable(graph, dw1)->data.f32[0], 1e-5, "the gradient should be equal to a complicated result");
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
