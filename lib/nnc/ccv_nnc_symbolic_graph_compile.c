@@ -1310,6 +1310,8 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its peer.
 				if (sub_tensor && CCV_IS_TENSOR_MULTIVIEW(sub_tensor) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
 				{
+					// It cannot be binded tensor.
+					assert(CCV_NNC_IS_METADATA_POS(tensor_arena->vt_tensors[idx]));
 					const int vt_pos = (int)(intptr_t)tensor_arena->vt_tensors[idx];
 					const int is_sub_arena_out_tensor = (sub_arena_out_tensors && sub_arena_out_tensors[idx]);
 					ccv_nnc_tensor_t* const vt_tensor = is_sub_arena_out_tensor ? sub_arena_out_tensors[idx] : _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, vt_pos);
@@ -1338,6 +1340,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		if (tensor_blocks[i].bypass_ref && tensor_arena->vt_tensors[i])
 		{
+			assert(CCV_NNC_IS_METADATA_POS(tensor_arena->vt_tensors[i]));
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
 			assert(mv->anchor == CCV_NNC_MULTIVIEW_PHI);
 			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)_ccv_nnc_tensor_flat_if_multiview(tensor_arena->tensor_metadata, (int)(intptr_t)tensor_arena->vt_tensors[i]);
