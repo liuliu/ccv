@@ -123,17 +123,24 @@ cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(c
 	return desc;
 }
 
-cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context)
-{
-	cudnnTensorDescriptor_t desc;
-	cudnnCreateTensorDescriptor(&desc);
-	return desc;
-}
-
 cudnnFilterDescriptor_t ccv_nnc_stream_context_get_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnFilterDescriptor_t desc;
 	cudnnCreateFilterDescriptor(&desc);
+	return desc;
+}
+
+cudnnPoolingDescriptor_t ccv_nnc_stream_context_get_pooling_descriptor(const ccv_nnc_stream_context_t* const stream_context)
+{
+	cudnnPoolingDescriptor_t desc;
+	cudnnCreatePoolingDescriptor(&desc);
+	return desc;
+}
+
+cudnnTensorDescriptor_t ccv_nnc_stream_context_get_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context)
+{
+	cudnnTensorDescriptor_t desc;
+	cudnnCreateTensorDescriptor(&desc);
 	return desc;
 }
 
@@ -142,14 +149,19 @@ void ccv_nnc_stream_context_return_convolution_descriptor(const ccv_nnc_stream_c
 	cudnnDestroyConvolutionDescriptor(convolution_descriptor);
 }
 
-void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnTensorDescriptor_t tensor_descriptor)
-{
-	cudnnDestroyTensorDescriptor(tensor_descriptor);
-}
-
 void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnFilterDescriptor_t filter_descriptor)
 {
 	cudnnDestroyFilterDescriptor(filter_descriptor);
+}
+
+void ccv_nnc_stream_context_return_pooling_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnPoolingDescriptor_t pooling_desc)
+{
+	cudnnDestroyPoolingDescriptor(pooling_desc);
+}
+
+void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnTensorDescriptor_t tensor_descriptor)
+{
+	cudnnDestroyTensorDescriptor(tensor_descriptor);
 }
 
 ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)

@@ -124,6 +124,7 @@ TEST_CASE("batch norm in dynamic graph (enforce inplace)")
 		ccv_nnc_tensor_from_variable(graph, var)->data.f32[i] = 0;
 	ccv_nnc_tensor_t* var_tensor_ptr = ccv_nnc_tensor_from_variable(graph, var);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_BATCH_NORM_FORWARD(0, 0, 0.9, 0, 1, 2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, scale, bias, mean, var), TENSOR_VARIABLE_LIST(y, mean, var, saved_mean, saved_inv_std));
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	REQUIRE(mean_tensor_ptr == ccv_nnc_tensor_from_variable(graph, mean), "enforced inplace, tensor view pointer unchanged");
 	REQUIRE(var_tensor_ptr == ccv_nnc_tensor_from_variable(graph, var), "enforced inplace, tensor view pointer unchanged");
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 2, 2, 10), 0);
@@ -166,6 +167,7 @@ TEST_CASE("empty inputs / outputs for dynamic graph")
 	ccv_nnc_tensor_from_variable(graph, df)->data.f32[0] = 1;
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWDIV_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(df, 0, x), TENSOR_VARIABLE_LIST(y, 0));
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], 1. / 10, 1e-5, "div backward should equal to 1 / 10");
 	ccv_nnc_dynamic_graph_free(graph);
 }

@@ -73,14 +73,14 @@ static int _ccv_nnc_avg_pool_back_bitmask(const uint64_t* const input_bitmasks, 
 }
 
 REGISTER_COMMAND(CCV_NNC_AVERAGE_POOL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_avg_pool_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_avg_pool_cpu_ref.c, gpu/ccv_nnc_avg_pool_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_avg_pool_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_AVERAGE_POOL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_avg_pool_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_avg_pool_cpu_ref.c, gpu/ccv_nnc_avg_pool_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_avg_pool_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_back;
