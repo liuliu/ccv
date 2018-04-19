@@ -602,7 +602,7 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new_impl(ccv_
 // Create a new tensor variable that is an alias of a given tensor variable.
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 // Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this method.
-CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
 // Execute a command with given tensor variables, the output is in the output tensor variables.
 int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
 // Compute the gradient of given tensor, with respect to the f. Thus, df / dt.
