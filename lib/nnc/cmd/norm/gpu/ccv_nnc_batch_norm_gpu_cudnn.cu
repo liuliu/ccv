@@ -25,7 +25,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		assert(cmd.info.bnorm.count == 3);
 		assert(CCV_NNC_MAX_DIM == 2);
 	}
-	const float one = 1, zero = 0;
+	static const float one = 1, zero = 0;
 	if (!cmd.info.bnorm.is_test)
 	{
 		assert(output_size == 5);
@@ -84,7 +84,7 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		assert(cmd.info.bnorm.count == 3);
 		assert(CCV_NNC_MAX_DIM == 2);
 	}
-	const float one = 1, zero = 0;
+	static const float one = 1, zero = 0;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[5]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);

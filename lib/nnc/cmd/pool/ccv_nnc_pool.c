@@ -40,14 +40,14 @@ static void _ccv_nnc_pool_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const 
 }
 
 REGISTER_COMMAND(CCV_NNC_MAX_POOL_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_max_pool_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_max_pool_cpu_ref.c, gpu/ccv_nnc_max_pool_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_max_pool_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_forw;
 }
 
 REGISTER_COMMAND(CCV_NNC_MAX_POOL_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_max_pool_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_max_pool_cpu_ref.c, gpu/ccv_nnc_max_pool_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_max_pool_back_bitmask;
 	registry->tensor_auto = _ccv_nnc_pool_tensor_auto_back;

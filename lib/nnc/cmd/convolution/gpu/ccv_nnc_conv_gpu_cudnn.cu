@@ -73,7 +73,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// TODO: If error, return OOM
 	if (workspace_size)
 		cudaMalloc(&workspace, workspace_size);
-	const float one = 1, zero = 0;
+	static const float one = 1, zero = 0;
 	assert_cudnn(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
 	assert_cudnn(cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8));
 	if (workspace)
@@ -216,7 +216,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// TODO: If error, return OOM
 	if (workspace_size)
 		cudaMalloc(&workspace, workspace_size);
-	const float one = 1, zero = 0;
+	static const float one = 1, zero = 0;
 	if ((flags & CCV_NNC_ACCUMULATE_OUTPUT)) // accumulating results to bias and dw
 	{
 		assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));

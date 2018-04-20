@@ -93,7 +93,7 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 				for (j[0] = 0; j[0] < m[0]; j[0]++)
 				{
 					for (j[1] = 0; j[1] < m[1]; j[1]++)
-						hpz[j[1] * hinc[1]] += u;
+						hpz[j[1] * hinc[CCV_NNC_MAX_DIM]] += u;
 					hpz += hinc[CCV_NNC_MAX_DIM - 1] * hinc[CCV_NNC_MAX_DIM];
 				}
 			}

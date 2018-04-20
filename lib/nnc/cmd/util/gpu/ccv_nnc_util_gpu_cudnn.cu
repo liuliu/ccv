@@ -20,7 +20,7 @@ static int _ccv_nnc_format_transform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[i]);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
-		const float one = 1, zero = 0;
+		static const float one = 1, zero = 0;
 		assert_cudnn(cudnnTransformTensor(cudnn, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
@@ -79,7 +79,7 @@ static int _ccv_nnc_set_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	for (i = 0; i < output_size; i++)
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[i]);
-		const float zero = 0;
+		static const float zero = 0;
 		assert_cudnn(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &zero));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	}

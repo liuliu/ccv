@@ -301,4 +301,139 @@ TEST_CASE("compare average pooling with cudnn")
 	ccv_nnc_tensor_free(cpu_y);
 }
 
+TEST_CASE("compare average pooling gradient with cudnn")
+{
+	if (!ccv_nnc_cmd_ok(CCV_NNC_AVERAGE_POOL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN))
+		return;
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 7, 7, 10), "dx");
+	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 3, 3, 10), "dy");
+	ccv_nnc_graph_exec_symbol_t avg_pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_BACKWARD(5, 5), TENSOR_SYMBOL_LIST(dy), TENSOR_SYMBOL_LIST(dx), "avg_pool");
+	ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, avg_pool, HINT((2, 2), (1, 1)));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const dy_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 10), 0);
+	int i;
+	for (i = 0; i < 3 * 3 * 10; i++)
+		dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const dyt = ccv_nnc_tensor_from_symbol(tensor_arena, dy);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor), TENSOR_LIST(dyt), 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	ccv_nnc_cmd_exec(CMD_AVERAGE_POOL_BACKWARD(5, 5), HINT((2, 2), (1, 1)), 0, TENSOR_LIST(dy_tensor), TENSOR_LIST(dx_tensor), 0);
+	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	ccv_nnc_tensor_t* const cpu_dx = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(cpu_dx), 0);
+	REQUIRE_TENSOR_EQ(dx_tensor, cpu_dx, "cudnn result should equal to cpu result");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(dy_tensor);
+	ccv_nnc_tensor_free(dx_tensor);
+	ccv_nnc_tensor_free(cpu_dx);
+}
+
+TEST_CASE("compare max pooling with cudnn")
+{
+	if (!ccv_nnc_cmd_ok(CCV_NNC_MAX_POOL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN))
+		return;
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 7, 7, 10), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 3, 3, 10), "y");
+	ccv_nnc_graph_exec_symbol_t max_pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MAX_POOL_FORWARD(5, 5), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "avg_pool");
+	ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, max_pool, HINT((2, 2), (1, 1)));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	int i;
+	for (i = 0; i < 7 * 7 * 10; i++)
+		x_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 10), 0);
+	ccv_nnc_cmd_exec(CMD_MAX_POOL_FORWARD(5, 5), HINT((2, 2), (1, 1)), 0, TENSOR_LIST(x_tensor), TENSOR_LIST(y_tensor), 0);
+	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	ccv_nnc_tensor_t* const cpu_y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 10), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(yt), TENSOR_LIST(cpu_y), 0);
+	REQUIRE_TENSOR_EQ(y_tensor, cpu_y, "cudnn result should equal to cpu result");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(cpu_y);
+}
+
+TEST_CASE("compare max pooling gradient with cudnn")
+{
+	if (!ccv_nnc_cmd_ok(CCV_NNC_MAX_POOL_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) ||
+		!ccv_nnc_cmd_ok(CCV_NNC_MAX_POOL_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN))
+		return;
+	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 7, 7, 10), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_GPU_TENSOR(00, 3, 3, 10), "y");
+	ccv_nnc_graph_exec_symbol_t max_pool = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MAX_POOL_FORWARD(5, 5), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(y), "avg_pool");
+	ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, max_pool, HINT((2, 2), (1, 1)));
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x));
+	ccv_nnc_tensor_symbol_t dy = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, y);
+	ccv_nnc_tensor_symbol_t dx = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x);
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i;
+	ccv_nnc_tensor_t* const dy_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 10), 0);
+	for (i = 0; i < 3 * 3 * 10; i++)
+		dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const dyt = ccv_nnc_tensor_new(0, ONE_GPU_TENSOR(00, 3, 3, 10), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dy_tensor), TENSOR_LIST(dyt), 0);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, TENSOR_BIND_MAP(KV(dy, dyt)), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	for (i = 0; i < 7 * 7 * 10; i++)
+		x_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3, 3, 10), 0);
+	ccv_nnc_cmd_exec(CMD_MAX_POOL_FORWARD(5, 5), HINT((2, 2), (1, 1)), 0, TENSOR_LIST(x_tensor), TENSOR_LIST(y_tensor), 0);
+	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	ccv_nnc_cmd_exec(CMD_MAX_POOL_BACKWARD(5, 5), HINT((2, 2), (1, 1)), 0, TENSOR_LIST(dy_tensor, x_tensor, y_tensor), TENSOR_LIST(dx_tensor), 0);
+	ccv_nnc_tensor_t* const dxt = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
+	ccv_nnc_tensor_t* const cpu_dx = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(7, 7, 10), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dxt), TENSOR_LIST(cpu_dx), 0);
+	REQUIRE_TENSOR_EQ(dx_tensor, cpu_dx, "cudnn result should equal to cpu result");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_graph_free(graph);
+	ccv_nnc_tensor_free(x_tensor);
+	ccv_nnc_tensor_free(y_tensor);
+	ccv_nnc_tensor_free(dx_tensor);
+	ccv_nnc_tensor_free(dy_tensor);
+	ccv_nnc_tensor_free(cpu_dx);
+	ccv_nnc_tensor_free(dyt);
+}
+
 #include "case_main.h"
