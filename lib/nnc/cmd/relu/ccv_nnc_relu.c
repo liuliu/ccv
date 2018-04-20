@@ -16,13 +16,13 @@ static int _ccv_nnc_relu_forw_bitmask(const uint64_t* const input_bitmasks, cons
 
 static int _ccv_nnc_relu_back_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
+	if ((input_bitmasks[0] & 5u) == ((1u << 0) | (1u << 2)) && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
 
 REGISTER_COMMAND(CCV_NNC_RELU_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_relu_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_relu_cpu_ref.c, gpu/ccv_nnc_relu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_relu_forw_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_forward_from_inputs;
@@ -30,7 +30,7 @@ REGISTER_COMMAND(CCV_NNC_RELU_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 REGISTER_COMMAND(CCV_NNC_RELU_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_relu_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_relu_cpu_ref.c, gpu/ccv_nnc_relu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_relu_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
