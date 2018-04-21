@@ -3,7 +3,7 @@ NNC: Neural Network Collection
 
 ## What's NNC?
 
-NNC is the natural progression against `ccv_convnet`, which is a couple of years old now. `ccv_convnet` is monolithic, single path neural layer design didn't really feel right with more advanced network architectures.
+NNC is the natural progression against `ccv_convnet`, which is a couple of years old now. `ccv_convnet`'s monolithic, single path neural layer design didn't really feel right with more advanced network architectures.
 
 NNC took some good ideas from more recent neural network frameworks and did a long re-think on how to achieve both efficiency and expressiveness. The design itself is layered. At the highest layer, you have ordinary neural network primitives that reflect real-world usage such as Inception module, LSTM, RNN et al. At the lowest layer, depending on the infrastructure, it maps to allocated tensors on GPU, computations backed by CuDNN, and computation graphs driven with CUDA streams (or you can exchange that with CPU, Metal, and libdispatch). For the abstractions in between, there are trade-offs and constraints to accommodating both the library design and usage.
 

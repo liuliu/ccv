@@ -1563,5 +1563,5 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 	// If still point to any device, assign default device 00 to it.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (CCV_TENSOR_GET_DEVICE(tensor_symbol_info[i].info.type) == CCV_COMPUTE_DEVICE_ANY)
-			tensor_symbol_info[i].info.type = (~CCV_COMPUTE_DEVICE_ANY & tensor_symbol_info[i].info.type) | CCV_COMPUTE_DEVICE_00;
+			tensor_symbol_info[i].info.type = (~CCV_COMPUTE_DEVICE_ANY & tensor_symbol_info[i].info.type) | CCV_COMPUTE_DEVICE_000;
 }
