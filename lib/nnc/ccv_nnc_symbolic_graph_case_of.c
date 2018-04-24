@@ -5,7 +5,7 @@
 #include "_ccv_nnc_symbolic_graph.h"
 
 /**
- * Level-4 API
+ * Level-3.5 API
  */
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_case_of_new(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size, const char* const name)

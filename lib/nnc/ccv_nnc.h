@@ -269,6 +269,8 @@ typedef struct {
 enum {
 	CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS = 0x01, // Initialize underlying tensor for the symbol with zeros
 	CCV_NNC_TENSOR_SYMBOL_TAPE_VAR = 0x02, // Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC)
+	// The one below is special.
+	CCV_NNC_TENSOR_SYMBOL_DEAD = 0x80000000, // Mark this tensor symbol as dead, any future usage will cause assertion
 };
 
 enum {
@@ -578,6 +580,38 @@ void ccv_nnc_symbolic_graph_set_case_of(ccv_nnc_symbolic_graph_t* const graph, c
 ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int argument_offset, const int argument_size);
 void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_case_of_f case_of, const void* case_of_data, const int offset);
 void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of);
+
+// Symbolic graph simplification.
+//
+// We make a distinction between graph simplifications and optimizations (autotune).
+//
+// Simplification: rewrite the graph and the resulting graph will have less nodes. This is done on the symbolic graph only. Passes that is
+// "simplification" include pruning, common sub-expression eliminations, constant folding etc.
+//
+// Optimization (autotune): graph optimization can have more objectives. The most obvious objective is to reduce computation time. For
+// symbolic graph, passes that reduces computation time include data layout optimizations, auto parallel etc (in normal optimization
+// implementations, they have a cost model to guide the optimization. NNC's implementation uses a cost database that profiles the time
+// cost on the device to guide the optimization. We call it autotune to distinguish with the normal optimization passes because we need
+// device profile data). There could be other objectives, for example, in many deep learning applications, reducing memory footprint can
+// be desirable. However, as always in computer science, memory and time is a typical trade-off. Memory optimization almost always results
+// longer computation time, and the objective is to trade between these two with a bias term (in other frameworks such as TensorFlow, the
+// memory optimizer uses a list of "cheap ops" to bias between the time and memory footprint).
+//
+// For graph optimizations, it can happen on both the symbolic graph level as well as the concrete graph level. For NNC, symbolic graph
+// is already very explicit (data layout, device allocation and data transfer between devices / nodes, even the command backend can all
+// be specified on the symbolic graph), however, some information is unknown until it is compiled down to concrete graph (tensor addresses,
+// tensor initialization etc.), and since graph optimizations need all the information to optimize. Keeping the flexibility to do
+// optimization on both symbolic and concrete graph level seems reasonable.
+
+enum {
+	// If two commands generated the same outputs, all the places where the newer output used will be replaced by the old output.
+	// Later on the graph pruning stage, the command that generate the newer output will be eliminated.
+	CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
+	// For the given outputs, eliminate unused input tensors, and then eliminate graph execs that don't contribute to the outputs.
+	CCV_NNC_SIMPLIFY_GRAPH_PRUNING,
+	// CCV_NNC_SIMPLIFY_CONSTANT_FOLDING, // This currently is not supported, because we don't have efficient way to express constant in symbolic graph.
+};
+void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 
 /**
  * Level-4 API

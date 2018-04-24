@@ -5,7 +5,7 @@
 #include "_ccv_nnc_symbolic_graph.h"
 
 /**
- * Level-4 API
+ * Level-3.5 API
  */
 
 typedef struct {
