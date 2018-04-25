@@ -234,7 +234,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		return 0;
 	// binary map to see if it fills up.
 	uint32_t cube[(cube_size + 31) >> 5];
-	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 31) >> 5));
+	memset(cube, 0, sizeof(uint32_t) * ((cube_size + 31) >> 5));
 	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {}; // Sparse coordinate map at dimension x.
 	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {};
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
@@ -260,7 +260,7 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	if ((cube_size & 0x1f) > 0)
 	{
 		// Fetch the rest.
-		uint8_t r = 0;
+		uint32_t r = 0;
 		for (i = 0; i < (cube_size & 0x1f); i++)
 			r |= (1u << i);
 		assert(cube[((cube_size + 31) >> 5) - 1] <= r);
