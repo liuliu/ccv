@@ -281,6 +281,20 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					ccv_array_t* const ref_s_ref = simplify->tensor_symbol_info[ref].s_ref;
 					ccv_array_t* const i_s_ref = simplify->tensor_symbol_info[i].s_ref;
 					const int ref_s_ref_rnum = ref_s_ref->rnum;
+					int flag = 0;
+					// Detect conflict, if there is, undead.
+					for (j = 0; !flag && j < ccv_min(ref_s_ref_rnum, i_s_ref->rnum); j++)
+					{
+						const int ref_s_ref_k = *(int*)ccv_array_get(ref_s_ref, j);
+						const int i_s_ref_k = *(int*)ccv_array_get(i_s_ref, j);
+						// If for the same sub-graph, they have different tensors linked, we cannot merge these two.
+						flag = (ref_s_ref_k > 0 && i_s_ref_k > 0 && ref_s_ref_k != i_s_ref_k);
+					}
+					if (flag)
+					{
+						simplify->tensor_dead[i >> 5] &= ~(1u << (i & 0x1f)); // Undead
+						continue;
+					}
 					if (ref_s_ref_rnum < i_s_ref->rnum)
 					{
 						ccv_array_resize(ref_s_ref, i_s_ref->rnum);
