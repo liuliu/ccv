@@ -229,8 +229,8 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					// Merge s_refs from ref[d] later.
 					if (refs[d] != new_d)
 						refs[d] = new_d;
-					((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->inputs[i] = new_d; // It can be replaced.
 					node->inputs[i] = new_d; // It can be replaced.
+					assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->inputs == node->inputs);
 					assert(simplify->output_execs[new_d] >= 0);
 					// Establish new dependency.
 					ccv_nnc_graph_exec_symbol_concat(simplify->graph, (ccv_nnc_graph_exec_symbol_t){
@@ -265,6 +265,43 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 	for (i = 0; i < output_size; i++)
 		// If the output is an alias, that's fine, because if the alias is re-binded, we are good.
 		simplify->tensor_dead[outputs[i].d >> 5] &= ~(1u << (outputs[i].d & 0x1f)); // Undead for output tensor symbols.
+	// Merge s_refs if the tensor is dead.
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (refs[i] >= 0 && (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f))))
+		{
+			const int ref = refs[i];
+			if (simplify->tensor_symbol_info[i].s_ref && simplify->tensor_symbol_info[i].s_ref->rnum)
+			{
+				if (!simplify->tensor_symbol_info[ref].s_ref) // If there is no s_ref, simple, just assign the pointer and set the old one to nil.
+				{
+					simplify->tensor_symbol_info[ref].s_ref = simplify->tensor_symbol_info[i].s_ref;
+					simplify->tensor_symbol_info[i].s_ref = 0;
+					((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->s_ref = 0;
+				} else {
+					ccv_array_t* const ref_s_ref = simplify->tensor_symbol_info[ref].s_ref;
+					ccv_array_t* const i_s_ref = simplify->tensor_symbol_info[i].s_ref;
+					const int ref_s_ref_rnum = ref_s_ref->rnum;
+					if (ref_s_ref_rnum < i_s_ref->rnum)
+					{
+						ccv_array_resize(ref_s_ref, i_s_ref->rnum);
+						memcpy(ccv_array_get(ref_s_ref, ref_s_ref_rnum), ccv_array_get(i_s_ref, ref_s_ref_rnum), sizeof(int) * (i_s_ref->rnum - ref_s_ref_rnum));
+					}
+					for (j = 0; j < ccv_min(ref_s_ref_rnum, i_s_ref->rnum); j++)
+					{
+						const int ref_s_ref_k = *(int*)ccv_array_get(ref_s_ref, j);
+						const int i_s_ref_k = *(int*)ccv_array_get(i_s_ref, j);
+						assert(ref_s_ref_k == 0 || i_s_ref_k == 0);
+						if (i_s_ref_k)
+							*(int*)ccv_array_get(ref_s_ref, j) = i_s_ref_k;
+					}
+					ccv_array_free(simplify->tensor_symbol_info[i].s_ref);
+					simplify->tensor_symbol_info[i].s_ref = 0;
+					((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->s_ref = 0;
+				}
+				assert(simplify->tensor_symbol_info[i].s_ref == ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->s_ref);
+				assert(simplify->tensor_symbol_info[ref].s_ref == ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, ref))->s_ref);
+			}
+		}
 	// Now go over exec to mark them as dead.
 	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
 		if (refs[i] >= 0)
@@ -384,7 +421,7 @@ static void _ccv_nnc_symbolic_graph_pruning_undead_exec(ccv_nnc_symbolic_graph_s
 		} else {
 			// Clean up the inputs.
 			exec_symbol_info->inputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
-			((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->inputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+			assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->inputs == exec_symbol_info->inputs);
 		}
 	for (i = 0; i < exec_symbol_info->output_size; i++)
 		if (output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
@@ -398,7 +435,7 @@ static void _ccv_nnc_symbolic_graph_pruning_undead_exec(ccv_nnc_symbolic_graph_s
 		} else {
 			// Clean up the outputs.
 			exec_symbol_info->outputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
-			((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->outputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+			assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->outputs == exec_symbol_info->outputs);
 		}
 }
 
