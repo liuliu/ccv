@@ -151,7 +151,7 @@ CCV_WARN_UNUSED(uint32_t) ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, cons
 // Run autotune to find the best kernel and configuration for the given input, returned is the modified
 // cmd that contains the updated configuration.
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
-CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
@@ -611,6 +611,7 @@ enum {
 	CCV_NNC_SIMPLIFY_GRAPH_PRUNING,
 	// CCV_NNC_SIMPLIFY_CONSTANT_FOLDING, // This currently is not supported, because we don't have efficient way to express constant in symbolic graph.
 };
+// When a graph is simplified, its sources / destinations are changed as well.
 void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 
 /**

@@ -800,7 +800,7 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 			ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
 			if (symbol_info->outgoings)
 				for (j = 0; j < symbol_info->outgoings->rnum; j++)
-					if (*(int*)ccv_array_get(symbol_info->outgoings, i) == symbol.d)
+					if (*(int*)ccv_array_get(symbol_info->outgoings, j) == symbol.d)
 					{
 						if (j < symbol_info->outgoings->rnum - 1)
 							*(int*)ccv_array_get(symbol_info->outgoings, j) = *(int*)ccv_array_get(symbol_info->outgoings, symbol_info->outgoings->rnum - 1);
@@ -899,6 +899,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			continue;
 		int idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
 		ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, idx);
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags))
+			continue;
 		// Autogen for sub-graphs.
 		if (CCV_NNC_GRAPH_REF(symbol_info)[0])
 			ccv_nnc_graph_exec_symbol_autogen(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(symbol_info)[0] - 1), execs, exec_size, flags);
@@ -909,6 +911,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			continue;
 		int a_idx = CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) ? i : execs[i].d;
 		ccv_nnc_graph_exec_symbol_info_t* a_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, a_idx);
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(a_symbol_info->flags))
+			continue;
 		for (j = i + 1; j < exec_total_size; j++)
 		{
 			if (!CCV_NNC_IS_AUTOGEN_ALL_EXECS(flags) && execs[j].graph != graph)
@@ -918,6 +922,8 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 			if (a_idx == b_idx)
 				continue;
 			ccv_nnc_graph_exec_symbol_info_t* b_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, b_idx);
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(b_symbol_info->flags))
+				continue;
 			int b_to_a = 0;
 			for (x = 0; x < a_symbol_info->input_size && !b_to_a; x++)
 			{
@@ -1003,10 +1009,15 @@ int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, con
 	// If flag says so, loop over to find sources / destinations too.
 	if (CCV_NNC_IS_AUTOGEN_SOURCES_AND_DESTINATIONS(flags))
 	{
-		int* flags = (int*)cccalloc(sizeof(int), graph->exec_symbol_info->rnum);
+		uint8_t* flags = (uint8_t*)cccalloc(sizeof(uint8_t), graph->exec_symbol_info->rnum);
 		for (i = 0; i < graph->exec_symbol_info->rnum; i++)
 		{
 			ccv_nnc_graph_exec_symbol_info_t* symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags))
+			{
+				flags[i] = 3; // Skip.
+				continue;
+			}
 			if (symbol_info->outgoings && symbol_info->outgoings->rnum)
 			{
 				flags[i] |= 2;
@@ -1538,6 +1549,8 @@ void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const s
 	// Materialize auto hints.
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 	{
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info[i].flags))
+			continue;
 		max_input_size = ccv_max(max_input_size, exec_symbol_info[i].input_size);
 		max_output_size = ccv_max(max_output_size, exec_symbol_info[i].output_size);
 		// If there is no hint and we have input and output tensor specified.

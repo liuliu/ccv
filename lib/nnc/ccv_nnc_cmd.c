@@ -379,7 +379,7 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	return tuned_cmd;
 }
 
-int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// If it is no-op, return true, it can deal with any number of parameters.
 	if (cmd.cmd == CCV_NNC_NOOP)
@@ -390,7 +390,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const uint64_t* const input_bit
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	if (cmd_registry.bitmask)
-		return cmd_registry.bitmask(input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size);
+		return cmd_registry.bitmask(input_size, output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size);
 	// If there is not checking, none can pass.
 	return 0;
 }
@@ -448,7 +448,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		}
 	if (cmd_registry.bitmask)
 		// If cannot pass the bitmask check.
-		if (!cmd_registry.bitmask(input_bitmasks, (input_size + 63) / 64, output_bitmasks, (output_size + 63) / 64))
+		if (!cmd_registry.bitmask(input_size, output_size, input_bitmasks, (input_size + 63) / 64, output_bitmasks, (output_size + 63) / 64))
 		{
 			if (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
 				ccfree(input_bitmasks);

@@ -12,13 +12,18 @@
 static uint8_t key_siphash[16] = "graphcsekvlibnnc";
 
 typedef struct {
+	int tensor_symbol_info_size;
+	int exec_symbol_info_size;
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_graph_visit_t* visit;
 	ccv_nnc_tensor_symbol_info_t* tensor_symbol_info;
 	ccv_nnc_graph_exec_symbol_info_t* exec_symbol_info;
+	uint32_t* exec_dead;
+	uint32_t* tensor_dead;
+	int* output_execs;
 } ccv_nnc_symbolic_graph_simplify_t;
 
-ccv_nnc_symbolic_graph_simplify_t* _ccv_nnc_symbolic_graph_simplify_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+static ccv_nnc_symbolic_graph_simplify_t* _ccv_nnc_symbolic_graph_simplify_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	ccv_nnc_symbolic_graph_simplify_t* const simplify = (ccv_nnc_symbolic_graph_simplify_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_simplify_t));
 	simplify->graph = graph;
@@ -26,14 +31,55 @@ ccv_nnc_symbolic_graph_simplify_t* _ccv_nnc_symbolic_graph_simplify_new(ccv_nnc_
 	simplify->tensor_symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_info_t) * graph->tensor_symbol_info->rnum);
 	simplify->exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_info_t) * graph->exec_symbol_info->rnum);
 	ccv_nnc_symbolic_graph_symbol_infer(graph, simplify->visit, sources, source_size, destinations, destination_size, 0, 0, simplify->tensor_symbol_info, simplify->exec_symbol_info);
+	simplify->tensor_symbol_info_size = graph->tensor_symbol_info->rnum;
+	simplify->exec_symbol_info_size = graph->exec_symbol_info->rnum;
+	simplify->exec_dead = cccalloc(((simplify->exec_symbol_info_size + 31) >> 5) + ((simplify->tensor_symbol_info_size + 31) >> 5), sizeof(uint32_t));
+	simplify->tensor_dead = simplify->exec_dead + ((simplify->exec_symbol_info_size + 31) >> 5);
+	simplify->output_execs = (int*)ccmalloc(sizeof(int) * simplify->tensor_symbol_info_size);
+	int i;
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		simplify->output_execs[i] = -1;
+	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		for (i = 0; i < node->output_size; i++)
+			if (node->outputs[i] >= 0) // This tensor can be reused by others.
+			{
+				assert(simplify->output_execs[node->outputs[i]] == -1);
+				simplify->output_execs[node->outputs[i]] = idx; // A tensor can only be written once.
+			}
+	} ccv_nnc_graph_visit_endfor
 	return simplify;
 }
 
-void _ccv_nnc_symbolic_graph_simplify_free(ccv_nnc_symbolic_graph_simplify_t* const simplify)
+static void _ccv_nnc_symbolic_graph_simplify_apply(ccv_nnc_symbolic_graph_simplify_t* const simplify)
+{
+	int i, j;
+	for (i = 0; i < simplify->exec_symbol_info_size; i++)
+		if (simplify->exec_dead[i >> 5] & (1u << (i & 0x1f)))
+			ccv_nnc_graph_exec_symbol_free(simplify->graph, (ccv_nnc_graph_exec_symbol_t){
+				.d = i,
+				.graph = simplify->graph,
+			});
+		else // If it is not marked as dead, go through to unmark tensor 
+			for (j = 0; j < simplify->exec_symbol_info[i].output_size; j++)
+			{
+				const int d = simplify->exec_symbol_info[i].outputs[j];
+				if (d >= 0)
+					simplify->tensor_dead[d >> 5] &= ~(1u << (d & 0x1f));
+			}
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f)))
+			((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->flags |= CCV_NNC_TENSOR_SYMBOL_DEAD;
+	// autogen the sources / destinations.
+	ccv_nnc_graph_exec_symbol_autogen(simplify->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+}
+
+static void _ccv_nnc_symbolic_graph_simplify_free(ccv_nnc_symbolic_graph_simplify_t* const simplify)
 {
 	ccv_nnc_graph_visit_free(simplify->visit);
 	ccfree(simplify->tensor_symbol_info);
 	ccfree(simplify->exec_symbol_info);
+	ccfree(simplify->exec_dead);
+	ccfree(simplify->output_execs);
 	ccfree(simplify);
 }
 
@@ -45,8 +91,9 @@ typedef struct {
 
 static int _ccv_nnc_cse_hash_find(ccv_nnc_cse_hash_t* const hash_map, const uint64_t hash, const int map_size)
 {
+	assert(hash > 0);
 	int i, j;
-	i = hash % map_size;
+	i = (hash - 1) % map_size;
 	for (j = 0; ; j++, i++)
 	{
 		if (i >= map_size)
@@ -58,14 +105,56 @@ static int _ccv_nnc_cse_hash_find(ccv_nnc_cse_hash_t* const hash_map, const uint
 	}
 }
 
+static void _ccv_nnc_cse_hash_add(ccv_nnc_cse_hash_t* const hash_map, uint64_t hash, int d, const int map_size)
+{
+	assert(hash > 0);
+	int i, j;
+	i = (hash - 1) % map_size;
+	for (j = 0; ; j++, i++)
+	{
+		if (i >= map_size)
+			i = 0;
+		if (hash_map[i].hash == hash) // Already exists, do nothing.
+			return;
+		if (hash_map[i].hash == 0)
+		{
+			// Insert.
+			hash_map[i].d = d;
+			hash_map[i].ifbit = j;
+			hash_map[i].hash = hash;
+			return;
+		}
+		if (j > hash_map[i].ifbit)
+		{
+			const ccv_nnc_cse_hash_t old_hash = hash_map[i];
+			// Swap, and continue, until find an empty slot.
+			hash_map[i].d = d;
+			hash_map[i].ifbit = j;
+			hash_map[i].hash = hash;
+			d = old_hash.d;
+			j = old_hash.ifbit;
+			hash = old_hash.hash;
+		}
+	}
+}
+
 // This is a simple common sub-expression elimination implementation, particularly, we only replace the later computed output
 // with the identical earlier computed output, and let the "elimination" part to the graph pruning.
-static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_symbolic_graph_simplify_t* const simplify)
+static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	// tensor_hash starts with 0s, and it is either marked with the tensor index + 1, or the hash of the computations.
-	uint64_t* const tensor_hash = (uint64_t*)cccalloc(simplify->graph->tensor_symbol_info->rnum, sizeof(uint64_t));
-	int i;
+	uint64_t* const tensor_hash = (uint64_t*)cccalloc(simplify->tensor_symbol_info_size, sizeof(uint64_t));
+	int i, j;
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		// We cannot support graph / custom command (we cannot model them properly).
+		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD ||
+			node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
+			node->cmd.cmd == CCV_NNC_CUSTOM_FORWARD ||
+			node->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+			continue;
+		// If already marked as dead, skip.
+		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
 		uint64_t hashout, hashin[3] = {};
 		siphash((uint8_t*)&hashin[0], (const uint8_t*)&node->cmd.info, sizeof(node->cmd.info), key_siphash);
 		siphash((uint8_t*)&hashin[1], (const uint8_t*)&node->hint, sizeof(node->hint), key_siphash);
@@ -73,7 +162,6 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		siphash((uint8_t*)&hashout, (const uint8_t*)hashin, sizeof(hashin), key_siphash);
 		// First, hash the cmd and the hints with the cmd.
 		// Note on alias, we cannot really generate proper hash for alias (yet). Thus, just treat alias as normal tensors.
-		for (i = 0; i < node->input_size; i++)
 		for (i = 0; i < node->input_size; i++)
 		{
 			// If no hash for the input, use the index + 1 as the hash.
@@ -100,33 +188,307 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 				assert(tensor_hash[node->outputs[i]] == 0);
 				hashin[0] = hashout;
 				hashin[1] = i; // Positional information.
+				siphash((uint8_t*)&hashin[2], (const uint8_t*)&simplify->tensor_symbol_info[node->outputs[i]].info,
+						sizeof(simplify->tensor_symbol_info[node->outputs[i]].info), key_siphash);
 				// Generate hash for the output.
-				siphash((uint8_t*)&tensor_hash[node->outputs[i]], (const uint8_t*)hashin, sizeof(uint64_t) * 2, key_siphash);
+				siphash((uint8_t*)&tensor_hash[node->outputs[i]], (const uint8_t*)hashin, sizeof(hashin), key_siphash);
 			}
 	} ccv_nnc_graph_visit_endfor
-	// Allocate twice as much space, for the simple open address hash map.
-	const int map_size = (simplify->graph->tensor_symbol_info->rnum * 3 + 1) / 2;
-	ccv_nnc_cse_hash_t* const hash_map = (ccv_nnc_cse_hash_t*)cccalloc(sizeof(ccv_nnc_cse_hash_t), map_size);
+	// Allocate 3 / 2 as much space, for the simple robin-hood open address hash map.
+	const int map_size = (simplify->tensor_symbol_info_size * 3 + 1) / 2;
+	int* const refs = (int*)ccmalloc(sizeof(int) * simplify->tensor_symbol_info_size);
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		refs[i] = -1;
+	ccv_nnc_cse_hash_t* const hash_map = (ccv_nnc_cse_hash_t*)cccalloc(map_size, sizeof(ccv_nnc_cse_hash_t));
 	// Now, all tensors are hashed, identify tensors with the same hash code, replace the ones that accessed later.
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		// If already marked as dead, skip.
+		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
 		for (i = 0; i < node->input_size; i++)
 			if (node->inputs[i] >= 0)
 			{
-				const int d = _ccv_nnc_cse_hash_find(hash_map, tensor_hash[node->inputs[i]], map_size);
-				node->inputs[i] = d; // It can be replaced.
+				const int d = node->inputs[i];
+				assert(tensor_hash[d]);
+				const int new_d = _ccv_nnc_cse_hash_find(hash_map, tensor_hash[d], map_size);
+				if (new_d >= 0 && new_d != d)
+				{
+					// Check whether this can be replaced.
+					assert(refs[d] == -1 || refs[d] == new_d);
+					assert(!simplify->tensor_symbol_info[d].assign_ref);
+					assert(!simplify->tensor_symbol_info[d].r_assign_ref);
+					assert(!simplify->tensor_symbol_info[d].bypass_ref);
+					assert(!simplify->tensor_symbol_info[d].p_ref);
+					assert(!simplify->tensor_symbol_info[new_d].assign_ref);
+					assert(!simplify->tensor_symbol_info[new_d].r_assign_ref);
+					assert(!simplify->tensor_symbol_info[new_d].bypass_ref);
+					assert(!simplify->tensor_symbol_info[new_d].p_ref);
+					// Ignore if there is a peer_ref (again, peer_ref has side effect that is deeper (using tape))
+					if (simplify->tensor_symbol_info[d].peer_ref)
+						continue;
+					// Merge s_refs from ref[d] later.
+					if (refs[d] != new_d)
+						refs[d] = new_d;
+					((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->inputs[i] = new_d; // It can be replaced.
+					node->inputs[i] = new_d; // It can be replaced.
+					assert(simplify->output_execs[new_d] >= 0);
+					// Establish new dependency.
+					ccv_nnc_graph_exec_symbol_concat(simplify->graph, (ccv_nnc_graph_exec_symbol_t){
+						.d = simplify->output_execs[new_d],
+						.graph = simplify->graph,
+					}, (ccv_nnc_graph_exec_symbol_t){
+						.d = idx,
+						.graph = simplify->graph,
+					});
+				}
 			}
+		// We can reuse the input, but we cannot do that for output of these commands.
+		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD ||
+			node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
+			node->cmd.cmd == CCV_NNC_CUSTOM_FORWARD ||
+			node->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+			continue;
 		for (i = 0; i < node->output_size; i++)
-			if (node->outputs[i] >= 0)
-			{
-				// Insert.
-			}
+			if (node->outputs[i] >= 0) // This tensor can be reused by others.
+				_ccv_nnc_cse_hash_add(hash_map, tensor_hash[node->outputs[i]], node->outputs[i], map_size);
 	} ccv_nnc_graph_visit_endfor
+	// Go over refs, if a tensor is an alias, mark it reference to the new one.
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (refs[i] >= 0)
+			// Mark this tensor as dead.
+			simplify->tensor_dead[i >> 5] |= (1u << (i & 0x1f));
+		else if (simplify->tensor_symbol_info[i].alias_ref && refs[simplify->tensor_symbol_info[i].alias_ref - 1] >= 0) {
+			const int alias_ref = simplify->tensor_symbol_info[i].alias_ref - 1;
+			simplify->tensor_symbol_info[i].alias_ref = refs[alias_ref] + 1;
+			((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->alias_ref = refs[alias_ref] + 1;
+		}
+	for (i = 0; i < output_size; i++)
+		// If the output is an alias, that's fine, because if the alias is re-binded, we are good.
+		simplify->tensor_dead[outputs[i].d >> 5] &= ~(1u << (outputs[i].d & 0x1f)); // Undead for output tensor symbols.
+	// Now go over exec to mark them as dead.
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (refs[i] >= 0)
+		{
+			const int output_exec = simplify->output_execs[i];
+			assert(output_exec >= 0);
+			const ccv_nnc_graph_exec_symbol_info_t* const node = simplify->exec_symbol_info + output_exec;
+			int flag = 0;
+			for (j = 0; !flag && j < node->output_size; j++)
+			{
+				const int d = node->outputs[j];
+				if (d >= 0)
+					flag = (!(simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f)))); // If some of the output is not dead, we cannot proceed.
+			}
+			if (!flag) // If all outputs are dead, mark the exec as dead.
+				simplify->exec_dead[output_exec >> 5] |= (1u << (output_exec & 0x1f));
+		}
 	ccfree(tensor_hash);
 	ccfree(hash_map);
+	ccfree(refs);
+}
+
+static void _ccv_nnc_symbolic_graph_pruning_undead_exec(ccv_nnc_symbolic_graph_simplify_t* const simplify, const int exec_idx, uint32_t* const tensor_visited, ccv_array_t* const next)
+{
+	assert(exec_idx >= 0);
+	uint32_t* const exec_dead = simplify->exec_dead;
+	uint32_t* const tensor_dead = simplify->tensor_dead;
+	exec_dead[exec_idx >> 5] &= ~(1u << (exec_idx & 0x1f)); // Undead the exec.
+	ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = simplify->exec_symbol_info + exec_idx;
+	int i;
+	if (exec_symbol_info->cmd.cmd == CCV_NNC_GRAPH_FORWARD ||
+		exec_symbol_info->cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
+		exec_symbol_info->cmd.cmd == CCV_NNC_CUSTOM_FORWARD ||
+		exec_symbol_info->cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+	{
+		// All of its inputs / outputs need to be undead for these commands.
+		for (i = 0; i < exec_symbol_info->input_size; i++)
+		{
+			const int d = exec_symbol_info->inputs[i];
+			if (d >= 0 && !(tensor_visited[d >> 5] & (1u << (d & 0x1f))))
+			{
+				ccv_array_push(next, &d); // Push to the next round to be undead.
+				tensor_visited[d >> 5] |= (1u << (d & 0x1f));
+			}
+		}
+		for (i = 0; i < exec_symbol_info->output_size; i++)
+		{
+			const int d = exec_symbol_info->outputs[i];
+			if (d >= 0 && !(tensor_visited[d >> 5] & (1u << (d & 0x1f))))
+			{
+				ccv_array_push(next, &d); // Push to the next round to be undead.
+				tensor_visited[d >> 5] |= (1u << (d & 0x1f));
+			}
+		}
+		return;
+	}
+	// Go through the input / output, to make sure that all of them can be available.
+	const int input_bitmask_size = (exec_symbol_info->input_size + 63) >> 6;
+	const int output_bitmask_size = (exec_symbol_info->output_size + 63) >> 6;
+	uint64_t input_bitmasks[ccv_max(1, input_bitmask_size)];
+	for (i = 0; i < input_bitmask_size; i++)
+		input_bitmasks[i] = 0;
+	uint64_t output_bitmasks[ccv_max(1, output_bitmask_size)];
+	for (i = 0; i < output_bitmask_size; i++)
+		output_bitmasks[i] = 0;
+	for (i = 0; i < exec_symbol_info->input_size; i++)
+		if (exec_symbol_info->inputs[i] >= 0)
+			input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+	for (i = 0; i < exec_symbol_info->output_size; i++)
+		if (exec_symbol_info->outputs[i] >= 0)
+			output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+	// First, mark everything with bitmasks, and verify it works.
+	assert(ccv_nnc_cmd_bitmask(exec_symbol_info->cmd, exec_symbol_info->input_size, exec_symbol_info->output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size));
+	int flag;
+	do {
+		flag = 0;
+		// Try to eliminate one at a time. Go over output first.
+		for (i = 0; i < exec_symbol_info->output_size; i++)
+		{
+			const int d = exec_symbol_info->outputs[i];
+			// If this tensor currently is marked as dead, try to see whether it works when we don't have this tensor at all.
+			if (d >= 0 && (tensor_dead[d >> 5] & (1u << (d & 0x1f))) &&
+				(output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))))
+			{
+				output_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
+				if (ccv_nnc_cmd_bitmask(exec_symbol_info->cmd, exec_symbol_info->input_size, exec_symbol_info->output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size))
+					flag = 1;
+				else // Reset the bitmask.
+					output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+			}
+		}
+		// For inputs, no matter if it s dead or not, we try to limit our input to the smallest number.
+		for (i = 0; i < exec_symbol_info->input_size; i++)
+		{
+			const int d = exec_symbol_info->inputs[i];
+			// If this tensor currently is marked as dead, try to see whether it works when we don't have this tensor at all.
+			if (d >= 0 && (input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63))))
+			{
+				input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
+				if (ccv_nnc_cmd_bitmask(exec_symbol_info->cmd, exec_symbol_info->input_size, exec_symbol_info->output_size, input_bitmasks, input_bitmask_size, output_bitmasks, output_bitmask_size))
+					flag = 1;
+				else // Reset the bitmask.
+					input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
+			}
+		}
+	} while (flag);
+	// Now we know which one to keep, which one to undead.
+	for (i = 0; i < exec_symbol_info->input_size; i++)
+		if (input_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+		{
+			const int d = exec_symbol_info->inputs[i];
+			if (d >= 0 && !(tensor_visited[d >> 5] & (1u << (d & 0x1f))))
+			{
+				ccv_array_push(next, &d); // Push to the next round to be undead.
+				tensor_visited[d >> 5] |= (1u << (d & 0x1f));
+			}
+		} else {
+			// Clean up the inputs.
+			exec_symbol_info->inputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+			((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->inputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+		}
+	for (i = 0; i < exec_symbol_info->output_size; i++)
+		if (output_bitmasks[i >> 6] & ((uint64_t)1 << (i & 63)))
+		{
+			const int d = exec_symbol_info->outputs[i];
+			if (d >= 0 && !(tensor_visited[d >> 5] & (1u << (d & 0x1f))))
+			{
+				ccv_array_push(next, &d); // Push to the next round to be undead.
+				tensor_visited[d >> 5] |= (1u << (d & 0x1f));
+			}
+		} else {
+			// Clean up the outputs.
+			exec_symbol_info->outputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+			((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, exec_idx))->outputs[i] = CCV_NNC_NO_TENSOR_SYMBOL;
+		}
 }
 
 static void _ccv_nnc_symbolic_graph_pruning(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	uint32_t* const tensor_visited = (uint32_t*)cccalloc(sizeof(uint32_t), (simplify->tensor_symbol_info_size + 31) >> 5);
+	ccv_array_t* const preserve[2] = {
+		ccv_array_new(sizeof(int), output_size, 0),
+		ccv_array_new(sizeof(int), 0, 0),
+	};
+	int i, j;
+	ccv_array_t** const r_alias_refs = (ccv_array_t**)cccalloc(sizeof(ccv_array_t*), simplify->tensor_symbol_info_size);
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (simplify->tensor_symbol_info[i].alias_ref)
+		{
+			const int alias_ref = simplify->tensor_symbol_info[i].alias_ref - 1;
+			assert(alias_ref < simplify->tensor_symbol_info_size);
+			if (!r_alias_refs[alias_ref])
+				r_alias_refs[alias_ref] = ccv_array_new(sizeof(int), 1, 0);
+			ccv_array_push(r_alias_refs[alias_ref], &i);
+		}
+	uint32_t* const exec_dead = simplify->exec_dead;
+	uint32_t* const tensor_dead = simplify->tensor_dead;
+	int* const output_execs = simplify->output_execs;
+	// Mark everything as dead.
+	for (i = 0; i < ((simplify->tensor_symbol_info_size + 31) >> 5); i++)
+		tensor_dead[i] = 0xffffffff;
+	for (i = 0; i < ((simplify->exec_symbol_info_size + 31) >> 5); i++)
+		exec_dead[i] = 0xffffffff;
+	for (i = 0; i < output_size; i++)
+		ccv_array_push(preserve[0], &outputs[i].d);
+	int p = 0, q = 1;
+	// BFS to mark execs / tensors as not dead.
+	while (preserve[p]->rnum > 0)
+	{
+		ccv_array_clear(preserve[q]);
+		// First, undead all relevant tensors.
+		for (i = 0; i < preserve[p]->rnum; i++)
+		{
+			const int d = *(int*)ccv_array_get(preserve[p], i);
+			// Undead the outputs.
+			tensor_dead[d >> 5] &= ~(1u << (d & 0x1f));
+			int alias_ref = d;
+			if (simplify->tensor_symbol_info[d].alias_ref)
+			{
+				alias_ref = simplify->tensor_symbol_info[d].alias_ref - 1;
+				tensor_dead[alias_ref >> 5] &= ~(1u << (alias_ref & 0x1f));
+				assert(r_alias_refs[alias_ref]);
+			}
+			if (r_alias_refs[alias_ref])
+				for (j = 0; j < r_alias_refs[alias_ref]->rnum; j++)
+				{
+					const int b = *(int*)ccv_array_get(r_alias_refs[alias_ref], j);
+					if (output_execs[b] >= 0) // Only revive if it is written alias.
+						tensor_dead[b >> 5] &= ~(1u << (b & 0x1f));
+				}
+		}
+		for (i = 0; i < preserve[p]->rnum; i++)
+		{
+			const int d = *(int*)ccv_array_get(preserve[p], i);
+			const int output_exec = output_execs[d];
+			// Undead the exec.
+			if (output_exec >= 0)
+				_ccv_nnc_symbolic_graph_pruning_undead_exec(simplify, output_exec, tensor_visited, preserve[q]);
+			int alias_ref = d;
+			if (simplify->tensor_symbol_info[d].alias_ref)
+			{
+				alias_ref = simplify->tensor_symbol_info[d].alias_ref - 1;
+				const int output_exec = output_execs[alias_ref];
+				if (output_exec >= 0)
+					_ccv_nnc_symbolic_graph_pruning_undead_exec(simplify, output_exec, tensor_visited, preserve[q]);
+			}
+			if (r_alias_refs[alias_ref])
+				for (j = 0; j < r_alias_refs[alias_ref]->rnum; j++)
+				{
+					const int b = *(int*)ccv_array_get(r_alias_refs[alias_ref], j);
+					const int output_exec = output_execs[b];
+					if (output_exec >= 0)
+						_ccv_nnc_symbolic_graph_pruning_undead_exec(simplify, output_exec, tensor_visited, preserve[q]);
+				}
+		}
+		CCV_SWAP(p, q, i);
+	}
+	ccfree(tensor_visited);
+	ccv_array_free(preserve[0]);
+	ccv_array_free(preserve[1]);
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (r_alias_refs[i])
+			ccv_array_free(r_alias_refs[i]);
+	ccfree(r_alias_refs);
 }
 
 void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
@@ -137,11 +499,12 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 		switch (passes[i])
 		{
 			case CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION:
-				_ccv_nnc_symbolic_graph_common_subexpression_elimination(simplify);
+				_ccv_nnc_symbolic_graph_common_subexpression_elimination(simplify, outputs, output_size);
 				break;
 			case CCV_NNC_SIMPLIFY_GRAPH_PRUNING:
 				_ccv_nnc_symbolic_graph_pruning(simplify, outputs, output_size);
 				break;
 		}
+	_ccv_nnc_symbolic_graph_simplify_apply(simplify);
 	_ccv_nnc_symbolic_graph_simplify_free(simplify);
 }

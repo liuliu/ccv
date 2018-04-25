@@ -2,7 +2,7 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_internal.h>
 
-static int _ccv_nnc_set_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_set_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	if (output_bitmasks[0] == 1u)
 		return 1;
@@ -28,7 +28,7 @@ REGISTER_COMMAND(CCV_NNC_SET_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SET_BACKWARD)
 #define CMD_SET_BACKWARD(_val) ccv_nnc_cmd(CCV_NNC_SET_BACKWARD, 0, CMD_BLAS(_val), 0)
 
-static int _ccv_nnc_data_transfer_forw_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_data_transfer_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -68,10 +68,10 @@ static int _ccv_nnc_data_transfer_forw_bitmask(const uint64_t* const input_bitma
 			if (output_bitmasks[i] & (uint64_t)1 << j)
 				return 0;
 	}
-	return output_bitcount == input_bitcount;
+	return output_bitcount == input_bitcount && input_size == output_size && input_size == input_bitcount;
 }
 
-static int _ccv_nnc_data_transfer_back_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_data_transfer_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	int i, j;
 	int input_flag = 0;
@@ -111,7 +111,7 @@ static int _ccv_nnc_data_transfer_back_bitmask(const uint64_t* const input_bitma
 			if (output_bitmasks[i] & (uint64_t)1 << j)
 				return 0;
 	}
-	return output_bitcount <= input_bitcount;
+	return output_bitcount <= input_bitcount && output_bitcount == output_size;
 }
 
 REGISTER_COMMAND(CCV_NNC_DATA_TRANSFER_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

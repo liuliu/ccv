@@ -2,7 +2,7 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_internal.h>
 
-static int _ccv_nnc_batch_norm_forw_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_batch_norm_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 5 inputs (x, scale, bias, mean, var)
 	// 1 outputs (y)
@@ -25,7 +25,7 @@ static int _ccv_nnc_batch_norm_enforce_inplace(const int input_idx, const int ou
 	return 0;
 }
 
-static int _ccv_nnc_batch_norm_back_bitmask(const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
+static int _ccv_nnc_batch_norm_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 0b110000001100001
 	// Inputs (gradient, 0, 0, 0, 0, x, scale, 0, 0, 0, 0, 0, 0, saved_mean, saved_inv_var)

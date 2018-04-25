@@ -110,7 +110,7 @@ static inline int _ccv_nnc_mix_idx(const int* const md, const int ins, const int
 	return -1;
 }
 
-static inline void _ccv_nnc_try_set_pix_0(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset)
+static inline void _ccv_nnc_try_set_pix_0(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint32_t* const cube, int offset)
 {
 	const int s = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
 	const int d = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
@@ -118,10 +118,10 @@ static inline void _ccv_nnc_try_set_pix_0(const int* const ofs, const int* const
 	int i;
 	for (i = s; i < d; i++)
 		// Fill this pix. I can make this faster by loop through full ones (divided by 8), but too lazy.
-		cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
+		cube[(offset + i) >> 5] |= (1u << ((offset + i) & 0x1f));
 }
 
-static inline void _ccv_nnc_try_set_pix_1(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset)
+static inline void _ccv_nnc_try_set_pix_1(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint32_t* const cube, int offset)
 {
 	const int s0 = (ofs[0] == 0) ? 0 : _ccv_nnc_mix_idx(scmd[0], ofs[0], cube_dim[0]) + 1;
 	const int d0 = ((ofs[0] + dim[0] == tensor_dim[0]) ? cube_dim[0] : _ccv_nnc_mix_idx(scmd[0], ofs[0] + ccv_max(1, dim[0]), cube_dim[0])) + 1;
@@ -135,17 +135,17 @@ static inline void _ccv_nnc_try_set_pix_1(const int* const ofs, const int* const
 	{
 		// Faster one, we can simply loop through.
 		for (i = s1 * step1; i < d1 * step1; i++)
-			cube[(offset + i) >> 3] |= (1 << ((offset + i) & 0x7));
+			cube[(offset + i) >> 5] |= (1u << ((offset + i) & 0x1f));
 	} else {
 		offset += s1 * step1;
 		// There are gaps, slow one.
 		for (i = s1; i < d1; i++, offset += step1)
 			for (j = s0; j < d0; j++)
-				cube[(offset + j) >> 3] |= (1 << ((offset + j) & 0x7));
+				cube[(offset + j) >> 5] |= (1u << ((offset + j) & 0x1f));
 	}
 }
 
-static inline void _ccv_nnc_try_set_pix(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint8_t* const cube, int offset, const int dim_idx)
+static inline void _ccv_nnc_try_set_pix(const int* const ofs, const int* const dim, const int* const tensor_dim, int* const* const scmd, const int* const cube_dim, const int* const cube_step, uint32_t* const cube, int offset, const int dim_idx)
 {
 	switch (dim_idx)
 	{
@@ -233,8 +233,8 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 	if (cube_size > 2048 * 8)
 		return 0;
 	// binary map to see if it fills up.
-	uint8_t cube[(cube_size + 7) >> 3];
-	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 7) >> 3));
+	uint32_t cube[(cube_size + 31) >> 5];
+	memset(cube, 0, sizeof(uint8_t) * ((cube_size + 31) >> 5));
 	int* scmd[CCV_NNC_MAX_DIM_ALLOC] = {}; // Sparse coordinate map at dimension x.
 	int cube_step[CCV_NNC_MAX_DIM_ALLOC] = {};
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && tensor_dim[i]; i++)
@@ -254,17 +254,17 @@ static int _ccv_nnc_tensor_ref_fully_assigned_with_aliases(const ccv_nnc_tensor_
 		_ccv_nnc_try_set_pix(ofs, dim, tensor_dim, scmd, cube_dim, cube_step, cube, 0, max_dim - 1);
 	}
 	// Compare to see now if the binary map filled up. If it filled up, we know it is fully assigned.
-	for (i = 0; i < (cube_size >> 3); i++)
-		if (cube[i] < 0xff)
+	for (i = 0; i < (cube_size >> 5); i++)
+		if (cube[i] < 0xffffffff)
 			return 0;
-	if ((cube_size & 0x7) > 0)
+	if ((cube_size & 0x1f) > 0)
 	{
 		// Fetch the rest.
 		uint8_t r = 0;
-		for (i = 0; i < (cube_size & 0x7); i++)
-			r |= (1 << i);
-		assert(cube[((cube_size + 7) >> 3) - 1] <= r);
-		if (cube[((cube_size + 7) >> 3) - 1] < r)
+		for (i = 0; i < (cube_size & 0x1f); i++)
+			r |= (1u << i);
+		assert(cube[((cube_size + 31) >> 5) - 1] <= r);
+		if (cube[((cube_size + 31) >> 5) - 1] < r)
 			return 0;
 	}
 	return 1;
@@ -897,7 +897,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 				// Clear out all inputs / outputs from forward op.
 				for (i = forw_exec->output_size; i < forw_exec->output_size * 2 + forw_exec->input_size; i++)
 					node->input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
-			} else if (ccv_nnc_cmd_bitmask(cmd, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size)) {
+			} else if (ccv_nnc_cmd_bitmask(cmd, forw_exec->output_size * 2 + forw_exec->input_size, forw_exec->input_size, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size)) {
 				int flag; /* Only continue if it changed */
 				do {
 					flag = 0;
@@ -909,7 +909,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 						{
 							node->output_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 							/* If it worked, mark it as flagged. */
-							if (ccv_nnc_cmd_bitmask(cmd, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size))
+							if (ccv_nnc_cmd_bitmask(cmd, forw_exec->output_size * 2 + forw_exec->input_size, forw_exec->input_size, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size))
 								flag = 1;
 							else /* Refit this with the bit back again. */
 								node->output_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
@@ -921,7 +921,7 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 						{ /* Try to eliminate one of the input. */
 							node->input_bitmasks[i >> 6] &= ~((uint64_t)1 << (i & 63));
 							/* If it worked, mark it as flagged. */
-							if (ccv_nnc_cmd_bitmask(cmd, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size))
+							if (ccv_nnc_cmd_bitmask(cmd, forw_exec->output_size * 2 + forw_exec->input_size, forw_exec->input_size, node->input_bitmasks, node->input_bitmask_size, node->output_bitmasks, node->output_bitmask_size))
 								flag = 1;
 							else /* Refit this with the bit back again. */
 								node->input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
