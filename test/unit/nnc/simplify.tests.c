@@ -93,10 +93,10 @@ TEST_CASE("simplify graph with case..of")
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
-	x_tensor->data.f32[0] = -2;
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
-	y_tensor->data.f32[0] = 1.1;
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
+	x_tensor->data.f32[0] = -2;
+	y_tensor->data.f32[0] = 1.1;
 	z_tensor->data.f32[0] = 2.2;
 	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
 	ccv_nnc_tensor_t* q_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, q);

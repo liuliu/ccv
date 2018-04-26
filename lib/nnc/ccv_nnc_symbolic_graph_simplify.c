@@ -23,6 +23,20 @@ typedef struct {
 	int* output_execs;
 } ccv_nnc_symbolic_graph_simplify_t;
 
+static void _ccv_nnc_symbolic_graph_simplify_update_output_execs(ccv_nnc_symbolic_graph_simplify_t* const simplify)
+{
+	int i;
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		simplify->output_execs[i] = -1;
+	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
+		for (i = 0; i < node->output_size; i++)
+			if (node->outputs[i] >= 0)
+				simplify->output_execs[node->outputs[i]] = idx; // A tensor can only be written once.
+	} ccv_nnc_graph_visit_endfor
+}
+
 static ccv_nnc_symbolic_graph_simplify_t* _ccv_nnc_symbolic_graph_simplify_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	ccv_nnc_symbolic_graph_simplify_t* const simplify = (ccv_nnc_symbolic_graph_simplify_t*)ccmalloc(sizeof(ccv_nnc_symbolic_graph_simplify_t));
@@ -36,17 +50,6 @@ static ccv_nnc_symbolic_graph_simplify_t* _ccv_nnc_symbolic_graph_simplify_new(c
 	simplify->exec_dead = cccalloc(((simplify->exec_symbol_info_size + 31) >> 5) + ((simplify->tensor_symbol_info_size + 31) >> 5), sizeof(uint32_t));
 	simplify->tensor_dead = simplify->exec_dead + ((simplify->exec_symbol_info_size + 31) >> 5);
 	simplify->output_execs = (int*)ccmalloc(sizeof(int) * simplify->tensor_symbol_info_size);
-	int i;
-	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
-		simplify->output_execs[i] = -1;
-	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
-		for (i = 0; i < node->output_size; i++)
-			if (node->outputs[i] >= 0) // This tensor can be reused by others.
-			{
-				assert(simplify->output_execs[node->outputs[i]] == -1);
-				simplify->output_execs[node->outputs[i]] = idx; // A tensor can only be written once.
-			}
-	} ccv_nnc_graph_visit_endfor
 	return simplify;
 }
 
@@ -142,6 +145,7 @@ static void _ccv_nnc_cse_hash_add(ccv_nnc_cse_hash_t* const hash_map, uint64_t h
 // with the identical earlier computed output, and let the "elimination" part to the graph pruning.
 static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
+	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
 	// tensor_hash starts with 0s, and it is either marked with the tensor index + 1, or the hash of the computations.
 	uint64_t* const tensor_hash = (uint64_t*)cccalloc(simplify->tensor_symbol_info_size, sizeof(uint64_t));
 	int i, j;
@@ -343,10 +347,25 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 			simplify->tensor_symbol_info[ref].p_ref = p_ref + 1;
 			((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, ref))->p_ref = p_ref + 1;
 		}
+	// Now go over exec to mark them as dead.
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (refs[i] >= 0 && (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f))))
+		{
+			const int output_exec = simplify->output_execs[i];
+			assert(output_exec >= 0);
+			const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = simplify->exec_symbol_info + output_exec;
+			int flag = 0;
+			for (j = 0; !flag && j < symbol_info->output_size; j++)
+			{
+				const int d = symbol_info->outputs[j];
+				if (d >= 0)
+					flag = (!(simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f)))); // If some of the output is not dead, we cannot proceed.
+			}
+			if (!flag) // If all outputs are dead, mark the exec as dead.
+				simplify->exec_dead[output_exec >> 5] |= (1u << (output_exec & 0x1f));
+		}
+	// Go over replace inputs / outputs.
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
-		// If already marked as dead, skip.
-		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
-			continue;
 		for (i = 0; i < node->input_size; i++)
 		{
 			const int d = node->inputs[i];
@@ -370,23 +389,6 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 			const int d = p_node_info->p_while.inputs[i];
 			if (d >= 0 && refs[d] >= 0 && (simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f))))
 				p_node_info->p_while.inputs[i] = refs[d];
-		}
-	// Now go over exec to mark them as dead.
-	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
-		if (refs[i] >= 0 && (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f))))
-		{
-			const int output_exec = simplify->output_execs[i];
-			assert(output_exec >= 0);
-			const ccv_nnc_graph_exec_symbol_info_t* const node = simplify->exec_symbol_info + output_exec;
-			int flag = 0;
-			for (j = 0; !flag && j < node->output_size; j++)
-			{
-				const int d = node->outputs[j];
-				if (d >= 0)
-					flag = (!(simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f)))); // If some of the output is not dead, we cannot proceed.
-			}
-			if (!flag) // If all outputs are dead, mark the exec as dead.
-				simplify->exec_dead[output_exec >> 5] |= (1u << (output_exec & 0x1f));
 		}
 	ccfree(tensor_hash);
 	ccfree(hash_map);
@@ -529,6 +531,7 @@ static void _ccv_nnc_symbolic_graph_pruning(ccv_nnc_symbolic_graph_simplify_t* c
 	uint32_t* const exec_dead = simplify->exec_dead;
 	uint32_t* const tensor_dead = simplify->tensor_dead;
 	int* const output_execs = simplify->output_execs;
+	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
 	// Mark everything as dead.
 	for (i = 0; i < ((simplify->tensor_symbol_info_size + 31) >> 5); i++)
 		tensor_dead[i] = 0xffffffff;
