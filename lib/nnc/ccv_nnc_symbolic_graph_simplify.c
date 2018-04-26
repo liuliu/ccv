@@ -218,13 +218,14 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					assert(!simplify->tensor_symbol_info[d].assign_ref);
 					assert(!simplify->tensor_symbol_info[d].r_assign_ref);
 					assert(!simplify->tensor_symbol_info[d].bypass_ref);
-					assert(!simplify->tensor_symbol_info[d].p_ref);
 					assert(!simplify->tensor_symbol_info[new_d].assign_ref);
 					assert(!simplify->tensor_symbol_info[new_d].r_assign_ref);
 					assert(!simplify->tensor_symbol_info[new_d].bypass_ref);
-					assert(!simplify->tensor_symbol_info[new_d].p_ref);
 					// Ignore if there is a peer_ref (again, peer_ref has side effect that is deeper (using tape))
 					if (simplify->tensor_symbol_info[d].peer_ref)
+						continue;
+					// If both have p_ref, we cannot merge.
+					if (simplify->tensor_symbol_info[d].p_ref && simplify->tensor_symbol_info[new_d].p_ref)
 						continue;
 					// Merge s_refs from ref[d] later.
 					if (refs[d] != new_d)
@@ -338,6 +339,9 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 			assert(s_idx >= 0);
 			assert(s_ref && s_ref->rnum > s_idx);
 			*(int*)ccv_array_get(s_ref, s_idx) = ref + 1; // Update so it references to the new s_ref.
+			assert(!simplify->tensor_symbol_info[ref].p_ref);
+			simplify->tensor_symbol_info[ref].p_ref = p_ref + 1;
+			((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, ref))->p_ref = p_ref + 1;
 		}
 	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
 		// If already marked as dead, skip.

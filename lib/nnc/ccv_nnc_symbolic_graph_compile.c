@@ -980,8 +980,11 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	int i, j;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		for (j = 0; TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && j < unroll_count; j++)
-			if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]))
+		{
+			const int dup_ref = dup_tensor_block_ref[i * unroll_count + j];
+			if (dup_ref >= 0 && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[dup_ref]))
 				TENSOR_EXPECT_UNSET_UNASSIGNED(tensor_blocks[i]);
+		}
 	ccv_nnc_tensor_arena_t* tensor_arena = (ccv_nnc_tensor_arena_t*)ccmalloc(sizeof(ccv_nnc_tensor_arena_t) + sizeof(tensor_arena->buffers[0]) * alloc_prep->buffer_size + sizeof(ccv_nnc_tensor_t*) * tensor_symbol_info_size + sizeof(ccv_nnc_tensor_arena_t*) * graph_prep->sub_prep_size);
 	graph_prep->tensor_arena = tensor_arena;
 	tensor_arena->graph_ref = (intptr_t)graph_prep->symbolic_graph;
@@ -1682,6 +1685,9 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 		}
 		TENSOR_SET_READ_WRITE(tensor_blocks[p_ref_0], TENSOR_READ_WRITE(tensor_blocks[p_ref_0]) | TENSOR_READ_WRITE(tensor_blocks[p_ref_1]));
 		ccv_array_free(tensor_blocks[p_ref_1].head);
+		if (TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_1]))
+			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_0]);
+		// Don't need to check UNFOLDABLE_AS_OUTPUT for p_ref_1 because if it is so, we cannot fold right now.
 		TENSOR_EXPECT_SET_UNASSIGNED(tensor_blocks[p_ref_1]);
 		tensor_blocks[p_ref_1].ref = p_ref_0 + 1;
 		if (!tensor_blocks[p_ref_0].r_refs)
@@ -1836,14 +1842,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 					}
 				}
 			}
-			// If I am a case of graph, and this tensor is the input from the parent graph, you cannot fold it as input.
-			if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) && tensor_symbol_info[i].p_ref)
-			{
-				const int p_ref = tensor_symbol_info[i].p_ref - 1;
-				// If this symbol is one of the input, you cannot fold it.
-				if (-1 == _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1)))
-					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
-			}
 		}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
@@ -1857,8 +1855,16 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
 			// For this case, there is no exception.
 			tensor_blocks[i].unfoldable_except_ref = 0;
-		} else if (tensor_symbol_info[i].p_ref && _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node_info) == 1)
-			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+		} else if (tensor_symbol_info[i].p_ref) {
+			const int p_ref_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node_info);
+			// If I am a case of graph, and this tensor is the input from the parent graph, you cannot fold it as input.
+			if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+				// If this symbol is one of the input, you cannot fold it as input.
+				if (-1 == p_ref_is_in_or_out)
+					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+			if (1 == p_ref_is_in_or_out) // If p_ref is out, it cannot be fold as input.
+				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+		}
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
@@ -2321,6 +2327,8 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_
 		const int dup_destination_size = ccv_nnc_symbolic_graph_destination_size(dup_graph);
 		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		{
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info[i].flags))
+				continue;
 			assert((inout[i] & INCOMING_NODE) || (inout[i] & OUTGOING_NODE));
 			// If this is pure incoming nodes, then I need to concat this one with all original destination node
 			if (inout[i] == INCOMING_NODE)
@@ -2339,6 +2347,8 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_
 			ccv_array_clear(dup_graph->destinations);
 		for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 		{
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info[i].flags))
+				continue;
 			const int d = dup_exec_ref[i * unroll_count];
 			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dup_graph->exec_symbol_info, d);
 			// If this has no outgoing node, add to the destination.
@@ -2434,6 +2444,8 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 		dup_exec_from_ref[i] = -1;
 	for (i = 0; i < symbolic_graph->exec_symbol_info->rnum; i++)
 	{
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(exec_symbol_info[i].flags))
+			continue;
 		dup_exec_from_ref[i] = i; // Reference back.
 		for (j = 0; j < unroll_count; j++)
 			if (dup_exec_ref[i * unroll_count + j] >= 0)
@@ -2649,6 +2661,8 @@ static ccv_array_t* _ccv_nnc_dup_breakpoints_with_p_node_inputs(ccv_nnc_symbolic
 	for (i = 0; i < exec_symbol_info_size; i++)
 	{
 		const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->exec_symbol_info, i);
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags))
+			continue;
 		if (symbol_info->outgoings)
 		{
 			const int outgoing_size = symbol_info->outgoings->rnum;
@@ -3510,6 +3524,9 @@ static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_ar
 	assert(graph_exec_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
 	int i;
 	for (i = 0; i < graph_prep->exec_symbol_info_size; i++)
+	{
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(graph_prep->exec_symbol_info[i].flags))
+			continue;
 		if (graph_exec_arena->graph_execs[i].graph && graph_prep->exec_symbol_info[i].peer_ref)
 		{
 			ccv_nnc_graph_exec_t peer_exec = ccv_nnc_graph_exec_from_symbol(root_arena, (ccv_nnc_graph_exec_symbol_t){
@@ -3519,6 +3536,7 @@ static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_ar
 			if (peer_exec.d >= 0)
 				ccv_nnc_graph_exec_set_peer(graph_prep->graph, graph_exec_arena->graph_execs[i], peer_exec);
 		}
+	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
 			_ccv_nnc_graph_exec_arena_fixup_peer_ref(root_arena, graph_prep->sub_preps[i], graph_exec_arena->sub_arenas[i]);
