@@ -373,7 +373,7 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 		}
 	// Now go over exec to mark them as dead.
 	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
-		if (refs[i] >= 0)
+		if (refs[i] >= 0 && (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f))))
 		{
 			const int output_exec = simplify->output_execs[i];
 			assert(output_exec >= 0);
