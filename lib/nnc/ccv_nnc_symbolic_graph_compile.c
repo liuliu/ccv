@@ -500,7 +500,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		{ \
 			if (!alloc_dep[x - 1]) \
 				alloc_dep[x - 1] = ccv_array_new(sizeof(int), 1, 0); \
-			ccv_array_replace_int(alloc_dep[x - 1], y - 1, y - 1); \
+			ccv_array_add_unique_int(alloc_dep[x - 1], y - 1); \
 		} \
 	} while (0)
 	CCV_SPARSE_FOREACH(alloc, for_block);
@@ -1686,7 +1686,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 		tensor_blocks[p_ref_1].ref = p_ref_0 + 1;
 		if (!tensor_blocks[p_ref_0].r_refs)
 			tensor_blocks[p_ref_0].r_refs = ccv_array_new(sizeof(int), 0, 0);
-		ccv_array_replace_int(tensor_blocks[p_ref_0].r_refs, p_ref_1 + 1, p_ref_1 + 1);
+		ccv_array_add_unique_int(tensor_blocks[p_ref_0].r_refs, p_ref_1 + 1);
 		tensor_blocks[p_ref_1].size = 0;
 		tensor_blocks[p_ref_1].head = 0;
 		tensor_blocks[p_ref_1].tail = 0;
@@ -1865,7 +1865,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			tensor_blocks[i].ref = ref + 1; // Assign the ref.
 			if (!tensor_blocks[ref].r_refs)
 				tensor_blocks[ref].r_refs = ccv_array_new(sizeof(int), 0, 0);
-			ccv_array_replace_int(tensor_blocks[ref].r_refs, i + 1, i + 1);
+			ccv_array_add_unique_int(tensor_blocks[ref].r_refs, i + 1);
 		}
 	}
 	// Scan again and if the ref is not assigned, mark the alias not assigned.
@@ -2449,7 +2449,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				{
 					if (!tensor_blocks[dup_idx].dup_p_refs)
 						tensor_blocks[dup_idx].dup_p_refs = ccv_array_new(sizeof(int), 1, 0);
-					ccv_array_replace_int(tensor_blocks[dup_idx].dup_p_refs, p_ref_0, p_ref_0);
+					ccv_array_add_unique_int(tensor_blocks[dup_idx].dup_p_refs, p_ref_0);
 				}
 				if (p_ref_0_is_in_or_out == 1 || tensor_blocks[i].p_refs[1] == 0)
 					continue;
@@ -2459,7 +2459,7 @@ static void _ccv_nnc_redo_exec_dep_and_tensor_blocks_when_unroll(const ccv_nnc_s
 				{
 					if (!tensor_blocks[dup_idx].dup_p_refs)
 						tensor_blocks[dup_idx].dup_p_refs = ccv_array_new(sizeof(int), 1, 0);
-					ccv_array_replace_int(tensor_blocks[dup_idx].dup_p_refs, p_ref_1, p_ref_1);
+					ccv_array_add_unique_int(tensor_blocks[dup_idx].dup_p_refs, p_ref_1);
 				}
 			}
 		}
@@ -2822,10 +2822,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					if (!s_alloc_prep->buffers[buffer_ref].dup_p_refs)
 						s_alloc_prep->buffers[buffer_ref].dup_p_refs = ccv_array_new(sizeof(int), s_tensor_blocks[block_ref].dup_p_refs->rnum, 0);
 					for (j = 0; j < s_tensor_blocks[block_ref].dup_p_refs->rnum; j++)
-					{
-						const int dup_p_ref = *(int*)ccv_array_get(s_tensor_blocks[block_ref].dup_p_refs, j);
-						ccv_array_replace_int(s_alloc_prep->buffers[buffer_ref].dup_p_refs, dup_p_ref, dup_p_ref);
-					}
+						ccv_array_add_unique_int(s_alloc_prep->buffers[buffer_ref].dup_p_refs, *(int*)ccv_array_get(s_tensor_blocks[block_ref].dup_p_refs, j));
 				}
 			}
 		}
@@ -2972,7 +2969,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 										{
 											if (!tensor_blocks[tensor_block_size].dup_p_refs)
 												tensor_blocks[tensor_block_size].dup_p_refs = ccv_array_new(sizeof(int), 1, 0);
-											ccv_array_replace_int(tensor_blocks[tensor_block_size].dup_p_refs, p_ref_0, p_ref_0);
+											ccv_array_add_unique_int(tensor_blocks[tensor_block_size].dup_p_refs, p_ref_0);
 										}
 									}
 									if (!tensor_blocks[tensor_block_size].tail)
@@ -3036,7 +3033,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 										{
 											if (!tensor_blocks[tensor_block_idx].dup_p_refs)
 												tensor_blocks[tensor_block_idx].dup_p_refs = ccv_array_new(sizeof(int), 1, 0);
-											ccv_array_replace_int(tensor_blocks[tensor_block_idx].dup_p_refs, p_ref_0, p_ref_0);
+											ccv_array_add_unique_int(tensor_blocks[tensor_block_idx].dup_p_refs, p_ref_0);
 										}
 									}
 									assert(tensor_blocks[dup_p_ref].tail);
@@ -3108,7 +3105,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 											{
 												if (!tensor_blocks[tensor_block_idx].dup_p_refs)
 													tensor_blocks[tensor_block_idx].dup_p_refs = ccv_array_new(sizeof(int), 1, 0);
-												ccv_array_replace_int(tensor_blocks[tensor_block_idx].dup_p_refs, p_ref_0, p_ref_0);
+												ccv_array_add_unique_int(tensor_blocks[tensor_block_idx].dup_p_refs, p_ref_0);
 											}
 										}
 										assert(dup_tensor_block_ref[dup_p_ref * unroll_count + k] >= 0 && dup_tensor_block_ref[dup_p_ref * unroll_count + k] != dup_p_ref);

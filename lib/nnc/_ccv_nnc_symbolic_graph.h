@@ -140,6 +140,15 @@ inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const
 	ccv_array_push(ints, &outgoing);
 }
 
+inline static void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
+{
+	int i;
+	for (i = 0; i < ints->rnum; i++)
+		if (*(int*)ccv_array_get(ints, i) == idx)
+			return;
+	ccv_array_push(ints, &idx);
+}
+
 void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
 
 void ccv_nnc_symbolic_graph_add_source(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source);

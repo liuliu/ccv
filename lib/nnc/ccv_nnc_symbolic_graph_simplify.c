@@ -311,10 +311,35 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					ccv_array_free(simplify->tensor_symbol_info[i].s_ref);
 					simplify->tensor_symbol_info[i].s_ref = 0;
 					((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->s_ref = 0;
+					for (j = 0; j < ref_s_ref->rnum; j++)
+					{
+						const int ref_k = *(int*)ccv_array_get(ref_s_ref, j) - 1;
+						if (ref_k >= 0)
+						{
+							ccv_nnc_symbolic_graph_t* const sub_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(simplify->graph->sub_graphs, j);
+							assert(sub_graph);
+							// Update its p_ref.
+							((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, ref_k))->p_ref = ref + 1;
+						}
+					}
 				}
 				assert(simplify->tensor_symbol_info[i].s_ref == ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->s_ref);
 				assert(simplify->tensor_symbol_info[ref].s_ref == ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, ref))->s_ref);
 			}
+		}
+	// Going through refs that we are updating, going through its p_ref to make sure both are updated.
+	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
+		if (refs[i] >= 0 && (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f))) && simplify->tensor_symbol_info[i].p_ref)
+		{
+			const int ref = refs[i];
+			const int p_ref = simplify->tensor_symbol_info[i].p_ref - 1;
+			assert(p_ref >= 0);
+			assert(simplify->graph->p);
+			ccv_array_t* const s_ref = ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->p->tensor_symbol_info, p_ref))->s_ref;
+			const int s_idx = simplify->graph->p_idx - 1;
+			assert(s_idx >= 0);
+			assert(s_ref && s_ref->rnum > s_idx);
+			*(int*)ccv_array_get(s_ref, s_idx) = ref + 1; // Update so it references to the new s_ref.
 		}
 	// Now go over exec to mark them as dead.
 	for (i = 0; i < simplify->tensor_symbol_info_size; i++)

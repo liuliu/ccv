@@ -793,7 +793,8 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 	assert(graph == symbol.graph);
 	assert(symbol.d < graph->exec_symbol_info->rnum);
 	// If any of the exec symbol have reference to it, has to remove that.
-	int i, j;
+	int i, j, k;
+	ccv_nnc_graph_exec_symbol_info_t* const free_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
 	for (i = 0; i < graph->exec_symbol_info->rnum; i++)
 		if (i != symbol.d)
 		{
@@ -805,13 +806,15 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 						if (j < symbol_info->outgoings->rnum - 1)
 							*(int*)ccv_array_get(symbol_info->outgoings, j) = *(int*)ccv_array_get(symbol_info->outgoings, symbol_info->outgoings->rnum - 1);
 						--symbol_info->outgoings->rnum;
+						if (free_symbol_info->outgoings)
+							for (k = 0; k < free_symbol_info->outgoings->rnum; k++)
+								ccv_array_add_unique_int(symbol_info->outgoings, *(int*)ccv_array_get(free_symbol_info->outgoings, k));
 						break;
 					}
 		}
 	// Deallocate any memory for exec symbol.
-	ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
-	_ccv_nnc_graph_exec_symbol_free(symbol_info, 1);
-	symbol_info->flags = CCV_NNC_GRAPH_EXEC_DEAD; // Mark this as dead.
+	_ccv_nnc_graph_exec_symbol_free(free_symbol_info, 1);
+	free_symbol_info->flags = CCV_NNC_GRAPH_EXEC_DEAD; // Mark this as dead.
 	// If everything from symbol.d to the end of the graph is dead, we can reclaim this memory.
 	for (i = graph->exec_symbol_info->rnum - 1; i >= 0; i--)
 		if (!CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
