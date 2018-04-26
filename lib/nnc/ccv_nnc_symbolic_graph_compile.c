@@ -1785,53 +1785,64 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				}
 			}
 	}
-	// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
-	// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
-	// fold to).
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
-		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_symbol_info[i].assign_ref)
+		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
 		{
-			// TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
-			// It can be folded as input (it is fine to be overwritten), but it cannot as output (when folded as input,
-			// it kept its own representation, which is not the case for output).
-			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
-			const int assign_ref = tensor_symbol_info[i].assign_ref - 1;
-			// But for where it comes from, it cannot be folded as input, because it cannot be overwritten any time.
-			TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[assign_ref]);
-			// It also cannot be folded as output (except i), because we need to keep its own representation.
-			TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[assign_ref]);
-			assert(tensor_blocks[assign_ref].unfoldable_except_ref == 0);
-			tensor_blocks[assign_ref].unfoldable_except_ref = i + 1;
-			for (j = 0; j < unroll_count; j++)
+			// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
+			// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
+			// fold to).
+			if (tensor_symbol_info[i].assign_ref)
 			{
-				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
-				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
-			}
-			if (tensor_blocks[assign_ref].bypass_ref)
-			{
-				// If it contains a bypass_ref, that means we can fold into both the bypass and except_ref, making it untenable.
-				tensor_blocks[assign_ref].unfoldable_except_ref = 0;
-				const int bypass_ref = tensor_blocks[assign_ref].bypass_ref - 1;
-				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[bypass_ref]);
-				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[bypass_ref]);
-				// On the other hand, it can be folded into the except_ref for the bypass_ref.
-				tensor_blocks[bypass_ref].unfoldable_except_ref = i + 1;
-				if (dup_tensor_from_ref)
+				// TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
+				// It can be folded as input (it is fine to be overwritten), but it cannot as output (when folded as input,
+				// it kept its own representation, which is not the case for output).
+				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[i]);
+				const int assign_ref = tensor_symbol_info[i].assign_ref - 1;
+				// But for where it comes from, it cannot be folded as input, because it cannot be overwritten any time.
+				TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[assign_ref]);
+				// It also cannot be folded as output (except i), because we need to keep its own representation.
+				TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[assign_ref]);
+				assert(tensor_blocks[assign_ref].unfoldable_except_ref == 0);
+				tensor_blocks[assign_ref].unfoldable_except_ref = i + 1;
+				for (j = 0; j < unroll_count; j++)
 				{
-					const int bypass_from_ref = dup_tensor_from_ref[bypass_ref];
-					if (bypass_from_ref >= 0)
+					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
+					TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[dup_tensor_block_ref[i * unroll_count + j]]);
+				}
+				if (tensor_blocks[assign_ref].bypass_ref)
+				{
+					// If it contains a bypass_ref, that means we can fold into both the bypass and except_ref, making it untenable.
+					tensor_blocks[assign_ref].unfoldable_except_ref = 0;
+					const int bypass_ref = tensor_blocks[assign_ref].bypass_ref - 1;
+					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[bypass_ref]);
+					TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[bypass_ref]);
+					// On the other hand, it can be folded into the except_ref for the bypass_ref.
+					tensor_blocks[bypass_ref].unfoldable_except_ref = i + 1;
+					if (dup_tensor_from_ref)
 					{
-						TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[bypass_from_ref]);
-						TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[bypass_from_ref]);
-						assert(dup_tensor_block_ref[bypass_from_ref * unroll_count + unroll_count - 1] == bypass_ref);
-						for (j = 0; j < unroll_count - 1; j++)
+						const int bypass_from_ref = dup_tensor_from_ref[bypass_ref];
+						if (bypass_from_ref >= 0)
 						{
-							// Mark every incarnation as unfold-able.
-							TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[bypass_from_ref * unroll_count + j]]);
-							TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[dup_tensor_block_ref[bypass_from_ref * unroll_count + j]]);
+							TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[bypass_from_ref]);
+							TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[bypass_from_ref]);
+							assert(dup_tensor_block_ref[bypass_from_ref * unroll_count + unroll_count - 1] == bypass_ref);
+							for (j = 0; j < unroll_count - 1; j++)
+							{
+								// Mark every incarnation as unfold-able.
+								TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[dup_tensor_block_ref[bypass_from_ref * unroll_count + j]]);
+								TENSOR_SET_UNFOLDABLE_AS_OUTPUT(tensor_blocks[dup_tensor_block_ref[bypass_from_ref * unroll_count + j]]);
+							}
 						}
 					}
 				}
+			}
+			// If I am a case of graph, and this tensor is the input from the parent graph, you cannot fold it as input.
+			if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF) && tensor_symbol_info[i].p_ref)
+			{
+				const int p_ref = tensor_symbol_info[i].p_ref - 1;
+				// If this symbol is one of the input, you cannot fold it.
+				if (-1 == _ccv_nnc_is_symbolic_graph_exec_input_or_output(p_ref, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(symbolic_graph->p->exec_symbol_info, symbolic_graph->exec_idx - 1)))
+					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
 			}
 		}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)

@@ -318,6 +318,7 @@ static void _ccv_nnc_graph_exec_add_input_if_needed(ccv_nnc_graph_exec_symbol_in
 		return;
 	}
 	exec_symbol_info->inputs = (int*)ccrealloc(exec_symbol_info->inputs, sizeof(int) * (exec_symbol_info->input_size + 1 + exec_symbol_info->output_size));
+	exec_symbol_info->outputs = exec_symbol_info->inputs + exec_symbol_info->input_size;
 	if (exec_symbol_info->output_size)
 		memmove(exec_symbol_info->outputs + 1, exec_symbol_info->outputs, sizeof(int) * exec_symbol_info->output_size); 
 	exec_symbol_info->inputs[exec_symbol_info->input_size] = d;
