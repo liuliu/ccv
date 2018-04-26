@@ -229,8 +229,6 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					// Merge s_refs from ref[d] later.
 					if (refs[d] != new_d)
 						refs[d] = new_d;
-					node->inputs[i] = new_d; // It can be replaced.
-					assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->inputs == node->inputs);
 					assert(simplify->output_execs[new_d] >= 0);
 					// Establish new dependency.
 					ccv_nnc_graph_exec_symbol_concat(simplify->graph, (ccv_nnc_graph_exec_symbol_t){
@@ -340,6 +338,34 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 			assert(s_idx >= 0);
 			assert(s_ref && s_ref->rnum > s_idx);
 			*(int*)ccv_array_get(s_ref, s_idx) = ref + 1; // Update so it references to the new s_ref.
+		}
+	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		// If already marked as dead, skip.
+		if (simplify->exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
+		for (i = 0; i < node->input_size; i++)
+		{
+			const int d = node->inputs[i];
+			if (d >= 0 && refs[d] >= 0 && (simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f))))
+					node->inputs[i] = refs[d]; // It can be replaced.
+		}
+		for (i = 0; i < node->output_size; i++)
+		{
+			const int d = node->outputs[i];
+			if (d >= 0 && refs[d] >= 0 && (simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f))))
+					node->outputs[i] = refs[d]; // It can be replaced.
+		}
+		assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->inputs == node->inputs);
+		assert(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx))->outputs == node->outputs);
+	} ccv_nnc_graph_visit_endfor
+	const ccv_nnc_graph_exec_symbol_info_t* const p_node_info = simplify->graph->p ? (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->p->exec_symbol_info, simplify->graph->exec_idx - 1) : 0;
+	if (p_node_info && (p_node_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
+		// Go over the while inputs as well.
+		for (i = 0; i < p_node_info->p_while.input_size; i++)
+		{
+			const int d = p_node_info->p_while.inputs[i];
+			if (d >= 0 && refs[d] >= 0 && (simplify->tensor_dead[d >> 5] & (1u << (d & 0x1f))))
+				p_node_info->p_while.inputs[i] = refs[d];
 		}
 	// Now go over exec to mark them as dead.
 	for (i = 0; i < simplify->tensor_symbol_info_size; i++)

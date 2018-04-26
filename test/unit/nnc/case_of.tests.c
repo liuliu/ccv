@@ -110,8 +110,8 @@ TEST_CASE("symbolic graph for piece-wise function")
 	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	ccv_nnc_tensor_t* s1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, s1);
-	s1_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* p1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, p1);
+	s1_tensor->data.f32[0] = 0.5;
 	p1_tensor->data.f32[0] = 0.5;
 	x_tensor->data.f32[0] = -1;
 	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
@@ -119,9 +119,13 @@ TEST_CASE("symbolic graph for piece-wise function")
 	x_tensor->data.f32[0] = 0.76;
 	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 0.76, 1e-5, "y = x in (0, 1)");
+	s1_tensor->data.f32[0] = 0.5;
+	p1_tensor->data.f32[0] = 0.5;
 	x_tensor->data.f32[0] = 1.226;
 	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], (1.226 - 1) * 0.5 + 1, 1e-5, "y = (x - 1) * 0.5 + 1 in (1, 2)");
+	s1_tensor->data.f32[0] = 0.5;
+	p1_tensor->data.f32[0] = 0.5;
 	x_tensor->data.f32[0] = 2.1;
 	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 1.5, 1e-5, "y = 1.5 if x > 2");

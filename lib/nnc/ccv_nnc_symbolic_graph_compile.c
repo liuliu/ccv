@@ -2773,6 +2773,9 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	}
 	ccv_nnc_symbolic_graph_prep_t** sub_preps = symbolic_graph->sub_graphs && symbolic_graph->sub_graphs->rnum ? (ccv_nnc_symbolic_graph_prep_t**)cccalloc(symbolic_graph->sub_graphs->rnum, sizeof(ccv_nnc_symbolic_graph_prep_t*)) : 0;
 	ccv_array_t* anonymous_block_free_list = 0;
+	const int tensor_fold_size = (tensor_block_size + 31) >> 5;
+	// Record whether this tensor is folded in this round.
+	uint32_t* const tensor_fold = (uint32_t*)ccmalloc(sizeof(uint32_t) * tensor_fold_size);
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		for (p = 0; p < node->graph_ref_size; p++)
 		{
@@ -2842,6 +2845,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 		int ro_anonymous_buffer_size_cap = 0;
 		if (anonymous_block_free_list)
 			ccv_array_clear(anonymous_block_free_list);
+		memset(tensor_fold, 0, sizeof(uint32_t) * tensor_fold_size);
 		for (p = 0; p < node->graph_ref_size; p++)
 		{
 			ccv_nnc_symbolic_graph_prep_t* const sub_prep = sub_preps[CCV_NNC_GRAPH_REF(node)[p] - 1];
@@ -2859,7 +2863,6 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					int unref_p_ref_0 = p_ref_0;
 					while (tensor_blocks[unref_p_ref_0].ref)
 						unref_p_ref_0 = tensor_blocks[unref_p_ref_0].ref - 1;
-					int folded = 0;
 					/* This parent tensor block cannot be unassigned because it is either input / output of this sub-graph node. */
 					assert(!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[unref_p_ref_0]));
 					if (s_alloc_prep->buffers[i].p_refs[1])
@@ -2883,11 +2886,12 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						/* If the dimension matches, can fold. */
 						if (memcmp(tensor_symbol_info[unref_p_ref_1].info.dim, tensor_symbol_info[unref_p_ref_0].info.dim, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC) == 0)
 						{
-							folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, unref_p_ref_1, unref_p_ref_0);
+							const int folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, unref_p_ref_1, unref_p_ref_0);
 							if (folded)
 							{
 								p_ref_0 = p_ref_1;
 								unref_p_ref_0 = unref_p_ref_1; // p_ref_0 now folded into p_ref_1, therefore, pointing to p_ref_1 now.
+								tensor_fold[unref_p_ref_0 >> 5] |= (1u << (unref_p_ref_0 & 0x1f));
 								for (j = 0; j < unroll_count; j++) /* Fold its duplicates as well. */
 								{
 									const int folded = _ccv_nnc_tensor_blocks_try_fold(tensor_blocks, dup_tensor_block_ref[unref_p_ref_1 * unroll_count + j], dup_tensor_block_ref[unref_p_ref_0 * unroll_count + j]);
@@ -2896,13 +2900,13 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							}
 						}
 					}
-					/* Only proceed if it is folded (thus, the input / output tensor can be connected, reuse is not a problem
+					/* Only proceed if it is folded here (thus, the input / output tensor can be connected, reuse is not a problem
 					 * Or if the p_ref_0 is the output, it is the first started from this node (thus, I have full control over
 					 * its life-cycle). Or if the p_ref_0 is the input, it is ended in this node (thus, I can take over i
 					 * life-cycle freely within this sub-graph (otherwise, if it is used anywhere, I cannot change the content
 					 * within its memory region)). Unless this buffer is used as read-only, and we don't have any output
 					 * associated with it, then we are good. */
-					if (folded ||
+					if ((tensor_fold[unref_p_ref_0 >> 5] & (1u << (unref_p_ref_0 & 0x1f))) ||
 						(p_ref_0_is_in_or_out == 1 && _ccv_nnc_tensor_block_check_head(tensor_blocks + unref_p_ref_0, idx)) ||
 						(p_ref_0_is_in_or_out == -1 && _ccv_nnc_tensor_block_check_tail(tensor_blocks + unref_p_ref_0, idx)) ||
 						TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
@@ -3150,6 +3154,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	} ccv_nnc_graph_visit_endfor
 	if (anonymous_block_free_list)
 		ccv_array_free(anonymous_block_free_list);
+	ccfree(tensor_fold);
 	// It is time to guess what's the best tensor placement and create the opaque tensor arena. The alloc_dep will return
 	// the allocation dependencies, thus, which tensor is reused to the existing tensor.
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = _ccv_nnc_tensor_alloc_prep_new(exec_dep, tensor_blocks, tensor_block_size);
