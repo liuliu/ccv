@@ -20,6 +20,8 @@ static int piecewise_case_of(ccv_nnc_tensor_t* const* const inputs, const int in
 		return -1; // Pass through because the computation is essentially x * 1
 	else if (inputs[0]->data.f32[0] < 2)
 		return 1;
+	else if (inputs[0]->data.f32[0] > 1000)
+		return 3;
 	else
 		return 2;
 }
@@ -177,6 +179,68 @@ TEST_CASE("symbolic graph case..of when reuse intermediate tensors")
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_free(graph);
+}
+
+TEST_CASE("symbolic graph case..of with 4 branches")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
+	ccv_nnc_graph_exec_symbol_t case_of = ccv_nnc_symbolic_graph_case_of_new(symbolic_graph, CCV_NNC_GRAPH_FORWARD, TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_MAP(KV(x, y)), "4 branches");
+	ccv_nnc_symbolic_graph_set_case_of_expr(symbolic_graph, case_of, piecewise_case_of, 0);
+	ccv_nnc_symbolic_graph_t* const case_of_0 = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(case_of_0, ONE_CPU_TENSOR(1), "b0");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, case_of_0, 0, TENSOR_SYMBOL_MAP(KV(b, y)));
+	ccv_nnc_graph_exec_symbol_new(case_of_0, CMD_EWEXP_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(b), "exp");
+	ccv_nnc_graph_exec_symbol_autogen(case_of_0, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_t* const case_of_1 = ccv_nnc_symbolic_graph_new();
+	b = ccv_nnc_tensor_symbol_new(case_of_1, ONE_CPU_TENSOR(1), "b1");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, case_of_1, 1, TENSOR_SYMBOL_MAP(KV(b, y)));
+	ccv_nnc_graph_exec_symbol_new(case_of_1, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(b), "log");
+	ccv_nnc_graph_exec_symbol_autogen(case_of_1, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_t* const case_of_2 = ccv_nnc_symbolic_graph_new();
+	b = ccv_nnc_tensor_symbol_new(case_of_2, ONE_CPU_TENSOR(1), "b2");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, case_of_2, 2, TENSOR_SYMBOL_MAP(KV(b, y)));
+	ccv_nnc_graph_exec_symbol_new(case_of_2, CMD_EWDIV_FORWARD(), TENSOR_SYMBOL_LIST(NO_TENSOR_SYMBOL, x), TENSOR_SYMBOL_LIST(b), "1/b");
+	ccv_nnc_graph_exec_symbol_autogen(case_of_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_t* const case_of_3 = ccv_nnc_symbolic_graph_new();
+	b = ccv_nnc_tensor_symbol_new(case_of_3, ONE_CPU_TENSOR(1), "b3");
+	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, case_of_3, 3, TENSOR_SYMBOL_MAP(KV(b, y)));
+	ccv_nnc_graph_exec_symbol_new(case_of_3, CMD_SCALAR_MUL_FORWARD(1.1), TENSOR_SYMBOL_LIST(x), TENSOR_SYMBOL_LIST(b), "1.1b");
+	ccv_nnc_graph_exec_symbol_autogen(case_of_3, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_graph_t* graph = 0;
+	ccv_nnc_tensor_arena_t* tensor_arena = 0;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
+	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, &case_of, 1, &case_of, 1, &graph, &tensor_arena, &graph_exec_arena);
+	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
+	x_tensor->data.f32[0] = -2.2;
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], expf(-2.2), 1e-5, "y should be expf(-2.2)");
+	x_tensor->data.f32[0] = 1.1;
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], logf(1.1), 1e-5, "y should be logf(1.1)");
+	x_tensor->data.f32[0] = 0.9;
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 0.9, 1e-5, "y should be 0.9");
+	x_tensor->data.f32[0] = 2.2;
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 1. / 2.2, 1e-5, "y should be 1 / 2.2");
+	x_tensor->data.f32[0] = 1001;
+	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
+	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], 1.1 * 1001, 1e-2, "y should be 1.1 * 1001");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
+	ccv_nnc_tensor_arena_free(tensor_arena);
+	ccv_nnc_graph_free(graph);
+
 }
 
 TEST_CASE("symbolic while graph contains a case..of graph and multiply its output with 0.3")

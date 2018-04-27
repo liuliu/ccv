@@ -855,7 +855,7 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	if (!src_symbol_info->outgoings)
 		return -1;
 	int i;
-	// Check if this is already connected, if so, skip.
+	// Check if this is already disjoined, if so, skip.
 	for (i = 0; i < src_symbol_info->outgoings->rnum; i++)
 		if (*(int*)ccv_array_get(src_symbol_info->outgoings, i) == destination.d)
 		{

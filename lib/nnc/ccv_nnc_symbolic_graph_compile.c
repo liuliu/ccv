@@ -1859,7 +1859,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			const int p_ref_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node_info);
 			// If I am a case of graph, and this tensor is the input from the parent graph, you cannot fold it as input.
 			if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
-				// If this symbol is one of the input, you cannot fold it as input.
+				// TODO: This check can be lifted if we can fold in the parent graph.
 				if (-1 == p_ref_is_in_or_out)
 					TENSOR_SET_UNFOLDABLE_AS_INPUT(tensor_blocks[i]);
 			if (1 == p_ref_is_in_or_out) // If p_ref is out, it cannot be fold as input.

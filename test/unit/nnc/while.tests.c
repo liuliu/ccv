@@ -121,6 +121,18 @@ TEST_CASE("while graph add and re-add reuse tensor allocations for 0.47 * 5.5 ^ 
 	ccv_nnc_tensor_free(z);
 }
 
+TEST_CASE("symbolic graph get while graph from symbol")
+{
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_symbolic_graph_t* const while_graph_0 = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_graph_exec_symbol_t while_0 = ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph_0, "while 0");
+	ccv_nnc_symbolic_graph_t* const while_graph_1 = ccv_nnc_symbolic_graph_new();
+	ccv_nnc_graph_exec_symbol_t while_1 = ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph_1, "while 1");
+	REQUIRE(while_graph_0 == ccv_nnc_symbolic_graph_from_while_symbol(symbolic_graph, while_0), "graph extracted from symbol should be equal");
+	REQUIRE(while_graph_1 == ccv_nnc_symbolic_graph_from_while_symbol(symbolic_graph, while_1), "graph extracted from symbol should be equal");
+	ccv_nnc_symbolic_graph_free(symbolic_graph);
+}
+
 TEST_CASE("symbolic graph for a while loop to compute x ^ 5 * y")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
@@ -413,7 +425,7 @@ TEST_CASE("symbolic graph for a while loop to compute (x = conv(x, w, b) 5 times
 	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(5, 5, 4), "z");
 	ccv_nnc_tensor_symbol_t zz = ccv_nnc_tensor_symbol_alias_new(while_graph, z, ccv_nnc_no_ofs, DIM_ALLOC(5 * 5 * 4), ONE_CPU_TENSOR(5 * 5 * 4), "z0");
 	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(xz, yz), TENSOR_SYMBOL_LIST(zz), "sum");
-	ccv_nnc_symbolic_graph_set_while_expr(sub_while_graph, while_5, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(sub_while_graph)), GRAPH_EXEC_SYMBOL_LIST(sub_noop));
+	ccv_nnc_symbolic_graph_set_while_expr(sub_while_graph, while_5, 0, TENSOR_SYMBOL_LIST(ccv_nnc_tensor_symbol_for_while_count(sub_while_graph), ccv_nnc_tensor_symbol_for_while_count(while_graph)), GRAPH_EXEC_SYMBOL_LIST(sub_noop));
 	ccv_nnc_symbolic_graph_set_carry_overs(sub_while_graph, TENSOR_SYMBOL_MAP(KV(y, x)));
 	ccv_nnc_symbolic_graph_set_sources(sub_while_graph, GRAPH_EXEC_SYMBOL_LIST(sub_noop));
 	ccv_nnc_symbolic_graph_set_destinations(sub_while_graph, GRAPH_EXEC_SYMBOL_LIST(conv));
