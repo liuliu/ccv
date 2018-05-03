@@ -397,15 +397,15 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 	return exec;
 }
 
-void ccv_nnc_graph_add_move(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to)
+void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to)
 {
-	ccv_nnc_graph_tensor_move_t move = {
+	ccv_nnc_graph_tensor_carry_over_t carry_over = {
 		.from = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)from),
 		.to = _ccv_nnc_graph_tensor_tree_new((ccv_nnc_tensor_multiview_t*)to)
 	};
-	if (!graph->moves)
-		graph->moves = ccv_array_new(sizeof(ccv_nnc_graph_tensor_move_t), 0, 0);
-	ccv_array_push(graph->moves, &move);
+	if (!graph->carry_overs)
+		graph->carry_overs = ccv_array_new(sizeof(ccv_nnc_graph_tensor_carry_over_t), 0, 0);
+	ccv_array_push(graph->carry_overs, &carry_over);
 }
 
 int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination)
@@ -1158,15 +1158,15 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		ccv_array_free(graph->destinations);
 	if (graph->tree_execs)
 		ccv_array_free(graph->tree_execs);
-	if (graph->moves)
+	if (graph->carry_overs)
 	{
-		for (i = 0; i < graph->moves->rnum; i++)
+		for (i = 0; i < graph->carry_overs->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->moves, i);
-			_ccv_nnc_graph_tensor_tree_free(move->from);
-			_ccv_nnc_graph_tensor_tree_free(move->to);
+			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(graph->carry_overs, i);
+			_ccv_nnc_graph_tensor_tree_free(carry_over->from);
+			_ccv_nnc_graph_tensor_tree_free(carry_over->to);
 		}
-		ccv_array_free(graph->moves);
+		ccv_array_free(graph->carry_overs);
 	}
 	if (graph->sub_graphs)
 	{

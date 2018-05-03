@@ -238,8 +238,8 @@ int ccv_nnc_graph_source_size(const ccv_nnc_graph_t* const graph);
 void ccv_nnc_graph_set_destinations(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_destinations(const ccv_nnc_graph_t* const graph);
 int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph);
-// add tensor pair that can be used for "move". (move: passing a tensor from current loop to the next loop).
-void ccv_nnc_graph_add_move(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to);
+// add tensor pair that can be used to "carry over". (carry over: passing a tensor from current loop to the next loop).
+void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to);
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
 void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph);
 

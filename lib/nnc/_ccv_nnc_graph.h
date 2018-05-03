@@ -73,7 +73,7 @@ typedef struct {
 	ccv_nnc_graph_tensor_tree_t* to;
 	ccv_numeric_data_t transit;
 	ccv_nnc_graph_tensor_tree_t* from;
-} ccv_nnc_graph_tensor_move_t;
+} ccv_nnc_graph_tensor_carry_over_t;
 
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
@@ -98,7 +98,7 @@ struct ccv_nnc_graph_s {
 	ccv_nnc_graph_exec_t* breakpoints;
 	// End of while loop handling.
 	// Extra metadata, useful when we don't want extra memory allocation.
-	ccv_array_t* moves; // The array of tensor moves.
+	ccv_array_t* carry_overs; // The array of tensor carry_overs.
 };
 
 #endif

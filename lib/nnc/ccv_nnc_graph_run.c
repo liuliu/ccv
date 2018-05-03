@@ -29,12 +29,12 @@ static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, cons
 static void _ccv_nnc_graph_unwrap_sub_graph(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, const ccv_nnc_graph_t* const sub_graph)
 {
 	int i;
-	if (sub_graph->moves)
-		for (i = 0; i < sub_graph->moves->rnum; i++)
+	if (sub_graph->carry_overs)
+		for (i = 0; i < sub_graph->carry_overs->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(sub_graph->moves, i);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, move->from);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, move->to);
+			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(sub_graph->carry_overs, i);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, carry_over->from);
+			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, carry_over->to);
 		}
 	if (sub_graph->sub_graphs)
 		for (i = 0; i < sub_graph->sub_graphs->rnum; i++)
@@ -65,26 +65,26 @@ static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int6
 static void _ccv_nnc_graph_transit_move_to(const ccv_nnc_graph_t* const graph)
 {
 	int i;
-	if (graph->moves)
-		for (i = 0; i < graph->moves->rnum; i++)
+	if (graph->carry_overs)
+		for (i = 0; i < graph->carry_overs->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->moves, i);
-			ccv_nnc_tensor_t* it = (ccv_nnc_tensor_t*)(move->to->tensors[move->to->index]);
+			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(graph->carry_overs, i);
+			ccv_nnc_tensor_t* it = (ccv_nnc_tensor_t*)(carry_over->to->tensors[carry_over->to->index]);
 			assert(!CCV_IS_TENSOR_MULTIVIEW(it));
-			it->data = move->transit;
+			it->data = carry_over->transit;
 		}
 }
 
 static void _ccv_nnc_graph_from_move_transit(const ccv_nnc_graph_t* const graph)
 {
 	int i;
-	if (graph->moves)
-		for (i = 0; i < graph->moves->rnum; i++)
+	if (graph->carry_overs)
+		for (i = 0; i < graph->carry_overs->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(graph->moves, i);
-			ccv_nnc_tensor_t* it = (ccv_nnc_tensor_t*)(move->from->tensors[move->from->index]);
+			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(graph->carry_overs, i);
+			ccv_nnc_tensor_t* it = (ccv_nnc_tensor_t*)(carry_over->from->tensors[carry_over->from->index]);
 			assert(!CCV_IS_TENSOR_MULTIVIEW(it));
-			move->transit = it->data;
+			carry_over->transit = it->data;
 		}
 }
 
@@ -99,12 +99,12 @@ static void _ccv_nnc_rewrap_tensor_tree(const ccv_nnc_graph_t* const graph, ccv_
 static void _ccv_nnc_graph_rewrap_sub_graph(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_t* const sub_graph)
 {
 	int i;
-	if (sub_graph->moves)
-		for (i = 0; i < sub_graph->moves->rnum; i++)
+	if (sub_graph->carry_overs)
+		for (i = 0; i < sub_graph->carry_overs->rnum; i++)
 		{
-			ccv_nnc_graph_tensor_move_t* const move = (ccv_nnc_graph_tensor_move_t*)ccv_array_get(sub_graph->moves, i);
-			_ccv_nnc_rewrap_tensor_tree(graph, move->from);
-			_ccv_nnc_rewrap_tensor_tree(graph, move->to);
+			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(sub_graph->carry_overs, i);
+			_ccv_nnc_rewrap_tensor_tree(graph, carry_over->from);
+			_ccv_nnc_rewrap_tensor_tree(graph, carry_over->to);
 		}
 	if (sub_graph->sub_graphs)
 		for (i = 0; i < sub_graph->sub_graphs->rnum; i++)

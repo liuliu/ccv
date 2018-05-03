@@ -1410,7 +1410,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				assign_tensor = CCV_IS_TENSOR_MULTIVIEW(sub_arena_out_tensors[assign_ref]) ? sub_arena_out_tensors[assign_ref] : (ccv_nnc_tensor_t*)sub_arena_out_tensors[assign_ref]->alias_ref;
 			else
 				assign_tensor = tensor_arena->vt_tensors[assign_ref];
-			ccv_nnc_graph_add_move(graph_prep->graph, assign_tensor, tensor_arena->vt_tensors[i]);
+			ccv_nnc_graph_add_carry_over(graph_prep->graph, assign_tensor, tensor_arena->vt_tensors[i]);
 		}
 	if (sub_arena_out_tensors)
 		ccfree(sub_arena_out_tensors);
