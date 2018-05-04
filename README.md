@@ -3,11 +3,9 @@ Build Status
 
  * Travis CI VM: [![Build Status on Travis CI VM](https://travis-ci.org/liuliu/ccv.png?branch=unstable)](https://travis-ci.org/liuliu/ccv)
  * Linux x64: [![Build Status on Linux](http://ci.libccv.org/png?builder=linux-x64-runtests)](http://ci.libccv.org/builders/linux-x64-runtests)
- * Mac OSX: [![Build Status on Mac OSX](http://ci.libccv.org/png?builder=macosx-runtests)](http://ci.libccv.org/builders/macosx-runtests)
- * FreeBSD x64: [![Build Status on FreeBSD](http://ci.libccv.org/png?builder=freebsd-x64-runtests)](http://ci.libccv.org/builders/freebsd-x64-runtests)
- * Raspberry Pi 2: [![Build Status on Raspberry Pi 2](http://ci.libccv.org/png?builder=rbp2-arm-runtests)](http://ci.libccv.org/builders/rbp2-arm-runtests)
  * Raspberry Pi 3: [![Build Status on Raspberry Pi 3](http://ci.libccv.org/png?builder=rbp3-arm-runtests)](http://ci.libccv.org/builders/rbp3-arm-runtests)
  * Jetson TK1: [![Build Status on Jetson TK1](http://ci.libccv.org/png?builder=jetson-tk1-arm-runtests)](http://ci.libccv.org/builders/jetson-tk1-arm-runtests)
+ * Jetson TX2: [![Build Status on Jetson TX2](http://ci.libccv.org/png?builder=jetson-tx2-arm-runtests)](http://ci.libccv.org/builders/jetson-tx2-arm-runtests)
 
 Backstory
 ---------
