@@ -42,6 +42,10 @@
 #define CMD_RELU_FORWARD() ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_RELU_BACKWARD
 #define CMD_RELU_BACKWARD() ccv_nnc_cmd(CCV_NNC_RELU_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_DROPOUT_FORWARD
+#define CMD_DROPOUT_FORWARD(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p}}), 0)
+// CCV_NNC_DROPOUT_BACKWARD
+#define CMD_DROPOUT_BACKWARD(_p) ccv_nnc_cmd(CCV_NNC_DROPOUT_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.dropout={.p=_p}}), 0)
 // CCV_NNC_REDUCE_SUM_FORWARD
 #define CMD_REDUCE_SUM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_REDUCE_SUM_FORWARD, 0, CMD_REDUCE(__VA_ARGS__), 0)
 // CCV_NNC_REDUCE_SUM_BACKWARD

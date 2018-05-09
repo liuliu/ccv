@@ -67,6 +67,9 @@ typedef struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;
+		struct {
+			float p; /**< [dropout.p] Dropout probability. */
+		} dropout;
 		void* userdata;
 	};
 } ccv_nnc_cmd_param_t;

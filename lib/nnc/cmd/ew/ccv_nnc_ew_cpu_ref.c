@@ -1002,7 +1002,7 @@ static int _ccv_nnc_ewlog_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 		{
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				for (x = 0; x < dim[0]; x++)
+				for (x = 0; x < dim[3]; x++)
 					bp[x] = log(ap[x]);
 				ap += ainc[3];
 				bp += binc[3];
@@ -1075,7 +1075,7 @@ static int _ccv_nnc_ewsqrt_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 		{
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
-				for (x = 0; x < dim[0]; x++)
+				for (x = 0; x < dim[3]; x++)
 					bp[x] = sqrt(ap[x]);
 				ap += ainc[3];
 				bp += binc[3];
