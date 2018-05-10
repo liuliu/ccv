@@ -41,16 +41,16 @@ static void _ccv_nnc_dropout_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, con
 
 static int _ccv_nnc_dropout_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	// 0b1001
-	// Inputs (gradient, 0, 0, mask)
+	// 0b10001
+	// Inputs (dy, 0, 0, 0, mask)
 	// Output the propagated error
-	if ((input_bitmasks[0] & 9u) == 9u && (output_bitmasks[0] & 1u) == 1u)
+	if ((input_bitmasks[0] & 17u) == 17u && (output_bitmasks[0] & 1u) == 1u)
 		return 1;
 	return 0;
 }
 
 REGISTER_COMMAND(CCV_NNC_DROPOUT_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_dropout_cpu_ref.c) // , gpu/ccv_nnc_dropout_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_dropout_cpu_ref.c, gpu/ccv_nnc_dropout_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_dropout_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_dropout_tensor_auto_forw;
@@ -58,7 +58,7 @@ REGISTER_COMMAND(CCV_NNC_DROPOUT_FORWARD)(ccv_nnc_cmd_registry_t* const registry
 }
 
 REGISTER_COMMAND(CCV_NNC_DROPOUT_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_dropout_cpu_ref.c) // , gpu/ccv_nnc_dropout_gpu_cudnn.cu)
+	FIND_BACKEND(ccv_nnc_dropout_cpu_ref.c, gpu/ccv_nnc_dropout_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_dropout_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;

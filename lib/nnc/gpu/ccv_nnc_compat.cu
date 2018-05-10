@@ -23,6 +23,7 @@ typedef struct {
 	cublasHandle_t cublas;
 #ifdef HAVE_CUDNN
 	cudnnHandle_t cudnn;
+	void* rngs; // user-allocated GPU memory that will hold random number generator states.
 #endif
 } ccv_nnc_stream_context_compat_t;
 
@@ -43,6 +44,7 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	stream_compat->cublas = 0;
 #ifdef HAVE_CUDNN
 	stream_compat->cudnn = 0;
+	stream_compat->rngs = 0;
 #endif
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
@@ -66,6 +68,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 #ifdef HAVE_CUDNN
 	if (stream_compat->cudnn)
 		cudnnDestroy(stream_compat->cudnn);
+	if (stream_compat->rngs)
+		cudaFreeAsync(stream_compat->rngs, stream_compat->stream);
 #endif
 }
 
@@ -130,6 +134,31 @@ cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(c
 	return desc;
 }
 
+static void* _ccv_nnc_stream_context_get_rng_states(const ccv_nnc_stream_context_t* const stream_context, const size_t state_size)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	if (stream_compat->rngs)
+		return stream_compat->rngs;
+	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	cudaSetDevice(device);
+	cudaMalloc(&stream_compat->rngs, state_size);
+	return stream_compat->rngs;
+}
+
+cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv_nnc_stream_context_t* const stream_context, const float p)
+{
+	cudnnDropoutDescriptor_t desc;
+	cudnnCreateDropoutDescriptor(&desc);
+	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
+	size_t state_size;
+	cudnnDropoutGetStatesSize(cudnn, &state_size);
+	void* rng_states = _ccv_nnc_stream_context_get_rng_states(stream_context, state_size);
+	cudnnSetDropoutDescriptor(desc, cudnn, p, rng_states, state_size, (unsigned long long)stream_context);
+	return desc;
+}
+
 cudnnFilterDescriptor_t ccv_nnc_stream_context_get_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnFilterDescriptor_t desc;
@@ -159,6 +188,11 @@ void ccv_nnc_stream_context_return_activation_descriptor(const ccv_nnc_stream_co
 void ccv_nnc_stream_context_return_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnConvolutionDescriptor_t convolution_desc)
 {
 	cudnnDestroyConvolutionDescriptor(convolution_desc);
+}
+
+void ccv_nnc_stream_context_return_dropout_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnDropoutDescriptor_t dropout_desc)
+{
+	cudnnDestroyDropoutDescriptor(dropout_desc);
 }
 
 void ccv_nnc_stream_context_return_filter_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnFilterDescriptor_t filter_desc)

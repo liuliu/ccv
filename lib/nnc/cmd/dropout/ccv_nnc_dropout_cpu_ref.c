@@ -60,7 +60,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			for (i[1] = 0; i[1] < dim[1]; i[1]++)
 			{
 				for (x = 0; x < count; x++)
-					bp[x] = maskp[x] ? 0 : ap[x];
+					bp[x] = maskp[x] ? 0 : ap[x] * inv_p;
 				ap += ainc[2] * ainc[3];
 				bp += binc[2] * binc[3];
 				maskp += count;
@@ -78,7 +78,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
 				for (x = 0; x < dim[3]; x++)
-					bp[x] = maskp[x] ? 0 : ap[x];
+					bp[x] = maskp[x] ? 0 : ap[x] * inv_p;
 				maskp += dim[3];
 				ap += ainc[3];
 				bp += binc[3];
@@ -94,8 +94,10 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 
 static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size >= 4);
-	uint8_t* const maskdata = inputs[3]->data.u8;
+	assert(input_size == 5);
+	const float p = cmd.info.dropout.p;
+	const float inv_p = 1. / (1. - p);
+	uint8_t* const maskdata = inputs[4]->data.u8;
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
 	int ginc[CCV_NNC_MAX_DIM + 2];
@@ -112,7 +114,7 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 		// Super optimal case, just do one for-loop for sum.
 		const int tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
 		for (x = 0; x < tensor_count; x++)
-			h->data.f32[x] = maskdata[x] ? 0 : g->data.f32[x];
+			h->data.f32[x] = maskdata[x] ? 0 : g->data.f32[x] * inv_p;
 		return CCV_NNC_EXEC_SUCCESS;
 	}
 	assert(CCV_NNC_MAX_DIM == 2); // Need to change this logic for CCV_NNC_MAX_DIM == other number.
@@ -131,7 +133,7 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			for (i[1] = 0; i[1] < dim[1]; i[1]++)
 			{
 				for (x = 0; x < count; x++)
-					hp[x] = maskp[x] ? 0 : gp[x];
+					hp[x] = maskp[x] ? 0 : gp[x] * inv_p;
 				gp += ginc[2] * ginc[3];
 				hp += hinc[2] * hinc[3];
 				maskp += count;
@@ -149,7 +151,7 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 			for (i[2] = 0; i[2] < dim[2]; i[2]++)
 			{
 				for (x = 0; x < dim[3]; x++)
-					hp[x] = maskp[x] ? 0 : gp[x];
+					hp[x] = maskp[x] ? 0 : gp[x] * inv_p;
 				maskp += dim[3];
 				gp += ginc[3];
 				hp += hinc[3];
