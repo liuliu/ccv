@@ -21,6 +21,10 @@ typedef struct {
 	int type; // Kept the type specifier.
 	cudaStream_t stream;
 	cublasHandle_t cublas;
+	struct {
+		int n;
+		float* data;
+	} ones;
 #ifdef HAVE_CUDNN
 	cudnnHandle_t cudnn;
 	void* rngs; // user-allocated GPU memory that will hold random number generator states.
@@ -42,6 +46,7 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	cudaSetDevice(device);
 	cudaStreamCreate(&stream_compat->stream);
 	stream_compat->cublas = 0;
+	stream_compat->ones.data = 0;
 #ifdef HAVE_CUDNN
 	stream_compat->cudnn = 0;
 	stream_compat->rngs = 0;
@@ -65,6 +70,8 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 	cudaStreamDestroy(stream_compat->stream);
 	if (stream_compat->cublas)
 		cublasDestroy(stream_compat->cublas);
+	if (stream_compat->ones.data)
+		cudaFreeAsync(stream_compat->ones.data, stream_compat->stream);
 #ifdef HAVE_CUDNN
 	if (stream_compat->cudnn)
 		cudnnDestroy(stream_compat->cudnn);
@@ -102,6 +109,34 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 		cublasSetStream(stream_compat->cublas, stream_compat->stream);
 	}
 	return stream_compat->cublas;
+}
+
+// A simple kernel to set all values to 1.
+__global__ static void ones(float* x, int n)
+{
+	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
+	if (thidx < n)
+		x[thidx] = 1.;
+}
+
+float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	if (!stream_compat->ones.data || n > stream_compat->ones.n)
+	{
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		cudaSetDevice(device);
+		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+		if (stream_compat->ones.data)
+			cudaFreeAsync(stream_compat->ones.data, stream);
+		stream_compat->ones.n = n;
+		stream_compat->ones.data = (float*)cumalloc(device, sizeof(float) * n);
+		const int block_x = (n + 255) >> 8;
+		ones<<<block_x, 256, 0, stream>>>(stream_compat->ones.data, n);
+	}
+	return stream_compat->ones.data;
 }
 
 #ifdef HAVE_CUDNN

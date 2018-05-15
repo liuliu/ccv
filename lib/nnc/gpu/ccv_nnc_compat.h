@@ -52,8 +52,24 @@ extern "C" {
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context);
-#ifdef HAVE_CUDNN
 
+#ifdef NDEBUG
+#define assert_cublas(status) status
+#else
+#define assert_cublas(status) {                                   \
+	if (status != CUBLAS_STATUS_SUCCESS) {                        \
+		printf("[%s:%d]:CUBLAS - Error: %d\n",                    \
+				__FILE__, __LINE__, (int)status);                 \
+		cudaDeviceReset();                                        \
+		exit(EXIT_FAILURE);                                       \
+	}                                                             \
+}
+#endif
+
+// Return floating point one on device memory.
+CCV_WARN_UNUSED(float*) ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n);
+
+#ifdef HAVE_CUDNN
 CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context);
 // CUDNN related descriptors.
 CCV_WARN_UNUSED(cudnnActivationDescriptor_t) ccv_nnc_stream_context_get_activation_descriptor(const ccv_nnc_stream_context_t* const stream_context);

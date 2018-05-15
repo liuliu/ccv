@@ -20,20 +20,22 @@ int _ccv_nnc_gemm_forw_cpu_sys(const ccv_nnc_tensor_view_t* const a, const ccv_n
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	const int* bdim = (b_nd == 1) ? b->info.dim : b->info.dim + 1;
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
-	ccv_dense_matrix_t am = ccv_dense_matrix(batch_size, adim[0], CCV_32F | CCV_C1, a->data.u8, 0);
+	ccv_dense_matrix_t am = ccv_dense_matrix(adim[0], batch_size, CCV_32F | CCV_C1, a->data.u8, 0);
 	int bias_count = ccv_nnc_tensor_count(bias->info);
 	assert(bdim[0] == bias_count);
 	assert(batch_size == (b_nd == 1) ? 1 : ccv_max(1, b->info.dim[0]));
-	ccv_dense_matrix_t bm = ccv_dense_matrix(batch_size, bdim[0], CCV_32F | CCV_C1, b->data.u8, 0);
+	ccv_dense_matrix_t bm = ccv_dense_matrix(bdim[0], batch_size, CCV_32F | CCV_C1, b->data.u8, 0);
 	ccv_dense_matrix_t* dbm = &bm;
+	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? 1 : b->inc[0]) : batch_size;
 	// copy bias into each row.
-	int i;
-	for (i = 0; i < batch_size; i++)
-		memcpy(bm.data.f32 + i * bdim[0], bias->data.f32, sizeof(float) * bdim[0]);
+	int i, j;
+	for (i = 0; i < bdim[0]; i++)
+		for (j = 0; j < batch_size; j++)
+			bm.data.f32[i * b_batch_inc + j] = bias->data.f32[i];
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
 	ccv_dense_matrix_t wm = ccv_dense_matrix(bdim[0], adim[0], CCV_32F | CCV_C1, w->data.u8, 0);
-	ccv_gemm(&am, &wm, 1, dbm, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&dbm, 0); // supply b as matrix C is allowed
+	ccv_gemm(&wm, &am, 1, dbm, 1, 0, (ccv_matrix_t**)&dbm, 0); // supply b as matrix C is allowed
 	return CCV_NNC_EXEC_SUCCESS;
 #else
 	return CCV_NNC_EXEC_INVALID;
@@ -63,22 +65,25 @@ int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* const g, const ccv_n
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (g_nd == 1) ? 1 : ccv_max(1, g->info.dim[0]));
 	assert(bias->info.dim[0] == gdim[0]);
-	ccv_dense_matrix_t gm = ccv_dense_matrix(batch_size, gdim[0], CCV_32F | CCV_C1, g->data.u8, 0);
-	ccv_dense_matrix_t am = ccv_dense_matrix(batch_size, adim[0], CCV_32F | CCV_C1, a->data.u8, 0);
+	ccv_dense_matrix_t gm = ccv_dense_matrix(gdim[0], batch_size, CCV_32F | CCV_C1, g->data.u8, 0);
+	ccv_dense_matrix_t am = ccv_dense_matrix(adim[0], batch_size, CCV_32F | CCV_C1, a->data.u8, 0);
 	int i, j;
 	float* gp = g->data.f32;
 	float* bp = bias->data.f32;
-	for (i = 0; i < batch_size; i++)
+	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? 1 : g->inc[0]) : batch_size;
+	for (i = 0; i < gdim[0]; i++)
 	{
-		for (j = 0; j < gdim[0]; j++)
-			bp[j] += gp[j];
-		gp += gdim[0];
+		float v = bp[i];
+		for (j = 0; j < batch_size; j++)
+			v += gp[j];
+		bp[i] = v;
+		gp += g_batch_inc;
 	}
 	assert(gdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
 	ccv_dense_matrix_t dwm = ccv_dense_matrix(gdim[0], adim[0], CCV_32F | CCV_C1, dw->data.u8, 0);
 	ccv_dense_matrix_t* ddwm = &dwm;
-	ccv_gemm(&gm, &am, 1, ddwm, 1, CCV_A_TRANSPOSE, (ccv_matrix_t**)&ddwm, 0);
+	ccv_gemm(&gm, &am, 1, ddwm, 1, CCV_B_TRANSPOSE, (ccv_matrix_t**)&ddwm, 0);
 	if (h && w)
 	{
 		assert(!CCV_IS_TENSOR_VIEW(h));
@@ -91,9 +96,9 @@ int _ccv_nnc_gemm_back_cpu_sys(const ccv_nnc_tensor_view_t* const g, const ccv_n
 		assert(hdim[0] == adim[0]);
 		assert(batch_size == (h_nd == 1) ? 1 : ccv_max(1, h->info.dim[0]));
 		ccv_dense_matrix_t wm = ccv_dense_matrix(gdim[0], hdim[0], CCV_32F | CCV_C1, w->data.u8, 0);
-		ccv_dense_matrix_t hm = ccv_dense_matrix(batch_size, hdim[0], CCV_32F | CCV_C1, h->data.u8, 0);
+		ccv_dense_matrix_t hm = ccv_dense_matrix(hdim[0], batch_size, CCV_32F | CCV_C1, h->data.u8, 0);
 		ccv_dense_matrix_t* dhm = &hm;
-		ccv_gemm(&gm, &wm, 1, 0, 0, 0 /* No transpose */, (ccv_matrix_t**)&dhm, 0);
+		ccv_gemm(&wm, &gm, 1, 0, 0, CCV_A_TRANSPOSE, (ccv_matrix_t**)&dhm, 0);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 #else

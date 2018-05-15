@@ -34,23 +34,20 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(bdim[0] == bias->info.dim[0]);
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? a->inc : a->inc + 1) : adim;
-	const int* binc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? b->inc : b->inc + 1) : bdim;
+	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? 1 : a->inc[0]) : batch_size;
+	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? 1 : b->inc[0]) : batch_size;
 	const int* winc = CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim;
-	int i;
-	for (i = 0; i < batch_size; i++)
-	{
-		const float* const ap = a->data.f32 + i * ainc[0];
-		float* const bp = b->data.f32 + i * binc[0];
-		parallel_for(j, bdim[0]) {
-			float v = bias->data.f32[j];
-			const float* const wp = w->data.f32 + j * winc[1];
-			int k;
-			for (k = 0; k < adim[0]; k++)
-				v += wp[k] * ap[k];
-			bp[j] = v;
-		} parallel_endfor
-	}
+	const float* const ap = a->data.f32;
+	float* const bp = b->data.f32;
+	parallel_for(i, bdim[0]) {
+		const float* const wp = w->data.f32 + i * winc[1];
+		int j, k;
+		for (k = 0; k < batch_size; k++)
+			bp[i * b_batch_inc + k] = bias->data.f32[i];
+		for (j = 0; j < adim[0]; j++)
+			for (k = 0; k < batch_size; k++)
+				bp[i * b_batch_inc + k] += wp[j] * ap[j * a_batch_inc + k];
+	} parallel_endfor
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -82,31 +79,31 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (g_nd == 1) ? 1 : ccv_max(1, g->info.dim[0]));
 	assert(bias->info.dim[0] == gdim[0]);
-	int i, j;
+	int i;
 	float* gp = g->data.f32;
 	float* bp = bias->data.f32;
-	const int* ginc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? g->inc : g->inc + 1) : gdim;
-	for (i = 0; i < batch_size; i++)
+	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? 1 : g->inc[0]) : batch_size;
+	for (i = 0; i < gdim[0]; i++)
 	{
-		for (j = 0; j < gdim[0]; j++)
-			bp[j] += gp[j];
-		gp += ginc[0];
+		float v = bp[i];
+		int j;
+		for (j = 0; j < batch_size; j++)
+			v += gp[j];
+		bp[i] = v;
+		gp += g_batch_inc;
 	}
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);
-	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == 1) ? a->inc : a->inc + 1) : adim;
-	for (i = 0; i < batch_size; i++)
-	{
-		const float* const gp = g->data.f32 + i * ginc[0];
-		const float* const ap = a->data.f32 + i * ainc[0];
-		parallel_for(j, gdim[0]) {
-			float* const dwp = dw->data.f32 + j * dwinc[1];
-			const float v = gp[j];
-			int k;
-			for (k = 0; k < adim[0]; k++)
-				dwp[k] += ap[k] * v;
-		} parallel_endfor
-	}
+	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == 1) ? 1 : a->inc[0]) : batch_size;
+	gp = g->data.f32;
+	const float* const ap = a->data.f32;
+	parallel_for(i, gdim[0]) {
+		float* const dwp = dw->data.f32 + i * dwinc[1];
+		int j, k;
+		for (j = 0; j < adim[0]; j++)
+			for (k = 0; k < batch_size; k++)
+				dwp[j] += ap[j * a_batch_inc + k] * gp[i * g_batch_inc + k];
+	} parallel_endfor
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
 	{
@@ -117,21 +114,19 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int* hdim = (h_nd == 1) ? h->info.dim : h->info.dim + 1;
 		assert(hdim[0] == adim[0]);
 		assert(batch_size == (h_nd == 1) ? 1 : ccv_max(1, h->info.dim[0]));
-		const int* hinc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == 1) ? h->inc : h->inc + 1) : hdim;
+		const int h_batch_inc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == 1) ? 1 : h->inc[0]) : batch_size;
 		const int* winc = CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim;
-		for (i = 0; i < batch_size; i++)
-		{
-			const float* const gp = g->data.f32 + i * ginc[0];
-			float* const hp = h->data.f32 + i * hinc[0];
-			parallel_for(j, hdim[0]) {
-				const float* const wp = w->data.f32 + j;
-				float v = 0;
-				int k;
-				for (k = 0; k < gdim[0]; k++)
-					v += wp[k * winc[1]] * gp[k];
-				hp[j] = v;
-			} parallel_endfor
-		}
+		gp = g->data.f32;
+		float* const hp = h->data.f32;
+		parallel_for(i, hdim[0]) {
+			const float* const wp = w->data.f32 + i;
+			int j, k;
+			for (k = 0; k < batch_size; k++)
+				hp[i * h_batch_inc + k] = 0;
+			for (j = 0; j < gdim[0]; j++)
+				for (k = 0; k < batch_size; k++)
+					hp[i * h_batch_inc + k] += wp[j * winc[1]] * gp[j * g_batch_inc + k];
+		} parallel_endfor
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
