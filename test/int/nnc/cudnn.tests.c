@@ -562,7 +562,7 @@ TEST_CASE("compare dropout with cudnn")
 		else {
 			REQUIRE_EQ_WITH_TOLERANCE(x_tensor->data.f32[i] / 0.6, y_tensor->data.f32[i], 1e-5, "should be scaled up by 1 / 0.6");
 		}
-	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 2 * 1e-2, "should be within 2%% of error");
+	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 5 * 1e-2, "should be within 5%% of error");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
@@ -614,7 +614,7 @@ TEST_CASE("compare dropout gradient with cudnn")
 		else {
 			REQUIRE_EQ_WITH_TOLERANCE(dx_tensor->data.f32[i], dy_tensor->data.f32[i] / 0.6, 1e-3, "should match the gradient");
 		}
-	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 4 * 1e-2, "should be within 4%% of error");
+	REQUIRE_EQ_WITH_TOLERANCE((float)zero_count / (20 * 50), 0.4, 5 * 1e-2, "should be within 5%% of error");
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);

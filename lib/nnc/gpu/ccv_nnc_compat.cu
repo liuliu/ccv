@@ -28,6 +28,7 @@ typedef struct {
 #ifdef HAVE_CUDNN
 	cudnnHandle_t cudnn;
 	void* rngs; // user-allocated GPU memory that will hold random number generator states.
+	unsigned long long seed;
 #endif
 } ccv_nnc_stream_context_compat_t;
 
@@ -180,12 +181,19 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 	size_t state_size;
 	cudnnDropoutGetStatesSize(cudnn, &state_size);
 	if (stream_compat->rngs)
-		cudnnRestoreDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, (unsigned long long)stream_context);
-	else {
+	{
+#if CUDNN_VERSION >= 7100
+		cudnnRestoreDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
+#else
+		++stream_compat->seed;
+		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
+#endif
+	} else {
 		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 		cudaSetDevice(device);
 		cudaMalloc(&stream_compat->rngs, state_size);
-		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, (unsigned long long)stream_context);
+		stream_compat->seed = (unsigned long long)stream_compat;
+		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
 	}
 	return desc;
 }
