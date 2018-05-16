@@ -252,8 +252,6 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 		ccv_nnc_stream_context_get_tensor_descriptor(stream_context),
 		tensor->data,
 	};
-	// N is the outer one nevertheless.
-	assert(tensor->info.format == CCV_TENSOR_FORMAT_NCHW || tensor->info.format == CCV_TENSOR_FORMAT_NHWC);
 	// Fill up dimensions with 1s.
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
@@ -327,6 +325,42 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 					stride[i + 2] = (i == CCV_NNC_MAX_DIM - 1) ? inc[i + 2] : stride[i + 3] * inc[i + 2];
 				}
 				stride[0] = stride[2] * inc[1];
+				break;
+			default:
+				assert(0);
+		}
+	} else if (tensor->info.format == CCV_TENSOR_FORMAT_CHWN) {
+		switch (axis_count)
+		{
+			case 1:
+				dim[0] = dim[2] = dim[3] = 1;
+				dim[1] = tensor->info.dim[0];
+				stride[0] = inc[0];
+				stride[1] = 1;
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = 1;
+				break;
+			case CCV_NNC_MAX_DIM + 1:
+				dim[0] = 1;
+				dim[1] = tensor->info.dim[0];
+				stride[CCV_NNC_MAX_DIM + 1] = 1;
+				for (i = CCV_NNC_MAX_DIM - 1; i >= 0; i--)
+				{
+					dim[i + 2] = tensor->info.dim[i + 1];
+					stride[i + 1] = stride[i + 2] * inc[i + 1];
+				}
+				stride[0] = stride[1] * inc[0];
+				break;
+			case CCV_NNC_MAX_DIM + 2:
+				dim[0] = tensor->info.dim[CCV_NNC_MAX_DIM + 1];
+				stride[0] = 1;
+				dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[CCV_NNC_MAX_DIM];
+				stride[CCV_NNC_MAX_DIM + 1] = inc[CCV_NNC_MAX_DIM + 1];
+				for (i = CCV_NNC_MAX_DIM; i > 0; i--)
+				{
+					dim[i] = tensor->info.dim[i - 1];
+					stride[i] = stride[i + 1] * inc[i]; // inc[i] is actually the one before.
+				}
 				break;
 			default:
 				assert(0);

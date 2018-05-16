@@ -166,6 +166,8 @@ int ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd
 ccv_nnc_hint_t ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b)
 {
 	int i;
+	if (a.format != b.format)
+		return ccv_nnc_no_hint;
 	assert(a.format == b.format);
 	const int a_nd = ccv_nnc_tensor_nd(a.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b.dim);
