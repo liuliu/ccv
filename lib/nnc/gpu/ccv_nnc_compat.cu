@@ -169,28 +169,24 @@ cudnnConvolutionDescriptor_t ccv_nnc_stream_context_get_convolution_descriptor(c
 	return desc;
 }
 
-static void* _ccv_nnc_stream_context_get_rng_states(const ccv_nnc_stream_context_t* const stream_context, const size_t state_size)
-{
-	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	if (!stream_compat)
-		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
-	if (stream_compat->rngs)
-		return stream_compat->rngs;
-	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
-	cudaSetDevice(device);
-	cudaMalloc(&stream_compat->rngs, state_size);
-	return stream_compat->rngs;
-}
-
 cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv_nnc_stream_context_t* const stream_context, const float p)
 {
 	cudnnDropoutDescriptor_t desc;
 	cudnnCreateDropoutDescriptor(&desc);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	size_t state_size;
 	cudnnDropoutGetStatesSize(cudnn, &state_size);
-	void* rng_states = _ccv_nnc_stream_context_get_rng_states(stream_context, state_size);
-	cudnnSetDropoutDescriptor(desc, cudnn, p, rng_states, state_size, (unsigned long long)stream_context);
+	if (stream_compat->rngs)
+		cudnnRestoreDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, (unsigned long long)stream_context);
+	else {
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		cudaSetDevice(device);
+		cudaMalloc(&stream_compat->rngs, state_size);
+		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, (unsigned long long)stream_context);
+	}
 	return desc;
 }
 
