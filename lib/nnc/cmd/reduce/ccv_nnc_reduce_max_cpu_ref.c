@@ -93,7 +93,8 @@ static int _ccv_nnc_reduce_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		int x;
 		float* hp = h->data.f32;
 		float* ap = a->data.f32;
-		float* const bp = a->data.f32;
+		float* const bp = b->data.f32;
+		ccv_nnc_tensor_zero(h);
 		// Non-optimal case, need to do skip if needed.
 		for (i[0] = 0; i[0] < hdim[0]; i[0]++)
 		{
@@ -155,7 +156,8 @@ static int _ccv_nnc_reduce_max_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	float* hp = h->data.f32;
 	float* const gp = g->data.f32;
 	float* ap = a->data.f32;
-	float* const bp = a->data.f32;
+	float* const bp = b->data.f32;
+	ccv_nnc_tensor_zero(h);
 	// Non-optimal case, need to do skip if needed.
 	for (i[0] = 0; i[0] < hdim[0]; i[0]++)
 	{

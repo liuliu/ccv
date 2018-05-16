@@ -16,7 +16,7 @@ static int _ccv_nnc_softmax_forw_bitmask(const int input_size, const int output_
 
 static int _ccv_nnc_softmax_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	if ((input_bitmasks[0] & 1u) == 1u && output_bitmasks[0] == 1u)
+	if ((input_bitmasks[0] & 5u) == 5u && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }

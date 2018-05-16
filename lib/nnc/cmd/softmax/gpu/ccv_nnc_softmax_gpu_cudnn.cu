@@ -36,7 +36,7 @@ static int _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	static const float one = 1, zero = 0;
-	cudnnSoftmaxBackward(cudnn, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &one, b.descriptor, b.data.u8, g.descriptor, g.data.u8, &zero, h.descriptor, h.data.u8);
+	assert_cudnn(cudnnSoftmaxBackward(cudnn, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &one, b.descriptor, b.data.u8, g.descriptor, g.data.u8, &zero, h.descriptor, h.data.u8));
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
