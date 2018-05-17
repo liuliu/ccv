@@ -16,7 +16,7 @@ static int _ccv_nnc_conv_back_bitmask(const int input_size, const int output_siz
 	if ((input_bitmasks[0] & 15u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0 << 3)) && output_bitmasks[0] == ((1u << 0) | (1u << 1) | (1u << 2)))
 		return 1;
 	// Don't propagate error, only gradient w.r.t. w and bias.
-	if ((input_bitmasks[0] & 15u) == ((1u << 0) | (1u << 1) | (0 << 2) | (0 << 3)) && output_bitmasks[0] == ((0 << 0) | (1u << 1) | (1u << 2)))
+	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1) | (0 << 2) | (0 << 3)) && output_bitmasks[0] == ((0 << 0) | (1u << 1) | (1u << 2)))
 		return 1;
 	return 0;
 }
@@ -32,6 +32,7 @@ static void _ccv_nnc_conv_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	assert(count == cmd.convolution.count);
 	assert(count == inputs[2].dim[0]); // from the bias matrix.
 	ccv_nnc_tensor_set_c(outputs, ccv_nnc_tensor_nd(inputs[0].dim), count);
+	ccv_nnc_tensor_set_n(outputs, ccv_nnc_tensor_get_n(inputs[0]));
 	ccv_nnc_hint_tensor_forward(cmd, inputs[0], hint, outputs);
 }
 
