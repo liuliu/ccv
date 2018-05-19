@@ -116,7 +116,7 @@ int main(int argc, char** argv)
 		ccv_nnc_graph_t* run_graph = 0;
 		ccv_nnc_tensor_arena_t* tensor_arena = 0;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-		ccv_nnc_symbolic_graph_compile(graph, TENSOR_BIND_MAP(KV(input_symbol, (ccv_nnc_tensor_t*)sliced), KV(output_symbol, c)), GRAPH_EXEC_SYMBOL_LIST(source_symbol), GRAPH_EXEC_SYMBOL_LIST(dest_symbol), &run_graph, &tensor_arena, &graph_exec_arena);
+		ccv_nnc_symbolic_graph_compile(graph, TENSOR_BIND_MAP(KV(input_symbol, (ccv_nnc_tensor_t*)sliced), KV(output_symbol, c)), 0, 0, GRAPH_EXEC_SYMBOL_LIST(source_symbol), GRAPH_EXEC_SYMBOL_LIST(dest_symbol), &run_graph, &tensor_arena, &graph_exec_arena);
 		printf("ccv_nnc_symbolic_graph_compile %u ms\n", get_current_time() - elapsed_time);
 		int i;
 		for (i = 0; i < convnet->count; i++)

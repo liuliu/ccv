@@ -45,6 +45,7 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	b_tensor->data.f32[0] = 1.1;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph,
 		TENSOR_BIND_MAP(KV(a, a_tensor), KV(b, b_tensor)), // Binding the tensors.
+		0, 0,
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);

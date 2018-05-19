@@ -506,6 +506,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(dynamic_graph->symbolic,
 		(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
+		0, 0,
 		&set_ones, 1,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
 		&graph, &tensor_arena, &exec_arena);
