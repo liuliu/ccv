@@ -273,6 +273,51 @@ void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_contex
 	cudnnDestroyTensorDescriptor(tensor_desc);
 }
 
+ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)
+{
+	ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc = {
+		stream_context,
+		ccv_nnc_stream_context_get_tensor_descriptor(stream_context),
+		tensor->data,
+	};
+	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
+	int stride[CCV_NNC_MAX_DIM_ALLOC] = {};
+	const int axis_count = ccv_nnc_tensor_nd(tensor->info.dim);
+	const int* const inc = CCV_IS_TENSOR_VIEW(tensor) ? tensor->inc : tensor->info.dim;
+	int i;
+	const int offset = CCV_NNC_MAX_DIM + 2 - axis_count;
+	if (offset > 0)
+	{
+		dim[CCV_NNC_MAX_DIM + 1] = tensor->info.dim[axis_count - 1];
+		stride[CCV_NNC_MAX_DIM + 1] = 1;
+		for (i = CCV_NNC_MAX_DIM; i >= offset; i--)
+		{
+			dim[i] = tensor->info.dim[i - offset];
+			stride[i] = stride[i + 1] * inc[i - offset + 1];
+		}
+		for (i = 0; i < offset; i++)
+		{
+			dim[i] = 1;
+			stride[i] = stride[offset];
+		}
+	} else {
+		dim[axis_count - 1] = tensor->info.dim[axis_count - 1];
+		stride[axis_count - 1] = 1;
+		for (i = axis_count - 2; i >= 0; i--)
+		{
+			dim[i] = tensor->info.dim[i];
+			stride[i] = stride[i + 1] * inc[i + 1];
+		}
+	}
+	if (axis_count <= 4)
+	{
+		assert_cudnn(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, CUDNN_DATA_FLOAT, dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
+	} else {
+		assert_cudnn(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, CUDNN_DATA_FLOAT, axis_count, dim, stride));
+	}
+	return tensor_desc;
+}
+
 ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_tensor_view_t* const tensor)
 {
 	ccv_nnc_cudnn_tensor_view_descriptor_t tensor_desc = {
