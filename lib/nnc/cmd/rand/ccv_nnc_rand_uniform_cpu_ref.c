@@ -14,7 +14,7 @@
 static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size == 1);
-	ccv_nnc_tensor_t* const a = inputs[0];
+	ccv_nnc_tensor_t* const a = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(a));
 	const int count = ccv_nnc_tensor_count(a->info);
 	int i;

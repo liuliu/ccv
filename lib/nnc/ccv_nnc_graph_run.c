@@ -190,6 +190,8 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 
 static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 {
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) != CCV_TENSOR_CPU_MEMORY)
+		return;
 	int i;
 	switch (tensor->info.datatype)
 	{

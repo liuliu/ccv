@@ -343,6 +343,15 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
 					stride[i] = inc[0];
 				break;
+			case 2:
+				dim[0] = tensor->info.dim[0];
+				dim[1] = tensor->info.dim[1];
+				dim[2] = dim[3] = 1;
+				stride[0] = inc[1];
+				stride[1] = 1;
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = inc[1];
+				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
 				dim[1] = tensor->info.dim[0];
@@ -376,6 +385,15 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
 					stride[i] = 1;
+				break;
+			case 2:
+				dim[0] = tensor->info.dim[0];
+				dim[1] = tensor->info.dim[1];
+				dim[2] = dim[3] = 1;
+				stride[0] = inc[1];
+				stride[1] = 1;
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = inc[1];
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
@@ -412,6 +430,15 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
 					stride[i] = 1;
+				break;
+			case 2:
+				dim[0] = tensor->info.dim[1];
+				dim[1] = tensor->info.dim[0];
+				dim[2] = dim[3] = 1;
+				stride[0] = 1;
+				stride[1] = inc[1];
+				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
+					stride[i] = inc[1];
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
@@ -461,7 +488,7 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 		tensor->data,
 	};
 	assert(!CCV_IS_TENSOR_VIEW(tensor));
-	int nd = ccv_nnc_tensor_nd(tensor->info.dim);
+	const int nd = ccv_nnc_tensor_nd(tensor->info.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 2);
 	int dim[CCV_NNC_MAX_DIM_ALLOC] = {};
 	int i;
