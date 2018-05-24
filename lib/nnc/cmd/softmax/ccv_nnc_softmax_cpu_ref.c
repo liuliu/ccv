@@ -19,7 +19,7 @@ static int _ccv_nnc_softmax_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	ccv_nnc_tensor_t* b = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(b));
 	const int axis_count = ccv_nnc_tensor_nd(a->info.dim);
-	const int batch_size = axis_count < CCV_NNC_MAX_DIM + 2 ? 1 : a->info.dim[0];
+	const int batch_size = axis_count < 2 ? 1 : a->info.dim[0];
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
@@ -55,7 +55,7 @@ static int _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	ccv_nnc_tensor_t* h = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(h));
 	const int axis_count = ccv_nnc_tensor_nd(g->info.dim);
-	const int batch_size = axis_count < CCV_NNC_MAX_DIM + 2 ? 1 : g->info.dim[0];
+	const int batch_size = axis_count < 2 ? 1 : g->info.dim[0];
 	const int count = ccv_nnc_tensor_count(g->info) / batch_size;
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && g->info.dim[i] > 0; i++)

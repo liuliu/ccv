@@ -1,5 +1,6 @@
 #include <ctype.h>
 #include <ccv.h>
+#include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
@@ -25,8 +26,8 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 	ccv_nnc_tensor_symbol_t x1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x1");
 	ccv_nnc_graph_exec_symbol_t ly1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(32, 5, 5, 3), TENSOR_SYMBOL_LIST(x0, w0, b0), TENSOR_SYMBOL_LIST(x1), 0);
 	ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, ly1, HINT((1, 1), (2, 2)));
-	ccv_nnc_tensor_symbol_t x2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x2");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(x1), TENSOR_SYMBOL_LIST(x2), 0);
+	 ccv_nnc_tensor_symbol_t x2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x2");
+	 ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(x1), TENSOR_SYMBOL_LIST(x2), 0);
 	ccv_nnc_tensor_symbol_t x3 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x3");
 	ccv_nnc_graph_exec_symbol_t ly2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_MAX_POOL_FORWARD(3, 3), TENSOR_SYMBOL_LIST(x2), TENSOR_SYMBOL_LIST(x3), 0);
 	ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, ly2, HINT((2, 2), (0, 0)));
@@ -55,10 +56,12 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 	ccv_nnc_tensor_symbol_t b3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NHWC(000, 10), "b3");
 	ccv_nnc_tensor_symbol_t x10 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 128, 10), "x10");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(10), TENSOR_SYMBOL_LIST(x9a, w3, b3), TENSOR_SYMBOL_LIST(x10), 0);
-	ccv_nnc_tensor_symbol_t x11 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 128, 10), "x11");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_FORWARD(), TENSOR_SYMBOL_LIST(x10), TENSOR_SYMBOL_LIST(x11), 0);
+	// ccv_nnc_tensor_symbol_t x11 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x11");
+	// ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(x10), TENSOR_SYMBOL_LIST(x11), 0);
+	ccv_nnc_tensor_symbol_t x12 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "x12");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_FORWARD(), TENSOR_SYMBOL_LIST(x10), TENSOR_SYMBOL_LIST(x12), 0);
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_backward(symbolic_graph, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), TENSOR_SYMBOL_LIST(x11), TENSOR_SYMBOL_LIST(w0, b0, w1, b1, w2, b2, w3, b3));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), TENSOR_SYMBOL_LIST(x12), TENSOR_SYMBOL_LIST(w0, b0, w1, b1, w2, b2, w3, b3));
 	ccv_nnc_tensor_symbol_t dw0 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, w0);
 	ccv_nnc_tensor_symbol_t db0 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b0);
 	ccv_nnc_tensor_symbol_t dw1 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, w1);
@@ -67,11 +70,11 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 	ccv_nnc_tensor_symbol_t db2 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b2);
 	ccv_nnc_tensor_symbol_t dw3 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, w3);
 	ccv_nnc_tensor_symbol_t db3 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b3);
-	ccv_nnc_tensor_symbol_t dx11 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x11);
-	ccv_nnc_tensor_symbol_t dx11c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "dx11c");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(dx11c), TENSOR_SYMBOL_LIST(dx11), 0);
-	ccv_nnc_tensor_symbol_t x11c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "x11c");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x11), TENSOR_SYMBOL_LIST(x11c), 0);
+	ccv_nnc_tensor_symbol_t dx12 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x12);
+	ccv_nnc_tensor_symbol_t dx12c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "dx12c");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(dx12c), TENSOR_SYMBOL_LIST(dx12), 0);
+	ccv_nnc_tensor_symbol_t x12c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "x12c");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x12), TENSOR_SYMBOL_LIST(x12c), 0);
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
@@ -94,9 +97,15 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(b3_tensor), 0);
 	ccv_nnc_symbolic_graph_compile(symbolic_graph,
 		TENSOR_BIND_MAP(KV(w0, w0_tensor), KV(b0, b0_tensor), KV(w1, w1_tensor), KV(b1, b1_tensor), KV(w2, w2_tensor), KV(b2, b2_tensor), KV(w3, w3_tensor), KV(b3, b3_tensor)),
-		TENSOR_SYMBOL_LIST(dw0, db0, dw1, db1, dw2, db2, dw3, db3, x11c),
+		TENSOR_SYMBOL_LIST(dw0, db0, dw1, db1, dw2, db2, dw3, db3, x12c),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
+	FILE* w = fopen("cifar-10.dot", "w+");
+	ccv_nnc_symbolic_graph_dot(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH, w);
+	fclose(w);
+	w = fopen("cifar-10-c.dot", "w+");
+	ccv_nnc_graph_dot(graph, CCV_NNC_LONG_DOT_GRAPH, w);
+	fclose(w);
 	ccv_nnc_tensor_t* tw0_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 32, 3, 5, 5), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(tw0_tensor), 0);
 	ccv_nnc_tensor_t* tb0_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32), 0);
@@ -115,14 +124,18 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(tb3_tensor), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
+	ccv_nnc_tensor_t* w0c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32, 3, 5, 5), 0);
+	ccv_nnc_tensor_t* w1c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32, 32, 5, 5), 0);
+	ccv_nnc_tensor_t* w2c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(64, 32, 5, 5), 0);
+	ccv_nnc_tensor_t* w3c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(10, 3 * 3 * 64), 0);
 	int i, j, k;
 	int c[128];
 	for (i = 0; i < 100000; i++)
 	{
 		// Load data.
 		ccv_nnc_tensor_t* input_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, input);
-		ccv_nnc_tensor_t* dx11c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx11c);
-		ccv_nnc_tensor_zero(dx11c_tensor);
+		ccv_nnc_tensor_t* dx12c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx12c);
+		ccv_nnc_tensor_zero(dx12c_tensor);
 		for (j = 0; j < 128; j++)
 		{
 			const int k = (int)(dsfmt_genrand_close_open(&dsfmt) * training_set->rnum);
@@ -136,47 +149,83 @@ static void train_cifar_10(ccv_array_t* const training_set, ccv_array_t* const t
 					for (fk = 0; fk < 3; fk++)
 						ip[fi * 31 + fj + fk * 31 * 31] = cp[fi * 31 * 3 + fj * 3 + fk] / 128.;
 			assert(categorized->c >= 0 && categorized->c < 10);
-			dx11c_tensor->data.f32[j * 10 + categorized->c] = 1;
+			dx12c_tensor->data.f32[j * 10 + categorized->c] = 1;
 			c[j] = categorized->c;
 		}
 		ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
-		ccv_nnc_tensor_t* x11c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x11c);
+		ccv_nnc_tensor_t* x12c_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x12c);
 		int correct = 0;
 		for (j = 0; j < 128; j++)
 		{
 			float max = -FLT_MAX;
 			int t = -1;
 			for (k = 0; k < 10; k++)
-				if (x11c_tensor->data.f32[j * 10 + k] > max)
-					max = x11c_tensor->data.f32[j * 10 + k], t = k;
+				if (x12c_tensor->data.f32[j * 10 + k] > max)
+					max = x12c_tensor->data.f32[j * 10 + k], t = k;
 			if (c[j] == t)
 				++correct;
 		}
-		printf("Batch %d, Correct %d\n", i + 1, correct);
 		ccv_nnc_tensor_t* dw0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tw0_tensor, dw0_tensor), TENSOR_LIST(tw0_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w0_tensor, tw0_tensor), TENSOR_LIST(w0_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tw0_tensor, dw0_tensor), TENSOR_LIST(tw0_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w0_tensor, tw0_tensor), TENSOR_LIST(w0_tensor), 0);
 		ccv_nnc_tensor_t* db0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tb0_tensor, db0_tensor), TENSOR_LIST(tb0_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tb0_tensor, db0_tensor), TENSOR_LIST(tb0_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b0_tensor, tb0_tensor), TENSOR_LIST(b0_tensor), 0);
 		ccv_nnc_tensor_t* dw1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw1);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tw1_tensor, dw1_tensor), TENSOR_LIST(tw1_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, tw1_tensor), TENSOR_LIST(w1_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tw1_tensor, dw1_tensor), TENSOR_LIST(tw1_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, tw1_tensor), TENSOR_LIST(w1_tensor), 0);
 		ccv_nnc_tensor_t* db1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db1);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tb1_tensor, db1_tensor), TENSOR_LIST(tb1_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tb1_tensor, db1_tensor), TENSOR_LIST(tb1_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b1_tensor, tb1_tensor), TENSOR_LIST(b1_tensor), 0);
 		ccv_nnc_tensor_t* dw2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw2);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tw2_tensor, dw2_tensor), TENSOR_LIST(tw2_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w2_tensor, tw2_tensor), TENSOR_LIST(w2_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tw2_tensor, dw2_tensor), TENSOR_LIST(tw2_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w2_tensor, tw2_tensor), TENSOR_LIST(w2_tensor), 0);
 		ccv_nnc_tensor_t* db2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db2);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tb2_tensor, db2_tensor), TENSOR_LIST(tb2_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tb2_tensor, db2_tensor), TENSOR_LIST(tb2_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b2_tensor, tb2_tensor), TENSOR_LIST(b2_tensor), 0);
 		ccv_nnc_tensor_t* dw3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw3);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tw3_tensor, dw3_tensor), TENSOR_LIST(tw3_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w3_tensor, tw3_tensor), TENSOR_LIST(w3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tw3_tensor, dw3_tensor), TENSOR_LIST(tw3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w3_tensor, tw3_tensor), TENSOR_LIST(w3_tensor), 0);
 		ccv_nnc_tensor_t* db3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db3);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, 0.000001), ccv_nnc_no_hint, 0, TENSOR_LIST(tb3_tensor, db3_tensor), TENSOR_LIST(tb3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, -0.000005), ccv_nnc_no_hint, 0, TENSOR_LIST(tb3_tensor, db3_tensor), TENSOR_LIST(tb3_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b3_tensor, tb3_tensor), TENSOR_LIST(b3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw0_tensor), TENSOR_LIST(w0c), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw1_tensor), TENSOR_LIST(w1c), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw2_tensor), TENSOR_LIST(w2c), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw3_tensor), TENSOR_LIST(w3c), 0);
+		float mean0 = 0;
+		float std0 = 0;
+		for (j = 0; j < 32 * 3 * 5 * 5; j++)
+			mean0 += w0c->data.f32[j];
+		mean0 = mean0 / (32 * 3 * 5 * 5);
+		for (j = 0; j < 32 * 3 * 5 * 5; j++)
+			std0 += (w0c->data.f32[j] - mean0) * (w0c->data.f32[j] - mean0);
+		std0 = std0 / (32 * 3 * 5 * 5);
+		float mean1 = 0;
+		float std1 = 0;
+		for (j = 0; j < 32 * 32 * 5 * 5; j++)
+			mean1 += w1c->data.f32[j];
+		mean1 = mean1 / (32 * 32 * 5 * 5);
+		for (j = 0; j < 32 * 32 * 5 * 5; j++)
+			std1 += (w1c->data.f32[j] - mean1) * (w1c->data.f32[j] - mean1);
+		std1 = std1 / (32 * 32 * 5 * 5);
+		float mean2 = 0;
+		float std2 = 0;
+		for (j = 0; j < 64 * 32 * 5 * 5; j++)
+			mean2 += w2c->data.f32[j];
+		mean2 = mean2 / (64 * 32 * 5 * 5);
+		for (j = 0; j < 64 * 32 * 5 * 5; j++)
+			std2 += (w2c->data.f32[j] - mean2) * (w2c->data.f32[j] - mean2);
+		std2 = std2 / (64 * 32 * 5 * 5);
+		float std3 = 0;
+		float mean3 = 0;
+		for (j = 0; j < 10 * 3 * 3 * 64; j++)
+			mean3 += w3c->data.f32[j];
+		mean3 = mean3 / (10 * 3 * 3 * 64);
+		for (j = 0; j < 10 * 3 * 3 * 64; j++)
+			std3 += (w3c->data.f32[j] - mean3) * (w3c->data.f32[j] - mean3);
+		std3 = std3 / (10 * 3 * 3 * 64);
+		FLUSH(CCV_CLI_INFO, "Batch %d, Correct %d, mean (%f, %f, %f, %f), std (%f, %f, %f, %f)", i + 1, correct, mean0, mean1, mean2, mean3, std0, std1, std2, std3);
 	}
 }
 
@@ -232,7 +281,7 @@ int main(int argc, char** argv)
 			ccv_categorized_t categorized = ccv_categorized(c, a, 0);
 			ccv_array_push(tests, &categorized);
 		}
-		// train_cifar_10(categorizeds, tests);
+		train_cifar_10(categorizeds, tests);
 	}
 	if (r1)
 		fclose(r1);
