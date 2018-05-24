@@ -33,8 +33,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
 	const int* winc = CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim;
-	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? 1 : a->inc[0]) : batch_size;
-	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? 1 : b->inc[0]) : batch_size;
+	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? a->inc[0] : a->inc[1]) : adim[0];
+	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? b->inc[0] : b->inc[1]) : bdim[0];
 
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
@@ -42,8 +42,8 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	static const float one = 1;
 	static const float zero = 0;
 	const float* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
-	cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, batch_size, bdim[0], 1, &one, device_ones, batch_size, bias->data.f32, 1, &zero, b->data.f32, b_batch_inc);
-	cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, batch_size, bdim[0], adim[0], &one, a->data.f32, a_batch_inc, w->data.f32, winc[1], &one, b->data.f32, b_batch_inc);
+	cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bdim[0], batch_size, 1, &one, bias->data.f32, bdim[0], device_ones, 1, &zero, b->data.f32, b_batch_inc);
+	cublasSgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, bdim[0], batch_size, adim[0], &one, w->data.f32, winc[1], a->data.f32, a_batch_inc, &one, b->data.f32, b_batch_inc);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -72,23 +72,23 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(bias->info.dim[0] == gdim[0]);
 	static const float one = 1;
 	static const float zero = 0;
-	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? 1 : g->inc[0]) : batch_size;
+	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? g->inc[0] : g->inc[1]) : gdim[0];
 
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
 	const float * const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, 1, gdim[0], batch_size, &one, device_ones, 1, g->data.f32, g_batch_inc, &zero, bias->data.f32, 1);
+		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, gdim[0], 1, batch_size, &one, g->data.f32, g_batch_inc, device_ones, batch_size, &zero, bias->data.f32, gdim[0]);
 	else
-		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, 1, gdim[0], batch_size, &one, device_ones, 1, g->data.f32, g_batch_inc, &one, bias->data.f32, 1);
+		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, gdim[0], 1, batch_size, &one, g->data.f32, g_batch_inc, device_ones, batch_size, &one, bias->data.f32, gdim[0]);
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);
-	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == 1) ? 1 : a->inc[0]) : batch_size;
+	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == 1) ? a->inc[0] : a->inc[1]) : adim[0];
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
-		cublasSgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, adim[0], gdim[0], batch_size, &one, a->data.f32, a_batch_inc, g->data.f32, g_batch_inc, &zero, dw->data.f32, dwinc[1]);
+		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_T, adim[0], gdim[0], batch_size, &one, a->data.f32, a_batch_inc, g->data.f32, g_batch_inc, &zero, dw->data.f32, dwinc[1]);
 	else
-		cublasSgemm(cublas, CUBLAS_OP_T, CUBLAS_OP_N, adim[0], gdim[0], batch_size, &one, a->data.f32, a_batch_inc, g->data.f32, g_batch_inc, &one, dw->data.f32, dwinc[1]);
+		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_T, adim[0], gdim[0], batch_size, &one, a->data.f32, a_batch_inc, g->data.f32, g_batch_inc, &one, dw->data.f32, dwinc[1]);
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
 	{
@@ -99,9 +99,9 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int* hdim = (h_nd == 1) ? h->info.dim : h->info.dim + 1;
 		assert(hdim[0] == adim[0]);
 		assert(batch_size == (h_nd == 1) ? 1 : ccv_max(1, h->info.dim[0]));
-		const int h_batch_inc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == 1) ? 1 : h->inc[0]) : batch_size;
+		const int h_batch_inc = CCV_IS_TENSOR_VIEW(h) ? ((h_nd == 1) ? h->inc[0] : h->inc[1]) : hdim[0];
 		const int* winc = CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim;
-		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_T, batch_size, adim[0], gdim[0], &one, g->data.f32, g_batch_inc, w->data.f32, winc[1], &zero, h->data.f32, h_batch_inc);
+		cublasSgemm(cublas, CUBLAS_OP_N, CUBLAS_OP_N, adim[0], batch_size, gdim[0], &one, w->data.f32, winc[1], g->data.f32, g_batch_inc, &zero, h->data.f32, h_batch_inc);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

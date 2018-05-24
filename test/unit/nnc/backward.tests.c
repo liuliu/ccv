@@ -141,15 +141,15 @@ TEST_CASE("full connect back propagation with batch = 2")
 	bias->data.f32[2] = 2;
 	bias->data.f32[3] = -1;
 	a->data.f32[0] = 5;
-	a->data.f32[0 + 1] = -5;
-	a->data.f32[2] = -3;
-	a->data.f32[2 + 1] = 3;
-	a->data.f32[4] = 10;
-	a->data.f32[4 + 1] = -10;
-	a->data.f32[6] = 11;
-	a->data.f32[6 + 1] = -11;
-	a->data.f32[8] = -1;
-	a->data.f32[8 + 1] = 1;
+	a->data.f32[1] = -3;
+	a->data.f32[2] = 10;
+	a->data.f32[3] = 11;
+	a->data.f32[4] = -1;
+	a->data.f32[0 + 5] = -5;
+	a->data.f32[1 + 5] = 3;
+	a->data.f32[2 + 5] = -10;
+	a->data.f32[3 + 5] = -11;
+	a->data.f32[4 + 5] = 1;
 	float m[] = {
 		0.5, 0.2, -0.3, 2, 4,
 		1, 8, 2, 8, -1,
@@ -158,29 +158,27 @@ TEST_CASE("full connect back propagation with batch = 2")
 	};
 	float ho[] = {
 		-(0.5 + 4 - 4),
-		0.5 + 4 - 4,
 		-(0.2 + 4 * 8 + 2 * 10 - 7),
-		0.2 + 4 * 8 + 2 * 10 - 7,
 		-(-0.3 + 4 * 2 - 2 - 8),
-		-0.3 + 4 * 2 - 2 - 8,
 		-(2 + 4 * 8 - 2 * 2 - 10),
-		2 + 4 * 8 - 2 * 2 - 10,
 		-(4 - 4 + 2 * 3),
+		0.5 + 4 - 4,
+		0.2 + 4 * 8 + 2 * 10 - 7,
+		-0.3 + 4 * 2 - 2 - 8,
+		2 + 4 * 8 - 2 * 2 - 10,
 		4 - 4 + 2 * 3,
 	};
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(m, ONE_CPU_TENSOR(4, 5), 0);
 	ccv_nnc_cmd_t forw_cmd = CMD_GEMM_FORWARD(4);
-	forw_cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
-	forw_cmd.algorithm = 1;
 	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	float bo[] = {
 		0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4 + 1,
-		-(0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4) + 1,
 		1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1 + 4,
-		-(1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1) + 4,
 		-10 * 3 - 10 - 2 * 11 - 3 + 2,
-		-(-10 * 3 - 10 - 2 * 11 - 3) + 2,
 		4 * 5 - 7 * 3 + 8 * 10 + 10 * 11 - 1,
+		-(0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4) + 1,
+		-(1 * 5 - 8 * 3 + 2 * 10 + 8 * 11 + 1) + 4,
+		-(-10 * 3 - 10 - 2 * 11 - 3) + 2,
 		-(4 * 5 - 7 * 3 + 8 * 10 + 10 * 11) - 1
 	};
 	ccv_nnc_tensor_t bot = ccv_nnc_tensor(bo, ONE_CPU_TENSOR(2, 4), 0);
@@ -193,11 +191,9 @@ TEST_CASE("full connect back propagation with batch = 2")
 	int i;
 	for (i = 0; i < 4; i++)
 	{
-		g->data.f32[i * 2] = -bias->data.f32[i];
-		g->data.f32[i * 2 + 1] = bias->data.f32[i];
+		g->data.f32[i] = -bias->data.f32[i];
+		g->data.f32[i + 4] = bias->data.f32[i];
 	}
-	back_cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
-	back_cmd.algorithm = 1;
 	// Pass in bias as gradient
 	ccv_nnc_cmd_exec(back_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, w), TENSOR_LIST(h, gw, gbias), 0);
 	// Therefore, gradient bias should match bias.
