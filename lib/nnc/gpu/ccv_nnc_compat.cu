@@ -341,7 +341,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[0];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[0];
+					stride[i] = 1;
 				break;
 			case 2:
 				dim[0] = tensor->info.dim[0];
@@ -384,7 +384,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[0];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = 1;
+					stride[i] = inc[0];
 				break;
 			case 2:
 				dim[0] = tensor->info.dim[0];
@@ -537,11 +537,7 @@ ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(
 		v[i] = hint.stride.dim[i];
 	if (CCV_NNC_MAX_DIM == 2)
 	{
-#if CUDNN_MAJOR == 5
-		assert_cudnn(cudnnSetConvolution2dDescriptor_v5(convolution_desc.descriptor, p[0], p[1], v[0], v[1], 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
-#else
 		assert_cudnn(cudnnSetConvolution2dDescriptor(convolution_desc.descriptor, p[0], p[1], v[0], v[1], 1, 1, CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));
-#endif
 	} else {
 		int u[CCV_NNC_MAX_DIM];
 		for (i = 0; i < CCV_NNC_MAX_DIM; i++)
