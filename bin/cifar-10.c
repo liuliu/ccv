@@ -282,6 +282,10 @@ int main(int argc, char** argv)
 			.color_gain = 0,
 			.device_count = 1,
 			.layer_params = layer_params,
+			.input = {
+				.min_dim = 31,
+				.max_dim = 31,
+			},
 		};
 		ccv_convnet_supervised_train(convnet, categorizeds, tests, "cifar-10.sqlite3", params);
 	}
