@@ -21,7 +21,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, con
 			{
 				ccv_nnc_tensor_t* const mv = (ccv_nnc_tensor_t*)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)outputs[i])[j]->alias_ref;
 				if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
-					ccv_nnc_graph_exec_add_broadcast(graph, exec, mv);
+					ccv_nnc_graph_exec_add_update(graph, exec, mv);
 			}
 	return exec;
 }
@@ -48,13 +48,13 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	if (!graph->sub_graphs)
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_graph_t*), 1, 0);
 	int i;
-	if (case_graph->tree_execs)
+	if (case_graph->exec_wraps)
 	{
 		// Copy wraps from sub graph to parent graph.
-		if (!graph->tree_execs)
-			graph->tree_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), case_graph->tree_execs->rnum, 0);
-		for (i = 0; i < case_graph->tree_execs->rnum; i++)
-			ccv_array_push(graph->tree_execs, ccv_array_get(case_graph->tree_execs, i));
+		if (!graph->exec_wraps)
+			graph->exec_wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), case_graph->exec_wraps->rnum, 0);
+		for (i = 0; i < case_graph->exec_wraps->rnum; i++)
+			ccv_array_push(graph->exec_wraps, ccv_array_get(case_graph->exec_wraps, i));
 	}
 	ccv_array_push(graph->sub_graphs, &case_graph);
 	case_graph->p = graph;

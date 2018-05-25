@@ -13,16 +13,11 @@
 #include "ccv_nnc.h"
 
 typedef struct {
-	int broadcast_required;
+	int update_required;
 	int count;
 	int index;
 	ccv_nnc_tensor_t* tensors[1];
-} ccv_nnc_graph_tensor_tree_t;
-
-typedef struct {
-	int sync_mode;
-	ccv_nnc_tensor_t* tensor;
-} ccv_nnc_tensor_sync_t;
+} ccv_nnc_graph_tensor_wrap_t;
 
 typedef struct {
 	int input_size;
@@ -39,10 +34,10 @@ typedef struct {
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
-	int broadcast_size;
-	ccv_nnc_tensor_t** broadcasts;
-	int tensor_tree_size; // This should be input_size + output_size + rest that need to be broadcast.
-	ccv_nnc_graph_tensor_tree_t** tensor_trees;
+	int update_size;
+	ccv_nnc_tensor_t** updates;
+	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
+	ccv_nnc_graph_tensor_wrap_t** tensor_wraps;
 	// Below are only relevant to sub-graph nodes (case_of, while).
 	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
 	int* _heap_graph_ref;
@@ -70,9 +65,9 @@ typedef struct {
 // At the end of an iteration, before rewrap, the pointer from "from" tensor will be moved to transit. At the
 // beginning of the next iteration, after unwrap, the pointer from transit will be moved to "to" tensor.
 typedef struct {
-	ccv_nnc_graph_tensor_tree_t* to;
+	ccv_nnc_graph_tensor_wrap_t* to;
 	ccv_numeric_data_t transit;
-	ccv_nnc_graph_tensor_tree_t* from;
+	ccv_nnc_graph_tensor_wrap_t* from;
 } ccv_nnc_graph_tensor_carry_over_t;
 
 struct ccv_nnc_graph_s {
@@ -84,7 +79,7 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* sources;
 	ccv_array_t* destinations;
 	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
-	ccv_array_t* tree_execs; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tree tensors.
+	ccv_array_t* exec_wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tensor wraps.
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
 	struct ccv_nnc_graph_s* peer; // The peer graph (only useful for backward prop graph).

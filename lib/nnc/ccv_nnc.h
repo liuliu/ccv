@@ -218,8 +218,8 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const int* const input_flags, const int input_flag_size, const int* const output_flags, const int output_flag_size);
 // Set the peer reference for exec.
 void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec);
-// Broadcasts are the tensors that not directly involved in the computation, but its pointers need to get updated along with this exec, thus need to be "broadcast" to other exec nodes.
-void ccv_nnc_graph_exec_add_broadcast(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const broadcast);
+// Updates are the tensors that not directly involved in the computation, but its pointers need to get updated along with this exec, thus need to be "update" to other exec nodes.
+void ccv_nnc_graph_exec_add_update(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const update);
 // Concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t source, const ccv_nnc_graph_exec_t destination);
@@ -522,15 +522,9 @@ void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, cons
 // Since tensor_multiview will never be allocated with *_new method, the *_free method simply frees anything that is dynamically allocated afterwards (such as the reference items).
 void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multiview);
 // Setup a tensor as a reference to a tensor multiview, thus, when tensor multiview's tu (current tensor) updates, the tensor reference's data.u8 will get update as well (point to the same memory region as the tu).
-enum {
-	CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC, // Sync when begin to execute a node.
-	// CCV_NNC_MULTIVIEW_GRAPH_END_SYNC, These three are not implemented yet.
-	// CCV_NNC_MULTIVIEW_EXEC_END_SYNC,
-	// CCV_NNC_MULTIVIEW_GRAPH_BEGIN_SYNC,
-};
-void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor, const int sync_mode);
-// Send broadcast to subscribers of the multiview
-void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview, const int sync_mode);
+void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor);
+// Send broadcast to subscribers of the multiview, call this in the beginning of exec.
+void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview);
 // Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic graph. The reason
 // is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor symbols between the parent graph
 // and the while graph. (The reason to have a mapping in symbolic graphs is to constraint the variable leaking between the sub graph
@@ -652,5 +646,13 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph);
 // Generate output that can be parsed by GraphViz (DOT language).
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out);
+
+/**
+ * Level-5 API
+ */
+
+typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(void);
+void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 
 #endif

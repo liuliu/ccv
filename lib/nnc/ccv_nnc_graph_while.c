@@ -36,18 +36,14 @@ void ccv_nnc_tensor_multiview_free(const ccv_nnc_tensor_multiview_t tensor_multi
 		ccfree(tensor_multiview._heap_data);
 }
 
-void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor, const int sync_mode)
+void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const tensor_multiview, ccv_nnc_tensor_t* const tensor)
 {
 	if (!tensor_multiview->sp)
-		tensor_multiview->sp = ccv_array_new(sizeof(ccv_nnc_tensor_sync_t), 0, 0);
-	ccv_nnc_tensor_sync_t tensor_sync = {
-		.sync_mode = sync_mode,
-		.tensor = tensor,
-	};
-	ccv_array_push(tensor_multiview->sp, &tensor_sync);
+		tensor_multiview->sp = ccv_array_new(sizeof(ccv_nnc_tensor_t*), 0, 0);
+	ccv_array_push(tensor_multiview->sp, &tensor);
 }
 
-void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview, const int sync_mode)
+void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	assert(tensor_multiview->it && !CCV_IS_TENSOR_MULTIVIEW(tensor_multiview->it));
 	// Update the pointer on tv only if it is not a single tensor pointer.
@@ -58,17 +54,13 @@ void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tens
 		if (c->sp)
 			for (i = 0; i < c->sp->rnum; i++)
 			{
-				const ccv_nnc_tensor_sync_t* const tensor_sync = (ccv_nnc_tensor_sync_t*)ccv_array_get(c->sp, i);
-				if (tensor_sync->sync_mode == sync_mode)
+				ccv_nnc_tensor_t* const tensor = *(ccv_nnc_tensor_t**)ccv_array_get(c->sp, i);
+				if (CCV_IS_TENSOR_VIEW(tensor))
 				{
-					ccv_nnc_tensor_t* const tensor = tensor_sync->tensor;
-					if (CCV_IS_TENSOR_VIEW(tensor))
-					{
-						ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)tensor;
-						tensor_view->data.u8 = data + tensor_view->off;
-					} else
-						tensor->data.u8 = data;
-				}
+					ccv_nnc_tensor_view_t* const tensor_view = (ccv_nnc_tensor_view_t*)tensor;
+					tensor_view->data.u8 = data + tensor_view->off;
+				} else
+					tensor->data.u8 = data;
 			}
 		c = c->p;
 	} while (c);
@@ -83,13 +75,13 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uin
 	if (!graph->sub_graphs)
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_graph_t*), 1, 0);
 	int i;
-	if (while_graph->tree_execs)
+	if (while_graph->exec_wraps)
 	{
 		// Copy wraps from sub graph to parent graph.
-		if (!graph->tree_execs)
-			graph->tree_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), while_graph->tree_execs->rnum, 0);
-		for (i = 0; i < while_graph->tree_execs->rnum; i++)
-			ccv_array_push(graph->tree_execs, ccv_array_get(while_graph->tree_execs, i));
+		if (!graph->exec_wraps)
+			graph->exec_wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), while_graph->exec_wraps->rnum, 0);
+		for (i = 0; i < while_graph->exec_wraps->rnum; i++)
+			ccv_array_push(graph->exec_wraps, ccv_array_get(while_graph->exec_wraps, i));
 	}
 	ccv_array_push(graph->sub_graphs, &while_graph);
 	while_graph->p = graph;

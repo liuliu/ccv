@@ -63,7 +63,7 @@ TEST_CASE("graph for a while loop by reuse tensor allocations for 0.32 * 2.8 ^ 5
 			z, x
 	}, CCV_NNC_MULTIVIEW_K0N, 2, while_graph, &zz);
 	ccv_nnc_tensor_t zbb = ccv_nnc_tensor(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_synchronize_to_multiview(&zz, &zbb, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
+	ccv_nnc_tensor_synchronize_to_multiview(&zz, &zbb);
 	ccv_nnc_graph_exec_t prod = ccv_nnc_graph_exec_new(while_graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, TENSOR_LIST((ccv_nnc_tensor_t*)&xx, y), TENSOR_LIST((ccv_nnc_tensor_t*)&zz));
 	ccv_nnc_graph_set_sources(while_graph, GRAPH_EXEC_LIST(noop));
 	ccv_nnc_graph_set_destinations(while_graph, GRAPH_EXEC_LIST(prod));

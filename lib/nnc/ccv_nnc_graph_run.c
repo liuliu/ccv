@@ -4,9 +4,9 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
-static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
+static void _ccv_nnc_unwrap_tensor_wrap(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count, ccv_nnc_graph_tensor_wrap_t* const tensor_wrap)
 {
-	ccv_nnc_tensor_t* tensor = tensor_tree->tensors[tensor_tree->index];
+	ccv_nnc_tensor_t* tensor = tensor_wrap->tensors[tensor_wrap->index];
 	while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
 		   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
 			((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
@@ -19,10 +19,10 @@ static void _ccv_nnc_unwrap_tensor_tree(const ccv_nnc_graph_t* const graph, cons
 		tensor = CCV_NNC_MULTIVIEW_DATA(mv)[i >= off ? ((i - off) % mod) + off : i]; // Unwrap.
 		// If reached the root.
 		if (!CCV_IS_TENSOR_MULTIVIEW(tensor))
-			tensor_tree->broadcast_required = 1; // Need to broadcast tensor updates.
-		++tensor_tree->index;
-		tensor_tree->tensors[tensor_tree->index] = tensor;
-		assert(tensor_tree->index < tensor_tree->count);
+			tensor_wrap->update_required = 1; // Need to update tensor updates.
+		++tensor_wrap->index;
+		tensor_wrap->tensors[tensor_wrap->index] = tensor;
+		assert(tensor_wrap->index < tensor_wrap->count);
 	}
 }
 
@@ -33,8 +33,8 @@ static void _ccv_nnc_graph_unwrap_sub_graph(const ccv_nnc_graph_t* const graph, 
 		for (i = 0; i < sub_graph->carry_overs->rnum; i++)
 		{
 			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(sub_graph->carry_overs, i);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, carry_over->from);
-			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, carry_over->to);
+			_ccv_nnc_unwrap_tensor_wrap(graph, count, reverse_count, carry_over->from);
+			_ccv_nnc_unwrap_tensor_wrap(graph, count, reverse_count, carry_over->to);
 		}
 	if (sub_graph->sub_graphs)
 		for (i = 0; i < sub_graph->sub_graphs->rnum; i++)
@@ -43,20 +43,20 @@ static void _ccv_nnc_graph_unwrap_sub_graph(const ccv_nnc_graph_t* const graph, 
 
 static void _ccv_nnc_graph_unwrap(const ccv_nnc_graph_t* const graph, const int64_t count, const int64_t reverse_count)
 {
-	if (!graph->tree_execs)
+	if (!graph->exec_wraps)
 		return;
 	int i, j;
-	for (i = 0; i < graph->tree_execs->rnum; i++)
+	for (i = 0; i < graph->exec_wraps->rnum; i++)
 	{
-		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->tree_execs, i);
+		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->exec_wraps, i);
 		const ccv_nnc_graph_t* const sub_graph = exec->graph;
 		ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(sub_graph->exec_info, exec->d);
-		for (j = 0; j < exec_info->tensor_tree_size; j++)
+		for (j = 0; j < exec_info->tensor_wrap_size; j++)
 		{
-			ccv_nnc_graph_tensor_tree_t* const tensor_tree = exec_info->tensor_trees[j];
-			if (!tensor_tree)
+			ccv_nnc_graph_tensor_wrap_t* const tensor_wrap = exec_info->tensor_wraps[j];
+			if (!tensor_wrap)
 				continue;
-			_ccv_nnc_unwrap_tensor_tree(graph, count, reverse_count, tensor_tree);
+			_ccv_nnc_unwrap_tensor_wrap(graph, count, reverse_count, tensor_wrap);
 		}
 	}
 	_ccv_nnc_graph_unwrap_sub_graph(graph, count, reverse_count, graph);
@@ -88,12 +88,12 @@ static void _ccv_nnc_graph_from_move_transit(const ccv_nnc_graph_t* const graph)
 		}
 }
 
-static void _ccv_nnc_rewrap_tensor_tree(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_tensor_tree_t* const tensor_tree)
+static void _ccv_nnc_rewrap_tensor_wrap(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_tensor_wrap_t* const tensor_wrap)
 {
-	while (tensor_tree->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_tree->tensors[tensor_tree->index - 1]) &&
-			(((ccv_nnc_tensor_multiview_t*)tensor_tree->tensors[tensor_tree->index - 1])->anchor == (intptr_t)graph ||
-			 ((ccv_nnc_tensor_multiview_t*)tensor_tree->tensors[tensor_tree->index - 1])->anchor == (intptr_t)graph->peer))
-		--tensor_tree->index;
+	while (tensor_wrap->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_wrap->tensors[tensor_wrap->index - 1]) &&
+			(((ccv_nnc_tensor_multiview_t*)tensor_wrap->tensors[tensor_wrap->index - 1])->anchor == (intptr_t)graph ||
+			 ((ccv_nnc_tensor_multiview_t*)tensor_wrap->tensors[tensor_wrap->index - 1])->anchor == (intptr_t)graph->peer))
+		--tensor_wrap->index;
 }
 
 static void _ccv_nnc_graph_rewrap_sub_graph(const ccv_nnc_graph_t* const graph, const ccv_nnc_graph_t* const sub_graph)
@@ -103,8 +103,8 @@ static void _ccv_nnc_graph_rewrap_sub_graph(const ccv_nnc_graph_t* const graph, 
 		for (i = 0; i < sub_graph->carry_overs->rnum; i++)
 		{
 			ccv_nnc_graph_tensor_carry_over_t* const carry_over = (ccv_nnc_graph_tensor_carry_over_t*)ccv_array_get(sub_graph->carry_overs, i);
-			_ccv_nnc_rewrap_tensor_tree(graph, carry_over->from);
-			_ccv_nnc_rewrap_tensor_tree(graph, carry_over->to);
+			_ccv_nnc_rewrap_tensor_wrap(graph, carry_over->from);
+			_ccv_nnc_rewrap_tensor_wrap(graph, carry_over->to);
 		}
 	if (sub_graph->sub_graphs)
 		for (i = 0; i < sub_graph->sub_graphs->rnum; i++)
@@ -113,20 +113,20 @@ static void _ccv_nnc_graph_rewrap_sub_graph(const ccv_nnc_graph_t* const graph, 
 
 static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call this method at the end to roll the wrap_ptr back
 {
-	if (!graph->tree_execs)
+	if (!graph->exec_wraps)
 		return;
 	int i, j;
-	for (i = 0; i < graph->tree_execs->rnum; i++)
+	for (i = 0; i < graph->exec_wraps->rnum; i++)
 	{
-		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->tree_execs, i);
+		const ccv_nnc_graph_exec_t* const exec = (const ccv_nnc_graph_exec_t*)ccv_array_get(graph->exec_wraps, i);
 		const ccv_nnc_graph_t* const sub_graph = exec->graph;
 		ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(sub_graph->exec_info, exec->d);
-		for (j = 0; j < exec_info->tensor_tree_size; j++)
+		for (j = 0; j < exec_info->tensor_wrap_size; j++)
 		{
-			ccv_nnc_graph_tensor_tree_t* const tensor_tree = exec_info->tensor_trees[j];
-			if (!tensor_tree)
+			ccv_nnc_graph_tensor_wrap_t* const tensor_wrap = exec_info->tensor_wraps[j];
+			if (!tensor_wrap)
 				continue;
-			_ccv_nnc_rewrap_tensor_tree(graph, tensor_tree);
+			_ccv_nnc_rewrap_tensor_wrap(graph, tensor_wrap);
 		}
 	}
 	_ccv_nnc_graph_rewrap_sub_graph(graph, graph);
@@ -134,57 +134,57 @@ static void _ccv_nnc_graph_rewrap(const ccv_nnc_graph_t* const graph) // Call th
 
 static void _ccv_nnc_graph_exec_unwrap_io(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node)
 {
-	if (!node->tensor_tree_size)
+	if (!node->tensor_wrap_size)
 		return;
 	int i;
-	ccv_nnc_graph_tensor_tree_t** const tensor_trees = node->tensor_trees;
-	for (i = 0; i < node->tensor_tree_size; i++)
-		if (tensor_trees[i])
+	ccv_nnc_graph_tensor_wrap_t** const tensor_wraps = node->tensor_wraps;
+	for (i = 0; i < node->tensor_wrap_size; i++)
+		if (tensor_wraps[i])
 		{
-			assert(tensor_trees[i]->index > 0);
-			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_trees[i]->tensors[tensor_trees[i]->index - 1]);
+			assert(tensor_wraps[i]->index > 0);
+			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)(tensor_wraps[i]->tensors[tensor_wraps[i]->index - 1]);
 			assert(CCV_IS_TENSOR_MULTIVIEW(mv));
 			// Only now set the mv->it, because now this node is about to get executed.
-			mv->it = tensor_trees[i]->tensors[tensor_trees[i]->index];
+			mv->it = tensor_wraps[i]->tensors[tensor_wraps[i]->index];
 			assert(!CCV_IS_TENSOR_MULTIVIEW(mv->it));
 		}
 	for (i = 0; i < node->input_size; i++)
-		if (tensor_trees[i])
-			node->inputs[i] = tensor_trees[i]->tensors[tensor_trees[i]->index];
+		if (tensor_wraps[i])
+			node->inputs[i] = tensor_wraps[i]->tensors[tensor_wraps[i]->index];
 	const int d = node->input_size;
 	for (i = 0; i < node->output_size; i++)
-		if (tensor_trees[d + i])
-			node->outputs[i] = tensor_trees[d + i]->tensors[tensor_trees[d + i]->index];
+		if (tensor_wraps[d + i])
+			node->outputs[i] = tensor_wraps[d + i]->tensors[tensor_wraps[d + i]->index];
 }
 
 static void _ccv_nnc_graph_exec_unwrap_phi(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_info_t* const node, const int ref)
 {
 	int i;
-	// If the output tensor is a phi multi-view tensor, we broadcast our selection to all the subscribers.
+	// If the output tensor is a phi multi-view tensor, we update our selection to all the subscribers.
 	for (i = 0; i < node->output_size; i++)
 		if (CCV_IS_TENSOR_MULTIVIEW(node->outputs[i]) &&
 			((ccv_nnc_tensor_multiview_t*)node->outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)
 		{
 			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)node->outputs[i];
 			mv->it = CCV_NNC_MULTIVIEW_DATA(mv)[ref >= 0];
-			ccv_nnc_tensor_multiview_synchronize(mv, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
+			ccv_nnc_tensor_multiview_synchronize(mv);
 		}
 }
 
 static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node)
 {
-	if (!node->tensor_tree_size)
+	if (!node->tensor_wrap_size)
 		return;
 	int i;
-	ccv_nnc_graph_tensor_tree_t** const tensor_trees = node->tensor_trees;
-	for (i = 0; i < node->tensor_tree_size; i++)
-		if (tensor_trees[i] && tensor_trees[i]->broadcast_required)
+	ccv_nnc_graph_tensor_wrap_t** const tensor_wraps = node->tensor_wraps;
+	for (i = 0; i < node->tensor_wrap_size; i++)
+		if (tensor_wraps[i] && tensor_wraps[i]->update_required)
 		{
-			assert(tensor_trees[i]->index > 0);
-			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)(tensor_trees[i]->tensors[tensor_trees[i]->index - 1]);
-			// Now broadcast the final pointer.
-			ccv_nnc_tensor_multiview_synchronize(mv, CCV_NNC_MULTIVIEW_EXEC_BEGIN_SYNC);
-			tensor_trees[i]->broadcast_required = 0; // Reset, no need to broadcast.
+			assert(tensor_wraps[i]->index > 0);
+			ccv_nnc_tensor_multiview_t* const mv = (ccv_nnc_tensor_multiview_t*)(tensor_wraps[i]->tensors[tensor_wraps[i]->index - 1]);
+			// Now update the final pointer.
+			ccv_nnc_tensor_multiview_synchronize(mv);
+			tensor_wraps[i]->update_required = 0; // Reset, no need to update.
 		}
 }
 
