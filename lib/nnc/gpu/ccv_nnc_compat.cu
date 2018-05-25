@@ -350,7 +350,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[1];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[1];
+					stride[i] = 1;
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;
@@ -384,7 +384,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[0];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[0];
+					stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
 				break;
 			case 2:
 				dim[0] = tensor->info.dim[0];
@@ -393,7 +393,7 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 				stride[0] = inc[1];
 				stride[1] = 1;
 				for (i = 2; i < CCV_NNC_MAX_DIM + 2; i++)
-					stride[i] = inc[1];
+					stride[i] = 1; // Even though technically this should be inc[1] (because hw is after c), however, make it 1 doesn't have any differences and more versatile.
 				break;
 			case CCV_NNC_MAX_DIM + 1:
 				dim[0] = 1;

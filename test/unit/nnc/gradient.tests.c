@@ -33,9 +33,9 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-	ccv_nnc_cmd_t softmax_cmd = CMD_SOFTMAX_FORWARD();
-	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, b->info, 0);
-	ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m), 0);
+	ccv_nnc_tensor_t* ba = ccv_nnc_tensor_new(b->data.f32, ONE_CPU_TENSOR(31 * 21 * 4), 0);
+	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, ba->info, 0);
+	ccv_nnc_cmd_exec(CMD_SOFTMAX_FORWARD(), hint, 0, TENSOR_LIST(ba), TENSOR_LIST(m), 0);
 	ccv_nnc_cmd_t back_cmd = CMD_CONVOLUTION_BACKWARD(4, 5, 3, 2);
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
@@ -55,7 +55,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			float old_w = w->data.f32[i];
 			w->data.f32[i] += fsh[j] * eps;
 			ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-			ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m), 0);
+			ccv_nnc_cmd_exec(CMD_SOFTMAX_FORWARD(), hint, 0, TENSOR_LIST(ba), TENSOR_LIST(m), 0);
 			vw += -log(m->data.f32[24]) * fs[j];
 			w->data.f32[i] = old_w;
 		}
@@ -70,7 +70,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 			float old_bias = bias->data.f32[i];
 			bias->data.f32[i] += fsh[j] * eps;
 			ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-			ccv_nnc_cmd_exec(softmax_cmd, hint, 0, TENSOR_LIST(b), TENSOR_LIST(m), 0);
+			ccv_nnc_cmd_exec(CMD_SOFTMAX_FORWARD(), hint, 0, TENSOR_LIST(ba), TENSOR_LIST(m), 0);
 			dbias[i] += -logf(m->data.f32[24]) * fs[j];
 			bias->data.f32[i] = old_bias;
 		}
@@ -82,6 +82,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	ccfree(dbias);
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(ba);
 	ccv_nnc_tensor_free(m);
 	ccv_nnc_tensor_free(g);
 	ccv_nnc_tensor_free(h);
