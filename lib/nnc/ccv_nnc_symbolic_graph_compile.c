@@ -1945,7 +1945,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			if (tensor_blocks[d].head->rnum == 0 && !(tensor_symbol_info[d].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS))
 			{
 				for (j = 0; j < source_size; j++)
-					_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[d]);
+				{
+					// If the source is connecting to current node, add (otherwise we will create tensor blocks that used in other streams, which is unneccessary).
+					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, sources[j].d);
+					if (cell.i32 && cell.i32[0] > 0)
+						_ccv_nnc_tensor_block_add_exec(exec_dep, sources[j].d, tensor_blocks[d]);
+				}
 				/* If this is a read-only (based on SSA, if first encountered as read), and this is
 				 * sub-graph (TODO: this condition can be lifted for case..of that is never in a while
 				 * loop, however, in that case, you need to prevent read-only gets reused for the
@@ -1955,7 +1960,12 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				 * Mark it to the end of the graph. */
 				if (p_node_info && !tensor_symbol_info[d].assign_ref)
 					for (j = 0; j < destination_size; j++)
-						_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
+					{
+						// If the destination is connecting to current node, add (otherwise we will create tensor blocks that used in other streams, which is unneccessary).
+						const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, destinations[j].d, idx);
+						if (cell.i32 && cell.i32[0] > 0)
+							_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
+					}
 			}
 			_ccv_nnc_tensor_block_add_exec(exec_dep, idx, tensor_blocks[d]);
 		}
