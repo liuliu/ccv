@@ -1703,7 +1703,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 
 static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_exec_symbol_info_t* const p_node_info, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, const int unroll_count, const int* const dup_tensor_block_ref, const int* const dup_tensor_from_ref, const int* const dup_exec_from_ref, ccv_nnc_graph_exec_flag_t* const exec_flags, ccv_sparse_matrix_t** r_exec_dep, ccv_nnc_tensor_block_t** r_tensor_blocks)
 {
-	int i, j;
+	int i, j, k;
 	// Generate exec dependencies (or, in other words, partial ordering of executions).
 	ccv_sparse_matrix_t* exec_dep = ccv_sparse_matrix_new(symbolic_graph->exec_symbol_info->rnum, symbolic_graph->exec_symbol_info->rnum, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	int* buf = (int*)ccmalloc(sizeof(int) * symbolic_graph->exec_symbol_info->rnum * 2);
@@ -1989,8 +1989,26 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		// that "somewhere else" need to keep its life-time til the end.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) &&
 			p_node_info && tensor_symbol_info[i].assign_ref)
+		{
+			const int assign_ref = tensor_symbol_info[i].assign_ref - 1;
 			for (j = 0; j < destination_size; j++)
-				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[tensor_symbol_info[i].assign_ref - 1]);
+			{
+				// This logic is to be more conservative about which destination we add to.
+				// As of now, if we add everything, it is fine most likely. However, it may
+				// cause issues in the future to do so naively. Thus, instead, we only add
+				// the destination to it iff either the tensor is not used at all, or, the
+				// destination is on the same stream as of the tensor block some way.
+				int flag = !tensor_blocks[assign_ref].tail;;
+				for (k = 0; !flag && k < tensor_blocks[assign_ref].tail->rnum; k++)
+				{
+					const int idx = *(int*)ccv_array_get(tensor_blocks[assign_ref].tail, k);
+					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, destinations[j].d, idx);
+					flag = (cell.i32 && cell.i32[0] > 0);
+				}
+				if (flag) // If there is no tail at all, add it. Otherwise, only add it if the destination is on the same stream with this tensor block somehow.
+					_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[assign_ref]);
+			}
+		}
 	for (i = 0; i < output_size; i++)
 	{
 		assert(outputs[i].graph == symbolic_graph);
@@ -2003,7 +2021,17 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			continue;
 		assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]));
 		for (j = 0; j < destination_size; j++)
-			_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
+		{
+			int flag = !tensor_blocks[d].tail;;
+			for (k = 0; !flag && k < tensor_blocks[d].tail->rnum; k++)
+			{
+				const int idx = *(int*)ccv_array_get(tensor_blocks[d].tail, k);
+				const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, destinations[j].d, idx);
+				flag = (cell.i32 && cell.i32[0] > 0);
+			}
+			if (flag) // If there is no tail at all, add it. Otherwise, only add it if the destination is on the same stream with this tensor block somehow.
+				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
+		}
 	}
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		/* Maximum tensor reuse by collapse tensors allows in-place operations (and it matches the start, end tensor). */
