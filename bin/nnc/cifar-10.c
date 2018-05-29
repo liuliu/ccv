@@ -31,7 +31,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	ccv_nnc_tensor_symbol_t bias0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bias0");
 	ccv_nnc_tensor_symbol_t bmean0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bmean0");
 	ccv_nnc_tensor_symbol_t bvar0 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bvar0");
-	// ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(bmean0, bvar0), 0);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bmean0, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bvar0, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
 	ccv_nnc_tensor_symbol_t bmean0_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bmean0_out");
 	ccv_nnc_tensor_symbol_t bvar0_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bvar0_out");
 	ccv_nnc_tensor_symbol_t saved_mean0 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "saved_mean0");
@@ -52,7 +53,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bias1");
 	ccv_nnc_tensor_symbol_t bmean1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bmean1");
 	ccv_nnc_tensor_symbol_t bvar1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 32, 1, 1), "bvar1");
-	// ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(bmean1, bvar1), 0);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bmean1, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bvar1, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
 	ccv_nnc_tensor_symbol_t bmean1_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bmean1_out");
 	ccv_nnc_tensor_symbol_t bvar1_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bvar1_out");
 	ccv_nnc_tensor_symbol_t saved_mean1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "saved_mean1");
@@ -73,7 +75,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	ccv_nnc_tensor_symbol_t bias2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 64, 1, 1), "bias2");
 	ccv_nnc_tensor_symbol_t bmean2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 64, 1, 1), "bmean2");
 	ccv_nnc_tensor_symbol_t bvar2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 1, 64, 1, 1), "bvar2");
-	// ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SET_FORWARD(0), TENSOR_SYMBOL_LIST(), TENSOR_SYMBOL_LIST(bmean2, bvar2), 0);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bmean2, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
+	ccv_nnc_tensor_symbol_set_flags(symbolic_graph, bvar2, CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS);
 	ccv_nnc_tensor_symbol_t bmean2_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bmean2_out");
 	ccv_nnc_tensor_symbol_t bvar2_out = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "bvar2_out");
 	ccv_nnc_tensor_symbol_t saved_mean2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "saved_mean2");
@@ -237,7 +240,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		correct_ratio = correct_ratio * 0.9 + correct * 0.1 / 128.;
 		ccv_nnc_tensor_t* dw0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tw0_tensor, dw0_tensor), TENSOR_LIST(tw0_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w0_tensor, tw0_tensor), TENSOR_LIST(w0_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.99995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w0_tensor, tw0_tensor), TENSOR_LIST(w0_tensor), 0);
 		ccv_nnc_tensor_t* db0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tb0_tensor, db0_tensor), TENSOR_LIST(tb0_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b0_tensor, tb0_tensor), TENSOR_LIST(b0_tensor), 0);
@@ -249,7 +252,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(bias0_tensor, tbias0_tensor), TENSOR_LIST(bias0_tensor), 0);
 		ccv_nnc_tensor_t* dw1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw1);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tw1_tensor, dw1_tensor), TENSOR_LIST(tw1_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, tw1_tensor), TENSOR_LIST(w1_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.99995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, tw1_tensor), TENSOR_LIST(w1_tensor), 0);
 		ccv_nnc_tensor_t* db1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db1);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tb1_tensor, db1_tensor), TENSOR_LIST(tb1_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b1_tensor, tb1_tensor), TENSOR_LIST(b1_tensor), 0);
@@ -261,7 +264,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(bias1_tensor, tbias1_tensor), TENSOR_LIST(bias1_tensor), 0);
 		ccv_nnc_tensor_t* dw2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw2);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tw2_tensor, dw2_tensor), TENSOR_LIST(tw2_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w2_tensor, tw2_tensor), TENSOR_LIST(w2_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.99995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w2_tensor, tw2_tensor), TENSOR_LIST(w2_tensor), 0);
 		ccv_nnc_tensor_t* db2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db2);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tb2_tensor, db2_tensor), TENSOR_LIST(tb2_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b2_tensor, tb2_tensor), TENSOR_LIST(b2_tensor), 0);
@@ -272,10 +275,10 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tbias2_tensor, dbias2_tensor), TENSOR_LIST(tbias2_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(bias2_tensor, tbias2_tensor), TENSOR_LIST(bias2_tensor), 0);
 		ccv_nnc_tensor_t* dw3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw3);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tw3_tensor, dw3_tensor), TENSOR_LIST(tw3_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w3_tensor, tw3_tensor), TENSOR_LIST(w3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate / 128), ccv_nnc_no_hint, 0, TENSOR_LIST(tw3_tensor, dw3_tensor), TENSOR_LIST(tw3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.99995, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(w3_tensor, tw3_tensor), TENSOR_LIST(w3_tensor), 0);
 		ccv_nnc_tensor_t* db3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, db3);
-		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate), ccv_nnc_no_hint, 0, TENSOR_LIST(tb3_tensor, db3_tensor), TENSOR_LIST(tb3_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(0.9, rate / 128), ccv_nnc_no_hint, 0, TENSOR_LIST(tb3_tensor, db3_tensor), TENSOR_LIST(tb3_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_ADD_FORWARD(1, 1), ccv_nnc_no_hint, 0, TENSOR_LIST(b3_tensor, tb3_tensor), TENSOR_LIST(b3_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw0_tensor), TENSOR_LIST(w0c), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(dw1_tensor), TENSOR_LIST(w1c), 0);
@@ -315,6 +318,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		std3 = std3 / (10 * 3 * 3 * 64);
 		if (i % 11 == 0)
 			FLUSH(CCV_CLI_INFO, "Batch %d, Correct %f, mean (%f, %f, %f, %f), std (%f, %f, %f, %f)", i + 1, correct_ratio, mean0, mean1, mean2, mean3, std0, std1, std2, std3);
+		if (i > 0 && i % 25000 == 0)
+			rate = rate * 0.5;
 	}
 }
 
