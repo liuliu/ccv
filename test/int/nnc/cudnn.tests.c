@@ -27,7 +27,7 @@ TEST_CASE("cudnn forward convolution")
 		return;
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(BATCH_SIZE, INPUT_SIZE, INPUT_SIZE, INPUT_DIM), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(BATCH_SIZE, OUTPUT_SIZE, OUTPUT_SIZE, OUTPUT_DIM), 0);
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, OUTPUT_DIM, KERNEL_SIZE, KERNEL_SIZE, INPUT_DIM);
 	cmd.backend = CCV_NNC_BACKEND_CPU_REF;
 	assert(cmd.backend >= 0);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);

@@ -43,6 +43,7 @@ typedef struct {
 	union {
 		struct {
 			int count; /**< [convolution.count] The number of filters for convolutional layer. */
+			int groups; /**< [convolution.groups] The number of groups for convolutional layer. */
 		} convolution;
 		struct {
 			int reserved;

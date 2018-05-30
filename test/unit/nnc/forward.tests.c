@@ -13,7 +13,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with uniform weights")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(225, 185, 3), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(55, 45, 4), 0);
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(4, 11, 11, 3);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 4, 11, 11, 3);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 11, 11, 3), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
@@ -44,7 +44,7 @@ TEST_CASE("convolutional network of 5x3 on 17x27 with uniform weights")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(17, 27, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(17, 27, 4), 0);
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(4, 5, 3, 1);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 4, 5, 3, 1);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 5, 3, 1), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
@@ -88,7 +88,7 @@ TEST_CASE("convolutional network of 11x11 on 225x185 with non-uniform weights")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(225, 185, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(55, 45, 4), 0);
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(4, 11, 11, 1);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 4, 11, 11, 1);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 11, 11, 1), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
@@ -184,7 +184,7 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 {
 	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 4), 0);
-	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(4, 3, 5, 1);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 4, 3, 5, 1);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, b->info);
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 3, 5, 1), 0);
 	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);

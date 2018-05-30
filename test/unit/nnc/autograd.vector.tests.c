@@ -184,7 +184,7 @@ TEST_CASE("autograd with sliced tensors for convolution doesn't require zeros (s
 	ofs[0] = 50;
 	ccv_nnc_tensor_symbol_t b3 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "b3");
 	ccv_nnc_tensor_symbol_t c3 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "c3");
-	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
 	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
 	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
 	ccv_nnc_graph_exec_symbol_t relu2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b2), TENSOR_SYMBOL_LIST(c2), "relu2");
@@ -219,7 +219,7 @@ TEST_CASE("autograd with sliced tensors for convolution require zeros")
 	ofs[2] = 64;
 	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "b1");
 	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "c1");
-	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
 	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
 	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
 	ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1, 1, 128), "d");
@@ -252,7 +252,7 @@ TEST_CASE("autograd with sliced tensors for convolution that are over-subscribed
 	ofs[2] = 32;
 	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "b1");
 	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "c1");
-	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
 	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
 	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(conv, relu0, relu1), 0);
@@ -282,7 +282,7 @@ TEST_CASE("autograd with sliced tensors for convolution that are over-subscribed
 	ofs[2] = 32;
 	ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, b, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "b1");
 	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, c, ofs, inc, ONE_CPU_TENSOR(50, 100, 64), "c1");
-	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
+	ccv_nnc_graph_exec_symbol_t conv = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 128, 3, 3, 3), TENSOR_SYMBOL_LIST(image, w, bias), TENSOR_SYMBOL_LIST(b), "conv");
 	ccv_nnc_graph_exec_symbol_t relu0 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b0), TENSOR_SYMBOL_LIST(c0), "relu0");
 	ccv_nnc_graph_exec_symbol_t relu1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(c1), "relu1");
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_NOOP(), TENSOR_SYMBOL_LIST(c0, c1), TENSOR_SYMBOL_LIST(c), "noop");

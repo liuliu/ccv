@@ -34,6 +34,8 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int* bdim = (b_nd == CCV_NNC_MAX_DIM + 1) ? b->info.dim : b->info.dim + 1;
 	assert(w->info.dim[CCV_NNC_MAX_DIM + 1] == adim[CCV_NNC_MAX_DIM]);
 	assert(bdim[CCV_NNC_MAX_DIM] == cmd.info.convolution.count);
+	if (cmd.info.convolution.groups != 1)
+		return CCV_NNC_EXEC_INVALID;
 	int i;
 	// Make sure the weights dimension matches the network dimension
 	for (i = 1; i < CCV_NNC_MAX_DIM_ALLOC; i++)

@@ -16,7 +16,7 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_symbol_t conv1b = ccv_nnc_tensor_symbol_new(graph, ONE_CPU_TENSOR(64), "conv1b");
 	ccv_nnc_tensor_symbol_t b[9];
 	b[0] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "b0");
-	ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(64, 7, 7, 3), TENSOR_SYMBOL_LIST(a, conv1w, conv1b), TENSOR_SYMBOL_LIST(b[0]), "conv1");
+	ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(1, 64, 7, 7, 3), TENSOR_SYMBOL_LIST(a, conv1w, conv1b), TENSOR_SYMBOL_LIST(b[0]), "conv1");
 	ccv_nnc_graph_exec_symbol_set_hint(graph, conv1, HINT((2, 2), (3, 3)));
 	// max1
 	b[1] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "b1");
@@ -33,7 +33,7 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_symbol_t conv2b[3];
 	conv2b[0] = ccv_nnc_tensor_symbol_new(graph, ONE_CPU_TENSOR(64), "conv2b");
 	ccv_nnc_graph_exec_symbol_t conv2[3];
-	conv2[0] = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(64, 3, 3, 64), TENSOR_SYMBOL_LIST(b[2], conv2w[0], conv2b[0]), TENSOR_SYMBOL_LIST(b[3]), "conv2");
+	conv2[0] = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(1, 64, 3, 3, 64), TENSOR_SYMBOL_LIST(b[2], conv2w[0], conv2b[0]), TENSOR_SYMBOL_LIST(b[3]), "conv2");
 	ccv_nnc_graph_exec_symbol_concat(graph, relu1, conv2[0]);
 	ccv_nnc_graph_exec_symbol_t relu2[3];
 	b[4] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "b4");
@@ -45,7 +45,7 @@ int main(int argc, char** argv)
 		b[3 + i * 2] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "bn");
 		conv2w[i] = ccv_nnc_tensor_symbol_new(graph, ONE_CPU_TENSOR(64, 3, 3, 64), "conv2wn");
 		conv2b[i] = ccv_nnc_tensor_symbol_new(graph, ONE_CPU_TENSOR(64), "conv2bn");
-		conv2[i] = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(64, 3, 3, 64), TENSOR_SYMBOL_LIST(b[2 + i * 2], conv2w[i], conv2b[i]), TENSOR_SYMBOL_LIST(b[3 + i * 2]), "conv2n");
+		conv2[i] = ccv_nnc_graph_exec_symbol_new(graph, CMD_CONVOLUTION_FORWARD(1, 64, 3, 3, 64), TENSOR_SYMBOL_LIST(b[2 + i * 2], conv2w[i], conv2b[i]), TENSOR_SYMBOL_LIST(b[3 + i * 2]), "conv2n");
 		ccv_nnc_graph_exec_symbol_concat(graph, relu2[i - 1], conv2[i]);
 		b[4 + i * 2] = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "bn");
 		relu2[i] = ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, ccv_nnc_cmd_auto, 0), TENSOR_SYMBOL_LIST(b[3 + i * 2]), TENSOR_SYMBOL_LIST(b[4 + i * 2]), "relu2n");

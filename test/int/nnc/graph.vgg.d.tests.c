@@ -40,7 +40,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
-			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
+			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
 			ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, input->info, tensor->info);
 			cmd = ccv_nnc_cmd_autotune(cmd, 0, hint, 0, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor), 0);
 			exec = ccv_nnc_graph_exec_new(vgg, cmd, hint, TENSOR_LIST(input, w, bias), TENSOR_LIST(tensor));

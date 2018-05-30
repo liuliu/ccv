@@ -44,7 +44,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, ONE_CPU_TENSOR(layer->net.convolutional.count), 0);
 			bias_symbols[i] = bias_symbol;
 			// memcpy(bias->data.f32, layer->bias, layer->net.convolutional.count * sizeof(float));
-			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
+			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
 			exec_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol, w_symbol, bias_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else if (layer->type == CCV_CONVNET_MAX_POOL) {
 			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, CMD_GENERIC(layer->net.pool.size, layer->net.pool.size, layer->input.matrix.channels), 0);
