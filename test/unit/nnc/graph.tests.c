@@ -53,7 +53,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, a->info, 0);
-	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_exec_new(graph, back_cmd, hint, TENSOR_LIST(g, a, w), TENSOR_LIST(0, gw, gbias, h));
+	ccv_nnc_graph_exec_t back_node = ccv_nnc_graph_exec_new(graph, back_cmd, hint, TENSOR_LIST(g, a, w), TENSOR_LIST(h, gw, gbias));
 	// All nodes are created, now to concat the graph.
 	ccv_nnc_graph_exec_concat(graph, forw_node, softmax_node);
 	ccv_nnc_graph_exec_concat(graph, softmax_node, loss_node);
@@ -80,7 +80,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_tensor_t* vgw = ccv_nnc_tensor_new(0, w->info, 0);
 	ccv_nnc_tensor_t* vgbias = ccv_nnc_tensor_new(0, bias->info, 0);
 	ccv_nnc_tensor_t* vh = ccv_nnc_tensor_new(0, h->info, 0);
-	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(vg, a, w), TENSOR_LIST(0, vgw, vgbias, vh), 0);
+	ccv_nnc_cmd_exec(back_cmd, hint, 0, TENSOR_LIST(vg, a, w), TENSOR_LIST(vh, vgw, vgbias), 0);
 	REQUIRE_TENSOR_EQ(gbias, vgbias, "Graph computed backward pass weight delta should be the same.");
 	REQUIRE_TENSOR_EQ(gw, vgw, "Graph computed backward pass bias delta should be the same.");
 	REQUIRE_TENSOR_EQ(h, vh, "Graph computed backward pass result should be the same.");
