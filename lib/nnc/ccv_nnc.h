@@ -656,12 +656,19 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
 //
 // I am still flushing out the details of this implementation. Dataframe here is very similar to pandas dataframe
 // but instead of operating scalars (mostly), it operates tensors.
+//
 typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(void);
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 
-typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(void);
+// Model
+//
+// With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
+// together.
+//
+typedef struct ccv_cnnp_model_s {
+} ccv_cnnp_model_t;
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
 
 #endif
