@@ -1890,8 +1890,9 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
 	else
 		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
-	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_info_size;
 	graph->forward_symbol_size = forward_symbol_size;
+	graph->backward_tensor_symbol_size = tensor_symbol_info_size;
+	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_info_size;
 	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - forward_symbol_size;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		graph->backward_tensor_symbols[i] = -1;
@@ -1983,7 +1984,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
 {
 	assert(symbol.d >= 0);
-	assert(symbol.d < graph->forward_symbol_size);
+	assert(symbol.d < graph->backward_tensor_symbol_size);
 	if (graph->backward_tensor_symbols[symbol.d] < 0)
 		return NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t tensor = {

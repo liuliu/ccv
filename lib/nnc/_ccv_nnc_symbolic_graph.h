@@ -89,6 +89,7 @@ struct ccv_nnc_symbolic_graph_s {
 	// End of while loop handling.
 	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;
+	int backward_tensor_symbol_size;
 	int* backward_tensor_symbols;
 	int backward_symbol_size;
 	int* backward_exec_symbols;

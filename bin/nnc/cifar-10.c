@@ -114,6 +114,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	ccv_nnc_tensor_symbol_t db3 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, b3);
 	ccv_nnc_tensor_symbol_t dx12 = ccv_nnc_tensor_symbol_for_backward(symbolic_graph, x12);
 	ccv_nnc_tensor_symbol_t dx12c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "dx12c");
+	ccv_nnc_symbolic_graph_write(symbolic_graph, 0, 0, "cifar-10.cfg");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(dx12c), TENSOR_SYMBOL_LIST(dx12), 0);
 	ccv_nnc_tensor_symbol_t x12c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NCHW(128, 10), "x12c");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_DATA_TRANSFER_FORWARD(), TENSOR_SYMBOL_LIST(x12), TENSOR_SYMBOL_LIST(x12c), 0);
