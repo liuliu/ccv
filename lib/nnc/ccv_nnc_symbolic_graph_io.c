@@ -44,7 +44,7 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 		else
 			sqlite3_bind_null(tensor_symbol_insert_stmt, 12);
 		if (symbol_info->name)
-			sqlite3_bind_text(tensor_symbol_insert_stmt, 13, symbol_info->name, 0, 0);
+			sqlite3_bind_text(tensor_symbol_insert_stmt, 13, symbol_info->name, -1, 0);
 		else
 			sqlite3_bind_null(tensor_symbol_insert_stmt, 13);
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 14, symbol_info->info.type);
@@ -72,7 +72,7 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 		if (symbol_info->outgoings && symbol_info->outgoings->rnum)
 			sqlite3_bind_blob(exec_symbol_insert_stmt, 10, ccv_array_get(symbol_info->outgoings, 0), sizeof(int) * symbol_info->outgoings->rnum, 0);
 		if (symbol_info->name)
-			sqlite3_bind_text(exec_symbol_insert_stmt, 11, symbol_info->name, 0, 0);
+			sqlite3_bind_text(exec_symbol_insert_stmt, 11, symbol_info->name, -1, 0);
 		sqlite3_bind_int(exec_symbol_insert_stmt, 12, symbol_info->cmd.cmd);
 		sqlite3_bind_int(exec_symbol_insert_stmt, 13, symbol_info->cmd.backend);
 		sqlite3_bind_int(exec_symbol_insert_stmt, 14, symbol_info->cmd.algorithm);
@@ -82,15 +82,17 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 			sqlite3_bind_blob(exec_symbol_insert_stmt, 17, CCV_NNC_GRAPH_REF(symbol_info), sizeof(int) * symbol_info->graph_ref_size, 0);
 		if (symbol_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
 		{
-			sqlite3_bind_int(exec_symbol_insert_stmt, 18, symbol_info->case_of.flags);
-			sqlite3_bind_int(exec_symbol_insert_stmt, 19, symbol_info->case_of.argument.offset);
-			sqlite3_bind_int(exec_symbol_insert_stmt, 20, symbol_info->case_of.argument.size);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 18, 0);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 19, symbol_info->case_of.flags);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 20, symbol_info->case_of.argument.offset);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 21, symbol_info->case_of.argument.size);
 		}
 		if (symbol_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
 		{
-			sqlite3_bind_int(exec_symbol_insert_stmt, 21, symbol_info->p_while.input_size);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 22, 0);
+			sqlite3_bind_int(exec_symbol_insert_stmt, 23, symbol_info->p_while.input_size);
 			if (symbol_info->p_while.input_size)
-				sqlite3_bind_blob(exec_symbol_insert_stmt, 22, symbol_info->p_while.inputs, sizeof(int) * symbol_info->p_while.input_size, 0);
+				sqlite3_bind_blob(exec_symbol_insert_stmt, 24, symbol_info->p_while.inputs, sizeof(int) * symbol_info->p_while.input_size, 0);
 		}
 		assert_sqlite(SQLITE_DONE == sqlite3_step(exec_symbol_insert_stmt));
 		sqlite3_reset(exec_symbol_insert_stmt);
@@ -187,17 +189,18 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
 			"(id INTEGER, graph INTEGER, input_size INTEGER, output_size INTEGER, graph_ref_size INTEGER, "
 			"flags INTEGER, peer_ref INTEGER, inputs BLOB, outputs BLOB, outgoings BLOB, name TEXT, "
 			"cmd_cmd INTEGER, cmd_backend INTEGER, cmd_algorithm INTEGER, cmd_info BLOB, hint BLOB, graph_ref BLOB, "
-			"case_of_flags INTEGER, case_of_argument_offset INTEGER, case_of_argument_size INTEGER, "
-			"p_while_input_size INTEGER, p_while_inputs BLOB, PRIMARY KEY (id, graph))";
+			"case_of_expr INTEGER, case_of_flags INTEGER, case_of_argument_offset INTEGER, case_of_argument_size INTEGER, "
+			"p_while_expr INTEGER, p_while_input_size INTEGER, p_while_inputs BLOB, PRIMARY KEY (id, graph))";
 		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, exec_symbol_create_table_qs, 0, 0, 0));
 		const char exec_symbol_insert_qs[] = 
 			"REPLACE INTO graph_exec_symbol "
 			"(id, graph, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
-			"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_flags, "
-			"case_of_argument_offset, case_of_argument_size, p_while_input_size, p_while_inputs) VALUES "
-			"($id, $graph, $input_size, $output_size, $graph_ref_size, $flags, $peer_ref, $inputs, $outputs, "
-			"$outgoings, $name, $cmd_cmd, $cmd_backend, $cmd_algorithm, $cmd_info, $hint, $graph_ref, $case_of_flags, "
-			"$case_of_argument_offset, $case_of_argument_size, $p_while_input_size, $p_while_inputs)";
+			"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
+			"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs) "
+			"VALUES ($id, $graph, $input_size, $output_size, $graph_ref_size, $flags, $peer_ref, $inputs, $outputs, "
+			"$outgoings, $name, $cmd_cmd, $cmd_backend, $cmd_algorithm, $cmd_info, $hint, $graph_ref, $case_of_expr, "
+			"$case_of_flags, $case_of_argument_offset, $case_of_argument_size, $p_while_expr, $p_while_input_size, "
+			"$p_while_inputs)";
 		sqlite3_stmt* exec_symbol_insert_stmt = 0;
 		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_insert_qs, sizeof(exec_symbol_insert_qs), &exec_symbol_insert_stmt, 0));
 
@@ -240,10 +243,296 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
 	}
 }
 
+static ccv_nnc_symbolic_graph_t* _ccv_nnc_symbolic_graph_get(const ccv_array_t* const repo, const ccv_nnc_symbolic_graph_t* const pos)
+{
+	const int idx = (uintptr_t)pos >> 1;
+	assert(idx < repo->rnum);
+	return *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, idx);
+}
+
+#define CCV_NNC_IS_SYMBOLIC_GRAPH_POS(ptr) ((uintptr_t)(ptr) & 1)
+
+static ccv_nnc_symbolic_graph_t* _ccv_nnc_symbolic_graph_pos(const int idx)
+{
+	if (idx < 0)
+		return 0; // This is nil.
+	return (ccv_nnc_symbolic_graph_t*)(((uintptr_t)idx << 1) + 1);
+}
+
+static void _ccv_nnc_symbolic_graph_read(const int graph_idx, sqlite3_stmt* const graph_select_stmt, sqlite3_stmt* const tensor_symbol_select_stmt, sqlite3_stmt* const exec_symbol_select_stmt, ccv_nnc_symbolic_graph_t* const graph)
+{
+	int i, j;
+	ccv_array_resize(graph->tensor_symbol_info, sqlite3_column_int(graph_select_stmt, 1));
+	ccv_array_resize(graph->exec_symbol_info, sqlite3_column_int(graph_select_stmt, 2));
+	if (sqlite3_column_blob(graph_select_stmt, 3))
+	{
+		const int* const sources = sqlite3_column_blob(graph_select_stmt, 3);
+		const int count = sqlite3_column_bytes(graph_select_stmt, 3) / sizeof(int);
+		graph->sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), count, 0);
+		for (i = 0; i < count; i++)
+		{
+			const ccv_nnc_graph_exec_symbol_t symbol = {
+				.graph = graph,
+				.d = sources[i]
+			};
+			ccv_array_push(graph->sources, &symbol);
+		}
+	}
+	if (sqlite3_column_blob(graph_select_stmt, 4))
+	{
+		const int* const destinations = sqlite3_column_blob(graph_select_stmt, 4);
+		const int count = sqlite3_column_bytes(graph_select_stmt, 4) / sizeof(int);
+		graph->destinations = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), count, 0);
+		for (i = 0; i < count; i++)
+		{
+			const ccv_nnc_graph_exec_symbol_t symbol = {
+				.graph = graph,
+				.d = destinations[i]
+			};
+			ccv_array_push(graph->destinations, &symbol);
+		}
+	}
+	if (sqlite3_column_blob(graph_select_stmt, 5))
+	{
+		const int* const sub_graphs = sqlite3_column_blob(graph_select_stmt, 5);
+		const int count = sqlite3_column_bytes(graph_select_stmt, 5) / sizeof(int);
+		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), count, 0);
+		for (i = 0; i < count; i++)
+		{
+			const ccv_nnc_symbolic_graph_t* const sub_graph = _ccv_nnc_symbolic_graph_pos(sub_graphs[i]);
+			ccv_array_push(graph->sub_graphs, &sub_graph);
+		}
+	}
+	graph->peer = _ccv_nnc_symbolic_graph_pos(sqlite3_column_int(graph_select_stmt, 6));
+	graph->p = _ccv_nnc_symbolic_graph_pos(sqlite3_column_int(graph_select_stmt, 7));
+	graph->p_idx = sqlite3_column_int(graph_select_stmt, 8);
+	graph->exec_idx = sqlite3_column_int(graph_select_stmt, 9);
+	graph->breakpoint_size = sqlite3_column_int(graph_select_stmt, 10);
+	if (graph->breakpoint_size)
+	{
+		graph->breakpoints = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * graph->breakpoint_size);
+		assert(sizeof(int) * graph->breakpoint_size == sqlite3_column_bytes(graph_select_stmt, 11));
+		const int* const breakpoints = sqlite3_column_blob(graph_select_stmt, 11);
+		for (i = 0; i < graph->breakpoint_size; i++)
+			graph->breakpoints[i] = (ccv_nnc_graph_exec_symbol_t){
+				.d = breakpoints[i],
+				.graph = graph
+			};
+	}
+	graph->forward_symbol_size = sqlite3_column_int(graph_select_stmt, 12);
+	graph->backward_tensor_symbol_size = sqlite3_column_int(graph_select_stmt, 13);
+	if (graph->backward_tensor_symbol_size)
+	{
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * graph->backward_tensor_symbol_size);
+		assert(sizeof(int) * graph->backward_tensor_symbol_size == sqlite3_column_bytes(graph_select_stmt, 14));
+		const int* const backward_tensor_symbols = sqlite3_column_blob(graph_select_stmt, 14);
+		memcpy(graph->backward_tensor_symbols, backward_tensor_symbols, sizeof(int) * graph->backward_tensor_symbol_size);
+	}
+	graph->backward_symbol_size = sqlite3_column_int(graph_select_stmt, 15);
+	if (graph->backward_symbol_size)
+	{
+		graph->backward_exec_symbols = (int*)ccmalloc(sizeof(int) * graph->backward_symbol_size);
+		assert(sizeof(int) * graph->backward_symbol_size == sqlite3_column_bytes(graph_select_stmt, 16));
+		const int* const backward_exec_symbols = sqlite3_column_blob(graph_select_stmt, 16);
+		memcpy(graph->backward_exec_symbols, backward_exec_symbols, sizeof(int) * graph->backward_symbol_size);
+	}
+	sqlite3_bind_int(tensor_symbol_select_stmt, 1, graph_idx);
+	for (i = 0; SQLITE_ROW == sqlite3_step(tensor_symbol_select_stmt); i++)
+	{
+		assert(sqlite3_column_int(tensor_symbol_select_stmt, 0) == i); // id should match.
+		assert(i < graph->tensor_symbol_info->rnum);
+		assert(sqlite3_column_int(tensor_symbol_select_stmt, 0) == i);
+		ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i);
+		symbol_info->assign_ref = sqlite3_column_int(tensor_symbol_select_stmt, 1);
+		symbol_info->r_assign_ref = sqlite3_column_int(tensor_symbol_select_stmt, 2);
+		symbol_info->bypass_ref = sqlite3_column_int(tensor_symbol_select_stmt, 3);
+		symbol_info->p_ref = sqlite3_column_int(tensor_symbol_select_stmt, 4);
+		symbol_info->alias_ref = sqlite3_column_int(tensor_symbol_select_stmt, 5);
+		symbol_info->peer_ref = sqlite3_column_int(tensor_symbol_select_stmt, 6);
+		symbol_info->flags = sqlite3_column_int(tensor_symbol_select_stmt, 7);
+		memset(symbol_info->ofs, 0, sizeof(symbol_info->ofs));
+		const int* const ofs = sqlite3_column_blob(tensor_symbol_select_stmt, 8);
+		if (ofs)
+			memcpy(symbol_info->ofs, ofs, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 8), sizeof(symbol_info->ofs)));
+		memset(symbol_info->inc, 0, sizeof(symbol_info->inc));
+		const int* const inc = sqlite3_column_blob(tensor_symbol_select_stmt, 9);
+		if (inc)
+			memcpy(symbol_info->inc, inc, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 9), sizeof(symbol_info->inc)));
+		const int* const s_ref = sqlite3_column_blob(tensor_symbol_select_stmt, 10);
+		if (s_ref)
+		{
+			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 10) / sizeof(int);
+			symbol_info->s_ref = ccv_array_new(sizeof(int), count, 0);
+			ccv_array_resize(symbol_info->s_ref, count);
+			memcpy(ccv_array_get(symbol_info->s_ref, 0), s_ref, sizeof(int) * count);
+		} else
+			symbol_info->s_ref = 0;
+		const char* const name = (char*)sqlite3_column_text(tensor_symbol_select_stmt, 11);
+		if (name)
+		{
+			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 11);
+			symbol_info->name = (char*)ccmalloc(sizeof(char) * (count + 1));
+			memcpy(symbol_info->name, name, count);
+			symbol_info->name[count] = 0; // null terminator
+		} else
+			symbol_info->name = 0;
+		symbol_info->info.type = sqlite3_column_int(tensor_symbol_select_stmt, 12);
+		symbol_info->info.format = sqlite3_column_int(tensor_symbol_select_stmt, 13);
+		symbol_info->info.datatype = sqlite3_column_int(tensor_symbol_select_stmt, 14);
+		memset(symbol_info->info.dim, 0, sizeof(symbol_info->info.dim));
+		const int* const dim = sqlite3_column_blob(tensor_symbol_select_stmt, 15);
+		if (dim)
+			memcpy(symbol_info->info.dim, dim, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 15), sizeof(symbol_info->info.dim)));
+	}
+	sqlite3_clear_bindings(tensor_symbol_select_stmt);
+	sqlite3_bind_int(exec_symbol_select_stmt, 1, graph_idx);
+	for (i = 0; SQLITE_ROW == sqlite3_step(exec_symbol_select_stmt); i++)
+	{
+		assert(sqlite3_column_int(exec_symbol_select_stmt, 0) == i); // id should match.
+		assert(i < graph->exec_symbol_info->rnum);
+		assert(sqlite3_column_int(exec_symbol_select_stmt, 0) == i);
+		ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i);
+		memset(symbol_info, 0, sizeof(ccv_nnc_graph_exec_symbol_info_t));
+		symbol_info->input_size = sqlite3_column_int(exec_symbol_select_stmt, 1);
+		symbol_info->output_size = sqlite3_column_int(exec_symbol_select_stmt, 2);
+		symbol_info->graph_ref_size = sqlite3_column_int(exec_symbol_select_stmt, 3);
+		symbol_info->flags = sqlite3_column_int(exec_symbol_select_stmt, 4);
+		symbol_info->peer_ref = sqlite3_column_int(exec_symbol_select_stmt, 5);
+		if (symbol_info->input_size > 0 || symbol_info->output_size > 0)
+		{
+			symbol_info->inputs = (int*)ccmalloc(sizeof(int) * (symbol_info->input_size + symbol_info->output_size));
+			for (j = 0; j < symbol_info->input_size; j++)
+				symbol_info->inputs[j] = CCV_NNC_NO_TENSOR_SYMBOL;
+			symbol_info->outputs = symbol_info->inputs + symbol_info->input_size;
+			for (j = 0; j < symbol_info->output_size; j++)
+				symbol_info->outputs[j] = CCV_NNC_NO_TENSOR_SYMBOL;
+		}
+		if (symbol_info->input_size)
+		{
+			const int* const inputs = sqlite3_column_blob(exec_symbol_select_stmt, 6);
+			if (inputs)
+				memcpy(symbol_info->inputs, inputs, ccv_min(sizeof(int) * symbol_info->input_size, sqlite3_column_bytes(exec_symbol_select_stmt, 6)));
+		}
+		if (symbol_info->output_size)
+		{
+			const int* const outputs = sqlite3_column_blob(exec_symbol_select_stmt, 7);
+			if (outputs)
+				memcpy(symbol_info->outputs, outputs, ccv_min(sizeof(int) * symbol_info->output_size, sqlite3_column_bytes(exec_symbol_select_stmt, 7)));
+		}
+		const int* const outgoings = sqlite3_column_blob(exec_symbol_select_stmt, 8);
+		if (outgoings)
+		{
+			const int count = sqlite3_column_bytes(exec_symbol_select_stmt, 8) / sizeof(int);
+			symbol_info->outgoings = ccv_array_new(sizeof(int), count, 0);
+			ccv_array_resize(symbol_info->outgoings, count);
+			memcpy(ccv_array_get(symbol_info->outgoings, 0), outgoings, sizeof(int) * count);
+		}
+		const char* const name = (char*)sqlite3_column_text(exec_symbol_select_stmt, 9);
+		if (name)
+		{
+			const int count = sqlite3_column_bytes(exec_symbol_select_stmt, 9);
+			symbol_info->name = (char*)ccmalloc(sizeof(char) * (count + 1));
+			memcpy(symbol_info->name, name, count);
+			symbol_info->name[count] = 0; // null terminator
+		}
+		symbol_info->cmd.cmd = sqlite3_column_int(exec_symbol_select_stmt, 10);
+		symbol_info->cmd.backend = sqlite3_column_int(exec_symbol_select_stmt, 11);
+		symbol_info->cmd.algorithm = sqlite3_column_int(exec_symbol_select_stmt, 12);
+		const void* const cmd_info = sqlite3_column_blob(exec_symbol_select_stmt, 13);
+		if (cmd_info)
+			memcpy(&symbol_info->cmd.info, cmd_info, ccv_min(sizeof(symbol_info->cmd.info), sqlite3_column_bytes(exec_symbol_select_stmt, 13)));
+		const void* const hint = sqlite3_column_blob(exec_symbol_select_stmt, 14);
+		if (hint)
+			memcpy(&symbol_info->hint, hint, ccv_min(sizeof(symbol_info->hint), sqlite3_column_bytes(exec_symbol_select_stmt, 14)));
+		if (symbol_info->graph_ref_size)
+		{
+			const int* const graph_ref = sqlite3_column_blob(exec_symbol_select_stmt, 15);
+			if (symbol_info->graph_ref_size > sizeof(symbol_info->_inline_graph_ref) / sizeof(symbol_info->_inline_graph_ref[0]))
+				symbol_info->_heap_graph_ref = (int*)cccalloc(symbol_info->graph_ref_size, sizeof(int));
+			if (graph_ref)
+				memcpy(CCV_NNC_GRAPH_REF(symbol_info), graph_ref, ccv_min(sizeof(int) * symbol_info->graph_ref_size, sqlite3_column_bytes(exec_symbol_select_stmt, 15)));
+		}
+		if (symbol_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
+		{
+			symbol_info->case_of.flags = sqlite3_column_int(exec_symbol_select_stmt, 17);
+			symbol_info->case_of.argument.offset = sqlite3_column_int(exec_symbol_select_stmt, 18);
+			symbol_info->case_of.argument.size = sqlite3_column_int(exec_symbol_select_stmt, 19);
+		} else if (symbol_info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
+			symbol_info->p_while.input_size = sqlite3_column_int(exec_symbol_select_stmt, 21);
+			if (symbol_info->p_while.input_size)
+			{
+				symbol_info->p_while.inputs = (int*)cccalloc(symbol_info->p_while.input_size, sizeof(int));
+				const int* const inputs = sqlite3_column_blob(exec_symbol_select_stmt, 22);
+				if (inputs)
+					memcpy(symbol_info->p_while.inputs, inputs, ccv_min(sizeof(int) * symbol_info->p_while.input_size, sqlite3_column_bytes(exec_symbol_select_stmt, 22)));
+			}
+		}
+	}
+	sqlite3_clear_bindings(exec_symbol_select_stmt);
+}
+
+static void _ccv_nnc_symbolic_graph_rewire(const ccv_array_t* const repo, ccv_nnc_symbolic_graph_t* const graph)
+{
+	if (graph->p && CCV_NNC_IS_SYMBOLIC_GRAPH_POS(graph->p))
+		graph->p = _ccv_nnc_symbolic_graph_get(repo, graph->p);
+	if (graph->peer && CCV_NNC_IS_SYMBOLIC_GRAPH_POS(graph->peer))
+		graph->peer = _ccv_nnc_symbolic_graph_get(repo, graph->peer);
+	int i;
+	if (graph->sub_graphs)
+		for (i = 0; i < graph->sub_graphs->rnum; i++)
+		{
+			ccv_nnc_symbolic_graph_t* const sub_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, i);
+			if (sub_graph && CCV_NNC_IS_SYMBOLIC_GRAPH_POS(sub_graph))
+				*(ccv_nnc_symbolic_graph_t**)ccv_array_get(graph->sub_graphs, i) = _ccv_nnc_symbolic_graph_get(repo, sub_graph);
+		}
+}
+
 void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t** const graph_ref, ccv_nnc_tensor_bind_t** const tensor_binds_ref, int* const tensor_bind_size_ref)
 {
 	sqlite3* conn = 0;
 	if (SQLITE_OK == sqlite3_open(fn, &conn))
 	{
+		ccv_array_t* const repo = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
+		const char graph_select_qs[] =
+			"SELECT graph, tensor_symbol_size, exec_symbol_size, sources, destinations, sub_graphs, peer, p, p_idx, "
+			"exec_idx, breakpoint_size, breakpoints, forward_symbol_size, backward_tensor_symbol_size, "
+			"backward_tensor_symbols, backward_symbol_size, backward_exec_symbols FROM graph ORDER BY graph";
+		sqlite3_stmt* graph_select_stmt = 0;
+		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, graph_select_qs, sizeof(graph_select_qs), &graph_select_stmt, 0));
+		sqlite3_stmt* tensor_symbol_select_stmt = 0;
+		const char tensor_symbol_select_qs[] =
+			"SELECT id, assign_ref, r_assign_ref, bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, inc, s_ref, "
+			"name, type, format, datatype, dim FROM tensor_symbol WHERE graph=$graph ORDER BY id";
+		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_select_qs, sizeof(tensor_symbol_select_qs), &tensor_symbol_select_stmt, 0));
+		const char exec_symbol_select_qs[] =
+			"SELECT id, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
+			"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
+			"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs "
+			"FROM graph_exec_symbol WHERE graph=$graph ORDER BY id";
+		sqlite3_stmt* exec_symbol_select_stmt = 0;
+		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_select_qs, sizeof(exec_symbol_select_qs), &exec_symbol_select_stmt, 0));
+		while (SQLITE_ROW == sqlite3_step(graph_select_stmt))
+		{
+			ccv_nnc_symbolic_graph_t* const graph = ccv_nnc_symbolic_graph_new();
+			const int graph_idx = sqlite3_column_int(graph_select_stmt, 0);
+			assert(graph_idx == repo->rnum);
+			ccv_array_push(repo, &graph);
+			_ccv_nnc_symbolic_graph_read(graph_idx, graph_select_stmt, tensor_symbol_select_stmt, exec_symbol_select_stmt, graph);
+		}
+		int i;
+		for (i = 0; i < repo->rnum; i++)
+			_ccv_nnc_symbolic_graph_rewire(repo, *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, i));
+		*graph_ref = (repo->rnum > 0) ? *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, 0) : 0;
+		assert((tensor_bind_size_ref && tensor_binds_ref) || (!tensor_bind_size_ref && !tensor_binds_ref));
+		if (tensor_bind_size_ref && tensor_binds_ref)
+		{
+			*tensor_bind_size_ref = 0;
+			*tensor_binds_ref = 0;
+		}
+		ccv_array_free(repo);
+		sqlite3_finalize(graph_select_stmt);
+		sqlite3_finalize(tensor_symbol_select_stmt);
+		sqlite3_finalize(exec_symbol_select_stmt);
+		sqlite3_close(conn);
 	}
 }

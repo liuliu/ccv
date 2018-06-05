@@ -573,7 +573,7 @@ static int _ccv_nnc_tensor_metadata_pos_new(ccv_array_t* const tensor_metadata, 
 
 static ccv_nnc_tensor_t* _ccv_nnc_tensor_metadata_get(const ccv_array_t* const tensor_metadata, const int pos)
 {
-	assert((pos >> 1) <= tensor_metadata->rnum);
+	assert((pos >> 1) < tensor_metadata->rnum);
 	return (ccv_nnc_tensor_t*)ccv_array_get(tensor_metadata, pos >> 1);
 }
 
