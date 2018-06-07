@@ -33,24 +33,25 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 3, symbol_info->assign_ref);
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 4, symbol_info->r_assign_ref);
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 5, symbol_info->bypass_ref);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 6, symbol_info->p_ref);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 7, symbol_info->alias_ref);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 8, symbol_info->peer_ref);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 9, symbol_info->flags);
-		sqlite3_bind_blob(tensor_symbol_insert_stmt, 10, symbol_info->ofs, sizeof(symbol_info->ofs), 0);
-		sqlite3_bind_blob(tensor_symbol_insert_stmt, 11, symbol_info->inc, sizeof(symbol_info->inc), 0);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 6, symbol_info->r_bypass_ref);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 7, symbol_info->p_ref);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 8, symbol_info->alias_ref);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 9, symbol_info->peer_ref);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 10, symbol_info->flags);
+		sqlite3_bind_blob(tensor_symbol_insert_stmt, 11, symbol_info->ofs, sizeof(symbol_info->ofs), 0);
+		sqlite3_bind_blob(tensor_symbol_insert_stmt, 12, symbol_info->inc, sizeof(symbol_info->inc), 0);
 		if (symbol_info->s_ref)
-			sqlite3_bind_blob(tensor_symbol_insert_stmt, 12, ccv_array_get(symbol_info->s_ref, 0), sizeof(int) * symbol_info->s_ref->rnum, 0);
-		else
-			sqlite3_bind_null(tensor_symbol_insert_stmt, 12);
-		if (symbol_info->name)
-			sqlite3_bind_text(tensor_symbol_insert_stmt, 13, symbol_info->name, -1, 0);
+			sqlite3_bind_blob(tensor_symbol_insert_stmt, 13, ccv_array_get(symbol_info->s_ref, 0), sizeof(int) * symbol_info->s_ref->rnum, 0);
 		else
 			sqlite3_bind_null(tensor_symbol_insert_stmt, 13);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 14, symbol_info->info.type);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 15, symbol_info->info.format);
-		sqlite3_bind_int(tensor_symbol_insert_stmt, 16, symbol_info->info.datatype);
-		sqlite3_bind_blob(tensor_symbol_insert_stmt, 17, symbol_info->info.dim, sizeof(symbol_info->info.dim), 0);
+		if (symbol_info->name)
+			sqlite3_bind_text(tensor_symbol_insert_stmt, 14, symbol_info->name, -1, 0);
+		else
+			sqlite3_bind_null(tensor_symbol_insert_stmt, 14);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 15, symbol_info->info.type);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 16, symbol_info->info.format);
+		sqlite3_bind_int(tensor_symbol_insert_stmt, 17, symbol_info->info.datatype);
+		sqlite3_bind_blob(tensor_symbol_insert_stmt, 18, symbol_info->info.dim, sizeof(symbol_info->info.dim), 0);
 		assert_sqlite(SQLITE_DONE == sqlite3_step(tensor_symbol_insert_stmt));
 		sqlite3_reset(tensor_symbol_insert_stmt);
 		sqlite3_clear_bindings(tensor_symbol_insert_stmt);
@@ -172,16 +173,16 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
 	{
 		const char tensor_symbol_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_symbol "
 			"(id INTEGER, graph INTEGER, assign_ref INTEGER, r_assign_ref INTEGER, "
-			"bypass_ref INTEGER, p_ref INTEGER, alias_ref INTEGER, peer_ref INTEGER, flags INTEGER, "
-			"ofs BLOB, inc BLOB, s_ref BLOB, name TEXT, type INTEGER, format INTEGER, datatype INTEGER, "
-			"dim BLOB, PRIMARY KEY (id, graph))";
+			"bypass_ref INTEGER, r_bypass_ref INTEGER, p_ref INTEGER, alias_ref INTEGER, peer_ref INTEGER, "
+			"flags INTEGER, ofs BLOB, inc BLOB, s_ref BLOB, name TEXT, type INTEGER, format INTEGER, "
+			"datatype INTEGER, dim BLOB, PRIMARY KEY (id, graph))";
 		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, tensor_symbol_create_table_qs, 0, 0, 0));
 		const char tensor_symbol_insert_qs[] = 
 			"REPLACE INTO tensor_symbol "
-			"(id, graph, assign_ref, r_assign_ref, bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, "
-			"inc, s_ref, name, type, format, datatype, dim) VALUES "
-			"($id, $graph, $assign_ref, $r_assign_ref, $bypass_ref, $p_ref, $alias_ref, $peer_ref, $flags, "
-			"$ofs, $inc, $s_ref, $name, $type, $format, $datatype, $dim)";
+			"(id, graph, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, "
+			"ofs, inc, s_ref, name, type, format, datatype, dim) VALUES "
+			"($id, $graph, $assign_ref, $r_assign_ref, $bypass_ref, $r_bypass_ref, $p_ref, $alias_ref, $peer_ref, "
+			"$flags, $ofs, $inc, $s_ref, $name, $type, $format, $datatype, $dim)";
 		sqlite3_stmt* tensor_symbol_insert_stmt = 0;
 		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_insert_qs, sizeof(tensor_symbol_insert_qs), &tensor_symbol_insert_stmt, 0));
 
@@ -379,43 +380,44 @@ static void _ccv_nnc_symbolic_graph_read(const int graph_idx, sqlite3_stmt* cons
 		symbol_info->assign_ref = sqlite3_column_int(tensor_symbol_select_stmt, 1);
 		symbol_info->r_assign_ref = sqlite3_column_int(tensor_symbol_select_stmt, 2);
 		symbol_info->bypass_ref = sqlite3_column_int(tensor_symbol_select_stmt, 3);
-		symbol_info->p_ref = sqlite3_column_int(tensor_symbol_select_stmt, 4);
-		symbol_info->alias_ref = sqlite3_column_int(tensor_symbol_select_stmt, 5);
-		symbol_info->peer_ref = sqlite3_column_int(tensor_symbol_select_stmt, 6);
-		symbol_info->flags = sqlite3_column_int(tensor_symbol_select_stmt, 7);
+		symbol_info->r_bypass_ref = sqlite3_column_int(tensor_symbol_select_stmt, 4);
+		symbol_info->p_ref = sqlite3_column_int(tensor_symbol_select_stmt, 5);
+		symbol_info->alias_ref = sqlite3_column_int(tensor_symbol_select_stmt, 6);
+		symbol_info->peer_ref = sqlite3_column_int(tensor_symbol_select_stmt, 7);
+		symbol_info->flags = sqlite3_column_int(tensor_symbol_select_stmt, 8);
 		memset(symbol_info->ofs, 0, sizeof(symbol_info->ofs));
-		const int* const ofs = sqlite3_column_blob(tensor_symbol_select_stmt, 8);
+		const int* const ofs = sqlite3_column_blob(tensor_symbol_select_stmt, 9);
 		if (ofs)
 			memcpy(symbol_info->ofs, ofs, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 8), sizeof(symbol_info->ofs)));
 		memset(symbol_info->inc, 0, sizeof(symbol_info->inc));
-		const int* const inc = sqlite3_column_blob(tensor_symbol_select_stmt, 9);
+		const int* const inc = sqlite3_column_blob(tensor_symbol_select_stmt, 10);
 		if (inc)
 			memcpy(symbol_info->inc, inc, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 9), sizeof(symbol_info->inc)));
-		const int* const s_ref = sqlite3_column_blob(tensor_symbol_select_stmt, 10);
+		const int* const s_ref = sqlite3_column_blob(tensor_symbol_select_stmt, 11);
 		if (s_ref)
 		{
-			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 10) / sizeof(int);
+			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 11) / sizeof(int);
 			symbol_info->s_ref = ccv_array_new(sizeof(int), count, 0);
 			ccv_array_resize(symbol_info->s_ref, count);
 			memcpy(ccv_array_get(symbol_info->s_ref, 0), s_ref, sizeof(int) * count);
 		} else
 			symbol_info->s_ref = 0;
-		const char* const name = (char*)sqlite3_column_text(tensor_symbol_select_stmt, 11);
+		const char* const name = (char*)sqlite3_column_text(tensor_symbol_select_stmt, 12);
 		if (name)
 		{
-			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 11);
+			const int count = sqlite3_column_bytes(tensor_symbol_select_stmt, 12);
 			symbol_info->name = (char*)ccmalloc(sizeof(char) * (count + 1));
 			memcpy(symbol_info->name, name, count);
 			symbol_info->name[count] = 0; // null terminator
 		} else
 			symbol_info->name = 0;
-		symbol_info->info.type = sqlite3_column_int(tensor_symbol_select_stmt, 12);
-		symbol_info->info.format = sqlite3_column_int(tensor_symbol_select_stmt, 13);
-		symbol_info->info.datatype = sqlite3_column_int(tensor_symbol_select_stmt, 14);
+		symbol_info->info.type = sqlite3_column_int(tensor_symbol_select_stmt, 13);
+		symbol_info->info.format = sqlite3_column_int(tensor_symbol_select_stmt, 14);
+		symbol_info->info.datatype = sqlite3_column_int(tensor_symbol_select_stmt, 15);
 		memset(symbol_info->info.dim, 0, sizeof(symbol_info->info.dim));
-		const int* const dim = sqlite3_column_blob(tensor_symbol_select_stmt, 15);
+		const int* const dim = sqlite3_column_blob(tensor_symbol_select_stmt, 16);
 		if (dim)
-			memcpy(symbol_info->info.dim, dim, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 15), sizeof(symbol_info->info.dim)));
+			memcpy(symbol_info->info.dim, dim, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 16), sizeof(symbol_info->info.dim)));
 	}
 	sqlite3_reset(tensor_symbol_select_stmt);
 	sqlite3_clear_bindings(tensor_symbol_select_stmt);
@@ -536,8 +538,8 @@ void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t*
 		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, graph_select_qs, sizeof(graph_select_qs), &graph_select_stmt, 0));
 		sqlite3_stmt* tensor_symbol_select_stmt = 0;
 		const char tensor_symbol_select_qs[] =
-			"SELECT id, assign_ref, r_assign_ref, bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, inc, s_ref, "
-			"name, type, format, datatype, dim FROM tensor_symbol WHERE graph=$graph ORDER BY id";
+			"SELECT id, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, inc, "
+			"s_ref, name, type, format, datatype, dim FROM tensor_symbol WHERE graph=$graph ORDER BY id";
 		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_select_qs, sizeof(tensor_symbol_select_qs), &tensor_symbol_select_stmt, 0));
 		const char exec_symbol_select_qs[] =
 			"SELECT id, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "

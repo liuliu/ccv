@@ -23,12 +23,14 @@ TEST_CASE("write graph (x + y) * (x + y) and read")
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(z1, z2), TENSOR_SYMBOL_LIST(z), "prod");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_symbolic_graph_write(symbolic_graph, TENSOR_BIND_MAP(KV(x, 0), KV(y, 0), KV(z, 0)), "gen/write_graph__x___y_____x___y__and_read.graph");
+	static char fn[] = "gen/write_graph__x___y_____x___y__and_read.graph";
+	remove(fn);
+	ccv_nnc_symbolic_graph_write(symbolic_graph, TENSOR_BIND_MAP(KV(x, 0), KV(y, 0), KV(z, 0)), fn);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_symbolic_graph_t* symbolic_graph_2 = 0;
 	ccv_nnc_tensor_bind_t* tensor_binds = 0;
 	int tensor_bind_size = 0;
-	ccv_nnc_symbolic_graph_read("gen/write_graph__x___y_____x___y__and_read.graph", &symbolic_graph_2, &tensor_binds, &tensor_bind_size);
+	ccv_nnc_symbolic_graph_read(fn, &symbolic_graph_2, &tensor_binds, &tensor_bind_size);
 	x = tensor_binds[0].symbol;
 	y = tensor_binds[1].symbol;
 	z = tensor_binds[2].symbol;

@@ -632,6 +632,10 @@ enum {
 	// For the given outputs, eliminate unused input tensors, and then eliminate graph execs that don't contribute
 	// to the outputs.
 	CCV_NNC_SIMPLIFY_GRAPH_PRUNING,
+	// For CCV_NNC_DATA_TRANSFER, if the input / output is the same (on the same device, no alias), we can skip.
+	// Similarly, if it is on the same device, but alias of some, for some cases we can skip as well (if neither
+	// are carry overs, bypasses etc.)
+	CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
 	// CCV_NNC_SIMPLIFY_CONSTANT_FOLDING, // This currently is not supported, because we don't have efficient way to express constant in symbolic graph.
 };
 // When a graph is simplified, its sources / destinations are changed as well.
@@ -721,11 +725,56 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 // Model
 //
 // With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
-// together.
+// together. This is a rare case in NNC (or ccv in general) where Object-Oriented programming makes sense. I borrowed
+// heavily from Objective-C / C++ to implement this Object-Oriented interface.
 //
-typedef struct ccv_cnnp_model_s {
-} ccv_cnnp_model_t;
+// Now back to elaboration of the Model interface. It is specifically designed with Keras in mind, asking question:
+// If we are going to build Keras high-level API in any languages (Ruby, Python, Swift, Julia), what's the underlying
+// C interface would look like? Here is your answer (hint: it looks very much like just Python Keras API).
+//
+// A model consists of a set of inputs and one output. This sounds very much like what "Command" is in Level-1 APIs,
+// however, they are different: a model is stateful. For example, a convolution command takes 3 inputs: image, kernel
+// weight and bias, has 1 output: image. A convolution model takes 1 input: image, and 1 output: image. kernel weight
+// and bias are internal states to the model (in Keras, it is called "layer" for convolution, and model means a set of
+// layers. In NNC, that kind of differentiation feels superficial, therefore, a layer is a model).
+//
+// A model can be combined, and a new model can be a combination of other models.
+//
+// The simpler composed model is the sequential model. A sequential model is a model that consists a sequence of models
+// that contains one input and one output. The output of the earlier model feed into the later one, thus, a sequential
+// evaluation path.
+//
+// model type is an abstract type, you won't interact with a naked model ever.
+typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
+// With this type, now in NNC, we have 4 types that represents a "tensor":
+// ccv_nnc_tensor_t / ccv_nnc_tensor_view_t / ccv_nnc_tensor_multiview_t: a concrete tensor with memory allocated.
+// ccv_nnc_tensor_symbol_t: a symbol representation of a tensor, with its data layout, device affinity, and type
+//                          specified.
+// ccv_nnc_tensor_variable_t: in dynamic graph, this represents a concrete tensor with memory allocated, but also
+//                            associated with a recorded execution.
+// ccv_cnnp_model_io_t: this is the most flexible one. No data layout, device affinity or type specified, the format
+//                      has to be c / h / w, no batch size needed. This is a handle used by model API to associates
+//                      model inputs / outputs.
+typedef struct ccv_cnnp_model_io_s* ccv_cnnp_model_io_t;
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_input(const ccv_nnc_tensor_param_t params);
+// This method mimics Keras callable for model (thus, override __call__ method in Python class).
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
+// This method name is deceiving. It return a composed model, not a naked model.
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, ccv_cnnp_model_io_t* const outputs, const int output_size);
+// This method returns a sequential model, which composed from a sequence of models.
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
+// Prepare the model to be trained, the input specifies the batch size etc.
+void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size); // Input size technically is not needed, here is a safety check.
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model);
+// Free a given model.
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
+// Models for common computations.
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_add(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_concat(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_convolution(const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_dense(const int count);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
 
 #endif

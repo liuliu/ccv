@@ -603,6 +603,7 @@ void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, c
 		assert(!destination_tensor_symbol_info->alias_ref);
 		assert(!source_tensor_symbol_info->alias_ref);
 		destination_tensor_symbol_info->bypass_ref = source.d + 1;
+		source_tensor_symbol_info->r_bypass_ref = destination.d + 1;
 	}
 }
 
