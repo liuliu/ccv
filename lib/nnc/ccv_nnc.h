@@ -260,7 +260,6 @@ typedef struct ccv_nnc_tensor_arena_s ccv_nnc_tensor_arena_t;
 typedef struct ccv_nnc_graph_exec_arena_s ccv_nnc_graph_exec_arena_t;
 
 typedef struct {
-	ccv_nnc_tensor_param_t info;
 	int32_t d;
 	const ccv_nnc_symbolic_graph_t* graph;
 } ccv_nnc_tensor_symbol_t;
@@ -758,7 +757,7 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
 typedef struct ccv_cnnp_model_io_s* ccv_cnnp_model_io_t;
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_input(const ccv_nnc_tensor_param_t params);
 // This method mimics Keras callable for model (thus, override __call__ method in Python class).
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(const ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
 // This method name is deceiving. It return a composed model, not a naked model.
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, ccv_cnnp_model_io_t* const outputs, const int output_size);
 // This method returns a sequential model, which composed from a sequence of models.

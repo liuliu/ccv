@@ -155,7 +155,6 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_param_t info, const char* const name)
 {
 	ccv_nnc_tensor_symbol_t symbol = {
-		.info = info,
 		.d = graph->tensor_symbol_info->rnum,
 		.graph = graph
 	};
@@ -187,7 +186,6 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 		info_d = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
 	}
 	ccv_nnc_tensor_symbol_t alias = {
-		.info = info,
 		.d = graph->tensor_symbol_info->rnum,
 		.graph = graph
 	};

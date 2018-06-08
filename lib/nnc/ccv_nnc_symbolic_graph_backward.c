@@ -723,7 +723,6 @@ static void _ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(const ccv_nn
 				ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
 					.d = s_ref,
 					.graph = sub_graph,
-					.info = tensor_symbol_info[d].info
 				};
 				ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
 			} else
@@ -737,7 +736,6 @@ static void _ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(const ccv_nn
 			ccv_nnc_tensor_symbol_t sub_f_symbol = {
 				.d = *(int*)ccv_array_get(tensor_symbol_info[d].s_ref, graph_ref) - 1,
 				.graph = sub_graph,
-				.info = tensor_symbol_info[d].info
 			};
 			ccv_array_push(sub_f_symbols, &sub_f_symbol);
 		}
@@ -761,7 +759,6 @@ static void _ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(const ccv_nn
 				ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
 					.d = i,
 					.graph = sub_graph,
-					.info = tensor_symbol_info->info
 				};
 				ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
 			}
@@ -773,7 +770,6 @@ static void _ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(const ccv_nn
 				ccv_nnc_tensor_symbol_t sub_f_symbol = {
 					.d = assign_ref,
 					.graph = sub_graph,
-					.info = tensor_symbol_info->info
 				};
 				ccv_array_push(sub_f_symbols, &sub_f_symbol);
 			}
@@ -974,7 +970,6 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 							ccv_nnc_tensor_symbol_t sub_wrt_symbol = {
 								.d = s_ref,
 								.graph = sub_prep->graph,
-								.info = tensor_symbol_info[forw_exec->inputs[i]].info
 							};
 							ccv_array_push(sub_wrt_symbols, &sub_wrt_symbol);
 						}
@@ -1002,7 +997,6 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 									ccv_nnc_tensor_symbol_t sub_f_symbol = {
 										.d = s_ref,
 										.graph = sub_prep->graph,
-										.info = tensor_symbol_info[forw_exec->outputs[j]].info
 									};
 									ccv_array_push(sub_f_symbols, &sub_f_symbol);
 								}
@@ -1025,7 +1019,6 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 						ccv_nnc_tensor_symbol_t sub_f_symbol = {
 							.d = s_ref,
 							.graph = sub_prep->graph,
-							.info = tensor_symbol_info[forw_exec->outputs[i]].info
 						};
 						ccv_array_push(sub_f_symbols, &sub_f_symbol);
 					}
@@ -1554,13 +1547,11 @@ static void _ccv_nnc_symbolic_graph_add_tape_vars(const ccv_nnc_symbolic_graph_b
 					ccv_nnc_tensor_symbol_t p_symbol = {
 						.d = p_ref,
 						.graph = graph,
-						.info = sub_prep->tensor_symbol_info[peer_ref].info
 					};
 					ccv_array_push(symbols, &p_symbol);
 					ccv_nnc_tensor_symbol_hookup(graph, sub_graph, p_symbol, (ccv_nnc_tensor_symbol_t){
 						.d = i,
 						.graph = sub_graph,
-						.info = symbol_info->info
 					});
 				}
 			}
@@ -1775,7 +1766,6 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 				else {
 					const ccv_nnc_tensor_symbol_t symbol = {
-						.info = tensor_symbol_info[forw_exec->inputs[j]].info,
 						.d = forw_exec->inputs[j],
 						.graph = backward_prep->graph
 					};
@@ -1796,7 +1786,6 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					ccv_array_push(symbols, &NO_TENSOR_SYMBOL);
 				else {
 					const ccv_nnc_tensor_symbol_t symbol = {
-						.info = tensor_symbol_info[forw_exec->outputs[j]].info,
 						.d = forw_exec->outputs[j],
 						.graph = backward_prep->graph
 					};
@@ -1990,7 +1979,6 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symboli
 	ccv_nnc_tensor_symbol_t tensor = {
 		.d = graph->backward_tensor_symbols[symbol.d],
 		.graph = graph,
-		.info = symbol.info
 	};
 	return tensor;
 }
