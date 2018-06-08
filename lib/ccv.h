@@ -631,13 +631,6 @@ double ccv_normalize(ccv_matrix_t* a, ccv_matrix_t** b, int btype, int flag);
  */
 void ccv_sat(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int padding_pattern);
 /**
- * Dot product of two matrix.
- * @param a The input matrix.
- * @param b The other input matrix.
- * @return Dot product.
- */
-double ccv_dot(ccv_matrix_t* a, ccv_matrix_t* b);
-/**
  * Return the sum of all elements in the matrix.
  * @param mat The input matrix.
  * @param flag CCV_UNSIGNED - compute fabs(x) of the elements first and then sum up. CCV_SIGNED - compute the sum normally.
@@ -1886,7 +1879,7 @@ typedef struct {
  * @return A **ccv_tld_t** object holds temporal information about tracking.
  */
 CCV_WARN_UNUSED(ccv_tld_t*) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
-/** 
+/**
  * ccv doesn't have retain / release semantics. Thus, a TLD instance cannot retain the most recent frame it tracks for future reference, you have to pass that in by yourself.
  * @param tld The TLD instance for continuous tracking
  * @param a The last frame used for tracking (ccv_tld_track_object will check signature of this against the last frame TLD instance tracked)
