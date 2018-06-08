@@ -759,7 +759,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_input(const ccv_nnc_tensor_p
 // This method mimics Keras callable for model (thus, override __call__ method in Python class).
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
 // This method name is deceiving. It return a composed model, not a naked model.
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, ccv_cnnp_model_io_t* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size);
 // This method returns a sequential model, which composed from a sequence of models.
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
 // Prepare the model to be trained, the input specifies the batch size etc.
