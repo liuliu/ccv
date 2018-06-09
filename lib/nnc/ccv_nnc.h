@@ -327,6 +327,7 @@ void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, con
 void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
 int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
 int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
 // Get all the flags for a tensor
@@ -775,5 +776,6 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_dense(const int count);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_flatten(void);
 
 #endif

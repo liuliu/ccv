@@ -2,26 +2,9 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
+#include "_ccv_cnnp_model.h"
 
-typedef struct {
-	void (*init)(ccv_cnnp_model_t* const self); // It can be nil.
-	void (*deinit)(ccv_cnnp_model_t* const self); // It can be nil.
-	void (*build)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size); // Call this graph to build computation. No need to specify input size or output size, as it is defined along in the model already.
-	void (*add_to_trainable)(ccv_cnnp_model_t* const self, ccv_array_t* const trainables); // This is called to add ccv_nnc_tensor_symbol_t to as list of trainables.
-} ccv_cnnp_model_vtab_t;
-
-static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa;
-static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa;
 static const ccv_cnnp_model_vtab_t ccv_cnnp_model_input_isa;
-
-struct ccv_cnnp_model_s {
-	const ccv_cnnp_model_vtab_t* isa;
-	int input_dim[CCV_NNC_MAX_DIM_ALLOC]; // The input_dim of the model (it may not be applicable if it is a functional model).
-	ccv_cnnp_model_io_t io; // The opaque io that can be nil.
-	ccv_nnc_symbolic_graph_t* graph;
-	int output_size;
-	ccv_nnc_tensor_symbol_t* outputs;
-};
 
 struct ccv_cnnp_model_io_s {
 	uint8_t tbits; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
@@ -30,15 +13,6 @@ struct ccv_cnnp_model_io_s {
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
 	ccv_array_t* outgoings; // Array of ccv_cnnp_model_io_t.
 };
-
-static inline void _ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
-{
-	if (outputs && output_size)
-		self->isa->build(self, graph, inputs, input_size, outputs, output_size);
-	else {
-		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
-	}
-}
 
 typedef struct {
 	ccv_cnnp_model_t super;
@@ -65,14 +39,23 @@ static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_
 		ccv_nnc_tensor_symbol_t output;
 		ccv_cnnp_model_t* const sub_model = self->sequence[i];
 		// Go through each sub model to build the graph.
-		_ccv_cnnp_model_build(sub_model, graph, &input, 1, &output, 1);
+		ccv_cnnp_model_build(sub_model, graph, &input, 1, &output, 1);
 		input = output;
 	}
+}
+
+static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+{
+	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
+	int i;
+	for (i = 0; i < self->sequence_size; i++)
+		ccv_cnnp_model_add_to_trainable(self->sequence[i], trainables);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_sequential_model_isa = {
 	.deinit = _ccv_cnnp_sequential_model_deinit,
 	.build = _ccv_cnnp_sequential_model_build,
+	.add_to_trainable = _ccv_cnnp_sequential_model_add_to_trainable,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size)
@@ -127,14 +110,23 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 				ccv_array_push(input_symbols, &input->model->outputs[k]);
 		}
 		// Go through each sub model to build the graph.
-		_ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, 0, 0);
+		ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, 0, 0);
 	}
 	ccv_array_free(input_symbols);
+}
+
+static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+{
+	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	int i;
+	for (i = self->input_size; i < self->sequence_size; i++)
+		ccv_cnnp_model_add_to_trainable(self->sequence[i]->model, trainables);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.deinit = _ccv_cnnp_functional_model_deinit,
 	.build = _ccv_cnnp_functional_model_build,
+	.add_to_trainable = _ccv_cnnp_functional_model_add_to_trainable,
 };
 
 #define CCV_CNNP_IS_MODEL_INPUT(x) ((x)->isa == &ccv_cnnp_model_input_isa)
@@ -157,20 +149,31 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 			for (j = 0; j < output->incomings->rnum; j++)
 			{
 				const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(output->incomings, j);
+				if (input->tbits) // visited.
+					continue;
+				input->tbits = 1; // Mark it as visited.
 				if (!CCV_CNNP_IS_MODEL_INPUT(input->model))
 					ccv_array_push(reverse_top, &input);
 				else
 					++input_count;
 			}
 	}
+	for (i = 0; i < reverse_top->rnum; i++)
+	{
+		const ccv_cnnp_model_io_t output = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, i);
+		output->tbits = 0; // Clean the tbits back.
+	}
+	for (i = 0; i < input_size; i++)
+		inputs[i]->tbits = 0; // Clean the tbits back.
 	assert(input_count == input_size); // Assuming they all match.
 	const int sequence_size = reverse_top->rnum + input_size;
-	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)ccmalloc(sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1));
+	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)ccmalloc(sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
 	memset(functional_model->super.input_dim, 0, sizeof(functional_model->super.input_dim));
 	functional_model->super.graph = 0;
 	functional_model->super.io = 0;
-	functional_model->super.outputs = 0;
+	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + sequence_size);
+	functional_model->super.output_size = output_size;
 	functional_model->input_size = input_size;
 	functional_model->sequence_size = sequence_size;
 	functional_model->output_offset = functional_model->sequence_size - output_size;
@@ -183,14 +186,16 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 
 ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size)
 {
+	assert(input_size > 0);
 	if (!model->io)
 	{
 		model->io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
+		model->io->tbits = 0;
+		model->io->model = model;
 		model->io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 		model->io->outgoings = 0;
 	}
 	model->io->info = ccv_nnc_tensor_auto;
-	model->io->model = model;
 	if (model->io->outgoings)
 		ccv_array_clear(model->io->outgoings); // New outputs.
 	int i;
@@ -214,6 +219,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_input(const ccv_nnc_tensor_param_t params)
 	memcpy(input->input_dim, params.dim, sizeof(input->input_dim));
 	input->graph = 0;
 	input->io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
+	input->io->tbits = 0;
 	input->io->outgoings = 0;
 	input->io->model = input;
 	input->io->info = params;

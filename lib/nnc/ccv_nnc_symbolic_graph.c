@@ -720,6 +720,14 @@ int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_n
 	return 0;
 }
 
+ccv_nnc_tensor_param_t ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	return symbol_info->info;
+}
+
 int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags)
 {
 	assert(graph == tensor.graph);
