@@ -419,10 +419,11 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 	uint32_t* const exec_dead = simplify->exec_dead;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = simplify->tensor_symbol_info;
 	int i, j;
-	uint32_t* const has_alias = cccalloc((simplify->tensor_symbol_info_size + 31) >> 5, sizeof(uint32_t));
+	uint32_t* const has_alias = ccmalloc(sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5));
 	int* const refs = (int*)ccmalloc(sizeof(int) * simplify->tensor_symbol_info_size);
 	int updated_refs;
 	do {
+		memset(has_alias, 0, sizeof(uint32_t) * ((simplify->tensor_symbol_info_size + 31) >> 5));
 		// Go through until no updates is possible. This won't result an infinite loop because every time,
 		// a tensor is eliminated.
 		for (i = 0; i < simplify->tensor_symbol_info_size; i++)
@@ -456,6 +457,12 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					// If both are alias, we cannot consolidate this.
 					if (input->alias_ref && output->alias_ref)
 						continue;
+					// If input is alias, and output has alias reference to it, output cannot be the same as input.
+					if (input->alias_ref && (has_alias[node->outputs[i] >> 5] & (1u << (node->outputs[i] & 0x1f))))
+						continue;
+					// If output is alias, and input has alias reference to it, input cannot be the same as output.
+					if (output->alias_ref && (has_alias[node->inputs[i] >> 5] & (1u << (node->inputs[i] & 0x1f))))
+						continue;
 					// If either are carry overs (for while), we cannot do anything.
 					if (input->assign_ref || output->assign_ref ||
 						input->r_assign_ref || output->r_assign_ref)
@@ -473,17 +480,9 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					// If the type is the same, check which one is the alias.
 					// We always prefer alias.
 					if (output->alias_ref)
-					{
-						// If the input is not an alias, but it has some alias reference to it, we still cannot proceed.
-						if (has_alias[node->inputs[i] >> 5] & (1u << (node->inputs[i] & 0x1f)))
-							continue;
 						refs[node->inputs[i]] = node->outputs[i];
-					} else { // if (input->alias_ref), else
-						// If the output is not an alias, but it has some alias reference to it, we still cannot proceed.
-						if (has_alias[node->outputs[i] >> 5] & (1u << (node->outputs[i] & 0x1f)))
-							continue;
+					else // if (input->alias_ref), else
 						refs[node->outputs[i]] = node->inputs[i];
-					}
 				}
 		} ccv_nnc_graph_visit_endfor
 		// Make sure refs reference to the end.

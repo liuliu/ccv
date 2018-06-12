@@ -327,6 +327,7 @@ void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, con
 void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
 int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+// Get the parameters for a tensor symbol.
 CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
 // Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
 int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
@@ -768,13 +769,22 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model);
 // Free a given model.
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
+
+enum {
+	CCV_CNNP_ACTIVATION_NONE,
+	CCV_CNNP_ACTIVATION_RELU,
+};
+typedef struct {
+	int activation;
+	ccv_nnc_hint_t hint;
+} ccv_cnnp_param_t;
 // Models for common computations.
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_add(void);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_concat(void);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_convolution(const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_dense(const int count);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_hint_t hint);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_convolution(const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t parmas);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_dense(const int count, const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_flatten(void);
 
