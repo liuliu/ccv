@@ -757,7 +757,7 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
 //                      has to be c / h / w, no batch size needed. This is a handle used by model API to associates
 //                      model inputs / outputs.
 typedef struct ccv_cnnp_model_io_s* ccv_cnnp_model_io_t;
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_input(const ccv_nnc_tensor_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(const ccv_nnc_tensor_param_t params);
 // This method mimics Keras callable for model (thus, override __call__ method in Python class).
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
 // This method name is deceiving. It return a composed model, not a naked model.
@@ -765,7 +765,11 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t*
 // This method returns a sequential model, which composed from a sequence of models.
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
 // Prepare the model to be trained, the input specifies the batch size etc.
-void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size); // Input size technically is not needed, here is a safety check.
+// Input size technically is not needed, here is a safety check.
+void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size);
+// Draw the model out as a graph.
+void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out);
+// TODO: fit API design.
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model);
 // Free a given model.
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
@@ -773,19 +777,20 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
 enum {
 	CCV_CNNP_ACTIVATION_NONE,
 	CCV_CNNP_ACTIVATION_RELU,
+	CCV_CNNP_ACTIVATION_SOFTMAX,
 };
 typedef struct {
 	int activation;
 	ccv_nnc_hint_t hint;
 } ccv_cnnp_param_t;
 // Models for common computations.
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_add(void);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_concat(void);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_convolution(const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t parmas);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_dense(const int count, const ccv_cnnp_param_t params);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_flatten(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(void);
 
 #endif

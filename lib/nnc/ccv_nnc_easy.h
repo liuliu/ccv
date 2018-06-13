@@ -61,6 +61,9 @@
 #define SYMBOLIC_GRAPH_PASSES_X(...) (int []){__VA_ARGS__}
 #define SYMBOLIC_GRAPH_PASSES(...) SYMBOLIC_GRAPH_PASSES_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
+#define MODEL_LIST_X(...)(ccv_cnnp_model_t* []){__VA_ARGS__}
+#define MODEL_LIST(...) MODEL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
 #define TRAVERSE_FULL 0,0,0,0
 
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
@@ -187,10 +190,7 @@ static inline int ccv_nnc_tensor_get_c(const ccv_nnc_tensor_param_t params)
 	switch (params.format)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
-			if (ccv_nnc_tensor_nd(params.dim) == CCV_NNC_MAX_DIM + 1)
-				return params.dim[CCV_NNC_MAX_DIM];
-			else
-				return params.dim[CCV_NNC_MAX_DIM + 1];
+			return params.dim[ccv_nnc_tensor_nd(params.dim) - 1];
 		case CCV_TENSOR_FORMAT_NCHW:
 			if (ccv_nnc_tensor_nd(params.dim) == CCV_NNC_MAX_DIM + 1)
 				return params.dim[0];
@@ -221,10 +221,7 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 	switch (params->format)
 	{
 		case CCV_TENSOR_FORMAT_NHWC:
-			if (nd == CCV_NNC_MAX_DIM + 1)
-				params->dim[CCV_NNC_MAX_DIM] = c;
-			else
-				params->dim[CCV_NNC_MAX_DIM + 1] = c;
+			params->dim[nd - 1] = c;
 			break;
 		case CCV_TENSOR_FORMAT_NCHW:
 			if (nd == CCV_NNC_MAX_DIM + 1)
@@ -237,7 +234,6 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 			break;
 	}
 }
-
 
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
 #define CMD_GEMM(_count) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.count=_count}}) // We default to alpha = 1 and beta = 1

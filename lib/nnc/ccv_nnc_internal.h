@@ -40,21 +40,26 @@ typedef struct {
 	ccv_nnc_cmd_autotune_f autotune;
 } ccv_nnc_cmd_backend_registry_t;
 
+static inline int ccv_nnc_tensor_hw(const ccv_nnc_tensor_param_t a, const int nd)
+{
+	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
+		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
+		return 0;
+	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
+			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
+		return 1;
+	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
+		return 2;
+	return -1;
+}
+
 static inline void ccv_nnc_hint_tensor_forward(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* b)
 {
 	int i;
 	assert(a.format == b->format);
 	const int nd = ccv_nnc_tensor_nd(a.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
-	int hw = -1;
-	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
-		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
-		hw = 0;
-	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
-			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
-		hw = 1;
-	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
-		hw = 2;
+	int hw = ccv_nnc_tensor_hw(a, nd);
 	assert(hw >= 0);
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
@@ -69,15 +74,7 @@ static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, c
 	assert(a.format == b->format);
 	const int nd = ccv_nnc_tensor_nd(a.dim);
 	assert(nd == CCV_NNC_MAX_DIM + 1 || nd == CCV_NNC_MAX_DIM + 2);
-	int hw = -1;
-	if ((a.format == CCV_TENSOR_FORMAT_CHWN) ||
-		(a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 1))
-		hw = 0;
-	else if ((a.format == CCV_TENSOR_FORMAT_NHWC && nd == CCV_NNC_MAX_DIM + 2) ||
-			 (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 1))
-		hw = 1;
-	else if (a.format == CCV_TENSOR_FORMAT_NCHW && nd == CCV_NNC_MAX_DIM + 2)
-		hw = 2;
+	int hw = ccv_nnc_tensor_hw(a, nd);
 	assert(hw >= 0);
 	for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 	{
