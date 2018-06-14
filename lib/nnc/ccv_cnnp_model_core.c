@@ -26,7 +26,6 @@ ccv_cnnp_model_t* ccv_cnnp_add(void)
 {
 	ccv_cnnp_model_add_t* const model_add = (ccv_cnnp_model_add_t*)cccalloc(1, sizeof(ccv_cnnp_model_add_t));
 	model_add->super.isa = &ccv_cnnp_add_isa;
-	memset(model_add->super.input_dim, 0, sizeof(model_add->super.input_dim));
 	model_add->super.input_size = 1;
 	model_add->super.outputs = &model_add->output;
 	model_add->super.output_size = 1;
@@ -51,7 +50,6 @@ ccv_cnnp_model_t* ccv_cnnp_concat(void)
 {
 	ccv_cnnp_model_concat_t* const model_concat = (ccv_cnnp_model_concat_t*)cccalloc(1, sizeof(ccv_cnnp_model_concat_t));
 	model_concat->super.isa = &ccv_cnnp_concat_isa;
-	memset(model_concat->super.input_dim, 0, sizeof(model_concat->super.input_dim));
 	model_concat->super.input_size = 1;
 	model_concat->super.outputs = &model_concat->output;
 	model_concat->super.output_size = 1;
@@ -82,7 +80,6 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	ccv_cnnp_model_reshape_t* const model_reshape = (ccv_cnnp_model_reshape_t*)cccalloc(1, sizeof(ccv_cnnp_model_reshape_t));
 	model_reshape->super.isa = &ccv_cnnp_reshape_isa;
-	memset(model_reshape->super.input_dim, 0, sizeof(model_reshape->super.input_dim));
 	model_reshape->super.input_size = 1;
 	model_reshape->super.outputs = &model_reshape->output;
 	model_reshape->super.output_size = 1;
@@ -115,7 +112,6 @@ ccv_cnnp_model_t* ccv_cnnp_flatten(void)
 {
 	ccv_cnnp_model_flatten_t* const model_flatten = (ccv_cnnp_model_flatten_t*)cccalloc(1, sizeof(ccv_cnnp_model_flatten_t));
 	model_flatten->super.isa = &ccv_cnnp_flatten_isa;
-	memset(model_flatten->super.input_dim, 0, sizeof(model_flatten->super.input_dim));
 	model_flatten->super.input_size = 1;
 	model_flatten->super.outputs = &model_flatten->output;
 	model_flatten->super.output_size = 1;
@@ -192,7 +188,6 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 {
 	ccv_cnnp_model_convolution_t* const model_convolution = (ccv_cnnp_model_convolution_t*)cccalloc(1, sizeof(ccv_cnnp_model_convolution_t));
 	model_convolution->super.isa = &ccv_cnnp_convolution_isa;
-	memset(model_convolution->super.input_dim, 0, sizeof(model_convolution->super.input_dim));
 	model_convolution->super.input_size = 1;
 	model_convolution->super.outputs = &model_convolution->output;
 	model_convolution->super.output_size = 1;
@@ -266,7 +261,6 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params)
 {
 	ccv_cnnp_model_dense_t* const model_dense = (ccv_cnnp_model_dense_t*)cccalloc(1, sizeof(ccv_cnnp_model_dense_t));
 	model_dense->super.isa = &ccv_cnnp_dense_isa;
-	memset(model_dense->super.input_dim, 0, sizeof(model_dense->super.input_dim));
 	model_dense->super.input_size = 1;
 	model_dense->super.outputs = &model_dense->output;
 	model_dense->super.output_size = 1;
@@ -310,7 +304,6 @@ ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const
 {
 	ccv_cnnp_model_pool_t* const model_pool = (ccv_cnnp_model_pool_t*)cccalloc(1, sizeof(ccv_cnnp_model_pool_t));
 	model_pool->super.isa = &ccv_cnnp_max_pool_isa;
-	memset(model_pool->super.input_dim, 0, sizeof(model_pool->super.input_dim));
 	model_pool->super.input_size = 1;
 	model_pool->super.outputs = &model_pool->output;
 	model_pool->super.output_size = 1;
@@ -341,7 +334,6 @@ ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], c
 {
 	ccv_cnnp_model_pool_t* const model_pool = (ccv_cnnp_model_pool_t*)cccalloc(1, sizeof(ccv_cnnp_model_pool_t));
 	model_pool->super.isa = &ccv_cnnp_average_pool_isa;
-	memset(model_pool->super.input_dim, 0, sizeof(model_pool->super.input_dim));
 	model_pool->super.input_size = 1;
 	model_pool->super.outputs = &model_pool->output;
 	model_pool->super.output_size = 1;

@@ -8,7 +8,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa;
 
 struct ccv_cnnp_model_io_s {
 	uint8_t tbits; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
-	ccv_nnc_tensor_param_t info;
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
 	ccv_array_t* outgoings; // Array of ccv_cnnp_model_io_t.
@@ -64,7 +63,6 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 	assert(model_size > 0);
 	ccv_cnnp_sequential_model_t* const sequential_model = (ccv_cnnp_sequential_model_t*)cccalloc(1, sizeof(ccv_cnnp_sequential_model_t) + sizeof(ccv_cnnp_model_t*) * (model_size - 1) + sizeof(ccv_nnc_tensor_symbol_t));
 	sequential_model->super.isa = &ccv_cnnp_sequential_model_isa;
-	memcpy(sequential_model->super.input_dim, models[0]->input_dim, sizeof(sequential_model->super.input_dim));
 	sequential_model->super.input_size = 1;
 	sequential_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(sequential_model->sequence + model_size);
 	sequential_model->super.output_size = 1;
@@ -177,7 +175,6 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	const int sequence_size = reverse_top->rnum + input_size;
 	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
-	memset(functional_model->super.input_dim, 0, sizeof(functional_model->super.input_dim));
 	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + sequence_size);
 	functional_model->super.output_size = output_size;
 	functional_model->super.input_size = input_size;
@@ -200,7 +197,6 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 		model->io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 		model->io->outgoings = 0;
 	}
-	model->io->info = ccv_nnc_tensor_auto;
 	if (model->io->outgoings)
 		ccv_array_clear(model->io->outgoings); // New outputs.
 	int i;
@@ -244,17 +240,15 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa = {};
 
-ccv_cnnp_model_io_t ccv_cnnp_input(const ccv_nnc_tensor_param_t params)
+ccv_cnnp_model_io_t ccv_cnnp_input(void)
 {
 	ccv_cnnp_model_t* const input = (ccv_cnnp_model_t*)cccalloc(1, sizeof(ccv_cnnp_model_t) + sizeof(ccv_nnc_tensor_symbol_t));
 	input->isa = &ccv_cnnp_input_isa;
-	memcpy(input->input_dim, params.dim, sizeof(input->input_dim));
 	input->io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
 	input->io->tbits = 0;
 	input->io->incomings = 0;
 	input->io->outgoings = 0;
 	input->io->model = input;
-	input->io->info = params;
 	input->outputs = (ccv_nnc_tensor_symbol_t*)(input + 1);
 	input->output_size = 1;
 	return input->io;

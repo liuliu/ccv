@@ -757,7 +757,7 @@ typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
 //                      has to be c / h / w, no batch size needed. This is a handle used by model API to associates
 //                      model inputs / outputs.
 typedef struct ccv_cnnp_model_io_s* ccv_cnnp_model_io_t;
-CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(const ccv_nnc_tensor_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_input(void);
 // This method mimics Keras callable for model (thus, override __call__ method in Python class).
 CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const ccv_cnnp_model_io_t* const inputs, const int input_size);
 // This method name is deceiving. It return a composed model, not a naked model.

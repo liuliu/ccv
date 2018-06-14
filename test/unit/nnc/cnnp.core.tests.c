@@ -46,7 +46,7 @@ TEST_CASE("compile simple cifar-10 model")
 
 TEST_CASE("inception layer for model")
 {
-	const ccv_cnnp_model_io_t x = ccv_cnnp_input(GPU_TENSOR_NCHW(000, 1, 3, 256, 256));
+	const ccv_cnnp_model_io_t x = ccv_cnnp_input();
 	ccv_cnnp_model_io_t tower_1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 		.activation = CCV_CNNP_ACTIVATION_RELU,
 		.hint = HINT((1, 1), (0, 0)),
