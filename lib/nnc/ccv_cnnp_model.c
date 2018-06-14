@@ -4,7 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 
-static const ccv_cnnp_model_vtab_t ccv_cnnp_model_input_isa;
+static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa;
 
 struct ccv_cnnp_model_io_s {
 	uint8_t tbits; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
@@ -42,6 +42,7 @@ static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_
 		ccv_cnnp_model_build(sub_model, graph, &input, 1, &output, 1);
 		input = output;
 	}
+	outputs[0] = input;
 }
 
 static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
@@ -74,7 +75,6 @@ ccv_cnnp_model_t* ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models,
 
 typedef struct {
 	ccv_cnnp_model_t super;
-	int output_offset; // The offset records the models that ends. It will be relevant when compute loss.
 	// The name is similar to sequential model, but it is just topological sorted models.
 	int sequence_size;
 	ccv_cnnp_model_io_t sequence[1];
@@ -111,6 +111,16 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 		ccv_cnnp_model_build(sub_model, graph, (ccv_nnc_tensor_symbol_t*)ccv_array_get(input_symbols, 0), input_symbols->rnum, 0, 0);
 	}
 	ccv_array_free(input_symbols);
+	for (i = output_size, k = self->sequence_size - 1; k >= 0; k--)
+	{
+		ccv_cnnp_model_t* const sub_model = self->sequence[k]->model;
+		assert(sub_model->io);
+		i -= sub_model->output_size;
+		if (i < 0)
+			break;
+		for (j = 0; j < sub_model->output_size; j++)
+			outputs[i + j] = sub_model->outputs[j];
+	}
 }
 
 static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
@@ -127,7 +137,7 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.add_to_trainable = _ccv_cnnp_functional_model_add_to_trainable,
 };
 
-#define CCV_CNNP_IS_MODEL_INPUT(x) ((x)->isa == &ccv_cnnp_model_input_isa)
+#define CCV_CNNP_IS_MODEL_INPUT(x) ((x)->isa == &ccv_cnnp_input_isa)
 
 ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size)
 {
@@ -172,7 +182,6 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	functional_model->super.output_size = output_size;
 	functional_model->super.input_size = input_size;
 	functional_model->sequence_size = sequence_size;
-	functional_model->output_offset = functional_model->sequence_size - output_size;
 	memcpy(functional_model->sequence, inputs, sizeof(ccv_cnnp_model_io_t) * input_size);
 	for (i = 0; i < reverse_top->rnum; i++)
 		functional_model->sequence[input_size + i] = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, reverse_top->rnum - 1 - i);
@@ -218,6 +227,12 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 			model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
 		ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
 		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+		ccv_nnc_symbolic_graph_simplify(model->graph,
+			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
+				CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
+				CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
+			model->outputs, model->output_size,
+			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	}
 }
 

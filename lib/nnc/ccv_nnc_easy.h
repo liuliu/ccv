@@ -64,6 +64,9 @@
 #define MODEL_LIST_X(...)(ccv_cnnp_model_t* []){__VA_ARGS__}
 #define MODEL_LIST(...) MODEL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
+#define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
+#define MODEL_IO_LIST(...) MODEL_IO_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+
 #define TRAVERSE_FULL 0,0,0,0
 
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
