@@ -307,6 +307,8 @@ CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_new(void);
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_param_t info, const char* const name);
 // Create an alias to the tensor symbol as tensor view (thus, pointing to the same memory region, but with a different header info and offset).
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
+// Return the symbol it alias to.
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
 // For a given tensor symbol, this method resolve to its local reference inside the given graph.
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
 // Set the peer reference for tensor.
@@ -339,9 +341,15 @@ int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, cons
 // Manually disconnect input graph nodes with an output graph node for this graph.
 // Return non-zero if cannot disjoin successfully.
 int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+// Fetch input / output for an exec symbol. For efficiency consideration, this returns pointer directly.
+void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const inputs, int* const input_size, const int** const outputs, int* const output_size);
+// Which exec symbol this is connected to. For efficiency consideration, this returns pointer directly.
+void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const tos, int* const to_size);
 // Manually delete a exec symbol off the symbolic graph.
 // Return non-zero if cannot free.
 int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_t symbol);
+// Number of exec symbols.
+CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
 // Automatic concatenate these nodes together based on its inputs / outputs.
 // Return non-zero if cannot figure out.
 // Imagining this is to generate the execution flow based on input tensors and output tensors.
@@ -733,7 +741,7 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 // If we are going to build Keras high-level API in any languages (Ruby, Python, Swift, Julia), what's the underlying
 // C interface would look like? Here is your answer (hint: it looks very much like just Python Keras API).
 //
-// A model consists of a set of inputs and one output. This sounds very much like what "Command" is in Level-1 APIs,
+// A model consists of a set of inputs and outputs. This sounds very much like what "Command" is in Level-1 APIs,
 // however, they are different: a model is stateful. For example, a convolution command takes 3 inputs: image, kernel
 // weight and bias, has 1 output: image. A convolution model takes 1 input: image, and 1 output: image. kernel weight
 // and bias are internal states to the model (in Keras, it is called "layer" for convolution, and model means a set of

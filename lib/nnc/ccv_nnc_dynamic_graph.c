@@ -3,7 +3,6 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_nnc_easy.h"
 #include "ccv_internal.h"
-#include "_ccv_nnc_symbolic_graph.h"
 
 /**
  * Level-4 API
@@ -271,36 +270,40 @@ static void _ccv_nnc_insert_if_prior_to_any(const ccv_nnc_symbolic_graph_t* cons
 		buf_size[q] = 0;
 		for (i = 0; i < buf_size[p]; i++)
 		{
-			const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, buf[p][i]);
-			if (symbol_info->outgoings)
-				for (j = 0; j < symbol_info->outgoings->rnum; j++)
+			const int* outgoings;
+			int outgoing_size;
+			ccv_nnc_graph_exec_symbol_to(graph, (ccv_nnc_graph_exec_symbol_t){
+				.d = buf[p][i],
+				.graph = graph
+			}, &outgoings, &outgoing_size);
+			for (j = 0; j < outgoing_size; j++)
+			{
+				const int outgoing_idx = outgoings[j];
+				for (k = 0; k < sources->rnum; k++)
 				{
-					const int outgoing_idx = *(int*)ccv_array_get(symbol_info->outgoings, j);
-					for (k = 0; k < sources->rnum; k++)
+					ccv_nnc_graph_exec_symbol_t* const source_symbol = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, k);
+					// If this outgoing idx is one of the source, replace it with d, or delete it.
+					if (source_symbol->d == outgoing_idx)
 					{
-						ccv_nnc_graph_exec_symbol_t* const source_symbol = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, k);
-						// If this outgoing idx is one of the source, replace it with d, or delete it.
-						if (source_symbol->d == outgoing_idx)
+						if (!flag)
 						{
-							if (!flag)
-							{
-								source_symbol->d = d;
-								flag = 1;
-							} else {
-								// Delete this from the list.
-								if (k < sources->rnum - 1)
-									source_symbol->d = ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, sources->rnum - 1))->d;
-								--sources->rnum;
-							}
-							break;
+							source_symbol->d = d;
+							flag = 1;
+						} else {
+							// Delete this from the list.
+							if (k < sources->rnum - 1)
+								source_symbol->d = ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, sources->rnum - 1))->d;
+							--sources->rnum;
 						}
+						break;
 					}
-					if (visited[(outgoing_idx >> 5)] & (1u << (outgoing_idx & 31)))
-						continue;
-					visited[(outgoing_idx >> 5)] |= (1u << (outgoing_idx & 31));
-					buf[q][buf_size[q]] = outgoing_idx;
-					++buf_size[q];
 				}
+				if (visited[(outgoing_idx >> 5)] & (1u << (outgoing_idx & 31)))
+					continue;
+				visited[(outgoing_idx >> 5)] |= (1u << (outgoing_idx & 31));
+				buf[q][buf_size[q]] = outgoing_idx;
+				++buf_size[q];
+			}
 		}
 		CCV_SWAP(p, q, i);
 	}
@@ -336,24 +339,28 @@ static void _ccv_nnc_remove_if_prior_to_any(const ccv_nnc_symbolic_graph_t* cons
 		buf_size[q] = 0;
 		for (i = 0; !flag && i < buf_size[p]; i++)
 		{
-			const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, buf[p][i]);
-			if (symbol_info->outgoings)
-				for (j = 0; j < symbol_info->outgoings->rnum; j++)
+			const int* outgoings;
+			int outgoing_size;
+			ccv_nnc_graph_exec_symbol_to(graph, (ccv_nnc_graph_exec_symbol_t){
+				.d = buf[p][i],
+				.graph = graph
+			}, &outgoings, &outgoing_size);
+			for (j = 0; j < outgoing_size; j++)
+			{
+				const int outgoing_idx = outgoings[j];
+				// If this node happens to be visited, do nothing.
+				if (visited[(outgoing_idx >> 5)] & (1u << (outgoing_idx & 31)))
+					continue;
+				for (k = 0; !flag && k < destinations->rnum; k++)
 				{
-					const int outgoing_idx = *(int*)ccv_array_get(symbol_info->outgoings, j);
-					// If this node happens to be visited, do nothing.
-					if (visited[(outgoing_idx >> 5)] & (1u << (outgoing_idx & 31)))
-						continue;
-					for (k = 0; !flag && k < destinations->rnum; k++)
-					{
-						ccv_nnc_graph_exec_symbol_t* const destination_symbol = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, k);
-						// If this outgoing idx is one of the destination, delete current node.
-						flag = (destination_symbol->d == outgoing_idx);
-					}
-					visited[(outgoing_idx >> 5)] |= (1u << (outgoing_idx & 31));
-					buf[q][buf_size[q]] = outgoing_idx;
-					++buf_size[q];
+					ccv_nnc_graph_exec_symbol_t* const destination_symbol = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, k);
+					// If this outgoing idx is one of the destination, delete current node.
+					flag = (destination_symbol->d == outgoing_idx);
 				}
+				visited[(outgoing_idx >> 5)] |= (1u << (outgoing_idx & 31));
+				buf[q][buf_size[q]] = outgoing_idx;
+				++buf_size[q];
+			}
 		}
 		CCV_SWAP(p, q, i);
 	}
@@ -394,7 +401,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		if (outputs[i]->symbol.d >= 0)
 			outputs[i] = _ccv_nnc_tensor_variable_exchange_new(dynamic_graph, outputs[i]);
 	}
-	const int exec_symbol_info_size = dynamic_graph->symbolic->exec_symbol_info->rnum;
+	const int exec_symbol_info_size = ccv_nnc_graph_exec_symbol_count(dynamic_graph->symbolic);
 	ccv_array_t* const sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
 	if (!dynamic_graph->ws)
 		dynamic_graph->ws = ccv_array_new(sizeof(int), exec_symbol_info_size * 2 + ((exec_symbol_info_size + 31) >> 5), 0);
@@ -452,34 +459,43 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (d = 0; d < destinations->rnum; d++)
 	{
 		const ccv_nnc_graph_exec_symbol_t* const destination = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, d);
-		ccv_array_t* const outgoings = ((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dynamic_graph->symbolic->exec_symbol_info, destination->d))->outgoings;
-		if (outgoings)
-			for (i = 0; i < outgoings->rnum; i++)
+		const int* outgoings;
+		int outgoing_size;
+		ccv_nnc_graph_exec_symbol_to(dynamic_graph->symbolic, *destination, &outgoings, &outgoing_size);
+		for (i = 0; i < outgoing_size; i++)
+		{
+			const int exec_idx = outgoings[i];
+			const int* inputs;
+			int input_size;
+			ccv_nnc_graph_exec_symbol_io(dynamic_graph->symbolic, (ccv_nnc_graph_exec_symbol_t){
+				.d = exec_idx,
+				.graph = dynamic_graph->symbolic
+			}, &inputs, &input_size, 0, 0);
+			for (j = 0; j < input_size; j++)
 			{
-				const int exec_idx = *(int*)ccv_array_get(outgoings, i);
-				const ccv_nnc_graph_exec_symbol_info_t* const outgoing_exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(dynamic_graph->symbolic->exec_symbol_info, exec_idx);
-				for (j = 0; j < outgoing_exec_info->input_size; j++)
+				const int input = inputs[j];
+				const int alias_ref = input >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->symbolic, (ccv_nnc_tensor_symbol_t){
+					.d = input,
+					.graph = dynamic_graph->symbolic
+				}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
+				// alias_ref is either exists, or -1.
+				if (df.d == input || df.d == alias_ref)
 				{
-					const int input = outgoing_exec_info->inputs[j];
-					const int alias_ref = input >= 0 ? ((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(dynamic_graph->symbolic->tensor_symbol_info, input))->alias_ref - 1  : -1;
-					// alias_ref is either exists, or -1.
-					if (df.d == input || df.d == alias_ref)
+					int flag = 0;
+					for (k = 0; !flag && k < sources->rnum; k++)
+						flag = (exec_idx == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, k))->d);
+					if (!flag)
 					{
-						int flag = 0;
-						for (k = 0; !flag && k < sources->rnum; k++)
-							flag = (exec_idx == ((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, k))->d);
-						if (!flag)
-						{
-							const ccv_nnc_graph_exec_symbol_t source = {
-								.d = exec_idx,
-								.graph = dynamic_graph->symbolic
-							};
-							ccv_array_push(sources, &source);
-						}
-						break;
+						const ccv_nnc_graph_exec_symbol_t source = {
+							.d = exec_idx,
+							.graph = dynamic_graph->symbolic
+						};
+						ccv_array_push(sources, &source);
 					}
+					break;
 				}
 			}
+		}
 	}
 	// Bind dt tensor.
 	for (i = 0; i < output_size; i++)

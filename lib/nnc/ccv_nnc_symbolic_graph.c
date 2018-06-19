@@ -213,6 +213,30 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	return alias;
 }
 
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
+{
+	assert(tensor_symbol.graph == graph);
+	int d = tensor_symbol.d;
+	assert(d >= 0 && d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* info_d = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
+	// Find the root tensor that is not an alias.
+	while (info_d->alias_ref)
+	{
+		d = info_d->alias_ref - 1;
+		assert(d >= 0 && d < graph->tensor_symbol_info->rnum);
+		info_d = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
+	}
+	if (d != tensor_symbol.d)
+		return (ccv_nnc_tensor_symbol_t){
+			.d = d,
+			.graph = graph
+		};
+	return (ccv_nnc_tensor_symbol_t){
+		.d = CCV_NNC_NO_TENSOR_SYMBOL,
+		.graph = 0
+	};
+}
+
 // Resolve this tensor symbol to the current graph. If cannot find, return no symbol.
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_resolve(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
 {
@@ -769,6 +793,43 @@ int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, cons
 	}
 	ccv_array_push(src_symbol_info->outgoings, &destination.d);
 	return 0;
+}
+
+void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const inputs, int* const input_size, const int** const outputs, int* const output_size)
+{
+	assert(graph == symbol.graph);
+	assert(symbol.d < graph->exec_symbol_info->rnum);
+	const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	if (inputs)
+		*inputs = symbol_info->inputs;
+	if (input_size)
+		*input_size = symbol_info->input_size;
+	if (outputs)
+		*outputs = symbol_info->outputs;
+	if (output_size)
+		*output_size = symbol_info->output_size;
+}
+
+void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const tos, int* const to_size)
+{
+	assert(graph == symbol.graph);
+	assert(symbol.d < graph->exec_symbol_info->rnum);
+	assert(tos);
+	assert(to_size);
+	const ccv_nnc_graph_exec_symbol_info_t* const symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, symbol.d);
+	if (!symbol_info->outgoings)
+	{
+		*tos = 0;
+		*to_size = 0;
+		return;
+	}
+	*to_size = symbol_info->outgoings->rnum;
+	*tos = (int*)ccv_array_get(symbol_info->outgoings, 0);
+}
+
+int ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->exec_symbol_info->rnum;
 }
 
 static inline void _ccv_nnc_graph_exec_symbol_free(ccv_nnc_graph_exec_symbol_info_t* const symbol_info, const int zeroing)
