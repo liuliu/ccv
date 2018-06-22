@@ -101,6 +101,15 @@ static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* cons
 	return offset;
 }
 
+static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
+{
+	int i;
+	for (i = 0; i < ints->rnum; i++)
+		if (*(int*)ccv_array_get(ints, i) == idx)
+			return;
+	ccv_array_push(ints, &idx);
+}
+
 #ifdef __cplusplus
 #define REGISTER_COMMAND_BACKEND(x, y) extern "C" void _register_command_ ## x ## _backend_ ## y
 #define REGISTER_COMMAND(x) extern "C" void _register_command_ ## x

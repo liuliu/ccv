@@ -71,7 +71,10 @@ static void _ccv_nnc_symbolic_graph_simplify_apply(ccv_nnc_symbolic_graph_simpli
 			}
 	for (i = 0; i < simplify->tensor_symbol_info_size; i++)
 		if (simplify->tensor_dead[i >> 5] & (1u << (i & 0x1f)))
-			((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(simplify->graph->tensor_symbol_info, i))->flags |= CCV_NNC_TENSOR_SYMBOL_DEAD;
+			ccv_nnc_tensor_symbol_free(simplify->graph, (ccv_nnc_tensor_symbol_t){
+				.d = i,
+				.graph = simplify->graph,
+			});
 	// autogen the sources / destinations.
 	ccv_nnc_graph_exec_symbol_autogen(simplify->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 }

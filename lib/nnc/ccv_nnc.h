@@ -317,16 +317,6 @@ void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const
 void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol);
 // Set bypasses for a tensor symbol.
 void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
-// Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
-ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
-// Return the command on this exec symbol
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
-// The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
-// However, you can also set your own hints. Return non-zero if cannot set successfully.
-int ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_hint_t hint);
-void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
-// Set the peer reference for exec.
-void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
 // Set the tensor symbol info again. Thus, its dimensionality depends on the tensor input.
 int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
 // Get the parameters for a tensor symbol.
@@ -335,6 +325,19 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_n
 int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
 // Get all the flags for a tensor
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
+// Manually delete a tensor symbol off the symbolic graph.
+void ccv_nnc_tensor_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_t tensor);
+// Create a graph node (an operation that takes a set of inputs and generates a set of outputs).
+ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
+// Return the command on this exec symbol
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
+// The operation defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
+// However, you can also set your own hints. Return non-zero if cannot set successfully.
+int ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_hint_t hint);
+// Reset the inputs / outputs for a exec symbol.
+void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
+// Set the peer reference for exec.
+void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
 // Manually concatenate input graph nodes with an output graph node to create a new graph.
 // Return non-zero if cannot concat successfully.
 int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
@@ -346,8 +349,7 @@ void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, c
 // Which exec symbol this is connected to. For efficiency consideration, this returns pointer directly.
 void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const tos, int* const to_size);
 // Manually delete a exec symbol off the symbolic graph.
-// Return non-zero if cannot free.
-int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_t symbol);
+void ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_t symbol);
 // Number of exec symbols.
 CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
 // Automatic concatenate these nodes together based on its inputs / outputs.
@@ -409,6 +411,8 @@ void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t*
 
 // Compute the backward graph, assuming the provided symbolic graph only contain the "forward" part from sources to destinations.
 // This effectively is called the "autograd" or automatic differentiation process (specifically, "reverse AD") in other libs.
+// Because the computation will modify existing graph, creating a separate entity to represent the "backward" information like
+// ccv_nnc_tensor_arena_t we introduced earlier.
 void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size);
 // Get the symbol that contains the gradient. The list will be flushed if the ccv_nnc_symbolic_graph_backward function is called again.
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);

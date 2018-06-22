@@ -629,6 +629,70 @@ void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, c
 	}
 }
 
+int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	symbol_info->info = info;
+	// It also need to propagate to assign_ref if needed.
+	if (symbol_info->assign_ref)
+	{
+		ccv_nnc_tensor_symbol_info_t* const assign_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol_info->assign_ref - 1);
+		assign_info->info = info;
+	}
+	return 0;
+}
+
+ccv_nnc_tensor_param_t ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	return symbol_info->info;
+}
+
+int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	symbol_info->flags = flags;
+	// It also need to propagate to assign_ref if needed.
+	if (symbol_info->assign_ref)
+	{
+		ccv_nnc_tensor_symbol_info_t* const assign_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol_info->assign_ref - 1);
+		assign_info->flags = flags;
+	}
+	return 0;
+}
+
+int ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	return symbol_info->flags;
+}
+
+void ccv_nnc_tensor_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_t tensor)
+{
+	assert(graph == tensor.graph);
+	assert(tensor.d < graph->tensor_symbol_info->rnum);
+	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
+	symbol_info->flags |= CCV_NNC_TENSOR_SYMBOL_DEAD;
+	if (symbol_info->s_ref)
+	{
+		ccv_array_free(symbol_info->s_ref);
+		symbol_info->s_ref = 0;
+	}
+	if (symbol_info->name)
+	{
+		ccfree(symbol_info->name);
+		symbol_info->name = 0;
+	}
+}
+
 static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_info_t* const exec_info, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	exec_info->input_size = input_size;
@@ -729,52 +793,6 @@ int ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, co
 	return 0;
 }
 
-int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info)
-{
-	assert(graph == tensor.graph);
-	assert(tensor.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
-	symbol_info->info = info;
-	// It also need to propagate to assign_ref if needed.
-	if (symbol_info->assign_ref)
-	{
-		ccv_nnc_tensor_symbol_info_t* const assign_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol_info->assign_ref - 1);
-		assign_info->info = info;
-	}
-	return 0;
-}
-
-ccv_nnc_tensor_param_t ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
-{
-	assert(graph == tensor.graph);
-	assert(tensor.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
-	return symbol_info->info;
-}
-
-int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags)
-{
-	assert(graph == tensor.graph);
-	assert(tensor.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
-	symbol_info->flags = flags;
-	// It also need to propagate to assign_ref if needed.
-	if (symbol_info->assign_ref)
-	{
-		ccv_nnc_tensor_symbol_info_t* const assign_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, symbol_info->assign_ref - 1);
-		assign_info->flags = flags;
-	}
-	return 0;
-}
-
-int ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor)
-{
-	assert(graph == tensor.graph);
-	assert(tensor.d < graph->tensor_symbol_info->rnum);
-	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
-	return symbol_info->flags;
-}
-
 int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)
 {
 	assert(graph == source.graph);
@@ -857,7 +875,7 @@ static inline void _ccv_nnc_graph_exec_symbol_free(ccv_nnc_graph_exec_symbol_inf
 	}
 }
 
-int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol)
+void ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol)
 {
 	assert(graph == symbol.graph);
 	assert(symbol.d < graph->exec_symbol_info->rnum);
@@ -910,7 +928,6 @@ int ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const 
 				--graph->destinations->rnum;
 				break;
 			}
-	return 0;
 }
 
 int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)
@@ -922,7 +939,8 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 	ccv_nnc_graph_exec_symbol_info_t* src_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, source.d);
 	if (!src_symbol_info->outgoings)
 		return -1;
-	int i;
+	ccv_nnc_graph_exec_symbol_info_t* const dest_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, destination.d);
+	int i, j;
 	// Check if this is already disjoined, if so, skip.
 	for (i = 0; i < src_symbol_info->outgoings->rnum; i++)
 		if (*(int*)ccv_array_get(src_symbol_info->outgoings, i) == destination.d)
@@ -930,6 +948,9 @@ int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, con
 			if (i < src_symbol_info->outgoings->rnum - 1)
 				*(int*)ccv_array_get(src_symbol_info->outgoings, i) = *(int*)ccv_array_get(src_symbol_info->outgoings, src_symbol_info->outgoings->rnum - 1);
 			--src_symbol_info->outgoings->rnum;
+			if (dest_symbol_info->outgoings)
+				for (j = 0; j < dest_symbol_info->outgoings->rnum; j++)
+					ccv_array_add_unique_int(src_symbol_info->outgoings, *(int*)ccv_array_get(dest_symbol_info->outgoings, j));
 			return 0;
 		}
 	return -1;

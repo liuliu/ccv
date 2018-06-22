@@ -35,6 +35,24 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	return graph;
 }
 
+static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+{
+	const int index = tensor_variable->index;
+	if (tensor_variable->tensor_view)
+	{
+		if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
+			ccv_nnc_tensor_view_free(tensor_variable->tensor_view);
+		else
+			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
+	}
+	if (tensor_variable->binded_sources)
+		ccv_array_free(tensor_variable->binded_sources);
+	if (tensor_variable->binded_destinations)
+		ccv_array_free(tensor_variable->binded_destinations);
+	ccfree(tensor_variable);
+	*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->var, index) = 0;
+}
+
 void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 {
 	int i;
@@ -42,7 +60,7 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	{
 		ccv_nnc_tensor_variable_t tensor_variable = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->var, i);
 		if (tensor_variable)
-			ccv_nnc_tensor_variable_free(graph, tensor_variable);
+			_ccv_nnc_tensor_variable_free(graph, tensor_variable);
 	}
 	ccv_array_free(graph->var);
 	ccv_nnc_symbolic_graph_free(graph->symbolic);
@@ -537,20 +555,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 
 void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
 {
-	const int index = tensor_variable->index;
-	if (tensor_variable->tensor_view)
-	{
-		if (CCV_IS_TENSOR_VIEW(tensor_variable->tensor_view))
-			ccv_nnc_tensor_view_free(tensor_variable->tensor_view);
-		else
-			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
-	}
-	if (tensor_variable->binded_sources)
-		ccv_array_free(tensor_variable->binded_sources);
-	if (tensor_variable->binded_destinations)
-		ccv_array_free(tensor_variable->binded_destinations);
-	ccfree(tensor_variable);
-	*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->var, index) = 0;
+	_ccv_nnc_tensor_variable_free(graph, tensor_variable);
 }
 
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out)
