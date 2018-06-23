@@ -20,6 +20,8 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_new(void)
 	ccv_nnc_symbolic_graph_t* graph = cccalloc(1, sizeof(ccv_nnc_symbolic_graph_t));
 	graph->tensor_symbol_info = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_info_t), 5, 0);
 	graph->exec_symbol_info = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_info_t), 5, 0);
+	graph->reuse.exec = -1;
+	graph->reuse.tensor = -1;
 	return graph;
 }
 
@@ -168,7 +170,19 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* cons
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
 		strncpy(symbol_info.name, name, n);
 	}
-	ccv_array_push(graph->tensor_symbol_info, &symbol_info);
+	if (graph->reuse.tensor >= 0)
+	{
+		const int reuse_tensor_d = graph->reuse.tensor;
+		assert(reuse_tensor_d < graph->tensor_symbol_info->rnum);
+		*(ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, reuse_tensor_d) = symbol_info;
+		int i;
+		graph->reuse.tensor = -1;
+		for (i = reuse_tensor_d + 1; i < graph->tensor_symbol_info->rnum && graph->reuse.tensor < 0; i++)
+			if (CCV_NNC_TENSOR_SYMBOL_IS_DEAD(((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i))->flags))
+				graph->reuse.tensor = i;
+		symbol.d = reuse_tensor_d;
+	} else
+		ccv_array_push(graph->tensor_symbol_info, &symbol_info);
 	return symbol;
 }
 
@@ -209,7 +223,18 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	}
 	memcpy(alias_info.ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(alias_info.inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
-	ccv_array_push(graph->tensor_symbol_info, &alias_info);
+	if (graph->reuse.tensor >= 0)
+	{
+		const int reuse_tensor_d = graph->reuse.tensor;
+		*(ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, reuse_tensor_d) = alias_info;
+		int i;
+		graph->reuse.tensor = -1;
+		for (i = reuse_tensor_d + 1; i < graph->tensor_symbol_info->rnum && graph->reuse.tensor < 0; i++)
+			if (CCV_NNC_TENSOR_SYMBOL_IS_DEAD(((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i))->flags))
+				graph->reuse.tensor = i;
+		alias.d = reuse_tensor_d;
+	} else
+		ccv_array_push(graph->tensor_symbol_info, &alias_info);
 	return alias;
 }
 
@@ -680,7 +705,6 @@ void ccv_nnc_tensor_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_t
 	assert(graph == tensor.graph);
 	assert(tensor.d < graph->tensor_symbol_info->rnum);
 	ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor.d);
-	symbol_info->flags |= CCV_NNC_TENSOR_SYMBOL_DEAD;
 	if (symbol_info->s_ref)
 	{
 		ccv_array_free(symbol_info->s_ref);
@@ -691,6 +715,19 @@ void ccv_nnc_tensor_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_t
 		ccfree(symbol_info->name);
 		symbol_info->name = 0;
 	}
+	symbol_info->flags |= CCV_NNC_TENSOR_SYMBOL_DEAD;
+	int i;
+	for (i = graph->tensor_symbol_info->rnum - 1; i >= 0; i--)
+		if (!CCV_NNC_TENSOR_SYMBOL_IS_DEAD(((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, i))->flags))
+		{
+			graph->tensor_symbol_info->rnum = i + 1;
+			break;
+		}
+	if (tensor.d < graph->tensor_symbol_info->rnum &&
+		(tensor.d < graph->reuse.tensor || graph->reuse.tensor < 0))
+		graph->reuse.tensor = tensor.d;
+	else if (graph->reuse.tensor >= graph->tensor_symbol_info->rnum)
+		graph->reuse.tensor = -1;
 }
 
 static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_info_t* const exec_info, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
@@ -748,7 +785,19 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 		strncpy(symbol_info.name, name, n);
 	}
 	_ccv_nnc_graph_exec_symbol_set_io(graph, &symbol_info, inputs, input_size, outputs, output_size);
-	ccv_array_push(graph->exec_symbol_info, &symbol_info);
+	if (graph->reuse.exec >= 0)
+	{
+		const int reuse_exec_d = graph->reuse.exec;
+		assert(reuse_exec_d < graph->exec_symbol_info->rnum);
+		*(ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, reuse_exec_d) = symbol_info;
+		int i;
+		graph->reuse.exec = -1;
+		for (i = reuse_exec_d + 1; i < graph->exec_symbol_info->rnum && graph->reuse.exec < 0; i++)
+			if (CCV_NNC_GRAPH_EXEC_IS_DEAD(((ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, i))->flags))
+				graph->reuse.exec = i;
+		symbol.d = reuse_exec_d;
+	} else
+		ccv_array_push(graph->exec_symbol_info, &symbol_info);
 	return symbol;
 }
 
@@ -928,6 +977,11 @@ void ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, const
 				--graph->destinations->rnum;
 				break;
 			}
+	if (symbol.d < graph->exec_symbol_info->rnum &&
+		(symbol.d < graph->reuse.exec || graph->reuse.exec < 0))
+		graph->reuse.exec = symbol.d;
+	else if (graph->reuse.exec >= graph->exec_symbol_info->rnum)
+		graph->reuse.exec = -1;
 }
 
 int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination)

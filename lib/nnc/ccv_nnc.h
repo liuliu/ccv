@@ -276,6 +276,8 @@ enum {
 	CCV_NNC_TENSOR_SYMBOL_DEAD = 0x80000000, // Mark this tensor symbol as dead, any future usage will cause assertion
 };
 
+#define CCV_NNC_TENSOR_SYMBOL_IS_DEAD(x) ((x) & CCV_NNC_TENSOR_SYMBOL_DEAD)
+
 enum {
 	CCV_NNC_GRAPH_EXEC_DEAD = 0x1, // Mark this node as dead.
 	CCV_NNC_GRAPH_EXEC_P_WHILE = 0x10, // Mark this node keyword is while

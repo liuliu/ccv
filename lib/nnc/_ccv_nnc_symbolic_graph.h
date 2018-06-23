@@ -88,6 +88,10 @@ struct ccv_nnc_symbolic_graph_s {
 	int breakpoint_size;
 	ccv_nnc_graph_exec_symbol_t* breakpoints;
 	// End of while loop handling.
+	struct {
+		int tensor;
+		int exec;
+	} reuse; // The reuse slot for tensor or graph exec symbols.
 	// Start for backward (automatic differentiation) handling
 	int forward_symbol_size;
 	int backward_tensor_symbol_size;

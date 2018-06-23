@@ -2216,7 +2216,7 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 					.d = tensor_symbol_info[input].peer_ref - 1,
 					.graph = dup_graph->peer
 				});
-				ccv_nnc_tensor_symbol_set_flags(dup_graph, tensor_symbol, tensor_symbol_info[input].flags);
+			ccv_nnc_tensor_symbol_set_flags(dup_graph, tensor_symbol, tensor_symbol_info[input].flags);
 			dup_tensor_block_ref[input * unroll_count] = tensor_symbol.d;
 		}
 		if (tensor_symbol_info[input].bypass_ref)

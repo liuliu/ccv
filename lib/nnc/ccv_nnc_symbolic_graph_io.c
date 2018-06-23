@@ -420,6 +420,8 @@ static void _ccv_nnc_symbolic_graph_read(const int graph_idx, sqlite3_stmt* cons
 		const int* const dim = sqlite3_column_blob(tensor_symbol_select_stmt, 16);
 		if (dim)
 			memcpy(symbol_info->info.dim, dim, ccv_min(sqlite3_column_bytes(tensor_symbol_select_stmt, 16), sizeof(symbol_info->info.dim)));
+		if (CCV_NNC_TENSOR_SYMBOL_IS_DEAD(symbol_info->flags) && graph->reuse.tensor < 0)
+			graph->reuse.tensor = i;
 	}
 	sqlite3_reset(tensor_symbol_select_stmt);
 	sqlite3_clear_bindings(tensor_symbol_select_stmt);
@@ -505,6 +507,8 @@ static void _ccv_nnc_symbolic_graph_read(const int graph_idx, sqlite3_stmt* cons
 					memcpy(symbol_info->p_while.inputs, inputs, ccv_min(sizeof(int) * symbol_info->p_while.input_size, sqlite3_column_bytes(exec_symbol_select_stmt, 22)));
 			}
 		}
+		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(symbol_info->flags) && graph->reuse.exec < 0)
+			graph->reuse.exec = i;
 	}
 	sqlite3_reset(exec_symbol_select_stmt);
 	sqlite3_clear_bindings(exec_symbol_select_stmt);
