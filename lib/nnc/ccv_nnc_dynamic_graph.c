@@ -22,12 +22,13 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 	int index; // The index back into the tensor variable. -1 meant no associated tensor vairable.
 	ccv_array_t* binded_sources; // array of graph_exec_symbol, use this tensor symbol as output.
 	ccv_array_t* binded_destinations; // array of graph_exec_symbol, use this tensor symbol as input.
+	ccv_nnc_tensor_view_t* tensor_view; // Transfer ownership of the tensor view to here.
 } ccv_nnc_tensor_symbol_extra_t;
 
 struct ccv_nnc_dynamic_graph_s {
 	ccv_array_t* tensor_var; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* tensor_extra; // Array keeps track of extra information for a tensor symbol.
-	ccv_nnc_symbolic_graph_t* symbolic; // Symbolic graph to keep track of computation.
+	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
 	ccv_array_t* ws; // array of integers as workspace
 };
 
@@ -36,7 +37,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	ccv_nnc_dynamic_graph_t* graph = ccmalloc(sizeof(ccv_nnc_dynamic_graph_t));
 	graph->tensor_var = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->tensor_extra = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_extra_t), 1, 0);
-	graph->symbolic = ccv_nnc_symbolic_graph_new();
+	graph->tape = ccv_nnc_symbolic_graph_new();
 	graph->ws = 0;
 	return graph;
 }
@@ -55,6 +56,24 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 	*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->tensor_var, index) = 0;
 }
 
+static void _ccv_nnc_tensor_symbol_extra_free(ccv_nnc_tensor_symbol_extra_t* const symbol_extra)
+{
+	if (symbol_extra->binded_sources)
+		ccv_array_free(symbol_extra->binded_sources);
+	symbol_extra->binded_sources = 0;
+	if (symbol_extra->binded_destinations)
+		ccv_array_free(symbol_extra->binded_destinations);
+	symbol_extra->binded_destinations = 0;
+	if (symbol_extra->tensor_view)
+	{
+		if (CCV_IS_TENSOR_VIEW(symbol_extra->tensor_view))
+			ccv_nnc_tensor_view_free(symbol_extra->tensor_view);
+		else
+			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)symbol_extra->tensor_view);
+	}
+	symbol_extra->tensor_view = 0;
+}
+
 void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 {
 	int i;
@@ -66,15 +85,9 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	}
 	ccv_array_free(graph->tensor_var);
 	for (i = 0; i < graph->tensor_extra->rnum; i++)
-	{
-		ccv_nnc_tensor_symbol_extra_t* const symbol_extra = (ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, i);
-		if (symbol_extra->binded_sources)
-			ccv_array_free(symbol_extra->binded_sources);
-		if (symbol_extra->binded_destinations)
-			ccv_array_free(symbol_extra->binded_destinations);
-	}
+		_ccv_nnc_tensor_symbol_extra_free((ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, i));
 	ccv_array_free(graph->tensor_extra);
-	ccv_nnc_symbolic_graph_free(graph->symbolic);
+	ccv_nnc_symbolic_graph_free(graph->tape);
 	if (graph->ws)
 		ccv_array_free(graph->ws);
 	ccfree(graph);
@@ -137,32 +150,33 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 	return 0;
 }
 
-static ccv_nnc_tensor_symbol_t _ccv_nnc_tensor_symbol_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_symbol_t symbol)
 {
-	if (tensor_variable->symbol.d >= 0)
-		return tensor_variable->symbol;
-	if (!tensor_variable->alias_ref)
-	{
-		const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_new(graph->symbolic, tensor_variable->info, 0);
-		if (symbol.d >= graph->tensor_extra->rnum)
-			ccv_array_resize(graph->tensor_extra, symbol.d + 1);
-		ccv_nnc_tensor_symbol_extra_t* const symbol_extra = (ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, symbol.d);
-		symbol_extra->index = tensor_variable->index;
-		symbol_extra->binded_sources = 0;
-		symbol_extra->binded_destinations = 0;
-		return symbol;
-	}
-	const int alias_ref = tensor_variable->alias_ref - 1;
-	assert(alias_ref >= 0);
-	ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->tensor_var, alias_ref);
-	assert(!variable_to->alias_ref);
-	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->symbolic, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, tensor_variable->inc, tensor_variable->info, 0);
 	if (symbol.d >= graph->tensor_extra->rnum)
 		ccv_array_resize(graph->tensor_extra, symbol.d + 1);
 	ccv_nnc_tensor_symbol_extra_t* const symbol_extra = (ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, symbol.d);
 	symbol_extra->index = tensor_variable->index;
 	symbol_extra->binded_sources = 0;
 	symbol_extra->binded_destinations = 0;
+	symbol_extra->tensor_view = 0;
+}
+
+static ccv_nnc_tensor_symbol_t _ccv_nnc_tensor_symbol_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+{
+	if (tensor_variable->symbol.d >= 0)
+		return tensor_variable->symbol;
+	if (!tensor_variable->alias_ref)
+	{
+		const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_new(graph->tape, tensor_variable->info, 0);
+		_ccv_nnc_tensor_symbol_extra_new(graph, tensor_variable, symbol);
+		return symbol;
+	}
+	const int alias_ref = tensor_variable->alias_ref - 1;
+	assert(alias_ref >= 0);
+	ccv_nnc_tensor_variable_t variable_to = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->tensor_var, alias_ref);
+	assert(!variable_to->alias_ref);
+	const ccv_nnc_tensor_symbol_t symbol = tensor_variable->symbol = ccv_nnc_tensor_symbol_alias_new(graph->tape, _ccv_nnc_tensor_symbol_from_variable(graph, variable_to), tensor_variable->ofs, tensor_variable->inc, tensor_variable->info, 0);
+	_ccv_nnc_tensor_symbol_extra_new(graph, tensor_variable, symbol);
 	return symbol;
 }
 
@@ -180,6 +194,11 @@ static ccv_nnc_tensor_variable_t _ccv_nnc_tensor_variable_exchange_new(ccv_nnc_d
 	// The index should be the same though.
 	const int index = new_variable->index;
 	new_variable->index = tensor_variable->index;
+	if (new_variable->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
+	{
+		ccv_nnc_tensor_symbol_extra_t* const symbol_extra = (ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, new_variable->symbol.d);
+		symbol_extra->index = new_variable->index;
+	}
 	tensor_variable->index = index;
 	return tensor_variable;
 }
@@ -248,16 +267,16 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
 	for (i = 0; i < output_size; i++)
 		output_symbols[i] = outputs[i] ? _ccv_nnc_tensor_symbol_from_variable(graph, outputs[i]) : NO_TENSOR_SYMBOL;
-	ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->symbolic, cmd, input_symbols, input_size, output_symbols, output_size, 0);
+	ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols, input_size, output_symbols, output_size, 0);
 	// This needs to be done before we set the new binded_sources on the outputs.
 	for (i = 0; i < input_size; i++)
 	{
 		if (input_sources[i])
 			for (j = 0; j < input_sources[i]->rnum; j++)
-				ccv_nnc_graph_exec_symbol_concat(graph->symbolic, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_sources[i], j), graph_exec);
+				ccv_nnc_graph_exec_symbol_concat(graph->tape, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_sources[i], j), graph_exec);
 		if (input_alias_sources[i])
 			for (j = 0; j < input_alias_sources[i]->rnum; j++)
-				ccv_nnc_graph_exec_symbol_concat(graph->symbolic, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_alias_sources[i], j), graph_exec);
+				ccv_nnc_graph_exec_symbol_concat(graph->tape, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(input_alias_sources[i], j), graph_exec);
 	}
 	for (i = 0; i < input_size; i++)
 	{
@@ -443,7 +462,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		if (outputs[i]->symbol.d >= 0)
 			outputs[i] = _ccv_nnc_tensor_variable_exchange_new(dynamic_graph, outputs[i]);
 	}
-	const int exec_symbol_info_size = ccv_nnc_graph_exec_symbol_count(dynamic_graph->symbolic);
+	const int exec_symbol_info_size = ccv_nnc_graph_exec_symbol_count(dynamic_graph->tape);
 	ccv_array_t* const sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
 	if (!dynamic_graph->ws)
 		dynamic_graph->ws = ccv_array_new(sizeof(int), exec_symbol_info_size * 2 + ((exec_symbol_info_size + 31) >> 5), 0);
@@ -455,7 +474,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	{
 		ccv_array_t* const binded_destinations = ((ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(dynamic_graph->tensor_extra, inputs[i]->symbol.d))->binded_destinations;
 		for (j = 0; j < binded_destinations->rnum; j++)
-			_ccv_nnc_insert_if_prior_to_any(dynamic_graph->symbolic,
+			_ccv_nnc_insert_if_prior_to_any(dynamic_graph->tape,
 				((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(binded_destinations, j))->d,
 				sources, (uint32_t*)ccv_array_get(ws, exec_symbol_info_size * 2),
 				(int*)ccv_array_get(ws, 0), (int*)ccv_array_get(ws, exec_symbol_info_size));
@@ -468,7 +487,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		for (i = 0 ; i < f_symbol_extra->binded_sources->rnum; i++)
 		{
 			memset((uint32_t*)ccv_array_get(ws, exec_symbol_info_size * 2), 0, sizeof(uint32_t) * ((exec_symbol_info_size + 31) >> 5));
-			_ccv_nnc_remove_if_prior_to_any(dynamic_graph->symbolic,
+			_ccv_nnc_remove_if_prior_to_any(dynamic_graph->tape,
 				((ccv_nnc_graph_exec_symbol_t*)ccv_array_get(f_symbol_extra->binded_sources, i))->d,
 				destinations, (uint32_t*)ccv_array_get(ws, exec_symbol_info_size * 2),
 				(int*)ccv_array_get(ws, 0), (int*)ccv_array_get(ws, exec_symbol_info_size));
@@ -476,11 +495,11 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_tensor_symbol_t input_symbols[input_size];
 	for (i = 0; i < input_size; i++)
 		input_symbols[i] = inputs[i]->symbol;
-	ccv_nnc_symbolic_graph_backward(dynamic_graph->symbolic,
+	ccv_nnc_symbolic_graph_backward(dynamic_graph->tape,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
 		&f_variable->symbol, 1, input_symbols, input_size);
-	const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->symbolic, f_variable->symbol);
+	const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, f_variable->symbol);
 	// Bind generated tensors.
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), dynamic_graph->tensor_var->rnum + 2, 0);
 	for (i = 0; i < dynamic_graph->tensor_var->rnum; i++)
@@ -503,22 +522,22 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		const ccv_nnc_graph_exec_symbol_t* const destination = (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, d);
 		const int* outgoings;
 		int outgoing_size;
-		ccv_nnc_graph_exec_symbol_to(dynamic_graph->symbolic, *destination, &outgoings, &outgoing_size);
+		ccv_nnc_graph_exec_symbol_to(dynamic_graph->tape, *destination, &outgoings, &outgoing_size);
 		for (i = 0; i < outgoing_size; i++)
 		{
 			const int exec_idx = outgoings[i];
 			const int* inputs;
 			int input_size;
-			ccv_nnc_graph_exec_symbol_io(dynamic_graph->symbolic, (ccv_nnc_graph_exec_symbol_t){
+			ccv_nnc_graph_exec_symbol_io(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
 				.d = exec_idx,
-				.graph = dynamic_graph->symbolic
+				.graph = dynamic_graph->tape
 			}, &inputs, &input_size, 0, 0);
 			for (j = 0; j < input_size; j++)
 			{
 				const int input = inputs[j];
-				const int alias_ref = input >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->symbolic, (ccv_nnc_tensor_symbol_t){
+				const int alias_ref = input >= 0 ? ccv_nnc_tensor_symbol_alias_to(dynamic_graph->tape, (ccv_nnc_tensor_symbol_t){
 					.d = input,
-					.graph = dynamic_graph->symbolic
+					.graph = dynamic_graph->tape
 				}).d : CCV_NNC_NO_TENSOR_SYMBOL; // This could be CCV_NNC_NO_TENSOR_SYMBOL, which is negative.
 				// alias_ref is either exists, or -1.
 				if (df.d == input || df.d == alias_ref)
@@ -530,7 +549,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 					{
 						const ccv_nnc_graph_exec_symbol_t source = {
 							.d = exec_idx,
-							.graph = dynamic_graph->symbolic
+							.graph = dynamic_graph->tape
 						};
 						ccv_array_push(sources, &source);
 					}
@@ -542,7 +561,8 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	// Bind dt tensor.
 	for (i = 0; i < output_size; i++)
 	{
-		outputs[i]->symbol = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->symbolic, inputs[i]->symbol);
+		const ccv_nnc_tensor_symbol_t symbol = outputs[i]->symbol = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, inputs[i]->symbol);
+		_ccv_nnc_tensor_symbol_extra_new(dynamic_graph, outputs[i], symbol);
 		ccv_nnc_tensor_t* tensor = ccv_nnc_tensor_from_variable(dynamic_graph, outputs[i]);
 		const ccv_nnc_tensor_bind_t dt_bind = {
 			.symbol = outputs[i]->symbol,
@@ -550,20 +570,24 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		};
 		ccv_array_push(tensor_binds, &dt_bind);
 	}
-	ccv_nnc_graph_exec_symbol_t set_ones = ccv_nnc_graph_exec_symbol_new(dynamic_graph->symbolic, CMD_SET_FORWARD(1), 0, 0, &df, 1, 0);
+	ccv_nnc_graph_exec_symbol_t set_ones = ccv_nnc_graph_exec_symbol_new(dynamic_graph->tape, CMD_SET_FORWARD(1), 0, 0, &df, 1, 0);
 	for (i = 0; i < sources->rnum; i++)
-		ccv_nnc_graph_exec_symbol_concat(dynamic_graph->symbolic, set_ones, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, i));
+		ccv_nnc_graph_exec_symbol_concat(dynamic_graph->tape, set_ones, *(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, i));
 	ccv_array_free(sources);
 	ccv_array_clear(destinations);
 	for (i = 0; i < output_size; i++)
 	{
-		const ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->symbolic, outputs[i]->symbol);
+		const ccv_nnc_graph_exec_symbol_t destination = ccv_nnc_graph_exec_symbol_for_backward(dynamic_graph->tape, outputs[i]->symbol);
 		ccv_array_push(destinations, &destination);
+		ccv_nnc_tensor_symbol_extra_t* const symbol_extra = (ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(dynamic_graph->tensor_extra, outputs[i]->symbol.d);
+		assert(!symbol_extra->binded_sources); // This is a new symbol, therefore, no binded sources associated yet.
+		symbol_extra->binded_sources = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 1, 0);
+		ccv_array_push(symbol_extra->binded_sources, &destination);
 	}
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
-	ccv_nnc_symbolic_graph_compile(dynamic_graph->symbolic,
+	ccv_nnc_symbolic_graph_compile(dynamic_graph->tape,
 		(ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum,
 		0, 0,
 		&set_ones, 1,
@@ -582,11 +606,13 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 	if (tensor_variable->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL)
 	{
 		// Remove references from tensor that generate this.
+		_ccv_nnc_tensor_symbol_extra_free((ccv_nnc_tensor_symbol_extra_t*)ccv_array_get(graph->tensor_extra, tensor_variable->symbol.d));
+		ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
 	}
 	_ccv_nnc_tensor_variable_free(graph, tensor_variable);
 }
 
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out)
 {
-	ccv_nnc_symbolic_graph_dot(graph->symbolic, flags, out);
+	ccv_nnc_symbolic_graph_dot(graph->tape, flags, out);
 }
