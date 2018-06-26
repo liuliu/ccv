@@ -172,4 +172,24 @@ TEST_CASE("empty inputs / outputs for dynamic graph")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("long dynamic graph with unused variables freed")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	int i;
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.5;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
+		ccv_nnc_tensor_variable_free(graph, x);
+		x = z;
+	}
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, x)->data.f32[0], 0.03125, 1e-5, "x should equal to 32 * 0.5 ^ 10");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"
