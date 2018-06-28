@@ -31,6 +31,7 @@ typedef struct { // Extra information kept per tensor symbol along with symbolic
 } ccv_nnc_tensor_variable_graph_bind_t;
 
 struct ccv_nnc_dynamic_graph_s {
+	int reuse_var; // -1 if no var can be reused. Otherwise first locate the reuse var without increase array size.
 	ccv_array_t* vars; // Array keeps track of all allocated tensor variable.
 	ccv_array_t* binds; // Array keeps track of extra information for a tensor symbol.
 	ccv_nnc_symbolic_graph_t* tape; // Symbolic graph to keep track of computation.
@@ -47,7 +48,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	return graph;
 }
 
-static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
+static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int zeroing)
 {
 	const int index = tensor_variable->index;
 	if (tensor_variable->tensor_view)
@@ -58,7 +59,20 @@ static void _ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, 
 			ccv_nnc_tensor_free((ccv_nnc_tensor_t*)tensor_variable->tensor_view);
 	}
 	ccfree(tensor_variable);
-	*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, index) = 0;
+	if (zeroing)
+		*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, index) = 0;
+	int i;
+	for (i = graph->vars->rnum - 1; i >= 0; i--)
+		if (*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, i) != 0)
+		{
+			graph->vars->rnum = i + 1;
+			break;
+		}
+	if (index < graph->vars->rnum &&
+		(index < graph->reuse_var || graph->reuse_var < 0))
+		graph->reuse_var = index;
+	else if (graph->reuse_var >= graph->vars->rnum)
+		graph->reuse_var = -1;
 }
 
 static void _ccv_nnc_tensor_variable_graph_bind_free(ccv_nnc_tensor_variable_graph_bind_t* const bind, const int zeroing)
@@ -90,7 +104,7 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	{
 		ccv_nnc_tensor_variable_t tensor_variable = *(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, i);
 		if (tensor_variable)
-			_ccv_nnc_tensor_variable_free(graph, tensor_variable);
+			_ccv_nnc_tensor_variable_free(graph, tensor_variable, 0);
 	}
 	ccv_array_free(graph->vars);
 	for (i = 0; i < graph->binds->rnum; i++)
@@ -105,12 +119,25 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
 {
 	ccv_nnc_tensor_variable_t tensor_variable = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
-	ccv_array_push(graph->vars, &tensor_variable);
-	tensor_variable->index = graph->vars->rnum - 1;
 	tensor_variable->alias_ref = 0;
 	tensor_variable->info = info;
 	tensor_variable->symbol = NO_TENSOR_SYMBOL;
 	tensor_variable->tensor_view = 0;
+	if (graph->reuse_var >= 0)
+	{
+		const int reuse_var = graph->reuse_var;
+		assert(reuse_var < graph->vars->rnum);
+		tensor_variable->index = reuse_var;
+		*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, reuse_var) = tensor_variable;
+		int i;
+		graph->reuse_var = -1;
+		for (i = reuse_var + 1; i < graph->vars->rnum && graph->reuse_var < 0; i++)
+			if (*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, i) == 0)
+				graph->reuse_var = i;
+	} else {
+		tensor_variable->index = graph->vars->rnum;
+		ccv_array_push(graph->vars, &tensor_variable);
+	}
 	return tensor_variable;
 }
 
@@ -118,14 +145,27 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_grap
 {
 	assert(!tensor_variable->alias_ref);
 	ccv_nnc_tensor_variable_t variable_alias = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
-	ccv_array_push(graph->vars, &variable_alias);
-	variable_alias->index = graph->vars->rnum - 1;
 	variable_alias->alias_ref = tensor_variable->index + 1;
 	variable_alias->info = info;
 	variable_alias->symbol = NO_TENSOR_SYMBOL;
 	variable_alias->tensor_view = 0;
 	memcpy(variable_alias->ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(variable_alias->inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+	if (graph->reuse_var >= 0)
+	{
+		const int reuse_var = graph->reuse_var;
+		assert(reuse_var < graph->vars->rnum);
+		variable_alias->index = reuse_var;
+		*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, reuse_var) = variable_alias;
+		int i;
+		graph->reuse_var = -1;
+		for (i = reuse_var + 1; i < graph->vars->rnum && graph->reuse_var < 0; i++)
+			if (*(ccv_nnc_tensor_variable_t*)ccv_array_get(graph->vars, i) == 0)
+				graph->reuse_var = i;
+	} else {
+		variable_alias->index = graph->vars->rnum;
+		ccv_array_push(graph->vars, &variable_alias);
+	}
 	return variable_alias;
 }
 
@@ -837,7 +877,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 			tensor_variable->tensor_view = 0;
 		}
 	}
-	_ccv_nnc_tensor_variable_free(graph, tensor_variable);
+	_ccv_nnc_tensor_variable_free(graph, tensor_variable, 1);
 }
 
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out)
