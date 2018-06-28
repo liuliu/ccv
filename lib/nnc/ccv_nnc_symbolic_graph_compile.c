@@ -1230,8 +1230,18 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		{
 			// For binded tensors, it shouldn't be assigned yet.
 			assert(tensor_arena->vt_tensors[resolved_symbol.d] == 0);
-			// I have to cast this, unfortunately.
-			tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)tensor_binds[i].tensor;
+			if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
+			{
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+				ccv_nnc_tensor_view_t* const tv = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				memcpy(tv, tensor_binds[i].tensor, sizeof(ccv_nnc_tensor_view_t));
+				tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			} else {
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_binds[i].tensor->info, 0);
+				tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			}
 		}
 	}
 	// Now it is time to handle alias.
@@ -3680,6 +3690,14 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	ccv_array_free(tensor_arena->tensor_metadata);
 	ccv_array_free(tensor_arena->m_tensor_idx);
 	ccfree(tensor_arena);
+}
+
+int ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor)
+{
+	assert(tensor_arena->graph_ref == (intptr_t)symbol.graph);
+	assert(symbol.d < tensor_arena->vt_tensor_size);
+	tensor_arena->vt_tensors[symbol.d]->data.ptr = tensor->data.ptr;
+	return 0;
 }
 
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
