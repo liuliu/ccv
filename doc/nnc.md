@@ -77,7 +77,7 @@ More over, **dynamic graph** implements a simple memorization mechanism. The ten
 
 ## 5. Common Neural Network Primitives
 
-The goal here is to provide a set of **common neural network primitives** for modeling as well as parameter updates.
+A set of **common neural network primitives** for modeling as well as parameter updates is provided. The API looks very much like **Sonnet** or **Keras**. **Common neural network primitives** implemented these interfaces at a common language layer (C language). Thus, variety of host languages to implement a simple shim layer on top to enable these high-level APIs.
 
 ## Supplementary Materials
 

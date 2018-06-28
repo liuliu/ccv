@@ -28,12 +28,15 @@ NNC uses its **symbolic graph** (Level-3 APIs) to trace the operation. When a co
 
 Upon *automatic differentiation*, no tape is used (or, the **symbolic graph** serves as an advanced tape). We simply leverage the ahead of time *automatic differentiation* system implemented in **symbolic graph** to optimize, compile and schedule the actual computation. That means any optimization techniques we implemented on Level-2 or Level-3 APIs will be available to **dynamic graph** as well.
 
-Optimizations (Not Ready)
--------------------------
-
-At this point, **dynamic graph** looks suspiciously like just another function dispatching mechanism. Ten years ago, when I started ccv, one of the motivation is to implement a function memorization technique, at that time, it is called *cached image processing* to workaround issues that in traditional computer vision pipeline, low level feature extraction passes often shared between different components (face detector, motion tracker etc.). In **symbolic graph**, this is trivially implemented as *common sub-expression elimination* (CSE). CSE cannot be implemented in **dynamic graph** because it cannot look ahead. However, the same memorization technique can be used to avoid duplicate computations.
+Optimizations Part 1
+--------------------
 
 In **PyTorch**, there is a need to `requires_grad` such that the framework knows which variable should be discarded to save memory. If it is not done carefully, the memory usage can grow unbounded. **Dynamic graph** here provides `ccv_nnc_tensor_variable_free` where when a tensor variable is freed, we will release its memory when it is safe. This method meant to hook up with object finalization methods in host languages (C++'s destructor, Objective-C's `dealloc`, `deinit` in Swift, `finalize` in Java, `tp_dealloc` in Python).
+
+Optimizations Part 2 (Not Ready)
+--------------------------------
+
+At this point, **dynamic graph** looks suspiciously like just another function dispatching mechanism. Ten years ago, when I started ccv, one of the motivation is to implement a function memorization technique, at that time, it is called *cached image processing* to workaround issues that in traditional computer vision pipeline, low level feature extraction passes often shared between different components (face detector, motion tracker etc.). In **symbolic graph**, this is trivially implemented as *common sub-expression elimination* (CSE). CSE cannot be implemented in **dynamic graph** because it cannot look ahead. However, the same memorization technique can be used to avoid duplicate computations.
 
 Because **symbolic graph** formed from **dynamic graph execution** contains the proper data dependencies, memory reduction techniques such as automatic binomial checkpointing can be implemented with a change of cache eviction policy. If we implemented binomial checkpointing in **symbolic graph** as one optimization pass, we can also leverage that upon *automatic differentiation* in **dynamic graph**. The flexibility of sharing the same underlying infrastructure is very satisfying.
 
