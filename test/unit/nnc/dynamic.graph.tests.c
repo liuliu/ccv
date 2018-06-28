@@ -183,12 +183,27 @@ TEST_CASE("long dynamic graph with unused variables freed")
 	for (i = 0; i < 10; i++)
 	{
 		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
-		ccv_nnc_tensor_variable_free(graph, x);
+		if (i < 7)
+			ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
+		else {
+			if (i == 7)
+				ccv_nnc_tensor_variable_free(graph, y); // No longer need y.
+			ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, x), TENSOR_VARIABLE_LIST(z));
+		}
+		if (i < 9)
+			ccv_nnc_tensor_variable_free(graph, x);
 		x = z;
 	}
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, x)->data.f32[0], 0.03125, 1e-5, "x should equal to 32 * 0.5 ^ 10");
+	float g = 32;
+	for (i = 0; i < 10; i++)
+	{
+		if (i < 7)
+			g = g * 0.5;
+		else
+			g = g * g;
+	}
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, x)->data.f32[0], g, 1e-5, "x should equal to the computed result");
 	ccv_nnc_dynamic_graph_free(graph);
 }
 

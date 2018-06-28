@@ -920,7 +920,9 @@ static inline void _ccv_nnc_graph_exec_symbol_free(ccv_nnc_graph_exec_symbol_inf
 		symbol_info->_heap_graph_ref = 0;
 		symbol_info->outgoings = 0;
 		symbol_info->inputs = 0;
+		symbol_info->input_size = 0;
 		symbol_info->outputs = 0;
+		symbol_info->output_size = 0;
 	}
 }
 
