@@ -783,8 +783,8 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* con
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size);
 // Draw the model out as a graph.
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out);
-// TODO: fit API design.
-void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model);
+// Fit a model to a given input / output.
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 // Free a given model.
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model);
 

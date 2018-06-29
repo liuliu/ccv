@@ -207,4 +207,20 @@ TEST_CASE("long dynamic graph with unused variables freed")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("compute f(x) = x * log(x) + x, f'(x) when x = 10 (and intermediate results all freed)")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(y));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y, x), TENSOR_VARIABLE_LIST(f));
+	ccv_nnc_dynamic_graph_backward(graph, f, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(x));
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, x)->data.f32[0], log(10) + 1 + 1, 1e-5, "dx should equal to the computed result");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 #include "case_main.h"

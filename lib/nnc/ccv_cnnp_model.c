@@ -232,6 +232,10 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 	}
 }
 
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+}
+
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out)
 {
 	if (model->graph)
