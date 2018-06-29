@@ -567,9 +567,9 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	for (i = 0; i < input_size; i++)
 		input_symbols[i] = inputs[i]->symbol;
 	ccv_nnc_symbolic_graph_backward(dynamic_graph->tape,
+		&f_variable->symbol, 1, input_symbols, input_size,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
-		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
-		&f_variable->symbol, 1, input_symbols, input_size);
+		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum);
 	const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(dynamic_graph->tape, f_variable->symbol);
 	// Bind generated tensors.
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), dynamic_graph->vars->rnum + 2, 0);

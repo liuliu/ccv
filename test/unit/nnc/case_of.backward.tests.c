@@ -50,7 +50,7 @@ TEST_CASE("symbolic graph for piece-wise function y = f(x), compute y'")
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_2, 2, TENSOR_SYMBOL_MAP(KV(y2, y)));
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph_2, CMD_SET_FORWARD(1.5), 0, 0, TENSOR_SYMBOL_LIST(y2), "set");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_2, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_backward(symbolic_graph, GRAPH_EXEC_SYMBOL_LIST(case_of), GRAPH_EXEC_SYMBOL_LIST(case_of), TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x));
+	ccv_nnc_symbolic_graph_backward(symbolic_graph, TENSOR_SYMBOL_LIST(y), TENSOR_SYMBOL_LIST(x), GRAPH_EXEC_SYMBOL_LIST(case_of), GRAPH_EXEC_SYMBOL_LIST(case_of));
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;

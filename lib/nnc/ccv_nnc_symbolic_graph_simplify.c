@@ -666,11 +666,43 @@ static void _ccv_nnc_symbolic_graph_pruning(ccv_nnc_symbolic_graph_simplify_t* c
 	uint32_t* const tensor_dead = simplify->tensor_dead;
 	int* const output_execs = simplify->output_execs;
 	_ccv_nnc_symbolic_graph_simplify_update_output_execs(simplify);
-	// Mark everything as dead.
-	for (i = 0; i < ((simplify->tensor_symbol_info_size + 31) >> 5); i++)
-		tensor_dead[i] = 0xffffffff;
-	for (i = 0; i < ((simplify->exec_symbol_info_size + 31) >> 5); i++)
-		exec_dead[i] = 0xffffffff;
+	// Mark everything visited as dead.
+	ccv_nnc_graph_visit_for(simplify->visit, simplify->exec_symbol_info, node, idx) {
+		exec_dead[idx >> 5] |= (1u << (idx & 0x1f));
+		for (i = 0; i < node->input_size; i++)
+		{
+			const int d = node->inputs[i];
+			if (d >= 0)
+				tensor_dead[d >> 5] |= (1u << (d & 0x1f));
+		}
+		for (i = 0; i < node->output_size; i++)
+		{
+			const int d = node->outputs[i];
+			if (d >= 0)
+				tensor_dead[d >> 5] |= (1u << (d & 0x1f));
+		}
+	} ccv_nnc_graph_visit_endfor
+	// If the tensor symbol is used by other exec that is not visited, unmark it.
+	for (i = 0; i < simplify->exec_symbol_info_size; i++)
+	{
+		if (exec_dead[i >> 5] & (1u << (i & 0x1f)))
+			continue;
+		const ccv_nnc_graph_exec_symbol_info_t* const node = simplify->exec_symbol_info + i;
+		for (j = 0; j < node->input_size; j++)
+		{
+			const int d = node->inputs[j];
+			// Undead it.
+			if (d >= 0)
+				tensor_dead[d >> 5] &= ~(1u << (d & 0x1f));
+		}
+		for (j = 0; j < node->output_size; j++)
+		{
+			const int d = node->outputs[j];
+			// Undead it.
+			if (d >= 0)
+				tensor_dead[d >> 5] &= ~(1u << (d & 0x1f));
+		}
+	}
 	for (i = 0; i < output_size; i++)
 		ccv_array_push(preserve[0], &outputs[i].d);
 	int p = 0, q = 1;
