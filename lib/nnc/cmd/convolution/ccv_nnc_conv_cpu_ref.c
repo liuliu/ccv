@@ -17,7 +17,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_t* w = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
 	const ccv_nnc_tensor_t* bias = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(bias));
+	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -43,7 +43,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(w->info.dim[0] == cmd.info.convolution.count);
 	const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ? a->inc : a->inc + 1) : adim;
 	const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ? b->inc : b->inc + 1) : bdim;
-	assert(bias->info.dim[0] == cmd.info.convolution.count);
+	assert(!bias || bias->info.dim[0] == cmd.info.convolution.count);
 	const int channel_size = w->info.dim[CCV_NNC_MAX_DIM + 1];
 	parallel_for(k, cmd.info.convolution.count) {
 		int c;
@@ -52,7 +52,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		float* bp = b->data.f32 + k;
 		// kernel weight for one dim.
 		float* wp = w->data.f32 + k * w->info.dim[1] * w->info.dim[2] * channel_size;
-		float biasval = bias->data.f32[k];
+		float biasval = bias ? bias->data.f32[k] : 0;
 		// This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables.
 		int i[CCV_NNC_MAX_DIM];
 		int n[CCV_NNC_MAX_DIM];
@@ -95,12 +95,13 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_t* w = outputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
 	ccv_nnc_tensor_t* bias = outputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(bias));
+	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
 		memset(w->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(w->info));
-		memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
+		if (bias)
+			memset(bias->data.u8, 0, sizeof(float) * ccv_nnc_tensor_count(bias->info));
 	}
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
@@ -152,7 +153,8 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			gp += ginc[CCV_NNC_MAX_DIM - 1] * ginc[CCV_NNC_MAX_DIM];
 			ap += ainc[CCV_NNC_MAX_DIM - 1] * ainc[CCV_NNC_MAX_DIM] * (ccv_max((i[0] + 1) * hint.stride.dim[0] - hint.border.begin[0], 0) - ccv_max(i[0] * hint.stride.dim[0] - hint.border.begin[0], 0));
 		}
-		bias->data.f32[k] = biasval;
+		if (bias)
+			bias->data.f32[k] = biasval;
 	} parallel_endfor
 	// If h is available, therefore, we need to propagate the gradients back
 	if (h)

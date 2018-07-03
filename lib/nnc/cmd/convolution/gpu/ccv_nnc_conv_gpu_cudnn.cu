@@ -31,7 +31,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	cudaSetDevice(device);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[1]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
@@ -76,12 +75,16 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		cudaMalloc(&workspace, workspace_size);
 	static const float one = 1, zero = 0;
 	assert_cudnn(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
-	assert_cudnn(cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8));
+	if (inputs[2])
+	{
+		const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
+		assert_cudnn(cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8));
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+	}
 	if (workspace)
 		cudaFreeAsync(workspace, stream);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_filter_descriptor(w);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	return CCV_NNC_EXEC_SUCCESS;
@@ -176,7 +179,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 
@@ -218,11 +220,21 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	static const float one = 1, zero = 0;
 	if ((flags & CCV_NNC_ACCUMULATE_OUTPUT)) // accumulating results to bias and dw
 	{
-		assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
 		assert_cudnn(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &one, dw.descriptor, dw.data.u8));
+		if (outputs[2])
+		{
+			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+			assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
+			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+		}
 	} else {
-		assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
 		assert_cudnn(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &zero, dw.descriptor, dw.data.u8));
+		if (outputs[2])
+		{
+			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
+			assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
+			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
+		}
 	}
 	if (workspace)
 		cudaFreeAsync(workspace, stream);
@@ -272,7 +284,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_filter_descriptor(dw);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

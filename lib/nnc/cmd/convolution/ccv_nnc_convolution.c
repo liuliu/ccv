@@ -7,6 +7,9 @@ static int _ccv_nnc_conv_forw_bitmask(const int input_size, const int output_siz
 {
 	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (1u << 2)) && output_bitmasks[0] == 1u)
 		return 1;
+	// Ignore bias.
+	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (0u << 2)) && output_bitmasks[0] == 1u)
+		return 1;
 	return 0;
 }
 
@@ -15,8 +18,14 @@ static int _ccv_nnc_conv_back_bitmask(const int input_size, const int output_siz
 	// Output the propagated error, gradient w.r.t. w and bias.
 	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0 << 3)) && output_bitmasks[0] == ((1u << 0) | (1u << 1) | (1u << 2)))
 		return 1;
+	// Ignore bias.
+	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (1u << 2) | (0 << 3)) && output_bitmasks[0] == ((1u << 0) | (1u << 1) | (0u << 2)))
+		return 1;
 	// Don't propagate error, only gradient w.r.t. w and bias.
 	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1) | (0 << 2) | (0 << 3)) && output_bitmasks[0] == ((0 << 0) | (1u << 1) | (1u << 2)))
+		return 1;
+	// Ignore bias.
+	if ((input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1) | (0 << 2) | (0 << 3)) && output_bitmasks[0] == ((0 << 0) | (1u << 1) | (0u << 2)))
 		return 1;
 	return 0;
 }

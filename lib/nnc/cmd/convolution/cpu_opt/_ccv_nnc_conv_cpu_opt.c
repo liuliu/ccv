@@ -72,12 +72,14 @@ static int _ccv_nnc_conv_forw_sse2(const ccv_nnc_tensor_view_t* const a, const c
 		float* bp = b->data.f32 + k * 4; \
 		/* kernel weight for one dim. */ \
 		const float* const x4wp = x4w + k * 4 * w->info.dim[1] * w->info.dim[2] * w->info.dim[3]; \
-		const float biasval[4] __attribute__ ((__aligned__(16))) = { \
-			bias->data.f32[k * 4], \
-			bias->data.f32[k * 4 + 1], \
-			bias->data.f32[k * 4 + 2], \
-			bias->data.f32[k * 4 + 3] \
-		}; \
+		float biasval[4] __attribute__ ((__aligned__(16))) = {}; \
+		if (bias) \
+		{ \
+			biasval[0] = bias->data.f32[k * 4]; \
+			biasval[1] = bias->data.f32[k * 4 + 1]; \
+			biasval[2] = bias->data.f32[k * 4 + 2]; \
+			biasval[3] = bias->data.f32[k * 4 + 3]; \
+		} \
 		/* This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables. */ \
 		int i[CCV_NNC_MAX_DIM]; \
 		int n[CCV_NNC_MAX_DIM]; \
@@ -227,12 +229,14 @@ static int _ccv_nnc_conv_forw_neon(const ccv_nnc_tensor_view_t* const a, const c
 		float* bp = b->data.f32 + k * 4; \
 		/* kernel weight for one dim. */ \
 		const float* const x4wp = x4w + k * 4 * w->info.dim[1] * w->info.dim[2] * w->info.dim[3]; \
-		const float biasval[4] __attribute__ ((__aligned__(16))) = { \
-			bias->data.f32[k * 4], \
-			bias->data.f32[k * 4 + 1], \
-			bias->data.f32[k * 4 + 2], \
-			bias->data.f32[k * 4 + 3] \
-		}; \
+		float biasval[4] __attribute__ ((__aligned__(16))) = {}; \
+		if (bias) \
+		{ \
+			biasval[0] = bias->data.f32[k * 4]; \
+			biasval[1] = bias->data.f32[k * 4 + 1]; \
+			biasval[2] = bias->data.f32[k * 4 + 2]; \
+			biasval[3] = bias->data.f32[k * 4 + 3]; \
+		} \
 		/* This block will be cause in each for-loop, therefore, you can use it to generate some temporary variables. */ \
 		int i[CCV_NNC_MAX_DIM]; \
 		int n[CCV_NNC_MAX_DIM]; \

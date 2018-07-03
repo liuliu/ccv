@@ -3,6 +3,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_SETUP()
 {
@@ -300,6 +301,34 @@ TEST_CASE("convolutional network of 3x5 on 27x27 with non-uniform weights")
 	ccv_nnc_tensor_free(w);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(a);
+}
+
+TEST_CASE("convolution with no bias")
+{
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 1), 0);
+	ccv_nnc_tensor_t* bg = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 4), 0);
+	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 4, 3, 5, 1);
+	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(cmd.info, a->info, bg->info);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 3, 5, 1), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 27 * 27; i++)
+		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 4 * 3 * 5; i++)
+		w->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 4; i++)
+		bias->data.f32[i] = 0;
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(bg), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 4), 0);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, 0), TENSOR_LIST(b), 0);
+	REQUIRE_MATRIX_EQ(b, bg, "convolution with no bias should equal to with bias = 0");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(bg);
+	ccv_nnc_tensor_free(w);
+	ccv_nnc_tensor_free(bias);
 }
 
 TEST_CASE("maximum pool network of 55x55 with window of 3x3 and stride of 2")

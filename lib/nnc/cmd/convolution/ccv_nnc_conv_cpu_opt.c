@@ -23,7 +23,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_t* w = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
 	const ccv_nnc_tensor_t* bias = inputs[2];
-	assert(!CCV_IS_TENSOR_VIEW(bias));
+	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -51,7 +51,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_OPT_CONV_ALGO_GEMM:
 			if (w->info.dim[1] == 1 && w->info.dim[2] == 1 && hint.stride.dim[0] <= 1 && hint.stride.dim[1] <= 1 &&
 				hint.border.begin[0] == 0 && hint.border.begin[1] == 0 && hint.border.end[0] == 0 && hint.border.end[1] == 0 &&
-				!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias))
+				!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)))
 				return _ccv_nnc_conv_forw_gemm_cpu_opt(a, w, bias, hint, b);
 			return CCV_NNC_EXEC_INVALID;
 		case CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD:
@@ -70,7 +70,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// If the size is 1x1, and no stride, and not a tensor view object, no padding, choose GEMM kernel
 	if (w->info.dim[1] == 1 && w->info.dim[2] == 1 && hint.stride.dim[0] <= 1 && hint.stride.dim[1] <= 1 &&
 		hint.border.begin[0] == 0 && hint.border.begin[1] == 0 && hint.border.end[0] == 0 && hint.border.end[1] == 0 &&
-		!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias))
+		!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)))
 		return _ccv_nnc_conv_forw_gemm_cpu_opt(a, w, bias, hint, b);
 	// Otherwise, use direct convolution kernel
 	return _ccv_nnc_conv_forw_cpu_opt(a, w, bias, hint, b);
