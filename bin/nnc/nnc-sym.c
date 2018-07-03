@@ -60,7 +60,7 @@ int main(int argc, char** argv)
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(graph_exec_arena);
 	*/
-	ccv_nnc_symbolic_graph_backward(graph, GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]), TENSOR_SYMBOL_LIST(b[8]), TENSOR_SYMBOL_LIST(conv1w));
+	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(b[8]), TENSOR_SYMBOL_LIST(conv1w), GRAPH_EXEC_SYMBOL_LIST(conv1), GRAPH_EXEC_SYMBOL_LIST(relu2[2]));
 	ccv_nnc_symbolic_graph_free(graph);
 	ccv_nnc_tensor_free(tensor_a);
 	return 0;
