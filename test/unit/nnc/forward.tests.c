@@ -322,7 +322,7 @@ TEST_CASE("convolution with no bias")
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(bg), 0);
 	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(27, 27, 4), 0);
-	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, 0), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
 	REQUIRE_MATRIX_EQ(b, bg, "convolution with no bias should equal to with bias = 0");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);

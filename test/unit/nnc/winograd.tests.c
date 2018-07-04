@@ -126,7 +126,7 @@ TEST_CASE("convolutional network of 3x3 on 56x56 with no bias")
 	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(56, 56, 128), 0);
 	cmd.backend = CCV_NNC_BACKEND_CPU_OPT;
 	cmd.algorithm = 2; // CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD
-	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w, 0), TENSOR_LIST(c), 0);
+	ccv_nnc_cmd_exec(cmd, hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(c), 0);
 	REQUIRE_TENSOR_EQ(b, c, "56x56 matrix should be exactly the same from reference implementation and winograd.");
 	ccv_nnc_tensor_free(c);
 	ccv_nnc_tensor_free(bias);

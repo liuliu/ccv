@@ -12,10 +12,10 @@
 
 static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[1];
-	const ccv_nnc_tensor_view_t* bias = (const ccv_nnc_tensor_view_t*)inputs[2];
+	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
 	// Copy the most of parameters, but reshape the dimension of a to a vector.
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	assert(output_size == 1);
@@ -58,14 +58,14 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	// inputs: gradient, forw prop input, [w]
 	// outputs: [output gradient], weight updates, bias updates
-	assert(input_size >= 2 && output_size == 3);
+	assert(input_size >= 2 && output_size >= 2);
 	const ccv_nnc_tensor_view_t* g = (const ccv_nnc_tensor_view_t*)inputs[0];
 	assert(g->info.dim[2] == 0); // It is a 2-d array.
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1];
 	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
-	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[2];
+	ccv_nnc_tensor_view_t* bias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
 	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array.
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0

@@ -79,8 +79,8 @@ TEST_CASE("cublas forward gemm no bias")
 	for (i = 0; i < 128; i++)
 		ha->data.f32[i] = ha1->data.f32[i];
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha1, hw), TENSOR_LIST(a, w), 0);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, 0), TENSOR_LIST(hb), 0);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, 0), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
 	ccv_nnc_tensor_t* tb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 64), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(b), TENSOR_LIST(tb), 0);
 	ccv_nnc_tensor_t* tb1 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 64), 0);
@@ -194,9 +194,9 @@ TEST_CASE("cublas backward gemm no bias")
 	for (i = 0; i < 10 * 64; i++)
 		hg->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hg), TENSOR_LIST(a, w, g), 0);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, 0), TENSOR_LIST(hb), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw), TENSOR_LIST(hb), 0);
 	ccv_nnc_cmd_exec(CMD_GEMM_BACKWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, ha, hw, 0), TENSOR_LIST(hh, hdw, 0), 0);
-	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, 0), TENSOR_LIST(b), 0);
+	ccv_nnc_cmd_exec(CMD_GEMM_FORWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(a, w), TENSOR_LIST(b), 0);
 	ccv_nnc_cmd_exec(CMD_GEMM_BACKWARD(64), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, w, 0), TENSOR_LIST(h, dw, 0), 0);
 	ccv_nnc_tensor_t* tb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 64), 0);
 	ccv_nnc_tensor_t* tdw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(64, 128), 0);

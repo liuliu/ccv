@@ -9,10 +9,10 @@ static int _ccv_nnc_arbitary_inplace(const int input_idx, const int output_idx)
 
 static int _ccv_nnc_gemm_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
-	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (1u << 2)) && output_bitmasks[0] == 1u)
+	if (input_size == 3 && (input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (1u << 2)) && output_bitmasks[0] == 1u)
 		return 1;
 	// No bias is OK.
-	if ((input_bitmasks[0] & 7u) == ((1u << 0) | (1u << 1) | (0u << 2)) && output_bitmasks[0] == 1u)
+	if (input_size == 2 && (input_bitmasks[0] & 3u) == ((1u << 0) | (1u << 1)) && output_bitmasks[0] == 1u)
 		return 1;
 	return 0;
 }
@@ -43,7 +43,6 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].dim[0] = inputs[0].dim[0]; // batch size.
 	outputs[0].dim[1] = inputs[1].dim[0]; // from the weight matrix.
 	assert(inputs[1].dim[0] == cmd.blas.count);
-	assert(inputs[1].dim[0] == inputs[2].dim[0]); // from the bias matrix.
 }
 
 REGISTER_COMMAND(CCV_NNC_GEMM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)

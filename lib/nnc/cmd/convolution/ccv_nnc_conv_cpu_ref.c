@@ -12,11 +12,11 @@
 
 static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size == 3);
+	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_t* w = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
-	const ccv_nnc_tensor_t* bias = inputs[2];
+	const ccv_nnc_tensor_t* bias = input_size > 2 ? inputs[2] : 0;
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
@@ -89,12 +89,12 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	// inputs: gradient, forw prop input, [w]
 	// outputs: [output gradient], weight updates, bias updates
-	assert((input_size == 2 && output_size == 3) || (input_size == 3 && output_size == 3));
+	assert((input_size == 2 && output_size >= 2) || (input_size == 3 && output_size >= 2));
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_t* w = outputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(w));
-	ccv_nnc_tensor_t* bias = outputs[2];
+	ccv_nnc_tensor_t* bias = output_size > 2 ? outputs[2] : 0;
 	assert(!bias || !CCV_IS_TENSOR_VIEW(bias));
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0]; // output gradients
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
