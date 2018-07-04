@@ -61,6 +61,12 @@ typedef struct {
 			float momentum; /**< [bnorm.momentum] running_mean = running_mean * momentum + mean * (1 - momentum). */
 		} bnorm;
 		struct {
+			float rate; /**< [minimize.rate] The learning rate. */
+			float decay; /**< [minimize.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
+			float momentum; /**< [minimize.momentum] For SGD, this follows http://www.cs.toronto.edu/%7Ehinton/absps/momentum.pdf. */
+			float dampening; /**< [minimize.dampening] This usually == momentum, however, it can be changed. */
+		} minimize;
+		struct {
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */
 			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
