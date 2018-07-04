@@ -22,7 +22,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(b->info.dim[2] == 0); // It is a 2-d array.
 	assert(w->info.dim[2] == 0); // It is a 2-d array
-	assert(bias->info.dim[1] == 0); // It is a 1-d array
+	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == 1 || a_nd == 2);
 	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
@@ -31,7 +31,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int* bdim = (b_nd == 1) ? b->info.dim : b->info.dim + 1;
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (b_nd == 1) ? 1 : ccv_max(1, b->info.dim[0]));
-	assert(bdim[0] == bias->info.dim[0]);
+	assert(!bias || bdim[0] == bias->info.dim[0]);
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
 	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? a->inc[0] : a->inc[1]) : adim[0];
@@ -43,7 +43,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const float* const ap = a->data.f32 + i * a_batch_inc;
 		float* const bp = b->data.f32 + i * b_batch_inc;
 		parallel_for(j, bdim[0]) {
-			float v = bias->data.f32[j];
+			float v = bias ? bias->data.f32[j] : 0;
 			const float* const wp = w->data.f32 + j * winc[1];
 			int k;
 			for (k = 0; k < adim[0]; k++)
@@ -66,12 +66,13 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[2];
-	assert(bias->info.dim[1] == 0); // It is a 1-d array.
+	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array.
 	const int* dwinc = CCV_IS_TENSOR_VIEW(dw) ? dw->inc : dw->info.dim;
 	if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 	{
 		memset(dw->data.u8, 0, sizeof(float) * dwinc[1] * dw->info.dim[0]);
-		memset(bias->data.u8, 0, sizeof(float) * bias->info.dim[0]);
+		if (bias)
+			memset(bias->data.u8, 0, sizeof(float) * bias->info.dim[0]);
 	}
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == 1 || a_nd == 2);
@@ -81,16 +82,19 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int* gdim = (g_nd == 1) ? g->info.dim : g->info.dim + 1;
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (g_nd == 1) ? 1 : ccv_max(1, g->info.dim[0]));
-	assert(bias->info.dim[0] == gdim[0]);
+	assert(!bias || bias->info.dim[0] == gdim[0]);
 	int i, j;
 	float* gp = g->data.f32;
-	float* bp = bias->data.f32;
 	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? g->inc[0] : g->inc[1]) : gdim[0];
-	for (i = 0; i < batch_size; i++)
+	if (bias)
 	{
-		for (j = 0; j < gdim[0]; j++)
-			bp[j] += gp[j];
-		gp += g_batch_inc;
+		float* bp = bias->data.f32;
+		for (i = 0; i < batch_size; i++)
+		{
+			for (j = 0; j < gdim[0]; j++)
+				bp[j] += gp[j];
+			gp += g_batch_inc;
+		}
 	}
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);

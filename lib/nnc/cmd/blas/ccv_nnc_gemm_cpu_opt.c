@@ -26,7 +26,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
 	assert(b->info.dim[2] == 0); // It is a 2-d array.
 	assert(w->info.dim[2] == 0); // It is a 2-d array
-	assert(bias->info.dim[1] == 0); // It is a 1-d array
+	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == 1 || a_nd == 2);
 	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
@@ -35,7 +35,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int* bdim = (b_nd == 1) ? b->info.dim : b->info.dim + 1;
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (b_nd == 1) ? 1 : ccv_max(1, b->info.dim[0]));
-	assert(bdim[0] == bias->info.dim[0]);
+	assert(!bias || bdim[0] == bias->info.dim[0]);
 	assert(bdim[0] == w->info.dim[0]);
 	assert(adim[0] == w->info.dim[1]);
 	switch (cmd.algorithm)
@@ -69,7 +69,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* bias = (ccv_nnc_tensor_view_t*)outputs[2];
-	assert(bias->info.dim[1] == 0); // It is a 1-d array.
+	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array.
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == 1 || a_nd == 2);
 	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
@@ -78,7 +78,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int* gdim = (g_nd == 1) ? g->info.dim : g->info.dim + 1;
 	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
 	assert(batch_size == (g_nd == 1) ? 1 : ccv_max(1, g->info.dim[0]));
-	assert(bias->info.dim[0] == gdim[0]);
+	assert(!bias || bias->info.dim[0] == gdim[0]);
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);
 	const ccv_nnc_tensor_view_t* w = (input_size == 3) ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
@@ -102,7 +102,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
 			return _ccv_nnc_gemm_back_cpu_opt(g, a, w, dw, bias, h, flags);
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
-			if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && !CCV_IS_TENSOR_VIEW(bias) &&
+			if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) &&
 				(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
 				return _ccv_nnc_gemm_back_cpu_sys(g, a, w, dw, bias, h, flags);
 			return CCV_NNC_EXEC_INVALID;
@@ -111,7 +111,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			break;
 	}
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
-	if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && !CCV_IS_TENSOR_VIEW(bias) &&
+	if (!CCV_IS_TENSOR_VIEW(g) && !CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(dw) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) &&
 		(!w || !CCV_IS_TENSOR_VIEW(w)) && (!h || !CCV_IS_TENSOR_VIEW(h)))
 		return _ccv_nnc_gemm_back_cpu_sys(g, a, w, dw, bias, h, flags);
 #endif
