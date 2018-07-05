@@ -32,7 +32,7 @@ TEST_CASE("random uniform distribution")
 		REQUIRE(x_tensor->data.f32[i] > -8, "it must be bigger than lower bound");
 		REQUIRE(x_tensor->data.f32[i] < 4, "and smaller than upper bound");
 		int b = (int)roundf(x_tensor->data.f32[i] - 0.5) + 8;
-		assert(b >= 0 && b < 4 + 8);
+		b = ccv_max(ccv_min(b, 11), 0);
 		++h[b];
 	}
 	const int count = (int)roundf(100000. / (4 + 8));

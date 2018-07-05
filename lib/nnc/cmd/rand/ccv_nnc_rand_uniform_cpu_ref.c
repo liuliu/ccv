@@ -22,9 +22,12 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, (uint32_t)ap); // I need to fix this for higher quality seed.
 	const float l = cmd.info.blas.a[0];
-	const float s = cmd.info.blas.a[1] - l;
+	const float u = cmd.info.blas.a[1];
 	for (i = 0; i < count; i++)
-		ap[i] = dsfmt_genrand_open_open(&dsfmt) * s + l;
+	{
+		const float r = dsfmt_genrand_open_open(&dsfmt);
+		ap[i] = r * u + (1 - r) * l;
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
