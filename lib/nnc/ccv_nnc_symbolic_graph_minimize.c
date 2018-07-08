@@ -30,7 +30,7 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 	for (i = 0; i < parameter_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t gradient = ccv_nnc_tensor_symbol_for_backward(graph, parameters[i]);
-		const ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_for_backward(graph, parameters[i]);
+		const ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_for_backward(graph, gradient);
 		inputs[0] = gradient;
 		inputs[1] = parameters[i];
 		const ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(graph, inputs[1]);
