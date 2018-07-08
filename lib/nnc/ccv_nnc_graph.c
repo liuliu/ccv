@@ -55,6 +55,14 @@ int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph)
 	return graph->destinations ? graph->destinations->rnum : 0;
 }
 
+void ccv_nnc_graph_exec_set(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_cmd_t cmd)
+{
+	assert(exec.d < graph->exec_info->rnum);
+	assert(exec.graph == graph);
+	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
+	exec_info->cmd = cmd;
+}
+
 void ccv_nnc_graph_exec_set_hint(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_hint_t hint)
 {
 	assert(exec.d < graph->exec_info->rnum);

@@ -46,6 +46,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent")
 	}
 	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, a);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_for_backward(symbolic_graph, s));
+	ccv_nnc_graph_exec_t sgd = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, update_execs[0]);
 	for (i = 0; i < 1000; i++)
 	{
 		a_tensor->data.f32[0] = 10;
@@ -55,10 +56,16 @@ TEST_CASE("solve least square sum with stochastic gradient descent")
 		f_tensor->data.f32[0] = 1;
 		bias_tensor->data.f32[0] = 1;
 		bias_tensor->data.f32[1] = -1;
+		if (i == 750)
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.000001, 0.995, 0.9, 0.9));
+		else if (i == 500)
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.00001, 0.995, 0.9, 0.9));
+		else if (i == 250)
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.0001, 0.995, 0.9, 0.9));
 		ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
 	}
-	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-1, "converge for vector 1");
-	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[2] + a_tensor->data.f32[1] * w_tensor->data.f32[3], 1, 1e-1, "converge for vector 1");
+	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-3, "converge for vector 1");
+	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[2] + a_tensor->data.f32[1] * w_tensor->data.f32[3], 1, 1e-3, "converge for vector 1");
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[2] * w_tensor->data.f32[0] + a_tensor->data.f32[3] * w_tensor->data.f32[1], -1, 1e-1, "converge for vector 2");
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[2] * w_tensor->data.f32[2] + a_tensor->data.f32[3] * w_tensor->data.f32[3], 1, 1e-1, "converge for vector 2");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
