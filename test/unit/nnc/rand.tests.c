@@ -29,8 +29,8 @@ TEST_CASE("random uniform distribution")
 	int h[4 + 8] = {};
 	for (i = 0; i < 100000; i++)
 	{
-		REQUIRE(x_tensor->data.f32[i] > -8, "it must be bigger than lower bound");
-		REQUIRE(x_tensor->data.f32[i] < 4, "and smaller than upper bound");
+		REQUIRE(x_tensor->data.f32[i] > -8 - 1e-5, "it must be bigger than lower bound");
+		REQUIRE(x_tensor->data.f32[i] < 4 + 1e-5, "and smaller than upper bound");
 		int b = (int)roundf(x_tensor->data.f32[i] - 0.5) + 8;
 		b = ccv_max(ccv_min(b, 11), 0);
 		++h[b];

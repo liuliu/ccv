@@ -1563,7 +1563,6 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 {
 	assert(graph == backward_prep->graph || graph->peer == backward_prep->graph);
 	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
-	const int forward_symbol_size = graph->tensor_symbol_info->rnum;
 	const int tensor_symbol_info_size = backward_prep->tensor_symbol_info_size;
 	const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = backward_prep->exec_symbol_info;
 	const ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info = backward_prep->tensor_symbol_info;
@@ -1876,16 +1875,15 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 	}
 	// Now, everything is done, set the metadata on graph so that we can lookup later for backward symbols
 	if (graph->backward_tensor_symbols)
-		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
+		graph->backward_tensor_symbols = (int*)ccrealloc(graph->backward_tensor_symbols, sizeof(int) * (graph->tensor_symbol_info->rnum + tensor_symbol_info_size));
 	else
-		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum - forward_symbol_size + tensor_symbol_info_size));
-	graph->forward_symbol_size = forward_symbol_size;
+		graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (graph->tensor_symbol_info->rnum + tensor_symbol_info_size));
 	graph->backward_tensor_symbol_size = tensor_symbol_info_size;
 	graph->backward_exec_symbols = graph->backward_tensor_symbols + tensor_symbol_info_size;
-	graph->backward_symbol_size = graph->tensor_symbol_info->rnum - forward_symbol_size;
+	graph->backward_exec_symbol_size = graph->tensor_symbol_info->rnum;
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		graph->backward_tensor_symbols[i] = -1;
-	for (i = 0; i < graph->backward_symbol_size; i++)
+	for (i = 0; i < graph->backward_exec_symbol_size; i++)
 		graph->backward_exec_symbols[i] = -1;
 	ccv_nnc_autograd_tensor_version_t* const autograd_tensor_versions = backward_prep->autograd_tensor_versions;
 	// Assigning for wrt symbols.
@@ -1901,8 +1899,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 		ccv_nnc_tensor_ref_t* const tensor_ref = (ccv_nnc_tensor_ref_t*)ccv_array_get(tensor_ver->ref_version, tensor_ver->c);
 		ccv_nnc_autograd_tensor_symbol_t* autograd_symbol = (ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, tensor_ref->d);
 		graph->backward_tensor_symbols[d] = autograd_symbol->symbol.d;
-		assert(autograd_symbol->symbol.d >= forward_symbol_size);
-		const int dd = autograd_symbol->symbol.d - forward_symbol_size;
+		const int dd = autograd_symbol->symbol.d;
 		const int x = tensor_ref->x;
 		if (tensor_ref->exec_registry && tensor_ref->exec_registry->rnum) // Create no-op node.
 		{
@@ -1985,9 +1982,9 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_backward(const ccv_nnc_symboli
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol)
 {
-	assert(symbol.d >= graph->forward_symbol_size);
-	assert(symbol.d < graph->forward_symbol_size + graph->backward_symbol_size);
-	const int dd = symbol.d - graph->forward_symbol_size;
+	assert(symbol.d >= 0);
+	assert(symbol.d < graph->backward_exec_symbol_size);
+	const int dd = symbol.d;
 	assert(graph->backward_exec_symbols[dd] >= 0);
 	ccv_nnc_graph_exec_symbol_t exec = {
 		.d = graph->backward_exec_symbols[dd],

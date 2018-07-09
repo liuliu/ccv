@@ -93,10 +93,9 @@ struct ccv_nnc_symbolic_graph_s {
 		int exec;
 	} reuse; // The reuse slot for tensor or graph exec symbols.
 	// Start for backward (automatic differentiation) handling
-	int forward_symbol_size;
 	int backward_tensor_symbol_size;
 	int* backward_tensor_symbols;
-	int backward_symbol_size;
+	int backward_exec_symbol_size;
 	int* backward_exec_symbols;
 	// End of backward (automatic differentiation) handling.
 };

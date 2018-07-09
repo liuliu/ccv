@@ -118,12 +118,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 	}
 	if (graph->backward_tensor_symbols)
 	{
-		new_graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (new_graph->forward_symbol_size + new_graph->backward_symbol_size));
-		if (new_graph->forward_symbol_size > 0)
-			memcpy(new_graph->backward_tensor_symbols, graph->backward_tensor_symbols, sizeof(int) * new_graph->forward_symbol_size);
-		new_graph->backward_exec_symbols = new_graph->backward_tensor_symbols + new_graph->forward_symbol_size;
-		if (new_graph->backward_symbol_size > 0)
-			memcpy(new_graph->backward_exec_symbols, graph->backward_exec_symbols, sizeof(int) * new_graph->backward_symbol_size);
+		new_graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (new_graph->backward_tensor_symbol_size + new_graph->backward_exec_symbol_size));
+		if (new_graph->backward_tensor_symbol_size > 0)
+			memcpy(new_graph->backward_tensor_symbols, graph->backward_tensor_symbols, sizeof(int) * new_graph->backward_tensor_symbol_size);
+		new_graph->backward_exec_symbols = new_graph->backward_tensor_symbols + new_graph->backward_tensor_symbol_size;
+		if (new_graph->backward_exec_symbol_size > 0)
+			memcpy(new_graph->backward_exec_symbols, graph->backward_exec_symbols, sizeof(int) * new_graph->backward_exec_symbol_size);
 	}
 	if (subst)
 	{
