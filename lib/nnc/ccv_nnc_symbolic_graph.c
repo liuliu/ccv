@@ -183,7 +183,17 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* cons
 		symbol.d = reuse_tensor_d;
 	} else
 		ccv_array_push(graph->tensor_symbol_info, &symbol_info);
+	if (graph->hooks.tensor_symbol_new.func)
+		graph->hooks.tensor_symbol_new.func(graph->hooks.tensor_symbol_new.context, symbol, info, name);
 	return symbol;
+}
+
+void* ccv_nnc_tensor_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_new_hook_f hook, void* context)
+{
+	void* const prev = graph->hooks.tensor_symbol_new.context;
+	graph->hooks.tensor_symbol_new.func = hook;
+	graph->hooks.tensor_symbol_new.context = context;
+	return prev;
 }
 
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
@@ -235,7 +245,17 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 		alias.d = reuse_tensor_d;
 	} else
 		ccv_array_push(graph->tensor_symbol_info, &alias_info);
+	if (graph->hooks.tensor_symbol_alias_new.func)
+		graph->hooks.tensor_symbol_alias_new.func(graph->hooks.tensor_symbol_alias_new.context, alias, tensor_symbol, ofs, inc, info, name);
 	return alias;
+}
+
+void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context)
+{
+	void* const prev = graph->hooks.tensor_symbol_alias_new.context;
+	graph->hooks.tensor_symbol_alias_new.func = hook;
+	graph->hooks.tensor_symbol_alias_new.context = context;
+	return prev;
 }
 
 ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
@@ -798,7 +818,17 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 		symbol.d = reuse_exec_d;
 	} else
 		ccv_array_push(graph->exec_symbol_info, &symbol_info);
+	if (graph->hooks.graph_exec_symbol_new.func)
+		graph->hooks.graph_exec_symbol_new.func(graph->hooks.graph_exec_symbol_new.context, symbol, cmd, inputs, input_size, outputs, output_size, name);
 	return symbol;
+}
+
+void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context)
+{
+	void* const prev = graph->hooks.graph_exec_symbol_new.context;
+	graph->hooks.graph_exec_symbol_new.func = hook;
+	graph->hooks.graph_exec_symbol_new.context = context;
+	return prev;
 }
 
 void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)

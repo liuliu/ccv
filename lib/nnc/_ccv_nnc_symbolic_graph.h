@@ -98,6 +98,21 @@ struct ccv_nnc_symbolic_graph_s {
 	int backward_exec_symbol_size;
 	int* backward_exec_symbols;
 	// End of backward (automatic differentiation) handling.
+	// Hooks
+	struct {
+		struct {
+			ccv_nnc_tensor_symbol_new_hook_f func;
+			void* context;
+		} tensor_symbol_new;
+		struct {
+			ccv_nnc_tensor_symbol_alias_new_hook_f func;
+			void* context;
+		} tensor_symbol_alias_new;
+		struct {
+			ccv_nnc_graph_exec_symbol_new_hook_f func;
+			void* context;
+		} graph_exec_symbol_new;
+	} hooks;
 };
 
 struct ccv_nnc_tensor_arena_s {
