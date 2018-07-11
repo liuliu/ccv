@@ -636,6 +636,8 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 // This is the comparable part to Caffe's solver or TensorFlow's optimizer. It took a step further than just
 // compute the gradient, but also apply the gradient to update parameters to minimize the loss.
 void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
+// Return the number of saved aux per parameter.
+CCV_WARN_UNUSED(int) ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer);
 
 // Symbolic graph simplification.
 //
