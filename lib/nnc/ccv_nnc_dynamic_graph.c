@@ -457,61 +457,23 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 		int free_symbol = 0;
 		if (!bind->sources || bind->sources->rnum == 0)
 		{
-			int i, j;
-			assert(bind->destinations && bind->destinations->rnum > 0);
-			if (!graph->ws)
-				graph->ws = ccv_array_new(sizeof(int), bind->destinations->rnum, 0);
-			ccv_array_t* const ws = graph->ws;
-			ccv_array_clear(ws);
-			for (i = 0; i < bind->destinations->rnum; i++)
-				ccv_array_add_unique_int(ws, *(int*)ccv_array_get(bind->destinations, i));
-			const int ws_init_size = ws->rnum;
-			// Go through all the exec symbols use this tensor, to see whether they have inputs that has other sources.
-			for (i = 0; i < bind->destinations->rnum;)
+			if (!bind->destinations || bind->destinations->rnum == 0) // This could happen if all symbols used to generate this one is freed.
 			{
-				const int symbol_d = *(int*)ccv_array_get(bind->destinations, i);
-				const ccv_nnc_graph_exec_symbol_t symbol = {
-					.d = symbol_d,
-					.graph = graph->tape
-				};
-				const int* inputs; int input_size;
-				ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, &inputs, &input_size, 0, 0);
-				int flag = 0;
-				for (j = 0; !flag && j < input_size; j++)
-					if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum && inputs[j] != tensor_variable->symbol.d)
-					{
-						ccv_nnc_tensor_variable_graph_bind_t* const other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, inputs[j]);
-						flag = other_bind->index >= 0 || (other_bind->sources && other_bind->sources->rnum > 0);
-					}
-				free_symbol = (free_symbol || !flag);
-				if (flag)
-					++i;
-				else {
-					// It is safe to remove this exec. Have to remove it proactively otherwise I may mess up the iteration.
-					if (i < bind->destinations->rnum - 1)
-						*(int*)ccv_array_get(bind->destinations, i) = *(int*)ccv_array_get(bind->destinations, bind->destinations->rnum - 1);
-					--bind->destinations->rnum;
-					// Go over inputs and remove all references from binded destinations.
-					// and go over outputs remove all references from binded sources.
-					const int* outputs; int output_size;
-					ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, 0, 0, &outputs, &output_size);
-					_ccv_nnc_update_bind_sources_destinations_when_free(graph->tape, symbol_d, graph->binds, inputs, input_size, outputs, output_size);
-					const int* outgoings; int outgoing_size;
-					ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
-					for (j = 0; j < outgoing_size; j++)
-						ccv_array_add_unique_int(ws, outgoings[j]);
-					ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
-				}
-			}
-			if (free_symbol)
-			{
-				// Nothing here requires this symbol, should be able to free it.
-				_ccv_nnc_tensor_variable_graph_bind_free((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, tensor_variable->symbol.d), 1);
+				free_symbol = 1; // Easy case, free it and mark as freed.
 				ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
-				// Now, go over the outgoings, if it is removed, add more to it. Note that the ws array can grow while iterating over.
-				for (i = ws_init_size; i < ws->rnum; i++)
+			} else {
+				int i, j;
+				if (!graph->ws)
+					graph->ws = ccv_array_new(sizeof(int), bind->destinations->rnum, 0);
+				ccv_array_t* const ws = graph->ws;
+				ccv_array_clear(ws);
+				for (i = 0; i < bind->destinations->rnum; i++)
+					ccv_array_add_unique_int(ws, *(int*)ccv_array_get(bind->destinations, i));
+				const int ws_init_size = ws->rnum;
+				// Go through all the exec symbols use this tensor, to see whether they have inputs that has other sources.
+				for (i = 0; i < bind->destinations->rnum;)
 				{
-					const int symbol_d = *(int*)ccv_array_get(ws, i);
+					const int symbol_d = *(int*)ccv_array_get(bind->destinations, i);
 					const ccv_nnc_graph_exec_symbol_t symbol = {
 						.d = symbol_d,
 						.graph = graph->tape
@@ -520,23 +482,66 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 					ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, &inputs, &input_size, 0, 0);
 					int flag = 0;
 					for (j = 0; !flag && j < input_size; j++)
-						if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum)
+						if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum && inputs[j] != tensor_variable->symbol.d)
 						{
 							ccv_nnc_tensor_variable_graph_bind_t* const other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, inputs[j]);
 							flag = other_bind->index >= 0 || (other_bind->sources && other_bind->sources->rnum > 0);
 						}
-					// Went over all the inputs, it turns out no more inputs has other references, safe to remove.
-					if (!flag)
-					{
+					free_symbol = (free_symbol || !flag);
+					if (flag)
+						++i;
+					else {
+						// It is safe to remove this exec. Have to remove it proactively otherwise I may mess up the iteration.
+						if (i < bind->destinations->rnum - 1)
+							*(int*)ccv_array_get(bind->destinations, i) = *(int*)ccv_array_get(bind->destinations, bind->destinations->rnum - 1);
+						--bind->destinations->rnum;
+						// Go over inputs and remove all references from binded destinations.
+						// and go over outputs remove all references from binded sources.
 						const int* outputs; int output_size;
 						ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, 0, 0, &outputs, &output_size);
 						_ccv_nnc_update_bind_sources_destinations_when_free(graph->tape, symbol_d, graph->binds, inputs, input_size, outputs, output_size);
 						const int* outgoings; int outgoing_size;
 						ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
-						// It it has outgoings, add that for further inspection.
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
+					}
+				}
+				if (free_symbol)
+				{
+					// Nothing here requires this symbol, should be able to free it.
+					_ccv_nnc_tensor_variable_graph_bind_free((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, tensor_variable->symbol.d), 1);
+					ccv_nnc_tensor_symbol_free(graph->tape, tensor_variable->symbol);
+					// Now, go over the outgoings, if it is removed, add more to it. Note that the ws array can grow while iterating over.
+					for (i = ws_init_size; i < ws->rnum; i++)
+					{
+						const int symbol_d = *(int*)ccv_array_get(ws, i);
+						const ccv_nnc_graph_exec_symbol_t symbol = {
+							.d = symbol_d,
+							.graph = graph->tape
+						};
+						const int* inputs; int input_size;
+						ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, &inputs, &input_size, 0, 0);
+						int flag = 0;
+						for (j = 0; !flag && j < input_size; j++)
+							if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum)
+							{
+								ccv_nnc_tensor_variable_graph_bind_t* const other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, inputs[j]);
+								flag = other_bind->index >= 0 || (other_bind->sources && other_bind->sources->rnum > 0);
+							}
+						// Went over all the inputs, it turns out no more inputs has other references, safe to remove.
+						if (!flag)
+						{
+							const int* outputs; int output_size;
+							ccv_nnc_graph_exec_symbol_io(graph->tape, symbol, 0, 0, &outputs, &output_size);
+							_ccv_nnc_update_bind_sources_destinations_when_free(graph->tape, symbol_d, graph->binds, inputs, input_size, outputs, output_size);
+							const int* outgoings; int outgoing_size;
+							ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
+							// It it has outgoings, add that for further inspection.
+							for (j = 0; j < outgoing_size; j++)
+								ccv_array_add_unique_int(ws, outgoings[j]);
+							ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
+						}
 					}
 				}
 			}
