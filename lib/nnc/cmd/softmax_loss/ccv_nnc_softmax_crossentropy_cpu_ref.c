@@ -17,7 +17,7 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 	assert(!CCV_IS_TENSOR_VIEW(a));
 	const ccv_nnc_tensor_t* b = inputs[1];
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	assert(output_size == 1);
+	assert(output_size == 2);
 	ccv_nnc_tensor_t* c = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(c));
 	ccv_nnc_tensor_t* d = outputs[1];
@@ -99,11 +99,11 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 {
 	assert(input_size >= 4);
 	assert(output_size >= 1);
-	const ccv_nnc_tensor_t* g = inputs[0];
+	const ccv_nnc_tensor_t* g = inputs[1];
 	assert(!g || !CCV_IS_TENSOR_VIEW(g));
-	const ccv_nnc_tensor_t* b = inputs[2];
+	const ccv_nnc_tensor_t* b = inputs[3];
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	const ccv_nnc_tensor_t* c = inputs[3];
+	const ccv_nnc_tensor_t* c = inputs[4];
 	assert(!CCV_IS_TENSOR_VIEW(c));
 	ccv_nnc_tensor_t* h = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(h));
@@ -124,7 +124,8 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 				float* const cp = c->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
 				for (j = 0; j < count; j++)
-					hp[j] = gp * ((j == label) - cp[j]);
+					hp[j] = gp * cp[j];
+				hp[label] -= gp;
 			} parallel_endfor
 		} else if (b->info.datatype == CCV_32S) {
 			parallel_for(i, batch_size) {
@@ -134,28 +135,25 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 				float* const cp = c->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
 				for (j = 0; j < count; j++)
-					hp[j] = gp * ((j == label) - cp[j]);
+					hp[j] = gp * cp[j];
+				hp[label] -= gp;
 			} parallel_endfor
 		}
 	} else {
+		if (h->data.f32 != c->data.f32) // If not inplace replacement.
+			memcpy(h->data.f32, c->data.f32, sizeof(float) * count * batch_size);
 		if (b->info.datatype == CCV_32F)
 		{
 			parallel_for(i, batch_size) {
-				int j;
 				const int label = (int)(b->data.f32[i] + 0.5);
-				float* const cp = c->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = (j == label) - cp[j];
+				hp[label] -= 1.;
 			} parallel_endfor
 		} else if (b->info.datatype == CCV_32S) {
 			parallel_for(i, batch_size) {
-				int j;
 				const int label = b->data.i32[i];
-				float* const cp = c->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = (j == label) - cp[j];
+				hp[label] -= 1.;
 			} parallel_endfor
 		}
 	}
