@@ -17,11 +17,11 @@ static int _ccv_nnc_relu_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
 	cudnnActivationDescriptor_t relu = ccv_nnc_stream_context_get_activation_descriptor(stream_context);
-	assert_cudnn(cudnnSetActivationDescriptor(relu, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0));
+	CUDNN_ENFORCE(cudnnSetActivationDescriptor(relu, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0));
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	static const float one = 1, zero = 0;
-	assert_cudnn(cudnnActivationForward(cudnn, relu, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
+	CUDNN_ENFORCE(cudnnActivationForward(cudnn, relu, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
 	ccv_nnc_stream_context_return_activation_descriptor(stream_context, relu);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
@@ -36,12 +36,12 @@ static int _ccv_nnc_relu_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
 	cudnnActivationDescriptor_t relu = ccv_nnc_stream_context_get_activation_descriptor(stream_context);
-	assert_cudnn(cudnnSetActivationDescriptor(relu, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0));
+	CUDNN_ENFORCE(cudnnSetActivationDescriptor(relu, CUDNN_ACTIVATION_RELU, CUDNN_PROPAGATE_NAN, 0));
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	static const float one = 1, zero = 0;
-	assert_cudnn(cudnnActivationBackward(cudnn, relu, &one, b.descriptor, b.data.u8, g.descriptor, g.data.u8, b.descriptor, b.data.u8, &zero, h.descriptor, h.data.u8));
+	CUDNN_ENFORCE(cudnnActivationBackward(cudnn, relu, &one, b.descriptor, b.data.u8, g.descriptor, g.data.u8, b.descriptor, b.data.u8, &zero, h.descriptor, h.data.u8));
 	ccv_nnc_stream_context_return_activation_descriptor(stream_context, relu);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);

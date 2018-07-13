@@ -21,7 +21,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
-		assert_cudnn(cudnnTransformTensor(cudnn, &p, a.descriptor, a.data.u8,  &zero, c.descriptor, c.data.u8));
+		CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &p, a.descriptor, a.data.u8,  &zero, c.descriptor, c.data.u8));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
 		return CCV_NNC_EXEC_SUCCESS;
@@ -32,7 +32,7 @@ static int _ccv_nnc_add_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	cudnnOpTensorDescriptor_t add = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
 	cudnnSetOpTensorDescriptor(add, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
-	assert_cudnn(cudnnOpTensor(cudnn, add, &p, a.descriptor, a.data.u8, &q, b.descriptor, b.data.u8, &zero, c.descriptor, c.data.u8));
+	CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &p, a.descriptor, a.data.u8, &q, b.descriptor, b.data.u8, &zero, c.descriptor, c.data.u8));
 	ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, add);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
@@ -53,13 +53,13 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		if (outputs[0])
 		{
 			const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
-			assert_cudnn(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &p));
+			CUDNN_ENFORCE(cudnnSetTensor(cudnn, a.descriptor, a.data.u8, &p));
 			ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		}
 		if (output_size > 1 && outputs[1])
 		{
 			const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
-			assert_cudnn(cudnnSetTensor(cudnn, b.descriptor, b.data.u8, &q));
+			CUDNN_ENFORCE(cudnnSetTensor(cudnn, b.descriptor, b.data.u8, &q));
 			ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 		}
 		return CCV_NNC_EXEC_SUCCESS;
@@ -90,14 +90,14 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	if (a && reduce_a_dim)
 	{
 		size_t a_workspace_size = 0;
-		assert_cudnn(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, gcu.descriptor, acu.descriptor, &a_workspace_size));
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, gcu.descriptor, acu.descriptor, &a_workspace_size));
 		if (a_workspace_size > workspace_size)
 			workspace_size = a_workspace_size;
 	}
 	if (b && reduce_b_dim)
 	{
 		size_t b_workspace_size = 0;
-		assert_cudnn(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, gcu.descriptor, bcu.descriptor, &b_workspace_size));
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_sum, gcu.descriptor, bcu.descriptor, &b_workspace_size));
 		if (b_workspace_size > workspace_size)
 			workspace_size = b_workspace_size;
 	}
@@ -107,9 +107,9 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	{
 		if (reduce_a_dim)
 		{
-			assert_cudnn(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &p, gcu.descriptor, gcu.data.u8, &zero, acu.descriptor, acu.data.u8));
+			CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &p, gcu.descriptor, gcu.data.u8, &zero, acu.descriptor, acu.data.u8));
 		} else {
-			assert_cudnn(cudnnTransformTensor(cudnn, &p, gcu.descriptor, gcu.data.u8,  &zero, acu.descriptor, acu.data.u8));
+			CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &p, gcu.descriptor, gcu.data.u8,  &zero, acu.descriptor, acu.data.u8));
 		}
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(acu);
 	}
@@ -117,9 +117,9 @@ static int _ccv_nnc_add_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	{
 		if (reduce_b_dim)
 		{
-			assert_cudnn(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &q, gcu.descriptor, gcu.data.u8, &zero, bcu.descriptor, bcu.data.u8));
+			CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_sum, 0, 0, workspace, workspace_size, &q, gcu.descriptor, gcu.data.u8, &zero, bcu.descriptor, bcu.data.u8));
 		} else {
-			assert_cudnn(cudnnTransformTensor(cudnn, &q, gcu.descriptor, gcu.data.u8,  &zero, bcu.descriptor, bcu.data.u8));
+			CUDNN_ENFORCE(cudnnTransformTensor(cudnn, &q, gcu.descriptor, gcu.data.u8,  &zero, bcu.descriptor, bcu.data.u8));
 		}
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(bcu);
 	}

@@ -17,7 +17,7 @@ static int _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
 	cudnnPoolingDescriptor_t avg_pool = ccv_nnc_stream_context_get_pooling_descriptor(stream_context);
-	assert_cudnn(cudnnSetPooling2dDescriptor(avg_pool, CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING, CUDNN_NOT_PROPAGATE_NAN,
+	CUDNN_ENFORCE(cudnnSetPooling2dDescriptor(avg_pool, CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING, CUDNN_NOT_PROPAGATE_NAN,
 		cmd.info.size.dim[0], cmd.info.size.dim[1],
 		hint.border.begin[0], hint.border.begin[1],
 		hint.stride.dim[0], hint.stride.dim[1]
@@ -25,7 +25,7 @@ static int _ccv_nnc_avg_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	static const float one = 1, zero = 0;
-	assert_cudnn(cudnnPoolingForward(cudnn, avg_pool, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
+	CUDNN_ENFORCE(cudnnPoolingForward(cudnn, avg_pool, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
 	ccv_nnc_stream_context_return_pooling_descriptor(stream_context, avg_pool);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
@@ -40,7 +40,7 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
 	cudnnPoolingDescriptor_t avg_pool = ccv_nnc_stream_context_get_pooling_descriptor(stream_context);
-	assert_cudnn(cudnnSetPooling2dDescriptor(avg_pool, CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING, CUDNN_NOT_PROPAGATE_NAN,
+	CUDNN_ENFORCE(cudnnSetPooling2dDescriptor(avg_pool, CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING, CUDNN_NOT_PROPAGATE_NAN,
 		cmd.info.size.dim[0], cmd.info.size.dim[1],
 		hint.border.begin[0], hint.border.begin[1],
 		hint.stride.dim[0], hint.stride.dim[1]
@@ -49,7 +49,7 @@ static int _ccv_nnc_avg_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	static const float one = 1, zero = 0;
 	// CUDNN won't touch yData and xData.
-	assert_cudnn(cudnnPoolingBackward(cudnn, avg_pool, &one, g.descriptor, g.data.u8, g.descriptor, g.data.u8, h.descriptor, h.data.u8, &zero, h.descriptor, h.data.u8));
+	CUDNN_ENFORCE(cudnnPoolingBackward(cudnn, avg_pool, &one, g.descriptor, g.data.u8, g.descriptor, g.data.u8, h.descriptor, h.data.u8, &zero, h.descriptor, h.data.u8));
 	ccv_nnc_stream_context_return_pooling_descriptor(stream_context, avg_pool);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);

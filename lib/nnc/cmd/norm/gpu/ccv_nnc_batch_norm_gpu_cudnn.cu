@@ -43,7 +43,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		assert(!CCV_IS_TENSOR_VIEW(saved_mean));
 		ccv_nnc_tensor_t* const saved_inv_std = outputs[4];
 		assert(!CCV_IS_TENSOR_VIEW(saved_inv_std));
-		assert_cudnn(cudnnBatchNormalizationForwardTraining(cudnn, mode, &one, &zero, a.descriptor, a.data.u8, b.descriptor, b.data.u8, scale.descriptor, scale.data.u8, bias->data.u8, cmd.info.bnorm.momentum, mean->data.u8, var->data.u8, cmd.info.bnorm.epsilon, saved_mean->data.u8, saved_inv_std->data.u8));
+		CUDNN_ENFORCE(cudnnBatchNormalizationForwardTraining(cudnn, mode, &one, &zero, a.descriptor, a.data.u8, b.descriptor, b.data.u8, scale.descriptor, scale.data.u8, bias->data.u8, cmd.info.bnorm.momentum, mean->data.u8, var->data.u8, cmd.info.bnorm.epsilon, saved_mean->data.u8, saved_inv_std->data.u8));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale);
@@ -59,7 +59,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		ccv_nnc_tensor_t* const var = inputs[4];
 		assert(!CCV_IS_TENSOR_VIEW(var));
 		const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
-		assert_cudnn(cudnnBatchNormalizationForwardInference(cudnn, mode, &one, &zero, a.descriptor, a.data.u8, b.descriptor, b.data.u8, scale.descriptor, scale.data.u8, bias->data.u8, mean->data.u8, var->data.u8, cmd.info.bnorm.epsilon));
+		CUDNN_ENFORCE(cudnnBatchNormalizationForwardInference(cudnn, mode, &one, &zero, a.descriptor, a.data.u8, b.descriptor, b.data.u8, scale.descriptor, scale.data.u8, bias->data.u8, mean->data.u8, var->data.u8, cmd.info.bnorm.epsilon));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale);
@@ -93,7 +93,7 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_t* const saved_inv_std = inputs[14];
 	ccv_nnc_tensor_t* const dscale = outputs[1];
 	ccv_nnc_tensor_t* const dbias = outputs[2];
-	assert_cudnn(cudnnBatchNormalizationBackward(cudnn, mode, &one, &zero, &one, &zero, a.descriptor, a.data.u8, g.descriptor, g.data.u8, h.descriptor, h.data.u8, scale.descriptor, scale.data.u8, dscale->data.u8, dbias->data.u8, cmd.info.bnorm.epsilon, saved_mean->data.u8, saved_inv_std->data.u8));
+	CUDNN_ENFORCE(cudnnBatchNormalizationBackward(cudnn, mode, &one, &zero, &one, &zero, a.descriptor, a.data.u8, g.descriptor, g.data.u8, h.descriptor, h.data.u8, scale.descriptor, scale.data.u8, dscale->data.u8, dbias->data.u8, cmd.info.bnorm.epsilon, saved_mean->data.u8, saved_inv_std->data.u8));
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);

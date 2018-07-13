@@ -23,7 +23,7 @@ static int _ccv_nnc_dropout_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(!CCV_IS_TENSOR_VIEW(mask));
 	const int tensor_count = ccv_nnc_tensor_count(mask->info);
 	const size_t reserved_size = CCV_GET_DATA_TYPE_SIZE(mask->info.datatype) * tensor_count;
-	assert_cudnn(cudnnDropoutForward(cudnn, dropout, a.descriptor, a.data.u8, b.descriptor, b.data.u8, mask->data.u8, reserved_size));
+	CUDNN_ENFORCE(cudnnDropoutForward(cudnn, dropout, a.descriptor, a.data.u8, b.descriptor, b.data.u8, mask->data.u8, reserved_size));
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	ccv_nnc_stream_context_return_dropout_descriptor(stream_context, dropout);
@@ -44,7 +44,7 @@ static int _ccv_nnc_dropout_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(!CCV_IS_TENSOR_VIEW(mask));
 	const int tensor_count = ccv_nnc_tensor_count(mask->info);
 	const size_t reserved_size = CCV_GET_DATA_TYPE_SIZE(mask->info.datatype) * tensor_count;
-	assert_cudnn(cudnnDropoutBackward(cudnn, dropout, g.descriptor, g.data.u8, h.descriptor, h.data.u8, mask->data.u8, reserved_size));
+	CUDNN_ENFORCE(cudnnDropoutBackward(cudnn, dropout, g.descriptor, g.data.u8, h.descriptor, h.data.u8, mask->data.u8, reserved_size));
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
 	ccv_nnc_stream_context_return_dropout_descriptor(stream_context, dropout);

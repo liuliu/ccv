@@ -808,7 +808,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t*
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
 // Prepare the model to be trained, the input specifies the batch size etc.
 // Input size technically is not needed, here is a safety check.
-void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size);
+void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss);
 // Draw the model out as a graph.
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out);
 // Fit a model to a given input / output.

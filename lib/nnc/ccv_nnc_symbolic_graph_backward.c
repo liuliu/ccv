@@ -863,7 +863,10 @@ static int _ccv_nnc_symbolic_graph_backward_prep_prune_ops(const ccv_nnc_symboli
 			assert(ccv_nnc_cmd_is_backward(cmd) || cmd.cmd == CCV_NNC_NOOP);
 			for (i = 0; i < forw_exec->output_size * 2 + forw_exec->input_size; i++)
 				if (!(i >= forw_exec->output_size && i < forw_exec->output_size + forw_exec->input_size &&
-					forw_exec->inputs[i - forw_exec->output_size] < 0)) // If the inputs is empty, no need.
+					forw_exec->inputs[i - forw_exec->output_size] < 0) &&  // If the input is empty, no need.
+					!(i >= forw_exec->output_size + forw_exec->input_size && i < forw_exec->output_size * 2 + forw_exec->input_size &&
+					forw_exec->outputs[i - forw_exec->output_size - forw_exec->input_size] < 0) && // If the output is empty, no need.
+					!(i < forw_exec->output_size && forw_exec->outputs[i] < 0)) // If the output is empty for gradient, no need.
 					node->input_bitmasks[i >> 6] |= ((uint64_t)1 << (i & 63));
 			for (i = 0; i < forw_exec->input_size; i++)
 				if (!(forw_exec->inputs[i] < 0)) // If the inputs is empty, no need.

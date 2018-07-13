@@ -64,21 +64,21 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
 			break;
 		default: // -1: Using preferences to find a suitable algorithm
-			assert_cudnn(cudnnGetConvolutionForwardAlgorithm(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, 0, &algo));
+			CUDNN_ENFORCE(cudnnGetConvolutionForwardAlgorithm(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, CUDNN_CONVOLUTION_FWD_PREFER_FASTEST, 0, &algo));
 	}
 
 	size_t workspace_size = 0;
-	assert_cudnn(cudnnGetConvolutionForwardWorkspaceSize(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, algo, &workspace_size));
+	CUDNN_ENFORCE(cudnnGetConvolutionForwardWorkspaceSize(cudnn, a.descriptor, w.descriptor, conv.descriptor, b.descriptor, algo, &workspace_size));
 	void* workspace = 0;
 	// TODO: If error, return OOM
 	if (workspace_size)
 		cudaMalloc(&workspace, workspace_size);
 	static const float one = 1, zero = 0;
-	assert_cudnn(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
+	CUDNN_ENFORCE(cudnnConvolutionForward(cudnn, &one, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, algo, workspace, workspace_size, &zero, b.descriptor, b.data.u8));
 	if (input_size > 2 && inputs[2])
 	{
 		const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
-		assert_cudnn(cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8));
+		CUDNN_ENFORCE(cudnnAddTensor(cudnn, &one, bias.descriptor, bias.data.u8, &one, b.descriptor, b.data.u8));
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 	}
 	if (workspace)
@@ -108,7 +108,7 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 	int count = 0;
 	cudnnConvolutionFwdAlgoPerf_t perfs[CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
+	CUDNN_ENFORCE(cudnnFindConvolutionForwardAlgorithmEx(cudnn, a.descriptor, a.data.u8, w.descriptor, w.data.u8, conv.descriptor, b.descriptor, b.data.u8, CCV_NNC_CMD_CUDNN_CONV_FWD_ALGO_COUNT, &count, perfs, workmem, max_workspace_size));
 	cudaFree(workmem);
 	int i;
 	cudnnConvolutionFwdAlgo_t algorithm;
@@ -208,11 +208,11 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			filter_algo = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_WINOGRAD_NONFUSED;
 			break;
 		default: // -1: Using preferences to find a suitable algorithm
-			assert_cudnn(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
+			CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterAlgorithm(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, CUDNN_CONVOLUTION_BWD_FILTER_PREFER_FASTEST, 0, &filter_algo));
 	}
 
 	size_t workspace_size = 0;
-	assert_cudnn(cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, filter_algo, &workspace_size));
+	CUDNN_ENFORCE(cudnnGetConvolutionBackwardFilterWorkspaceSize(cudnn, a.descriptor, g.descriptor, conv.descriptor, dw.descriptor, filter_algo, &workspace_size));
 	void* workspace = 0;
 	// TODO: If error, return OOM
 	if (workspace_size)
@@ -220,19 +220,19 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	static const float one = 1, zero = 0;
 	if ((flags & CCV_NNC_ACCUMULATE_OUTPUT)) // accumulating results to bias and dw
 	{
-		assert_cudnn(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &one, dw.descriptor, dw.data.u8));
+		CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &one, dw.descriptor, dw.data.u8));
 		if (output_size > 2 && outputs[2])
 		{
 			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-			assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
+			CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &one, bias.descriptor, bias.data.u8));
 			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 		}
 	} else {
-		assert_cudnn(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &zero, dw.descriptor, dw.data.u8));
+		CUDNN_ENFORCE(cudnnConvolutionBackwardFilter(cudnn, &one, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, filter_algo, workspace, workspace_size, &zero, dw.descriptor, dw.data.u8));
 		if (output_size > 2 && outputs[2])
 		{
 			const ccv_nnc_cudnn_tensor_view_descriptor_t bias = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[2]);
-			assert_cudnn(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
+			CUDNN_ENFORCE(cudnnConvolutionBackwardBias(cudnn, &one, g.descriptor, g.data.u8, &zero, bias.descriptor, bias.data.u8));
 			ccv_nnc_cudnn_deinit_tensor_view_descriptor(bias);
 		}
 	}
@@ -266,15 +266,15 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				data_algo = CUDNN_CONVOLUTION_BWD_DATA_ALGO_WINOGRAD_NONFUSED;
 				break;
 			default: // -1: Using preferences to find a suitable algorithm
-				assert_cudnn(cudnnGetConvolutionBackwardDataAlgorithm(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST, 0, &data_algo));
+				CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataAlgorithm(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, CUDNN_CONVOLUTION_BWD_DATA_PREFER_FASTEST, 0, &data_algo));
 		}
 		size_t workspace_size = 0;
-		assert_cudnn(cudnnGetConvolutionBackwardDataWorkspaceSize(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, data_algo, &workspace_size));
+		CUDNN_ENFORCE(cudnnGetConvolutionBackwardDataWorkspaceSize(cudnn, w.descriptor, g.descriptor, conv.descriptor, h.descriptor, data_algo, &workspace_size));
 		void* workspace = 0;
 		// TODO: If error, return OOM
 		if (workspace_size)
 			cudaMalloc(&workspace, workspace_size);
-		assert_cudnn(cudnnConvolutionBackwardData(cudnn, &one, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, data_algo, workspace, workspace_size, &zero, h.descriptor, h.data.u8));
+		CUDNN_ENFORCE(cudnnConvolutionBackwardData(cudnn, &one, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, data_algo, workspace, workspace_size, &zero, h.descriptor, h.data.u8));
 		if (workspace)
 			cudaFreeAsync(workspace, stream);
 		ccv_nnc_cudnn_deinit_filter_descriptor(w);
@@ -308,7 +308,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
 	int count = 0;
 	cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
+	CUDNN_ENFORCE(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
 	int i;
 	cudnnConvolutionBwdFilterAlgo_t filter_algorithm;
 	for(i = 0; i < count; i++)
@@ -318,7 +318,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 			break;
 		}
 	cudnnConvolutionBwdDataAlgoPerf_t data_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT];
-	assert_cudnn(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
+	CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
 	cudnnConvolutionBwdDataAlgo_t data_algorithm;
 	for(i = 0; i < count; i++)
 		if ((size_t)data_perfs[i].memory <= max_workspace_size && data_perfs[i].status == CUDNN_STATUS_SUCCESS)

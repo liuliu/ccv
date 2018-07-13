@@ -54,9 +54,9 @@ CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_st
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context);
 
 #ifdef NDEBUG
-#define assert_cublas(status) status
+#define CUBLAS_ENFORCE(status) status
 #else
-#define assert_cublas(status) {                                   \
+#define CUBLAS_ENFORCE(status) {                                  \
 	if (status != CUBLAS_STATUS_SUCCESS) {                        \
 		printf("[%s:%d]:CUBLAS - Error: %d\n",                    \
 				__FILE__, __LINE__, (int)status);                 \
@@ -90,9 +90,9 @@ void ccv_nnc_stream_context_return_reduce_tensor_descriptor(const ccv_nnc_stream
 void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_context_t* const stream_context, cudnnTensorDescriptor_t tensor_desc);
 
 #ifdef NDEBUG
-#define assert_cudnn(status) status
+#define CUDNN_ENFORCE(status) status
 #else
-#define assert_cudnn(status) {                                    \
+#define CUDNN_ENFORCE(status) {                                   \
 	if (status != CUDNN_STATUS_SUCCESS) {                         \
 		printf("[%s:%d]:CUDNN - Error: %s\n",                     \
 				__FILE__, __LINE__, cudnnGetErrorString(status)); \

@@ -51,7 +51,6 @@ static int _ccv_nnc_softmax_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
 	assert(!CCV_IS_TENSOR_VIEW(g));
 	const ccv_nnc_tensor_t* b = inputs[2];
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	assert(output_size == 1);
 	ccv_nnc_tensor_t* h = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(h));
 	const int axis_count = ccv_nnc_tensor_nd(g->info.dim);
