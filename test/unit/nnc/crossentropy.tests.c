@@ -21,13 +21,15 @@ TEST_CASE("compare softmax + categorical crossentropy v.s. softmax crossentropy 
 	const ccv_nnc_tensor_symbol_t loss0 = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "loss0");
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(b0, label), TENSOR_SYMBOL_LIST(loss0), "categorical crossentropy");
 	const ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(2, 3), "b1");
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(a, label), TENSOR_SYMBOL_LIST(b1, NO_TENSOR_SYMBOL), "softmax crossentropy");
+	const ccv_nnc_tensor_symbol_t loss1 = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(2, 3), "loss1");
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(a, label), TENSOR_SYMBOL_LIST(loss1, b1), "softmax crossentropy");
 	ccv_nnc_graph_exec_symbol_autogen(graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(loss0), TENSOR_SYMBOL_LIST(a), SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph));
 	const ccv_nnc_tensor_symbol_t dloss0 = ccv_nnc_tensor_symbol_for_backward(graph, loss0);
-	ccv_nnc_graph_exec_symbol_new(graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(dloss0), "set 1");
 	const ccv_nnc_tensor_symbol_t da0 = ccv_nnc_tensor_symbol_for_backward(graph, a);
-	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(b1), TENSOR_SYMBOL_LIST(a), SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph));
+	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(loss1), TENSOR_SYMBOL_LIST(a), SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph));
+	const ccv_nnc_tensor_symbol_t dloss1 = ccv_nnc_tensor_symbol_for_backward(graph, loss1);
+	ccv_nnc_graph_exec_symbol_new(graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(dloss0, dloss1), "set 1");
 	const ccv_nnc_tensor_symbol_t da1 = ccv_nnc_tensor_symbol_for_backward(graph, a);
 	ccv_nnc_graph_exec_symbol_autogen(graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);

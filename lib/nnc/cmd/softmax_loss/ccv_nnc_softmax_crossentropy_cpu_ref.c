@@ -19,25 +19,25 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 	assert(!CCV_IS_TENSOR_VIEW(b));
 	assert(output_size == 2);
 	ccv_nnc_tensor_t* c = outputs[0];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	assert(!c || !CCV_IS_TENSOR_VIEW(c));
 	ccv_nnc_tensor_t* d = outputs[1];
-	assert(!d || !CCV_IS_TENSOR_VIEW(d));
+	assert(!CCV_IS_TENSOR_VIEW(d));
 	const int axis_count = ccv_nnc_tensor_nd(a->info.dim);
 	const int batch_size = axis_count < 2 ? 1 : a->info.dim[0];
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
-		{ assert(a->info.dim[i] == c->info.dim[i]); }
-	if (d)
+		{ assert(a->info.dim[i] == d->info.dim[i]); }
+	if (c)
 	{
 		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
-			{ assert(b->info.dim[i] == d->info.dim[i]); }
+			{ assert(b->info.dim[i] == c->info.dim[i]); }
 		if (b->info.datatype == CCV_32F)
 		{
 			parallel_for(i, batch_size) {
 				int j;
 				float* const ap = a->data.f32 + i * count;
-				float* const cp = c->data.f32 + i * count;
+				float* const dp = d->data.f32 + i * count;
 				double maxval = ap[0];
 				for (j = 1; j < count; j++)
 					if (ap[j] > maxval)
@@ -45,19 +45,19 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 				const int label = (int)(b->data.f32[i] + 0.5);
 				assert(label >= 0 && label < count);
 				const float p = ap[label] - maxval;
-				d->data.f32[i] = -p; // Assign the loss before we do expf so that we can avoid the logf later to preserve numeric accuracy.
+				c->data.f32[i] = -p; // Assign the loss before we do expf so that we can avoid the logf later to preserve numeric accuracy.
 				double sumval = 0;
 				for (j = 0; j < count; j++)
-					sumval += (cp[j] = expf(ap[j] - maxval));
+					sumval += (dp[j] = expf(ap[j] - maxval));
 				sumval = 1.0 / sumval;
 				for (j = 0; j < count; j++)
-					cp[j] *= sumval;
+					dp[j] *= sumval;
 			} parallel_endfor
 		} else if (b->info.datatype == CCV_32S) {
 			parallel_for(i, batch_size) {
 				int j;
 				float* const ap = a->data.f32 + i * count;
-				float* const cp = c->data.f32 + i * count;
+				float* const dp = d->data.f32 + i * count;
 				double maxval = ap[0];
 				for (j = 1; j < count; j++)
 					if (ap[j] > maxval)
@@ -65,13 +65,13 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 				const int label = b->data.i32[i];
 				assert(label >= 0 && label < count);
 				const float p = ap[label] - maxval;
-				d->data.f32[i] = -p; // Assign the loss before we do expf so that we can avoid the logf later to preserve numeric accuracy.
+				c->data.f32[i] = -p; // Assign the loss before we do expf so that we can avoid the logf later to preserve numeric accuracy.
 				double sumval = 0;
 				for (j = 0; j < count; j++)
-					sumval += (cp[j] = expf(ap[j] - maxval));
+					sumval += (dp[j] = expf(ap[j] - maxval));
 				sumval = 1.0 / sumval;
 				for (j = 0; j < count; j++)
-					cp[j] *= sumval;
+					dp[j] *= sumval;
 			} parallel_endfor
 		}
 	} else {
@@ -97,22 +97,22 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 
 static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
 {
-	assert(input_size >= 4);
+	assert(input_size >= 6);
 	assert(output_size >= 1);
-	const ccv_nnc_tensor_t* g = inputs[1];
+	const ccv_nnc_tensor_t* g = inputs[0];
 	assert(!g || !CCV_IS_TENSOR_VIEW(g));
 	const ccv_nnc_tensor_t* b = inputs[3];
 	assert(!CCV_IS_TENSOR_VIEW(b));
-	const ccv_nnc_tensor_t* c = inputs[4];
-	assert(!CCV_IS_TENSOR_VIEW(c));
+	const ccv_nnc_tensor_t* d = inputs[5];
+	assert(!CCV_IS_TENSOR_VIEW(d));
 	ccv_nnc_tensor_t* h = outputs[0];
 	assert(!CCV_IS_TENSOR_VIEW(h));
-	const int axis_count = ccv_nnc_tensor_nd(c->info.dim);
-	const int batch_size = axis_count < 2 ? 1 : c->info.dim[0];
-	const int count = ccv_nnc_tensor_count(c->info) / batch_size;
+	const int axis_count = ccv_nnc_tensor_nd(d->info.dim);
+	const int batch_size = axis_count < 2 ? 1 : d->info.dim[0];
+	const int count = ccv_nnc_tensor_count(d->info) / batch_size;
 	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && c->info.dim[i] > 0; i++)
-		{ assert(c->info.dim[i] == h->info.dim[i]); }
+	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && d->info.dim[i] > 0; i++)
+		{ assert(d->info.dim[i] == h->info.dim[i]); }
 	if (g)
 	{
 		if (b->info.datatype == CCV_32F)
@@ -121,10 +121,10 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 				int j;
 				const float gp = g->data.f32[i];
 				const int label = (int)(b->data.f32[i] + 0.5);
-				float* const cp = c->data.f32 + i * count;
+				float* const dp = d->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
 				for (j = 0; j < count; j++)
-					hp[j] = gp * cp[j];
+					hp[j] = gp * dp[j];
 				hp[label] -= gp;
 			} parallel_endfor
 		} else if (b->info.datatype == CCV_32S) {
@@ -132,16 +132,16 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 				int j;
 				const float gp = g->data.f32[i];
 				const int label = b->data.i32[i];
-				float* const cp = c->data.f32 + i * count;
+				float* const dp = d->data.f32 + i * count;
 				float* const hp = h->data.f32 + i * count;
 				for (j = 0; j < count; j++)
-					hp[j] = gp * cp[j];
+					hp[j] = gp * dp[j];
 				hp[label] -= gp;
 			} parallel_endfor
 		}
 	} else {
-		if (h->data.f32 != c->data.f32) // If not inplace replacement.
-			memcpy(h->data.f32, c->data.f32, sizeof(float) * count * batch_size);
+		if (h->data.f32 != d->data.f32) // If not inplace replacement.
+			memcpy(h->data.f32, d->data.f32, sizeof(float) * count * batch_size);
 		if (b->info.datatype == CCV_32F)
 		{
 			parallel_for(i, batch_size) {
