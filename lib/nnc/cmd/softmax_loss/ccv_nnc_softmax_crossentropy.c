@@ -15,7 +15,7 @@ static int _ccv_nnc_softmax_crossentropy_forw_bitmask(const int input_size, cons
 
 static int _ccv_nnc_softmax_crossentropy_allow_inplace_forw(const int input_idx, const int output_idx)
 {
-	return (input_idx == 0 && output_idx == 0);
+	return (input_idx == 0 && output_idx == 1);
 }
 
 static int _ccv_nnc_softmax_crossentropy_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
@@ -30,6 +30,8 @@ static int _ccv_nnc_softmax_crossentropy_back_bitmask(const int input_size, cons
 static int _ccv_nnc_softmax_crossentropy_allow_inplace_back(const int input_idx, const int output_idx)
 {
 	if (input_idx == 1 && output_idx == 0)
+		return 1;
+	if (input_idx == 2 && output_idx == 0)
 		return 1;
 	else if (input_idx == 5 && output_idx == 0)
 		return 1;
