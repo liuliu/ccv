@@ -21,7 +21,7 @@ TEST_CASE("compare softmax + categorical crossentropy v.s. softmax crossentropy 
 	const ccv_nnc_tensor_symbol_t loss0 = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "loss0");
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(b0, label), TENSOR_SYMBOL_LIST(loss0), "categorical crossentropy");
 	const ccv_nnc_tensor_symbol_t b1 = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(2, 3), "b1");
-	const ccv_nnc_tensor_symbol_t loss1 = ccv_nnc_tensor_symbol_new(graph, CPU_TENSOR_NHWC(2, 3), "loss1");
+	const ccv_nnc_tensor_symbol_t loss1 = ccv_nnc_tensor_symbol_new(graph, ccv_nnc_tensor_auto, "loss1");
 	ccv_nnc_graph_exec_symbol_new(graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(a, label), TENSOR_SYMBOL_LIST(loss1, b1), "softmax crossentropy");
 	ccv_nnc_graph_exec_symbol_autogen(graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_backward(graph, TENSOR_SYMBOL_LIST(loss0), TENSOR_SYMBOL_LIST(a), SYMBOLIC_GRAPH_SOURCES(graph), SYMBOLIC_GRAPH_DESTINATIONS(graph));

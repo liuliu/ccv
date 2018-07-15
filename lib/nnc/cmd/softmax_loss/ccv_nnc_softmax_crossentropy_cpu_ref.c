@@ -115,6 +115,8 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 		{ assert(d->info.dim[i] == h->info.dim[i]); }
 	if (g)
 	{
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+			{ assert(b->info.dim[i] == g->info.dim[i]); }
 		if (b->info.datatype == CCV_32F)
 		{
 			parallel_for(i, batch_size) {
