@@ -47,7 +47,7 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		ccv_nnc_tensor_param_t c_info = outputs[0]->info;
 		c_info.dim[0] = batch_size;
 		c_info.dim[1] = 1;
-		ccv_nnc_tensot_t c_tensor = ccv_nnc_tensor(outputs[0]->data.f32, c_info, 0);
+		ccv_nnc_tensor_t c_tensor = ccv_nnc_tensor(outputs[0]->data.f32, c_info, 0);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)&c_tensor);
 		cudnnReduceTensorDescriptor_t reduce_max = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
 		cudnnSetReduceTensorDescriptor(reduce_max, CUDNN_REDUCE_TENSOR_MAX, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
@@ -96,8 +96,6 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 {
 	assert(input_size >= 6);
 	assert(output_size >= 1);
-	const ccv_nnc_tensor_t* g = inputs[0];
-	assert(!g || !CCV_IS_TENSOR_VIEW(g));
 	const ccv_nnc_tensor_t* b = inputs[3];
 	assert(!CCV_IS_TENSOR_VIEW(b));
 	const ccv_nnc_tensor_t* d = inputs[5];
@@ -119,9 +117,23 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);
 	else if (b->info.datatype == CCV_32S)
 		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, h->data.f32);
-	if (g)
+	if (inputs[0])
 	{
-		// TODO: multiply the weights of g.
+		cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
+		static const float one = 1, zero = 0;
+		assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
+		ccv_nnc_tensor_param_t g_info = inputs[0]->info;
+		g_info.dim[0] = batch_size;
+		g_info.dim[1] = 1;
+		ccv_nnc_tensor_t g_tensor = ccv_nnc_tensor(inputs[0]->data.f32, g_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)&g_tensor);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t hcu = ccv_nnc_cudnn_get_tensor_view_descriptor_for_op(stream_context, (const ccv_nnc_tensor_view_t*)h);
+		cudnnOpTensorDescriptor_t mul = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
+		cudnnSetOpTensorDescriptor(mul, CUDNN_OP_TENSOR_MUL, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, mul, &one, hcu.descriptor, hcu.data.u8, &one, g.descriptor, g.data.u8, &zero, hcu.descriptor, hcu.data.u8));
+		ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, mul);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(hcu);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

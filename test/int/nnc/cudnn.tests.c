@@ -951,7 +951,7 @@ TEST_CASE("compare softmax cross entropy backward")
 	for (i = 0; i < 10; i++)
 		hb->data.f32[i] = (i + 1) * 9;
 	for (i = 0; i < 10; i++)
-		hg->data.f32[i] = 1;
+		hg->data.f32[i] = i * 0.1;
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb, hg), TENSOR_LIST(a, b, g), 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc, hd), 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, 0, 0, hb, hc, hd), TENSOR_LIST(hh, 0), 0);
