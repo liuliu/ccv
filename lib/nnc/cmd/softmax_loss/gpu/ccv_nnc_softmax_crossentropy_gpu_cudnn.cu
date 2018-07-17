@@ -36,18 +36,23 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
 	static const float one = 1, zero = 0;
 	CUDNN_ENFORCE(cudnnSoftmaxForward(cudnn, CUDNN_SOFTMAX_ACCURATE, CUDNN_SOFTMAX_MODE_INSTANCE, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 	if (outputs[0])
 	{
 		const int axis_count = ccv_nnc_tensor_nd(inputs[0]->info.dim);
 		const int batch_size = axis_count < 2 ? 1 : inputs[0]->info.dim[0];
 		const int count = ccv_nnc_tensor_count(inputs[0]->info) / batch_size;
-		const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
+		assert(!CCV_IS_TENSOR_VIEW(outputs[0]));
+		// Be explicit the c tensor size.
+		ccv_nnc_tensor_param_t c_info = outputs[0]->info;
+		c_info.dim[0] = batch_size;
+		c_info.dim[1] = 1;
+		ccv_nnc_tensot_t c_tensor = ccv_nnc_tensor(outputs[0]->data.f32, c_info, 0);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t c = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)&c_tensor);
 		cudnnReduceTensorDescriptor_t reduce_max = ccv_nnc_stream_context_get_reduce_tensor_descriptor(stream_context);
 		cudnnSetReduceTensorDescriptor(reduce_max, CUDNN_REDUCE_TENSOR_MAX, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN, CUDNN_REDUCE_TENSOR_NO_INDICES, CUDNN_32BIT_INDICES);
 		size_t workspace_size = 0;
-		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_max, c.descriptor, c.descriptor, &workspace_size));
+		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_max, a.descriptor, c.descriptor, &workspace_size));
 		void* workspace = 0;
 		if (workspace_size)
 			cudaMalloc(&workspace, workspace_size);
@@ -61,6 +66,7 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		else if (inputs[0]->info.datatype == CCV_32S)
 			_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, inputs[0]->data.f32, outputs[0]->data.f32);
 	}
+	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -82,8 +88,7 @@ __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, 
 __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, const int count, const int* const label, float* const h)
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
-		const int idx = label[i];
-		h[i * count + idx] -= 1;
+		h[i * count + label[i]] -= 1;
 	}
 }
 
@@ -116,7 +121,7 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, h->data.f32);
 	if (g)
 	{
-		// TODO: multiple the weights of g.
+		// TODO: multiply the weights of g.
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

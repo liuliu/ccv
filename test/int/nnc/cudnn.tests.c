@@ -928,6 +928,55 @@ TEST_CASE("compare softmax cross entropy forward")
 
 TEST_CASE("compare softmax cross entropy backward")
 {
+	if (!ccv_nnc_cmd_ok(CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+		!ccv_nnc_cmd_ok(CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN))
+		return;
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10, 100), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10), 0);
+	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10, 100), 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10), 0);
+	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 10, 100), 0);
+	ccv_nnc_tensor_t* ha = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 100), 0);
+	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10), 0);
+	ccv_nnc_tensor_t* hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10), 0);
+	ccv_nnc_tensor_t* hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 100), 0);
+	ccv_nnc_tensor_t* hg = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10), 0);
+	ccv_nnc_tensor_t* hh = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 100), 0);
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 0);
+	int i = 0;
+	for (i = 0; i < 1000; i++)
+		ha->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+	for (i = 0; i < 10; i++)
+		hb->data.f32[i] = (i + 1) * 9;
+	for (i = 0; i < 10; i++)
+		hg->data.f32[i] = 1;
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb, hg), TENSOR_LIST(a, b, g), 0);
+	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hb), TENSOR_LIST(hc, hd), 0);
+	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(hg, 0, 0, hb, hc, hd), TENSOR_LIST(hh, 0), 0);
+	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, b), TENSOR_LIST(c, d), 0);
+	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, 0, 0, b, c, d), TENSOR_LIST(h, 0), 0);
+	ccv_nnc_tensor_t* tc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10), 0);
+	ccv_nnc_tensor_t* td = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 100), 0);
+	ccv_nnc_tensor_t* th = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(10, 100), 0);
+	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(c, d, h), TENSOR_LIST(tc, td, th), 0);
+	REQUIRE_TENSOR_EQ(tc, hc, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_TENSOR_EQ(td, hd, "GPU computed output should be the same as CPU computed ones");
+	REQUIRE_TENSOR_EQ(th, hh, "GPU computed output should be the same as CPU computed ones");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+	ccv_nnc_tensor_free(h);
+	ccv_nnc_tensor_free(ha);
+	ccv_nnc_tensor_free(hb);
+	ccv_nnc_tensor_free(hc);
+	ccv_nnc_tensor_free(hd);
+	ccv_nnc_tensor_free(hh);
+	ccv_nnc_tensor_free(tc);
+	ccv_nnc_tensor_free(td);
+	ccv_nnc_tensor_free(th);
 }
 
 #include "case_main.h"
