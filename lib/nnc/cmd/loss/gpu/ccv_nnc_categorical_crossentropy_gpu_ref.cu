@@ -37,6 +37,8 @@ static int _ccv_nnc_categorical_crossentropy_forw(const ccv_nnc_cmd_t cmd, const
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const int device = ccv_nnc_stream_context_get_device(stream_context);
+	cudaSetDevice(device);
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
 		{ assert(b->info.dim[i] == c->info.dim[i]); }
 	if (b->info.datatype == CCV_32F)
@@ -105,6 +107,8 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
 		{ assert(a->info.dim[i] == h->info.dim[i]); }
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+	const int device = ccv_nnc_stream_context_get_device(stream_context);
+	cudaSetDevice(device);
 	_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
 	if (g)
 	{

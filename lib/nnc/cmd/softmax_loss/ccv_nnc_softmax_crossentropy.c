@@ -61,7 +61,7 @@ static void _ccv_nnc_softmax_crossentropy_tensor_auto_back(const ccv_nnc_cmd_par
 }
 
 REGISTER_COMMAND(CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_softmax_crossentropy_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_softmax_crossentropy_cpu_ref.c, gpu/ccv_nnc_softmax_crossentropy_gpu_cudnn.cu)
 {
 	registry->bitmask = _ccv_nnc_softmax_crossentropy_forw_bitmask;
 	registry->tensor_auto = _ccv_nnc_softmax_crossentropy_tensor_auto_forw;
@@ -69,7 +69,7 @@ REGISTER_COMMAND(CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD)(ccv_nnc_cmd_registry_t* c
 }
 
 REGISTER_COMMAND(CCV_NNC_SOFTMAX_CROSSENTROPY_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
-	FIND_BACKEND(ccv_nnc_softmax_crossentropy_cpu_ref.c)
+	FIND_BACKEND(ccv_nnc_softmax_crossentropy_cpu_ref.c, gpu/ccv_nnc_softmax_crossentropy_gpu_cudnn.cu)
 {
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_softmax_crossentropy_back_bitmask;
