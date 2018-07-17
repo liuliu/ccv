@@ -47,6 +47,11 @@ void ccv_nnc_deinit_tensor(ccv_nnc_tensor_t* const tensor);
 #endif
 #endif
 
+#define CUDA_NUM_THREADS (512)
+#define CUDA_1D_KERNEL_LOOP(i, n) \
+	for (size_t i = blockIdx.x * blockDim.x + threadIdx.x; i < (n); i += blockDim.x * gridDim.x)
+#define CUDA_GET_BLOCKS(n) (((n) + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS)
+
 extern "C" {
 // Stream context methods to get the underlying objects, note that none of these methods are thread-safe.
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
