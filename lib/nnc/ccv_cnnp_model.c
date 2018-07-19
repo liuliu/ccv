@@ -222,6 +222,11 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		for (i = 0; i < input_size; i++)
 			model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
 		ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
+		model->compiled_unit = cccalloc(1, sizeof(ccv_cnnp_compiled_unit_t) + sizeof(ccv_nnc_tensor_symbol_t) * (model->output_size - 1));
+		model->compiled_unit->trainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		model->compiled_unit->minimizer = minimizer;
+		model->compiled_unit->loss = loss;
+		ccv_cnnp_model_add_to_trainable(model, model->compiled_unit->trainables);
 		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_symbolic_graph_simplify(model->graph,
 			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
@@ -234,6 +239,36 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
+	assert(output_size == model->output_size);
+	assert(model->graph);
+	int i;
+	ccv_cnnp_compiled_unit_t* const compiled_unit = model->compiled_unit;
+	if (!compiled_unit->graph)
+	{
+		assert(model->output_size > 0);
+		ccv_nnc_tensor_symbol_t f[model->output_size];
+		for (i = 0; i < model->output_size; i++)
+		{
+			const ccv_nnc_tensor_symbol_t fit = compiled_unit->fits[i] = ccv_nnc_tensor_symbol_new(model->graph, outputs[i]->info, 0);
+			f[i] = ccv_nnc_tensor_symbol_new(model->graph, ccv_nnc_tensor_auto, 0);
+			ccv_nnc_graph_exec_symbol_new(model->graph, compiled_unit->loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(f[i]), 0);
+		}
+		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+		const int trainable_size = compiled_unit->trainables->rnum;
+		compiled_unit->updated_trainables = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * trainable_size);
+		const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_unit->minimizer);
+		compiled_unit->saved_aux = (ccv_nnc_tensor_symbol_map_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size);
+		ccv_nnc_graph_exec_symbol_t* const update_parameter_execs = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size);
+		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_unit->minimizer, f, model->output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_unit->trainables, 0), trainable_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_unit->updated_trainables, compiled_unit->saved_aux, update_parameter_execs);
+		ccv_nnc_symbolic_graph_set_destinations(model->graph, update_parameter_execs, trainable_size);
+		ccfree(update_parameter_execs);
+		ccv_nnc_symbolic_graph_compile(model->graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_unit->graph, &compiled_unit->tensor_arena, &compiled_unit->graph_exec_arena);
+	}
+	for (i = 0; i < input_size; i++)
+		ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, model->inputs[i], inputs[i]);
+	for (i = 0; i < output_size; i++)
+		ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, compiled_unit->fits[i], outputs[i]);
+	ccv_nnc_graph_run(compiled_unit->graph, 0, 0, TRAVERSE_FULL);
 }
 
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out)
@@ -258,6 +293,20 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	return input->io;
 }
 
+static void _ccv_cnnp_compiled_unit_free(ccv_cnnp_compiled_unit_t* const compiled_unit)
+{
+	ccv_array_free(compiled_unit->trainables);
+	if (compiled_unit->graph)
+		ccv_nnc_graph_free(compiled_unit->graph);
+	if (compiled_unit->tensor_arena)
+		ccv_nnc_tensor_arena_free(compiled_unit->tensor_arena);
+	if (compiled_unit->graph_exec_arena)
+		ccv_nnc_graph_exec_arena_free(compiled_unit->graph_exec_arena);
+	if (compiled_unit->saved_aux)
+		ccfree(compiled_unit->saved_aux);
+	ccfree(compiled_unit);
+}
+
 void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 {
 	if (model->isa->deinit)
@@ -274,5 +323,7 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 		ccfree(model->inputs);
 	if (model->graph)
 		ccv_nnc_symbolic_graph_free(model->graph);
+	if (model->compiled_unit)
+		_ccv_cnnp_compiled_unit_free(model->compiled_unit);
 	ccfree(model);
 }
