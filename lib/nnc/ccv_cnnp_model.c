@@ -243,6 +243,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 	assert(model->graph);
 	int i;
 	ccv_cnnp_compiled_unit_t* const compiled_unit = model->compiled_unit;
+	assert(compiled_unit);
 	if (!compiled_unit->graph)
 	{
 		assert(model->output_size > 0);
@@ -274,7 +275,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_bind_t bind = {
-				.symbol = model->outputs[i],
+				.symbol = compiled_unit->fits[i],
 				.tensor = outputs[i]
 			};
 			ccv_array_push(tensor_binds, &bind);
@@ -294,6 +295,8 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
 {
 	if (model->graph)
 		ccv_nnc_symbolic_graph_dot(model->graph, flags, out);
+	if (model->compiled_unit && model->compiled_unit->graph)
+		ccv_nnc_graph_dot(model->compiled_unit->graph, flags, out);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa = {};
@@ -323,6 +326,8 @@ static void _ccv_cnnp_compiled_unit_free(ccv_cnnp_compiled_unit_t* const compile
 		ccv_nnc_graph_exec_arena_free(compiled_unit->graph_exec_arena);
 	if (compiled_unit->saved_aux)
 		ccfree(compiled_unit->saved_aux);
+	if (compiled_unit->updated_trainables)
+		ccfree(compiled_unit->updated_trainables);
 	ccfree(compiled_unit);
 }
 

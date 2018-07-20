@@ -291,7 +291,7 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 {
 	// inputs: gradient, forw prop input, w
 	// outputs:  output gradient, weight updates, bias updates [unused]
-	assert(input_size == 3 && output_size >= 2);
+	assert(input_size >= 2 && output_size >= 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);

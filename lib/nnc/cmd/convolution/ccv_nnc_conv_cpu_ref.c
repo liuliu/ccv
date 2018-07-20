@@ -89,7 +89,7 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	// inputs: gradient, forw prop input, [w]
 	// outputs: [output gradient], weight updates, bias updates
-	assert((input_size == 2 && output_size >= 2) || (input_size == 3 && output_size >= 2));
+	assert(input_size >= 2 && output_size >= 2);
 	const ccv_nnc_tensor_view_t* g = (ccv_nnc_tensor_view_t*)inputs[0]; // gradients
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[1];
 	ccv_nnc_tensor_t* w = outputs[1];

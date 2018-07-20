@@ -180,8 +180,16 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		outputs[0] = convolution_output;
 }
 
+static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+{
+	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
+	ccv_array_push(trainables, &self->weights);
+	ccv_array_push(trainables, &self->bias);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.build = _ccv_cnnp_convolution_build,
+	.add_to_trainable = _ccv_cnnp_convolution_add_to_trainable,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params)
@@ -253,8 +261,16 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 		outputs[0] = dense_output;
 }
 
+static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+{
+	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
+	ccv_array_push(trainables, &self->weights);
+	ccv_array_push(trainables, &self->bias);
+}
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.build = _ccv_cnnp_dense_build,
+	.add_to_trainable = _ccv_cnnp_dense_add_to_trainable,
 };
 
 ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params)

@@ -39,9 +39,15 @@ TEST_CASE("compile simple cifar-10 model")
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
 		})
 	));
-	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 128, 3, 31, 31);
+	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 31,31, 3), 0);
+	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1), 0);
+	ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor));
+	CNNP_MODEL_GEN(sequential, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(sequential);
+	ccv_nnc_tensor_free(input_tensor);
+	ccv_nnc_tensor_free(output_tensor);
 }
 
 TEST_CASE("inception layer for model")
@@ -78,6 +84,7 @@ TEST_CASE("inception layer for model")
 	ccv_cnnp_model_t* inception = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output));
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 1, 3, 256, 256);
 	ccv_cnnp_model_compile(inception, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	CNNP_MODEL_GEN(inception, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(inception);
 }
 

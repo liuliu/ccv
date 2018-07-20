@@ -1735,7 +1735,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
 		if (!node->outgoings)
-			break;
+			continue;
 		for (i = 0; i < node->outgoings->rnum; i++)
 		{
 			int outgoing = *(int*)ccv_array_get(node->outgoings, i);
@@ -2008,7 +2008,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				// cause issues in the future to do so naively. Thus, instead, we only add
 				// the destination to it iff either the tensor is not used at all, or, the
 				// destination is on the same stream as of the tensor block some way.
-				int flag = !tensor_blocks[assign_ref].tail;;
+				int flag = !tensor_blocks[assign_ref].tail;
 				for (k = 0; !flag && k < tensor_blocks[assign_ref].tail->rnum; k++)
 				{
 					const int idx = *(int*)ccv_array_get(tensor_blocks[assign_ref].tail, k);
@@ -2032,7 +2032,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]));
 		for (j = 0; j < destination_size; j++)
 		{
-			int flag = !tensor_blocks[d].tail;;
+			int flag = !tensor_blocks[d].tail;
 			for (k = 0; !flag && k < tensor_blocks[d].tail->rnum; k++)
 			{
 				const int idx = *(int*)ccv_array_get(tensor_blocks[d].tail, k);
@@ -3484,7 +3484,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					if (tensor_blocks[d].tail)
 						for (k = 0; k < tensor_blocks[d].tail->rnum; k++)
 						{
-							const int incoming = *(int*)ccv_array_get(tensor_blocks[d].tail, j);
+							const int incoming = *(int*)ccv_array_get(tensor_blocks[d].tail, k);
 							if (incoming >= exec_symbol_info_size)
 								continue;
 							assert(incoming >= 0);
