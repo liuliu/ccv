@@ -2379,7 +2379,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_unroll_n(const ccv_nnc_symbolic_
 			ccv_nnc_graph_exec_symbol_t exec_symbol = _ccv_nnc_dup_graph_exec_symbol(dup_graph, unroll_count, dup_exec_ref, dup_tensor_block_ref, tensor_symbol_info, node, idx, max_inputs, max_outputs);
 			inout[idx] |= INCOMING_NODE; /* Mark this node as incoming. */
 			if (!node->outgoings)
-				break;
+				continue;
 			for (i = 0; i < node->outgoings->rnum; i++)
 			{
 				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
