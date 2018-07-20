@@ -262,12 +262,31 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		ccv_nnc_symbolic_graph_minimize(model->graph, compiled_unit->minimizer, f, model->output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_unit->trainables, 0), trainable_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), compiled_unit->updated_trainables, compiled_unit->saved_aux, update_parameter_execs);
 		ccv_nnc_symbolic_graph_set_destinations(model->graph, update_parameter_execs, trainable_size);
 		ccfree(update_parameter_execs);
-		ccv_nnc_symbolic_graph_compile(model->graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_unit->graph, &compiled_unit->tensor_arena, &compiled_unit->graph_exec_arena);
+		ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
+		for (i = 0; i < input_size; i++)
+		{
+			const ccv_nnc_tensor_bind_t bind = {
+				.symbol = model->inputs[i],
+				.tensor = inputs[i]
+			};
+			ccv_array_push(tensor_binds, &bind);
+		}
+		for (i = 0; i < output_size; i++)
+		{
+			const ccv_nnc_tensor_bind_t bind = {
+				.symbol = model->outputs[i],
+				.tensor = outputs[i]
+			};
+			ccv_array_push(tensor_binds, &bind);
+		}
+		ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_unit->graph, &compiled_unit->tensor_arena, &compiled_unit->graph_exec_arena);
+		ccv_array_free(tensor_binds);
+	} else {
+		for (i = 0; i < input_size; i++)
+			ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, model->inputs[i], inputs[i]);
+		for (i = 0; i < output_size; i++)
+			ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, compiled_unit->fits[i], outputs[i]);
 	}
-	for (i = 0; i < input_size; i++)
-		ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, model->inputs[i], inputs[i]);
-	for (i = 0; i < output_size; i++)
-		ccv_nnc_tensor_bind_symbol(compiled_unit->tensor_arena, compiled_unit->fits[i], outputs[i]);
 	ccv_nnc_graph_run(compiled_unit->graph, 0, 0, TRAVERSE_FULL);
 }
 
