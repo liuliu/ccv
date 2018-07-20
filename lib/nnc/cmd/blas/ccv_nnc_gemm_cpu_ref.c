@@ -99,7 +99,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(gdim[0] == dw->info.dim[0]);
 	assert(adim[0] == dw->info.dim[1]);
 	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == 1) ? a->inc[0] : a->inc[1]) : adim[0];
-	gp = g->data.f32;
 	for (i = 0; i < batch_size; i++)
 	{
 		const float* const gp = g->data.f32 + i * g_batch_inc;

@@ -43,7 +43,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_DIRECT:
 			return _ccv_nnc_gemm_forw_cpu_opt(a, w, bias, b);
 		case CCV_NNC_CMD_OPT_GEMM_ALGO_SYSTEM:
-			if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias) && !CCV_IS_TENSOR_VIEW(b))
+			if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) && !CCV_IS_TENSOR_VIEW(b))
 				return _ccv_nnc_gemm_forw_cpu_sys(a, w, bias, b);
 			return CCV_NNC_EXEC_INVALID;
 		case -1:
@@ -51,7 +51,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			break;
 	}
 #if (defined HAVE_CBLAS || defined HAVE_ACCELERATE_FRAMEWORK)
-	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && !CCV_IS_TENSOR_VIEW(bias) && !CCV_IS_TENSOR_VIEW(b))
+	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(w) && (!bias || !CCV_IS_TENSOR_VIEW(bias)) && !CCV_IS_TENSOR_VIEW(b))
 		return _ccv_nnc_gemm_forw_cpu_sys(a, w, bias, b);
 #endif
 	return _ccv_nnc_gemm_forw_cpu_opt(a, w, bias, b);

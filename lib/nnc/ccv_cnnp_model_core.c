@@ -100,6 +100,7 @@ static void _ccv_cnnp_flatten_build(ccv_cnnp_model_t* const super, ccv_nnc_symbo
 	ccv_nnc_tensor_param_t output_params = params;
 	memset(output_params.dim, 0, sizeof(output_params.dim));
 	output_params.dim[0] = ccv_nnc_tensor_get_n(params);
+	assert(output_params.dim[0] > 0);
 	output_params.dim[1] = ccv_nnc_tensor_count(params) / output_params.dim[0];
 	outputs[0] = ccv_nnc_tensor_symbol_alias_new(graph, inputs[0], DIM_ALLOC(), output_params.dim, output_params, 0);
 }

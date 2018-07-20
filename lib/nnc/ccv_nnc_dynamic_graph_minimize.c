@@ -11,6 +11,8 @@
 
 void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const losses, const int loss_size, const ccv_nnc_tensor_variable_t* const dlosses_optional, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux)
 {
+	assert(parameter_size > 0);
+	assert(loss_size > 0);
 	int d, i, j, k;
 	int losses_source_size = 0;
 	// Both f_variable and tensor_variable should be, at least, executed. Otherwise we cannot differentiate.

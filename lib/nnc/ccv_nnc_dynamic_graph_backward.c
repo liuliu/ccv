@@ -14,6 +14,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	int d, i, j, k;
 	assert(input_size == output_size);
 	assert(input_size > 0);
+	assert(output_size > 0);
 	// Both f_variable and tensor_variable should be, at least, executed. Otherwise we cannot differentiate.
 	assert(f_variable->symbol.d >= 0);
 	const ccv_nnc_tensor_variable_graph_bind_t* const f_symbol_extra = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(dynamic_graph->binds, f_variable->symbol.d);
