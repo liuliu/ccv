@@ -181,10 +181,10 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		outputs[0] = convolution_output;
 }
 
-static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(self->super.graph, self->weights);
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
 	const int n = ccv_nnc_tensor_get_n(weight_params);
 	const int count = ccv_nnc_tensor_count(weight_params);
 	const float glorot = sqrtf(2) / sqrtf(count / n + n);
@@ -274,10 +274,10 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 		outputs[0] = dense_output;
 }
 
-static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
-	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(self->super.graph, self->weights);
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
 	const int n = weight_params.dim[0];
 	const int c = weight_params.dim[1];
 	const float glorot = sqrtf(2) / sqrtf(c + n);
@@ -294,6 +294,7 @@ static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, ccv_
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {
 	.build = _ccv_cnnp_dense_build,
+	.init_states = _ccv_cnnp_dense_init_states,
 	.add_to_trainable = _ccv_cnnp_dense_add_to_trainable,
 };
 

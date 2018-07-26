@@ -5,7 +5,7 @@ typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_c
 typedef struct {
 	void (*deinit)(ccv_cnnp_model_t* const self); // It can be nil.
 	void (*build)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size); // Call this graph to build computation. No need to specify input size or output size, as it is defined along in the model already.
-	void (*init_states)(ccv_cnnp_model_t* const self, const ccv_cnnp_state_initializer_f initializer, void* const context); // This is called to init ccv_nnc_tensor_symbol_t with a exec.
+	void (*init_states)(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context); // This is called to init ccv_nnc_tensor_symbol_t with a exec.
 	void (*add_to_trainable)(ccv_cnnp_model_t* const self, ccv_array_t* const trainables); // This is called to add ccv_nnc_tensor_symbol_t to as list of trainables.
 	void (*add_to_output)(ccv_cnnp_model_t* const self, ccv_array_t* const outputs); // This is called to add ccv_nnc_tensor_symbol_t to as list of outputs.
 } ccv_cnnp_model_vtab_t;
@@ -46,10 +46,10 @@ static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_sy
 		self->isa->build(self, graph, inputs, input_size, self->outputs, self->output_size);
 }
 
-static inline void ccv_cnnp_model_init_states(ccv_cnnp_model_t* const self, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static inline void ccv_cnnp_model_init_states(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	if (self->isa->init_states)
-		self->isa->init_states(self, initializer, context);
+		self->isa->init_states(self, graph, initializer, context);
 }
 
 static inline void ccv_cnnp_model_add_to_trainable(ccv_cnnp_model_t* const self, ccv_array_t* const trainables)

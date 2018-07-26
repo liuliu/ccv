@@ -44,12 +44,12 @@ static void _ccv_cnnp_sequential_model_build(ccv_cnnp_model_t* const super, ccv_
 	outputs[0] = input;
 }
 
-static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_init_states(self->sequence[i], initializer, context);
+		ccv_cnnp_model_init_states(self->sequence[i], graph, initializer, context);
 }
 
 static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
@@ -139,12 +139,12 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 	}
 }
 
-static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_init_states(self->sequence[i]->model, initializer, context);
+		ccv_cnnp_model_init_states(self->sequence[i]->model, graph, initializer, context);
 }
 
 static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
@@ -340,7 +340,7 @@ static void _ccv_cnnp_model_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t*
 	ccv_array_t* const model_outputs = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_cnnp_model_add_to_output(model, model_outputs);
 	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(model_outputs, 0), model_outputs->rnum, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
-	ccv_cnnp_model_init_states(model, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
+	ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
 	ccv_array_free(tensor_binds);
 	ccv_array_free(model_outputs);
 }
