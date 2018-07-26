@@ -3915,7 +3915,7 @@ fi
 if [ -d "$cuda_prefix" ]; then
 	DEFINE_MACROS="$DEFINE_MACROS-D HAVE_CUDA "
 
-	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas "
+	MKLDFLAGS="$MKLDFLAGS-lcuda -lcudart -lcublas -lcurand "
 
 	CPPFLAGS="$CPPFLAGS-I$cuda_prefix/include "
 

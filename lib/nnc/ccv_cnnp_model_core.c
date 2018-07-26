@@ -181,6 +181,17 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		outputs[0] = convolution_output;
 }
 
+static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(self->super.graph, self->weights);
+	const int n = ccv_nnc_tensor_get_n(weight_params);
+	const int count = ccv_nnc_tensor_count(weight_params);
+	const float glorot = sqrtf(2) / sqrtf(count / n + n);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, self->weights);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
+}
+
 static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
@@ -190,6 +201,7 @@ static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
 	.build = _ccv_cnnp_convolution_build,
+	.init_states = _ccv_cnnp_convolution_init_states,
 	.add_to_trainable = _ccv_cnnp_convolution_add_to_trainable,
 };
 
@@ -260,6 +272,17 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 		outputs[0] = softmax_output;
 	} else
 		outputs[0] = dense_output;
+}
+
+static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
+	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(self->super.graph, self->weights);
+	const int n = weight_params.dim[0];
+	const int c = weight_params.dim[1];
+	const float glorot = sqrtf(2) / sqrtf(c + n);
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, self->weights);
+	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
 }
 
 static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
