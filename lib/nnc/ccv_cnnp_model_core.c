@@ -172,9 +172,6 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		const ccv_nnc_tensor_symbol_t convolution_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 		const ccv_nnc_graph_exec_symbol_t convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(convolution_output), 0);
 		ccv_nnc_graph_exec_symbol_set_hint(graph, convolution, self->params.hint);
-		for (i = 0; i < CCV_NNC_MAX_DIM + 2; i++)
-			bias_params.dim[i] = 1;
-		ccv_nnc_tensor_set_c(&bias_params, 4, self->filters);
 		if (!self->scale.graph)
 			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		if (!self->bias.graph)
