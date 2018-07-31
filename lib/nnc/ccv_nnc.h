@@ -821,7 +821,14 @@ enum {
 	CCV_CNNP_ACTIVATION_RELU,
 	CCV_CNNP_ACTIVATION_SOFTMAX,
 };
+
+enum {
+	CCV_CNNP_NO_NORM,
+	CCV_CNNP_BATCH_NORM,
+};
+
 typedef struct {
+	int norm;
 	int activation;
 	ccv_nnc_hint_t hint;
 } ccv_cnnp_param_t;

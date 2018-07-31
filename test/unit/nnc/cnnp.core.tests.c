@@ -21,6 +21,7 @@ TEST_CASE("compile simple cifar-10 model")
 			.hint = HINT((2, 2), (0, 0)),
 		}),
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
 		}),
@@ -28,6 +29,7 @@ TEST_CASE("compile simple cifar-10 model")
 			.hint = HINT((2, 2), (0, 0)),
 		}),
 		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
 		}),

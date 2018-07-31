@@ -9,6 +9,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 {
 	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
 		}),
@@ -16,6 +17,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 			.hint = HINT((2, 2), (0, 0)),
 		}),
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
 		}),
@@ -23,6 +25,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 			.hint = HINT((2, 2), (0, 0)),
 		}),
 		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
 		}),
@@ -47,7 +50,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	int c[128];
 	double correct_ratio = 0;
-	for (i = 0; i < 1000; i++)
+	for (i = 0; i < 10000; i++)
 	{
 		for (j = 0; j < 128; j++)
 		{
@@ -66,9 +69,6 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		}
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input, cpu_fit), TENSOR_LIST(input_tensor, fit_tensor), 0);
 		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor));
-		FILE* w = fopen("cifar-10.dot", "w+");
-		ccv_cnnp_model_dot(sequential, CCV_NNC_LONG_DOT_GRAPH, w);
-		fclose(w);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor), TENSOR_LIST(cpu_output), 0);
 		int correct = 0;
 		for (j = 0; j < 128; j++)
