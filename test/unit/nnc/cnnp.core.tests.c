@@ -37,6 +37,10 @@ TEST_CASE("compile simple cifar-10 model")
 			.hint = HINT((2, 2), (0, 0)),
 		}),
 		ccv_cnnp_flatten(),
+		ccv_cnnp_dense(256, (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+		}),
 		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
 		})
