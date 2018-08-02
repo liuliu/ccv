@@ -4,6 +4,7 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
+#include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_SETUP()
 {
@@ -48,10 +49,35 @@ TEST_CASE("compile simple cifar-10 model")
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 31, 31, 3), 0);
+	dsfmt_t dsfmt;
+	int i;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 31 * 31 * 3; i++)
+		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 10), 0);
+	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
+	// Before training, it doesn't fit.
+	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor));
+	int t = 0;
+	float max = output_tensor->data.f32[0];
+	for (i = 1; i < 10; i++)
+		if (output_tensor->data.f32[i] > max)
+			max = output_tensor->data.f32[i], t = i;
+	REQUIRE_NOT_EQ(2, t, "should not fit");
+	// Doing training.
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1), 0);
 	fit_tensor->data.f32[0] = 2;
-	ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor));
+	for (i = 0; i < 100; i++)
+		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor));
+	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
+	// After training, it should fit.
+	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor));
+	t = 0;
+	max = output_tensor->data.f32[0];
+	for (i = 1; i < 10; i++)
+		if (output_tensor->data.f32[i] > max)
+			max = output_tensor->data.f32[i], t = i;
+	REQUIRE_EQ(2, t, "should fit");
 	CNNP_MODEL_GEN(sequential, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(sequential);
 	ccv_nnc_tensor_free(input_tensor);
