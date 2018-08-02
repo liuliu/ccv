@@ -53,7 +53,7 @@ TEST_CASE("compile simple cifar-10 model")
 	int i;
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	for (i = 0; i < 31 * 31 * 3; i++)
-		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
+		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// Before training, it doesn't fit.
