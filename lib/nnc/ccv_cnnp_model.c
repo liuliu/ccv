@@ -365,6 +365,11 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	ccv_cnnp_model_add_to_output(model, model_outputs);
 	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(model_outputs, 0), model_outputs->rnum, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
 	ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
+	for (i = 0; i < saved_aux_size * trainable_size; i++)
+	{
+		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, compiled_data->saved_aux[i].source);
+		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &tensor, 1, 0);
+	}
 	compiled_data->dest_to_evals = ccmalloc(sizeof(ccv_nnc_graph_exec_t) * dest_to_eval_size);
 	compiled_data->dest_to_eval_size = 0;
 	for (i = 0; i < dest_to_eval_size; i++)
