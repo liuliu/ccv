@@ -28,24 +28,25 @@ NNC uses its **symbolic graph** (Level-3 APIs) to trace the operation. When a co
 
 Upon *automatic differentiation*, no tape is used (or, the **symbolic graph** serves as an advanced tape). We simply leverage the ahead of time *automatic differentiation* system implemented in **symbolic graph** to optimize, compile and schedule the actual computation. That means any optimization techniques we implemented on Level-2 or Level-3 APIs will be available to **dynamic graph** as well.
 
-Optimizations Part 1
---------------------
+Optimizations
+-------------
 
 In **PyTorch**, there is a need to ``requires_grad`` such that the framework knows which variable should be discarded to save memory. If it is not done carefully, the memory usage can grow unbounded. **Dynamic graph** here provides ``ccv_nnc_tensor_variable_free`` where when a tensor variable is freed, we will release its memory when it is safe. This method meant to hook up with object finalization methods in host languages (C++'s destructor, Objective-C's ``dealloc``, ``deinit`` in Swift, ``finalize`` in Java, ``tp_dealloc`` in Python).
-
-Optimizations Part 2 (Not Ready)
---------------------------------
-
-At this point, **dynamic graph** looks suspiciously like just another function dispatching mechanism. Ten years ago, when I started ccv, one of the motivation is to implement a function memorization technique, at that time, it is called *cached image processing* to workaround issues that in traditional computer vision pipeline, low level feature extraction passes often shared between different components (face detector, motion tracker etc.). In **symbolic graph**, this is trivially implemented as *common sub-expression elimination* (CSE). CSE cannot be implemented in **dynamic graph** because it cannot look ahead. However, the same memorization technique can be used to avoid duplicate computations.
-
-Because **symbolic graph** formed from **dynamic graph execution** contains the proper data dependencies, memory reduction techniques such as automatic binomial checkpointing can be implemented with a change of cache eviction policy. If we implemented binomial checkpointing in **symbolic graph** as one optimization pass, we can also leverage that upon *automatic differentiation* in **dynamic graph**. The flexibility of sharing the same underlying infrastructure is very satisfying.
 
 Interoperability (Not Ready)
 ----------------------------
 
 There are some sticky issues with interoperability between **static graph** (the **symbolic graph** we formed by hand) with **dynamic graph**. The way they interoperate is through ``CCV_NNC_CUSTOM_FORWARD`` / ``CCV_NNC_CUSTOM_BACKWARD`` functions. When a **static graph** includes a **dynamic graph**, its tape needs to book-keeping for the **dynamic graph**. When a **dynamic graph** includes a **static graph**, it also needs to create a tape at that point for the execution. All these implies significant changes for the ``ccv_nnc_tensor_tape_t`` implementation to accommodate these new requirements.
 
+Future Optimizations
+--------------------
+
+At this point, **dynamic graph** looks suspiciously like just another function dispatching mechanism. Ten years ago, when I started ccv, one of the motivation is to implement a function memorization technique, at that time, it is called *cached image processing* to workaround issues that in traditional computer vision pipeline, low level feature extraction passes often shared between different components (face detector, motion tracker etc.). In **symbolic graph**, this is trivially implemented as *common sub-expression elimination* (CSE). CSE cannot be implemented in **dynamic graph** because it cannot look ahead. However, the same memorization technique can be used to avoid duplicate computations.
+
+Because **symbolic graph** formed from **dynamic graph execution** contains the proper data dependencies, memory reduction techniques such as automatic binomial checkpointing can be implemented with a change of cache eviction policy. If we implemented binomial checkpointing in **symbolic graph** as one optimization pass, we can also leverage that upon *automatic differentiation* in **dynamic graph**. The flexibility of sharing the same underlying infrastructure is very satisfying.
+
 Some Maybes
 -----------
 
 One of the major reason (or the reason) to use **dynamic graph** is its unparalleled debuggability. You can inspect tensors as you go in the code. However, this ability can be retained if the execution is separated from the **dynamic graph** forming. Your code can go a long way by forming computations and the underlying execution could be asynchronous. The synchronization happens only when you inspect these tensors to either debug, or practically, determine the control flow. This also offers limited look ahead ability to **dynamic graph** that enables more shared optimizations from Level-3 APIs. Implementing this is complicated. Synchronization point can easily turned into deadlock point, and the inter-play of **static graph** inside a **dynamic graph** inside a **static graph** could be more delicate. In a world where we modify languages to extract **static graph** (Swift for TensorFlow), the reason to have this kind of sophisticated **dynamic graph** implementation may be mooted.
+
