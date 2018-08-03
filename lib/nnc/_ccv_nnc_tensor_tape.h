@@ -7,6 +7,9 @@
  * CCV - Neural Network Collection
  **********************************************************/
 
+#ifndef GUARD_ccv_nnc_tensor_tape_internal_h
+#define GUARD_ccv_nnc_tensor_tape_internal_h
+
 #include "ccv_nnc.h"
 
 typedef struct {
@@ -32,3 +35,5 @@ struct ccv_nnc_tensor_tape_s {
 	ccv_array_t* tensor_data; // struct of ccv_nnc_tape_tensor_data_array_t
 	ccv_array_t* exec_data; // struct of ccv_nnc_tape_exec_data_array_t
 };
+
+#endif

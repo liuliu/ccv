@@ -1,3 +1,15 @@
+/**********************************************************
+ * C-based/Cached/Core Computer Vision Library
+ * Liu Liu, 2010-02-01
+ **********************************************************/
+
+/**********************************************************
+ * CCV - Neural Network Collection
+ **********************************************************/
+
+#ifndef GUARD_ccv_cnnp_model_internal_h
+#define GUARD_ccv_cnnp_model_internal_h
+
 #include "ccv_nnc.h"
 
 typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_symbol_t symbol);
@@ -71,3 +83,5 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, cc
 	if (self->isa->add_to_output)
 		self->isa->add_to_output(self, outputs);
 }
+
+#endif
