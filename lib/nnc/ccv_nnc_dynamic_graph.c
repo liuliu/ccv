@@ -91,6 +91,8 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor)
 {
 	assert(!tensor_variable->tensor_view);
+	assert(!tensor_variable->alias_ref);
+	tensor_variable->info = tensor->info;
 	tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)((uintptr_t)tensor | 1);
 }
 
