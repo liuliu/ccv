@@ -174,8 +174,8 @@ ccv_nnc_tensor_t* ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const gr
 	assert(!variable_to->alias_ref);
 	if (!variable_to->tensor_view)
 		variable_to->tensor_view = (ccv_nnc_tensor_view_t*)ccv_nnc_tensor_new(0, variable_to->info, 0);
-	tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)variable_to->tensor_view, tensor_variable->info.dim, tensor_variable->ofs, tensor_variable->inc);
-	return 0;
+	tensor_variable->tensor_view = ccv_nnc_tensor_view_new((ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(variable_to->tensor_view), tensor_variable->info.dim, tensor_variable->ofs, tensor_variable->inc);
+	return (ccv_nnc_tensor_t*)tensor_variable->tensor_view;
 }
 
 static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_symbol_t symbol)

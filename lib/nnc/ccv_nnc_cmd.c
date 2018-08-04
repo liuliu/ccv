@@ -386,9 +386,9 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	// If it is no-op, return true, it can deal with any number of parameters.
 	if (cmd.cmd == CCV_NNC_NOOP)
 		return 1;
-	// If it is a custom command, I cannot check it at all, return true.
+	// If it is a custom command, I cannot check it at all, return false.
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
-		return 1;
+		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	if (cmd_registry.bitmask)
@@ -425,45 +425,9 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	assert(backend != CCV_NNC_NO_BACKEND);
 	const int backend_idx = _ccv_nnc_cmd_backend_ph(backend);
 	assert(backend_idx >= 0 && backend_idx < CCV_NNC_BACKEND_COUNT);
-	const ccv_nnc_cmd_registry_t cmd_registry = init_map[cmd_idx].registry;
 	const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[backend_idx];
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
-	uint64_t stack_input_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
-	uint64_t stack_output_bitmasks[CCV_NNC_STACK_BITMASK_ALLOC] = {};
-	assert(CCV_NNC_STACK_BITMASK_ALLOC > 0);
-	uint64_t* input_bitmasks = (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_input_bitmasks;
-	uint64_t* output_bitmasks = (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC) ? (uint64_t*)cccalloc((input_size + 63) / 64, sizeof(uint64_t)) : stack_output_bitmasks;
-	for (i = 0; i < input_size; i++)
-		if (inputs[i])
-		{
-			assert(api_registry.tensor_formats & inputs[i]->info.format);
-			assert(api_registry.tensor_datatypes & inputs[i]->info.datatype);
-			input_bitmasks[i >> 6] |= (uint64_t)1 << (i & 63);
-		}
-	for (i = 0; i < output_size; i++)
-		if (outputs[i])
-		{
-			assert(api_registry.tensor_formats & outputs[i]->info.format);
-			assert(api_registry.tensor_datatypes & outputs[i]->info.datatype);
-			output_bitmasks[i >> 6] |= (uint64_t)1 << (i & 63);
-		}
-	if (cmd_registry.bitmask)
-		// If cannot pass the bitmask check.
-		if (!cmd_registry.bitmask(input_size, output_size, input_bitmasks, (input_size + 63) / 64, output_bitmasks, (output_size + 63) / 64))
-		{
-			if (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
-				ccfree(input_bitmasks);
-			if (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
-				ccfree(output_bitmasks);
-			PRINT(CCV_CLI_VERBOSE, "ccv_nnc_cmd_exec: Invalid I/O\n");
-			return CCV_NNC_EXEC_INVALID; // Return invalid input.
-		}
-	// TODO: Print out warning message.
-	if (input_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
-		ccfree(input_bitmasks);
-	if (output_size > 64 * CCV_NNC_STACK_BITMASK_ALLOC)
-		ccfree(output_bitmasks);
 	// Everything is out, call the underlying implementation.
 	return api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 }
