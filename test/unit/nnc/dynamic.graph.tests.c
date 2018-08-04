@@ -225,4 +225,19 @@ TEST_CASE("compute f(x) = x * log(x) + x, f'(x) when x = 10 (and intermediate re
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("dynamic graph with binded value")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	x_tensor->data.f32[0] = 10;
+	ccv_nnc_tensor_variable_set(graph, x, x_tensor);
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y));
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, y)->data.f32[0], log(10), 1e-5, "dx should equal to the computed result");
+	ccv_nnc_dynamic_graph_free(graph);
+	ccv_nnc_tensor_free(x_tensor);
+}
+
 #include "case_main.h"

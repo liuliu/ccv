@@ -13,6 +13,8 @@
 #include "ccv_nnc.h"
 #include "ccv_nnc_internal.h"
 
+#define CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv) ((uintptr_t)(tv) & 1)
+#define CCV_NNC_TENSOR_VIEW(tv) ((ccv_nnc_tensor_view_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
 
 struct ccv_nnc_tensor_variable_s {
 	int index;

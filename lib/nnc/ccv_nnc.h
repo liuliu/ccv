@@ -99,7 +99,7 @@ typedef struct ccv_nnc_cmd_s {
 	int algorithm;
 	ccv_nnc_cmd_param_t info;
 	// This has to be the same as the ccv_nnc_cmd_exec_f type.
-	// This is for type CCV_NNC_COMPUTE_CUSTOM
+	// This is for type CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD
 	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* stream_context);
 } ccv_nnc_cmd_t;
 
@@ -706,6 +706,8 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new_impl(ccv_
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 // Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this method.
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
+// Set a tensor on the tensor variable. Tensor variable doesn't take over the life-cycle management of the tensor (in similar way as the tensor binds).
+void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, ccv_nnc_tensor_t* const tensor);
 // Execute a command with given tensor variables, the output is in the output tensor variables.
 int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
 // Compute the gradient of given tensor, with respect to the f. Thus, df / dt.

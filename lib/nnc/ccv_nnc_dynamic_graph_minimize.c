@@ -107,7 +107,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		{
 			ccv_nnc_tensor_bind_t bind = {
 				.symbol = var->symbol,
-				.tensor = (ccv_nnc_tensor_t*)var->tensor_view
+				.tensor = (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(var->tensor_view)
 			};
 			ccv_array_push(tensor_binds, &bind);
 		}
@@ -122,7 +122,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 					.d = i,
 					.graph = dynamic_graph->tape,
 				},
-				.tensor = (ccv_nnc_tensor_t*)bind->tensor_view
+				.tensor = (ccv_nnc_tensor_t*)CCV_NNC_TENSOR_VIEW(bind->tensor_view)
 			};
 			ccv_array_push(tensor_binds, &b);
 		}
