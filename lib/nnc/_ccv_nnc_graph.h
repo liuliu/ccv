@@ -35,8 +35,8 @@ typedef struct {
 	ccv_nnc_hint_t hint;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	int update_size;
-	ccv_nnc_tensor_t** updates;
 	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
+	ccv_nnc_tensor_t** updates;
 	ccv_nnc_graph_tensor_wrap_t** tensor_wraps;
 	// Below are only relevant to sub-graph nodes (case_of, while).
 	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.

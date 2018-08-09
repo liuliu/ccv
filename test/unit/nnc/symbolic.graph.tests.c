@@ -31,7 +31,7 @@ TEST_CASE("compile symbolic graph of one node")
 	a_tensor->data.f32[0] = 1.2;
 	b_tensor->data.f32[0] = 2.3;
 	ccv_nnc_graph_exec_t prod_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, prod);
-	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(prod_exec), GRAPH_EXEC_LIST(prod_exec));
+	ccv_nnc_graph_run(graph, 0, 0, 0, GRAPH_EXEC_LIST(prod_exec), GRAPH_EXEC_LIST(prod_exec));
 	REQUIRE(a_tensor->data.f32 == c_tensor->data.f32, "trivially in-place operation, should point to the same memory region");
 	REQUIRE_EQ_WITH_TOLERANCE(c_tensor->data.f32[0], 1.2 * 2.3, 1e-6, "should be equal to 1.2 * 2.3");
 	ccv_nnc_graph_free(graph);
@@ -121,7 +121,7 @@ TEST_CASE("set tensor symbol shape after computation specified")
 	GRAPH_GEN(graph, CCV_NNC_SHORT_DOT_GRAPH);
 	ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, a);
 	a_tensor->data.f32[0] = 1.25;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	REQUIRE_EQ_WITH_TOLERANCE(b_tensor->data.f32[0], logf(1.25), 1e-5, "should be equal to logf(1.25)");
 	ccv_nnc_graph_free(graph);

@@ -71,8 +71,8 @@ TEST_CASE("implement batch norm with fine-grained symbolic graph")
 	ccv_nnc_symbolic_graph_compile(batch_norm_symbolic_graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(batch_norm_symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(batch_norm_symbolic_graph), &batch_norm_graph, &batch_norm_tensor_arena, &batch_norm_graph_exec_arena);
 	ccv_nnc_tensor_t* const bx_tensor = ccv_nnc_tensor_from_symbol(batch_norm_tensor_arena, bx);
 	memcpy(bx_tensor->data.f32, x_tensor->data.f32, sizeof(float) * 8 * 4 * 4 * 10);
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
-	ccv_nnc_graph_run(batch_norm_graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(batch_norm_graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	ccv_nnc_tensor_t* const by_tensor = ccv_nnc_tensor_from_symbol(batch_norm_tensor_arena, by);
 	REQUIRE_TENSOR_EQ(y_tensor, by_tensor, "graph computed result should match batch norm op result");
@@ -156,8 +156,8 @@ TEST_CASE("compare batch norm gradient with fine-grained symbolic graph")
 	ccv_nnc_tensor_t* const dby_tensor = ccv_nnc_tensor_from_symbol(batch_norm_tensor_arena, dby);
 	for (i = 0; i < 2 * 2 * 2 * 10; i++)
 		dby_tensor->data.f32[i] = dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
-	ccv_nnc_graph_run(batch_norm_graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(batch_norm_graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	ccv_nnc_tensor_t* const dbx_tensor = ccv_nnc_tensor_from_symbol(batch_norm_tensor_arena, dbx);
 	REQUIRE_TENSOR_EQ(dx_tensor, dbx_tensor, "graph computed result should match batch norm op result");

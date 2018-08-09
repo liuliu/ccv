@@ -44,7 +44,7 @@ TEST_CASE("write graph (x + y) * (x + y) and read")
 	x_tensor->data.f32[0] = 10;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 8;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], (10 + 8) * (10 + 8), 1e-5, "result should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph_2);

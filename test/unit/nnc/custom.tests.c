@@ -61,7 +61,7 @@ TEST_CASE("custom forward operation with dynamic graph")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	x_tensor->data.f32[0] = 10;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	REQUIRE_EQ_WITH_TOLERANCE(y_tensor->data.f32[0], log(log(10)), 1e-5, "computed result should be identical");
 	ccv_nnc_graph_free(graph);
@@ -92,7 +92,7 @@ TEST_CASE("custom backward operation with dynamic graph")
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	x_tensor->data.f32[0] = 10;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	REQUIRE_EQ_WITH_TOLERANCE(dx_tensor->data.f32[0], 1. / (log(10) * 10), 1e-5, "computed result should be identical");
 	ccv_nnc_graph_free(graph);

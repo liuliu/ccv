@@ -55,7 +55,7 @@ TEST_CASE("dense net with GEMM as the core")
 	b2_tensor->data.f32[0] = 0.2;
 	ccv_nnc_tensor_t* b3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b3);
 	b3_tensor->data.f32[0] = 0.3;
-	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
+	ccv_nnc_graph_run(graph, 0, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_t* xt = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 4), 0);
 	xt->data.f32[0] = 0.472;
@@ -123,7 +123,7 @@ TEST_CASE("dense net with GEMM as the core and autograd")
 	b2_tensor->data.f32[0] = 0.2;
 	ccv_nnc_tensor_t* b3_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b3);
 	b3_tensor->data.f32[0] = 0.3;
-	ccv_nnc_graph_run(graph, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
+	ccv_nnc_graph_run(graph, 0, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_t* dw1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dw1);
 	REQUIRE_EQ_WITH_TOLERANCE((0.235 * 0.886 + 0.912) * 0.472, dw1_tensor->data.f32[0], 1e-5, "the gradient should be equal to a complicated result");

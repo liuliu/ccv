@@ -91,7 +91,7 @@ TEST_CASE("compile symbolic graph with case..of")
 	ccv_nnc_tensor_t* const yt = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2), 0);
 	yt->data.f32[0] = -1;
 	yt->data.f32[1] = 10;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	REQUIRE_TENSOR_EQ(y_tensor, yt, "skip any computation");
 
@@ -133,7 +133,7 @@ TEST_CASE("compile symbolic graph with case..of")
 	ccv_nnc_tensor_t* b05_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b05);
 	b05_tensor->data.f32[0] = -0.2;
 	b05_tensor->data.f32[1] = -0.3;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	const float z01val = 0.5 * 0.1 - 0.28 + 1;
 	yt->data.f32[0] = b03t[0];
@@ -166,7 +166,7 @@ TEST_CASE("compile symbolic graph with case..of")
 	ccv_nnc_tensor_t* b12_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b12);
 	b12_tensor->data.f32[0] = 0.32;
 	b12_tensor->data.f32[1] = -0.2;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	yt->data.f32[0] = 0.32;
 	yt->data.f32[1] = -0.2;
 	for (i = 0; i < 16; i++)
@@ -192,7 +192,7 @@ TEST_CASE("compile symbolic graph with case..of")
 	ccv_nnc_tensor_t* b22_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b22);
 	b22_tensor->data.f32[0] = 3.32;
 	b22_tensor->data.f32[1] = -2;
-	ccv_nnc_graph_run(graph, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	yt->data.f32[0] = 3.32;
 	yt->data.f32[1] = -2;
 	assert(w11_tensor->data.f32 != w21_tensor->data.f32);

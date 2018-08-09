@@ -571,6 +571,13 @@ void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt,
 	graph->sequential = 1;
 }
 
+void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
+{
+	assert(graph->sources && graph->sources->rnum);
+	assert(graph->destinations && graph->destinations->rnum);
+	// TODO: implement algorithm to allocate signals and streams for this graph.
+}
+
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
 {
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)

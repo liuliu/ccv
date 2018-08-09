@@ -37,7 +37,7 @@ TEST_CASE("simplify graph (x + y) * (x + y)")
 	x_tensor->data.f32[0] = 10;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 8;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], (10 + 8) * (10 + 8), 1e-5, "result should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
@@ -76,7 +76,7 @@ TEST_CASE("simplify graph with data transfer")
 	z2_tensor->data.f32[0] = 1.2;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 8;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.2 + 8, 1e-5, "result should be equal");
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[1], 1.2, 1e-5, "result should be equal");
@@ -141,13 +141,13 @@ TEST_CASE("simplify graph with case..of")
 	x_tensor->data.f32[0] = -2;
 	y_tensor->data.f32[0] = 1.1;
 	z_tensor->data.f32[0] = 2.2;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* q_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, q);
 	REQUIRE_EQ_WITH_TOLERANCE(q_tensor->data.f32[0], (-2 + 1.1) + (-2 + 1.1) * 2.2 + (-2 + 1.1) * 2.2, 1e-5, "q should be equal");
 	x_tensor->data.f32[0] = 1.5;
 	y_tensor->data.f32[0] = 1.1;
 	z_tensor->data.f32[0] = 2.2;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	q_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, q);
 	REQUIRE_EQ_WITH_TOLERANCE(q_tensor->data.f32[0], (1.5 + 1.1) * (1.5 + 1.1) * 2.2, 1e-5, "q should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
@@ -196,7 +196,7 @@ TEST_CASE("simplify graph with while, variant 1")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;
@@ -244,7 +244,7 @@ TEST_CASE("simplify graph with while, variant 2")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;
@@ -292,7 +292,7 @@ TEST_CASE("simplify graph with while, variant 3")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;

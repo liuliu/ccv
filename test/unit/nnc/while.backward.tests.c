@@ -62,7 +62,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	y->data.f32[0] = 1.11;
 	g->data.f32[0] = 1;
 	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
-	ccv_nnc_graph_run(graph, tape, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(back_loop));
+	ccv_nnc_graph_run(graph, tape, 0, 0, GRAPH_EXEC_LIST(loop), GRAPH_EXEC_LIST(back_loop));
 	ccv_nnc_graph_free(graph);
 	REQUIRE_EQ_WITH_TOLERANCE(g->data.f32[0], 1.11 * 1.11 * 1.11 * 1.11 * 1.11, 1e-6, "back propagation of 0.34 * 1.11 ^ 5 should be 1.11 ^ 5");
 	ccv_nnc_tensor_tape_free(tape);
@@ -108,7 +108,7 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	x_tensor->data.f32[0] = 1;
 	y_tensor->data.f32[0] = 3.2;
 	v_tensor->data.f32[0] = 0.22;
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* u_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, u);
 	float z0 = 1, y0 = 3.2;
 	int i;
@@ -134,7 +134,7 @@ TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, the
 	ccv_nnc_tensor_t* du_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_for_backward(symbolic_graph, u));
 	du_tensor->data.f32[0] = 1;
 	ccv_nnc_tensor_tape_t* tape = ccv_nnc_tensor_tape_new();
-	ccv_nnc_graph_run(graph, tape, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, tape, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_tensor_t* dy_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dy);
 	// Effectively, we are computing:
 	// D[Log[Log[Log[Log[Log[x * y] * y] * y] * y] * y] * v, y]

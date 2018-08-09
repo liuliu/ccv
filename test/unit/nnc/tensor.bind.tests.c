@@ -54,7 +54,7 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	ccv_nnc_tensor_t* z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_run(graph, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, 0, 0, &source, 1, &destination, 1);
 	int i;
 	float z_val = 0.88;
 	for (i = 0; i < 5; i++)

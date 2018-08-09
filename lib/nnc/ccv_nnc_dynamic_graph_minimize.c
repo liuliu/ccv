@@ -242,7 +242,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		ccv_nnc_graph_exec_symbol_free(dynamic_graph->tape, set_ones);
 	}
 	ccv_array_free(tensor_binds);
-	ccv_nnc_graph_run(graph, 0, 0, 0, 0, 0, 0);
+	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);

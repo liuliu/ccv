@@ -242,6 +242,10 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // Make the graph sequential, thus, do a topological sort so when run the graph, no additional memory will be allocated.
 void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size);
+// Allocate extra streams to make this graph parallel runnable. Note this is compatible with sequential, because sequential
+// concerns with exec command layout in the graph, whereas parallel concerns how many streams to be allocated such that execs
+// within this graph can run in parallel.
+void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph);
 // The sources / destinations.
 void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const sources, const int source_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph);
@@ -584,7 +588,7 @@ void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor_for_while_count(const ccv_nnc_graph_t* const while_graph);
 // In that case, the computation graph still has no loops or cycles, but you can run it multiple times against different
 // versions of the tensors until the condition not met (thus, the tensor is versioned, so you can "backpropagate through time").
-int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, const ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 
 // The API to operate on the symbolic graph is more involved than the concrete graph for while loops.
 // The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while
