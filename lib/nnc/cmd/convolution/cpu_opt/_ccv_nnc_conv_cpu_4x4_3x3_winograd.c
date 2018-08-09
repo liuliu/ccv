@@ -123,7 +123,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_ref(const float* const w, cons
 	}
 }
 
-static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b, ccv_nnc_stream_context_t* const stream_context)
 {
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
@@ -138,13 +138,14 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 	assert(w->info.dim[1] == 3);
 	assert(w->info.dim[2] == 3);
 	const int jump_dim = (bdim[0] + 3) / 4;
+	float* workmem;
 	// allocating workspace memory for kernel reshaping and input reshaping.
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * adim[2] * jump_dim + 36 * w->info.dim[0] * w->info.dim[3]));
+	workmem = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * adim[2] * jump_dim + 36 * w->info.dim[0] * w->info.dim[3]), CCV_TENSOR_CPU_MEMORY);
 #else
 	// Otherwise, just one block.
-	float* const workmem = (float*)ccmalloc(sizeof(float) * (36 * adim[2] + 36 * w->info.dim[0] * w->info.dim[3]));
+	workmem = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * adim[2] + 36 * w->info.dim[0] * w->info.dim[3]), CCV_TENSOR_CPU_MEMORY);
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
@@ -526,7 +527,6 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(const ccv_nnc_tensor_view_t* 
 			}
 		} parallel_endfor
 	}
-	ccfree(workmem);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -624,7 +624,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_sse2(const float* const w, con
 	} parallel_endfor
 }
 
-static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b, ccv_nnc_stream_context_t* const stream_context)
 {
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
@@ -645,10 +645,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 	float* workmem = 0;
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]));
+	workmem = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]), CCV_TENSOR_CPU_MEMORY);
 #else
 	// Otherwise, just one block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]));
+	workmem = ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]), CCV_TENSOR_CPU_MEMORY);
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
@@ -1206,7 +1206,6 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(const ccv_nnc_tensor_view_t*
 			}
 		} parallel_endfor
 	}
-	ccfree(workmem);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 #endif
@@ -1305,7 +1304,7 @@ inline static void _ccv_nnc_winograd_4x4_3x3_gwtg_neon(const float* const w, con
 	} parallel_endfor
 }
 
-static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
+static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b, ccv_nnc_stream_context_t* const stream_context)
 {
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
@@ -1326,10 +1325,10 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 	float* workmem = 0;
 #if FOR_IS_PARALLEL
 	// If we do parallel for, we need to allocate input reshaping for each block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]));
+	workmem = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * dimCx4 * jump_dim + 36 * dimCx4 * w->info.dim[0]), CCV_TENSOR_CPU_MEMORY);
 #else
 	// Otherwise, just one block.
-	ccmemalign((void **)&workmem, 16, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]));
+	workmem = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * (36 * dimCx4 + 36 * dimCx4 * w->info.dim[0]), CCV_TENSOR_CPU_MEMORY);
 #endif
 	if (!workmem)
 		return CCV_NNC_EXEC_OOM;
@@ -1887,19 +1886,18 @@ static int _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(const ccv_nnc_tensor_view_t*
 			}
 		} parallel_endfor
 	}
-	ccfree(workmem);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 #endif
 
-int _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b)
+int _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(const ccv_nnc_tensor_view_t* const a, const ccv_nnc_tensor_t* const w, const ccv_nnc_tensor_t* const bias, const ccv_nnc_hint_t hint, ccv_nnc_tensor_view_t* const b, ccv_nnc_stream_context_t* const stream_context)
 {
 #if defined(HAVE_SSE2)
 	if (w->info.dim[0] % 4 == 0)
-		return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b);
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd_sse2(a, w, bias, hint, b, stream_context);
 #elif defined(HAVE_NEON)
 	if (w->info.dim[0] % 4 == 0)
-		return _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(a, w, bias, hint, b);
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd_neon(a, w, bias, hint, b, stream_context);
 #endif
-	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b);
+	return _ccv_nnc_conv_forw_4x4_3x3_winograd_ref(a, w, bias, hint, b, stream_context);
 }

@@ -13,7 +13,7 @@
 // Shared methods.
 #include "../_ccv_nnc_cpu_ref.h"
 
-static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 5);
 	ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[0];
@@ -180,7 +180,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			int count = 1;
 			for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
 				count *= rdim[x];
-			float* const nscalep = ccmalloc(sizeof(float) * count * 2);
+			float* const nscalep = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * count * 2, CCV_TENSOR_CPU_MEMORY);
 			float* const nbiasp = nscalep + count;
 			for (i[0] = 0; i[0] < rdim[0]; i[0]++)
 			{
@@ -244,7 +244,6 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 				ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
 				bp += (binc[1] - adim[1]) * binc[2] * binc[3];
 			}
-			ccfree(nscalep);
 		}
 	} else {
 		assert(output_size == 1);
@@ -262,7 +261,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		float* const varp = var->data.f32;
 		float* const scalep = scale->data.f32;
 		float* const biasp = bias->data.f32;
-		float* const nscalep = ccmalloc(sizeof(float) * count * 2);
+		float* const nscalep = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * count * 2, CCV_TENSOR_CPU_MEMORY);
 		float* const nbiasp = nscalep + count;
 		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
 		{
@@ -326,12 +325,11 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
 			bp += (binc[1] - adim[1]) * binc[2] * binc[3];
 		}
-		ccfree(nscalep);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 15);
 	assert(output_size == 5);
@@ -385,7 +383,7 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	int gcount = 1, rcount = 1;
 	for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
 		gcount *= gdim[x], rcount *= rdim[x];
-	float* const ah = ccmalloc(sizeof(float) * gcount + sizeof(float) * rcount);
+	float* const ah = (float*)ccv_nnc_stream_context_get_workspace(stream_context, sizeof(float) * gcount + sizeof(float) * rcount, CCV_TENSOR_CPU_MEMORY);
 	float* const sisb = ah + gcount;
 	ccv_nnc_tensor_t sisbt = ccv_nnc_tensor(sisb, scale->info, 0);
 	_ccv_nnc_mul_forw_cpu_ref(1. / batch_size, scale, saved_inv_std, (ccv_nnc_tensor_view_t*)&sisbt);
@@ -486,7 +484,6 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		gp += (ginc[1] - gdim[1]) * ginc[2] * ginc[3];
 		hp += (hinc[1] - gdim[1]) * hinc[2] * hinc[3];
 	}
-	ccfree(ah);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 

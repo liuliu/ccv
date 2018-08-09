@@ -57,7 +57,7 @@ TEST_CASE("compile simple cifar-10 model")
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// Before training, it doesn't fit.
-	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor));
+	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	int t = 0;
 	float max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -69,10 +69,10 @@ TEST_CASE("compile simple cifar-10 model")
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1), 0);
 	fit_tensor->data.f32[0] = target;
 	for (i = 0; i < 100; i++)
-		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor));
+		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// After training, it should fit.
-	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor));
+	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	t = 0;
 	max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)

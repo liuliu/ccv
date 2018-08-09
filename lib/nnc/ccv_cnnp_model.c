@@ -382,7 +382,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	ccv_array_free(model_outputs);
 }
 
-void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size == model->output_size);
 	assert(fit_size == output_size);
@@ -408,7 +408,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		for (i = 0; i < fit_size; i++)
 			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, compiled_data->fits[i], fits[i]);
 	}
-	ccv_nnc_graph_run(compiled_data->graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
 }
 
 static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -444,7 +444,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	ccv_array_free(model_outputs);
 }
 
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size == model->output_size);
 	assert(model->graph);
@@ -460,7 +460,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		for (i = 0; i < output_size; i++)
 			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, model->outputs[i], outputs[i]);
 	}
-	ccv_nnc_graph_run(compiled_data->graph, 0, 0, 0, 0, 0, compiled_data->dest_to_evals, compiled_data->dest_to_eval_size);
+	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, 0, 0, compiled_data->dest_to_evals, compiled_data->dest_to_eval_size);
 }
 
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out)

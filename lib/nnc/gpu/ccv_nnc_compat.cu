@@ -25,6 +25,14 @@ typedef struct {
 		int n;
 		float* data;
 	} ones;
+	struct {
+		size_t workspace_size;
+		void* workspace;
+	} cpu;
+	struct {
+		size_t workspace_size;
+		void* workspace;
+	} gpu;
 #ifdef HAVE_CUDNN
 	cudnnHandle_t cudnn;
 	void* rngs; // user-allocated GPU memory that will hold random number generator states.
@@ -43,6 +51,10 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)ccrealloc(stream_context, sizeof(ccv_nnc_stream_context_compat_t));
+	stream_compat->cpu.workspace = 0;
+	stream_compat->cpu.workspace_size = 0;
+	stream_compat->gpu.workspace = 0;
+	stream_compat->gpu.workspace_size = 0;
 	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 	cudaSetDevice(device);
 	cudaStreamCreate(&stream_compat->stream);
@@ -55,10 +67,54 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
 
+void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	if (mem == CCV_TENSOR_CPU_MEMORY)
+	{
+		if (stream_compat->cpu.workspace_size >= workspace_size)
+			return stream_compat->cpu.workspace;
+		stream_compat->cpu.workspace_size = workspace_size;
+		if (stream_compat->cpu.workspace)
+			ccfree(stream_compat->cpu.workspace);
+		const int success = ccmemalign(&stream_compat->cpu.workspace, 16, workspace_size);
+		return success != 0 ? 0 : stream_compat->cpu.workspace;
+	} else if (mem == CCV_TENSOR_GPU_MEMORY) {
+		if (stream_compat->gpu.workspace_size >= workspace_size)
+			return stream_compat->gpu.workspace;
+		stream_compat->gpu.workspace_size = workspace_size;
+		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		cudaSetDevice(device);
+		if (stream_compat->gpu.workspace)
+			cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+		cudaMalloc(&stream_compat->gpu.workspace, workspace_size);
+		return stream_compat->gpu.workspace;
+	}
+	return 0;
+}
+
+void ccv_nnc_stream_compat_drain(void)
+{
+	if (ccv_nnc_per_thread_gpu_stream_context.cpu.workspace)
+	{
+		ccfree(ccv_nnc_per_thread_gpu_stream_context.cpu.workspace);
+		ccv_nnc_per_thread_gpu_stream_context.cpu.workspace = 0;
+		ccv_nnc_per_thread_gpu_stream_context.cpu.workspace_size = 0;
+	}
+	if (ccv_nnc_per_thread_gpu_stream_context.gpu.workspace)
+	{
+		cudaFreeAsync(ccv_nnc_per_thread_gpu_stream_context.gpu.workspace, ccv_nnc_per_thread_gpu_stream_context.stream);
+		ccv_nnc_per_thread_gpu_stream_context.gpu.workspace = 0;
+		ccv_nnc_per_thread_gpu_stream_context.gpu.workspace_size = 0;
+	}
+}
+
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
-	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 	cudaSetDevice(device);
 	cudaStreamSynchronize(stream_compat->stream);
 }
@@ -66,9 +122,13 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 	cudaSetDevice(device);
 	cudaStreamDestroy(stream_compat->stream);
+	if (stream_compat->cpu.workspace)
+		ccfree(stream_compat->cpu.workspace);
+	if (stream_compat->gpu.workspace)
+		cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
 	if (stream_compat->cublas)
 		cublasDestroy(stream_compat->cublas);
 	if (stream_compat->ones.data)

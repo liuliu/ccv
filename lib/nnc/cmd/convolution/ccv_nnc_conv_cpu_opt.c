@@ -16,7 +16,7 @@ enum {
 	CCV_NNC_CMD_OPT_CONV_ALGO_COUNT
 };
 
-static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[0];
@@ -56,7 +56,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			return CCV_NNC_EXEC_INVALID;
 		case CCV_NNC_CMD_OPT_CONV_ALGO_WINOGRAD:
 			if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[0] <= 1 && hint.stride.dim[1] <= 1)
-				return _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(a, w, bias, hint, b);
+				return _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(a, w, bias, hint, b, stream_context);
 			return CCV_NNC_EXEC_INVALID;
 		case CCV_NNC_CMD_OPT_CONV_ALGO_FFT:
 			return CCV_NNC_EXEC_INVALID; // Placeholder, for fft.
@@ -66,7 +66,7 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	}
 	// If the size is 3x3, and no stride, choose Winograd kernel
 	if (w->info.dim[1] == 3 && w->info.dim[2] == 3 && hint.stride.dim[0] <= 1 && hint.stride.dim[1] <= 1)
-		return _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(a, w, bias, hint, b);
+		return _ccv_nnc_conv_forw_4x4_3x3_winograd_cpu_opt(a, w, bias, hint, b, stream_context);
 	// If the size is 1x1, and no stride, and not a tensor view object, no padding, choose GEMM kernel
 	if (w->info.dim[1] == 1 && w->info.dim[2] == 1 && hint.stride.dim[0] <= 1 && hint.stride.dim[1] <= 1 &&
 		hint.border.begin[0] == 0 && hint.border.begin[1] == 0 && hint.border.end[0] == 0 && hint.border.end[1] == 0 &&

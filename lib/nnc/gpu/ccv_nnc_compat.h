@@ -28,6 +28,8 @@ CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_s
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context);
 void ccv_nnc_deinit_tensor(ccv_nnc_tensor_t* const tensor);
+CCV_WARN_UNUSED(void*) ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem);
+void ccv_nnc_stream_compat_drain(void);
 #ifdef __cplusplus
 }
 #endif

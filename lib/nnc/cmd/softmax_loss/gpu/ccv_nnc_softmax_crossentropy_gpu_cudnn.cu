@@ -24,7 +24,7 @@ __global__ void _ccv_nnc_softmax_crossentropy_forw_kernel(const int batch_size, 
 	}
 }
 
-static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 2);
 	assert(output_size == 2);
@@ -55,12 +55,10 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		CUDNN_ENFORCE(cudnnGetReductionWorkspaceSize(cudnn, reduce_max, a.descriptor, c.descriptor, &workspace_size));
 		void* workspace = 0;
 		if (workspace_size)
-			cudaMalloc(&workspace, workspace_size);
+			workspace = ccv_nnc_stream_context_get_workspace(stream_context, workspace_size, CCV_TENSOR_GPU_MEMORY);
 		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_max, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, c.descriptor, c.data.u8));
 		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_max);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
-		if (workspace_size)
-			cudaFreeAsync(workspace, stream);
 		if (inputs[0]->info.datatype == CCV_32F)
 			_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
 		else if (inputs[0]->info.datatype == CCV_32S)
@@ -92,7 +90,7 @@ __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, 
 	}
 }
 
-static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size >= 6);
 	assert(output_size >= 1);

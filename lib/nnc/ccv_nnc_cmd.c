@@ -302,7 +302,7 @@ uint32_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memo
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
-ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// This is a custom cmd kernel, no need to autotune.
 	if (cmd.cmd == CCV_NNC_NOOP ||
@@ -397,7 +397,9 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	return 0;
 }
 
-int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const ccv_nnc_stream_context_t* const stream_context)
+static void ccv_nnc_stream_context_drain(void);
+
+int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// If it is no-op, return as if succeed already.
 	if (cmd.cmd == CCV_NNC_NOOP)
@@ -429,7 +431,9 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (!api_registry.exec)
 		return CCV_NNC_EXEC_NO_KERNEL;
 	// Everything is out, call the underlying implementation.
-	return api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	int ret = api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	ccv_nnc_stream_context_drain();
+	return ret;
 }
 
 int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
@@ -450,17 +454,59 @@ int ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags)
 struct ccv_nnc_stream_context_s {
 	int type;
 	// Left for implementation yet, the CPU support for stream context.
+	size_t workspace_size;
+	void* workspace;
 };
 
 ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 {
 	ccv_nnc_stream_context_t* stream_context = (ccv_nnc_stream_context_t*)ccmalloc(sizeof(ccv_nnc_stream_context_t));
 	stream_context->type = type;
+	stream_context->workspace_size = 0;
+	stream_context->workspace = 0;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		stream_context = ccv_nnc_init_stream_context(stream_context);
 #endif
 	return stream_context;
+}
+
+#ifndef HAVE_CUDA
+static __thread ccv_nnc_stream_context_t ccv_nnc_per_thread_cpu_stream_context = {
+	.type = CCV_STREAM_CONTEXT_CPU,
+};
+#endif
+
+void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* stream_context, const size_t workspace_size, const int mem)
+{
+#ifdef HAVE_CUDA
+	return ccv_nnc_stream_compat_get_workspace(stream_context, workspace_size, mem);
+#else
+	if (!stream_context)
+		stream_context = &ccv_nnc_per_thread_cpu_stream_context;
+	assert(mem == CCV_TENSOR_CPU_MEMORY);
+	if (stream_context->workspace_size >= workspace_size)
+		return stream_context->workspace;
+	stream_context->workspace_size = workspace_size;
+	if (stream_context->workspace)
+		ccfree(stream_context->workspace);
+	ccmemalign(&stream_context->workspace, 16, workspace_size);
+	return stream_context->workspace;
+#endif
+}
+
+static void ccv_nnc_stream_context_drain(void)
+{
+#ifdef HAVE_CUDA
+	ccv_nnc_stream_compat_drain();
+#else
+	if (ccv_nnc_per_thread_cpu_stream_context.workspace)
+	{
+		ccfree(ccv_nnc_per_thread_cpu_stream_context.workspace);
+		ccv_nnc_per_thread_cpu_stream_context.workspace = 0;
+		ccv_nnc_per_thread_cpu_stream_context.workspace_size = 0;
+	}
+#endif
 }
 
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream_context)
@@ -479,5 +525,7 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_context(stream_context);
 #endif
+	if (CCV_STREAM_GET_CONTEXT(stream_context->type) != CCV_STREAM_CONTEXT_GPU && stream_context->workspace)
+		ccfree(stream_context->workspace);
 	ccfree(stream_context);
 }
