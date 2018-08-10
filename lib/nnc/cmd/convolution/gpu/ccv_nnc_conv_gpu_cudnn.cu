@@ -25,7 +25,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 {
 	assert(input_size >= 2);
 	assert(output_size == 1);
-	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);
@@ -170,7 +169,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// inputs: gradient, forw prop input, [w]
 	// outputs: [output gradient], weight updates, bias updates
 	assert((input_size >= 2 && output_size >= 2));
-	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const int device = ccv_nnc_stream_context_get_device(stream_context);
 	cudaSetDevice(device);

@@ -406,7 +406,11 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		return 0;
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
-		return cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+	{
+		int ret = cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+		ccv_nnc_stream_context_drain();
+		return ret;
+	}
 	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
