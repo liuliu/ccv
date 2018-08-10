@@ -129,11 +129,11 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
 	cudaSetDevice(device);
-	cudaStreamDestroy(stream_compat->stream);
 	if (stream_compat->cpu.workspace)
 		ccfree(stream_compat->cpu.workspace);
 	if (stream_compat->gpu.workspace)
 		cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+	cudaStreamDestroy(stream_compat->stream);
 	if (stream_compat->cublas)
 		cublasDestroy(stream_compat->cublas);
 	if (stream_compat->ones.data)

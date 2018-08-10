@@ -533,8 +533,9 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream_context->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_deinit_stream_context(stream_context);
-#endif
-	if (CCV_STREAM_GET_CONTEXT(stream_context->type) != CCV_STREAM_CONTEXT_GPU && stream_context->workspace)
+#else
+	if (stream_context->workspace)
 		ccfree(stream_context->workspace);
+#endif
 	ccfree(stream_context);
 }
