@@ -184,6 +184,7 @@ enum {
 // Flag is a combination of CPU / GPU and DEVICE_ID
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(const int type);
 CCV_WARN_UNUSED(void*) ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem);
+void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream);
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context);
 

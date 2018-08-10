@@ -79,6 +79,7 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		stream_compat->cpu.workspace_size = workspace_size;
 		if (stream_compat->cpu.workspace)
 			ccfree(stream_compat->cpu.workspace);
+		stream_compat->cpu.workspace = 0;
 		const int success = ccmemalign(&stream_compat->cpu.workspace, 16, workspace_size);
 		return success != 0 ? 0 : stream_compat->cpu.workspace;
 	} else if (mem == CCV_TENSOR_GPU_MEMORY) {
@@ -89,25 +90,29 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		cudaSetDevice(device);
 		if (stream_compat->gpu.workspace)
 			cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+		stream_compat->gpu.workspace = 0;
 		cudaMalloc(&stream_compat->gpu.workspace, workspace_size);
 		return stream_compat->gpu.workspace;
 	}
 	return 0;
 }
 
-void ccv_nnc_stream_compat_drain(void)
+void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 {
-	if (ccv_nnc_per_thread_gpu_stream_context.cpu.workspace)
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	if (stream_compat->cpu.workspace)
 	{
-		ccfree(ccv_nnc_per_thread_gpu_stream_context.cpu.workspace);
-		ccv_nnc_per_thread_gpu_stream_context.cpu.workspace = 0;
-		ccv_nnc_per_thread_gpu_stream_context.cpu.workspace_size = 0;
+		ccfree(stream_compat->cpu.workspace);
+		stream_compat->cpu.workspace = 0;
+		stream_compat->cpu.workspace_size = 0;
 	}
-	if (ccv_nnc_per_thread_gpu_stream_context.gpu.workspace)
+	if (stream_compat->gpu.workspace)
 	{
-		cudaFreeAsync(ccv_nnc_per_thread_gpu_stream_context.gpu.workspace, ccv_nnc_per_thread_gpu_stream_context.stream);
-		ccv_nnc_per_thread_gpu_stream_context.gpu.workspace = 0;
-		ccv_nnc_per_thread_gpu_stream_context.gpu.workspace_size = 0;
+		cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+		stream_compat->gpu.workspace = 0;
+		stream_compat->gpu.workspace_size = 0;
 	}
 }
 

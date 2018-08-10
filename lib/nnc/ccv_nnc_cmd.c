@@ -347,6 +347,8 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					if (k > 0)
 						continue;
 					candid_cmd.algorithm = api_registry.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					// Drain the context, autotune can use excessive amount of memory. Need to drain it now.
+					ccv_nnc_stream_context_drain(stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_mono_time();
 					// Ready to run.
 					int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
@@ -397,8 +399,6 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	return 0;
 }
 
-static void ccv_nnc_stream_context_drain(void);
-
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// If it is no-op, return as if succeed already.
@@ -408,7 +408,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 	{
 		int ret = cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-		ccv_nnc_stream_context_drain();
+		if (!stream_context)
+			ccv_nnc_stream_context_drain(stream_context);
 		return ret;
 	}
 	assert(cmd.cmd != CCV_NNC_GRAPH_FORWARD && cmd.cmd != CCV_NNC_GRAPH_BACKWARD);
@@ -436,7 +437,8 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		return CCV_NNC_EXEC_NO_KERNEL;
 	// Everything is out, call the underlying implementation.
 	int ret = api_registry.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
-	ccv_nnc_stream_context_drain();
+	if (!stream_context)
+		ccv_nnc_stream_context_drain(stream_context);
 	return ret;
 }
 
@@ -494,21 +496,24 @@ void* ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* stream_cont
 	stream_context->workspace_size = workspace_size;
 	if (stream_context->workspace)
 		ccfree(stream_context->workspace);
+	stream_context->workspace = 0;
 	ccmemalign(&stream_context->workspace, 16, workspace_size);
 	return stream_context->workspace;
 #endif
 }
 
-static void ccv_nnc_stream_context_drain(void)
+void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* stream_context)
 {
 #ifdef HAVE_CUDA
-	ccv_nnc_stream_compat_drain();
+	ccv_nnc_stream_compat_drain(stream_context);
 #else
-	if (ccv_nnc_per_thread_cpu_stream_context.workspace)
+	if (!stream_context)
+		stream_context = &ccv_nnc_per_thread_cpu_stream_context;
+	if (stream_context->workspace)
 	{
-		ccfree(ccv_nnc_per_thread_cpu_stream_context.workspace);
-		ccv_nnc_per_thread_cpu_stream_context.workspace = 0;
-		ccv_nnc_per_thread_cpu_stream_context.workspace_size = 0;
+		ccfree(stream_context->workspace);
+		stream_context->workspace = 0;
+		stream_context->workspace_size = 0;
 	}
 #endif
 }
