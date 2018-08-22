@@ -1729,7 +1729,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			++buf_size; \
 		} \
 	} while (0)
-	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx, _, term) {
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx, term) {
 		buf_size = 0; /* save all its parent deps to this buffer */
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
 		if (vector)

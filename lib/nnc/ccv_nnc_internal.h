@@ -202,14 +202,14 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 		_q_ = 1; \
 		_exist_size_[0] = (source_size); \
 		_exist_size_[1] = 0; \
-		int _k_ = 0, _d_ = 0; \
+		int _d_ = 0; \
 		/* After we have that statistics, we can do topsort and run the command. */ \
 		while (_exist_size_[_p_] > 0) \
 		{ \
 			_exist_size_[_q_] = 0; \
-			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
+			for (_i_ = 0; _i_ < _exist_size_[_p_];) \
 			{ \
-				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), _k_, (_incomings_[_exists_[_p_][_i_]].d)); \
+				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), (_incomings_[_exists_[_p_][_i_]].d)); \
 				/* mark as reached */ \
 				if (_incomings_[_exists_[_p_][_i_]].d) \
 				{ \
@@ -217,21 +217,34 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 					_incomings_[_exists_[_p_][_i_]].r = 1; \
 				} \
 				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
-					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
+				{ \
+					if ((nodes)[_exists_[_p_][_i_]].outgoings->rnum == 1) \
 					{ \
-						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+						/* Optimizing for the case have only one child. Go through that directly. */ \
+						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, 0); \
 						--_incomings_[d].c; \
-						/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
 						if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
 						{ \
-							_exists_[_q_][_exist_size_[_q_]] = d; \
-							++_exist_size_[_q_]; \
+							_exists_[_p_][_i_] = d; \
+							continue; \
 						} \
-					} \
+					} else \
+						for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
+						{ \
+							const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+							--_incomings_[d].c; \
+							/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
+							if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
+							{ \
+								_exists_[_q_][_exist_size_[_q_]] = d; \
+								++_exist_size_[_q_]; \
+							} \
+						} \
+				} \
+				++_i_; \
 			} \
 			/* swap p and q. */ \
 			CCV_SWAP(_p_, _q_, _i_ /* using i as temp holder */); \
-			++_k_; \
 		} \
 		for (_i_ = 0; _i_ < (destination_size); _i_++) \
 		{ \
@@ -245,7 +258,7 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 			else if (_incomings_[(destinations)[_i_].d].c > 0) /* Otherwise if incoming is not satisfied, no need to execute (allow subset to get executed, that is). */ \
 				continue; \
 			/* fetch the info for destination node and exec current node. */ \
-			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), _k_, (_incomings_[(destinations)[_i_].d].d)); \
+			visitor(((nodes) + (destinations)[_i_].d), ((destinations)[_i_].d), (_incomings_[(destinations)[_i_].d].d)); \
 		} \
 		if (_heap_mem_) \
 			ccfree(_incomings_); \
@@ -255,7 +268,6 @@ typedef struct {
 	int size;
 	struct {
 		int index;
-		int level;
 		int term;
 	} node[1];
 } ccv_nnc_graph_visit_t;
@@ -265,11 +277,10 @@ static inline void ccv_nnc_graph_visit_free(ccv_nnc_graph_visit_t* graph_visit)
 	ccfree(graph_visit);
 }
 
-#define CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, _node_, _index_, _level_, _term_, ...) { \
+#define CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, _node_, _index_, _term_, ...) { \
 	int _i_; \
 	for (_i_ = 0; _i_ < (graph_visit)->size; _i_++) { \
 		const int _index_ __attribute__((unused)) = (graph_visit)->node[_i_].index; \
-		const int _level_ __attribute__((unused)) = (graph_visit)->node[_i_].level; \
 		const int _term_ __attribute__((unused)) = (graph_visit)->node[_i_].term; \
 		typeof ((nodes)) const _node_ __attribute__((unused)) = (nodes) + _index_; \
 
@@ -278,9 +289,8 @@ static inline void ccv_nnc_graph_visit_free(ccv_nnc_graph_visit_t* graph_visit)
 
 #define ccv_nnc_graph_visit_endfor } }
 
-#define CCV_NNC_GRAPH_VISIT_NEW_VISITOR1(_, _index_, _level_, _term_) \
+#define CCV_NNC_GRAPH_VISIT_NEW_VISITOR1(_, _index_, _term_) \
 	_visit_->node[_visit_->size].index = (_index_); \
-	_visit_->node[_visit_->size].level = (_level_); \
 	_visit_->node[_visit_->size].term = (_term_); \
 	++_visit_->size;
 

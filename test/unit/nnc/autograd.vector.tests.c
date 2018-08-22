@@ -105,9 +105,9 @@ TEST_CASE("autograd with D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2,
 	ccv_nnc_graph_run(graph, 0, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_source(graph_exec_arena)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_destination(graph_exec_arena)));
 	ccv_nnc_tensor_t* tv = ccv_nnc_tensor_from_symbol(tensor_arena, v);
 	ccv_nnc_tensor_t* tdx = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
-	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], logf(0.38) * logf(0.38) + logf(0.38) * (-2.8 * -2.8), 1e-6, "computed result of y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2 should be the same");
-	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * logf(0.38) / 0.38 + (-2.8 * -2.8) / 0.38, 1e-6, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_1 should be the same");
-	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], 2 * -2.8 * logf(0.38), 1e-6, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_2 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tv->data.f32[0], logf(0.38) * logf(0.38) + logf(0.38) * (-2.8 * -2.8), 1e-5, "computed result of y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[0], 2 * logf(0.38) / 0.38 + (-2.8 * -2.8) / 0.38, 1e-5, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_1 should be the same");
+	REQUIRE_EQ_WITH_TOLERANCE(tdx->data.f32[1], 2 * -2.8 * logf(0.38), 1e-5, "computed result of D[y_1 = Log[x_1], y_2 = x_2 ^ 2 => y_1 ^ 2 + y_1 * y_2, x] for x_2 should be the same");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
