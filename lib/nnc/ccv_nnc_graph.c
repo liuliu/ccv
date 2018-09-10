@@ -575,7 +575,47 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
-	// TODO: implement algorithm to allocate signals and streams for this graph.
+	// Algorithm to allocate signals and streams for this graph.
+	ccv_array_t* const empty_streams = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t* const streams = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t** const incomings = cccalloc(graph->exec_info->rnum, sizeof(ccv_array_t*));
+	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+	int i;
+	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+		// Go through the incomings.
+		int stream_idx = -1;
+		if (incomings[idx])
+		{
+			for (i = incomings[idx]->rnum - 1; stream_idx < 0 && i >= 0; i--)
+			{
+				const int s = *(int*)ccv_array_get(incomings[idx], i);
+				assert(s < streams->rnum);
+				const int exec_idx = *(int*)ccv_array_get(streams, s);
+				if (exec_idx == idx)
+					stream_idx = s;
+			}
+			// Go through the rest, to check whether the streams are all used (all its outgoing nodes assigned),
+			// if so, put it into the empty_streams.
+			for (--i; i >= 0; i--)
+			{
+			}
+		}
+		if (stream_idx >= 0)
+			*(int*)ccv_array_get(streams, stream_idx) = idx;
+		else {
+		}
+		node->parallel.stream = stream_idx;
+		if (node->outgoings)
+			for (i = 0; i < node->outgoings->rnum; i++)
+			{
+				const int d = *(int*)ccv_array_get(node->outgoings, i);
+				if (!incomings[d])
+					incomings[d] = ccv_array_new(sizeof(int), 1, 0);
+				ccv_array_push(incomings[d], &idx);
+			}
+	} ccv_nnc_graph_visit_endfor
+	ccv_array_free(empty_streams);
+	ccv_array_free(streams);
 }
 
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)

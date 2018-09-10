@@ -33,6 +33,9 @@ typedef struct {
 	intptr_t alias_ref; // Link to some reference data.
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
+	struct {
+		int stream; // The assigned stream for this to be executed.
+	} parallel;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	int update_size;
 	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
