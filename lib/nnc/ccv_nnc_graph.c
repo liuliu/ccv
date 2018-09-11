@@ -575,34 +575,123 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
+	const int exec_info_size = graph->exec_info->rnum;
+	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
+	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
+	int i, j;
+	// Generate exec dependencies (or, in other words, partial ordering of executions).
+	ccv_sparse_matrix_t* exec_dep = ccv_sparse_matrix_new(exec_info_size, exec_info_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	int* buf = (int*)ccmalloc(sizeof(int) * exec_info_size * 2);
+	int buf_size;
+#define for_block(x, val) \
+	do { \
+		if (((int32_t*)val)[0] > 0) \
+		{ \
+			buf[buf_size * 2] = x; \
+			buf[buf_size * 2 + 1] = ((int32_t*)val)[0] + 1; \
+			++buf_size; \
+		} \
+	} while (0)
+	ccv_nnc_graph_visit_for(visit, exec_info, node, idx, term) {
+		buf_size = 0; /* save all its parent deps to this buffer */
+		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
+		node->parallel.stream = -1; // Set to no stream assigned.
+		if (vector)
+			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
+		if (!node->outgoings)
+			continue;
+		for (i = 0; i < node->outgoings->rnum; i++)
+		{
+			int outgoing = *(int*)ccv_array_get(node->outgoings, i);
+			const int32_t one = 1;
+			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, idx);
+			/* If not found, set, if the current node is the destination node, no need
+			 * set itself as parent of subsequent nodes because its terminal nature. */
+			if (!term && (!cell.i32 || cell.i32[0] == 0))
+				ccv_set_sparse_matrix_cell(exec_dep, outgoing, idx, &one);
+			for (j = 0; j < buf_size; j++) /* set with all idx's dependencies as well */
+			{
+				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2]);
+				/* If not found, set */
+				if (!cell.i32 || cell.i32[0] == 0)
+					ccv_set_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2], &buf[j * 2 + 1]);
+				else {
+					/* Otherwise, set to the longest one */
+					int32_t dep = ccv_max(cell.i32[0], buf[j * 2 + 1]);
+					ccv_set_sparse_matrix_cell(exec_dep, outgoing, buf[j * 2], &dep);
+				}
+			}
+		}
+	} ccv_nnc_graph_visit_endfor
+#undef for_block
+	ccfree(buf);
 	// Algorithm to allocate signals and streams for this graph.
 	ccv_array_t* const empty_streams = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const streams = ccv_array_new(sizeof(int), 0, 0);
-	ccv_array_t** const incomings = cccalloc(graph->exec_info->rnum, sizeof(ccv_array_t*));
-	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
-	int i;
-	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
+	ccv_array_t** const incomings = cccalloc(exec_info_size, sizeof(ccv_array_t*));
+	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 		// Go through the incomings.
 		int stream_idx = -1;
 		if (incomings[idx])
 		{
 			for (i = incomings[idx]->rnum - 1; stream_idx < 0 && i >= 0; i--)
 			{
-				const int s = *(int*)ccv_array_get(incomings[idx], i);
-				assert(s < streams->rnum);
+				const int incoming_idx = *(int*)ccv_array_get(incomings[idx], i);
+				assert(incoming_idx < exec_info_size);
+				const int s = exec_info[incoming_idx].parallel.stream;
+				assert(s >= 0);
 				const int exec_idx = *(int*)ccv_array_get(streams, s);
-				if (exec_idx == idx)
+				if (exec_idx == incoming_idx)
 					stream_idx = s;
 			}
 			// Go through the rest, to check whether the streams are all used (all its outgoing nodes assigned),
 			// if so, put it into the empty_streams.
 			for (--i; i >= 0; i--)
 			{
+				const int incoming_idx = *(int*)ccv_array_get(incomings[idx], i);
+				assert(incoming_idx < exec_info_size);
+				ccv_nnc_graph_exec_info_t* const incoming_exec_info = exec_info + incoming_idx;
+				const int s = incoming_exec_info->parallel.stream;
+				assert(s >= 0);
+				const int exec_idx = *(int*)ccv_array_get(streams, s);
+				if (exec_idx == incoming_idx) // Check if the output of this stream has all assigned.
+				{
+					assert(incoming_exec_info->outgoings);
+					int flag = 0;
+					for (j = 0; !flag && j < incoming_exec_info->outgoings->rnum; j++)
+					{
+						const int d = *(int*)ccv_array_get(incoming_exec_info->outgoings, j);
+						flag = (exec_info[d].parallel.stream < 0); // If some of the output is not assigned.
+					}
+					if (!flag) // All assigned
+						ccv_array_push(empty_streams, &s);
+				}
 			}
 		}
-		if (stream_idx >= 0)
+		// Try to find one in the empty streams.
+		for (i = 0; stream_idx < 0 && i < empty_streams->rnum; i++)
+		{
+			const int s = *(int*)ccv_array_get(empty_streams, i);
+			assert(s >= 0);
+			const int exec_idx = *(int*)ccv_array_get(streams, s);
+			const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, exec_idx);
+			// If there is a path to conclude that exec_idx is before idx, then we can reuse
+			// this stream. Otherwise the work in this "empty stream" could still be ongoing,
+			// and we may delay the following work unnecessarily.
+			if (cell.i32 && cell.i32[0] > 0)
+			{
+				// This stream is lifted out of empty streams.
+				if (i < empty_streams->rnum - 1)
+					*(int*)ccv_array_get(empty_streams, i) = *(int*)ccv_array_get(empty_streams, empty_streams->rnum - 1);
+				--empty_streams->rnum;
+				stream_idx = s;
+			}
+		}
+		if (stream_idx >= 0) // If found, good, update to latest exec in this stream.
 			*(int*)ccv_array_get(streams, stream_idx) = idx;
-		else {
+		else { // Create a new stream.
+			stream_idx = streams->rnum;
+			ccv_array_push(streams, &idx);
 		}
 		node->parallel.stream = stream_idx;
 		if (node->outgoings)
@@ -614,6 +703,12 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 				ccv_array_push(incomings[d], &idx);
 			}
 	} ccv_nnc_graph_visit_endfor
+	ccv_matrix_free(exec_dep);
+	ccv_nnc_graph_visit_free(visit);
+	for (i = 0; i < exec_info_size; i++)
+		if (incomings[i])
+			ccv_array_free(incomings[i]);
+	ccfree(incomings);
 	ccv_array_free(empty_streams);
 	ccv_array_free(streams);
 }
@@ -627,6 +722,8 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 	{
 		fputs("|Command: ", out);
 		fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
+		if (exec_info->parallel.stream >= 0)
+			fprintf(out, "|Stream: %d", exec_info->parallel.stream);
 		fputc('}', out);
 	}
 }
