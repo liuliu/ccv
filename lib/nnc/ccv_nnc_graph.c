@@ -571,6 +571,29 @@ void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt,
 	graph->sequential = 1;
 }
 
+static int _ccv_nnc_device_id_for_exec(const ccv_nnc_graph_exec_info_t* const exec_info)
+{
+	int i;
+	int device_id = -1;
+	for (i = 0; i < exec_info->input_size; i++)
+		if (exec_info->inputs[i] &&
+			CCV_TENSOR_GET_MEMORY(exec_info->inputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
+			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type) < device_id))
+			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type);
+	if (device_id < 0)
+	for (i = 0; i < exec_info->output_size; i++)
+		if (exec_info->outputs[i] &&
+			CCV_TENSOR_GET_MEMORY(exec_info->outputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
+			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type) < device_id))
+			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type);
+	return device_id >= 0 ? device_id : 0; // The default one.
+}
+
+typedef struct {
+	int device_id;
+	int exec_idx;
+} ccv_nnc_stream_data_t;
+
 void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 {
 	assert(graph->sources && graph->sources->rnum);
@@ -595,7 +618,9 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx, term) {
 		buf_size = 0; /* save all its parent deps to this buffer */
 		ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(exec_dep, idx);
+		node->parallel.sign = -1; // No signal needed.
 		node->parallel.stream = -1; // Set to no stream assigned.
+		node->parallel.wait_size = 0;
 		if (vector)
 			CCV_SPARSE_VECTOR_FOREACH(exec_dep, vector, for_block);
 		if (!node->outgoings)
@@ -627,11 +652,13 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 	ccfree(buf);
 	// Algorithm to allocate signals and streams for this graph.
 	ccv_array_t* const empty_streams = ccv_array_new(sizeof(int), 0, 0);
-	ccv_array_t* const streams = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t* const stream_data = ccv_array_new(sizeof(ccv_nnc_stream_data_t), 0, 0);
 	ccv_array_t** const incomings = cccalloc(exec_info_size, sizeof(ccv_array_t*));
+	int sign_count = 0;
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 		// Go through the incomings.
 		int stream_idx = -1;
+		const int device_id = _ccv_nnc_device_id_for_exec(node);
 		if (incomings[idx])
 		{
 			for (i = incomings[idx]->rnum - 1; stream_idx < 0 && i >= 0; i--)
@@ -640,8 +667,8 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 				assert(incoming_idx < exec_info_size);
 				const int s = exec_info[incoming_idx].parallel.stream;
 				assert(s >= 0);
-				const int exec_idx = *(int*)ccv_array_get(streams, s);
-				if (exec_idx == incoming_idx)
+				const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
+				if (data->device_id == device_id && data->exec_idx == incoming_idx)
 					stream_idx = s;
 			}
 			// Go through the rest, to check whether the streams are all used (all its outgoing nodes assigned),
@@ -653,8 +680,8 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 				ccv_nnc_graph_exec_info_t* const incoming_exec_info = exec_info + incoming_idx;
 				const int s = incoming_exec_info->parallel.stream;
 				assert(s >= 0);
-				const int exec_idx = *(int*)ccv_array_get(streams, s);
-				if (exec_idx == incoming_idx) // Check if the output of this stream has all assigned.
+				const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
+				if (data->exec_idx == incoming_idx) // Check if the output of this stream has all assigned.
 				{
 					assert(incoming_exec_info->outgoings);
 					int flag = 0;
@@ -673,8 +700,10 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 		{
 			const int s = *(int*)ccv_array_get(empty_streams, i);
 			assert(s >= 0);
-			const int exec_idx = *(int*)ccv_array_get(streams, s);
-			const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, exec_idx);
+			const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
+			if (data->device_id != device_id)
+				continue;
+			const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, data->exec_idx);
 			// If there is a path to conclude that exec_idx is before idx, then we can reuse
 			// this stream. Otherwise the work in this "empty stream" could still be ongoing,
 			// and we may delay the following work unnecessarily.
@@ -688,12 +717,48 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 			}
 		}
 		if (stream_idx >= 0) // If found, good, update to latest exec in this stream.
-			*(int*)ccv_array_get(streams, stream_idx) = idx;
+			((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx))->exec_idx = idx;
 		else { // Create a new stream.
-			stream_idx = streams->rnum;
-			ccv_array_push(streams, &idx);
+			stream_idx = stream_data->rnum;
+			const ccv_nnc_stream_data_t data = {
+				.device_id = device_id,
+				.exec_idx = idx
+			};
+			ccv_array_push(stream_data, &data);
 		}
 		node->parallel.stream = stream_idx;
+		// The stream is assigned, now go through the incomings again to decide whether I have any signs to wait.
+		if (incomings[idx])
+		{
+			int wait_size = 0;
+			for (i = 0; i < incomings[idx]->rnum; i++)
+			{
+				const int incoming_idx = *(int*)ccv_array_get(incomings[idx], i);
+				assert(incoming_idx < exec_info_size);
+				const int s = exec_info[incoming_idx].parallel.stream;
+				assert(s >= 0);
+				if (s != stream_idx) // Need to have a sign.
+					++wait_size;
+			}
+			node->parallel.wait_size = wait_size;
+			if (wait_size > 0)
+				node->parallel.waits = node->parallel.waits ? ccrealloc(node->parallel.waits,sizeof(int) * wait_size) : ccmalloc(sizeof(int) * wait_size);
+			j = 0;
+			for (i = 0; i < incomings[idx]->rnum; i++)
+			{
+				const int incoming_idx = *(int*)ccv_array_get(incomings[idx], i);
+				assert(incoming_idx < exec_info_size);
+				ccv_nnc_graph_exec_info_t* const incoming_exec_info = exec_info + incoming_idx;
+				const int s = incoming_exec_info->parallel.stream;
+				assert(s >= 0);
+				if (s != stream_idx) // Need to have a sign.
+				{
+					if (incoming_exec_info->parallel.sign < 0)
+						incoming_exec_info->parallel.sign = sign_count++;
+					node->parallel.waits[j++] = incoming_exec_info->parallel.sign;
+				}
+			}
+		}
 		if (node->outgoings)
 			for (i = 0; i < node->outgoings->rnum; i++)
 			{
@@ -710,7 +775,7 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 			ccv_array_free(incomings[i]);
 	ccfree(incomings);
 	ccv_array_free(empty_streams);
-	ccv_array_free(streams);
+	ccv_array_free(stream_data);
 }
 
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
@@ -724,6 +789,16 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 		fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
 		if (exec_info->parallel.stream >= 0)
 			fprintf(out, "|Stream: %d", exec_info->parallel.stream);
+		if (exec_info->parallel.sign >= 0)
+			fprintf(out, "|Signal: %d", exec_info->parallel.sign);
+		if (exec_info->parallel.wait_size > 0)
+		{
+			fputs("|Wait: ", out);
+			int i;
+			for (i = 0; i < exec_info->parallel.wait_size - 1; i++)
+				fprintf(out, "%d, ", exec_info->parallel.waits[i]);
+			fprintf(out, "%d", exec_info->parallel.waits[exec_info->parallel.wait_size - 1]);
+		}
 		fputc('}', out);
 	}
 }
@@ -1305,6 +1380,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 		}
 		if ((info->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) && info->p_while.inputs)
 			ccfree(info->p_while.inputs);
+		if (info->parallel.waits)
+			ccfree(info->parallel.waits);
 	}
 	if (graph->breakpoints)
 		ccfree(graph->breakpoints);

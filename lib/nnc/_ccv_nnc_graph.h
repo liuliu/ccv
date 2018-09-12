@@ -34,7 +34,10 @@ typedef struct {
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	struct {
+		int sign;
 		int stream; // The assigned stream for this to be executed.
+		int wait_size;
+		int* waits;
 	} parallel;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	int update_size;
