@@ -102,4 +102,13 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* carry_overs; // The array of tensor carry_overs.
 };
 
+inline static int ccv_array_find_int(ccv_array_t* ints, const int idx)
+{
+	int i;
+	for (i = 0; i < ints->rnum; i++)
+		if (*(int*)ccv_array_get(ints, i) == idx)
+			return 1;
+	return 0;
+}
+
 #endif
