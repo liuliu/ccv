@@ -23,6 +23,12 @@ TEST_CASE("schedule a simple graph for parallel execution")
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(a, b), TENSOR_SYMBOL_LIST(c), "sum");
 	const ccv_nnc_tensor_symbol_t d = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "d");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWDIV_FORWARD(), TENSOR_SYMBOL_LIST(z, c), TENSOR_SYMBOL_LIST(d), "div");
+	const ccv_nnc_tensor_symbol_t d0 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "d0");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(d0), "log");
+	const ccv_nnc_tensor_symbol_t d1 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "d1");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWEXP_FORWARD(), TENSOR_SYMBOL_LIST(d), TENSOR_SYMBOL_LIST(d1), "exp");
+	const ccv_nnc_tensor_symbol_t d2 = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "d2");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(d0, d1), TENSOR_SYMBOL_LIST(d2), "sum1");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph;
@@ -30,7 +36,7 @@ TEST_CASE("schedule a simple graph for parallel execution")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph,
 		0, 0,
-		TENSOR_SYMBOL_LIST(d),
+		TENSOR_SYMBOL_LIST(d2),
 		SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 		&graph, &tensor_arena, &graph_exec_arena);
 	ccv_nnc_graph_parallel(graph);
@@ -44,8 +50,9 @@ TEST_CASE("schedule a simple graph for parallel execution")
 	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	b_tensor->data.f32[0] = 3.2;
 	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
-	ccv_nnc_tensor_t* const d_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, d);
-	REQUIRE_EQ_WITH_TOLERANCE(d_tensor->data.f32[0], 2 * 0.21 / (2.2 + 3.2), 1e-5, "result should be equal");
+	ccv_nnc_tensor_t* const d2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, d2);
+	const float dv = 2 * 0.21 / (2.2 + 3.2);
+	REQUIRE_EQ_WITH_TOLERANCE(d2_tensor->data.f32[0], logf(dv) + expf(dv), 1e-5, "result should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);

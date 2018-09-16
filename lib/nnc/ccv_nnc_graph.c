@@ -707,7 +707,7 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 			}
 			// Go through the rest, to check whether the streams are all used (all its outgoing nodes assigned),
 			// if so, put it into the empty_streams.
-			for (--i; i >= 0; i--)
+			for (; i >= 0; i--)
 			{
 				const int incoming_idx = *(int*)ccv_array_get(incomings[idx], i);
 				assert(incoming_idx < exec_info_size);
@@ -722,7 +722,8 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 					for (j = 0; !flag && j < incoming_exec_info->outgoings->rnum; j++)
 					{
 						const int d = *(int*)ccv_array_get(incoming_exec_info->outgoings, j);
-						flag = (exec_info[d].parallel.stream < 0); // If some of the output is not assigned.
+						// Don't consider the current node as not assigned.
+						flag = (d != idx && exec_info[d].parallel.stream < 0); // If some of the output is not assigned.
 					}
 					if (!flag) // All assigned
 						ccv_array_push(empty_streams, &s);
