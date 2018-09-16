@@ -787,6 +787,14 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 			ccv_array_free(data->sign_set);
 	}
 	ccv_array_free(stream_data);
+	// Do this recursively for its sub graphs.
+	if (graph->sub_graphs)
+		for (i = 0; i < graph->sub_graphs->rnum; i++)
+		{
+			ccv_nnc_graph_t* const sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, i);
+			if (sub_graph)
+				ccv_nnc_graph_parallel(sub_graph);
+		}
 }
 
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
