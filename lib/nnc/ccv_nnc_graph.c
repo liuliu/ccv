@@ -20,7 +20,7 @@ void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	int i;
 	for (i = 0; i < source_size; i++)
 		ccv_array_push(graph->sources, sources + i);
-	graph->sequential = 0;
+	graph->topsorted = 0;
 }
 
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph)
@@ -42,7 +42,7 @@ void ccv_nnc_graph_set_destinations(ccv_nnc_graph_t* const graph, const ccv_nnc_
 	int i;
 	for (i = 0; i < destination_size; i++)
 		ccv_array_push(graph->destinations, destinations + i);
-	graph->sequential = 0;
+	graph->topsorted = 0;
 }
 
 ccv_nnc_graph_exec_t* ccv_nnc_graph_destinations(const ccv_nnc_graph_t* const graph)
@@ -433,7 +433,7 @@ int ccv_nnc_graph_exec_concat(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_
 				return -1;
 	}
 	ccv_array_push(src_info->outgoings, &destination.d);
-	graph->sequential = 0;
+	graph->topsorted = 0;
 	return 0;
 }
 
@@ -463,7 +463,7 @@ int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	if (dest_info->outgoings)
 		for (i = 0; i < dest_info->outgoings->rnum; i++)
 			ccv_array_add_unique_int(src_info->outgoings, *(int*)ccv_array_get(dest_info->outgoings, i));
-	graph->sequential = 0;
+	graph->topsorted = 0;
 	return 0;
 }
 
@@ -472,7 +472,7 @@ int ccv_nnc_graph_exec_size(const ccv_nnc_graph_t* const graph)
 	return graph->exec_info ? graph->exec_info->rnum : 0;
 }
 
-void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size)
+void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size)
 {
 	assert(exec_cvt_size == graph->exec_info->rnum);
 	assert(graph->sources && graph->sources->rnum);
@@ -568,7 +568,7 @@ void ccv_nnc_graph_sequential(ccv_nnc_graph_t* const graph, int* const exec_cvt,
 			for (j = 0; j < info->outgoings->rnum; j++)
 				*(int*)ccv_array_get(info->outgoings, j) = exec_cvt[*(int*)ccv_array_get(info->outgoings, j)];
 	}
-	graph->sequential = 1;
+	graph->topsorted = 1;
 }
 
 static int _ccv_nnc_device_id_for_exec(const ccv_nnc_graph_exec_info_t* const exec_info)
