@@ -632,6 +632,7 @@ void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
+	assert(graph->topsorted); // Only support this on a topsorted graph.
 	const int exec_info_size = graph->exec_info->rnum;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, exec_info, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);

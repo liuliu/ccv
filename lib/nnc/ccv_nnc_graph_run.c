@@ -288,8 +288,6 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags)
 {
 	int i;
-#define visitor(node, idx, ...) \
-	_ccv_nnc_graph_exec_run(graph, node, idx, tensor_tape, stream_context, flags)
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
 		assert(exec->p_while.expr);
@@ -353,7 +351,6 @@ static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, co
 		for (i = 0; i < graph->exec_info->rnum; i++)
 			_ccv_nnc_graph_exec_run(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, stream_context, flags);
 	}
-#undef visitor
 }
 
 static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
