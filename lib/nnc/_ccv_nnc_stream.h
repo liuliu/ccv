@@ -1,0 +1,57 @@
+/**********************************************************
+ * C-based/Cached/Core Computer Vision Library
+ * Liu Liu, 2010-02-01
+ **********************************************************/
+
+/**********************************************************
+ * CCV - Neural Network Collection
+ **********************************************************/
+
+#ifndef GUARD_ccv_nnc_stream_internal_h
+#define GUARD_ccv_nnc_stream_internal_h
+
+#include "ccv_nnc.h"
+
+#include <ucontext.h>
+
+typedef struct ccv_nnc_stream_task_s ccv_nnc_stream_task_t;
+
+typedef void (*ccv_nnc_stream_task_f)(ccv_nnc_stream_task_t* const self, void* const userdata);
+
+// A stream can associate at most one scheduler.
+// It manages how all the tasks get scheduled.
+typedef struct {
+	ccv_nnc_stream_task_t* head;
+	ccv_nnc_stream_task_t* tail;
+	ucontext_t caller, callee;
+} ccv_nnc_stream_scheduler_t;
+
+// A stream can have multiple tasks.
+struct ccv_nnc_stream_task_s {
+	ccv_nnc_stream_task_t* prev;
+	ccv_nnc_stream_task_t* next;
+	ccv_nnc_stream_context_t* super;
+	ucontext_t context;
+	void* userdata;
+	ccv_nnc_stream_task_f func;
+};
+
+struct ccv_nnc_stream_context_s {
+	int type;
+	ccv_nnc_stream_scheduler_t *scheduler;
+};
+
+// Return the scheduler from a stream (if not created, create one).
+void ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context);
+// This method activates the scheduler (if necessary), and runs the given task.
+void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
+// Create a task off a stream.
+void ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_task_f func, void* const userdata);
+// Run a given task immediately from within an existing task.
+void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task);
+// Set a point on the stream, and wait until that point is reached to continue execution.
+void ccv_nnc_stream_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream);
+// Wait any other tasks to finish. Since we don't have yield, this means wait until these tasks to finish.
+void ccv_nnc_stream_task_wait_any(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_task_t* const* const others, const int other_size);
+
+#endif

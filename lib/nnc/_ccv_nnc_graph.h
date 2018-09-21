@@ -25,6 +25,8 @@ typedef struct {
 	int flags;
 	int peer_ref; // Reference to its peer. Starts at 1.
 	int graph_ref_size;
+	int update_size;
+	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
 	ccv_nnc_tensor_t** inputs;
 	int* input_flags;
 	ccv_nnc_tensor_t** outputs;
@@ -40,8 +42,6 @@ typedef struct {
 		int* waits;
 	} parallel;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
-	int update_size;
-	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
 	ccv_nnc_tensor_t** updates;
 	ccv_nnc_graph_tensor_wrap_t** tensor_wraps;
 	// Below are only relevant to sub-graph nodes (case_of, while).
@@ -80,6 +80,8 @@ struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
 	int topsorted; // Whether this graph is ordered sequentially.
+	int breakpoint_offset; // If the graph is sorted, offset denotes the first node that is the breakpoint.
+	int breakpoint_size;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;
@@ -94,8 +96,6 @@ struct ccv_nnc_graph_s {
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
 	// for ccv_array_t, we can continue to modify what's inside.
 	int64_t while_count;
-	int breakpoint_offset; // If the graph is sorted, offset denotes the first node that is the breakpoint.
-	int breakpoint_size;
 	ccv_nnc_graph_exec_t* breakpoints;
 	// End of while loop handling.
 	// Extra metadata, useful when we don't want extra memory allocation.

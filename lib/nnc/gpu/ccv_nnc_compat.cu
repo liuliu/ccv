@@ -1,6 +1,7 @@
 #include "ccv_nnc_compat.h"
 extern "C" {
 #include <nnc/ccv_nnc_easy.h>
+#include <nnc/_ccv_nnc_stream.h>
 }
 
 void* cumalloc(int device, size_t size)
@@ -18,7 +19,7 @@ void cufree(int device, void* ptr)
 }
 
 typedef struct {
-	int type; // Kept the type specifier.
+	ccv_nnc_stream_context_t super;
 	cudaStream_t stream;
 	cublasHandle_t cublas;
 	struct {
@@ -41,7 +42,9 @@ typedef struct {
 } ccv_nnc_stream_context_compat_t;
 
 static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
-	.type = CCV_STREAM_CONTEXT_GPU,
+	.super = {
+		.type = CCV_STREAM_CONTEXT_GPU,
+	},
 #ifdef cudaStreamPerThread
 	.stream = cudaStreamPerThread
 #endif
@@ -55,7 +58,7 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 	stream_compat->cpu.workspace_size = 0;
 	stream_compat->gpu.workspace = 0;
 	stream_compat->gpu.workspace_size = 0;
-	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 	cudaSetDevice(device);
 	cudaStreamCreate(&stream_compat->stream);
 	stream_compat->cublas = 0;
@@ -86,7 +89,7 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		if (stream_compat->gpu.workspace_size >= workspace_size)
 			return stream_compat->gpu.workspace;
 		stream_compat->gpu.workspace_size = workspace_size;
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		if (stream_compat->gpu.workspace)
 			cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
@@ -119,7 +122,7 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 	cudaSetDevice(device);
 	cudaStreamSynchronize(stream_compat->stream);
 }
@@ -127,7 +130,7 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 	cudaSetDevice(device);
 	if (stream_compat->cpu.workspace)
 		ccfree(stream_compat->cpu.workspace);
@@ -151,7 +154,7 @@ int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stre
 	if (!stream_context)
 		return 0;
 	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
-	return CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+	return CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 }
 
 cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context)
@@ -169,7 +172,7 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	if (!stream_compat->cublas)
 	{
-		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		cublasCreate(&stream_compat->cublas);
 		cublasSetStream(stream_compat->cublas, stream_compat->stream);
@@ -192,7 +195,7 @@ float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const str
 		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	if (!stream_compat->ones.data || n > stream_compat->ones.n)
 	{
-		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 		if (stream_compat->ones.data)
@@ -213,7 +216,7 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* c
 		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
 	if (!stream_compat->cudnn)
 	{
-		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		CUDNN_ENFORCE(cudnnCreate(&stream_compat->cudnn));
 		CUDNN_ENFORCE(cudnnSetStream(stream_compat->cudnn, stream_compat->stream));
@@ -254,7 +257,7 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
 #endif
 	} else {
-		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->type);
+		int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		cudaMalloc(&stream_compat->rngs, state_size);
 		stream_compat->seed = (unsigned long long)stream_compat;
