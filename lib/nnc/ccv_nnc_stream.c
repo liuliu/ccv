@@ -15,7 +15,7 @@ typedef struct {
 
 ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 {
-	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)ccmalloc(sizeof(ccv_nnc_stream_cpu_t));
+	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)cccalloc(1, sizeof(ccv_nnc_stream_cpu_t));
 	stream_cpu->super.type = type;
 	stream_cpu->workspace_size = 0;
 	stream_cpu->workspace = 0;
