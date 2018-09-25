@@ -1,4 +1,4 @@
-AC_INIT([libccv], [0.6])
+AC_INIT([libccv], [0.7])
 
 AC_SUBST(DEFINE_MACROS, [""])
 AC_SUBST(MKCFLAGS, [""])
@@ -106,7 +106,11 @@ if test "$fftw3_enable" != no; then
 else
 	AC_MSG_RESULT([disabled])
 fi
-
+# Check pthread
+AX_CHECK_HEADER_PRESENCE([pthread.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_PTHREAD "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-lpthread "])])
+AX_CHECK_HEADER_PRESENCE([ucontext.h],
+	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_UCONTEXT "])])
 AX_CHECK_HEADER_PRESENCE([linear.h],
 	[AC_SUBST(DEFINE_MACROS, ["$DEFINE_MACROS-D HAVE_LIBLINEAR "]) AC_SUBST(MKLDFLAGS, ["$MKLDFLAGS-llinear "])])
 AX_CHECK_HEADER_PRESENCE([tesseract/capi.h],
