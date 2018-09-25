@@ -13,24 +13,42 @@
 #include "ccv_nnc.h"
 
 #include <ucontext.h>
+#include <pthread.h>
+
+struct ccv_nnc_stream_signal_s {
+	int type;
+};
 
 typedef struct ccv_nnc_stream_task_s ccv_nnc_stream_task_t;
 
 typedef void (*ccv_nnc_stream_task_f)(ccv_nnc_stream_task_t* const self, void* const userdata);
 
+#define CCV_NNC_TASK_STACK_SIZE (262144) // 256KiB
+
 // A stream can associate at most one scheduler.
 // It manages how all the tasks get scheduled.
 typedef struct {
+	int active;
+	int stream_wait_task_count;
 	ccv_nnc_stream_task_t* head;
 	ccv_nnc_stream_task_t* tail;
+	pthread_t thread;
+	pthread_cond_t notify;
+	pthread_cond_t wait;
+	pthread_mutex_t mutex;
 	ucontext_t caller, callee;
 } ccv_nnc_stream_scheduler_t;
 
 // A stream can have multiple tasks.
 struct ccv_nnc_stream_task_s {
+	int done;
+	int other_size;
 	ccv_nnc_stream_task_t* prev;
 	ccv_nnc_stream_task_t* next;
 	ccv_nnc_stream_context_t* super;
+	ccv_nnc_stream_task_t* notify;
+	ccv_nnc_stream_task_t* const* others;
+	char* stack;
 	ucontext_t context;
 	void* userdata;
 	ccv_nnc_stream_task_f func;
@@ -39,14 +57,17 @@ struct ccv_nnc_stream_task_s {
 struct ccv_nnc_stream_context_s {
 	int type;
 	ccv_nnc_stream_scheduler_t *scheduler;
+	ccv_array_t* empty_tasks;
 };
 
 // Return the scheduler from a stream (if not created, create one).
-void ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context);
+CCV_WARN_UNUSED(ccv_nnc_stream_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context);
 // This method activates the scheduler (if necessary), and runs the given task.
 void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
+// Add a task to the list of tasks scheduler going to execute.
+void ccv_nnc_stream_scheduler_add_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
 // Create a task off a stream.
-void ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_task_f func, void* const userdata);
+CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_task_f func, void* const userdata);
 // Run a given task immediately from within an existing task.
 void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task);
 // Set a point on the stream, and wait until that point is reached to continue execution.

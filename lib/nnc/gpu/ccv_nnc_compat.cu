@@ -50,6 +50,47 @@ static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_co
 #endif
 };
 
+typedef struct {
+	ccv_nnc_stream_signal_t super;
+	cudaEvent_t event;
+} ccv_nnc_stream_compat_signal_t;
+
+ccv_nnc_stream_signal_t* ccv_nnc_init_stream_signal(ccv_nnc_stream_signal_t* const signal)
+{
+	assert(CCV_STREAM_GET_CONTEXT(((int*)signal)[0]) == CCV_STREAM_CONTEXT_GPU);
+	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)ccrealloc(signal, sizeof(ccv_nnc_stream_compat_signal_t));
+	int device = CCV_STREAM_GET_DEVICE_ID(compat_signal->super.type);
+	cudaSetDevice(device);
+	cudaEventCreateWithFlags(&compat_signal->event, cudaEventDisableTiming);
+	return (ccv_nnc_stream_signal_t*)compat_signal;
+}
+
+void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
+	cudaEventRecord(compat_signal->event, stream_compat->stream);
+}
+
+void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+	if (!stream_compat)
+		stream_compat = &ccv_nnc_per_thread_gpu_stream_context;
+	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
+	cudaStreamWaitEvent(stream_compat->stream, compat_signal->event, 0);
+}
+
+void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal)
+{
+	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
+	const int device = CCV_STREAM_GET_DEVICE_ID(compat_signal->super.type);
+	cudaSetDevice(device);
+	cudaEventDestroy(compat_signal->event);
+}
+
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
@@ -125,6 +166,31 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 	cudaSetDevice(device);
 	cudaStreamSynchronize(stream_compat->stream);
+}
+
+static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t status, void* userdata)
+{
+	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)userdata;
+	ccv_nnc_stream_scheduler_t* const scheduler = task->super->scheduler;
+	pthread_mutex_lock(&scheduler->mutex);
+	ccv_nnc_stream_scheduler_add_task(scheduler, task);
+	--scheduler->stream_wait_task_count;
+	pthread_cond_signal(&scheduler->wait);
+	pthread_mutex_unlock(&scheduler->mutex);
+}
+
+void ccv_nnc_stream_compat_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
+{
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+	// If the stream is completed, no need to wait.
+	if (cudaStreamQuery(stream_compat->stream) == cudaSuccess)
+		return;
+	ccv_nnc_stream_scheduler_t* const scheduler = self->super->scheduler;
+	pthread_mutex_lock(&scheduler->mutex);
+	++scheduler->stream_wait_task_count;
+	cudaStreamAddCallback(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self, 0);
+	pthread_mutex_unlock(&scheduler->mutex);
+	swapcontext(&scheduler->callee, &scheduler->caller);
 }
 
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)

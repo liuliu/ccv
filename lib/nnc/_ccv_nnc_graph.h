@@ -40,7 +40,7 @@ typedef struct {
 		int stream; // The assigned stream for this to be executed.
 		int wait_size;
 		int* waits;
-	} parallel;
+	} schedule;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	ccv_nnc_tensor_t** updates;
 	ccv_nnc_graph_tensor_wrap_t** tensor_wraps;
@@ -82,10 +82,14 @@ struct ccv_nnc_graph_s {
 	int topsorted; // Whether this graph is ordered sequentially.
 	int breakpoint_offset; // If the graph is sorted, offset denotes the first node that is the breakpoint.
 	int breakpoint_size;
+	int stream_size;
+	int signal_size;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;
 	ccv_array_t* destinations;
+	ccv_nnc_stream_context_t** streams;
+	ccv_nnc_stream_signal_t** signals;
 	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
 	ccv_array_t* exec_wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tensor wraps.
 	// Some extra information piggy-back on graph struct.

@@ -244,10 +244,8 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_workspace_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
 // Make the graph topsorted, thus, do a topological sort so when run the graph, no additional memory will be allocated.
 void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size);
-// Allocate extra streams to make this graph parallel runnable. Note this is compatible with sequential, because sequential
-// concerns with exec command layout in the graph, whereas parallel concerns how many streams to be allocated such that execs
-// within this graph can run in parallel.
-void ccv_nnc_graph_parallel(ccv_nnc_graph_t* const graph);
+// Allocate extra streams to make this graph parallel runnable. Note this requires the graph to be topsorted.
+void ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
 // The sources / destinations.
 void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const sources, const int source_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph);
