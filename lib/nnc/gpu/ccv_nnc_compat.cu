@@ -171,7 +171,7 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t status, void* userdata)
 {
 	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)userdata;
-	ccv_nnc_stream_scheduler_t* const scheduler = task->super->scheduler;
+	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
 	pthread_mutex_lock(&scheduler->mutex);
 	ccv_nnc_stream_scheduler_add_task(scheduler, task);
 	--scheduler->stream_wait_task_count;
@@ -185,7 +185,7 @@ void ccv_nnc_stream_compat_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_
 	// If the stream is completed, no need to wait.
 	if (cudaStreamQuery(stream_compat->stream) == cudaSuccess)
 		return;
-	ccv_nnc_stream_scheduler_t* const scheduler = self->super->scheduler;
+	ccv_nnc_stream_scheduler_t* const scheduler = self->super;
 	pthread_mutex_lock(&scheduler->mutex);
 	++scheduler->stream_wait_task_count;
 	cudaStreamAddCallback(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self, 0);

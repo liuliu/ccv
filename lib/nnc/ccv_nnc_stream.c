@@ -178,7 +178,7 @@ static void _ccv_nnc_stream_task_done(ccv_nnc_stream_task_t* const task)
 	{
 		ccv_nnc_stream_task_t* const notify = task->notify;
 		task->notify = 0;
-		ccv_nnc_stream_scheduler_add_task(task->super->scheduler, notify);
+		ccv_nnc_stream_scheduler_add_task(task->super, notify);
 		int i;
 		const int other_size = notify->other_size;
 		notify->other_size = 0;
@@ -290,22 +290,22 @@ static void _ccv_nnc_stream_task_entry_point(uint32_t part0, uint32_t part1)
 	};
 	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)p.ptr;
 	task->func(task, task->userdata);
-	ccv_nnc_stream_scheduler_t* const scheduler = task->super->scheduler;
+	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
 	task->done = 1;
 	swapcontext(&scheduler->callee, &scheduler->caller);
 }
 
-ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_task_f func, void* const userdata)
+ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata)
 {
 	ccv_nnc_stream_task_t* task;
-	if (stream_context->empty_tasks && stream_context->empty_tasks->rnum)
+	if (scheduler->empty_tasks && scheduler->empty_tasks->rnum)
 	{
-		task = *(ccv_nnc_stream_task_t**)ccv_array_get(stream_context->empty_tasks, stream_context->empty_tasks->rnum - 1);
-		--stream_context->empty_tasks->rnum;
+		task = *(ccv_nnc_stream_task_t**)ccv_array_get(scheduler->empty_tasks, scheduler->empty_tasks->rnum - 1);
+		--scheduler->empty_tasks->rnum;
 	} else {
 		task = (ccv_nnc_stream_task_t*)cccalloc(1, sizeof(ccv_nnc_stream_task_t));
 		task->stack = (char*)cccalloc(CCV_NNC_TASK_STACK_SIZE, 1);
-		task->super = stream_context;
+		task->super = scheduler;
 	}
 	task->done = 0;
 	task->func = func;
@@ -323,7 +323,7 @@ ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const s
 
 void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task)
 {
-	ccv_nnc_stream_scheduler_t* const scheduler = task->super->scheduler;
+	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
 	ucontext_t old_context = scheduler->caller;
 	swapcontext(&scheduler->caller, &task->context);
 	task->context = scheduler->callee;

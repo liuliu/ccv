@@ -30,6 +30,7 @@ typedef void (*ccv_nnc_stream_task_f)(ccv_nnc_stream_task_t* const self, void* c
 typedef struct {
 	int active;
 	int stream_wait_task_count;
+	ccv_array_t* empty_tasks;
 	ccv_nnc_stream_task_t* head;
 	ccv_nnc_stream_task_t* tail;
 	pthread_t thread;
@@ -45,7 +46,7 @@ struct ccv_nnc_stream_task_s {
 	int other_size;
 	ccv_nnc_stream_task_t* prev;
 	ccv_nnc_stream_task_t* next;
-	ccv_nnc_stream_context_t* super;
+	ccv_nnc_stream_scheduler_t* super;
 	ccv_nnc_stream_task_t* notify;
 	ccv_nnc_stream_task_t* const* others;
 	char* stack;
@@ -56,8 +57,8 @@ struct ccv_nnc_stream_task_s {
 
 struct ccv_nnc_stream_context_s {
 	int type;
-	ccv_nnc_stream_scheduler_t *scheduler;
-	ccv_array_t* empty_tasks;
+	ccv_nnc_stream_scheduler_t* scheduler;
+	ccv_nnc_stream_task_t* blocked_by; // Mark the current stream is blocked by another one.
 };
 
 // Return the scheduler from a stream (if not created, create one).
@@ -67,7 +68,7 @@ void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, c
 // Add a task to the list of tasks scheduler going to execute.
 void ccv_nnc_stream_scheduler_add_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
 // Create a task off a stream.
-CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_stream_task_f func, void* const userdata);
+CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata);
 // Run a given task immediately from within an existing task.
 void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task);
 // Set a point on the stream, and wait until that point is reached to continue execution.
