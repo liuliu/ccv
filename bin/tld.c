@@ -52,8 +52,13 @@ int main(int argc, char** argv)
 #else
 			picture = avcodec_alloc_frame();
 #endif
+#if LIBAVUTIL_VERSION_MAJOR > 51
+			rgb_picture.data[0] = (uint8_t*)ccmalloc(avpicture_get_size(AV_PIX_FMT_RGB24, enc->width, enc->height));
+			avpicture_fill((AVPicture*)&rgb_picture, rgb_picture.data[0], AV_PIX_FMT_RGB24, enc->width, enc->height);
+#else
 			rgb_picture.data[0] = (uint8_t*)ccmalloc(avpicture_get_size(PIX_FMT_RGB24, enc->width, enc->height));
 			avpicture_fill((AVPicture*)&rgb_picture, rgb_picture.data[0], PIX_FMT_RGB24, enc->width, enc->height);
+#endif
 			break;
 		}
 	}
@@ -66,7 +71,11 @@ int main(int argc, char** argv)
 		avcodec_decode_video2(video_st->codec, picture, &got_picture, &packet);
 	}
 	ccv_enable_default_cache();
+#if LIBAVUTIL_VERSION_MAJOR > 51
+	struct SwsContext* picture_ctx = sws_getCachedContext(0, video_st->codec->width, video_st->codec->height, video_st->codec->pix_fmt, video_st->codec->width, video_st->codec->height, AV_PIX_FMT_RGB24, SWS_BICUBIC, 0, 0, 0);
+#else
 	struct SwsContext* picture_ctx = sws_getCachedContext(0, video_st->codec->width, video_st->codec->height, video_st->codec->pix_fmt, video_st->codec->width, video_st->codec->height, PIX_FMT_RGB24, SWS_BICUBIC, 0, 0, 0);
+#endif
 	sws_scale(picture_ctx, (const uint8_t* const*)picture->data, picture->linesize, 0, video_st->codec->height, rgb_picture.data, rgb_picture.linesize);
 	ccv_dense_matrix_t* x = 0;
 	ccv_read(rgb_picture.data[0], &x, CCV_IO_RGB_RAW | CCV_IO_GRAY, video_st->codec->height, video_st->codec->width, rgb_picture.linesize[0]);
