@@ -338,6 +338,97 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 	return 0;
 }
 
+static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const exec_info, ccv_nnc_graph_exec_info_t* const node, ccv_nnc_stream_task_t* const task)
+{
+	int i;
+	if (node->outgoings)
+		for (i = 0; i < node->outgoings->rnum; i++)
+		{
+			const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
+			ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
+			ccv_nnc_stream_context_t* const outgoing_stream = graph->streams[outgoing_node->schedule.stream];
+			// An outgoing stream can be blocked by multiple other tasks from other streams. But it is OK,
+			// because on next round of execution, that one will be marked as blocked again.
+			outgoing_stream->blocked_by = task;
+		}
+}
+
+static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_stream_task_t* const* const sub_tasks, const int sub_task_size, ccv_nnc_graph_exec_info_t* const exec_info, const int* const pending_nodes, const int pending_node_size)
+{
+	int i, j;
+	if (sub_task_size)
+		ccv_nnc_stream_task_wait_any(self, sub_tasks, sub_task_size);
+	for (i = 0; i < sub_task_size; i++)
+		if (sub_tasks[i]->done)
+			for (j = 0; j < pending_node_size; j++)
+			{
+				ccv_nnc_graph_exec_info_t* const node = exec_info + pending_nodes[j];
+				ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
+				if (node_stream->blocked_by == sub_tasks[i])
+					node_stream->blocked_by = 0;
+			}
+}
+
+static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const exec_info, const int start_index, const int exec_info_size, ccv_nnc_tensor_tape_t* const tensor_tape, const int flags)
+{
+	int i;
+	int sub_task_size = 0;
+	ccv_nnc_stream_task_t** const sub_tasks = (ccv_nnc_stream_task_t**)ccv_nnc_graph_buffer(graph, sizeof(ccv_nnc_stream_task_t*) * (graph->sub_graphs ? graph->sub_graphs->rnum : 0) + sizeof(int) * exec_info_size * 2);
+	int* pending_nodes[2];
+	pending_nodes[0] = (int*)(sub_tasks + (graph->sub_graphs ? graph->sub_graphs->rnum : 0));
+	pending_nodes[1] = pending_nodes[0] + exec_info_size;
+	int pending_node_size[2] = {
+		0, 0
+	};
+	for (i = start_index; i < exec_info_size; i++)
+	{
+		ccv_nnc_graph_exec_info_t* const node = exec_info + i;
+		ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
+		if (node_stream->blocked_by)
+		{
+			pending_nodes[0][pending_node_size[0]++] = i;
+			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, node_stream->blocked_by);
+			continue;
+		}
+		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, i, tensor_tape, self->super, flags);
+		if (!task->done)
+		{
+			sub_tasks[sub_task_size++] = task;
+			node_stream->blocked_by = task;
+			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
+		}
+	}
+	_ccv_nnc_graph_wait_any_sub_tasks(self, graph, sub_tasks, sub_task_size, exec_info, pending_nodes[0], pending_node_size[0]);
+	int p = 0, q = 1;
+	while (pending_node_size[p] > 0)
+	{
+		pending_node_size[q] = 0;
+		sub_task_size = 0;
+		for (i = 0; i < pending_node_size[p]; i++)
+		{
+			const int idx = pending_nodes[p][i];
+			ccv_nnc_graph_exec_info_t* const node = exec_info + idx;
+			ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
+			if (node_stream->blocked_by)
+			{
+				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, node_stream->blocked_by);
+				pending_nodes[q][pending_node_size[q]++] = i;
+				continue;
+			}
+			ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, idx, tensor_tape, self->super, flags);
+			if (!task->done)
+			{
+				sub_tasks[sub_task_size++] = task;
+				node_stream->blocked_by = task;
+				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
+			}
+		}
+		int t;
+		CCV_SWAP(p, q, t);
+		_ccv_nnc_graph_wait_any_sub_tasks(self, graph, sub_tasks, sub_task_size, exec_info, pending_nodes[p], pending_node_size[p]);
+	}
+}
+
 static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self, void* const userdata)
 {
 	const ccv_nnc_graph_topsorted_run_coro_t* const params = (ccv_nnc_graph_topsorted_run_coro_t*)userdata;
@@ -347,6 +438,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	ccv_nnc_tensor_tape_t* const tensor_tape = params->tensor_tape;
 	const int flags = params->flags;
 	int i;
+	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
 		assert(exec->p_while.expr);
@@ -366,16 +458,18 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				_ccv_nnc_graph_unwrap(graph, count, 0);
 				if (count > 0)
 					_ccv_nnc_graph_transit_move_to(graph);
-				for (i = 0; i < graph_breakpoint_size; i++)
-					_ccv_nnc_graph_exec_run_task(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, self->super, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, 0, graph_breakpoint_size, tensor_tape, flags);
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
+				// Wait until everything on the stream is executed.
+				for (i = graph->breakpoint_offset; i < graph_breakpoint_size; i++)
+					ccv_nnc_stream_task_wait(self, graph->streams[exec_info[i].schedule.stream]);
 				if (!exec->p_while.expr(exec->p_while.inputs, exec->p_while.input_size, exec->p_while.data))
 				{
 					_ccv_nnc_graph_rewrap(graph);
+					// If we break from here, it is ok because all the streams are waited.
 					break;
 				}
-				for (i = graph_breakpoint_size; i < graph->exec_info->rnum; i++)
-					_ccv_nnc_graph_exec_run_task(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, self->super, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, graph_breakpoint_size,graph->exec_info->rnum, tensor_tape, flags);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
@@ -390,8 +484,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 					.graph = graph->p,
 				});
 			_ccv_nnc_graph_unwrap(graph, count, reverse_count);
-			for (i = graph->breakpoint_offset; i < graph->exec_info->rnum; i++)
-				_ccv_nnc_graph_exec_run_task(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, self->super, flags);
+			_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, graph->breakpoint_offset, graph->exec_info->rnum, tensor_tape, flags);
 			_ccv_nnc_graph_from_move_transit(graph);
 			_ccv_nnc_graph_rewrap(graph);
 			for (count = 1; reverse_count > 0; ++count)
@@ -399,16 +492,18 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				graph->while_count = --reverse_count;
 				_ccv_nnc_graph_unwrap(graph, count, reverse_count);
 				_ccv_nnc_graph_transit_move_to(graph);
-				for (i = 0; i < graph->exec_info->rnum; i++)
-					_ccv_nnc_graph_exec_run_task(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, self->super, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, 0, graph->exec_info->rnum, tensor_tape, flags);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
+			for (i = 0; i < graph->wait_size; i++)
+				ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[graph->waits[i]]);
 		}
 	} else {
 		graph->while_count = 0;
-		for (i = 0; i < graph->exec_info->rnum; i++)
-			_ccv_nnc_graph_exec_run_task(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, i), i, tensor_tape, self->super, flags);
+		_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, 0, graph->exec_info->rnum, tensor_tape, flags);
+		for (i = 0; i < graph->wait_size; i++)
+			ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[graph->waits[i]]);
 	}
 }
 

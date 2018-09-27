@@ -472,6 +472,15 @@ int ccv_nnc_graph_exec_size(const ccv_nnc_graph_t* const graph)
 	return graph->exec_info ? graph->exec_info->rnum : 0;
 }
 
+void* ccv_nnc_graph_buffer(ccv_nnc_graph_t* const graph, int size)
+{
+	if (graph->buffer_size >= size)
+		return graph->buffer;
+	graph->buffer_size = size;
+	graph->buffer = (graph->buffer) ? ccrealloc(graph->buffer, size) : ccmalloc(size);
+	return graph->buffer;
+}
+
 void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size)
 {
 	assert(exec_cvt_size == graph->exec_info->rnum);
@@ -775,6 +784,30 @@ static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stre
 				ccv_array_push(incomings[d], &idx);
 			}
 	} ccv_nnc_graph_visit_endfor
+	int graph_wait_size = 0;
+	for (i = 0; i < graph->destinations->rnum; i++)
+	{
+		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		if (exec_info[idx].schedule.stream != 0) // If this exec_info doesn't end with default stream, we need to wait.
+			++graph_wait_size;
+	}
+	graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
+	graph_wait_size = 0;
+	for (i = 0; i < graph->destinations->rnum; i++)
+	{
+		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		ccv_nnc_graph_exec_info_t* const destination_exec_info = exec_info + idx;
+		if (destination_exec_info->schedule.stream != 0) // If this exec_info doesn't end with default stream, we need to wait.
+		{
+			ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
+			if (destination_exec_info->schedule.sign < 0)
+				destination_exec_info->schedule.sign = sign_count++;
+			else if (default_stream_data->sign_set && ccv_array_find_int(default_stream_data->sign_set, destination_exec_info->schedule.sign))
+				continue;
+			graph->waits[graph_wait_size++] = destination_exec_info->schedule.sign;
+		}
+	}
+	graph->wait_size = graph_wait_size;
 	ccv_matrix_free(exec_dep);
 	for (i = 0; i < exec_info_size; i++)
 		if (incomings[i])
@@ -1500,6 +1533,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccv_nnc_stream_signal_free(graph->signals[i]);
 		ccfree(graph->signals);
 	}
+	if (graph->waits)
+		ccfree(graph->waits);
 	if (graph->carry_overs)
 	{
 		for (i = 0; i < graph->carry_overs->rnum; i++)

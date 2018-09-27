@@ -84,12 +84,16 @@ struct ccv_nnc_graph_s {
 	int breakpoint_size;
 	int stream_size;
 	int signal_size;
+	int wait_size;
+	int buffer_size;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
 	ccv_array_t* sources;
 	ccv_array_t* destinations;
 	ccv_nnc_stream_context_t** streams;
 	ccv_nnc_stream_signal_t** signals;
+	int* waits;
+	void* buffer;
 	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
 	ccv_array_t* exec_wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tensor wraps.
 	// Some extra information piggy-back on graph struct.
@@ -114,5 +118,7 @@ inline static int ccv_array_find_int(ccv_array_t* ints, const int idx)
 			return 1;
 	return 0;
 }
+
+CCV_WARN_UNUSED(void*) ccv_nnc_graph_buffer(ccv_nnc_graph_t* const graph, int size);
 
 #endif
