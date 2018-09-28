@@ -226,6 +226,7 @@ typedef struct {
 	int exec_idx;
 	const ccv_nnc_graph_exec_info_t* exec;
 	ccv_nnc_tensor_tape_t* tensor_tape;
+	ccv_nnc_stream_context_t* stream_context;
 	int flags;
 } ccv_nnc_graph_topsorted_run_coro_t;
 
@@ -274,11 +275,13 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	{
 		assert(ref < exec->graph_ref_size);
 		ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec)[ref] - 1);
+		assert(graph->streams[exec->schedule.stream] == sub_graph->streams[0]);
 		ccv_nnc_graph_topsorted_run_coro_t params = {
 			.graph = sub_graph,
 			.exec_idx = exec_idx,
 			.exec = exec,
 			.tensor_tape = tensor_tape,
+			.stream_context = graph->streams[exec->schedule.stream],
 			.flags = flags
 		};
 		// Directly call it.
@@ -316,11 +319,13 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 			return task;
 		} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1);
+			assert(graph->streams[node->schedule.stream] == sub_graph->streams[0]);
 			ccv_nnc_graph_topsorted_run_coro_t params = {
 				.graph = sub_graph,
 				.exec_idx = idx,
 				.exec = node,
 				.tensor_tape = tensor_tape,
+				.stream_context = graph->streams[node->schedule.stream],
 				.flags = flags
 			};
 			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params);
@@ -436,6 +441,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	const int exec_idx = params->exec_idx;
 	const ccv_nnc_graph_exec_info_t* const exec = params->exec;
 	ccv_nnc_tensor_tape_t* const tensor_tape = params->tensor_tape;
+	ccv_nnc_stream_context_t* const stream_context = params->stream_context;
 	const int flags = params->flags;
 	int i;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
@@ -504,6 +510,11 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 		_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, 0, graph->exec_info->rnum, tensor_tape, flags);
 		for (i = 0; i < graph->wait_size; i++)
 			ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[graph->waits[i]]);
+	}
+	if (stream_context != graph->streams[0])
+	{
+		ccv_nnc_stream_context_emit_signal(graph->streams[0], graph->extern_signal);
+		ccv_nnc_stream_context_wait_signal(stream_context, graph->extern_signal);
 	}
 }
 

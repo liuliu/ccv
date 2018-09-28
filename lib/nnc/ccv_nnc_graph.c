@@ -820,9 +820,9 @@ static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stre
 		if (data->sign_set)
 			ccv_array_free(data->sign_set);
 	}
+	ccv_nnc_stream_data_t* const default_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
 	if (device_id >= 0)
 	{
-		ccv_nnc_stream_data_t* const default_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
 		// If the default stream (stream 0) is not the same as desired stream, swap with the one that is.
 		if (default_data->device_id != device_id)
 		{
@@ -865,6 +865,8 @@ static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stre
 		CCV_TENSOR_SET_DEVICE_ID(type, data->device_id);
 		graph->streams[i] = ccv_nnc_stream_context_new(type);
 	}
+	int default_stream_type = stream_type;
+	CCV_TENSOR_SET_DEVICE_ID(default_stream_type, default_data->device_id);
 	ccv_array_free(stream_data);
 	graph->signal_size = sign_count;
 	graph->signals = (ccv_nnc_stream_signal_t**)cccalloc(sign_count, sizeof(ccv_nnc_stream_signal_t*));
@@ -884,6 +886,8 @@ static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stre
 	ccv_nnc_graph_visit_free(visit);
 	for (i = 0; i < sign_count; i++)
 		{ assert(graph->signals[i]); }
+	if (!graph->extern_signal)
+		graph->extern_signal = ccv_nnc_stream_signal_new(default_stream_type);
 	// Do this recursively for its sub graphs.
 	if (graph->sub_graphs)
 		for (i = 0; i < graph->sub_graphs->rnum; i++)
@@ -1533,6 +1537,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccv_nnc_stream_signal_free(graph->signals[i]);
 		ccfree(graph->signals);
 	}
+	if (graph->extern_signal)
+		ccv_nnc_stream_signal_free(graph->extern_signal);
 	if (graph->waits)
 		ccfree(graph->waits);
 	if (graph->carry_overs)

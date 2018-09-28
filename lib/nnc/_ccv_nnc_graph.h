@@ -88,11 +88,17 @@ struct ccv_nnc_graph_s {
 	int buffer_size;
 	ccv_array_t* exec_info; // deferred exec info
 	// I think that I can be more explicit about which are sources and which are destinations.
+	// These are int types.
 	ccv_array_t* sources;
 	ccv_array_t* destinations;
-	ccv_nnc_stream_context_t** streams;
+	// streams, signals, and waits are used to coordinate multi-stream graph run (several nodes can execute
+	// concurrently).
+	ccv_nnc_stream_context_t** streams; // Preallocated several streams for use, Default stream will be stream 0.
 	ccv_nnc_stream_signal_t** signals;
-	int* waits;
+	ccv_nnc_stream_signal_t* extern_signal; // This signal is created so that outside provided stream can be synced with the default stream.
+	int* waits; // The default stream will wait on these signals to be done.
+	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have
+	// any heap allocations (the usage of buffer first will, but subsequent runs won't).
 	void* buffer;
 	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
 	ccv_array_t* exec_wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tensor wraps.
