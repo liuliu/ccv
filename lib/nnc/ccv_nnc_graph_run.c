@@ -762,5 +762,21 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
-	return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, stream_context, flags, sources, source_size, destinations, destination_size);
+	if (stream_context && graph->topsorted)
+	{
+		ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
+		ccv_nnc_graph_topsorted_run_coro_t params = {
+			.graph = graph,
+			.exec_idx = -1,
+			.exec = 0,
+			.tensor_tape = tensor_tape,
+			.stream_context = stream_context,
+			.flags = flags
+		};
+		ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params);
+		ccv_nnc_stream_schedule_task(scheduler, task);
+		return CCV_NNC_EXEC_SUCCESS;
+	} else {
+		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, stream_context, flags, sources, source_size, destinations, destination_size);
+	}
 }

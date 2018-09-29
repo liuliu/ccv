@@ -168,7 +168,11 @@ void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const st
 	cudaStreamSynchronize(stream_compat->stream);
 }
 
+#if CUDA_VERSION >= 10000
+static void _ccv_nnc_stream_compat_task_resume(void* userdata)
+#else
 static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t status, void* userdata)
+#endif
 {
 	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)userdata;
 	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
@@ -188,7 +192,11 @@ void ccv_nnc_stream_compat_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_
 	ccv_nnc_stream_scheduler_t* const scheduler = self->super;
 	pthread_mutex_lock(&scheduler->mutex);
 	++scheduler->stream_wait_task_count;
+#if CUDA_VERSION >= 10000
+	cudaLaunchHostFunc(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self);
+#else
 	cudaStreamAddCallback(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self, 0);
+#endif
 	pthread_mutex_unlock(&scheduler->mutex);
 	swapcontext(&scheduler->callee, &scheduler->caller);
 }
@@ -687,12 +695,20 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 }
 #endif
 
+#if CUDA_VERSION >= 10000
+static void _ccv_nnc_cufree_stream_callback(void* ptr)
+#else
 static void _ccv_nnc_cufree_stream_callback(cudaStream_t stream, cudaError_t status, void* ptr)
+#endif
 {
 	cudaFree(ptr);
 }
 
 void cudaFreeAsync(void* ptr, cudaStream_t stream)
 {
+#if CUDA_VERSION >= 10000
+	cudaLaunchHostFunc(stream, _ccv_nnc_cufree_stream_callback, ptr);
+#else
 	cudaStreamAddCallback(stream, _ccv_nnc_cufree_stream_callback, ptr, 0);
+#endif
 }
