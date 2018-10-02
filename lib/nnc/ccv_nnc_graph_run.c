@@ -338,7 +338,8 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		for (i = 0; i < node->schedule.wait_size; i++)
 			ccv_nnc_stream_context_wait_signal(node_stream, graph->signals[node->schedule.waits[i]]);
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
-		ccv_nnc_stream_context_emit_signal(node_stream, graph->signals[node->schedule.sign]);
+		if (node->schedule.sign >= 0)
+			ccv_nnc_stream_context_emit_signal(node_stream, graph->signals[node->schedule.sign]);
 	}
 	return 0;
 }
@@ -396,7 +397,7 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 			continue;
 		}
 		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, i, tensor_tape, self->super, flags);
-		if (!task->done)
+		if (task && !task->done)
 		{
 			sub_tasks[sub_task_size++] = task;
 			node_stream->blocked_by = task;
@@ -421,7 +422,7 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 				continue;
 			}
 			ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, idx, tensor_tape, self->super, flags);
-			if (!task->done)
+			if (task && !task->done)
 			{
 				sub_tasks[sub_task_size++] = task;
 				node_stream->blocked_by = task;

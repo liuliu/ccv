@@ -133,7 +133,7 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
 		cudaSetDevice(device);
 		if (stream_compat->gpu.workspace)
-			cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+			cudaFree(stream_compat->gpu.workspace);
 		stream_compat->gpu.workspace = 0;
 		cudaMalloc(&stream_compat->gpu.workspace, workspace_size);
 		return stream_compat->gpu.workspace;
@@ -154,7 +154,7 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 	}
 	if (stream_compat->gpu.workspace)
 	{
-		cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+		cudaFree(stream_compat->gpu.workspace);
 		stream_compat->gpu.workspace = 0;
 		stream_compat->gpu.workspace_size = 0;
 	}
@@ -209,17 +209,17 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 	if (stream_compat->cpu.workspace)
 		ccfree(stream_compat->cpu.workspace);
 	if (stream_compat->gpu.workspace)
-		cudaFreeAsync(stream_compat->gpu.workspace, stream_compat->stream);
+		cudaFree(stream_compat->gpu.workspace);
 	cudaStreamDestroy(stream_compat->stream);
 	if (stream_compat->cublas)
 		cublasDestroy(stream_compat->cublas);
 	if (stream_compat->ones.data)
-		cudaFreeAsync(stream_compat->ones.data, stream_compat->stream);
+		cudaFree(stream_compat->ones.data);
 #ifdef HAVE_CUDNN
 	if (stream_compat->cudnn)
 		cudnnDestroy(stream_compat->cudnn);
 	if (stream_compat->rngs)
-		cudaFreeAsync(stream_compat->rngs, stream_compat->stream);
+		cudaFree(stream_compat->rngs);
 #endif
 }
 
@@ -273,7 +273,7 @@ float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const str
 		cudaSetDevice(device);
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 		if (stream_compat->ones.data)
-			cudaFreeAsync(stream_compat->ones.data, stream);
+			cudaFree(stream_compat->ones.data);
 		stream_compat->ones.n = n;
 		stream_compat->ones.data = (float*)cumalloc(device, sizeof(float) * n);
 		const int block_x = (n + 255) >> 8;
@@ -694,21 +694,3 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 	ccv_nnc_stream_context_return_convolution_descriptor(convolution_desc.stream_context, convolution_desc.descriptor);
 }
 #endif
-
-#if CUDA_VERSION >= 10000
-static void _ccv_nnc_cufree_stream_callback(void* ptr)
-#else
-static void _ccv_nnc_cufree_stream_callback(cudaStream_t stream, cudaError_t status, void* ptr)
-#endif
-{
-	cudaFree(ptr);
-}
-
-void cudaFreeAsync(void* ptr, cudaStream_t stream)
-{
-#if CUDA_VERSION >= 10000
-	cudaLaunchHostFunc(stream, _ccv_nnc_cufree_stream_callback, ptr);
-#else
-	cudaStreamAddCallback(stream, _ccv_nnc_cufree_stream_callback, ptr, 0);
-#endif
-}
