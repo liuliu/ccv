@@ -245,7 +245,7 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
 // Make the graph topsorted, thus, do a topological sort so when run the graph, no additional memory will be allocated.
 void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, const int exec_cvt_size);
 // Allocate extra streams to make this graph parallel runnable. Note this requires the graph to be topsorted.
-void ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
+void ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type);
 // The sources / destinations.
 void ccv_nnc_graph_set_sources(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t* const sources, const int source_size);
 ccv_nnc_graph_exec_t* ccv_nnc_graph_sources(const ccv_nnc_graph_t* const graph);

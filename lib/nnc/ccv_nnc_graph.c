@@ -637,7 +637,7 @@ static void _ccv_nnc_graph_schedule_assign_signs(ccv_array_t* const incoming, cc
 	}
 }
 
-static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type, const int device_id, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(graph->sources && graph->sources->rnum);
 	assert(graph->destinations && graph->destinations->rnum);
@@ -898,15 +898,15 @@ static void _ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stre
 				const int exec_idx = sub_graph->exec_idx - 1;
 				const int device_id = _ccv_nnc_device_id_for_exec(exec_info + exec_idx);
 				const int stream_idx = exec_info[exec_idx].schedule.stream;
-				_ccv_nnc_graph_schedule(sub_graph, stream_type, device_id, graph->streams[stream_idx]);
+				_ccv_nnc_graph_static_schedule(sub_graph, stream_type, device_id, graph->streams[stream_idx]);
 			}
 		}
 }
 
-void ccv_nnc_graph_schedule(ccv_nnc_graph_t* const graph, const int stream_type)
+void ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int stream_type)
 {
 	assert(graph->p == 0);
-	_ccv_nnc_graph_schedule(graph, stream_type, -1, 0);
+	_ccv_nnc_graph_static_schedule(graph, stream_type, -1, 0);
 }
 
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
