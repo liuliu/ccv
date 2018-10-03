@@ -185,10 +185,11 @@ static void _ccv_nnc_stream_task_done(ccv_nnc_stream_task_t* const task)
 		ccv_nnc_stream_task_t* const* const others = notify->others;
 		notify->others = 0;
 		for (i = 0; i < other_size; i++)
-		{
-			assert(others[i]->notify == notify);
-			others[i]->notify = 0;
-		}
+			if (others[i] != task)
+			{
+				assert(others[i]->notify == notify);
+				others[i]->notify = 0;
+			}
 	}
 	if (!task->super->empty_tasks)
 		task->super->empty_tasks = ccv_array_new(sizeof(ccv_nnc_stream_task_t*), 1, 0);
@@ -221,8 +222,6 @@ static void* _ccv_nnc_stream_schedule_main(void* userdata)
 		task->context = scheduler->callee;
 		if (task->done)
 			_ccv_nnc_stream_task_done(task);
-		// Lock again for the next run loop.
-		pthread_mutex_lock(&scheduler->mutex);
 	}
 	return 0;
 }
@@ -352,4 +351,6 @@ void ccv_nnc_stream_task_wait_any(ccv_nnc_stream_task_t* const self, ccv_nnc_str
 		assert(others[i]->notify == 0);
 		others[i]->notify = self;
 	}
+	ccv_nnc_stream_scheduler_t* const scheduler = self->super;
+	swapcontext(&scheduler->callee, &scheduler->caller);
 }

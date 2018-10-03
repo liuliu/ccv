@@ -58,7 +58,6 @@ struct ccv_nnc_stream_task_s {
 struct ccv_nnc_stream_context_s {
 	int type;
 	ccv_nnc_stream_scheduler_t* scheduler;
-	ccv_nnc_stream_task_t* blocked_by; // Mark the current stream is blocked by another one.
 };
 
 // Return the scheduler from a stream (if not created, create one).

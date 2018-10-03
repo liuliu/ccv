@@ -352,10 +352,9 @@ static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t
 		{
 			const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
 			ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
-			ccv_nnc_stream_context_t* const outgoing_stream = graph->streams[outgoing_node->schedule.stream];
 			// An outgoing stream can be blocked by multiple other tasks from other streams. But it is OK,
 			// because on next round of execution, that one will be marked as blocked again.
-			outgoing_stream->blocked_by = task;
+			graph->block_stream_tasks[outgoing_node->schedule.stream] = task;
 		}
 }
 
@@ -369,9 +368,8 @@ static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self,
 			for (j = 0; j < pending_node_size; j++)
 			{
 				ccv_nnc_graph_exec_info_t* const node = exec_info + pending_nodes[j];
-				ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
-				if (node_stream->blocked_by == sub_tasks[i])
-					node_stream->blocked_by = 0;
+				if (graph->block_stream_tasks[node->schedule.stream] == sub_tasks[i])
+					graph->block_stream_tasks[node->schedule.stream] = 0;
 			}
 }
 
@@ -389,18 +387,18 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 	for (i = start_index; i < exec_info_size; i++)
 	{
 		ccv_nnc_graph_exec_info_t* const node = exec_info + i;
-		ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
-		if (node_stream->blocked_by)
+		// If stream is blocked by but not blocked by current executing task.
+		if (graph->block_stream_tasks[node->schedule.stream])
 		{
 			pending_nodes[0][pending_node_size[0]++] = i;
-			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, node_stream->blocked_by);
+			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[node->schedule.stream]);
 			continue;
 		}
 		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, i, tensor_tape, self->super, flags);
 		if (task && !task->done)
 		{
 			sub_tasks[sub_task_size++] = task;
-			node_stream->blocked_by = task;
+			graph->block_stream_tasks[node->schedule.stream] = task;
 			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
 		}
 	}
@@ -414,18 +412,17 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 		{
 			const int idx = pending_nodes[p][i];
 			ccv_nnc_graph_exec_info_t* const node = exec_info + idx;
-			ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
-			if (node_stream->blocked_by)
+			if (graph->block_stream_tasks[node->schedule.stream])
 			{
-				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, node_stream->blocked_by);
-				pending_nodes[q][pending_node_size[q]++] = i;
+				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[node->schedule.stream]);
+				pending_nodes[q][pending_node_size[q]++] = idx;
 				continue;
 			}
 			ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, idx, tensor_tape, self->super, flags);
 			if (task && !task->done)
 			{
 				sub_tasks[sub_task_size++] = task;
-				node_stream->blocked_by = task;
+				graph->block_stream_tasks[node->schedule.stream] = task;
 				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
 			}
 		}

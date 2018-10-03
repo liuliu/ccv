@@ -12,6 +12,8 @@
 
 #include "ccv_nnc.h"
 
+typedef struct ccv_nnc_stream_task_s ccv_nnc_stream_task_t;
+
 typedef struct {
 	int update_required;
 	int count;
@@ -94,7 +96,8 @@ struct ccv_nnc_graph_s {
 	// streams, signals, and waits are used to coordinate multi-stream graph run (several nodes can execute
 	// concurrently).
 	ccv_nnc_stream_context_t** streams; // Preallocated several streams for use, Default stream will be stream 0.
-	ccv_nnc_stream_signal_t** signals;
+	ccv_nnc_stream_task_t** block_stream_tasks; // Used to keep list of tasks that blocked current stream.
+	ccv_nnc_stream_signal_t** signals; // Preallocated several signals for use.
 	ccv_nnc_stream_signal_t* extern_signal; // This signal is created so that outside provided stream can be synced with the default stream.
 	int* waits; // The default stream will wait on these signals to be done.
 	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have

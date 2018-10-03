@@ -856,6 +856,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	// Allocate streams & signals
 	graph->stream_size = stream_data->rnum;
 	graph->streams = (ccv_nnc_stream_context_t**)ccmalloc(sizeof(ccv_nnc_stream_context_t*) * graph->stream_size);
+	graph->block_stream_tasks = (ccv_nnc_stream_task_t**)cccalloc(graph->stream_size, sizeof(ccv_nnc_stream_task_t*));
 	if (stream_context)
 		graph->streams[0] = stream_context;
 	for (i = (stream_context ? 1 : 0); i < stream_data->rnum; i++)
@@ -1531,6 +1532,8 @@ void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph)
 			ccv_nnc_stream_context_free(graph->streams[i]);
 		ccfree(graph->streams);
 	}
+	if (graph->block_stream_tasks)
+		ccfree(graph->block_stream_tasks);
 	if (graph->signals)
 	{
 		for (i = 0; i < graph->signal_size; i++)
