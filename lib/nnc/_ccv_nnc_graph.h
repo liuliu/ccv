@@ -12,7 +12,7 @@
 
 #include "ccv_nnc.h"
 
-typedef struct ccv_nnc_stream_task_s ccv_nnc_stream_task_t;
+#include "_ccv_nnc_stream.h"
 
 typedef struct {
 	int update_required;
