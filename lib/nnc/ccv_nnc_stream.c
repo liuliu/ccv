@@ -191,9 +191,10 @@ static void _ccv_nnc_stream_task_done(ccv_nnc_stream_task_t* const task)
 				others[i]->notify = 0;
 			}
 	}
-	if (!task->super->empty_tasks)
-		task->super->empty_tasks = ccv_array_new(sizeof(ccv_nnc_stream_task_t*), 1, 0);
-	ccv_array_push(task->super->empty_tasks, &task);
+	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
+	if (!scheduler->empty_tasks)
+		scheduler->empty_tasks = ccv_array_new(sizeof(ccv_nnc_stream_task_t*), 1, 0);
+	ccv_array_push(scheduler->empty_tasks, &task);
 }
 
 // Second will invoke this blocking variant to schedule task on a newly created thread.
@@ -294,7 +295,7 @@ static void _ccv_nnc_stream_task_entry_point(uint32_t part0, uint32_t part1)
 	swapcontext(&scheduler->callee, &scheduler->caller);
 }
 
-ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata)
+ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata, const size_t userdata_size)
 {
 	ccv_nnc_stream_task_t* task;
 	if (scheduler->empty_tasks && scheduler->empty_tasks->rnum)
@@ -303,12 +304,18 @@ ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const
 		--scheduler->empty_tasks->rnum;
 	} else {
 		task = (ccv_nnc_stream_task_t*)cccalloc(1, sizeof(ccv_nnc_stream_task_t));
-		task->stack = (char*)cccalloc(CCV_NNC_TASK_STACK_SIZE, 1);
+		task->stack = (char*)cccalloc(CCV_NNC_TASK_STACK_SIZE + userdata_size, 1);
 		task->super = scheduler;
 	}
 	task->done = 0;
 	task->func = func;
-	task->userdata = userdata;
+	if (userdata_size)
+	{
+		// If the size is available, we copy the userdata over.
+		task->userdata = task->stack + CCV_NNC_TASK_STACK_SIZE;
+		memcpy(task->userdata, userdata, userdata_size);
+	} else
+		task->userdata = userdata;
 	getcontext(&task->context);
 	task->context.uc_stack.ss_sp = task->stack;
 	task->context.uc_stack.ss_size = CCV_NNC_TASK_STACK_SIZE;
@@ -331,13 +338,13 @@ void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task)
 		_ccv_nnc_stream_task_done(task);
 }
 
-void ccv_nnc_stream_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
+void ccv_nnc_stream_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
 {
 	if (!stream)
 		return;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(stream->type) == CCV_STREAM_CONTEXT_GPU)
-		ccv_nnc_stream_compat_task_wait(self, stream);
+		ccv_nnc_stream_compat_task_synchronize(self, stream);
 #endif
 }
 

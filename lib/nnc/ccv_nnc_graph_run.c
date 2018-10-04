@@ -253,7 +253,7 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	ccv_nnc_stream_context_t* const stream_context = params->stream_context;
 	const int flags = params->flags;
 	// Wait until this stream context is done.
-	ccv_nnc_stream_task_wait(self, stream_context);
+	ccv_nnc_stream_task_synchronize(self, stream_context);
 	int ref;
 	if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 	{
@@ -314,7 +314,7 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 				.stream_context = node_stream,
 				.flags = flags,
 			};
-			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_exec_cases_of_coro, &params);
+			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_exec_cases_of_coro, &params, 0);
 			ccv_nnc_stream_task_resume(task);
 			return task;
 		} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
@@ -328,7 +328,7 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 				.stream_context = graph->streams[node->schedule.stream],
 				.flags = flags
 			};
-			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params);
+			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, 0);
 			ccv_nnc_stream_task_resume(task);
 			return task;
 		}
@@ -443,6 +443,18 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	const int flags = params->flags;
 	int i;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
+	if (exec_idx == -1)
+	{
+		if (stream_context->main)
+		{
+			ccv_nnc_stream_task_t* const previous_main = stream_context->main;
+			stream_context->main = self;
+			// Wait the previous task to be done. This makes sure that our graph run is serial on the same stream.
+			assert(!previous_main->done);
+			ccv_nnc_stream_task_wait_any(self, &previous_main, 1);
+		} else
+			stream_context->main = self;
+	}
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
 		assert(exec->p_while.expr);
@@ -466,7 +478,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
 				// Wait until everything on the stream is executed.
 				for (i = graph->breakpoint_offset; i < graph_breakpoint_size; i++)
-					ccv_nnc_stream_task_wait(self, graph->streams[exec_info[i].schedule.stream]);
+					ccv_nnc_stream_task_synchronize(self, graph->streams[exec_info[i].schedule.stream]);
 				if (!exec->p_while.expr(exec->p_while.inputs, exec->p_while.input_size, exec->p_while.data))
 				{
 					_ccv_nnc_graph_rewrap(graph);
@@ -514,6 +526,9 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 		ccv_nnc_stream_context_emit_signal(graph->streams[0], graph->extern_signal);
 		ccv_nnc_stream_context_wait_signal(stream_context, graph->extern_signal);
 	}
+	// Reset main to 0 if it is current me.
+	if (exec_idx == -1 && stream_context->main == self)
+		stream_context->main = 0;
 }
 
 static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, const ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
@@ -771,7 +786,7 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 			.stream_context = stream_context,
 			.flags = flags
 		};
-		ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params);
+		ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, sizeof(params));
 		ccv_nnc_stream_schedule_task(scheduler, task);
 		return CCV_NNC_EXEC_SUCCESS;
 	} else {

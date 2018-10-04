@@ -183,7 +183,7 @@ static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t 
 	pthread_mutex_unlock(&scheduler->mutex);
 }
 
-void ccv_nnc_stream_compat_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
+void ccv_nnc_stream_compat_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
 	// If the stream is completed, no need to wait.

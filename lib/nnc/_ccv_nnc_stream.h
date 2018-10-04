@@ -57,6 +57,7 @@ struct ccv_nnc_stream_task_s {
 
 struct ccv_nnc_stream_context_s {
 	int type;
+	ccv_nnc_stream_task_t* main; // main task.
 	ccv_nnc_stream_scheduler_t* scheduler;
 };
 
@@ -66,12 +67,12 @@ CCV_WARN_UNUSED(ccv_nnc_stream_scheduler_t*) ccv_nnc_stream_context_get_schedule
 void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
 // Add a task to the list of tasks scheduler going to execute.
 void ccv_nnc_stream_scheduler_add_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
-// Create a task off a stream.
-CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata);
+// Create a task off a stream. If userdata_size is non-zero, we copied it over.
+CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata, const size_t userdata_size);
 // Run a given task immediately from within an existing task.
 void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task);
 // Set a point on the stream, and wait until that point is reached to continue execution.
-void ccv_nnc_stream_task_wait(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream);
+void ccv_nnc_stream_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream);
 // Wait any other tasks to finish. Since we don't have yield, this means wait until these tasks to finish.
 void ccv_nnc_stream_task_wait_any(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_task_t* const* const others, const int other_size);
 
