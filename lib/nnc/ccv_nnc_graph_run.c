@@ -473,7 +473,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 					// If we break from here, it is ok because all the streams are waited.
 					break;
 				}
-				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, graph_breakpoint_size,graph->exec_info->rnum, tensor_tape, flags);
+				_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, graph_breakpoint_size, graph->exec_info->rnum, tensor_tape, flags);
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
@@ -500,9 +500,9 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				_ccv_nnc_graph_from_move_transit(graph);
 				_ccv_nnc_graph_rewrap(graph);
 			}
-			for (i = 0; i < graph->wait_size; i++)
-				ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[graph->waits[i]]);
 		}
+		for (i = 0; i < graph->wait_size; i++)
+			ccv_nnc_stream_context_wait_signal(graph->streams[0], graph->signals[graph->waits[i]]);
 	} else {
 		graph->while_count = 0;
 		_ccv_nnc_graph_exec_run_loop(self, graph, exec_info, 0, graph->exec_info->rnum, tensor_tape, flags);
