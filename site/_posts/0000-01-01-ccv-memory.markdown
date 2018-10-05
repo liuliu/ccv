@@ -148,3 +148,24 @@ ccv\_enable\_cache
 Enable a application-wide cache for ccv. The cache is bounded by given memory size.
 
  * **size**: The upper limit of the cache, in bytes.
+
+CCV\_SPARSE\_FOREACH
+--------------------
+
+	CCV_SPARSE_FOREACH(mat, block)
+
+This method enables you to loop over non-zero (or assigned) positions in a sparse matrix.
+
+ * **mat**: The sparse matrix.
+ * **block(row, col, value)**: a macro to loop over, row, col is the position (depends on if it is row major or col major), value is the typed array.
+
+CCV\_SPARSE\_VECTOR\_FOREACH
+----------------------------
+
+	CCV_SPARSE_VECTOR_FOREACH(mat, vector, block)
+
+This method enables you to loop over non-zero (or assigned) positions in one vector of a sparse matrix (you can use ccv\_get\_sparse\_matrix\_vector method)
+
+ * **mat**: The sparse matrix.
+ * **vector**: The vector within the sparse matrix.
+ * **block(index, value)**: a macro to loop over, index is the position (depends on if it is row major or col major), value is the typed array.

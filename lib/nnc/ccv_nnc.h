@@ -16,37 +16,54 @@
 #include "cmd/ccv_nnc_cmd.h"
 #include "cmd/ccv_nnc_backend.h"
 
+/**
+ * @defgroup level_0 Level-0 API
+ * @{
+ */
+
+/**
+ * Initialize the library.
+ */
+void ccv_nnc_init(void);
+
+/** @} */
+
+/**
+ * @defgroup level_1 Level-1 API
+ * @{
+ */
+
 enum {
 	// Attributes that enable symbolic graph simplification
-	CCV_NNC_CMD_ATTR_PASSTHROUGH  = 0x01, // This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical).
-	CCV_NNC_CMD_ATTR_OUTPUT_ONES  = 0x02, // All the output tensors are 1s (unit).
-	CCV_NNC_CMD_ATTR_NULL_IS_ONES = 0x04, // Accept nullptr input as if these are tensors with 1s (unit).
+	CCV_NNC_CMD_ATTR_PASSTHROUGH  = 0x01, /**< This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical). */
+	CCV_NNC_CMD_ATTR_OUTPUT_ONES  = 0x02, /**< All the output tensors are 1s (unit). */
+	CCV_NNC_CMD_ATTR_NULL_IS_ONES = 0x04, /**< Accept nullptr input as if these are tensors with 1s (unit). */
 };
 
 // Flags pass into cmd when executing.
 enum {
-	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, // Enable accumulate outputs.
-	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, // Don't allocate any extra memory for this operation.
+	CCV_NNC_ACCUMULATE_OUTPUT = 0x01, /**< Enable accumulate outputs (unsupported). */
+	CCV_NNC_ZERO_MEMORY_ALLOC = 0x02, /**< Don't allocate any extra memory for this operation. */
 };
 
 enum {
-	CCV_NNC_EXEC_SUCCESS   = 0,
-	CCV_NNC_EXEC_INVALID   = -1, // Invalid input.
-	CCV_NNC_EXEC_NO_KERNEL = -2,
-	CCV_NNC_EXEC_OOM       = -3,
+	CCV_NNC_EXEC_SUCCESS   = 0, /**< Successfully executed the command. */
+	CCV_NNC_EXEC_INVALID   = -1, /**< Invalid inputs. */
+	CCV_NNC_EXEC_NO_KERNEL = -2, /**< No kernel available for a given command / backend. */
+	CCV_NNC_EXEC_OOM       = -3, /**< Out of memory error. */
 };
 
 typedef struct {
 	struct {
-		int dim[CCV_NNC_MAX_DIM_ALLOC];
-	} size; /**< [size] The window size for the layer. For full connect layer, it is 1 because it is 1x1 convolutional layer with count of filters */
+		int dim[CCV_NNC_MAX_DIM_ALLOC]; /**< [size.dim] The window size for the layer. For full connect layer, it is 1 because it is 1x1 convolutional layer with count of filters */
+	} size;
 	union {
 		struct {
 			int count; /**< [convolution.count] The number of filters for convolutional layer. */
 			int groups; /**< [convolution.groups] The number of groups for convolutional layer. */
 		} convolution;
 		struct {
-			int reserved;
+			int reserved; /**< [pool.reserved] A reserved field. */
 		} pool;
 		struct {
 			float kappa; /**< [rnorm.kappa] As of b[i] = a[i] / (rnorm.kappa + rnorm.alpha * sum(a, i - rnorm.size / 2, i + rnorm.size / 2)) ^ rnorm.beta */
@@ -83,35 +100,51 @@ typedef struct {
 
 typedef struct {
 	struct {
-		int dim[CCV_NNC_MAX_DIM_ALLOC];
+		int dim[CCV_NNC_MAX_DIM_ALLOC]; /**< Stride for each dimension. */
 	} stride;
 	struct {
-		int begin[CCV_NNC_MAX_DIM_ALLOC];
-		int end[CCV_NNC_MAX_DIM_ALLOC];
+		int begin[CCV_NNC_MAX_DIM_ALLOC]; /**< Padding at the beginning of a dimension. */
+		int end[CCV_NNC_MAX_DIM_ALLOC]; /**< Padding at the end of a dimension. */
 	} border;
 } ccv_nnc_hint_t;
 
+/**
+ * An opaque pointer to a stream object.
+ */
 typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;
 
 typedef struct ccv_nnc_cmd_s {
-	uint32_t cmd;
-	uint32_t backend;
-	int algorithm;
-	ccv_nnc_cmd_param_t info;
-	// This has to be the same as the ccv_nnc_cmd_exec_f type.
-	// This is for type CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD
+	uint32_t cmd; /**< The identifier for command. */
+	uint32_t backend; /**< The identifier for backend. */
+	int algorithm; /**< The algorithm selector (as defined by backend). */
+	ccv_nnc_cmd_param_t info; /**< The command parameters. */
+	/**
+	 * This has to be the same as the ccv_nnc_cmd_exec_f type.
+	 * This is for type CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD
+	 */
 	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 } ccv_nnc_cmd_t;
 
-// For forward functions, the input tensors and output tensors can be arbitrary.
-// However, for backward functions (backpropagation, or gradient functions in other libs),
-// the input is: 0~m-1: gradient for output tensors, 1~n: input tensors for forward functions, n+1~n+m: output tensors for forward functions,
-// the output is: 0~n-1: output gradients w.r.t. input tensors.
-// Which input / output tensors can be ignored can be specified in the cmd config structs.
+/**
+ * For forward functions, the input tensors and output tensors can be arbitrary.
+ * However, for backward functions (backpropagation, or gradient functions in other libs),
+ * the input is: 0~m-1: gradient for output tensors, 1~n: input tensors for forward functions, n+1~n+m: output tensors for forward functions,
+ * the output is: 0~n-1: output gradients w.r.t. input tensors.
+ * Which input / output tensors can be ignored can be specified in the cmd config structs.
+ */
 typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 
+/**
+ * The function prototype for autotune. The only difference is the max_workspace_size.
+ * Whoever implement this function prototype means we handled over autotune task to the
+ * command itself, you are responsible to select the best algorithm.
+ * @return The selected algorithm.
+ */
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 
+/**
+ * Count the dimensionality of a tensor.
+ */
 static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
 {
 	int i;
@@ -122,84 +155,280 @@ static inline int ccv_nnc_tensor_nd(const int dim[CCV_NNC_MAX_DIM_ALLOC])
 }
 
 /**
- * Level-0 API
+ * Create a new tensor.
+ * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
+ * @param params Tensor parameters.
+ * @param flags Reserved flags for the allocation.
  */
-
-void ccv_nnc_init(void);
-
-/**
- * Level-1 API
- */
-
-// For tensor
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
-// Allocating on stack
+/**
+ * Create a new tensor on stack.
+ * @param ptr If 0, nnc will allocate the tensor ourselves. Otherwise, will use the memory region referenced by 'ptr'.
+ * @param params Tensor parameters.
+ * @param flags Reserved flags for the allocation.
+ */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
-// Pin the tensor memory on GPU.
-// Return 0 for success.
+/**
+ * Pin the tensor memory for faster access on GPU.
+ * @param tensor A tensor that we want to pin the memory.
+ * @return 0 for success.
+ */
 int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor);
+/**
+ * Free a tensor object.
+ * @param tensor The tensor to be freed.
+ */
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
+/**
+ * Create a tensor view. A tensor view can be non-continuous. Essentially, it provides a view into a tensor.
+ * @param tensor The tensor that we want to view into.
+ * @param dim The new dimension of the tensor view.
+ * @param ofs The offset on each of the dimension.
+ * @param inc The line size of each dimension.
+ */
 CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
-// Allocating on stack
+/**
+ * Create a tensor view on stack.
+ * @param tensor The tensor that we want to view into.
+ * @param dim The new dimension of the tensor view.
+ * @param ofs The offset on each of the dimension.
+ * @param inc The line size of each dimension.
+ */
 CCV_WARN_UNUSED(ccv_nnc_tensor_view_t) ccv_nnc_tensor_view(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
+/**
+ * Free a tensor view object.
+ * @param tensor_view The tensor view to be freed.
+ */
 void ccv_nnc_tensor_view_free(ccv_nnc_tensor_view_t* const tensor_view);
-// All these functions afterwards should be compatible with both tensor and tensor view unless assertion.
+/**
+ * Zero out a given tensor.
+ * @param tensor The tensor to be zero out.
+ */
 void ccv_nnc_tensor_zero(void* const tensor);
+/**
+ * Compare whether two tensors are equal. This will tolerant some floating point issues follow http://www.cygnus-software.com/papers/comparingfloats/comparingfloats.htm
+ * @param a Tensor a.
+ * @param b Tensor b.
+ * @return 0 if equal, -1 otherwise.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b);
 
-// For computation node
-// Return high precision time unit.
+/**
+ * Return a high precision time unit. What this time unit is is platform specific.
+ * @return A monotonic increasing 64-bit integer w.r.t. passing of time.
+ */
 uint64_t ccv_nnc_cmd_mono_time(void);
+/**
+ * Return UTF-8 encoded name of a given command.
+ * @return A UTF-8 string (pointing to a static constant).
+ */
 CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_name(const uint32_t cmd);
+/**
+ * Return UTF-8 encoded name of a given backend.
+ * @return A UTF-8 string (pointing to a static constant).
+ */
 CCV_WARN_UNUSED(const char*) ccv_nnc_cmd_backend_name(const uint32_t backend);
+/**
+ * Check whether a given backend is available for a given command.
+ * @return 1 if it is available.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_ok(const uint32_t cmd, const uint32_t backend);
+/**
+ * Create a wrapped command with parameters.
+ * @param cmd The command identifier.
+ * @param exec If this is a CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD command, this supplies the custom function.
+ * @param params The parameters for the command.
+ * @param flags A reserved field for flags.
+ * @return A wrapped ccv_nnc_cmd_t structure.
+ */
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const uint32_t cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
-// Verify the hint
+/**
+ * Verify whether a hint is compatible with a given command and a given input tensor parameters / output tensor parameters.
+ * @param hint The hint for a given command. Hint defines things such as paddings, strides etc. for a given command.
+ * @param cmd The wrapped command.
+ * @param a The input tensor parameters.
+ * @param b The output tensor parameters.
+ * @return 1 if it passes.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_hint_verify(const ccv_nnc_hint_t hint, const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-// Auto find the best hint for a given input / output (on forward pass only).
+/**
+ * Automatically find the best hint for a given input / output (on forward pass only).
+ * @param cmd The wrapped command.
+ * @param a The input tensor parameters.
+ * @param b The output tensor parameters.
+ * @return Best hint we can guess.
+ */
 CCV_WARN_UNUSED(ccv_nnc_hint_t) ccv_nnc_hint_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t a, const ccv_nnc_tensor_param_t b);
-// Auto find the outputs for the given inputs / hint.
+/**
+ * Automatically find the outputs for the given inputs / hint.
+ * @param cmd The wrapped command.
+ * @param inputs An array of input tensor parameters.
+ * @param input_size The size of input array.
+ * @param hint The hint for the given command.
+ * @param outputs An array for the output tensor parameters.
+ * @param output_size The size of the output array.
+ */
 void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
+/**
+ * Find a suitable backend for a given command and tensor settings.
+ * @param cmd The wrapped command.
+ * @param tensor_memory The tensor memory setup (whether it is CPU or GPU).
+ * @param tensor_formats The tensor layout format (NCHW, NHWC, CHWN etc.)
+ * @param tensor_datatypes The datatype of a given tensor (FP32 etc.)
+ * @return The backend identifier for the selected backend.
+ */
 CCV_WARN_UNUSED(uint32_t) ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memory, const int tensor_formats, const int tensor_datatypes);
-// Run autotune to find the best kernel and configuration for the given input, returned is the modified
-// cmd that contains the updated configuration.
+/**
+ * Run autotune to find the best kernel and configuration for the given input.
+ * @param cmd The original wrapped command.
+ * @param max_workspace_size The maximum memory allowed for this command to execute.
+ * @param hint The hint for the given command.
+ * @param flags The reserved field for flags.
+ * @param inputs An array of input tensors.
+ * @param input_size The size of input array.
+ * @param outputs An array of output tensors.
+ * @param output_size The size of output array.
+ * @param stream_context The stream we can do the autotune on. 0 uses default stream.
+ * @return The modified cmd that contains the updated configuration.
+ */
 CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Check whether a given tensor input / output pattern can be computed by the given command.
+ * bitmasks encode whether a given input tensor / output tensor available at a position.
+ * @param cmd The wrapped command to check.
+ * @param input_size The intended size of the input tensor array.
+ * @param output_size The intended size of the output tensor array.
+ * @param input_bitmasks The input tensor array encoding in bitmap, 0: no tensor, 1: has a tensor.
+ * @param input_bitmask_size The size of the input bitmask array.
+ * @param output_bitmasks The output tensor array encoding in bitmap.
+ * @param output_bitmask_size The size of the output bitmask array.
+ * @return 1 if the command can be executed with the given input / output pattern.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size);
+/**
+ * Execute a given command.
+ * @param cmd The wrapped command to be executed.
+ * @param hint The hint provided for the command.
+ * @param flags A reserved field for flags.
+ * @param inputs The input tensor array.
+ * @param input_size The size of input tensor array.
+ * @param outputs The output tensor array.
+ * @param output_size The size of output tensor array.
+ * @param stream_context The stream which the command will be executed upon.
+ * @return CCV_NNC_EXEC_SUCCESS if succeed.
+ */
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Check whether the command is a forward pass or not.
+ * @param cmd The wrapped command.
+ * @return 1 if it is a forward pass.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_forward(const ccv_nnc_cmd_t cmd);
+/**
+ * Check whether the command is a backward pass or not.
+ * @param cmd The wrapped command.
+ * @return 1 if it is a backward pass.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_is_backward(const ccv_nnc_cmd_t cmd);
-// Check this command against listed attributes.
+/**
+ * Check this command against listed attributes.
+ * @param cmd The wrapped command.
+ * @param flags The flags to check against the command (unsupported).
+ * @return 1 if the flag is supported by the command.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
-// Check whether this command allow inplace operation against a particular input and output (index from 0).
+/**
+ * Check whether this command allow inplace operation against a particular input and output (index from 0).
+ * @param cmd The wrapped command.
+ * @param input_idx The index of the input tensor we want to check.
+ * @param output_idx the index of the output tensor we want to check.
+ * @return 1 if the input tensor can be used as the output tensor.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
-// Check whether this command need to enforce inplace operation against a particular input and output (index from 0).
+/**
+ * Check whether this command need to enforce inplace operation against a particular input and output (index from 0).
+ * @param cmd The wrapped command.
+ * @param input_idx The index of the input tensor we want to check.
+ * @param output_idx the index of the output tensor we want to check.
+ * @return 1 if the input tensor is required to be used as the output tensor.
+ */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
 
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.
 enum {
-	CCV_STREAM_CONTEXT_CPU = 0x1,
-	CCV_STREAM_CONTEXT_GPU = 0x2,
+	CCV_STREAM_CONTEXT_CPU = 0x1, /**< A CPU based stream context (unsupported). */
+	CCV_STREAM_CONTEXT_GPU = 0x2, /**< A GPU based stream context. */
 };
 #define CCV_STREAM_GET_CONTEXT(type) ((type) & 0x3)
 #define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
-// Flag is a combination of CPU / GPU and DEVICE_ID
+/**
+ * Create a new stream context.
+ * @param type A combination of CPU / GPU and DEVICE_ID.
+ * @return The newly created stream context.
+ */
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(const int type);
+/**
+ * Get a stream context local workspace memory. This memory region will be reused
+ * the next time when you call this method on the same stream context.
+ * @param stream_context The stream context which provides the workspace memory.
+ * @param workspace_size The size of the workspace memory.
+ * @param mem The memory type of the said workspace memory (GPU or CPU).
+ * @return A pointer to the workspace memory.
+ */
 CCV_WARN_UNUSED(void*) ccv_nnc_stream_context_get_workspace(ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem);
+/**
+ * Deallocate any workspace memory on the stream context.
+ * @param stream The stream context to drain workspace memory.
+ */
 void ccv_nnc_stream_context_drain(ccv_nnc_stream_context_t* const stream);
+/**
+ * Wait until all tasks submitted (command, graph run etc.) on the stream context
+ * completed.
+ * @param stream The stream context to wait.
+ */
 void ccv_nnc_stream_context_wait(const ccv_nnc_stream_context_t* const stream);
+/**
+ * Deallocate the stream context.
+ * @param stream_context The stream context to be destroyed.
+ */
 void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context);
 
+/**
+ * An opaque pointer to the signal object.
+ */
 typedef struct ccv_nnc_stream_signal_s ccv_nnc_stream_signal_t;
 
+/**
+ * Create a new stream signal.
+ * @param type A composed type denotes whether it associated with a GPU or CPU stream context, and on which device.
+ * @return The newly created stream signal.
+ */
 CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(const int type);
+/**
+ * Emit a signal on a stream.
+ * @param stream The stream context where the signal will be emitted.
+ * @param signal The signal to be emitted. It has to be on the same device as the stream.
+ */
 void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+/**
+ * Wait a signal on a stream.
+ * @param stream The stream context that will be blocked by the signal.
+ * @param signal The signal to be waited. It can be on a different device of the stream.
+ */
 void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+/**
+ * Deallocate the signal.
+ * @param signal The signal to be destroyed.
+ */
 void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
 
+/** @} */
+
 /**
- * Level-2 API
+ * @defgroup level_2 Level-2 API
+ * @{
  */
 
 enum {
@@ -261,8 +490,11 @@ void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_te
 // This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
 void ccv_nnc_graph_free(ccv_nnc_graph_t* const graph);
 
+/** @} */
+
 /**
- * Level-3 API
+ * @defgroup level_3 Level-3 API
+ * @{
  */
 
 typedef struct ccv_nnc_symbolic_graph_s ccv_nnc_symbolic_graph_t;
@@ -432,8 +664,11 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
 // Read symbolic graph from disk, with some binding tensors.
 void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t** const graph_ref, ccv_nnc_tensor_bind_t** const tensor_binds_ref, int* const tensor_bind_size_ref);
 
+/** @} */
+
 /**
- * Level-3.5 API
+ * @defgroup level_3_5 Level-3.5 API
+ * @{
  */
 
 // Compute the backward graph, assuming the provided symbolic graph only contain the "forward" part from sources to destinations.
@@ -446,100 +681,106 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(cons
 // This has to get the exec symbol from the tensor.
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 
-// Construct a "while" loop in a symbolic graph.
-//
-// In NNC, a computation graph cannot allow cycles. Thus, there is no flexible way to express loops.
-//
-// A little survey on this problem:
-//
-// * Caffe2 supports specific type of recurrent neural network.
-// * TensorFlow as it stands, supports while construct. Its while construct is very straightforward, a body and
-//   a condition is provided, you can construct whatever graph as you want.
-// * mxnet supports recurrent neural network by unrolling it into normal none-looped graph.
-// * Theano supports "scan" ops, which is a terminable loop (with loop variant, known as sequence).
-// * CNTK supports this with custom BrainScript. Within BrainScript, you can access the previous state in a
-//   function, therefore, effectively supports calling a method multiple times (looping over).
-//
-// Of above, Caffe2 and MxNet gave up on supporting generic loop for performance reasons. TensorFlow supports
-// generic while loop, with all the trouble it may introduce (see the Nested while loop bug in TensorFlow that
-// recently fixed). Theano picked a point seems pretty sweet, although there are limitations. CNTK's BrainScript
-// is a DSL, they can do whatever they want with the drawback now that they need to implement a language runtime.
-// TensorFlow, Theano and CNTK all support auto-differentiation over the while loop with tape (Wengert list).
-//
-// A simple way to support loop is to support conditional jump. In fact, conditional jump is a more generic way
-// of doing loops. However, if you put this into the consideration that fully differentiable computation graph
-// wanna to be supported, it is terrible. With conditional jump, it is really hard for you to know which tensor
-// is used where, thus keep track for reverse accumulation (backward propagation). There is no counter or
-// whatsoever, it is pretty hard to trace back on which line is executed how many times. Compounding this with
-// NNC's promise that as long as it shows on the graph can be "parallel" computed, it will be parallel computed,
-// it is close to impossible to track if conditional jump used in its raw form. Certain restrictions must be
-// applied to how to do the loop. The compromise comes from closer examination of NNC's preferences.
-//
-// NNC prefers to have the graph without cycles. It also prefers to be fully differentiable. Another important
-// criteria is that most functions in NNC require SSA (Static Single Assignment) representation. With these in
-// mind, supporting while loop has to be strict.
-//
-// Luckily, there are well-formalized way of supporting this in literature and practice. Because it is
-// well-formalized, translating this into existing NNC implementation is actually pretty straightforward. We
-// are going to introduce a special version of while loop. In literature that discussed about SSA, it may be
-// called parameterized loop. For us, it works like this:
-//
-// To construct a while loop for existing NNC graph, you need to be able to separate the existing graph into
-// two sub-graphs.
-//
-// The while-loop sub-graph (WL sub-graph) contains a set of incoming nodes (I-nodes), Condition false output
-// nodes (CFO-nodes) and end nodes (E-nodes). Each set have its own properties, but in short, all incoming edges
-// to the WL sub-graph connect to one of the I-nodes, but nothing else. All outgoing edges from the WL sub-graph
-// connect to one of the CFO-nodes, but nothing else. A nodes can be either a I-node, CFO-node or E-node,
-// non-exclusively.
-//
-// There are also 3 types of tensors used for all nodes in WL sub-graph: Input tensors (I-tensors) are tensors
-// that are inputs to some nodes, and will never be outputs. Output tensors (O-tensors) are tensors that are
-// outputs from some nodes, but never be inputs to any nodes. I-tensors can be outputs from some nodes that
-// outside of WL sub-graph. O-tensors can be inputs to some nodes that outside of WL sub-graph. Internal
-// tensors (IN-tensors) are not visible outside of WL sub-graph, therefore, they can be both inputs and outputs
-// of some nodes inside the sub-graph. Some tensors can be feedback into the WL sub-graph, given either
-// O-tensors or IN-tensors. A parameter map can be given in these cases to describe which maps to what.
-//
-// The way to drive a WL sub-graph like this: the WL sub-graph runs until all CFO-nodes are reached. At this
-// point, the while_f condition is checked. If true, we continue until all the end-nodes are reached. At this
-// point, we increase the counter, reconfigure the WL sub-graph with parameter map, and run from I-nodes all
-// over again. When reached all CFO-nodes, the condition is checked again, if false, WL sub-graph terminates,
-// and the graph continues from the nodes that are pointed by CFO-nodes.
-//
-// Given these constraints, doing automatic differentiation is not that hard any more. A WL sub-graph, from
-// the whole graph's point of view, is just a giant command supports both forward / backward operations, with
-// some extra information passed around in the form of userdata (tape).
-//
-// For WL sub-graph, we can continue to leverage the compile / backward function that already written for
-// symbolic graph as well.
-//
-// For compile function, we just need to take care of parameter maps (these need to be converted into binded
-// tensors).
-//
-// For backward function, we need to convert parameter maps from assigner (thus, y = x) to accumulator (x += y).
-//
-// This function will replace the nodes that it affects to one sub-graph node. Thus, how to drive this
-// sub-graph is opaque. Its backward form is opaque as well.
-//
-// There are no connection between its nodes and the outside graph nodes other than the three sets:
-//
-// 1). Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges
-//     points by inside nodes. The sub-graph computation starts from these incoming nodes;
-// 2). Condition false output nodes, when condition is false, we will break out of this while loop, these
-//     nodes pointing to the outside nodes, but no inside nodes;
-// 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed,
-//     we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes
-//     (OK if end nodes are condition true output nodes as well);
-//
-// Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs
-// and outputs. Besides that, the loop body needs to be parameterized to be SSA compliant (see:
-// https://www.cs.cmu.edu/~fp/courses/15411-f13/lectures/06-ssa.pdf). Thus, a list of body parameters need to
-// be provided.
+/**
+ * @page symbolic_while Construct a "while" loop in a symbolic graph.
+ *
+ * In NNC, a computation graph cannot allow cycles. Thus, there is no flexible way to express loops.
+ *
+ * A little survey on this problem:
+ *
+ * * Caffe2 supports specific type of recurrent neural network.
+ * * TensorFlow as it stands, supports while construct. Its while construct is very straightforward, a body and
+ *   a condition is provided, you can construct whatever graph as you want.
+ * * mxnet supports recurrent neural network by unrolling it into normal none-looped graph.
+ * * Theano supports "scan" ops, which is a terminable loop (with loop variant, known as sequence).
+ * * CNTK supports this with custom BrainScript. Within BrainScript, you can access the previous state in a
+ *   function, therefore, effectively supports calling a method multiple times (looping over).
+ *
+ * Of above, Caffe2 and MxNet gave up on supporting generic loop for performance reasons. TensorFlow supports
+ * generic while loop, with all the trouble it may introduce (see the Nested while loop bug in TensorFlow that
+ * recently fixed). Theano picked a point seems pretty sweet, although there are limitations. CNTK's BrainScript
+ * is a DSL, they can do whatever they want with the drawback now that they need to implement a language runtime.
+ * TensorFlow, Theano and CNTK all support auto-differentiation over the while loop with tape (Wengert list).
+ *
+ * A simple way to support loop is to support conditional jump. In fact, conditional jump is a more generic way
+ * of doing loops. However, if you put this into the consideration that fully differentiable computation graph
+ * wanna to be supported, it is terrible. With conditional jump, it is really hard for you to know which tensor
+ * is used where, thus keep track for reverse accumulation (backward propagation). There is no counter or
+ * whatsoever, it is pretty hard to trace back on which line is executed how many times. Compounding this with
+ * NNC's promise that as long as it shows on the graph can be "parallel" computed, it will be parallel computed,
+ * it is close to impossible to track if conditional jump used in its raw form. Certain restrictions must be
+ * applied to how to do the loop. The compromise comes from closer examination of NNC's preferences.
+ *
+ * NNC prefers to have the graph without cycles. It also prefers to be fully differentiable. Another important
+ * criteria is that most functions in NNC require SSA (Static Single Assignment) representation. With these in
+ * mind, supporting while loop has to be strict.
+ *
+ * Luckily, there are well-formalized way of supporting this in literature and practice. Because it is
+ * well-formalized, translating this into existing NNC implementation is actually pretty straightforward. We
+ * are going to introduce a special version of while loop. In literature that discussed about SSA, it may be
+ * called parameterized loop. For us, it works like this:
+ *
+ * To construct a while loop for existing NNC graph, you need to be able to separate the existing graph into
+ * two sub-graphs.
+ *
+ * The while-loop sub-graph (WL sub-graph) contains a set of incoming nodes (I-nodes), Condition false output
+ * nodes (CFO-nodes) and end nodes (E-nodes). Each set have its own properties, but in short, all incoming edges
+ * to the WL sub-graph connect to one of the I-nodes, but nothing else. All outgoing edges from the WL sub-graph
+ * connect to one of the CFO-nodes, but nothing else. A nodes can be either a I-node, CFO-node or E-node,
+ * non-exclusively.
+ *
+ * There are also 3 types of tensors used for all nodes in WL sub-graph: Input tensors (I-tensors) are tensors
+ * that are inputs to some nodes, and will never be outputs. Output tensors (O-tensors) are tensors that are
+ * outputs from some nodes, but never be inputs to any nodes. I-tensors can be outputs from some nodes that
+ * outside of WL sub-graph. O-tensors can be inputs to some nodes that outside of WL sub-graph. Internal
+ * tensors (IN-tensors) are not visible outside of WL sub-graph, therefore, they can be both inputs and outputs
+ * of some nodes inside the sub-graph. Some tensors can be feedback into the WL sub-graph, given either
+ * O-tensors or IN-tensors. A parameter map can be given in these cases to describe which maps to what.
+ *
+ * The way to drive a WL sub-graph like this: the WL sub-graph runs until all CFO-nodes are reached. At this
+ * point, the while_f condition is checked. If true, we continue until all the end-nodes are reached. At this
+ * point, we increase the counter, reconfigure the WL sub-graph with parameter map, and run from I-nodes all
+ * over again. When reached all CFO-nodes, the condition is checked again, if false, WL sub-graph terminates,
+ * and the graph continues from the nodes that are pointed by CFO-nodes.
+ *
+ * Given these constraints, doing automatic differentiation is not that hard any more. A WL sub-graph, from
+ * the whole graph's point of view, is just a giant command supports both forward / backward operations, with
+ * some extra information passed around in the form of userdata (tape).
+ *
+ * For WL sub-graph, we can continue to leverage the compile / backward function that already written for
+ * symbolic graph as well.
+ *
+ * For compile function, we just need to take care of parameter maps (these need to be converted into binded
+ * tensors).
+ *
+ * For backward function, we need to convert parameter maps from assigner (thus, y = x) to accumulator (x += y).
+ *
+ * This function will replace the nodes that it affects to one sub-graph node. Thus, how to drive this
+ * sub-graph is opaque. Its backward form is opaque as well.
+ *
+ * There are no connection between its nodes and the outside graph nodes other than the three sets:
+ *
+ * 1). Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges
+ *     points by inside nodes. The sub-graph computation starts from these incoming nodes;
+ * 2). Condition false output nodes, when condition is false, we will break out of this while loop, these
+ *     nodes pointing to the outside nodes, but no inside nodes;
+ * 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed,
+ *     we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes
+ *     (OK if end nodes are condition true output nodes as well);
+ *
+ * Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs
+ * and outputs. Besides that, the loop body needs to be parameterized to be SSA compliant (see:
+ * https://www.cs.cmu.edu/~fp/courses/15411-f13/lectures/06-ssa.pdf). Thus, a list of body parameters need to
+ * be provided.
+ */
 
-// The given tensors contains all the common / input / output tensors specified in the sub-graph.
+/**
+ * The given tensors contains all the common / input / output tensors specified in the sub-graph.
+ */
 typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data);
-// Opaque pointer to the tape of tensors. The tape are used by the while loop.
+/**
+ * Opaque pointer to the tape of tensors. The tape are used by the while loop.
+ */
 typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
 CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
 void ccv_nnc_tensor_tape_io(ccv_nnc_tensor_tape_t* const tape, const ccv_nnc_graph_t* const graph, const int* const input_flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, const int* const output_flags, ccv_nnc_tensor_t* const* const outputs, const int output_size);
@@ -609,25 +850,27 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(c
 // Extract the sub-graph of the while loop from a symbol.
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 
-// Construct "switch" control structure in symbolic graph. Here I use the keyword case_of.
-//
-// Providing a "switch" control structure within NNC has some nice properties even though you can simulate this
-// with a while loop technically.
-//
-// 1. More optimal memory allocation: with "switch" control structure, memory can be multiplexed for each code
-//    path because they are mutually exclusive.
-// 2. No tape should be used within each branch: if we simulate with a "while" loop, any results from within
-//    the "switch" statement has to be kept on the tape, which is inefficient because you don't need any tape
-//    for the "switch" statement other than record which path it is taken.
-//
-// The particular "switch" control structure provided here is a multi-way structured "switch". Each branch is a
-// sub-graph, so it is well-scoped. A node branch out based on the case_of condition return value to either of
-// the branch (numbering from 0 to n, -1 means no path taken). If no path taken, the output tensors will be
-// assigned with the default tensors and continue. Otherwise the computation within the sub-graph will be
-// carried out and the output tensors will be assigned with the tensors specified within that sub-graph and
-// continue.
-//
-// If we want to consider speculative execution in the future, we need to revisit our memory allocation scheme.
+/**
+ * @page symbolic_switch Construct "switch" control structure in symbolic graph. Here I use the keyword case_of.
+ *
+ * Providing a "switch" control structure within NNC has some nice properties even though you can simulate this
+ * with a while loop technically.
+ *
+ * 1. More optimal memory allocation: with "switch" control structure, memory can be multiplexed for each code
+ *    path because they are mutually exclusive.
+ * 2. No tape should be used within each branch: if we simulate with a "while" loop, any results from within
+ *    the "switch" statement has to be kept on the tape, which is inefficient because you don't need any tape
+ *    for the "switch" statement other than record which path it is taken.
+ *
+ * The particular "switch" control structure provided here is a multi-way structured "switch". Each branch is a
+ * sub-graph, so it is well-scoped. A node branch out based on the case_of condition return value to either of
+ * the branch (numbering from 0 to n, -1 means no path taken). If no path taken, the output tensors will be
+ * assigned with the default tensors and continue. Otherwise the computation within the sub-graph will be
+ * carried out and the output tensors will be assigned with the tensors specified within that sub-graph and
+ * continue.
+ *
+ * If we want to consider speculative execution in the future, we need to revisit our memory allocation scheme.
+ */
 
 typedef int(*ccv_nnc_graph_case_of_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data);
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_symbolic_graph_case_of_new(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size, const char* const name);
@@ -638,39 +881,44 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_case_of_new(ccv_nnc_graph_t*
 void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_case_of_f case_of, const void* case_of_data, const int offset);
 void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of);
 
-// Minimize losses on symbolic graph.
-//
-// This is the comparable part to Caffe's solver or TensorFlow's optimizer. It took a step further than just
-// compute the gradient, but also apply the gradient to update parameters to minimize the loss.
+/**
+ * @page minimizer Minimize losses on symbolic graph.
+ *
+ * This is the comparable part to Caffe's solver or TensorFlow's optimizer. It took a step further than just
+ * compute the gradient, but also apply the gradient to update parameters to minimize the loss.
+ */
+
 void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
 // Return the number of saved aux per parameter.
 CCV_WARN_UNUSED(int) ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer);
 
-// Symbolic graph simplification.
-//
-// We make a distinction between graph simplifications and optimizations (autotune).
-//
-// Simplification: rewrite the graph and the resulting graph will have less nodes. This is done on the symbolic
-// graph only. Passes that is "simplification" include pruning, common sub-expression eliminations, constant
-// folding etc.
-//
-// Optimization (autotune): graph optimization can have more objectives. The most obvious objective is to reduce
-// computation time. For symbolic graph, passes that reduces computation time include data layout optimizations,
-// auto parallel etc (in normal optimization implementations, they have a cost model to guide the optimization.
-// NNC's implementation uses a cost database that profiles the time cost on the device to guide the optimization.
-// We call it autotune to distinguish with the normal optimization passes because we need device profile data).
-// There could be other objectives, for example, in many deep learning applications, reducing memory footprint
-// can be desirable. However, as always in computer science, memory and time is a typical trade-off. Memory
-// optimization almost always results longer computation time, and the objective is to trade between these two
-// with a bias term (in other frameworks such as TensorFlow, the memory optimizer uses a list of "cheap ops" to
-// bias between the time and memory footprint).
-//
-// For graph optimizations, it can happen on both the symbolic graph level as well as the concrete graph level.
-// For NNC, symbolic graph is already very explicit (data layout, device allocation and data transfer between
-// devices / nodes, even the command backend can all be specified on the symbolic graph), however, some
-// information is unknown until it is compiled down to concrete graph (tensor addresses, tensor initialization
-// etc.), and since graph optimizations need all the information to optimize. Keeping the flexibility to do
-// optimization on both symbolic and concrete graph level seems reasonable.
+/**
+ * @page symbolic_simplify Symbolic graph simplification.
+ *
+ * We make a distinction between graph simplifications and optimizations (autotune).
+ *
+ * Simplification: rewrite the graph and the resulting graph will have less nodes. This is done on the symbolic
+ * graph only. Passes that is "simplification" include pruning, common sub-expression eliminations, constant
+ * folding etc.
+ *
+ * Optimization (autotune): graph optimization can have more objectives. The most obvious objective is to reduce
+ * computation time. For symbolic graph, passes that reduces computation time include data layout optimizations,
+ * auto parallel etc (in normal optimization implementations, they have a cost model to guide the optimization.
+ * NNC's implementation uses a cost database that profiles the time cost on the device to guide the optimization.
+ * We call it autotune to distinguish with the normal optimization passes because we need device profile data).
+ * There could be other objectives, for example, in many deep learning applications, reducing memory footprint
+ * can be desirable. However, as always in computer science, memory and time is a typical trade-off. Memory
+ * optimization almost always results longer computation time, and the objective is to trade between these two
+ * with a bias term (in other frameworks such as TensorFlow, the memory optimizer uses a list of "cheap ops" to
+ * bias between the time and memory footprint).
+ *
+ * For graph optimizations, it can happen on both the symbolic graph level as well as the concrete graph level.
+ * For NNC, symbolic graph is already very explicit (data layout, device allocation and data transfer between
+ * devices / nodes, even the command backend can all be specified on the symbolic graph), however, some
+ * information is unknown until it is compiled down to concrete graph (tensor addresses, tensor initialization
+ * etc.), and since graph optimizations need all the information to optimize. Keeping the flexibility to do
+ * optimization on both symbolic and concrete graph level seems reasonable.
+ */
 
 enum {
 	// If two commands generated the same outputs, all the places where the newer output used will be replaced by
@@ -689,8 +937,11 @@ enum {
 // When a graph is simplified, its sources / destinations are changed as well.
 void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, const int* const passes, const int pass_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 
+/** @} */
+
 /**
- * Level-4 API
+ * @defgroup level_4 Level-4 API
+ * @{
  */
 
 // Opaque pointer to the dynamic graph structure.
@@ -728,74 +979,81 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph);
 // Generate output that can be parsed by GraphViz (DOT language).
 void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const int flags, FILE* out);
 
+/** @} */
+
 /**
- * Level-5 API
+ * @defgroup level_5 Level-5 API
+ * @{
  */
 
-// Dataframe
-//
-// A large part of machine learning consists of go through data, process them to a shape / form that makes sense,
-// and pass that into the model to train. Deep learning frameworks such as TensorFlow or PyTorch provides some
-// dataset APIs for this purpose. It is convenient for these frameworks because by being Python, people can use
-// Pandas to process the data. In Pandas, this is called Dataframe, which again, imitates R language.
-//
-// Another interesting observation comes from recent (2018) release of Create ML framework from Apple. It provides
-// a very close to Pandas style data process API (MLDataTable) but in Swift. This implementation is important because
-// it provides a survey point other than Python.
-//
-// Comparing to Python, Swift is a stronger typed language. Though all being high-level, they all have pretty good
-// string support (of course!), operator overloading, and polymorphism. String support makes column naming natural,
-// Operator overloading makes conditioning and filtering easier, and ploymorphism makes column type representation
-// straight-forward. These, unfortunately, are the challenges I need to face when implementing in C with the eye
-// towards that later the similar ideas can be implemented on top on a high-level language based on this one.
-//
-// It seems I haven't answered the most crucial question yet: what's special about these data process APIs? It is
-// easier to answer this to first see what Pandas or MLDataTable does.
-//
-// * They both represent data as tables. Each column represents different type of the data (time, nd-array, scalar
-//   or string). As such, they both have API to add / remove / rename columns, and load tabular data from disk.
-// * They both provide API to filter (remove / add) rows, and derive new column from existing columns.
-// * Pandas provides more API for data alignment (merge columns from different tables into one table), and compute
-//   statistics (group rows by some criteria, and compute min / max / std / mean within that group).
-// * MLDataTable provides API to batching data (random split) which covered in TensorFlow / PyTorch's Dataset API
-//   as well.
-//
-// It turns out when you have a noisy dataset, these functionalities are useful to remove unwanted data quickly.
-// If you have a relatively clean dataset, it also allows you to prepare data in a more elegant way. For NNC,
-// the interesting requirements are:
-//
-// 1. Represents scalars, tensors, string as columns; columns can be named.
-// 2. New columns can be derived, from existing ones.
-// 3. Rows can be filtered, grouped, and statistics can be computed.
-// 4. Columns can be aligned, with some given indexes.
-// 5. All these can be done efficiently, on a scale of hundreds of Gigabytes data.
-//
+/**
+ * @page datframe Dataframe
+ *
+ * A large part of machine learning consists of go through data, process them to a shape / form that makes sense,
+ * and pass that into the model to train. Deep learning frameworks such as TensorFlow or PyTorch provides some
+ * dataset APIs for this purpose. It is convenient for these frameworks because by being Python, people can use
+ * Pandas to process the data. In Pandas, this is called Dataframe, which again, imitates R language.
+ *
+ * Another interesting observation comes from recent (2018) release of Create ML framework from Apple. It provides
+ * a very close to Pandas style data process API (MLDataTable) but in Swift. This implementation is important because
+ * it provides a survey point other than Python.
+ *
+ * Comparing to Python, Swift is a stronger typed language. Though all being high-level, they all have pretty good
+ * string support (of course!), operator overloading, and polymorphism. String support makes column naming natural,
+ * Operator overloading makes conditioning and filtering easier, and ploymorphism makes column type representation
+ * straight-forward. These, unfortunately, are the challenges I need to face when implementing in C with the eye
+ * towards that later the similar ideas can be implemented on top on a high-level language based on this one.
+ *
+ * It seems I haven't answered the most crucial question yet: what's special about these data process APIs? It is
+ * easier to answer this to first see what Pandas or MLDataTable does.
+ *
+ * * They both represent data as tables. Each column represents different type of the data (time, nd-array, scalar
+ *   or string). As such, they both have API to add / remove / rename columns, and load tabular data from disk.
+ * * They both provide API to filter (remove / add) rows, and derive new column from existing columns.
+ * * Pandas provides more API for data alignment (merge columns from different tables into one table), and compute
+ *   statistics (group rows by some criteria, and compute min / max / std / mean within that group).
+ * * MLDataTable provides API to batching data (random split) which covered in TensorFlow / PyTorch's Dataset API
+ *   as well.
+ *
+ * It turns out when you have a noisy dataset, these functionalities are useful to remove unwanted data quickly.
+ * If you have a relatively clean dataset, it also allows you to prepare data in a more elegant way. For NNC,
+ * the interesting requirements are:
+ *
+ * 1. Represents scalars, tensors, string as columns; columns can be named.
+ * 2. New columns can be derived, from existing ones.
+ * 3. Rows can be filtered, grouped, and statistics can be computed.
+ * 4. Columns can be aligned, with some given indexes.
+ * 5. All these can be done efficiently, on a scale of hundreds of Gigabytes data.
+ */
+
 typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(void);
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 
-// Model
-//
-// With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
-// together. This is a rare case in NNC (or ccv in general) where Object-Oriented programming makes sense. I borrowed
-// heavily from Objective-C / C++ to implement this Object-Oriented interface.
-//
-// Now back to elaboration of the Model interface. It is specifically designed with Keras in mind, asking question:
-// If we are going to build Keras high-level API in any languages (Ruby, Python, Swift, Julia), what's the underlying
-// C interface would look like? Here is your answer (hint: it looks very much like just Python Keras API).
-//
-// A model consists of a set of inputs and outputs. This sounds very much like what "Command" is in Level-1 APIs,
-// however, they are different: a model is stateful. For example, a convolution command takes 3 inputs: image, kernel
-// weight and bias, has 1 output: image. A convolution model takes 1 input: image, and 1 output: image. kernel weight
-// and bias are internal states to the model (in Keras, it is called "layer" for convolution, and model means a set of
-// layers. In NNC, that kind of differentiation feels superficial, therefore, a layer is a model).
-//
-// A model can be combined, and a new model can be a combination of other models.
-//
-// The simpler composed model is the sequential model. A sequential model is a model that consists a sequence of models
-// that contains one input and one output. The output of the earlier model feed into the later one, thus, a sequential
-// evaluation path.
-//
+/**
+ * @page model Model
+ *
+ * With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
+ * together. This is a rare case in NNC (or ccv in general) where Object-Oriented programming makes sense. I borrowed
+ * heavily from Objective-C / C++ to implement this Object-Oriented interface.
+ *
+ * Now back to elaboration of the Model interface. It is specifically designed with Keras in mind, asking question:
+ * If we are going to build Keras high-level API in any languages (Ruby, Python, Swift, Julia), what's the underlying
+ * C interface would look like? Here is your answer (hint: it looks very much like just Python Keras API).
+ *
+ * A model consists of a set of inputs and outputs. This sounds very much like what "Command" is in Level-1 APIs,
+ * however, they are different: a model is stateful. For example, a convolution command takes 3 inputs: image, kernel
+ * weight and bias, has 1 output: image. A convolution model takes 1 input: image, and 1 output: image. kernel weight
+ * and bias are internal states to the model (in Keras, it is called "layer" for convolution, and model means a set of
+ * layers. In NNC, that kind of differentiation feels superficial, therefore, a layer is a model).
+ *
+ * A model can be combined, and a new model can be a combination of other models.
+ *
+ * The simpler composed model is the sequential model. A sequential model is a model that consists a sequence of models
+ * that contains one input and one output. The output of the earlier model feed into the later one, thus, a sequential
+ * evaluation path.
+ */
+
 // model type is an abstract type, you won't interact with a naked model ever.
 typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
 // With this type, now in NNC, we have 4 types that represents a "tensor":
@@ -852,5 +1110,7 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(void);
+
+/** @} */
 
 #endif

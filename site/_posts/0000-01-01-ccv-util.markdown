@@ -30,7 +30,7 @@ Check and get sparse matrix from general matrix structure.
 ccv\_get\_sparse\_matrix\_vector
 --------------------------------
 
-	ccv_dense_vector_t* ccv_get_sparse_matrix_vector(ccv_sparse_matrix_t *mat, int index)
+	ccv_sparse_matrix_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix_t *mat, int i)
 
 Get vector for a sparse matrix.
 
@@ -40,7 +40,7 @@ Get vector for a sparse matrix.
 ccv\_get\_sparse\_matrix\_cell
 ------------------------------
 
-	ccv_matrix_cell_t ccv_get_sparse_matrix_cell(ccv_sparse_matrix_t *mat, int row, int col)
+	ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t *mat, int row, int col)
 
 Get cell from a sparse matrix.
 
@@ -51,7 +51,7 @@ Get cell from a sparse matrix.
 ccv\_set\_sparse\_matrix\_cell
 ------------------------------
 
-	void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t *mat, int row, int col, void *data)
+	void ccv_set_sparse_matrix_cell(ccv_sparse_matrix_t *mat, int row, int col, const void *data)
 
 Set cell for a sparse matrix.
 
@@ -63,7 +63,7 @@ Set cell for a sparse matrix.
 ccv\_compress\_sparse\_matrix
 -----------------------------
 
-	void ccv_compress_sparse_matrix(ccv_sparse_matrix_t *mat, ccv_compressed_sparse_matrix_t **csm)
+	void ccv_compress_sparse_matrix(const ccv_sparse_matrix_t *mat, ccv_compressed_sparse_matrix_t **csm)
 
 Transform a sparse matrix into compressed representation.
 
@@ -73,7 +73,7 @@ Transform a sparse matrix into compressed representation.
 ccv\_decompress\_sparse\_matrix
 -------------------------------
 
-	void ccv_decompress_sparse_matrix(ccv_compressed_sparse_matrix_t *csm, ccv_sparse_matrix_t **smt)
+	void ccv_decompress_sparse_matrix(const ccv_compressed_sparse_matrix_t *csm, ccv_sparse_matrix_t **smt)
 
 Transform a compressed matrix into a sparse matrix.
 
@@ -238,6 +238,16 @@ ccv\_array\_zero
 Zero out the array, it won't change the array->rnum however.
 
  * **array**: The array.
+
+ccv\_array\_resize
+------------------
+
+	void ccv_array_resize(ccv_array_t *array, int rnum)
+
+Resize the array, it will change the array->rnum and zero init the rest.
+
+ * **array**: The array.
+ * **rnum**: The expanded size of the array.
 
 ccv\_array\_clear
 -----------------
