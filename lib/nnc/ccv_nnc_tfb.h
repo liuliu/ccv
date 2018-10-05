@@ -52,8 +52,9 @@ enum {
 #define CCV_TENSOR_SET_DEVICE_ID(type, device_id) (type) = (((type) & ~0xfff00) | ((device_id) & 0xfff << 8))
 
 enum {
-	CCV_TENSOR_VIEW      = 0x01000000,
-	CCV_TENSOR_MULTIVIEW = 0x02000000,
+	CCV_TENSOR_VIEW       = 0x01000000,
+	CCV_TENSOR_MULTIVIEW  = 0x02000000,
+	CCV_TENSOR_PINNED_MEM = 0x04000000, // tensor is pinned in CUDA. This matches CCV_PINNED_MEM.
 };
 
 typedef union ccv_numeric_data_u {

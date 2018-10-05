@@ -15,6 +15,7 @@
 typedef struct {
 	int flags;
 	int type;
+	int pin_mem; // This memory need to be pinned.
 	int ref; // Reference to another tensor block. Start with 1.
 	int bypass_ref; // Copy over the bypass_ref from tensor symbol underneath. Start with 1.
 	int companion_ref; // Reference to another block that they two share the same memory region. Start with 1. the current crude implementation requires the two mutually be companion. Because there are two, we took the one that companion_ref <= i as the primary and companion_ref > i is the secondary. For allocation algorithm, we use the primary throughout.
@@ -137,6 +138,7 @@ typedef struct {
 	int* vt_blocks; // A reference to the block, because blocks only contains available block (thus, doesn't consider alias etc.). -1 means no block pointed to. Starts at 0.
 	struct {
 		int type; // The type from tensor blocks.
+		int pin_mem; // Whether this is pinned memory.
 		int flags; // The flags (currently for READ_ONLY or not).
 		uint64_t size; // The size of the buffer allocated.
 		int p_refs[2]; // Reference to the upper level block, Starts at 1. Only index 0 is valid throughout, I do use two in the code as a temporary placeholder.
@@ -534,6 +536,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				alloc_prep->blocks[j].offset = allocated_offset[i];
 				if (!alloc_prep->buffers[buffer_ref].type)
 					alloc_prep->buffers[buffer_ref].type = tensor_blocks[i].type;
+				alloc_prep->buffers[buffer_ref].pin_mem = alloc_prep->buffers[buffer_ref].pin_mem || tensor_blocks[i].pin_mem;
 				alloc_prep->buffers[buffer_ref].flags |= TENSOR_READ_WRITE(tensor_blocks[i]);
 				assert(allocated_offset[i] + tensor_blocks[i].size <= alloc_prep->buffers[buffer_ref].size);
 			} else {
@@ -997,7 +1000,9 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
 	tensor_arena->m_tensor_idx = ccv_array_new(sizeof(int), 0, 0);
 	for (i = 0; i < alloc_prep->buffer_size; i++)
-		tensor_arena->buffers[i].type = alloc_prep->buffers[i].type, tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
+		tensor_arena->buffers[i].type = alloc_prep->buffers[i].type,
+			tensor_arena->buffers[i].pin_mem = alloc_prep->buffers[i].pin_mem,
+			tensor_arena->buffers[i].size = alloc_prep->buffers[i].size;
 	if (graph_prep->while_count_tensor)
 	{
 		// If we need to have a while count tensor, allocate that first, set its pointer to point the while_count variable.
@@ -1050,16 +1055,20 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 		PRINT(CCV_CLI_VERBOSE, "Buffer allocation for arena %p\n", tensor_arena);
 		for (i = 0; i < tensor_arena->buffer_size; i++)
 		{
-			const int memory_type = CCV_TENSOR_GET_MEMORY(tensor_arena->buffers[i].type);
+			const int buffer_type = tensor_arena->buffers[i].type;
+			const int memory_type = CCV_TENSOR_GET_MEMORY(buffer_type);
 #ifdef HAVE_CUDA
 			if (memory_type == CCV_TENSOR_GPU_MEMORY)
 			{
-				const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_arena->buffers[i].type);
+				const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
 				tensor_arena->buffers[i].ptr = (uint8_t*)cumalloc(device_id, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			} else {
 				assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-				ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
+				if (tensor_arena->buffers[i].pin_mem)
+					tensor_arena->buffers[i].ptr = (uint8_t*)cuhostalloc(tensor_arena->buffers[i].size);
+				else
+					ccmemalign((void**)&tensor_arena->buffers[i].ptr, 16, tensor_arena->buffers[i].size);
 				PRINT(CCV_CLI_VERBOSE, "|-Allocate buffer %d with ptr %p, size %lu\n", i, tensor_arena->buffers[i].ptr, (unsigned long)tensor_arena->buffers[i].size);
 			}
 #else
@@ -1684,7 +1693,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 		assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[p_ref_0]));
 		assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[p_ref_1]));
 		ccv_array_free(tensor_blocks[p_ref_0].tail);
-		tensor_blocks[p_ref_0].tail= tensor_blocks[p_ref_1].tail;
+		tensor_blocks[p_ref_0].tail = tensor_blocks[p_ref_1].tail;
 		if (tensor_blocks[p_ref_1].p_refs[0])
 		{
 			assert(tensor_blocks[p_ref_1].p_refs[1] == 0); // It simply cannot have more than one p_refs, otherwise we cannot merge.
@@ -1693,6 +1702,7 @@ static int _ccv_nnc_tensor_blocks_try_fold(ccv_nnc_tensor_block_t* const tensor_
 			else
 				tensor_blocks[p_ref_0].p_refs[1] = tensor_blocks[p_ref_1].p_refs[0];
 		}
+		tensor_blocks[p_ref_0].pin_mem = tensor_blocks[p_ref_0].pin_mem || tensor_blocks[p_ref_1].pin_mem;
 		TENSOR_SET_READ_WRITE(tensor_blocks[p_ref_0], TENSOR_READ_WRITE(tensor_blocks[p_ref_0]) | TENSOR_READ_WRITE(tensor_blocks[p_ref_1]));
 		ccv_array_free(tensor_blocks[p_ref_1].head);
 		if (TENSOR_IS_UNFOLDABLE_AS_INPUT(tensor_blocks[p_ref_1]))
@@ -1771,10 +1781,24 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		for (i = 0; i < node->input_size; i++)
 			if (node->inputs[i] >= 0)
+			{
 				tensor_blocks[node->inputs[i]].flags = 0;
+				// If this is a data transfer node, and this is a CPU memory, mark the memory type to be pinned mem.
+				// This will get propagated back to the buffer, and used there to determine the allocation function to use.
+				if (CCV_TENSOR_GET_MEMORY(tensor_blocks[node->inputs[i]].type) == CCV_TENSOR_CPU_MEMORY &&
+					(node->cmd.cmd == CCV_NNC_DATA_TRANSFER_FORWARD || node->cmd.cmd == CCV_NNC_DATA_TRANSFER_BACKWARD))
+					tensor_blocks[node->inputs[i]].pin_mem = 1;
+			}
 		for (i = 0; i < node->output_size; i++)
 			if (node->outputs[i] >= 0)
+			{
 				tensor_blocks[node->outputs[i]].flags = 0;
+				// If this is a data transfer node, and this is a CPU memory, mark the memory type to be pinned mem.
+				// This will get propagated back to the buffer, and used there to determine the allocation function to use.
+				if (CCV_TENSOR_GET_MEMORY(tensor_blocks[node->outputs[i]].type) == CCV_TENSOR_CPU_MEMORY &&
+					(node->cmd.cmd == CCV_NNC_DATA_TRANSFER_FORWARD || node->cmd.cmd == CCV_NNC_DATA_TRANSFER_BACKWARD))
+					tensor_blocks[node->outputs[i]].pin_mem = 1;
+			}
 	} ccv_nnc_graph_visit_endfor
 	if (p_node_info)
 	{
@@ -3040,6 +3064,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]);
 							TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i]));
 							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
+							tensor_blocks[tensor_block_size].pin_mem = s_alloc_prep->buffers[i].pin_mem;
 							tensor_blocks[tensor_block_size].size = s_alloc_prep->buffers[i].size;
 							s_alloc_prep->buffers[i].p_refs[0] = tensor_block_size + 1;
 							tensor_blocks[tensor_block_size].head = ccv_array_new(sizeof(int), 1, 0);
@@ -3105,11 +3130,14 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 							if (new_anonymous_tensor_block)
 							{
 								tensor_blocks[tensor_block_idx].type = s_alloc_prep->buffers[i].type;
+								tensor_blocks[tensor_block_idx].pin_mem = s_alloc_prep->buffers[i].pin_mem;
 								tensor_blocks[tensor_block_idx].size = s_alloc_prep->buffers[i].size;
 								tensor_blocks[tensor_block_idx].head = ccv_array_new(sizeof(int), 1, 0);
 								ccv_array_push(tensor_blocks[tensor_block_idx].head, &idx);
-							} else
+							} else {
+								tensor_blocks[tensor_block_idx].pin_mem = tensor_blocks[tensor_block_idx].pin_mem || s_alloc_prep->buffers[i].pin_mem;
 								tensor_blocks[tensor_block_idx].size = ccv_max(tensor_blocks[tensor_block_idx].size, s_alloc_prep->buffers[i].size);
+							}
 							if (dup_p_refs && dup_p_refs->rnum > 0)
 							{
 								for (j = 0; j < dup_p_refs->rnum; j++)
@@ -3172,11 +3200,13 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 								if (new_anonymous_tensor_block)
 								{
 									tensor_blocks[tensor_block_idx].type = s_alloc_prep->buffers[i].type;
+									tensor_blocks[tensor_block_idx].pin_mem = s_alloc_prep->buffers[i].pin_mem;
 									tensor_blocks[tensor_block_idx].size = s_alloc_prep->buffers[i].size;
 									tensor_blocks[tensor_block_idx].head = ccv_array_new(sizeof(int), 1, 0);
 									/* Attach to duplicated exec for this tensor block. */
 									ccv_array_push(tensor_blocks[tensor_block_idx].head, &dup_exec_ref[idx * unroll_count + k]);
 								} else {
+									tensor_blocks[tensor_block_idx].pin_mem = tensor_blocks[tensor_block_idx].pin_mem || s_alloc_prep->buffers[i].pin_mem;
 									tensor_blocks[tensor_block_idx].size = ccv_max(tensor_blocks[tensor_block_idx].size, s_alloc_prep->buffers[i].size);
 									_ccv_nnc_tensor_block_add_exec(exec_dep, dup_exec_ref[idx * unroll_count + k], tensor_blocks[tensor_block_idx]);
 
@@ -3705,14 +3735,18 @@ void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
 	int i;
 	for (i = 0; i < tensor_arena->buffer_size; i++)
 	{
-		const int memory_type = CCV_TENSOR_GET_MEMORY(tensor_arena->buffers[i].type);
+		const int buffer_type = tensor_arena->buffers[i].type;;
+		const int memory_type = CCV_TENSOR_GET_MEMORY(buffer_type);
 #ifdef HAVE_CUDA
-		const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor_arena->buffers[i].type);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(buffer_type);
 		if (memory_type == CCV_TENSOR_GPU_MEMORY)
 			cufree(device_id, tensor_arena->buffers[i].ptr);
 		else {
 			assert(memory_type == CCV_TENSOR_CPU_MEMORY);
-			ccfree(tensor_arena->buffers[i].ptr);
+			if (tensor_arena->buffers[i].pin_mem)
+				cuhostfree(tensor_arena->buffers[i].ptr);
+			else
+				ccfree(tensor_arena->buffers[i].ptr);
 		}
 #else
 		assert(memory_type == CCV_TENSOR_CPU_MEMORY);

@@ -126,6 +126,7 @@ struct ccv_nnc_tensor_arena_s {
 	int buffer_size;
 	struct {
 		int type; // The type from tensor blocks.
+		int pin_mem; // Whether this memory is pinned.
 		uint64_t size;
 		uint8_t* ptr;
 	}* buffers;

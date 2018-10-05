@@ -18,6 +18,18 @@ void cufree(int device, void* ptr)
 	cudaFree(ptr);
 }
 
+void* cuhostalloc(size_t size)
+{
+	void* ptr = 0;
+	cudaHostAlloc(&ptr, size, cudaHostAllocPortable);
+	return ptr;
+}
+
+void cuhostfree(void* ptr)
+{
+	cudaFreeHost(ptr);
+}
+
 int curegister(void* ptr, size_t size)
 {
 	return cudaSuccess == cudaHostRegister(ptr, size, cudaHostRegisterPortable);
