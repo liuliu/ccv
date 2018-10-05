@@ -910,6 +910,13 @@ void ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const int strea
 	_ccv_nnc_graph_static_schedule(graph, stream_type, -1, 0);
 }
 
+ccv_nnc_stream_context_t* ccv_nnc_graph_default_stream(const ccv_nnc_graph_t* const graph)
+{
+	if (graph->streams && graph->stream_size > 0)
+		return graph->streams[0];
+	return 0;
+}
+
 static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
 {
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)

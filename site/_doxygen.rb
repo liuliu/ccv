@@ -51,6 +51,11 @@ def output_function file, function
 			proto = proto + '(' + defnames.join(', ') + ')' if defnames.length > 0
 	end
 	file << "\t" + proto + "\n\n" + markdown_safe(desc.join("\n\n")) + "\n"
+	param_types = function.xpath "./param/type"
+	param_types.each do |param_type|
+		param_type = param_type.content.strip
+		merge_structs structs, param_type
+	end
 	params = function.xpath "./detaileddescription/para/parameterlist[@kind='param']/parameteritem"
 	file << "\n" if params.length > 0
 	params.each do |param|
@@ -82,7 +87,8 @@ end
 def output_struct file, structname, doc_group
 	structs = Set.new
 	compoundname = doc_group.at('./compoundname').content.strip
-	return structs unless compoundname == structname
+	return structs unless compoundname[0..-2] == structname[0..-2]
+	compoundname = structname
 	sections = doc_group.xpath './sectiondef'
 	first_struct = true
 	sections.each do |section|
@@ -136,8 +142,9 @@ def output_struct file, structname, doc_group
 end
 
 def open_and_output_struct out_structs, file, structname, doc_group, dirname
+	structname_si = structname[0..-2]
 	doc_group.xpath('./innerclass').each do |innerclass|
-		if innerclass.content.strip == structname
+		if innerclass.content.strip[0..-2] == structname_si
 			doc = Nokogiri::XML(open(dirname + '/' + innerclass['refid'] + '.xml'))
 			remove_ulinks doc
 			structs = output_struct file, structname, doc.at('./doxygen/compounddef')
