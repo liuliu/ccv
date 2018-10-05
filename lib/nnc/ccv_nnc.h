@@ -135,6 +135,9 @@ void ccv_nnc_init(void);
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
 // Allocating on stack
 CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags);
+// Pin the tensor memory on GPU.
+// Return 0 for success.
+int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor);
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor);
 CCV_WARN_UNUSED(ccv_nnc_tensor_view_t*) ccv_nnc_tensor_view_new(const ccv_nnc_tensor_t* const tensor, const int dim[CCV_NNC_MAX_DIM_ALLOC], const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC]);
 // Allocating on stack

@@ -18,6 +18,16 @@ void cufree(int device, void* ptr)
 	cudaFree(ptr);
 }
 
+int curegister(void* ptr, size_t size)
+{
+	return cudaSuccess == cudaHostRegister(ptr, size, cudaHostRegisterPortable);
+}
+
+void cuunregister(void* ptr)
+{
+	cudaHostUnregister(ptr);
+}
+
 typedef struct {
 	ccv_nnc_stream_context_t super;
 	cudaStream_t stream;

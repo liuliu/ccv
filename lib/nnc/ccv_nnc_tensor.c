@@ -92,11 +92,27 @@ ccv_nnc_tensor_t ccv_nnc_tensor(const void* const ptr, const ccv_nnc_tensor_para
 	return tensor;
 }
 
+int ccv_nnc_tensor_pin_memory(ccv_nnc_tensor_t* const tensor)
+{
+#ifdef HAVE_CUDA
+	if (!(tensor->type & CCV_PINNED_MEM))
+	{
+		const int success = curegister(tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info));
+		if (success)
+			tensor->type |= CCV_PINNED_MEM;
+		return success ? 0 : -1;
+	}
+#endif
+	return 0;
+}
+
 void ccv_nnc_tensor_free(ccv_nnc_tensor_t* const tensor)
 {
 #ifdef HAVE_CUDA
 	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 		cufree(CCV_TENSOR_GET_DEVICE_ID(tensor->info.type), tensor->data.u8);
+	if (tensor->type & CCV_PINNED_MEM)
+		cuunregister(tensor->data.u8);
 #endif
 	ccfree(tensor);
 }

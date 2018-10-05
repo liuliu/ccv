@@ -23,6 +23,8 @@ extern "C" {
 // Simple counterparts of ccmalloc / ccfree.
 void* cumalloc(int device, size_t size);
 void cufree(int device, void* ptr);
+int curegister(void* ptr, size_t size);
+void cuunregister(void* ptr);
 
 // Stream context
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context);

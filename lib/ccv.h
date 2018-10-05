@@ -67,10 +67,10 @@ static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8, -
 #define CCV_ALL_DATA_TYPE (CCV_8U | CCV_32S | CCV_32F | CCV_64S | CCV_64F)
 
 enum {
-	CCV_MATRIX_DENSE  = 0x0100000,
-	CCV_MATRIX_SPARSE = 0x0200000,
-	CCV_MATRIX_CSR    = 0x0400000,
-	CCV_MATRIX_CSC    = 0x0800000,
+	CCV_MATRIX_DENSE  = 0x00100000,
+	CCV_MATRIX_SPARSE = 0x00200000,
+	CCV_MATRIX_CSR    = 0x00400000,
+	CCV_MATRIX_CSC    = 0x00800000,
 };
 
 enum {
@@ -79,6 +79,7 @@ enum {
 	CCV_UNMANAGED     = 0x20000000, // matrix is allocated by user, therefore, cannot be freed by ccv_matrix_free/ccv_matrix_free_immediately
 	CCV_NO_DATA_ALLOC = 0x10000000, // matrix is allocated as header only, but with no data section, therefore, you have to free the data section separately
 	CCV_TAPE_ALLOC    = 0x08000000, // matrix is allocated on a tape.
+	CCV_PINNED_MEM    = 0x04000000, // matrix is pinned in CUDA.
 };
 
 #define CCV_GET_TAPE_ALLOC(type) ((type) & CCV_TAPE_ALLOC)
