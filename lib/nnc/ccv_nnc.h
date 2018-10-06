@@ -33,6 +33,10 @@ void ccv_nnc_init(void);
  * @{
  */
 
+/**
+ * @defgroup level_1_cmd Commands
+ * @{
+ */
 enum {
 	// Attributes that enable symbolic graph simplification
 	CCV_NNC_CMD_ATTR_PASSTHROUGH  = 0x01, /**< This doesn't compute anything, but pass the first n tensors to the output (useful for backprop that is identical). */
@@ -148,6 +152,13 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
  */
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 
+/** @} */
+
+/**
+ * @defgroup level_1_tensor Tensors
+ * @{
+ */
+
 /**
  * Count the dimensionality of a tensor.
  */
@@ -218,6 +229,13 @@ void ccv_nnc_tensor_zero(void* const tensor);
  * @return 0 if equal, -1 otherwise.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b);
+
+/** @} */
+
+/**
+ * @addtogroup level_1_cmd
+ * @{
+ */
 
 /**
  * Return a high precision time unit. What this time unit is is platform specific.
@@ -360,6 +378,13 @@ CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const in
  */
 CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
 
+/** @} */
+
+/**
+ * @defgroup level_1_stream Streams
+ * @{
+ */
+
 // Control flow constructs
 // Follow heavily based along CUDA's stream / event idea.
 enum {
@@ -432,8 +457,15 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
 
 /** @} */
 
+/** @} */
+
 /**
  * @defgroup level_2 Level-2 API
+ * @{
+ */
+
+/**
+ * @defgroup level_2_essentials Essentials
  * @{
  */
 
@@ -631,6 +663,14 @@ typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
  * @return CCV_NNC_EXEC_SUCCESS if succeed.
  */
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+
+/** @} */
+
+/**
+ * @defgroup level_2_others Others
+ * @{
+ */
+
 /**
  * Set input / output flags for an existing execution node.
  * This must be called after set_io, set additional flags for tensors related to this exec.
@@ -660,8 +700,15 @@ void ccv_nnc_graph_exec_add_update(ccv_nnc_graph_t* const graph, const ccv_nnc_g
 
 /** @} */
 
+/** @} */
+
 /**
  * @defgroup level_3 Level-3 API
+ * @{
+ */
+
+/**
+ * @defgroup level_3_essentials Essentials
  * @{
  */
 
@@ -754,41 +801,6 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_new(ccv_nnc_symbo
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name);
 /**
- * Return the symbol it alias to.
- * @param graph The symbolic graph.
- * @param tensor_symbol The tensor symbol alias.
- * @return A tensor symbol reference to the original tensor symbol.
- */
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
-/**
- * Set the tensor symbol parameters.
- * @param graph The symbolic graph.
- * @param tensor The tensor symbol reference.
- * @param info The new tensor parameters.
- * @return non-zero if encountered errors.
- */
-int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
-/**
- * Get the parameters for a tensor symbol.
- * @param graph The symbolic graph.
- * @param tensor The tensor symbol reference.
- * @return The tensor parameters.
- */
-CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
-/**
- * Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
- * @param graph The symbolic graph.
- * @param tensor The tensor symbol reference.
- * @param flags A reserved field for flags.
- */
-int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
-/**
- * Get all the flags for a tensor.
- * @param graph The symbolic graph.
- * @param tensor The tensor symbol reference.
- */
-CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
-/**
  * Manually delete a tensor symbol off the symbolic graph.
  * @param graph The symbolic graph.
  * @param tensor The tensor symbol reference.
@@ -807,20 +819,6 @@ void ccv_nnc_tensor_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_t
  */
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
 /**
- * Set the cmd of this exec symbol.
- * @param graph The symbolic graph.
- * @param exec The execution node symbol reference.
- * @param cmd The new wrapped command.
- */
-void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_cmd_t cmd);
-/**
- * Return the command on this exec symbol.
- * @param graph The symbolic graph.
- * @param exec The execution node symbol reference.
- * @return The wrapped command.
- */
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
-/**
  * ccv_nnc_graph_exec_symbol_new defaults to use `ccv_nnc_hint_auto` find the best hints for a set of inputs / outputs.
  * However, you can also set your own hints.
  * @param graph The symbolic graph.
@@ -829,42 +827,11 @@ CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbo
  */
 void ccv_nnc_graph_exec_symbol_set_hint(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_hint_t hint);
 /**
- * Set the inputs / outputs for a exec symbol.
- * @param graph The symbolic graph.
- * @param exec The execution node symbol reference.
- * @param inputs The input tensor symbols array.
- * @param input_size The size of input tensor symbols array.
- * @param outputs The output tensor symbols array.
- * @param output_size The size of output tensor symbols array.
- */
-void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
-/**
- * Manually concatenate input node with an output graph node.
- * @param graph The symbolic graph.
- * @param source The source execution node symbol to connect.
- * @param destination The destination execution node symbol connect to.
- * @return non-zero if cannot concat successfully.
- */
-int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
-/**
- * Manually disconnect input node with an output graph node for this graph.
- * @param graph The symbolic graph.
- * @param source The source execution node symbol to disconnect.
- * @param destination The destination execution node symbol disconnect to.
- * @return non-zero if cannot disjoin successfully.
- */
-int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
-/**
  * Manually delete a exec symbol off the symbolic graph.
  * @param graph The symbolic graph.
  * @param symbol The execution node symbol reference.
  */
 void ccv_nnc_graph_exec_symbol_free(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_t symbol);
-/**
- * Number of exec symbols.
- * @param graph The symbolic graph.
- */
-CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
 enum {
 	CCV_NNC_AUTOGEN_ALL_EXECS = 0x1, /**< Automatic concatenation for all execution nodes */
 	CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS = 0x2, /**< Automatically find all source and destination nodes. */
@@ -880,18 +847,6 @@ enum {
  * @return non-zero if cannot figure out.
  */
 int ccv_nnc_graph_exec_symbol_autogen(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const execs, const int exec_size, const int flags);
-/**
- * Substitution function. Given an execution node symbol and a command, return a new command.
- */
-typedef ccv_nnc_cmd_t(*ccv_nnc_symbolic_graph_subst_f)(const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd);
-/**
- * Generate a duplicate of the provided graph.
- * While generating the duplicate, it calls the function pointer to re-process the node type.
- * @param graph The symbolic graph.
- * @param subst The substitution function.
- * @return The duplicated symbolic graph.
- */
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_subst_f subst);
 /**
  * Set the default sources for a symbolic graph.
  * @param graph The symbolic graph.
@@ -1029,6 +984,106 @@ void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, c
  */
 void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t** const graph_ref, ccv_nnc_tensor_bind_t** const tensor_binds_ref, int* const tensor_bind_size_ref);
 
+/** @} */
+
+/**
+ * @defgroup level_3_others Others
+ * @{
+ */
+
+/**
+ * Return the symbol it alias to.
+ * @param graph The symbolic graph.
+ * @param tensor_symbol The tensor symbol alias.
+ * @return A tensor symbol reference to the original tensor symbol.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
+/**
+ * Set the tensor symbol parameters.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @param info The new tensor parameters.
+ * @return non-zero if encountered errors.
+ */
+int ccv_nnc_tensor_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const ccv_nnc_tensor_param_t info);
+/**
+ * Get the parameters for a tensor symbol.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @return The tensor parameters.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_param_t) ccv_nnc_tensor_symbol_params(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
+/**
+ * Set the flags for this tensor symbol. The flags are only used for symbol, not for tensor.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ * @param flags A reserved field for flags.
+ */
+int ccv_nnc_tensor_symbol_set_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor, const int flags);
+/**
+ * Get all the flags for a tensor.
+ * @param graph The symbolic graph.
+ * @param tensor The tensor symbol reference.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_flags(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor);
+/**
+ * Set the cmd of this exec symbol.
+ * @param graph The symbolic graph.
+ * @param exec The execution node symbol reference.
+ * @param cmd The new wrapped command.
+ */
+void ccv_nnc_graph_exec_symbol_set(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_cmd_t cmd);
+/**
+ * Return the command on this exec symbol.
+ * @param graph The symbolic graph.
+ * @param exec The execution node symbol reference.
+ * @return The wrapped command.
+ */
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_graph_exec_symbol_cmd(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec);
+/**
+ * Set the inputs / outputs for a exec symbol.
+ * @param graph The symbolic graph.
+ * @param exec The execution node symbol reference.
+ * @param inputs The input tensor symbols array.
+ * @param input_size The size of input tensor symbols array.
+ * @param outputs The output tensor symbols array.
+ * @param output_size The size of output tensor symbols array.
+ */
+void ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
+/**
+ * Manually concatenate input node with an output graph node.
+ * @param graph The symbolic graph.
+ * @param source The source execution node symbol to connect.
+ * @param destination The destination execution node symbol connect to.
+ * @return non-zero if cannot concat successfully.
+ */
+int ccv_nnc_graph_exec_symbol_concat(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+/**
+ * Manually disconnect input node with an output graph node for this graph.
+ * @param graph The symbolic graph.
+ * @param source The source execution node symbol to disconnect.
+ * @param destination The destination execution node symbol disconnect to.
+ * @return non-zero if cannot disjoin successfully.
+ */
+int ccv_nnc_graph_exec_symbol_disjoin(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t source, const ccv_nnc_graph_exec_symbol_t destination);
+/**
+ * Number of exec symbols.
+ * @param graph The symbolic graph.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
+/**
+ * Substitution function. Given an execution node symbol and a command, return a new command.
+ */
+typedef ccv_nnc_cmd_t(*ccv_nnc_symbolic_graph_subst_f)(const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd);
+/**
+ * Generate a duplicate of the provided graph.
+ * While generating the duplicate, it calls the function pointer to re-process the node type.
+ * @param graph The symbolic graph.
+ * @param subst The substitution function.
+ * @return The duplicated symbolic graph.
+ */
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_subst_f subst);
+
 /**
  * For a given tensor symbol, this method resolves to its local reference inside the given graph.
  * This is related to the sub-graph of symbolic graphs. A tensor symbol in the sub-graph can still have a
@@ -1132,8 +1187,15 @@ void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, c
 
 /** @} */
 
+/** @} */
+
 /**
  * @defgroup level_3_5 Level-3.5 API
+ * @{
+ */
+
+/**
+ * @defgroup level_3_5_autograd Automatic Differentiation
  * @{
  */
 
@@ -1167,18 +1229,29 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_backward(cons
  */
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backward(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol);
 
+/** @} */
+
 /**
- * @page symbolic_while Construct a "while" loop in a symbolic graph.
+ * @defgroup level_3_5_while While Loop
+ * @{
+ */
+
+/**
+ * @page symbolic_while Construct a "while" loop in a symbolic graph
  *
  * In NNC, a computation graph cannot allow cycles. Thus, there is no flexible way to express loops.
  *
  * A little survey on this problem:
  *
  * * Caffe2 supports specific type of recurrent neural network.
+ *
  * * TensorFlow as it stands, supports while construct. Its while construct is very straightforward, a body and
  *   a condition is provided, you can construct whatever graph as you want.
+ *
  * * mxnet supports recurrent neural network by unrolling it into normal none-looped graph.
+ *
  * * Theano supports "scan" ops, which is a terminable loop (with loop variant, known as sequence).
+ *
  * * CNTK supports this with custom BrainScript. Within BrainScript, you can access the previous state in a
  *   function, therefore, effectively supports calling a method multiple times (looping over).
  *
@@ -1261,6 +1334,11 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
  */
 
 /**
+ * @defgroup level_3_5_while_essentials While Loop Essentials
+ * @{
+ */
+
+/**
  * The given tensors contains all the common / input / output tensors specified in the sub-graph.
  */
 typedef int(*ccv_nnc_graph_while_f)(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data);
@@ -1310,6 +1388,56 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor_for_while_count(const ccv_nnc_g
  * @return The sub-graph.
  */
 CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_while_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
+/**
+ * The API to operate on the symbolic graph is more involved than the concrete graph for while loops.
+ * The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while
+ * loops for the symbolic graph has to be parameterized.
+ * @param graph The symbolic graph.
+ * @param cmd The command idenfitier, can be either CCV_NNC_GRAPH_FORWARD or CCV_NNC_GRAPH_BACKWARD
+ * @param while_graph The sub-graph to run the while loop.
+ * @param name The name of the while loop. Optional.
+ * @return A while loop execution symbol (backed by a sub-graph) of the giving graph.
+ */
+ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
+/**
+ * Set the expression to be evaluated, and at which nodes to be evaluated.
+ * @param while_graph The symbolic graph that will run the while loop.
+ * @param while_expr The function pointer to the expression.
+ * @param while_data A custom data provided to the expression evaluation function.
+ * @param inputs The input tensor symbols array to the expression evaluation function.
+ * @param input_size The size of the input tensor symbols array.
+ * @param breakpoints The execution node symbols at which the while loop will pause, evaluate the expression, and choose to either break out or continue.
+ * @param breakpoint_size The size of the execution node symbols array.
+ */
+void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
+/**
+ * Set the loop carry parameters when reuse. (parameterized loop, these will be carried over to the next loop).
+ * @param while_graph The symbolic graph that will run the while loop.
+ * @param symbol_map A pair of tensor symbols array, where the source tensor symbol is the output tensor symbol in this loop, the destination tensor symbol is the input tensor symbol in the next loop.
+ * @param symbol_map_size The size of the symbol map array.
+ */
+void ccv_nnc_symbolic_graph_set_carry_overs(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
+/**
+ * Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
+ * @param while_graph The symbolic graph that will run the while loop.
+ * @return A tensor symbol represents the implicit loop count.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const while_graph);
+
+/** @} */
+
+/**
+ * @defgroup level_3_5_while_others While Loop Others
+ * @{
+ */
+
+/**
+ * Extract the sub-graph of the while loop from a symbol.
+ * @param graph The symbolic graph.
+ * @param while_symbol The execution node symbol.
+ * @return The sub-graph that represents a while loop.
+ */
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 /**
  * For a given tape on a given graph, update the input / output tensors so new version will be created (if needed).
  * @param tape The tensor tape object.
@@ -1397,57 +1525,24 @@ void ccv_nnc_tensor_synchronize_to_multiview(ccv_nnc_tensor_multiview_t* const t
  */
 void ccv_nnc_tensor_multiview_synchronize(ccv_nnc_tensor_multiview_t* const tensor_multiview);
 
-/**
- * The API to operate on the symbolic graph is more involved than the concrete graph for while loops.
- * The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while
- * loops for the symbolic graph has to be parameterized.
- * @param graph The symbolic graph.
- * @param cmd The command idenfitier, can be either CCV_NNC_GRAPH_FORWARD or CCV_NNC_GRAPH_BACKWARD
- * @param while_graph The sub-graph to run the while loop.
- * @param name The name of the while loop. Optional.
- * @return A while loop execution symbol (backed by a sub-graph) of the giving graph.
- */
-ccv_nnc_graph_exec_symbol_t ccv_nnc_symbolic_graph_while(ccv_nnc_symbolic_graph_t* const graph, const uint32_t cmd, ccv_nnc_symbolic_graph_t* const while_graph, const char* const name);
-/**
- * Set the expression to be evaluated, and at which nodes to be evaluated.
- * @param while_graph The symbolic graph that will run the while loop.
- * @param while_expr The function pointer to the expression.
- * @param while_data A custom data provided to the expression evaluation function.
- * @param inputs The input tensor symbols array to the expression evaluation function.
- * @param input_size The size of the input tensor symbols array.
- * @param breakpoints The execution node symbols at which the while loop will pause, evaluate the expression, and choose to either break out or continue.
- * @param breakpoint_size The size of the execution node symbols array.
- */
-void ccv_nnc_symbolic_graph_set_while_expr(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const breakpoints, const int breakpoint_size);
-/**
- * Set the loop carry parameters when reuse. (parameterized loop, these will be carried over to the next loop).
- * @param while_graph The symbolic graph that will run the while loop.
- * @param symbol_map A pair of tensor symbols array, where the source tensor symbol is the output tensor symbol in this loop, the destination tensor symbol is the input tensor symbol in the next loop.
- * @param symbol_map_size The size of the symbol map array.
- */
-void ccv_nnc_symbolic_graph_set_carry_overs(ccv_nnc_symbolic_graph_t* const while_graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size);
-/**
- * Retrieve the special (magical) tensor symbol that retains the while loop counter (thus, dimension of 1x1x1, CCV_64S type).
- * @param while_graph The symbolic graph that will run the while loop.
- * @return A tensor symbol represents the implicit loop count.
- */
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const while_graph);
-/**
- * Extract the sub-graph of the while loop from a symbol.
- * @param graph The symbolic graph.
- * @param while_symbol The execution node symbol.
- * @return The sub-graph that represents a while loop.
- */
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+/** @} */
+
+/** @} */
 
 /**
- * @page symbolic_switch Construct "switch" control structure in symbolic graph. Here I use the keyword case_of.
+ * @defgroup level_3_5_case_of Branching
+ * @{
+ */
+
+/**
+ * @page symbolic_switch Construct "switch" control structure in symbolic graph
  *
- * Providing a "switch" control structure within NNC has some nice properties even though you can simulate this
- * with a while loop technically.
+ * Here I use the keyword case_of. To provide a "switch" control structure within NNC has some nice properties
+ * even though you can simulate this with a while loop technically.
  *
  * 1. More optimal memory allocation: with "switch" control structure, memory can be multiplexed for each code
  *    path because they are mutually exclusive.
+ *
  * 2. No tape should be used within each branch: if we simulate with a "while" loop, any results from within
  *    the "switch" statement has to be kept on the tape, which is inefficient because you don't need any tape
  *    for the "switch" statement other than record which path it is taken.
@@ -1525,6 +1620,13 @@ void ccv_nnc_graph_set_case_of_expr(ccv_nnc_graph_t* const graph, const ccv_nnc_
  */
 void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_graph_t* const case_graph, const int case_of);
 
+/** @} */
+
+/**
+ * @defgroup level_3_5_minimizer Gradient-based Optimization
+ * @{
+ */
+
 /**
  * This is the comparable part to Caffe's solver or TensorFlow's optimizer. It took a step further than just
  * compute the gradient, but also apply the gradient to update parameters to minimize the loss.
@@ -1551,8 +1653,15 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
  */
 CCV_WARN_UNUSED(int) ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer);
 
+/** @} */
+
 /**
- * @page symbolic_simplify Symbolic graph simplification.
+ * @defgroup level_3_5_simplify Graph Simplification
+ * @{
+ */
+
+/**
+ * @page symbolic_simplify Symbolic graph simplification
  *
  * We make a distinction between graph simplifications and optimizations (autotune).
  *
@@ -1616,6 +1725,8 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 
 /** @} */
 
+/** @} */
+
 /**
  * @defgroup level_4 Level-4 API
  * @{
@@ -1638,12 +1749,17 @@ typedef struct ccv_nnc_tensor_variable_s* ccv_nnc_tensor_variable_t;
  * @return A newly created dynamic graph.
  */
 CCV_WARN_UNUSED(ccv_nnc_dynamic_graph_t*) ccv_nnc_dynamic_graph_new(void);
+
+/** @cond ALL */
 // Get a new tensor variable.
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
 #define CCV_NNC_TENSOR_VARIABLE_NEW_X_1(graph) ccv_nnc_tensor_variable_new_impl(graph, ccv_nnc_tensor_auto)
 #define CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(_1, _2, _FX, ...) _FX
 // Making so that this new method can take parameters for both no parameter or with tensor_param.
 #define ccv_nnc_tensor_variable_new(graph, ...) CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(graph, ##__VA_ARGS__, ccv_nnc_tensor_variable_new_impl, CCV_NNC_TENSOR_VARIABLE_NEW_X_1)(graph, ##__VA_ARGS__)
+
+/** @endcond */
+
 /**
  * Create a new tensor variable that is an alias of a given tensor variable.
  * @param graph The dynamic graph.
@@ -1730,7 +1846,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  */
 
 /**
- * @page datframe Dataframe
+ * @page dataframe Dataframe
  *
  * A large part of machine learning consists of go through data, process them to a shape / form that makes sense,
  * and pass that into the model to train. Deep learning frameworks such as TensorFlow or PyTorch provides some
@@ -1763,9 +1879,13 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  * the interesting requirements are:
  *
  * 1. Represents scalars, tensors, string as columns; columns can be named.
+ *
  * 2. New columns can be derived, from existing ones.
+ *
  * 3. Rows can be filtered, grouped, and statistics can be computed.
+ *
  * 4. Columns can be aligned, with some given indexes.
+ *
  * 5. All these can be done efficiently, on a scale of hundreds of Gigabytes data.
  */
 
