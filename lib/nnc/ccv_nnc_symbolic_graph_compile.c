@@ -3434,6 +3434,8 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				for (i = 0; i < node->case_of.argument.offset; i++)
 				{
 					ccv_nnc_tensor_t* const update = max_inputs[i];
+					if (!CCV_IS_TENSOR_MULTIVIEW(update)) // No need if it is a naked tensor.
+						continue;
 					int flag = 0;
 					for (j = node->case_of.argument.offset; !flag && j < node->case_of.argument.size; j++)
 						flag = (update == max_inputs[j]);

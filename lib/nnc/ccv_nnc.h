@@ -53,6 +53,9 @@ enum {
 	CCV_NNC_EXEC_OOM       = -3, /**< Out of memory error. */
 };
 
+/**
+ * Parameters for command.
+ */
 typedef struct {
 	struct {
 		int dim[CCV_NNC_MAX_DIM_ALLOC]; /**< [size.dim] The window size for the layer. For full connect layer, it is 1 because it is 1x1 convolutional layer with count of filters */
@@ -98,6 +101,9 @@ typedef struct {
 	};
 } ccv_nnc_cmd_param_t;
 
+/*
+ * Hints for command.
+ */
 typedef struct {
 	struct {
 		int dim[CCV_NNC_MAX_DIM_ALLOC]; /**< Stride for each dimension. */
@@ -1354,11 +1360,11 @@ typedef struct ccv_nnc_tensor_multiview_s {
 	ccv_nnc_tensor_t** _heap_data;
 } ccv_nnc_tensor_multiview_t;
 #define CCV_NNC_MULTIVIEW_DATA(x) ((x)->_heap_data ? (x)->_heap_data : (x)->_inline_data)
-#define CCV_NNC_MULTIVIEW_PHI (intptr_t)0x1 // Denote this is a phi multi-view tensor.
+#define CCV_NNC_MULTIVIEW_PHI (intptr_t)0x1 /**< Denote this is a phi multi-view tensor. */
 
 enum {
-	CCV_NNC_MULTIVIEW_K0N = 0, // All of them are repeated.
-	CCV_NNC_MULTIVIEW_K1N = 1, // The first one is the first, the second one starts to repeat. (0111111...)
+	CCV_NNC_MULTIVIEW_K0N = 0, /**< All of them are repeated. */
+	CCV_NNC_MULTIVIEW_K1N = 1, /**< The first one is the first, the second one starts to repeat. (0111111...) */
 };
 #define CCV_NNC_MULTIVIEW_K01(x) ((x)->kind == CCV_NNC_MULTIVIEW_K0N && (x)->repeat == 1)
 /**
