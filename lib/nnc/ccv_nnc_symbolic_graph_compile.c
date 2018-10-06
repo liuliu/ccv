@@ -3722,12 +3722,11 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	ccfree(tensor_arena);
 }
 
-int ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor)
+void ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor)
 {
 	assert(tensor_arena->graph_ref == (intptr_t)symbol.graph);
 	assert(symbol.d < tensor_arena->vt_tensor_size);
 	tensor_arena->vt_tensors[symbol.d]->data.ptr = tensor->data.ptr;
-	return 0;
 }
 
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)

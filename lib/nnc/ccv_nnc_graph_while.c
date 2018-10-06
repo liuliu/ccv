@@ -92,7 +92,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uin
 	return while_exec;
 }
 
-ccv_nnc_graph_t* ccv_nnc_graph_from_graph_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec)
+ccv_nnc_graph_t* ccv_nnc_graph_from_while_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec)
 {
 	assert(exec.graph == graph);
 	assert(exec.d < graph->exec_info->rnum);

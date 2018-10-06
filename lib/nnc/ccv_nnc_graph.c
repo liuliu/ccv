@@ -467,7 +467,7 @@ int ccv_nnc_graph_exec_disjoin(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	return 0;
 }
 
-int ccv_nnc_graph_exec_size(const ccv_nnc_graph_t* const graph)
+int ccv_nnc_graph_exec_count(const ccv_nnc_graph_t* const graph)
 {
 	return graph->exec_info ? graph->exec_info->rnum : 0;
 }

@@ -41,7 +41,7 @@ TEST_CASE("new tape from a graph")
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
 	ccv_nnc_graph_exec_t while_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, while_symbol);
-	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_from_graph_exec(graph, while_exec);
+	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_from_while_exec(graph, while_exec);
 	ccv_nnc_graph_t* sub_while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t sub_while_exec = ccv_nnc_graph_while(while_graph, CCV_NNC_GRAPH_FORWARD, sub_while_graph);
 	ccv_nnc_graph_exec_t noop_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, noop);
