@@ -3429,7 +3429,17 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				for (i = 0; i < node->output_size; i++)
 					if (max_outputs[i] && max_outputs[i]->alias_ref)
 						max_outputs[i] = (ccv_nnc_tensor_t*)max_outputs[i]->alias_ref;
-				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs, node->input_size, max_outputs, node->output_size, node->case_of.argument.offset, node->case_of.argument.size);
+				graph_execs[idx] = ccv_nnc_graph_case_of_new(graph, node->cmd.cmd, max_inputs + node->case_of.argument.offset, node->case_of.argument.size, max_outputs, node->output_size);
+				// Check whether this is already covered in the inputs, if not, need to be covered in the update.
+				for (i = 0; i < node->case_of.argument.offset; i++)
+				{
+					ccv_nnc_tensor_t* const update = max_inputs[i];
+					int flag = 0;
+					for (j = node->case_of.argument.offset; !flag && j < node->case_of.argument.size; j++)
+						flag = (update == max_inputs[j]);
+					if (!flag)
+						ccv_nnc_graph_exec_add_update(graph, graph_execs[idx], update);
+				}
 				const int offset = (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO) ? 1 : 0;
 				ccv_nnc_graph_set_case_of_expr(graph, graph_execs[idx], node->case_of.expr, node->case_of.data, offset);
 				if (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO)

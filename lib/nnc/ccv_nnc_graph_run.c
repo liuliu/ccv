@@ -257,7 +257,7 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	int ref;
 	if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 	{
-		ref = exec->case_of.offset + exec->case_of.expr(inputs + exec->case_of.argument.offset, exec->case_of.argument.size, exec->case_of.data);
+		ref = exec->case_of.offset + exec->case_of.expr(inputs, exec->input_size, exec->case_of.data);
 		if (tensor_tape)
 			ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){
 				.d = exec_idx,
@@ -551,7 +551,7 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 			int ref;
 			if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 			{
-				ref = node->case_of.offset + node->case_of.expr(inputs + node->case_of.argument.offset, node->case_of.argument.size, node->case_of.data);
+				ref = node->case_of.offset + node->case_of.expr(inputs, node->input_size, node->case_of.data);
 				if (tensor_tape)
 					ccv_nnc_tensor_tape_set_numbering(tensor_tape, graph, (ccv_nnc_graph_exec_t){
 						.d = idx,

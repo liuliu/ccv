@@ -4,16 +4,12 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
-ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int argument_offset, const int argument_size)
+ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	assert(cmd == CCV_NNC_GRAPH_FORWARD || cmd == CCV_NNC_GRAPH_BACKWARD);
-	assert(argument_offset >= 0);
-	assert(argument_offset + argument_size <= input_size);
 	ccv_nnc_graph_exec_t exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(cmd, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, inputs, input_size, outputs, output_size);
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
 	exec_info->flags |= CCV_NNC_GRAPH_EXEC_CASE_OF;
-	exec_info->case_of.argument.offset = argument_offset;
-	exec_info->case_of.argument.size = argument_size;
 	int i, j;
 	for (i = 0; i < output_size; i++)
 		if (outputs[i] && ((ccv_nnc_tensor_multiview_t*)outputs[i])->anchor == CCV_NNC_MULTIVIEW_PHI)

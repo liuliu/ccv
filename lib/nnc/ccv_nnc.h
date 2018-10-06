@@ -1494,15 +1494,13 @@ void ccv_nnc_symbolic_graph_set_case_of(ccv_nnc_symbolic_graph_t* const graph, c
  * Create a new case..of execution node.
  * @param graph The concrete graph.
  * @param cmd The command idenfitier, can be either CCV_NNC_GRAPH_FORWARD or CCV_NNC_GRAPH_BACKWARD
- * @param inputs The input tensors array.
+ * @param inputs The input tensors array supplied to the expression.
  * @param input_size The size of the input tensors array.
  * @param outputs The output tensors array.
  * @param output_size The size of the output tensors array.
- * @param argument_offset The offset into input tensors array, and inputs from this offset til the size will be supplied to the expression function.
- * @param argument_size See argument_offset comment.
  * @return A execution node that represents the case..of graph.
  */
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int argument_offset, const int argument_size);
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 /**
  * Set the expression to be evaluated when choose which sub-graph to branch to.
  * @param graph The concrete graph.

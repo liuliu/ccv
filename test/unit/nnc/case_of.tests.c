@@ -35,7 +35,7 @@ TEST_CASE("graph for a piece-wise linear function")
 {
 	ccv_nnc_graph_t* const graph = ccv_nnc_graph_new();
 	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x), 0, 0, 0, 1);
+	ccv_nnc_graph_exec_t case_of = ccv_nnc_graph_case_of_new(graph, CCV_NNC_GRAPH_FORWARD, TENSOR_LIST(x), 0, 0);
 	ccv_nnc_graph_set_case_of_expr(graph, case_of, piecewise_case_of, 0, 0);
 	ccv_nnc_graph_t* graph_0 = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t set_0 = ccv_nnc_graph_exec_new(graph_0, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, TENSOR_LIST(x));
