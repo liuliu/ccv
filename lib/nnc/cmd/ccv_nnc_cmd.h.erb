@@ -1,3 +1,7 @@
+/**
+ * @addtogroup available_command_ids Available Command Identifiers
+ * @{
+ */
 enum {
 	CCV_NNC_NOOP = 0,
 	CCV_NNC_CUSTOM_FORWARD = 2,
@@ -7,3 +11,4 @@ enum {
 	<%= commands.join ",\n\t" %>,
 	CCV_NNC_COUNT = <%= commands.count + 3 %>,
 };
+/** @} */

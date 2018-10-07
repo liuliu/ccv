@@ -1239,6 +1239,9 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
 /**
  * @page symbolic_while Construct a "while" loop in a symbolic graph
  *
+ * (This document was written in 2016, since then, Caffe2 added support for While loop (as sub-graph), similar
+ * implementation added for ONNX as well.)
+ *
  * In NNC, a computation graph cannot allow cycles. Thus, there is no flexible way to express loops.
  *
  * A little survey on this problem:
@@ -1868,9 +1871,12 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  *
  * * They both represent data as tables. Each column represents different type of the data (time, nd-array, scalar
  *   or string). As such, they both have API to add / remove / rename columns, and load tabular data from disk.
+ *
  * * They both provide API to filter (remove / add) rows, and derive new column from existing columns.
+ *
  * * Pandas provides more API for data alignment (merge columns from different tables into one table), and compute
  *   statistics (group rows by some criteria, and compute min / max / std / mean within that group).
+ *
  * * MLDataTable provides API to batching data (random split) which covered in TensorFlow / PyTorch's Dataset API
  *   as well.
  *

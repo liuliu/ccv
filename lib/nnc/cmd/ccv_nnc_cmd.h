@@ -1,3 +1,7 @@
+/**
+ * @addtogroup available_command_ids Available Command Identifiers
+ * @{
+ */
 enum {
 	CCV_NNC_NOOP = 0,
 	CCV_NNC_CUSTOM_FORWARD = 2,
@@ -58,3 +62,4 @@ enum {
 	CCV_NNC_FORMAT_TRANSFORM_BACKWARD = 0xe4a2b193,
 	CCV_NNC_COUNT = 55,
 };
+/** @} */

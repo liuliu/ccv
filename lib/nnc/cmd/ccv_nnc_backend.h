@@ -1,3 +1,7 @@
+/**
+ * @addtogroup available_backends Available Backends
+ * @{
+ */
 enum {
 	CCV_NNC_NO_BACKEND = 0,
 	CCV_NNC_BACKEND_CPU_REF = 0x3d9883e5,
@@ -7,3 +11,4 @@ enum {
 	CCV_NNC_BACKEND_GPU_CUBLAS = 0x9b8cfed,
 	CCV_NNC_BACKEND_COUNT = 5,
 };
+/** @} */

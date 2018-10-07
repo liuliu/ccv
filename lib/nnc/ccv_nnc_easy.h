@@ -59,12 +59,12 @@
  */
 /**
  * Pass a list of tensors to NNC functions that accepts (tensor array, tensor array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor parameters to NNC functions that accepts (parameter array, parameter array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
@@ -73,34 +73,34 @@
 #define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = CCV_NNC_NO_TENSOR_SYMBOL}
 /**
  * Pass a list of tensor symbols to NNC functions that accepts (tensor symbol array, tensor symbol array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor variables to NNC functions that accepts (tensor variable array, tensor variable array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define TENSOR_VARIABLE_LIST(...) TENSOR_VARIABLE_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor bindings to NNC functions that accepts (tensor binding array, tensor binding array size).
- * This method effective gives two parameters as one. Since tensor binding requires two: symbol and a tensor,
+ * This method effectively gives two parameters as one. Since tensor binding requires two: symbol and a tensor,
  * you should use this like: TENSOR_BIND_MAP(KV(symbol1, tensor1), KV(symbol2, tensor2)).
  */
 #define TENSOR_BIND_MAP(...) TENSOR_BIND_MAP_X(__VA_ARGS__), (sizeof(TENSOR_BIND_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_bind_t))
 /**
  * Pass a list of tensor symbol pairs to NNC functions that accepts (tensor symbol pair array, tensor symbol pair array size).
- * This method effective gives two parameters as one. Since tensor symbol pair requires two: source symbol and destination symbol,
+ * This method effectively gives two parameters as one. Since tensor symbol pair requires two: source symbol and destination symbol,
  * you should use this like: TENSOR_SYMBOL_MAP(KV(symbol1, symbol2), KV(symbol3, symbol4)).
  */
 #define TENSOR_SYMBOL_MAP(...) TENSOR_SYMBOL_MAP_X(__VA_ARGS__), (sizeof(TENSOR_SYMBOL_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_symbol_map_t))
 /**
  * Pass a list of execution nodes to NNC functions that accepts (execution node array, execution node array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define GRAPH_EXEC_LIST(...) GRAPH_EXEC_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of execution node symbols to NNC functions that accepts (execution node symbol array, execution node symbol array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
@@ -115,17 +115,17 @@
 #define SYMBOLIC_GRAPH_DESTINATIONS(x) ccv_nnc_symbolic_graph_destinations(x), ccv_nnc_symbolic_graph_destination_size(x)
 /**
  * Pass a list of simplification passes to NNC functions that accepts (pass array, pass array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define SYMBOLIC_GRAPH_PASSES(...) SYMBOLIC_GRAPH_PASSES_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of CNNP models to NNC functions that accepts (model array, model array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define MODEL_LIST(...) MODEL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of CNNP model IOs to NNC functions that accepts (model IO array, model IO array size).
- * This method effective gives two parameters as one.
+ * This method effectively gives two parameters as one.
  */
 #define MODEL_IO_LIST(...) MODEL_IO_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
