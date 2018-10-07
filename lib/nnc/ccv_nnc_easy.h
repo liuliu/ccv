@@ -20,121 +20,110 @@
  * it is optimized for shorthand coding, and may collide the naming space with
  * others.
  *
- * @defgroup easy_methods Convenience API
  */
 // c99 only, make sure your compiler supports that.
-#define LIST_COUNT_N(_0,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) (_63)
-#define LIST_COUNT(...) LIST_COUNT_N(63,##__VA_ARGS__,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
-
-#define TENSOR_LIST_X(...) (ccv_nnc_tensor_t* []){__VA_ARGS__}
-/**
- * @ingroup easy_methods
- * Pass a list of tensors to NNC functions that accepts (tensor array, tensor array size).
- * This method effective gives two parameters as one.
- */
-#define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
-#define TENSOR_PARAM_LIST_X(...) (ccv_nnc_tensor_param_t []){__VA_ARGS__}
-/**
- * @ingroup easy_methods
- * Pass a list of tensor parameters to NNC functions that accepts (parameter array, parameter array size).
- * This method effective gives two parameters as one.
- */
-#define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
-/**
- * @ingroup easy_methods
- * This represents a tensor symbol that is empty (tensor = nil)
- */
-#define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = CCV_NNC_NO_TENSOR_SYMBOL}
 
 #define NOOP_GRAPH_WHILE_EXPR (ccv_nnc_graph_while_f)(1)
 #define NOOP_GRAPH_CASE_OF_EXPR (ccv_nnc_graph_case_of_f)(1)
 
+#define LIST_COUNT_N(_0,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) (_63)
+#define LIST_COUNT(...) LIST_COUNT_N(63,##__VA_ARGS__,62,61,60,59,58,57,56,55,54,53,52,51,50,49,48,47,46,45,44,43,42,41,40,39,38,37,36,35,34,33,32,31,30,29,28,27,26,25,24,23,22,21,20,19,18,17,16,15,14,13,12,11,10,9,8,7,6,5,4,3,2,1,0)
+
+#define TENSOR_LIST_X(...) (ccv_nnc_tensor_t* []){__VA_ARGS__}
+
+#define TENSOR_PARAM_LIST_X(...) (ccv_nnc_tensor_param_t []){__VA_ARGS__}
+
 #define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
-/**
- * @ingroup easy_methods
- * Pass a list of tensor symbols to NNC functions that accepts (tensor symbol array, tensor symbol array size).
- * This method effective gives two parameters as one.
- */
-#define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
 #define TENSOR_VARIABLE_LIST_X(...) (ccv_nnc_tensor_variable_t []){__VA_ARGS__}
-/**
- * @ingroup easy_methods
- * Pass a list of tensor variables to NNC functions that accepts (tensor variable array, tensor variable array size).
- * This method effective gives two parameters as one.
- */
-#define TENSOR_VARIABLE_LIST(...) TENSOR_VARIABLE_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
 #define KV_X(_x, _y, ...) {(_x), (_y)}
 #define KV(...) KV_X(__VA_ARGS__, 0)
 #define TENSOR_BIND_MAP_X(...) (ccv_nnc_tensor_bind_t []){__VA_ARGS__}
+
+#define TENSOR_SYMBOL_MAP_X(...) (ccv_nnc_tensor_symbol_map_t []){__VA_ARGS__}
+
+#define GRAPH_EXEC_LIST_X(...) (ccv_nnc_graph_exec_t []){__VA_ARGS__}
+
+#define GRAPH_EXEC_SYMBOL_LIST_X(...) (ccv_nnc_graph_exec_symbol_t []){__VA_ARGS__}
+
+#define SYMBOLIC_GRAPH_PASSES_X(...) (int []){__VA_ARGS__}
+
+#define MODEL_LIST_X(...)(ccv_cnnp_model_t* []){__VA_ARGS__}
+
+#define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
+
 /**
- * @ingroup easy_methods
+ * @defgroup convenience_api Convenience API
+ * @{
+ */
+/**
+ * Pass a list of tensors to NNC functions that accepts (tensor array, tensor array size).
+ * This method effective gives two parameters as one.
+ */
+#define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
+ * Pass a list of tensor parameters to NNC functions that accepts (parameter array, parameter array size).
+ * This method effective gives two parameters as one.
+ */
+#define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
+ * This represents a tensor symbol that is empty (tensor = nil)
+ */
+#define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = CCV_NNC_NO_TENSOR_SYMBOL}
+/**
+ * Pass a list of tensor symbols to NNC functions that accepts (tensor symbol array, tensor symbol array size).
+ * This method effective gives two parameters as one.
+ */
+#define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
+ * Pass a list of tensor variables to NNC functions that accepts (tensor variable array, tensor variable array size).
+ * This method effective gives two parameters as one.
+ */
+#define TENSOR_VARIABLE_LIST(...) TENSOR_VARIABLE_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
  * Pass a list of tensor bindings to NNC functions that accepts (tensor binding array, tensor binding array size).
  * This method effective gives two parameters as one. Since tensor binding requires two: symbol and a tensor,
  * you should use this like: TENSOR_BIND_MAP(KV(symbol1, tensor1), KV(symbol2, tensor2)).
  */
 #define TENSOR_BIND_MAP(...) TENSOR_BIND_MAP_X(__VA_ARGS__), (sizeof(TENSOR_BIND_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_bind_t))
-
-#define TENSOR_SYMBOL_MAP_X(...) (ccv_nnc_tensor_symbol_map_t []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of tensor symbol pairs to NNC functions that accepts (tensor symbol pair array, tensor symbol pair array size).
  * This method effective gives two parameters as one. Since tensor symbol pair requires two: source symbol and destination symbol,
  * you should use this like: TENSOR_SYMBOL_MAP(KV(symbol1, symbol2), KV(symbol3, symbol4)).
  */
 #define TENSOR_SYMBOL_MAP(...) TENSOR_SYMBOL_MAP_X(__VA_ARGS__), (sizeof(TENSOR_SYMBOL_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_symbol_map_t))
-
-#define GRAPH_EXEC_LIST_X(...) (ccv_nnc_graph_exec_t []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of execution nodes to NNC functions that accepts (execution node array, execution node array size).
  * This method effective gives two parameters as one.
  */
 #define GRAPH_EXEC_LIST(...) GRAPH_EXEC_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
-#define GRAPH_EXEC_SYMBOL_LIST_X(...) (ccv_nnc_graph_exec_symbol_t []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of execution node symbols to NNC functions that accepts (execution node symbol array, execution node symbol array size).
  * This method effective gives two parameters as one.
  */
 #define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
 /**
- * @ingroup easy_methods
  * Pass both default sources and default sources size to function that accepts (sources, source size)
  * @param x A given symbolic graph.
  */
 #define SYMBOLIC_GRAPH_SOURCES(x) ccv_nnc_symbolic_graph_sources(x), ccv_nnc_symbolic_graph_source_size(x)
 /**
- * @ingroup easy_methods
  * Pass both default destinations and default destinations size to function that accepts (destinations, destination size)
  * @param x A given symbolic graph.
  */
 #define SYMBOLIC_GRAPH_DESTINATIONS(x) ccv_nnc_symbolic_graph_destinations(x), ccv_nnc_symbolic_graph_destination_size(x)
-
-#define SYMBOLIC_GRAPH_PASSES_X(...) (int []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of simplification passes to NNC functions that accepts (pass array, pass array size).
  * This method effective gives two parameters as one.
  */
 #define SYMBOLIC_GRAPH_PASSES(...) SYMBOLIC_GRAPH_PASSES_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
-#define MODEL_LIST_X(...)(ccv_cnnp_model_t* []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of CNNP models to NNC functions that accepts (model array, model array size).
  * This method effective gives two parameters as one.
  */
 #define MODEL_LIST(...) MODEL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
-
-#define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
 /**
- * @ingroup easy_methods
  * Pass a list of CNNP model IOs to NNC functions that accepts (model IO array, model IO array size).
  * This method effective gives two parameters as one.
  */
@@ -142,10 +131,6 @@
 
 #define TRAVERSE_FULL 0,0,0,0
 
-/**
- * @addtogroup easy_methods
- * @{
- */
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
 #define CPU_NUMA_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
 #define CPU_NUMA_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
@@ -171,7 +156,7 @@
 #define HINT_X_3(_stride_, _begin_, _end_) ((ccv_nnc_hint_t){.stride={.dim={ESCAPE_X _stride_}}, .border={.begin={ESCAPE_X _begin_},.end={ESCAPE_X _end_}}})
 #define HINT_X_SEL(_1, _2, _3, _FX, ...) _FX
 /**
- * @ingroup easy_methods
+ * @ingroup convenience_api
  * Simpler method to create hint.
  * HINT(stride), HINT(stride, border), HINT(stride, border begin, border end)
  */
@@ -333,35 +318,38 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 #define CMD_GENERIC(...) CMD_GENERIC_X_SEL(CMD_GENERIC_X_F, ##__VA_ARGS__, CMD_GENERIC_X_3, CMD_GENERIC_X_F, CMD_GENERIC_X_F, CMD_GENERIC_X_0)(__VA_ARGS__)
 #define CMD_REDUCE(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.reduce={.count=LIST_COUNT(__VA_ARGS__),.axis={__VA_ARGS__}}})
 /**
- * @defgroup cmd_list Available Commands
+ * @defgroup available_commands Available Commands
  * @{
  */
 #define CMD_NOOP() ccv_nnc_cmd(CCV_NNC_NOOP, 0, ccv_nnc_cmd_auto, 0)
 #define CMD_CUSTOM_FORWARD(f) ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, f, ccv_nnc_cmd_auto, 0)
 /** @} */
 
-extern const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC];
+int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);
+int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params);
+int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params);
 
 /**
- * @ingroup easy_methods
+ * @addtogroup convenience_api
+ * @{
+ */
+/**
+ * Offsets all zero.
+ */
+extern const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC];
+/**
  * No hint available.
  */
 extern const ccv_nnc_hint_t ccv_nnc_no_hint;
-int ccv_nnc_is_no_hint(const ccv_nnc_hint_t hint);
-
 /**
- * @ingroup easy_methods
  * Derive the command parameters automatically if possible.
  */
 extern const ccv_nnc_cmd_param_t ccv_nnc_cmd_auto;
-int ccv_nnc_is_cmd_auto(const ccv_nnc_cmd_param_t params);
-
 /**
- * @ingroup easy_methods
  * Derive the tensor parameters automatically if possible.
  */
 extern const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto;
-int ccv_nnc_is_tensor_auto(const ccv_nnc_tensor_param_t params);
+/** @} */
 
 // Generated command flags for easy creation of ccv_nnc_cmd_t objects.
 #include "cmd/ccv_nnc_cmd_easy.h"
