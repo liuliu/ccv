@@ -5,9 +5,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_dynamic_graph.h"
 
-/**
- * Level-4.5 API
- */
+#pragma mark - Level-4.5 API
 
 void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size)
 {

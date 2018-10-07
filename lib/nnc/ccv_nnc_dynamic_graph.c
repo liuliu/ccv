@@ -5,9 +5,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_dynamic_graph.h"
 
-/**
- * Level-4 API
- */
+#pragma mark - Level-4 API
 
 ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 {

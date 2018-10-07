@@ -4,9 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-/**
- * Level-3.5 API
- */
+#pragma mark - Level-3.5 API
 
 typedef struct {
 	int f_wrt; // Check if both f_symbols and wrt_symbols flow through this node.

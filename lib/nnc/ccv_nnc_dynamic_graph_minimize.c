@@ -5,9 +5,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_dynamic_graph.h"
 
-/**
- * Level-4.5 API
- */
+#pragma mark - Level-4.5 API
 
 void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const losses, const int loss_size, const ccv_nnc_tensor_variable_t* const dlosses_optional, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux)
 {

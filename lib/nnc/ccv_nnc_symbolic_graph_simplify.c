@@ -5,9 +5,7 @@
 #include "_ccv_nnc_symbolic_graph.h"
 #include "3rdparty/siphash/siphash24.h"
 
-/**
- * Level-3.5 API
- */
+#pragma mark - Level-3.5 API
 
 static uint8_t key_siphash[16] = "graphcsekvlibnnc";
 

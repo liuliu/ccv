@@ -4,9 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-/**
- * Level-3.5 API
- */
+#pragma mark - Level-3.5 API
 
 int ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer)
 {

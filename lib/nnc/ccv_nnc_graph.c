@@ -4,6 +4,8 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
+#pragma mark - Level-2 API
+
 ccv_nnc_graph_t* ccv_nnc_graph_new(void)
 {
 	ccv_nnc_graph_t* graph = (ccv_nnc_graph_t*)cccalloc(1, sizeof(ccv_nnc_graph_t));

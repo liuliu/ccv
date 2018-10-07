@@ -4,9 +4,7 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 
-/**
- * Level-3 API
- */
+#pragma mark - Level-3 API
 
 const ccv_nnc_tensor_param_t ccv_nnc_tensor_auto = {};
 

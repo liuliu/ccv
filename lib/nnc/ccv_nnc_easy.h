@@ -173,7 +173,7 @@
 /**
  * @ingroup easy_methods
  * Simpler method to create hint.
- * `HINT(stride)`, `HINT(stride, border)`, `HINT(stride, border begin, border end)`
+ * HINT(stride), HINT(stride, border), HINT(stride, border begin, border end)
  */
 #define HINT(...) HINT_X_SEL(__VA_ARGS__, HINT_X_3, HINT_X_2, HINT_X_1)(__VA_ARGS__)
 

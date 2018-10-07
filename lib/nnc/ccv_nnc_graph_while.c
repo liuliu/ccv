@@ -4,6 +4,8 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 
+#pragma mark - Level-3.5 API
+
 void ccv_nnc_tensor_multiview(ccv_nnc_tensor_t* data[], const uint8_t kind, const uint16_t repeat, const ccv_nnc_graph_t* const graph, ccv_nnc_tensor_multiview_t* const tensor_multiview)
 {
 	assert(kind == CCV_NNC_MULTIVIEW_K0N || kind == CCV_NNC_MULTIVIEW_K1N);

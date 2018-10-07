@@ -5,6 +5,8 @@
 #include "_ccv_nnc_symbolic_graph.h"
 #include "3rdparty/sqlite3/sqlite3.h"
 
+#pragma mark - Level-3 API
+
 #ifdef NDEBUG
 #define assert_sqlite(stmt) (void)(stmt)
 #else
