@@ -1,3 +1,7 @@
+/**
+ * @addtogroup cmd_list Command List
+ * @{
+ */
 // CCV_NNC_EWSUM_FORWARD
 #define CMD_EWSUM_FORWARD() ccv_nnc_cmd(CCV_NNC_EWSUM_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_EWSUM_BACKWARD
@@ -100,4 +104,4 @@
 #define CMD_FORMAT_TRANSFORM_FORWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_FORMAT_TRANSFORM_BACKWARD
 #define CMD_FORMAT_TRANSFORM_BACKWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
-
+/** @} */

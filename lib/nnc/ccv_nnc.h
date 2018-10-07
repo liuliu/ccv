@@ -1423,6 +1423,13 @@ void ccv_nnc_symbolic_graph_set_carry_overs(ccv_nnc_symbolic_graph_t* const whil
  * @return A tensor symbol represents the implicit loop count.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(const ccv_nnc_symbolic_graph_t* const while_graph);
+/**
+ * Extract the sub-graph of the while loop from a symbol.
+ * @param graph The symbolic graph.
+ * @param while_symbol The execution node symbol.
+ * @return The sub-graph that represents a while loop.
+ */
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 
 /** @} */
 
@@ -1431,13 +1438,6 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(c
  * @{
  */
 
-/**
- * Extract the sub-graph of the while loop from a symbol.
- * @param graph The symbolic graph.
- * @param while_symbol The execution node symbol.
- * @return The sub-graph that represents a while loop.
- */
-CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
 /**
  * For a given tape on a given graph, update the input / output tensors so new version will be created (if needed).
  * @param tape The tensor tape object.
