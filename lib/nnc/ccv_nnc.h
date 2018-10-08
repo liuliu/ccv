@@ -634,13 +634,6 @@ ccv_nnc_graph_exec_t* ccv_nnc_graph_destinations(const ccv_nnc_graph_t* const gr
  */
 int ccv_nnc_graph_destination_size(const ccv_nnc_graph_t* const graph);
 /**
- * Add tensor pair that can be used to "carry over". (carry over: passing a tensor from current loop to the next loop).
- * @param graph The concrete graph.
- * @param from The tensor we have output in this loop.
- * @param to The tensor we will use as input in the next loop.
- */
-void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to);
-/**
  * This graph, and its relevant auxiliary objects (opaque to user) are deallocated.
  * @param graph The concrete graph.
  */
@@ -689,6 +682,13 @@ void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc
  * @param peer_exec The peer execution node reference.
  */
 void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec);
+/**
+ * Add tensor pair that can be used to "carry over". (carry over: passing a tensor from current loop to the next loop).
+ * @param graph The concrete graph.
+ * @param from The tensor we have output in this loop.
+ * @param to The tensor we will use as input in the next loop.
+ */
+void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_tensor_t* const from, const ccv_nnc_tensor_t* const to);
 /**
  * Updates are the tensors that not directly involved in the computation, but its pointers need to get updated
  * along with this exec, thus need to be "update" to other exec nodes.
@@ -1356,42 +1356,6 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_tape_t*) ccv_nnc_tensor_tape_new(void);
  */
 void ccv_nnc_tensor_tape_free(ccv_nnc_tensor_tape_t* const tape);
 /**
- * Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic
- * graph. The reason is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor
- * symbols between the parent graph and the while graph. (The reason to have a mapping in symbolic graphs is to
- * constraint the variable leaking between the sub graph and parent graph).
- * @param graph The concrete graph.
- * @param cmd The command idenfitier, can be either CCV_NNC_GRAPH_FORWARD or CCV_NNC_GRAPH_BACKWARD
- * @param while_graph The sub-graph to run the while loop.
- * @return A execution node that represents the sub-graph.
- */
-CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph);
-/**
- * Set the evaluated expression for the while loop. The while loop will break out if the expression evaluates to 0.
- * @param while_graph The concrete graph that will run the while loop.
- * @param while_expr The function pointer to the expression.
- * @param while_data A custom data provided to the expression evaluation function.
- * @param inputs The input tensors array to the expression evaluation function.
- * @param input_size The size of the input tensors array.
- * @param breakpoints The execution nodes at which the while loop will pause, evaluate the expression, and choose to either break out or continue.
- * @param breakpoint_size The size of the execution nodes array.
- */
-void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
-/**
- * Get the special tensor for the while loop count. It contains one uint64_t value. We keep an implicit count
- * when evaluate the while loop and you can access it with this tensor.
- * @param while_graph The concrete graph that will run the while loop.
- * @return A special tensor that you can retrieve the loop count at .data.i64[0].
- */
-CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor_for_while_count(const ccv_nnc_graph_t* const while_graph);
-/**
- * Retrieve the sub-graph from a execution node.
- * @param graph The concrete graph.
- * @param exec The execution node represents the sub-graph.
- * @return The sub-graph.
- */
-CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_while_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
-/**
  * The API to operate on the symbolic graph is more involved than the concrete graph for while loops.
  * The reason is because symbolic graph operates in SSA form (static single assignment), therefore, the while
  * loops for the symbolic graph has to be parameterized.
@@ -1433,6 +1397,42 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_while_count(c
  * @return The sub-graph that represents a while loop.
  */
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_from_while_symbol(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t while_symbol);
+/**
+ * Constructing looped concrete graph. Note that this interface is a little bit simpler than the one for symbolic
+ * graph. The reason is that a concrete graph operates on allocated tensors, thus, there is no mapping of tensor
+ * symbols between the parent graph and the while graph. (The reason to have a mapping in symbolic graphs is to
+ * constraint the variable leaking between the sub graph and parent graph).
+ * @param graph The concrete graph.
+ * @param cmd The command idenfitier, can be either CCV_NNC_GRAPH_FORWARD or CCV_NNC_GRAPH_BACKWARD
+ * @param while_graph The sub-graph to run the while loop.
+ * @return A execution node that represents the sub-graph.
+ */
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_t) ccv_nnc_graph_while(ccv_nnc_graph_t* const graph, const uint32_t cmd, ccv_nnc_graph_t* const while_graph);
+/**
+ * Set the evaluated expression for the while loop. The while loop will break out if the expression evaluates to 0.
+ * @param while_graph The concrete graph that will run the while loop.
+ * @param while_expr The function pointer to the expression.
+ * @param while_data A custom data provided to the expression evaluation function.
+ * @param inputs The input tensors array to the expression evaluation function.
+ * @param input_size The size of the input tensors array.
+ * @param breakpoints The execution nodes at which the while loop will pause, evaluate the expression, and choose to either break out or continue.
+ * @param breakpoint_size The size of the execution nodes array.
+ */
+void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size);
+/**
+ * Get the special tensor for the while loop count. It contains one uint64_t value. We keep an implicit count
+ * when evaluate the while loop and you can access it with this tensor.
+ * @param while_graph The concrete graph that will run the while loop.
+ * @return A special tensor that you can retrieve the loop count at .data.i64[0].
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_t) ccv_nnc_tensor_for_while_count(const ccv_nnc_graph_t* const while_graph);
+/**
+ * Retrieve the sub-graph from a execution node.
+ * @param graph The concrete graph.
+ * @param exec The execution node represents the sub-graph.
+ * @return The sub-graph.
+ */
+CCV_WARN_UNUSED(ccv_nnc_graph_t*) ccv_nnc_graph_from_while_exec(const ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_t exec);
 
 /** @} */
 
