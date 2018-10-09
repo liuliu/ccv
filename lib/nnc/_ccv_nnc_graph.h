@@ -64,6 +64,7 @@ typedef struct {
 			const void* data;
 			ccv_nnc_tensor_t** inputs;
 			int input_size;
+			int tensor_wraps_ref;
 		} p_while;
 	};
 } ccv_nnc_graph_exec_info_t;
@@ -134,6 +135,20 @@ inline static int ccv_array_find_int(ccv_array_t* ints, const int idx)
 	return 0;
 }
 
+inline static int ccv_nnc_tensors_have_wraps(ccv_nnc_tensor_t* const* const tensors, const int tensor_size)
+{
+	int i;
+	for (i = 0; i < tensor_size; i++)
+		if (tensors[i] &&
+			CCV_IS_TENSOR_MULTIVIEW(tensors[i]) &&
+			((ccv_nnc_tensor_multiview_t*)tensors[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
+			return 1;
+	return 0;
+}
+
 CCV_WARN_UNUSED(void*) ccv_nnc_graph_buffer(ccv_nnc_graph_t* const graph, int size);
+CCV_WARN_UNUSED(ccv_nnc_graph_tensor_wrap_array_t*) ccv_nnc_get_tensor_wrap_array(ccv_nnc_graph_t* const graph, const int tensor_wrap_size, int* const tensor_wraps_ref);
+void ccv_nnc_set_tensor_wraps(ccv_nnc_graph_tensor_wrap_t** const tensor_wraps, ccv_nnc_tensor_t* const* const tensors, const int tensor_size);
+void ccv_nnc_graph_register_tensor_wraps(ccv_nnc_graph_t* graph, const int tensor_wraps_ref_d);
 
 #endif

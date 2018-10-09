@@ -127,99 +127,98 @@ static void _ccv_nnc_graph_tensor_wrap_free(ccv_nnc_graph_tensor_wrap_t* const t
 	ccfree(tensor_wrap);
 }
 
+ccv_nnc_graph_tensor_wrap_array_t* ccv_nnc_get_tensor_wrap_array(ccv_nnc_graph_t* const graph, const int tensor_wrap_size, int* const tensor_wraps_ref)
+{
+	ccv_nnc_graph_tensor_wrap_array_t** tensor_wrap_array_ref = *tensor_wraps_ref ? (ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, *tensor_wraps_ref - 1) : 0;
+	// Otherwise, find an open slot.
+	if (!tensor_wrap_array_ref)
+	{
+		if (!graph->tensor_wraps)
+			graph->tensor_wraps = ccv_array_new(sizeof(ccv_nnc_graph_tensor_wrap_array_t*), 0, 0);
+		ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = 0;
+		ccv_array_push(graph->tensor_wraps, &tensor_wrap_array);
+		tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, graph->tensor_wraps->rnum - 1);
+		*tensor_wraps_ref = graph->tensor_wraps->rnum;
+	}
+	int i;
+	if (*tensor_wrap_array_ref)
+	{
+		if ((*tensor_wrap_array_ref)->size != tensor_wrap_size)
+			*tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t*)ccrealloc(*tensor_wrap_array_ref, sizeof(ccv_nnc_graph_tensor_wrap_array_t) + sizeof(ccv_nnc_graph_tensor_wrap_t*) * (tensor_wrap_size - 1));
+		for (i = (*tensor_wrap_array_ref)->size; i < tensor_wrap_size; i++)
+			(*tensor_wrap_array_ref)->tensor_wraps[i] = 0;
+	} else
+		*tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t*)cccalloc(sizeof(ccv_nnc_graph_tensor_wrap_array_t) + sizeof(ccv_nnc_graph_tensor_wrap_t*) * (tensor_wrap_size - 1), 1);
+	ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = *tensor_wrap_array_ref;
+	tensor_wrap_array->size = tensor_wrap_size;
+	return tensor_wrap_array;
+}
+
+void ccv_nnc_set_tensor_wraps(ccv_nnc_graph_tensor_wrap_t** const tensor_wraps, ccv_nnc_tensor_t* const* const tensors, const int tensor_size)
+{
+	int i;
+	for (i = 0; i < tensor_size; i++)
+		if (tensors[i])
+		{
+			if (CCV_IS_TENSOR_MULTIVIEW(tensors[i]) &&
+				((ccv_nnc_tensor_multiview_t*)tensors[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
+			{
+				if (!tensor_wraps[i] || tensors[i] != tensor_wraps[i]->tensors[0])
+				{
+					if (tensor_wraps[i])
+						_ccv_nnc_graph_tensor_wrap_free(tensor_wraps[i]);
+					tensor_wraps[i] = _ccv_nnc_graph_tensor_wrap_new((ccv_nnc_tensor_multiview_t*)tensors[i]);
+				}
+			} else {
+				if (tensor_wraps[i])
+					_ccv_nnc_graph_tensor_wrap_free(tensor_wraps[i]);
+				tensor_wraps[i] = 0;
+			}
+		}
+}
+
+void ccv_nnc_graph_register_tensor_wraps(ccv_nnc_graph_t* graph, const int tensor_wraps_ref_d)
+{
+	ccv_nnc_graph_t* p = graph;
+	const ccv_nnc_graph_tensor_wraps_ref_t tensor_wraps_ref = {
+		.d = tensor_wraps_ref_d,
+		.graph = graph,
+	};
+	do {
+		if (!p->tensor_wraps_refs)
+		{
+			p->tensor_wraps_refs = ccv_array_new(sizeof(ccv_nnc_graph_tensor_wraps_ref_t), 0, 0);
+			ccv_array_push(p->tensor_wraps_refs, &tensor_wraps_ref);
+		} else {
+			int i;
+			int has_tensor_wraps_ref = 0;
+			for (i = 0; !has_tensor_wraps_ref && i < p->tensor_wraps_refs->rnum; i++)
+			{
+				ccv_nnc_graph_tensor_wraps_ref_t* tensor_wraps_ref = (ccv_nnc_graph_tensor_wraps_ref_t*)ccv_array_get(p->tensor_wraps_refs, i);
+				has_tensor_wraps_ref = (tensor_wraps_ref->d == tensor_wraps_ref_d && tensor_wraps_ref->graph == graph);
+			}
+			if (!has_tensor_wraps_ref)
+				ccv_array_push(p->tensor_wraps_refs, &tensor_wraps_ref);
+		}
+		p = p->p;
+	} while (p);
+}
+
 static void _ccv_nnc_graph_redo_tensor_wraps(ccv_nnc_graph_exec_info_t* const info, ccv_nnc_graph_t* const graph)
 {
 	int i;
-	int has_wrap = 0;
-	for (i = 0; i < info->input_size && !has_wrap; i++)
-		has_wrap = (info->inputs[i] &&
-			CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
-			((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
-	for (i = 0; i < info->output_size && !has_wrap; i++)
-		has_wrap = (info->outputs[i] &&
-			CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
-			((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
-	for (i = 0; i < info->update_size && !has_wrap; i++)
-		has_wrap = (info->updates[i] &&
-			CCV_IS_TENSOR_MULTIVIEW(info->updates[i]) &&
-			((ccv_nnc_tensor_multiview_t*)info->updates[i])->anchor != CCV_NNC_MULTIVIEW_PHI);
+	const int has_wrap = ccv_nnc_tensors_have_wraps(info->inputs, info->input_size) ||
+		ccv_nnc_tensors_have_wraps(info->outputs, info->output_size) ||
+		ccv_nnc_tensors_have_wraps(info->updates, info->update_size);
 	if (has_wrap)
 	{
-		ccv_nnc_graph_tensor_wrap_array_t** tensor_wrap_array_ref = info->tensor_wraps_ref ? (ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, info->tensor_wraps_ref - 1) : 0;
-		// Otherwise, find an open slot.
-		if (!tensor_wrap_array_ref)
-		{
-			if (!graph->tensor_wraps)
-				graph->tensor_wraps = ccv_array_new(sizeof(ccv_nnc_graph_tensor_wrap_array_t*), 0, 0);
-			ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = 0;
-			ccv_array_push(graph->tensor_wraps, &tensor_wrap_array);
-			tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, graph->tensor_wraps->rnum - 1);
-			info->tensor_wraps_ref = graph->tensor_wraps->rnum;
-		}
 		const int tensor_wrap_size = info->input_size + info->output_size + info->update_size;
-		if (*tensor_wrap_array_ref)
-		{
-			if ((*tensor_wrap_array_ref)->size != tensor_wrap_size)
-				*tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t*)ccrealloc(*tensor_wrap_array_ref, sizeof(ccv_nnc_graph_tensor_wrap_array_t) + sizeof(ccv_nnc_graph_tensor_wrap_t*) * (tensor_wrap_size - 1));
-			for (i = (*tensor_wrap_array_ref)->size; i < tensor_wrap_size; i++)
-				(*tensor_wrap_array_ref)->tensor_wraps[i] = 0;
-		} else
-			*tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t*)cccalloc(sizeof(ccv_nnc_graph_tensor_wrap_array_t) + sizeof(ccv_nnc_graph_tensor_wrap_t*) * (tensor_wrap_size - 1), 1);
-		ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = *tensor_wrap_array_ref;
-		tensor_wrap_array->size = tensor_wrap_size;
-		for (i = 0; i < info->input_size; i++)
-			if (info->inputs[i])
-			{
-				if (CCV_IS_TENSOR_MULTIVIEW(info->inputs[i]) &&
-					((ccv_nnc_tensor_multiview_t*)info->inputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
-				{
-					if (!tensor_wrap_array->tensor_wraps[i] || info->inputs[i] != tensor_wrap_array->tensor_wraps[i]->tensors[0])
-					{
-						if (tensor_wrap_array->tensor_wraps[i])
-							_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[i]);
-						tensor_wrap_array->tensor_wraps[i] = _ccv_nnc_graph_tensor_wrap_new((ccv_nnc_tensor_multiview_t*)info->inputs[i]);
-					}
-				} else {
-					if (tensor_wrap_array->tensor_wraps[i])
-						_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[i]);
-					tensor_wrap_array->tensor_wraps[i] = 0;
-				}
-			}
+		ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = ccv_nnc_get_tensor_wrap_array(graph, tensor_wrap_size, &info->tensor_wraps_ref);
+		ccv_nnc_set_tensor_wraps(tensor_wrap_array->tensor_wraps, info->inputs, info->input_size);
 		const int d = info->input_size;
-		for (i = 0; i < info->output_size; i++)
-			if (info->outputs[i])
-			{
-				if (CCV_IS_TENSOR_MULTIVIEW(info->outputs[i]) &&
-					((ccv_nnc_tensor_multiview_t*)info->outputs[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
-				{
-					if (!tensor_wrap_array->tensor_wraps[d + i] || info->outputs[i] != tensor_wrap_array->tensor_wraps[d + i]->tensors[0])
-					{
-						if (tensor_wrap_array->tensor_wraps[d + i])
-							_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[d + i]);
-						tensor_wrap_array->tensor_wraps[d + i] = _ccv_nnc_graph_tensor_wrap_new((ccv_nnc_tensor_multiview_t*)info->outputs[i]);
-					}
-				} else {
-					if (tensor_wrap_array->tensor_wraps[d + i])
-						_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[d + i]);
-					tensor_wrap_array->tensor_wraps[d + i] = 0;
-				}
-			}
+		ccv_nnc_set_tensor_wraps(tensor_wrap_array->tensor_wraps + d, info->outputs, info->output_size);
 		const int dd = info->input_size + info->output_size;
-		for (i = 0; i < info->update_size; i++)
-			if (CCV_IS_TENSOR_MULTIVIEW(info->updates[i]) &&
-				((ccv_nnc_tensor_multiview_t*)info->updates[i])->anchor != CCV_NNC_MULTIVIEW_PHI)
-			{
-				if (!tensor_wrap_array->tensor_wraps[dd + i] || info->updates[i] != tensor_wrap_array->tensor_wraps[dd + i]->tensors[0])
-				{
-					if (tensor_wrap_array->tensor_wraps[dd + i])
-						_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[dd + i]);
-					tensor_wrap_array->tensor_wraps[dd + i] = _ccv_nnc_graph_tensor_wrap_new((ccv_nnc_tensor_multiview_t*)info->updates[i]);
-				}
-			} else {
-				if (tensor_wrap_array->tensor_wraps[dd + i])
-					_ccv_nnc_graph_tensor_wrap_free(tensor_wrap_array->tensor_wraps[dd + i]);
-				tensor_wrap_array->tensor_wraps[dd + i] = 0;
-			}
+		ccv_nnc_set_tensor_wraps(tensor_wrap_array->tensor_wraps + dd, info->updates, info->update_size);
 	} else if (info->tensor_wraps_ref) {
 		ccv_nnc_graph_tensor_wrap_array_t** tensor_wrap_array_ref = (ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, info->tensor_wraps_ref - 1);
 		ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = *tensor_wrap_array_ref;
@@ -253,33 +252,6 @@ static void _ccv_nnc_graph_deregister_tensor_wraps(ccv_nnc_graph_t* graph, const
 					break;
 				}
 			}
-		p = p->p;
-	} while (p);
-}
-
-static void _ccv_nnc_graph_register_tensor_wraps(ccv_nnc_graph_t* graph, const int tensor_wraps_ref_d)
-{
-	ccv_nnc_graph_t* p = graph;
-	const ccv_nnc_graph_tensor_wraps_ref_t tensor_wraps_ref = {
-		.d = tensor_wraps_ref_d,
-		.graph = graph,
-	};
-	do {
-		if (!p->tensor_wraps_refs)
-		{
-			p->tensor_wraps_refs = ccv_array_new(sizeof(ccv_nnc_graph_tensor_wraps_ref_t), 0, 0);
-			ccv_array_push(p->tensor_wraps_refs, &tensor_wraps_ref);
-		} else {
-			int i;
-			int has_tensor_wraps_ref = 0;
-			for (i = 0; !has_tensor_wraps_ref && i < p->tensor_wraps_refs->rnum; i++)
-			{
-				ccv_nnc_graph_tensor_wraps_ref_t* tensor_wraps_ref = (ccv_nnc_graph_tensor_wraps_ref_t*)ccv_array_get(p->tensor_wraps_refs, i);
-				has_tensor_wraps_ref = (tensor_wraps_ref->d == tensor_wraps_ref_d && tensor_wraps_ref->graph == graph);
-			}
-			if (!has_tensor_wraps_ref)
-				ccv_array_push(p->tensor_wraps_refs, &tensor_wraps_ref);
-		}
 		p = p->p;
 	} while (p);
 }
@@ -339,7 +311,7 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 		info->output_size = 0;
 		_ccv_nnc_graph_redo_tensor_wraps(info, graph);
 		if (info->tensor_wraps_ref)
-			_ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
+			ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
 		return;
 	}
 	if (info->inputs)
@@ -362,7 +334,7 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	_ccv_nnc_graph_redo_tensor_wraps(info, graph);
 	// Register again if the tensor wraps exist.
 	if (info->tensor_wraps_ref)
-		_ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
+		ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
 	// Free flags.
 	if (info->input_flags)
 	{
@@ -387,7 +359,7 @@ void ccv_nnc_graph_exec_add_update(ccv_nnc_graph_t* const graph, const ccv_nnc_g
 	info->updates[update_index] = update;
 	_ccv_nnc_graph_redo_tensor_wraps(info, graph);
 	if (register_tensor_wraps)
-		_ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
+		ccv_nnc_graph_register_tensor_wraps(graph, info->tensor_wraps_ref - 1);
 }
 
 ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
@@ -421,7 +393,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_exec_new(ccv_nnc_graph_t* const graph, const 
 	_ccv_nnc_graph_redo_tensor_wraps(&info, graph);
 	// Add itself to the graph's wraps array, this will help the run time when we run the graph and do unwrapping.
 	if (info.tensor_wraps_ref)
-		_ccv_nnc_graph_register_tensor_wraps(graph, info.tensor_wraps_ref - 1);
+		ccv_nnc_graph_register_tensor_wraps(graph, info.tensor_wraps_ref - 1);
 	ccv_array_push(graph->exec_info, &info);
 	return (ccv_nnc_graph_exec_t){
 		.d = d,

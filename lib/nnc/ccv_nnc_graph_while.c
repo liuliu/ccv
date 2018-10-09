@@ -126,6 +126,14 @@ void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_
 		exec_info->p_while.input_size = input_size;
 		exec_info->p_while.inputs = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * input_size);
 		memcpy(exec_info->p_while.inputs, inputs, sizeof(ccv_nnc_tensor_t*) * input_size);
+		// Register for unwrapping.
+		if (ccv_nnc_tensors_have_wraps(exec_info->p_while.inputs, input_size))
+		{
+			ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = ccv_nnc_get_tensor_wrap_array(while_graph, input_size, &exec_info->p_while.tensor_wraps_ref);
+			ccv_nnc_set_tensor_wraps(tensor_wrap_array->tensor_wraps, exec_info->p_while.inputs, input_size);
+			assert(exec_info->p_while.tensor_wraps_ref);
+			ccv_nnc_graph_register_tensor_wraps(while_graph, exec_info->p_while.tensor_wraps_ref - 1);
+		}
 	}
 	assert(breakpoint_size > 0);
 	while_graph->breakpoint_size = breakpoint_size;

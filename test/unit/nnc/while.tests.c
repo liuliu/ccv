@@ -13,6 +13,9 @@ TEST_SETUP()
 
 static int while_5(ccv_nnc_tensor_t* const* const inputs, const int input_size, const void* const data)
 {
+	int i;
+	for (i = 0; i < input_size; i++)
+		{ assert(!CCV_IS_TENSOR_MULTIVIEW(inputs[i])); }
 	return inputs[0]->data.i64[0] < 5;
 }
 
