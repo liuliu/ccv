@@ -22,13 +22,18 @@ typedef struct {
 } ccv_nnc_graph_tensor_wrap_t;
 
 typedef struct {
+	int size;
+	ccv_nnc_graph_tensor_wrap_t* tensor_wraps[1];
+} ccv_nnc_graph_tensor_wrap_array_t;
+
+typedef struct {
 	int input_size;
 	int output_size;
 	int flags;
 	int peer_ref; // Reference to its peer. Starts at 1.
 	int graph_ref_size;
 	int update_size;
-	int tensor_wrap_size; // This should be input_size + output_size + rest that need to be broadcast.
+	int tensor_wraps_ref; // Reference to the tensor_wraps in the graph. Starts at 1.
 	ccv_nnc_tensor_t** inputs;
 	int* input_flags;
 	ccv_nnc_tensor_t** outputs;
@@ -45,7 +50,6 @@ typedef struct {
 	} schedule;
 	// These correlates to tensors that need to be unwrapped, but not in either inputs / outputs (thus, only relevant if this graph exec symbol points to a sub-graph.)
 	ccv_nnc_tensor_t** updates;
-	ccv_nnc_graph_tensor_wrap_t** tensor_wraps;
 	// Below are only relevant to sub-graph nodes (case_of, while).
 	int _inline_graph_ref[2]; // Reference to the sub-graph. Starts at 1.
 	int* _heap_graph_ref;
@@ -74,6 +78,11 @@ typedef struct {
 	ccv_nnc_graph_tensor_wrap_t* from;
 } ccv_nnc_graph_tensor_carry_over_t;
 
+typedef struct {
+	int d;
+	ccv_nnc_graph_t* graph;
+} ccv_nnc_graph_tensor_wraps_ref_t;
+
 struct ccv_nnc_graph_s {
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.
@@ -99,8 +108,9 @@ struct ccv_nnc_graph_s {
 	// Buffer that can be used during graph run, in steady state when run graph (with topsorted), it won't have
 	// any heap allocations (the usage of buffer first will, but subsequent runs won't).
 	void* buffer;
-	// Extra information, this logs all the exec that need to be unwrapped (including all sub-graphs).
-	ccv_array_t* exec_wraps; // It contains a ccv_nnc_graph_exec_t struct. This points to execs that has tensor wraps.
+	// Extra information for all tensors that need to be unwrapped.
+	ccv_array_t* tensor_wraps; // It contains a ccv_nnc_graph_tensor_wrap_array_t struct.
+	ccv_array_t* tensor_wraps_refs; // It contains a ccv_nnc_graph_tensor_wrap_ref_t struct that references to all tensor wraps need to be unwrapped (including all sub-graphs).
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
 	struct ccv_nnc_graph_s* peer; // The peer graph (only useful for backward prop graph).

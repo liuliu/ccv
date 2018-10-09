@@ -3566,8 +3566,12 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					const int d = graph_execs[idx].d;
 					ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, d);
 					int flag = 0;
-					for (k = 0; k < exec_info->tensor_wrap_size && !flag; k++)
-						flag = (exec_info->tensor_wraps[k] && exec_info->tensor_wraps[k]->tensors[0] == mv);
+					if (exec_info->tensor_wraps_ref)
+					{
+						ccv_nnc_graph_tensor_wrap_array_t* const tensor_wrap_array = *(ccv_nnc_graph_tensor_wrap_array_t**)ccv_array_get(graph->tensor_wraps, exec_info->tensor_wraps_ref - 1);
+						for (k = 0; k < tensor_wrap_array->size && !flag; k++)
+							flag = (tensor_wrap_array->tensor_wraps[k] && tensor_wrap_array->tensor_wraps[k]->tensors[0] == mv);
+					}
 					// If none is in the flag, it need to be included in the cast.
 					if (!flag)
 						ccv_nnc_graph_exec_add_update(graph, graph_execs[idx], mv);

@@ -46,13 +46,13 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	if (!graph->sub_graphs)
 		graph->sub_graphs = ccv_array_new(sizeof(ccv_nnc_graph_t*), 1, 0);
 	int i;
-	if (case_graph->exec_wraps)
+	if (case_graph->tensor_wraps_refs)
 	{
 		// Copy wraps from sub graph to parent graph.
-		if (!graph->exec_wraps)
-			graph->exec_wraps = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), case_graph->exec_wraps->rnum, 0);
-		for (i = 0; i < case_graph->exec_wraps->rnum; i++)
-			ccv_array_push(graph->exec_wraps, ccv_array_get(case_graph->exec_wraps, i));
+		if (!graph->tensor_wraps_refs)
+			graph->tensor_wraps_refs = ccv_array_new(sizeof(ccv_nnc_graph_tensor_wraps_ref_t), case_graph->tensor_wraps_refs->rnum, 0);
+		for (i = 0; i < case_graph->tensor_wraps_refs->rnum; i++)
+			ccv_array_push(graph->tensor_wraps_refs, ccv_array_get(case_graph->tensor_wraps_refs, i));
 	}
 	ccv_array_push(graph->sub_graphs, &case_graph);
 	case_graph->p = graph;
