@@ -264,6 +264,7 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		ccv_nnc_symbolic_graph_simplify(model->graph,
 			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
 				CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
+				CCV_NNC_SIMPLIFY_OPS_FUSION,
 				CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 			model->outputs, model->output_size,
 			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));

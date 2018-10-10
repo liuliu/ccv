@@ -1828,6 +1828,8 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 		if (!TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]))
 		{
+			// Check no tensor info is auto now.
+			assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
 			// If this tensor is used in assign_ref, set it to be un-foldable. (It will be used as parameter,
 			// therefore, itself life-cycle almost certainly won't concatenate properly with the tensor to
 			// fold to).
@@ -1902,8 +1904,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
-		// Check no tensor info is auto now.
-		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
 		if (tensor_symbol_info[i].alias_ref)
 		{
 			const int ref = tensor_symbol_info[i].alias_ref - 1;
@@ -1946,8 +1946,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
-		// Check no tensor info is auto now.
-		assert(!ccv_nnc_is_tensor_auto(tensor_symbol_info[i].info));
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
 		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
 		{

@@ -527,6 +527,144 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 	} ccv_nnc_graph_visit_endfor
 }
 
+typedef struct {
+	uint32_t fused_op; // The final fused op id.
+	uint32_t ops_seq[2]; // The sequence of commands to identify.
+	int ops_seq_size;
+	struct {
+		int type; // Whether it is input, or output. It doesn't make sense for example, input in ops_seq, but output in fused_op.
+		int op_idx; // Index into the ops_seq.
+		int from; // The index in ops_seq.
+		int to; // The index in fused_op.
+	} pos[4]; // maps of positions from ops seq to fused_op for inputs (outputs).
+	int pos_size;
+} ccv_nnc_ops_fusion_t;
+
+enum {
+	CCV_NNC_OPS_FUSION_INPUT_INDEX,
+	CCV_NNC_OPS_FUSION_OUTPUT_INDEX,
+};
+
+const static int ccv_nnc_ops_fusion_io_size = 2;
+const static ccv_nnc_ops_fusion_t ccv_nnc_ops_fusions[] = {
+	{
+		.fused_op = CCV_NNC_SOFTMAX_CROSSENTROPY_FORWARD,
+		.ops_seq = {
+			CCV_NNC_SOFTMAX_FORWARD, CCV_NNC_CATEGORICAL_CROSSENTROPY_FORWARD,
+		},
+		.ops_seq_size = 2,
+		.pos = {
+			{
+				.type = CCV_NNC_OPS_FUSION_INPUT_INDEX,
+				.op_idx = 0,
+				.from = 0,
+				.to = 0,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_INPUT_INDEX,
+				.op_idx = 1,
+				.from = 1,
+				.to = 1,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_OUTPUT_INDEX,
+				.op_idx = 0,
+				.from = 0,
+				.to = 1,
+			},
+			{
+				.type = CCV_NNC_OPS_FUSION_OUTPUT_INDEX,
+				.op_idx = 1,
+				.from = 0,
+				.to = 0,
+			},
+		},
+		.pos_size = 4,
+	}
+};
+
+static int _ccv_nnc_find_ops_for_fusion(const ccv_nnc_ops_fusion_t* const fusion, const int ops_idx, const ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info, const uint32_t* const exec_dead, const int exec_idx, int* const fusing_exec_symbols)
+{
+	if (exec_dead[exec_idx >> 5] & (1u << (exec_idx & 0x1f)))
+		return 0;
+	const ccv_nnc_graph_exec_symbol_info_t* const node = exec_symbol_info + exec_idx;
+	// Doesn't match the ops_seq, return 0.
+	if (fusion->ops_seq[ops_idx] != node->cmd.cmd)
+		return 0;
+	fusing_exec_symbols[ops_idx] = exec_idx;
+	// If already reached the end, we are good.
+	if (ops_idx == fusion->ops_seq_size - 1)
+		return 1;
+	// Otherwise, we need to go on, but don't have any to follow-up.
+	if (!node->outgoings || !node->outgoings->rnum)
+		return 0;
+	int i;
+	for (i = 0; i < node->outgoings->rnum; i++)
+		if (_ccv_nnc_find_ops_for_fusion(fusion, ops_idx + 1, exec_symbol_info, exec_dead, *(int*)ccv_array_get(node->outgoings, i), fusing_exec_symbols))
+			return 1;
+	return 0;
+}
+
+static void _ccv_nnc_symbolic_graph_ops_fusion(ccv_nnc_symbolic_graph_simplify_t* const simplify, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	uint32_t* const exec_dead = simplify->exec_dead;
+	ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = simplify->exec_symbol_info;
+	int i, j;
+	int fusing_exec_symbols[sizeof(ccv_nnc_ops_fusions->ops_seq)];
+	int fused_inputs[ccv_nnc_ops_fusion_io_size]; // 2 is just a number based on the ops_fusion.
+	int fused_outputs[ccv_nnc_ops_fusion_io_size];
+	ccv_nnc_graph_visit_for(simplify->visit, exec_symbol_info, node, idx) {
+		// If already marked as dead, skip.
+		if (exec_dead[idx >> 5] & (1u << (idx & 0x1f)))
+			continue;
+		// Run through rudimentary pattern matching for ops_seq. There are better ways to do this (immediately come to mind, Boyer-Moore). However, this is simpler to code.
+		// If I am running into performance issues with this, I would be very happy.
+		for (i = 0; i < sizeof(ccv_nnc_ops_fusions) / sizeof(ccv_nnc_ops_fusion_t); i++)
+		{
+			const ccv_nnc_ops_fusion_t* const ops_fusion = ccv_nnc_ops_fusions + i;
+			// Check to see if a list of symbols are possible.
+			if (ops_fusion->ops_seq[0] == node->cmd.cmd &&
+				_ccv_nnc_find_ops_for_fusion(ops_fusion, 0, exec_symbol_info, exec_dead, idx, fusing_exec_symbols))
+			{
+				// Go through all the inputs and outputs, check if they exists and are mapped.
+				// TODO: the mapping can be more sophisticated than what we have here.
+				for (j = 0; j < ccv_nnc_ops_fusion_io_size; j++)
+					fused_inputs[j] = fused_outputs[j] = CCV_NNC_NO_TENSOR_SYMBOL;
+				int input_size = 0, output_size = 0;
+				for (j = 0; j < ops_fusion->pos_size; j++)
+				{
+					ccv_nnc_graph_exec_symbol_info_t* const fusing_op = exec_symbol_info + fusing_exec_symbols[ops_fusion->pos[j].op_idx];
+					switch (ops_fusion->pos[j].type)
+					{
+						case CCV_NNC_OPS_FUSION_INPUT_INDEX:
+							fused_inputs[ops_fusion->pos[j].to] = ops_fusion->pos[j].from < fusing_op->input_size ? fusing_op->inputs[ops_fusion->pos[j].from] : CCV_NNC_NO_TENSOR_SYMBOL;
+							input_size = ccv_max(input_size, ops_fusion->pos[j].to + 1);
+							break;
+						case CCV_NNC_OPS_FUSION_OUTPUT_INDEX:
+							fused_outputs[ops_fusion->pos[j].to] = ops_fusion->pos[j].from < fusing_op->output_size ? fusing_op->outputs[ops_fusion->pos[j].from] : CCV_NNC_NO_TENSOR_SYMBOL;
+							output_size = ccv_max(output_size, ops_fusion->pos[j].to + 1);
+							break;
+					}
+				}
+				// Modify the first node so it is the correct type and value.
+				ccv_nnc_graph_exec_symbol_info_t* const actual_node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(simplify->graph->exec_symbol_info, idx);
+				actual_node->cmd.cmd = node->cmd.cmd = ops_fusion->fused_op;
+				if (node->input_size + node->output_size < input_size + output_size)
+					actual_node->inputs = node->inputs = node->inputs ? ccrealloc(node->inputs, sizeof(int) * (input_size + output_size)) : ccmalloc(sizeof(int) * (input_size + output_size));
+				actual_node->outputs = node->outputs = node->inputs + input_size;
+				actual_node->input_size = node->input_size = input_size;
+				actual_node->output_size = node->output_size = output_size;
+				memcpy(node->inputs, fused_inputs, sizeof(int) * input_size);
+				memcpy(node->outputs, fused_outputs, sizeof(int) * output_size);
+				// Afterwards, mark the rest as dead.
+				for (j = 1; j < ops_fusion->ops_seq_size; j++)
+					exec_dead[fusing_exec_symbols[j] >> 5] |= (1u << (fusing_exec_symbols[j] & 0x1f));
+				break;
+			}
+		}
+	} ccv_nnc_graph_visit_endfor
+}
+
 static void _ccv_nnc_symbolic_graph_pruning_undead_exec(ccv_nnc_symbolic_graph_simplify_t* const simplify, const int exec_idx, uint32_t* const tensor_visited, ccv_array_t* const next)
 {
 	assert(exec_idx >= 0);
@@ -779,6 +917,9 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 				break;
 			case CCV_NNC_SIMPLIFY_GRAPH_PRUNING:
 				_ccv_nnc_symbolic_graph_pruning(simplify, outputs, output_size);
+				break;
+			case CCV_NNC_SIMPLIFY_OPS_FUSION:
+				_ccv_nnc_symbolic_graph_ops_fusion(simplify, outputs, output_size);
 				break;
 		}
 	_ccv_nnc_symbolic_graph_simplify_apply(simplify);

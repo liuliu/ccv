@@ -79,17 +79,17 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		parallel_for(i, batch_size) {
 			int j;
 			float* const ap = a->data.f32 + i * count;
-			float* const cp = c->data.f32 + i * count;
+			float* const dp = d->data.f32 + i * count;
 			double maxval = ap[0];
 			for (j = 1; j < count; j++)
 				if (ap[j] > maxval)
 					maxval = ap[j];
 			double sumval = 0;
 			for (j = 0; j < count; j++)
-				sumval += (cp[j] = expf(ap[j] - maxval));
+				sumval += (dp[j] = expf(ap[j] - maxval));
 			sumval = 1.0 / sumval;
 			for (j = 0; j < count; j++)
-				cp[j] *= sumval;
+				dp[j] *= sumval;
 		} parallel_endfor
 	}
 	return CCV_NNC_EXEC_SUCCESS;

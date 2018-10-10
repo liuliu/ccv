@@ -1709,6 +1709,11 @@ enum {
 	 * are carry overs, bypasses etc.)
 	 */
 	CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
+	/**
+	 * Combine a few smaller ops into bigger one. For now, this functionality is limited. I can only address ops
+	 * that are sequential.
+	 */
+	CCV_NNC_SIMPLIFY_OPS_FUSION,
 	// CCV_NNC_SIMPLIFY_CONSTANT_FOLDING, // This currently is not supported, because we don't have efficient way to express constant in symbolic graph.
 };
 /**
