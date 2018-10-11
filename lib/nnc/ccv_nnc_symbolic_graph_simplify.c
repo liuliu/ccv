@@ -628,6 +628,7 @@ static void _ccv_nnc_symbolic_graph_ops_fusion(ccv_nnc_symbolic_graph_simplify_t
 			{
 				// Go through all the inputs and outputs, check if they exists and are mapped.
 				// TODO: the mapping can be more sophisticated than what we have here.
+				// Also, I need to check if some inputs / outputs cannot be mapped, then we cannot continue.
 				for (j = 0; j < ccv_nnc_ops_fusion_io_size; j++)
 					fused_inputs[j] = fused_outputs[j] = CCV_NNC_NO_TENSOR_SYMBOL;
 				int input_size = 0, output_size = 0;

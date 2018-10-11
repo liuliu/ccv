@@ -207,6 +207,57 @@ TEST_CASE("long dynamic graph with unused variables freed")
 	ccv_nnc_dynamic_graph_free(graph);
 }
 
+TEST_CASE("repeat multiple x * y with y as a constant")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	int i;
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.5;
+	for (i = 0; i < 10; i++)
+	{
+		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
+		ccv_nnc_tensor_variable_free(graph, x);
+		x = z;
+	}
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	float g = 32;
+	for (i = 0; i < 10; i++)
+		g = g * 0.5;
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, x)->data.f32[0], g, 1e-5, "x should equal to the computed result");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
+TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
+{
+	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
+	int i;
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t ox = x;
+	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
+	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.9;
+	for (i = 0; i < 4; i++)
+	{
+		ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
+		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
+		if (i > 0)
+			ccv_nnc_tensor_variable_free(graph, x);
+		x = z;
+	}
+	ccv_nnc_tensor_variable_t dx = ccv_nnc_tensor_variable_new(graph);
+	ccv_nnc_dynamic_graph_backward(graph, x, 0, TENSOR_VARIABLE_LIST(ox), TENSOR_VARIABLE_LIST(dx));
+	ccv_nnc_tensor_variable_free(graph, ox);
+	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
+	float g = 1;
+	for (i = 0; i < 4; i++)
+		g = g * 0.9;
+	REQUIRE_EQ_WITH_TOLERANCE(ccv_nnc_tensor_from_variable(graph, dx)->data.f32[0], g, 1e-5, "x should equal to the computed result");
+	ccv_nnc_dynamic_graph_free(graph);
+}
+
 TEST_CASE("compute f(x) = x * log(x) + x, f'(x) when x = 10 (and intermediate results all freed)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();

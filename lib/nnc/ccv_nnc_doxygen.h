@@ -28,5 +28,25 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new(ccv_nnc_d
  * @return A newly created tensor variable reference.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+/**
+ * @ingroup level_4
+ * Create a new tensor constant without specified dimensions. This may be used with
+ * ccv_nnc_tensor_variable_set. A constant cannot be an output with some inputs. It
+ * can be a output with no input (such as CCV_NNC_SET_FORWARD command). This is used
+ * so that we don't need to keep memory of this constant because later we want to
+ * compute gradient of this constant. It is not legal to run ccv_nnc_dynamic_backward
+ * against a constant.
+ * @param graph The dynamic graph.
+ * @return A newly created tensor constant reference.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new(ccv_nnc_dynamic_graph_t* const graph);
+/**
+ * @ingroup level_4
+ * Create a new tensor constant with tensor parameters.
+ * @param graph The dynamic graph.
+ * @param info Tensor parameters.
+ * @return A newly created tensor constant reference.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
 
 #endif

@@ -1765,7 +1765,11 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_new_impl(ccv_
 #define CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(_1, _2, _FX, ...) _FX
 // Making so that this new method can take parameters for both no parameter or with tensor_param.
 #define ccv_nnc_tensor_variable_new(graph, ...) CCV_NNC_TENSOR_VARIABLE_NEW_X_SEL(graph, ##__VA_ARGS__, ccv_nnc_tensor_variable_new_impl, CCV_NNC_TENSOR_VARIABLE_NEW_X_1)(graph, ##__VA_ARGS__)
-
+CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info);
+#define CCV_NNC_TENSOR_CONSTANT_NEW_X_1(graph) ccv_nnc_tensor_constant_new_impl(graph, ccv_nnc_tensor_auto)
+#define CCV_NNC_TENSOR_CONSTANT_NEW_X_SEL(_1, _2, _FX, ...) _FX
+// Making so that this new method can take parameters for both no parameter or with tensor_param.
+#define ccv_nnc_tensor_constant_new(graph, ...) CCV_NNC_TENSOR_CONSTANT_NEW_X_SEL(graph, ##__VA_ARGS__, ccv_nnc_tensor_constant_new_impl, CCV_NNC_TENSOR_CONSTANT_NEW_X_1)(graph, ##__VA_ARGS__)
 /** @endcond */
 
 /**

@@ -19,6 +19,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	assert(f_symbol_extra->sources && f_symbol_extra->sources->rnum > 0);
 	for (i = 0; i < input_size; i++)
 	{
+		assert(inputs[i]->type != CCV_NNC_TENSOR_CONSTANT);
 		assert(inputs[i]->symbol.d >= 0);
 		assert(((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(dynamic_graph->binds, inputs[i]->symbol.d))->destinations &&
 			((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(dynamic_graph->binds, inputs[i]->symbol.d))->destinations->rnum > 0);

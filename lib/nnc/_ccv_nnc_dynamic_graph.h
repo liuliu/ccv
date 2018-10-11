@@ -16,7 +16,13 @@
 #define CCV_NNC_IS_EXTERN_TENSOR_VIEW(tv) ((uintptr_t)(tv) & 1)
 #define CCV_NNC_TENSOR_VIEW(tv) ((ccv_nnc_tensor_view_t*)((uintptr_t)(tv) & ~(uintptr_t)1))
 
+enum {
+	CCV_NNC_TENSOR_VARIABLE,
+	CCV_NNC_TENSOR_CONSTANT,
+};
+
 struct ccv_nnc_tensor_variable_s {
+	int type;
 	int index;
 	int alias_ref;
 	ccv_nnc_tensor_param_t info;
@@ -32,6 +38,7 @@ enum {
 };
 
 typedef struct { // Extra information kept per tensor symbol along with symbolic graph.
+	int type;
 	int index; // The index back into the tensor variable. -1 meant no associated tensor vairable.
 	ccv_array_t* sources; // array of graph_exec_symbol, use this tensor symbol as output.
 	ccv_array_t* destinations; // array of graph_exec_symbol, use this tensor symbol as input.

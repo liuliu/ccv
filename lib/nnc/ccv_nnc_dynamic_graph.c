@@ -94,9 +94,8 @@ void ccv_nnc_tensor_variable_set(ccv_nnc_dynamic_graph_t* const graph, const ccv
 	tensor_variable->tensor_view = (ccv_nnc_tensor_view_t*)((uintptr_t)tensor | 1);
 }
 
-ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
+inline static void _ccv_nnc_tensor_variable_init(ccv_nnc_dynamic_graph_t* const graph, ccv_nnc_tensor_variable_t tensor_variable, const ccv_nnc_tensor_param_t info)
 {
-	ccv_nnc_tensor_variable_t tensor_variable = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
 	tensor_variable->alias_ref = 0;
 	tensor_variable->info = info;
 	tensor_variable->symbol = NO_TENSOR_SYMBOL;
@@ -116,6 +115,21 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph
 		tensor_variable->index = graph->vars->rnum;
 		ccv_array_push(graph->vars, &tensor_variable);
 	}
+}
+
+ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
+{
+	ccv_nnc_tensor_variable_t tensor_variable = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
+	tensor_variable->type = CCV_NNC_TENSOR_VARIABLE;
+	_ccv_nnc_tensor_variable_init(graph, tensor_variable, info);
+	return tensor_variable;
+}
+
+ccv_nnc_tensor_variable_t ccv_nnc_tensor_constant_new_impl(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_param_t info)
+{
+	ccv_nnc_tensor_variable_t tensor_variable = ccmalloc(sizeof(struct ccv_nnc_tensor_variable_s));
+	tensor_variable->type = CCV_NNC_TENSOR_CONSTANT;
+	_ccv_nnc_tensor_variable_init(graph, tensor_variable, info);
 	return tensor_variable;
 }
 
@@ -189,6 +203,7 @@ static void _ccv_nnc_tensor_symbol_extra_new(ccv_nnc_dynamic_graph_t* const grap
 			((ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, i))->index = CCV_NNC_TENSOR_NO_VARIABLE;
 	}
 	ccv_nnc_tensor_variable_graph_bind_t* const bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, symbol.d);
+	bind->type = tensor_variable->type;
 	bind->index = tensor_variable->index;
 	if (bind->sources)
 		ccv_array_free(bind->sources);
@@ -322,7 +337,12 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	{
 		ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
 		for (i = 0; i < output_size; i++)
-			output_symbols[i] = outputs[i] ? _ccv_nnc_tensor_symbol_from_variable(graph, outputs[i]) : NO_TENSOR_SYMBOL;
+			if (outputs[i])
+			{
+				assert(outputs[i]->type != CCV_NNC_TENSOR_CONSTANT);
+				output_symbols[i] = _ccv_nnc_tensor_symbol_from_variable(graph, outputs[i]);
+			} else
+				output_symbols[i] = NO_TENSOR_SYMBOL;
 		ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols, input_size, output_symbols, output_size, 0);
 		// This needs to be done before we set the new sources on the outputs.
 		for (i = 0; i < input_size; i++)
@@ -506,7 +526,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum && inputs[j] != tensor_variable->symbol.d)
 						{
 							ccv_nnc_tensor_variable_graph_bind_t* const other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, inputs[j]);
-							flag = other_bind->index >= 0 || (other_bind->sources && other_bind->sources->rnum > 0);
+							flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->sources && other_bind->sources->rnum > 0);
 						}
 					free_symbol = (free_symbol && !flag);
 					if (flag)
@@ -548,7 +568,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						if (inputs[j] >= 0 && inputs[j] < graph->binds->rnum)
 						{
 							ccv_nnc_tensor_variable_graph_bind_t* const other_bind = (ccv_nnc_tensor_variable_graph_bind_t*)ccv_array_get(graph->binds, inputs[j]);
-							flag = other_bind->index >= 0 || (other_bind->sources && other_bind->sources->rnum > 0);
+							flag = (other_bind->index >= 0 && other_bind->type != CCV_NNC_TENSOR_CONSTANT) || (other_bind->sources && other_bind->sources->rnum > 0);
 						}
 					// Went over all the inputs, it turns out no more inputs has other references, safe to remove.
 					if (!flag)
