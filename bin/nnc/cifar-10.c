@@ -5,7 +5,7 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 
-static ccv_cnnp_model_t* _building_block_new(const int filters, const int strides, const int projection_shortcut)
+static ccv_cnnp_model_t* _building_block_new(const int filters, const int strides, const int border, const int projection_shortcut)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t shortcut = input;
@@ -25,7 +25,7 @@ static ccv_cnnp_model_t* _building_block_new(const int filters, const int stride
 	ccv_cnnp_model_t* const conv1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
-		.hint = HINT((strides, strides), (1, 1)),
+		.hint = HINT((strides, strides), (border, border)),
 	});
 	output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const conv2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
@@ -38,41 +38,47 @@ static ccv_cnnp_model_t* _building_block_new(const int filters, const int stride
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-static ccv_cnnp_model_t* _block_layer_new(const int filters, const int strides, const int blocks)
+static ccv_cnnp_model_t* _block_layer_new(const int filters, const int strides, const int border, const int blocks)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* first_block = _building_block_new(filters, strides, 1);
+	ccv_cnnp_model_t* first_block = _building_block_new(filters, strides, border, 1);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(first_block, MODEL_IO_LIST(input));
 	int i;
 	for (i = 1; i < blocks; i++)
 	{
-		ccv_cnnp_model_t* block = _building_block_new(filters, 1, 0);
+		ccv_cnnp_model_t* block = _building_block_new(filters, 1, 1, 0);
 		output = ccv_cnnp_model_apply(block, MODEL_IO_LIST(output));
 	}
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-static ccv_cnnp_model_t* _cifar_10_resnet56(void)
+inline static ccv_cnnp_model_t* _cifar_10_resnet56(void)
 {
-	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_convolution(1, 16, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 		.no_bias = 1,
 		.hint = HINT((1, 1), (1, 1)),
 	});
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
-	output = ccv_cnnp_model_apply(_block_layer_new(16, 1, 9), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(_block_layer_new(32, 2, 9), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(_block_layer_new(64, 2, 9), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(16, 1, 1, 9), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(32, 2, 0, 9), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(64, 2, 0, 9), MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* identity = ccv_cnnp_identity((ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
 	});
 	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(ccv_cnnp_dense(10, (ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
+	}), MODEL_IO_LIST(output));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-static void train_cifar_10(ccv_array_t* const training_set, const float mean[3], ccv_array_t* const test_set)
+inline static ccv_cnnp_model_t* _cifar_10_alexnet(void)
 {
-	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(
+	return ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
 			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
@@ -106,8 +112,16 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
 		})
 	));
+}
+
+static void train_cifar_10(ccv_array_t* const training_set, const float mean[3], ccv_array_t* const test_set)
+{
+	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet56();
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 128, 3, 31, 31);
-	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.0001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(0.0001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	FILE *w = fopen("cifar-10.dot", "w+");
+	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, w);
+	fclose(w);
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, input, 0);
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 128, 10), 0);
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 128, 1), 0);
@@ -137,7 +151,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 			cpu_fit->data.f32[j] = c[j] = categorized->c;
 		}
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input, cpu_fit), TENSOR_LIST(input_tensor, fit_tensor), 0);
-		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor), 0);
+		ccv_cnnp_model_fit(cifar_10, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor), TENSOR_LIST(cpu_output), 0);
 		int correct = 0;
 		for (j = 0; j < 128; j++)
@@ -154,7 +168,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 		if (i % 11 == 0)
 			FLUSH(CCV_CLI_INFO, "Batch %d, Correct %f", i + 1, correct_ratio);
 	}
-	ccv_cnnp_model_free(sequential);
+	ccv_cnnp_model_free(cifar_10);
 	ccv_nnc_tensor_free(input_tensor);
 	ccv_nnc_tensor_free(fit_tensor);
 	ccv_nnc_tensor_free(output_tensor);

@@ -630,7 +630,12 @@ static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	assert(output_size == 1);
 	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
-	const ccv_nnc_cmd_t cmd = CMD_MAX_POOL_FORWARD(self->kdim[0], self->kdim[1]);
+	const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
+	ccv_nnc_cmd_t cmd;
+	if (hw >= 0 && self->kdim[0] == 0 && self->kdim[1] == 0)
+		cmd = CMD_MAX_POOL_FORWARD(params.dim[hw], params.dim[hw + 1]);
+	else
+		cmd = CMD_MAX_POOL_FORWARD(self->kdim[0], self->kdim[1]);
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
@@ -660,7 +665,12 @@ static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_
 	assert(output_size == 1);
 	ccv_cnnp_model_pool_t* const self = (ccv_cnnp_model_pool_t*)super;
 	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
-	const ccv_nnc_cmd_t cmd = CMD_AVERAGE_POOL_FORWARD(self->kdim[0], self->kdim[1]);
+	const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
+	ccv_nnc_cmd_t cmd;
+	if (hw >= 0 && self->kdim[0] == 0 && self->kdim[1] == 0)
+		cmd = CMD_AVERAGE_POOL_FORWARD(params.dim[hw], params.dim[hw + 1]);
+	else
+		cmd = CMD_AVERAGE_POOL_FORWARD(self->kdim[0], self->kdim[1]);
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
