@@ -5,6 +5,71 @@
 #include <nnc/ccv_nnc_easy.h>
 #include <3rdparty/dsfmt/dSFMT.h>
 
+static ccv_cnnp_model_t* _building_block_new(const int filters, const int strides, const int projection_shortcut)
+{
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t shortcut = input;
+	ccv_cnnp_model_t* const identity = ccv_cnnp_identity((ccv_cnnp_param_t){
+		.norm = CCV_CNNP_BATCH_NORM,
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+	});
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(input));
+	if (projection_shortcut)
+	{
+		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+			.no_bias = 1,
+			.hint = HINT((1, 1), (0, 0)),
+		});
+		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(output));
+	}
+	ccv_cnnp_model_t* const conv1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.norm = CCV_CNNP_BATCH_NORM,
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((strides, strides), (1, 1)),
+	});
+	output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const conv2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.no_bias = 1,
+		.hint = HINT((1, 1), (1, 1)),
+	});
+	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const add = ccv_cnnp_add();
+	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
+}
+
+static ccv_cnnp_model_t* _block_layer_new(const int filters, const int strides, const int blocks)
+{
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* first_block = _building_block_new(filters, strides, 1);
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(first_block, MODEL_IO_LIST(input));
+	int i;
+	for (i = 1; i < blocks; i++)
+	{
+		ccv_cnnp_model_t* block = _building_block_new(filters, 1, 0);
+		output = ccv_cnnp_model_apply(block, MODEL_IO_LIST(output));
+	}
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
+}
+
+static ccv_cnnp_model_t* _cifar_10_resnet56(void)
+{
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* init_conv = ccv_cnnp_convolution(1, 16, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.no_bias = 1,
+		.hint = HINT((1, 1), (1, 1)),
+	});
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
+	output = ccv_cnnp_model_apply(_block_layer_new(16, 1, 9), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(32, 2, 9), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(64, 2, 9), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* identity = ccv_cnnp_identity((ccv_cnnp_param_t){
+		.norm = CCV_CNNP_BATCH_NORM,
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+	});
+	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
+}
+
 static void train_cifar_10(ccv_array_t* const training_set, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(

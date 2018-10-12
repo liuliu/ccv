@@ -124,4 +124,40 @@ TEST_CASE("inception layer for model")
 	ccv_cnnp_model_free(inception);
 }
 
+TEST_CASE("functional model's IO can represent multiple outputs")
+{
+	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (0, 0)),
+	}), MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (1, 1)),
+	}), MODEL_IO_LIST(input1));
+	ccv_cnnp_model_t* model0 = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(output0, output1));
+	input0 = ccv_cnnp_input();
+	input1 = ccv_cnnp_input();
+	output0 = ccv_cnnp_model_apply(model0, MODEL_IO_LIST(input0, input1));
+	ccv_cnnp_model_io_t input2 = ccv_cnnp_input();
+	output1 = ccv_cnnp_model_apply(ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (2, 2)),
+	}), MODEL_IO_LIST(input2));
+	ccv_cnnp_model_t* interim = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0, output1));
+	input0 = ccv_cnnp_input();
+	input1 = ccv_cnnp_input();
+	input2 = ccv_cnnp_input();
+	output0 = ccv_cnnp_model_apply(interim, MODEL_IO_LIST(input0, input1, input2));
+	output0 = ccv_cnnp_model_apply(ccv_cnnp_add(), MODEL_IO_LIST(output0));
+	ccv_cnnp_model_t* final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, input2), MODEL_IO_LIST(output0));
+	const ccv_nnc_tensor_param_t a0 = GPU_TENSOR_NCHW(000, 1, 3, 256, 256);
+	const ccv_nnc_tensor_param_t a1 = GPU_TENSOR_NCHW(000, 1, 3, 256, 256);
+	const ccv_nnc_tensor_param_t a2 = GPU_TENSOR_NCHW(000, 1, 3, 256, 256);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, a2), CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

@@ -182,6 +182,9 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	memcpy(ccv_array_get(reverse_top, 0), outputs, sizeof(ccv_cnnp_model_io_t) * output_size);
 	// Go from the output, until we meet inputs.
 	int i, j, input_count = 0;
+	int tensor_output_size = 0; // io can be mapped to multiple tensor outputs, therefore, need to compute the exact tensor output size.
+	for (i = 0; i < output_size; i++)
+		tensor_output_size += outputs[i]->model->output_size;
 	for (i = 0; i < reverse_top->rnum; i++)
 	{
 		const ccv_cnnp_model_io_t output = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, i);
@@ -209,10 +212,10 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 		inputs[i]->tbits = 0; // Clean the tbits back.
 	assert(input_count == input_size); // Assuming they all match.
 	const int sequence_size = reverse_top->rnum + input_size;
-	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * output_size);
+	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * tensor_output_size);
 	functional_model->super.isa = &ccv_cnnp_functional_model_isa;
 	functional_model->super.outputs = (ccv_nnc_tensor_symbol_t*)(functional_model->sequence + sequence_size);
-	functional_model->super.output_size = output_size;
+	functional_model->super.output_size = tensor_output_size;
 	functional_model->super.input_size = input_size;
 	functional_model->sequence_size = sequence_size;
 	memcpy(functional_model->sequence, inputs, sizeof(ccv_cnnp_model_io_t) * input_size);
