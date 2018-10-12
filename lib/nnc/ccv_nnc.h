@@ -2036,6 +2036,7 @@ enum {
 };
 
 typedef struct {
+	int no_bias; /**< No bias term. */
 	int norm; /**< The normalizations can be applied after activation such as CCV_CNNP_BATCH_NORM. */
 	int activation; /**< The activations  can be applied for the output, such as CCV_CNNP_ACTIVATION_RELU or CCV_CNNP_ACTIVATION_SOFTMAX. */
 	ccv_nnc_hint_t hint; /**< The hint for a particular operation */
@@ -2050,6 +2051,13 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(void);
  * @return A model that can be applied with multiple inputs, and generate output that is a concatenation of the inputs.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(void);
+/**
+ * An identity layer that takes input and do nothing pass it as the output. Realistically, we use this
+ * because we want to apply some normalization / activation function on top of the input.
+ * @param params Parameters (such as hint and activation or norm).
+ * @return A model that takes input and pass it as output.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const ccv_cnnp_param_t params);
 /**
  * A convolution model.
  * @param groups The number of kernel groups in the model.

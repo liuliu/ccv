@@ -174,6 +174,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* exec_arena = 0;
+	// TODO: Should apply simplification right after the backward pass generated.
 	if (df_optional)
 	{
 		// If provided df variable, no need to set to all ones.
@@ -204,6 +205,7 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
 	}
 	ccv_array_free(destinations);
 	ccv_array_free(tensor_binds);
+	// TODO: Should apply static schedule before run the graph.
 	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);

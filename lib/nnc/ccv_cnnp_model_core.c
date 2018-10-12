@@ -119,6 +119,144 @@ ccv_cnnp_model_t* ccv_cnnp_flatten(void)
 	return (ccv_cnnp_model_t*)model_flatten;
 }
 
+#pragma mark - Identity Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_nnc_tensor_symbol_t output;
+	ccv_nnc_tensor_symbol_t bias;
+	ccv_nnc_tensor_symbol_t scale;
+	ccv_array_t* zero_inits;
+	ccv_array_t* retains;
+	ccv_cnnp_param_t params;
+} ccv_cnnp_model_identity_t;
+
+static void _ccv_cnnp_identity_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+	assert(input_size == 1);
+	assert(output_size == 1);
+	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
+	const ccv_nnc_tensor_param_t params = ccv_nnc_tensor_symbol_params(graph, inputs[0]);
+	ccv_nnc_tensor_symbol_t output = inputs[0];
+	if (self->params.norm == CCV_CNNP_BATCH_NORM)
+	{
+		ccv_nnc_tensor_param_t bias_params = params;
+		memset(bias_params.dim, 0, sizeof(bias_params.dim));
+		bias_params.dim[0] = ccv_nnc_tensor_get_c(params);
+		output = ccv_nnc_tensor_symbol_new(graph, params, 0);
+		// Both scale and bias are shared between if this model is reused.
+		if (!self->scale.graph)
+			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		if (!self->bias.graph)
+			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const ccv_nnc_tensor_symbol_t mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const ccv_nnc_tensor_symbol_t var = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		// Otherwise, notice mean, var, saved_mean, saved_inv_std are not reused.
+		if (!self->zero_inits)
+			self->zero_inits = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		ccv_array_push(self->zero_inits, &mean);
+		ccv_array_push(self->zero_inits, &var);
+		const ccv_nnc_tensor_symbol_t out_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const ccv_nnc_tensor_symbol_t out_var = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		if (!self->retains)
+			self->retains = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		ccv_array_push(self->retains, &out_mean);
+		ccv_array_push(self->retains, &out_var);
+		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
+		ccv_nnc_cmd_param_t batch_norm = {
+			.bnorm = {
+				.epsilon = 1e-4,
+				.is_test = 0,
+				.momentum = 0.9,
+				.count = hw >= 0 ? CCV_NNC_MAX_DIM + 1 : 1,
+			}
+		};
+		int i;
+		batch_norm.bnorm.axis[0] = (params.format == CCV_TENSOR_FORMAT_CHWN) ? 3 : 0;
+		if (hw >= 0)
+			for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+				batch_norm.bnorm.axis[i + 1] = i + hw;
+		ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_BATCH_NORM_FORWARD, 0, batch_norm, 0), TENSOR_SYMBOL_LIST(inputs[0], self->scale, self->bias, mean, var), TENSOR_SYMBOL_LIST(output, out_mean, out_var, saved_mean, saved_inv_std), 0);
+	}
+	if (self->params.activation == CCV_CNNP_ACTIVATION_RELU)
+	{
+		const ccv_nnc_tensor_symbol_t relu_output = ccv_nnc_tensor_symbol_new(graph, params, 0);
+		ccv_nnc_graph_exec_symbol_new(graph, CMD_RELU_FORWARD(), TENSOR_SYMBOL_LIST(output), TENSOR_SYMBOL_LIST(relu_output), 0);
+		outputs[0] = relu_output;
+	} else if (self->params.activation == CCV_CNNP_ACTIVATION_SOFTMAX) {
+		const ccv_nnc_tensor_symbol_t softmax_output = ccv_nnc_tensor_symbol_new(graph, params, 0);
+		ccv_nnc_graph_exec_symbol_new(graph, CMD_SOFTMAX_FORWARD(), TENSOR_SYMBOL_LIST(output), TENSOR_SYMBOL_LIST(softmax_output), 0);
+		outputs[0] = softmax_output;
+	} else
+		outputs[0] = output;
+}
+
+static void _ccv_cnnp_identity_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
+{
+	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
+	if (self->bias.graph)
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
+	if (self->scale.graph)
+		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, self->scale);
+	int i;
+	if (self->zero_inits)
+		for (i = 0; i < self->zero_inits->rnum; i++)
+			initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->zero_inits, i));
+}
+
+static void _ccv_cnnp_identity_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+{
+	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
+	if (self->bias.graph)
+		ccv_array_push(trainables, &self->bias);
+	if (self->scale.graph)
+		ccv_array_push(trainables, &self->scale);
+}
+
+static void _ccv_cnnp_identity_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+{
+	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
+	int i;
+	if (self->retains)
+		for (i = 0; i < self->retains->rnum; i++)
+		{
+			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retains, i);
+			ccv_array_push(outputs, &symbol);
+		}
+}
+
+static void _ccv_cnnp_identity_deinit(ccv_cnnp_model_t* const super)
+{
+	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
+	if (self->zero_inits)
+		ccv_array_free(self->zero_inits);
+	if (self->retains)
+		ccv_array_free(self->retains);
+}
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_identity_isa = {
+	.build = _ccv_cnnp_identity_build,
+	.init_states = _ccv_cnnp_identity_init_states,
+	.add_to_trainable = _ccv_cnnp_identity_add_to_trainable,
+	.add_to_output = _ccv_cnnp_identity_add_to_output,
+	.deinit = _ccv_cnnp_identity_deinit,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_identity(const ccv_cnnp_param_t params)
+{
+	ccv_cnnp_model_identity_t* const model_identity = (ccv_cnnp_model_identity_t*)cccalloc(1, sizeof(ccv_cnnp_model_identity_t));
+	model_identity->super.isa = &ccv_cnnp_identity_isa;
+	model_identity->super.input_size = 1;
+	model_identity->super.outputs = &model_identity->output;
+	model_identity->super.output_size = 1;
+	model_identity->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
+	model_identity->bias.graph = 0;
+	model_identity->params = params;
+	return (ccv_cnnp_model_t*)model_identity;
+}
+
 #pragma mark - Convolution Layer
 
 typedef struct {
@@ -192,22 +330,29 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		ccv_array_push(self->retains, &out_var);
 		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const int hw = ccv_nnc_tensor_hw(output_params, ccv_nnc_tensor_nd(output_params.dim));
 		ccv_nnc_cmd_param_t batch_norm = {
 			.bnorm = {
 				.epsilon = 1e-4,
 				.is_test = 0,
 				.momentum = 0.9,
-				.count = CCV_NNC_MAX_DIM + 1,
+				.count = hw >= 0 ? CCV_NNC_MAX_DIM + 1 : 1,
 			}
 		};
 		batch_norm.bnorm.axis[0] = (output_params.format == CCV_TENSOR_FORMAT_CHWN) ? 3 : 0;
-		for (i = 0; i < CCV_NNC_MAX_DIM; i++)
-			batch_norm.bnorm.axis[i + 1] = i + hw;
+		if (hw >= 0)
+			for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+				batch_norm.bnorm.axis[i + 1] = i + hw;
 		ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_BATCH_NORM_FORWARD, 0, batch_norm, 0), TENSOR_SYMBOL_LIST(convolution_output, self->scale, self->bias, mean, var), TENSOR_SYMBOL_LIST(output, out_mean, out_var, saved_mean, saved_inv_std), 0);
 	} else {
-		if (!self->bias.graph)
-			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
-		const ccv_nnc_graph_exec_symbol_t convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), 0);
+		ccv_nnc_graph_exec_symbol_t convolution;
+		if (self->params.no_bias)
+			convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(output), 0);
+		else {
+			if (!self->bias.graph)
+				self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+			convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), 0);
+		}
 		ccv_nnc_graph_exec_symbol_set_hint(graph, convolution, self->params.hint);
 	}
 	if (self->params.activation == CCV_CNNP_ACTIVATION_RELU)
@@ -231,7 +376,8 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 	const int count = ccv_nnc_tensor_count(weight_params);
 	const float glorot = sqrtf(2) / sqrtf(count / n + n);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, self->weights);
-	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
+	if (self->bias.graph)
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
 	if (self->scale.graph)
 		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, self->scale);
 	int i;
@@ -244,7 +390,8 @@ static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	ccv_array_push(trainables, &self->weights);
-	ccv_array_push(trainables, &self->bias);
+	if (self->bias.graph)
+		ccv_array_push(trainables, &self->bias);
 	if (self->scale.graph)
 		ccv_array_push(trainables, &self->scale);
 }
@@ -358,25 +505,29 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 		ccv_array_push(self->retains, &out_var);
 		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+		const int hw = ccv_nnc_tensor_hw(output_params, ccv_nnc_tensor_nd(output_params.dim));
 		ccv_nnc_cmd_param_t batch_norm = {
 			.bnorm = {
 				.epsilon = 1e-4,
 				.is_test = 0,
 				.momentum = 0.9,
-				.count = CCV_NNC_MAX_DIM + 1,
+				.count = hw >= 0 ? CCV_NNC_MAX_DIM + 1 : 1,
 			}
 		};
-		const int nd = CCV_NNC_MAX_DIM + 2;
-		const int hw = ccv_nnc_tensor_hw(weights_params, nd);
-		batch_norm.bnorm.axis[0] = (output_params.format == CCV_TENSOR_FORMAT_CHWN) ? 3 : 0;
 		int i;
-		for (i = 0; i < CCV_NNC_MAX_DIM; i++)
-			batch_norm.bnorm.axis[i + 1] = i + hw;
+		batch_norm.bnorm.axis[0] = (output_params.format == CCV_TENSOR_FORMAT_CHWN) ? 3 : 0;
+		if (hw >= 0)
+			for (i = 0; i < CCV_NNC_MAX_DIM; i++)
+				batch_norm.bnorm.axis[i + 1] = i + hw;
 		ccv_nnc_graph_exec_symbol_new(graph, ccv_nnc_cmd(CCV_NNC_BATCH_NORM_FORWARD, 0, batch_norm, 0), TENSOR_SYMBOL_LIST(dense_output, self->scale, self->bias, mean, var), TENSOR_SYMBOL_LIST(output, out_mean, out_var, saved_mean, saved_inv_std), 0);
 	} else {
-		if (!self->bias.graph)
-			self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
-		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), 0);
+		if (self->params.no_bias)
+			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(output), 0);
+		else {
+			if (!self->bias.graph)
+				self->bias = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
+			ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights, self->bias), TENSOR_SYMBOL_LIST(output), 0);
+		}
 	}
 	if (self->params.activation == CCV_CNNP_ACTIVATION_RELU)
 	{
@@ -399,7 +550,8 @@ static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_s
 	const int c = weight_params.dim[1];
 	const float glorot = sqrtf(2) / sqrtf(c + n);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, self->weights);
-	initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
+	if (self->bias.graph)
+		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, self->bias);
 	if (self->scale.graph)
 		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, self->scale);
 	int i;
@@ -412,7 +564,8 @@ static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, ccv_
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	ccv_array_push(trainables, &self->weights);
-	ccv_array_push(trainables, &self->bias);
+	if (self->bias.graph)
+		ccv_array_push(trainables, &self->bias);
 	if (self->scale.graph)
 		ccv_array_push(trainables, &self->scale);
 }
