@@ -196,6 +196,8 @@ void _register_command_CCV_NNC_DATA_TRANSFER_BACKWARD_backend_CCV_NNC_BACKEND_CP
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 #ifdef HAVE_CUDA
+void _register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_EWSUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MAX_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -341,6 +343,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[2].backends[1]));
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD_backend_CCV_NNC_BACKEND_CPU_REF(&(init_map[3].backends[1]));
 #ifdef HAVE_CUDA
+	_register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[16].backends[4]));
+	_register_command_CCV_NNC_EWSUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[17].backends[4]));
 	_register_command_CCV_NNC_MAX_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[20].backends[4]));
 	_register_command_CCV_NNC_MAX_POOL_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[21].backends[4]));
 	_register_command_CCV_NNC_AVERAGE_POOL_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[12].backends[4]));
