@@ -472,6 +472,9 @@ static void _ccv_nnc_symbolic_graph_data_transfer_opt(ccv_nnc_symbolic_graph_sim
 					if (input->bypass_ref || output->bypass_ref ||
 						input->r_bypass_ref || output->r_bypass_ref)
 						continue;
+					// If either are inputs / outputs connecting the parent graph, we cannot do anything.
+					if (input->p_ref || output->p_ref)
+						continue;
 					int flag = 0;
 					for (j = 0; !flag && j < output_size; j++)
 						flag = (outputs[j].d == node->inputs[i] || outputs[j].d == node->outputs[i]);
