@@ -246,7 +246,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 		}
 	} else {
-		assert(output_size == 1);
+		assert(output_size >= 1);
 		int mean_inc[CCV_NNC_MAX_DIM + 2];
 		int var_inc[CCV_NNC_MAX_DIM + 2];
 		ccv_nnc_tensor_view_get_inc(mean, mean_inc);

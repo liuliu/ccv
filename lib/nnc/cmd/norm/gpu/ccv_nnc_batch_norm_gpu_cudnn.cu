@@ -48,7 +48,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(b);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(scale);
 	} else {
-		assert(output_size == 1);
+		assert(output_size >= 1);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 		const ccv_nnc_cudnn_tensor_view_descriptor_t scale = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 		assert(!CCV_IS_TENSOR_VIEW(inputs[1]));

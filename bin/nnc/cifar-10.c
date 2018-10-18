@@ -126,14 +126,17 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 128, 10), 0);
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, GPU_TENSOR_NCHW(000, 128, 1), 0);
 	ccv_nnc_tensor_t* const cpu_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(128, 3, 32, 32), 0);
+	ccv_nnc_tensor_pin_memory(cpu_input);
 	ccv_nnc_tensor_t* const cpu_output = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(128, 10), 0);
+	ccv_nnc_tensor_pin_memory(cpu_output);
 	ccv_nnc_tensor_t* const cpu_fit = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(128, 1), 0);
+	ccv_nnc_tensor_pin_memory(cpu_fit);
 	int i, j, k;
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 0);
 	int c[128];
-	double correct_ratio = 0;
-	for (i = 0; i < 10000; i++)
+	float learn_rate = 0.0001;
+	for (i = 0; i < 100000; i++)
 	{
 		for (j = 0; j < 128; j++)
 		{
@@ -148,25 +151,50 @@ static void train_cifar_10(ccv_array_t* const training_set, const float mean[3],
 					for (fk = 0; fk < 3; fk++)
 						ip[fi * 32 + fj + fk * 32 * 32] = cp[fi * 32 * 3 + fj * 3 + fk] - mean[fk];
 			assert(categorized->c >= 0 && categorized->c < 10);
-			cpu_fit->data.f32[j] = c[j] = categorized->c;
+			cpu_fit->data.f32[j] = categorized->c;
 		}
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input, cpu_fit), TENSOR_LIST(input_tensor, fit_tensor), 0);
 		ccv_cnnp_model_fit(cifar_10, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor), TENSOR_LIST(cpu_output), 0);
-		int correct = 0;
-		for (j = 0; j < 128; j++)
+		if ((i + 1) % 500 == 0)
 		{
-			float max = -FLT_MAX;
-			int t = -1;
-			for (k = 0; k < 10; k++)
-				if (cpu_output->data.f32[j * 10 + k] > max)
-					max = cpu_output->data.f32[j * 10 + k], t = k;
-			if (c[j] == t)
-				++correct;
+			int correct = 0;
+			for (j = 0; j < test_set->rnum; j += 128)
+			{
+				for (k = 0; k < ccv_min(test_set->rnum - j, 128); k++)
+				{
+					ccv_categorized_t* const categorized = (ccv_categorized_t*)ccv_array_get(test_set, j + k);
+					float* const ip = cpu_input->data.f32 + k * 32 * 32 * 3;
+					float* const cp = categorized->matrix->data.f32;
+					int fi, fj, fk;
+					for (fi = 0; fi < 32; fi++)
+						for (fj = 0; fj < 32; fj++)
+							for (fk = 0; fk < 3; fk++)
+								ip[fi * 32 + fj + fk * 32 * 32] = cp[fi * 32 * 3 + fj * 3 + fk] - mean[fk];
+					assert(categorized->c >= 0 && categorized->c < 10);
+					c[k] = categorized->c;
+				}
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input, cpu_fit), TENSOR_LIST(input_tensor, fit_tensor), 0);
+				ccv_cnnp_model_evaluate(cifar_10, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor), TENSOR_LIST(cpu_output), 0);
+				for (k = 0; k < ccv_min(test_set->rnum - j, 128); k++)
+				{
+					float max = -FLT_MAX;
+					int t = -1;
+					int fi;
+					for (fi = 0; fi < 10; fi++)
+						if (cpu_output->data.f32[k * 10 + fi] > max)
+							max = cpu_output->data.f32[k * 10 + fi], t = fi;
+					if (c[k] == t)
+						++correct;
+				}
+			}
+			FLUSH(CCV_CLI_INFO, "Batch %d, Correct %f", i + 1, (float)correct / test_set->rnum);
 		}
-		correct_ratio = correct_ratio * 0.9 + correct * 0.1 / 128.;
-		if (i % 11 == 0)
-			FLUSH(CCV_CLI_INFO, "Batch %d, Correct %f", i + 1, correct_ratio);
+		if ((i + 1) % 15000 == 0)
+		{
+			learn_rate *= 0.5;
+			ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
+		}
 	}
 	ccv_cnnp_model_free(cifar_10);
 	ccv_nnc_tensor_free(input_tensor);

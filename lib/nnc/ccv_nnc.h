@@ -484,7 +484,7 @@ typedef struct ccv_nnc_graph_s ccv_nnc_graph_t;
  */
 typedef struct {
 	int32_t d; // This is int because sometimes I piggy-back on negatives to carry out some internal computations.
-	const ccv_nnc_graph_t* graph;
+	ccv_nnc_graph_t* graph;
 } ccv_nnc_graph_exec_t;
 
 #define CCV_NO_GRAPH_EXEC(exec) ((exec).graph == 0)
@@ -1322,13 +1322,15 @@ CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_for_backw
  *
  * There are no connection between its nodes and the outside graph nodes other than the three sets:
  *
- * 1). Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges
- *     points by inside nodes. The sub-graph computation starts from these incoming nodes;
- * 2). Condition false output nodes, when condition is false, we will break out of this while loop, these
- *     nodes pointing to the outside nodes, but no inside nodes;
- * 3). End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed,
- *     we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes
- *     (OK if end nodes are condition true output nodes as well);
+ * 1. Incoming nodes, the set of nodes that contains the incoming edges from outside, they cannot have edges
+ *    points by inside nodes. The sub-graph computation starts from these incoming nodes;
+ *
+ * 2. Condition false output nodes, when condition is false, we will break out of this while loop, these
+ *    nodes pointing to the outside nodes, but no inside nodes;
+ *
+ * 3. End nodes, the set of nodes that marks the end of the while body, and after these nodes are executed,
+ *    we will return to the incoming nodes. These end nodes shouldn't have any edges pointing to inside nodes
+ *    (OK if end nodes are condition true output nodes as well);
  *
  * Since these will become a sub-graph (which, to its owner graph, just simple "node"), it will have inputs
  * and outputs. Besides that, the loop body needs to be parameterized to be SSA compliant (see:
@@ -1871,7 +1873,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  *
  * Comparing to Python, Swift is a stronger typed language. Though all being high-level, they all have pretty good
  * string support (of course!), operator overloading, and polymorphism. String support makes column naming natural,
- * Operator overloading makes conditioning and filtering easier, and ploymorphism makes column type representation
+ * Operator overloading makes conditioning and filtering easier, and polymorphism makes column type representation
  * straight-forward. These, unfortunately, are the challenges I need to face when implementing in C with the eye
  * towards that later the similar ideas can be implemented on top on a high-level language based on this one.
  *
@@ -2018,6 +2020,14 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
  * @param stream_context The stream where the fit can be executed upon.
  */
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
+ * gradient descent for example. This method can be called any time during the training process (after
+ * compilation).
+ * @param model The composed model.
+ * @param minimizer The wrapped command that represents a new optimization strategy.
+ */
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer);
 /**
  * Free a given model.
  * @param model The composed model.
