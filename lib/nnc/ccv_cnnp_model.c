@@ -289,7 +289,12 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 				CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
 			model->outputs, model->output_size,
 			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+		int flag = 0;
+		for (i = 0; !flag && i < input_size; i++)
+			flag = (CCV_TENSOR_GET_MEMORY(inputs[i].type) == CCV_TENSOR_GPU_MEMORY);
 		model->compiled_data = cccalloc(1, sizeof(ccv_cnnp_compiled_data_t) + sizeof(ccv_nnc_tensor_symbol_t) * (model->output_size - 1));
+		// If inputs are from GPU, stream type is GPU.
+		model->compiled_data->stream_type = flag ? CCV_STREAM_CONTEXT_GPU : CCV_STREAM_CONTEXT_CPU;
 		model->compiled_data->trainables = trainables;
 		model->compiled_data->minimizer = minimizer;
 		model->compiled_data->loss = loss;
@@ -410,6 +415,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 		if (dest_to_eval.graph)
 			compiled_data->dest_to_evals[compiled_data->dest_to_eval_size++] = dest_to_eval;
 	}
+	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_array_free(tensor_binds);
 	ccv_array_free(model_outputs);
 }
@@ -452,7 +458,6 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 {
 	int i;
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	assert(!compiled_data->graph);
 	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE;
 	assert(output_size == model->output_size);
 	assert(output_size > 0);
@@ -479,6 +484,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
 	compiled_data->is_test = 1;
 	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_array_free(tensor_binds);
 	ccv_array_free(model_outputs);
 }
@@ -504,7 +510,10 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		compiled_data->is_test = 1;
 		ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
 	}
-	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, 0, 0, compiled_data->dest_to_evals, compiled_data->dest_to_eval_size);
+	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE)
+		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
+	else
+		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, 0, 0, compiled_data->dest_to_evals, compiled_data->dest_to_eval_size);
 }
 
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer)

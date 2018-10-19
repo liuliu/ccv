@@ -36,6 +36,7 @@ typedef struct {
 	int graph_mode;
 	int dest_to_eval_size;
 	int is_test;
+	int stream_type;
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;

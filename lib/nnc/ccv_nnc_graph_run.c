@@ -576,6 +576,7 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 	_ccv_nnc_graph_exec_begin_synchronize_multiviews(graph, node);
 	if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
 	{
+		assert(!stream_context); // This doesn't work properly with stream context.
 		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
 		{
 			int ref;
@@ -631,6 +632,7 @@ static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, co
 	int i;
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
+		assert(!stream_context); // This doesn't work properly with stream context.
 		assert(exec->p_while.expr);
 		int64_t count = 0;
 		// This is a forward while loop. Backward while loop will just consult its peering part.
@@ -706,6 +708,7 @@ static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, co
 	_ccv_nnc_graph_exec_run(graph, node, idx, tensor_tape, stream_context, flags)
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
+		assert(!stream_context); // This doesn't work properly with stream context.
 		assert(exec->p_while.expr);
 		int64_t count = 0;
 		// This is a forward while loop. Backward while loop will just consult its peering part.
@@ -807,7 +810,7 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 
 int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
 {
-	if (stream_context && graph->topsorted)
+	if (stream_context && graph->topsorted && source_size == 0 && destination_size == 0)
 	{
 		ccv_nnc_stream_scheduler_t* const scheduler = ccv_nnc_stream_context_get_scheduler(stream_context);
 		ccv_nnc_graph_topsorted_run_coro_t params = {
@@ -821,7 +824,6 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 		ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, sizeof(params));
 		ccv_nnc_stream_schedule_task(scheduler, task);
 		return CCV_NNC_EXEC_SUCCESS;
-	} else {
+	} else
 		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, stream_context, flags, sources, source_size, destinations, destination_size);
-	}
 }
