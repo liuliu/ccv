@@ -116,6 +116,8 @@ static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
+	assert(self->super.input_size == input_size);
+	assert(self->super.output_size == output_size);
 	int i, j, k;
 	for (i = 0; i < self->super.input_size; i++)
 		self->sequence[i]->model->outputs[0] = inputs[i]; // Assigning the output symbol of input layer to be the input symbol.

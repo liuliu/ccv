@@ -235,7 +235,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
 			current_time = get_current_time();
 		}
-		if ((i + 1) % 20000 == 0)
+		if ((i + 1) % 10000 == 0)
 		{
 			learn_rate *= 0.5;
 			ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
