@@ -270,6 +270,29 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	return model->io;
 }
 
+static void _ccv_nnc_array_dedup_tensor_symbols(ccv_array_t* const tensor_symbols)
+{
+	int i, j;
+	for (i = 0; i < tensor_symbols->rnum; i++)
+	{
+		ccv_nnc_tensor_symbol_t* const tensor_symbol = (ccv_nnc_tensor_symbol_t*)ccv_array_get(tensor_symbols, i);
+		// Check whether this tensor symbol has any duplicate.
+		for (j = i + 1; j < tensor_symbols->rnum;)
+		{
+			ccv_nnc_tensor_symbol_t* const other_symbol = (ccv_nnc_tensor_symbol_t*)ccv_array_get(tensor_symbols, j);
+			// If there is a same tensor symbol, remove it.
+			if (other_symbol->d == tensor_symbol->d && other_symbol->graph == tensor_symbol->graph)
+			{
+				if (j + 1 < tensor_symbols->rnum)
+					*other_symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(tensor_symbols, tensor_symbols->rnum - 1);
+				--tensor_symbols->rnum;
+				continue;
+			}
+			++j;
+		}
+	}
+}
+
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss)
 {
 	assert(input_size == model->input_size);
@@ -283,6 +306,7 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 		ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
 		ccv_array_t* const trainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 		ccv_cnnp_model_add_to_trainable(model, trainables);
+		_ccv_nnc_array_dedup_tensor_symbols(trainables);
 		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_symbolic_graph_simplify(model->graph,
 			SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
@@ -385,7 +409,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	for (i = 0; i < trainable_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t trainable = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i);
-		ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(model->graph, trainable), 0);
+		ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(trainable.graph, trainable), 0);
 		const ccv_nnc_tensor_bind_t trainable_bind = {
 			.symbol = trainable,
 			.tensor = tensor
@@ -399,6 +423,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	}
 	ccv_array_t* const model_outputs = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_cnnp_model_add_to_output(model, model_outputs);
+	_ccv_nnc_array_dedup_tensor_symbols(model_outputs);
 	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(model_outputs, 0), model_outputs->rnum, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
 	ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
 	compiled_data->is_test = 0;
@@ -482,8 +507,8 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	}
 	ccv_array_t* const model_outputs = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 	ccv_cnnp_model_add_to_output(model, model_outputs);
+	_ccv_nnc_array_dedup_tensor_symbols(model_outputs);
 	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(model_outputs, 0), model_outputs->rnum, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
-	ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
 	compiled_data->is_test = 1;
 	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
 	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
