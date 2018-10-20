@@ -1158,13 +1158,42 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 				tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)pos; // Cast into vt_tensors for now, and later will rewire it.
 			}
 		}
+	// Handle binded tensors. We handle it here so the alias can reference to binded tensors.
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		assert(tensor_binds[i].tensor);
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
+		if (resolved_symbol.d >= 0)
+		{
+			int d = resolved_symbol.d;
+			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
+				d = tensor_blocks[d].ref - 1;
+			// For binded tensors, it shouldn't be assigned yet.
+			// If it is assigned, the pointer should match the ones from the binded tensor.
+			// This can only happen if an enforced in-place tensor is binded twice. If that
+			// happens, we need to make sure it is binded to the same location.
+			assert(!tensor_arena->vt_tensors[d] || tensor_arena->vt_tensors[d]->data.u8 == tensor_binds[i].tensor->data.u8);
+			if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
+			{
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
+				ccv_nnc_tensor_view_t* const tv = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				memcpy(tv, tensor_binds[i].tensor, sizeof(ccv_nnc_tensor_view_t));
+				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			} else {
+				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
+				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
+				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_binds[i].tensor->info, 0);
+				tensor_arena->vt_tensors[d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
+			}
+		}
+	}
 	// Assign out refs, refs are simple ones, we should handle it first. (because they point to exactly the same metadata and same region).
 	for (i = 0; i < tensor_symbol_info_size; i++)
 		// It could be binded tensor (or unused), in that case, it doesn't have a ref.
 		if (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[i]) && tensor_blocks[i].ref && !tensor_arena->vt_tensors[i])
 		{
 			int ref = tensor_blocks[i].ref - 1;
-			while (!TENSOR_EXPECT_COMPUTABLE(tensor_blocks[ref]) && tensor_blocks[ref].ref)
+			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[ref]) && tensor_blocks[ref].ref)
 				ref = tensor_blocks[ref].ref - 1;
 			assert(tensor_arena->vt_tensors[ref]);
 			tensor_arena->vt_tensors[i] = tensor_arena->vt_tensors[ref];
@@ -1228,29 +1257,6 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 			tensor_arena->vt_tensors[i] = (ccv_nnc_tensor_t*)(intptr_t)mv_pos;
 			ccv_array_push(tensor_arena->m_tensor_idx, &mv_pos);
 		}
-	// Handle binded tensors. We handle it here so the alias can reference to binded tensors.
-	for (i = 0; i < tensor_bind_size; i++)
-	{
-		assert(tensor_binds[i].tensor);
-		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(graph_prep->symbolic_graph, tensor_binds[i].symbol);
-		if (resolved_symbol.d >= 0)
-		{
-			// For binded tensors, it shouldn't be assigned yet.
-			assert(tensor_arena->vt_tensors[resolved_symbol.d] == 0);
-			if (CCV_IS_TENSOR_VIEW(tensor_binds[i].tensor))
-			{
-				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_view_t));
-				ccv_nnc_tensor_view_t* const tv = (ccv_nnc_tensor_view_t*)_ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				memcpy(tv, tensor_binds[i].tensor, sizeof(ccv_nnc_tensor_view_t));
-				tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
-			} else {
-				int pos = _ccv_nnc_tensor_metadata_pos_new(tensor_arena->tensor_metadata, sizeof(ccv_nnc_tensor_t));
-				ccv_nnc_tensor_t* const tv = _ccv_nnc_tensor_metadata_get(tensor_arena->tensor_metadata, pos);
-				*tv = ccv_nnc_tensor(tensor_binds[i].tensor->data.ptr, tensor_binds[i].tensor->info, 0);
-				tensor_arena->vt_tensors[resolved_symbol.d] = (ccv_nnc_tensor_t*)(intptr_t)pos;
-			}
-		}
-	}
 	// Now it is time to handle alias.
 	for (i = 0; i < alloc_prep->block_size; i++)
 		if (alloc_prep->blocks[i].block_ref < tensor_symbol_info_size)
@@ -1931,19 +1937,6 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				tensor_blocks[i].ref = 0;
 			}
 		}
-	// Ignore tensors that are already binded, no matter if it is used or not.
-	for (i = 0; i < tensor_bind_size; i++)
-	{
-		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(symbolic_graph, tensor_binds[i].symbol);
-		// If there is a tensor binded, then it is unassigned.
-		if (resolved_symbol.d >= 0)
-		{
-			// Doesn't work if this is a loop carrying variable.
-			assert(!tensor_symbol_info[resolved_symbol.d].assign_ref);
-			tensor_blocks[resolved_symbol.d].flags = UNASSIGNED;
-			tensor_blocks[resolved_symbol.d].ref = 0; // No need to have ref as well.
-		}
-	}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
 		// If this tensor is not expected to be unassigned, allocate the arrays for s and t.
@@ -2063,8 +2056,8 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				_ccv_nnc_tensor_block_add_exec(exec_dep, destinations[j].d, tensor_blocks[d]);
 		}
 	}
+	// Enforce tensor reuse by collapse tensors for in-place operations. We will fault if this cannot be done.
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
-		/* Maximum tensor reuse by collapse tensors allows in-place operations (and it matches the start, end tensor). */
 		int x, y;
 		for (x = 0; x < node->input_size; x++)
 			for (y = 0; y < node->output_size; y++)
@@ -2088,6 +2081,30 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 					if (!_ccv_nnc_tensor_blocks_try_fold(tensor_blocks, ref, node_output_y))
 						{ assert(0 && "cannot enforce inplace for the two tensors"); }
 				}
+	} ccv_nnc_graph_visit_endfor
+	// Ignore tensors that are already binded, no matter if it is used or not. Doing it here because
+	// we need to make sure enforced tensors are properly assigned, so that we don't bind on a tensor
+	// that is not enforced in-place (because the tensor enforced in-place will be different than the
+	// binding one).
+	for (i = 0; i < tensor_bind_size; i++)
+	{
+		const ccv_nnc_tensor_symbol_t resolved_symbol = ccv_nnc_tensor_symbol_resolve(symbolic_graph, tensor_binds[i].symbol);
+		// If there is a tensor binded, then it is unassigned.
+		if (resolved_symbol.d >= 0)
+		{
+			int d = resolved_symbol.d;
+			// If it is unused, this is not an alias.
+			while (TENSOR_EXPECT_UNASSIGNED(tensor_blocks[d]) && tensor_blocks[d].ref)
+				d = tensor_blocks[d].ref - 1;
+			// Doesn't work if this is a loop carrying variable.
+			assert(!tensor_symbol_info[d].assign_ref);
+			tensor_blocks[d].flags = UNASSIGNED;
+			tensor_blocks[d].ref = 0; // No need to have ref as well.
+		}
+	}
+	// Maximum tensor reuse by collapse tensors allows in-place operations (and it matches the start, end tensor).
+	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
+		int x, y;
 		for (x = 0; x < node->input_size; x++)
 		{
 			/* If the input is not assigned, it can be referenced, find the referenced one */
