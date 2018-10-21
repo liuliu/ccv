@@ -53,15 +53,7 @@ TEST_CASE("compile simple cifar-10 model")
 		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
-	// Before training, it doesn't fit.
-	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
-	int t = 0;
-	float max = output_tensor->data.f32[0];
-	for (i = 1; i < 10; i++)
-		if (output_tensor->data.f32[i] > max)
-			max = output_tensor->data.f32[i], t = i;
-	const int target = (t + 1) % 10;
-	REQUIRE_NOT_EQ(target, t, "should not fit");
+	const int target = 8;
 	// Doing training.
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1), 0);
 	fit_tensor->data.f32[0] = target;
@@ -70,8 +62,8 @@ TEST_CASE("compile simple cifar-10 model")
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// After training, it should fit.
 	ccv_cnnp_model_evaluate(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
-	t = 0;
-	max = output_tensor->data.f32[0];
+	int t = 0;
+	float max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
 		if (output_tensor->data.f32[i] > max)
 			max = output_tensor->data.f32[i], t = i;
