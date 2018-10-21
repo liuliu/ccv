@@ -42,8 +42,10 @@ typedef struct {
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 	ccv_nnc_graph_exec_t* dest_to_evals; // Destinations to end evaluation.
 	ccv_array_t* trainables;
+	ccv_array_t* retains; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* updated_trainables;
 	ccv_nnc_graph_exec_symbol_t* update_execs;
+	ccv_nnc_tensor_t** retain_tensors; // Additional need to retained tensors.
 	ccv_nnc_tensor_t** trainable_tensors;
 	ccv_nnc_tensor_symbol_map_t* saved_aux;
 	ccv_nnc_cmd_t minimizer;

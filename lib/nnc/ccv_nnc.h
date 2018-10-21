@@ -997,7 +997,7 @@ void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t*
  * @param tensor_symbol The tensor symbol alias.
  * @return A tensor symbol reference to the original tensor symbol. If this symbol has no reference, return NO_SYMBOL (.graph = 0)
  */
-CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_alias_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol);
 /**
  * Set the tensor symbol parameters.
  * @param graph The symbolic graph.

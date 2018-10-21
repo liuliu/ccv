@@ -256,7 +256,7 @@ void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph
 	return prev;
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_to(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol)
 {
 	assert(tensor_symbol.graph == graph);
 	int d = tensor_symbol.d;
