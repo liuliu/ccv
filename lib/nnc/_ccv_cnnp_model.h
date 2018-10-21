@@ -35,12 +35,15 @@ enum {
 typedef struct {
 	int graph_mode;
 	int dest_to_eval_size;
+	int dest_to_eval_exec_size; // This is different from dest_to_eval_size because some of the execs will be optimized away.
+	int gradient_init; // Have init gradient graph.
 	int is_test;
 	int stream_type;
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
-	ccv_nnc_graph_exec_t* dest_to_evals; // Destinations to end evaluation.
+	ccv_nnc_graph_exec_symbol_t* dest_to_evals;
+	ccv_nnc_graph_exec_t* dest_to_eval_execs; // Destinations to end evaluation.
 	ccv_array_t* trainables;
 	ccv_array_t* retains; // Additional symbols need to retain.
 	ccv_nnc_tensor_symbol_t* updated_trainables;
