@@ -596,7 +596,11 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 		};
 		ccv_array_push(tensor_binds, &retained_bind);
 	}
-	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
+	// If we generated gradient for the graph, only compile part of the graph because the rest is irrelevant for evaluation.
+	if (compiled_data->gradient_init)
+		ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), compiled_data->dest_to_evals, compiled_data->dest_to_eval_size, &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
+	else
+		ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
 	// If tensor is not init'ed, we need to init states first.
 	if (!tensors_init)
 		ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, compiled_data->tensor_arena);
