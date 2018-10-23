@@ -11,9 +11,9 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-TEST_CASE("compile simple cifar-10 model")
+static ccv_cnnp_model_t* simple_cifar_10(void)
 {
-	ccv_cnnp_model_t* const sequential = ccv_cnnp_sequential_new(MODEL_LIST(
+	return ccv_cnnp_sequential_new(MODEL_LIST(
 		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (2, 2)),
@@ -43,6 +43,11 @@ TEST_CASE("compile simple cifar-10 model")
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
 		})
 	));
+}
+
+TEST_CASE("compile simple cifar-10 model")
+{
+	ccv_cnnp_model_t* const sequential = simple_cifar_10();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(1, 31, 31, 3), 0);
@@ -75,8 +80,24 @@ TEST_CASE("compile simple cifar-10 model")
 		if (output_tensor->data.f32[i] > max)
 			max = output_tensor->data.f32[i], t = i;
 	REQUIRE_EQ(target, t, "should fit");
+	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
+	ccv_cnnp_model_checkpoint(sequential, "/tmp/compile_simple_cifar_10_model.checkpoint", 0);
 	CNNP_MODEL_GEN(sequential, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(sequential);
+	ccv_cnnp_model_t* const sequential2 = simple_cifar_10();
+	ccv_cnnp_model_compile(sequential2, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	// Load from the checkpoint file.
+	ccv_cnnp_model_checkpoint(sequential2, "/tmp/compile_simple_cifar_10_model.checkpoint", 0);
+	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
+	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
+	ccv_cnnp_model_evaluate(sequential2, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	t = 0;
+	max = output_tensor->data.f32[0];
+	for (i = 1; i < 10; i++)
+		if (output_tensor->data.f32[i] > max)
+			max = output_tensor->data.f32[i], t = i;
+	REQUIRE_EQ(target, t, "should fit");
+	ccv_cnnp_model_free(sequential2);
 	ccv_nnc_tensor_free(input_tensor);
 	ccv_nnc_tensor_free(fit_tensor);
 	ccv_nnc_tensor_free(output_tensor);
