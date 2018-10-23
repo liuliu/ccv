@@ -2044,6 +2044,13 @@ enum {
  */
 void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
 /**
+ * This method set the max workspace size. If the graph is already compiled. It will re-run
+ * autotune to use the new workspace size to find the best algorithm.
+ * @param model The composed model.
+ * @param workspace_size The size in bytes that we can use as workspace (scratch memory).
+ */
+void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
+/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
