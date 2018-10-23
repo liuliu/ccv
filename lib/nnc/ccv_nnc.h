@@ -2020,6 +2020,29 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
  * @param stream_context The stream where the fit can be executed upon.
  */
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+enum {
+	/**
+	 * This is the default flag, if the model is not initialized, will attempt to read from the disk.
+	 * Otherwise, will persist existing parameters to disk.
+	 */
+	CCV_CNNP_MODEL_CHECKPOINT_READ_WRITE,
+	/**
+	 * Only read parameters out of disk, even it is already initialized.
+	 */
+	CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY,
+	/**
+	 * Only write parameters to disk.
+	 */
+	CCV_CNNP_MODEL_CHECKPOINT_WRITE_ONLY,
+};
+/**
+ * This method checkpoint the given model. If the model is initialized, it will persist all parameters
+ * to the given file path. If it is not initialized, this method will try to load tensors off the
+ * disk.
+ * @param model The composed model.
+ * @param fn The file name.
+ */
+void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
 /**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after

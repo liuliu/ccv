@@ -4,6 +4,8 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_model.h"
 
+#pragma mark - Level-5 API
+
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa;
 
 struct ccv_cnnp_model_io_s {
@@ -401,7 +403,7 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	compiled_data->gradient_init = 1;
 }
 
-static void _ccv_cnnp_model_tensors_init(ccv_cnnp_compiled_data_t* const compiled_data)
+void ccv_cnnp_model_tensors_init(ccv_cnnp_compiled_data_t* const compiled_data)
 {
 	assert(!compiled_data->trainable_tensors);
 	const int trainable_size = compiled_data->trainables->rnum;
@@ -434,7 +436,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 		_ccv_cnnp_model_gradient_jit(model, fits, fit_size);
 	const int tensors_init = !!compiled_data->trainable_tensors;
 	if (!compiled_data->trainable_tensors)
-		_ccv_cnnp_model_tensors_init(compiled_data);
+		ccv_cnnp_model_tensors_init(compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	for (i = 0; i < input_size; i++)
 	{
@@ -555,7 +557,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	assert(output_size > 0);
 	const int tensors_init = !!compiled_data->trainable_tensors;
 	if (!compiled_data->trainable_tensors)
-		_ccv_cnnp_model_tensors_init(compiled_data);
+		ccv_cnnp_model_tensors_init(compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	for (i = 0; i < input_size; i++)
 	{

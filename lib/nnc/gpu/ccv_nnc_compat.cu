@@ -18,6 +18,24 @@ void cufree(int device, void* ptr)
 	cudaFree(ptr);
 }
 
+void cumemcpy(void* dest, const int dest_type, const void* src, const int src_type, size_t n)
+{
+	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY)
+		cudaMemcpy(dest, src, n, cudaMemcpyHostToDevice);
+	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
+		cudaMemcpy(dest, src, n, cudaMemcpyDeviceToHost);
+	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
+		cudaMemcpy(dest, src, n, cudaMemcpyHostToHost);
+	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
+		int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
+		int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
+		if (device_a == device_b)
+			cudaMemcpy(dest, src, n, cudaMemcpyDeviceToDevice);
+		else
+			cudaMemcpyPeer(dest, device_b, src, device_a, n);
+	}
+}
+
 void* cuhostalloc(size_t size)
 {
 	void* ptr = 0;

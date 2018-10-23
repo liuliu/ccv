@@ -23,6 +23,7 @@ extern "C" {
 // Simple counterparts of ccmalloc / ccfree.
 void* cumalloc(int device, size_t size);
 void cufree(int device, void* ptr);
+void cumemcpy(void* dest, const int dest_type, const void* src, const int src_type, size_t n);
 void* cuhostalloc(size_t size);
 void cuhostfree(void* ptr);
 int curegister(void* ptr, size_t size);

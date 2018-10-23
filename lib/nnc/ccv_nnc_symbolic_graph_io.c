@@ -4,13 +4,16 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_symbolic_graph.h"
 #include "3rdparty/sqlite3/sqlite3.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#endif
 
 #pragma mark - Level-3 API
 
 #ifdef NDEBUG
-#define assert_sqlite(stmt) (void)(stmt)
+#define SQLITE_ENFORCE(stmt) (void)(stmt)
 #else
-#define assert_sqlite assert
+#define SQLITE_ENFORCE assert
 #endif
 
 static int _ccv_nnc_symbolic_graph_index_in_repo(const ccv_nnc_symbolic_graph_t* const graph, const ccv_array_t* const repo)
@@ -54,7 +57,7 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 16, symbol_info->info.format);
 		sqlite3_bind_int(tensor_symbol_insert_stmt, 17, symbol_info->info.datatype);
 		sqlite3_bind_blob(tensor_symbol_insert_stmt, 18, symbol_info->info.dim, sizeof(symbol_info->info.dim), 0);
-		assert_sqlite(SQLITE_DONE == sqlite3_step(tensor_symbol_insert_stmt));
+		SQLITE_ENFORCE(SQLITE_DONE == sqlite3_step(tensor_symbol_insert_stmt));
 		sqlite3_reset(tensor_symbol_insert_stmt);
 		sqlite3_clear_bindings(tensor_symbol_insert_stmt);
 	}
@@ -97,7 +100,7 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 			if (symbol_info->p_while.input_size)
 				sqlite3_bind_blob(exec_symbol_insert_stmt, 24, symbol_info->p_while.inputs, sizeof(int) * symbol_info->p_while.input_size, 0);
 		}
-		assert_sqlite(SQLITE_DONE == sqlite3_step(exec_symbol_insert_stmt));
+		SQLITE_ENFORCE(SQLITE_DONE == sqlite3_step(exec_symbol_insert_stmt));
 		sqlite3_reset(exec_symbol_insert_stmt);
 		sqlite3_clear_bindings(exec_symbol_insert_stmt);
 	}
@@ -149,7 +152,7 @@ static void _ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const 
 	sqlite3_bind_int(graph_insert_stmt, 15, graph->backward_exec_symbol_size);
 	if (graph->backward_exec_symbol_size)
 		sqlite3_bind_blob(graph_insert_stmt, 16, graph->backward_exec_symbols, sizeof(int) * graph->backward_exec_symbol_size, 0);
-	assert_sqlite(SQLITE_DONE == sqlite3_step(graph_insert_stmt));
+	SQLITE_ENFORCE(SQLITE_DONE == sqlite3_step(graph_insert_stmt));
 	sqlite3_reset(graph_insert_stmt);
 	sqlite3_clear_bindings(graph_insert_stmt);
 }
@@ -170,114 +173,141 @@ static void _ccv_nnc_symbolic_graph_push_repo(const ccv_nnc_symbolic_graph_t* co
 void ccv_nnc_symbolic_graph_write(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_bind_t* const tensor_binds, const int tensor_bind_size, const char* const fn)
 {
 	sqlite3* conn = 0;
-	if (SQLITE_OK == sqlite3_open(fn, &conn))
+	if (SQLITE_OK != sqlite3_open(fn, &conn))
+		return;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, "BEGIN", 0, 0, 0));
+	const char tensor_symbol_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_symbol "
+		"(id INTEGER, graph INTEGER, assign_ref INTEGER, r_assign_ref INTEGER, "
+		"bypass_ref INTEGER, r_bypass_ref INTEGER, p_ref INTEGER, alias_ref INTEGER, peer_ref INTEGER, "
+		"flags INTEGER, ofs BLOB, inc BLOB, s_ref BLOB, name TEXT, type INTEGER, format INTEGER, "
+		"datatype INTEGER, dim BLOB, PRIMARY KEY (id, graph))";
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, tensor_symbol_create_table_qs, 0, 0, 0));
+	const char tensor_symbol_insert_qs[] = 
+		"REPLACE INTO tensor_symbol "
+		"(id, graph, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, "
+		"ofs, inc, s_ref, name, type, format, datatype, dim) VALUES "
+		"($id, $graph, $assign_ref, $r_assign_ref, $bypass_ref, $r_bypass_ref, $p_ref, $alias_ref, $peer_ref, "
+		"$flags, $ofs, $inc, $s_ref, $name, $type, $format, $datatype, $dim)";
+	sqlite3_stmt* tensor_symbol_insert_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_insert_qs, sizeof(tensor_symbol_insert_qs), &tensor_symbol_insert_stmt, 0));
+
+	const char exec_symbol_create_table_qs[] = "CREATE TABLE IF NOT EXISTS graph_exec_symbol "
+		"(id INTEGER, graph INTEGER, input_size INTEGER, output_size INTEGER, graph_ref_size INTEGER, "
+		"flags INTEGER, peer_ref INTEGER, inputs BLOB, outputs BLOB, outgoings BLOB, name TEXT, "
+		"cmd_cmd INTEGER, cmd_backend INTEGER, cmd_algorithm INTEGER, cmd_info BLOB, hint BLOB, graph_ref BLOB, "
+		"case_of_expr INTEGER, case_of_flags INTEGER, case_of_argument_offset INTEGER, case_of_argument_size INTEGER, "
+		"p_while_expr INTEGER, p_while_input_size INTEGER, p_while_inputs BLOB, PRIMARY KEY (id, graph))";
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, exec_symbol_create_table_qs, 0, 0, 0));
+	const char exec_symbol_insert_qs[] = 
+		"REPLACE INTO graph_exec_symbol "
+		"(id, graph, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
+		"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
+		"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs) "
+		"VALUES ($id, $graph, $input_size, $output_size, $graph_ref_size, $flags, $peer_ref, $inputs, $outputs, "
+		"$outgoings, $name, $cmd_cmd, $cmd_backend, $cmd_algorithm, $cmd_info, $hint, $graph_ref, $case_of_expr, "
+		"$case_of_flags, $case_of_argument_offset, $case_of_argument_size, $p_while_expr, $p_while_input_size, "
+		"$p_while_inputs)";
+	sqlite3_stmt* exec_symbol_insert_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_insert_qs, sizeof(exec_symbol_insert_qs), &exec_symbol_insert_stmt, 0));
+
+	const char graph_create_table_qs[] = "CREATE TABLE IF NOT EXISTS graph "
+		"(graph INTEGER PRIMARY KEY, tensor_symbol_size INTEGER, exec_symbol_size INTEGER, sources BLOB, "
+		"destinations BLOB, sub_graphs BLOB, peer INTEGER, p INTEGER, p_idx INTEGER, exec_idx INTEGER, "
+		"breakpoint_size INTEGER, breakpoints BLOB, backward_tensor_symbol_size INTEGER, "
+		"backward_tensor_symbols BLOB, backward_exec_symbol_size INTEGER, backward_exec_symbols BLOB)";
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, graph_create_table_qs, 0, 0, 0));
+	const char graph_insert_qs[] = 
+		"REPLACE INTO graph "
+		"(graph, tensor_symbol_size, exec_symbol_size, sources, destinations, sub_graphs, peer, p, p_idx, "
+		"exec_idx, breakpoint_size, breakpoints, backward_tensor_symbol_size, "
+		"backward_tensor_symbols, backward_exec_symbol_size, backward_exec_symbols) VALUES "
+		"($graph, $tensor_symbol_size, $exec_symbol_size, $sources, $destinations, $sub_graphs, $peer, $p, $p_idx, "
+		"$exec_idx, $breakpoint_size, $breakpoints, $backward_tensor_symbol_size, "
+		"$backward_tensor_symbols, $backward_exec_symbol_size, $backward_exec_symbols)";
+	sqlite3_stmt* graph_insert_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, graph_insert_qs, sizeof(graph_insert_qs), &graph_insert_stmt, 0));
+	ccv_array_t* const repo = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
+	_ccv_nnc_symbolic_graph_push_repo(graph, repo);
+	ccv_array_t* const ws = ccv_array_new(sizeof(int), 1, 0);
+	int i;
+	for (i = 0; i < repo->rnum; i++)
+		_ccv_nnc_symbolic_graph_write(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, i), repo, i,
+			tensor_symbol_insert_stmt, exec_symbol_insert_stmt, graph_insert_stmt, ws);
+	ccv_array_free(ws);
+	sqlite3_finalize(tensor_symbol_insert_stmt);
+	sqlite3_finalize(exec_symbol_insert_stmt);
+	sqlite3_finalize(graph_insert_stmt);
+	// Write tensor binds.
+	const char tensor_bind_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_bind "
+		"(id INTEGER, graph INTEGER, type INTEGER, format INTEGER, datatype INTEGER, "
+		"dim BLOB, data BLOB, PRIMARY KEY (id, graph))";
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, tensor_bind_create_table_qs, 0, 0, 0));
+	// Remove everything in that table.
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, "DELETE FROM tensor_bind", 0, 0, 0));
+	const char tensor_bind_insert_qs[] =
+		"REPLACE INTO tensor_bind "
+		"(id, graph, type, format, datatype, dim, data) VALUES ("
+		"$id, $graph, $type, $format, $datatype, $dim, $data)";
+	sqlite3_stmt* tensor_bind_insert_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_insert_qs, sizeof(tensor_bind_insert_qs), &tensor_bind_insert_stmt, 0));
+#ifdef HAVE_CUDA
+	size_t workspace_size = 0;
+	void* workspace = 0;
+#endif
+	for (i = 0; i < tensor_bind_size; i++)
 	{
-		const char tensor_symbol_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_symbol "
-			"(id INTEGER, graph INTEGER, assign_ref INTEGER, r_assign_ref INTEGER, "
-			"bypass_ref INTEGER, r_bypass_ref INTEGER, p_ref INTEGER, alias_ref INTEGER, peer_ref INTEGER, "
-			"flags INTEGER, ofs BLOB, inc BLOB, s_ref BLOB, name TEXT, type INTEGER, format INTEGER, "
-			"datatype INTEGER, dim BLOB, PRIMARY KEY (id, graph))";
-		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, tensor_symbol_create_table_qs, 0, 0, 0));
-		const char tensor_symbol_insert_qs[] = 
-			"REPLACE INTO tensor_symbol "
-			"(id, graph, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, "
-			"ofs, inc, s_ref, name, type, format, datatype, dim) VALUES "
-			"($id, $graph, $assign_ref, $r_assign_ref, $bypass_ref, $r_bypass_ref, $p_ref, $alias_ref, $peer_ref, "
-			"$flags, $ofs, $inc, $s_ref, $name, $type, $format, $datatype, $dim)";
-		sqlite3_stmt* tensor_symbol_insert_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_insert_qs, sizeof(tensor_symbol_insert_qs), &tensor_symbol_insert_stmt, 0));
-
-		const char exec_symbol_create_table_qs[] = "CREATE TABLE IF NOT EXISTS graph_exec_symbol "
-			"(id INTEGER, graph INTEGER, input_size INTEGER, output_size INTEGER, graph_ref_size INTEGER, "
-			"flags INTEGER, peer_ref INTEGER, inputs BLOB, outputs BLOB, outgoings BLOB, name TEXT, "
-			"cmd_cmd INTEGER, cmd_backend INTEGER, cmd_algorithm INTEGER, cmd_info BLOB, hint BLOB, graph_ref BLOB, "
-			"case_of_expr INTEGER, case_of_flags INTEGER, case_of_argument_offset INTEGER, case_of_argument_size INTEGER, "
-			"p_while_expr INTEGER, p_while_input_size INTEGER, p_while_inputs BLOB, PRIMARY KEY (id, graph))";
-		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, exec_symbol_create_table_qs, 0, 0, 0));
-		const char exec_symbol_insert_qs[] = 
-			"REPLACE INTO graph_exec_symbol "
-			"(id, graph, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
-			"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
-			"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs) "
-			"VALUES ($id, $graph, $input_size, $output_size, $graph_ref_size, $flags, $peer_ref, $inputs, $outputs, "
-			"$outgoings, $name, $cmd_cmd, $cmd_backend, $cmd_algorithm, $cmd_info, $hint, $graph_ref, $case_of_expr, "
-			"$case_of_flags, $case_of_argument_offset, $case_of_argument_size, $p_while_expr, $p_while_input_size, "
-			"$p_while_inputs)";
-		sqlite3_stmt* exec_symbol_insert_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_insert_qs, sizeof(exec_symbol_insert_qs), &exec_symbol_insert_stmt, 0));
-
-		const char graph_create_table_qs[] = "CREATE TABLE IF NOT EXISTS graph "
-			"(graph INTEGER PRIMARY KEY, tensor_symbol_size INTEGER, exec_symbol_size INTEGER, sources BLOB, "
-			"destinations BLOB, sub_graphs BLOB, peer INTEGER, p INTEGER, p_idx INTEGER, exec_idx INTEGER, "
-			"breakpoint_size INTEGER, breakpoints BLOB, backward_tensor_symbol_size INTEGER, "
-			"backward_tensor_symbols BLOB, backward_exec_symbol_size INTEGER, backward_exec_symbols BLOB)";
-		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, graph_create_table_qs, 0, 0, 0));
-		const char graph_insert_qs[] = 
-			"REPLACE INTO graph "
-			"(graph, tensor_symbol_size, exec_symbol_size, sources, destinations, sub_graphs, peer, p, p_idx, "
-			"exec_idx, breakpoint_size, breakpoints, backward_tensor_symbol_size, "
-			"backward_tensor_symbols, backward_exec_symbol_size, backward_exec_symbols) VALUES "
-			"($graph, $tensor_symbol_size, $exec_symbol_size, $sources, $destinations, $sub_graphs, $peer, $p, $p_idx, "
-			"$exec_idx, $breakpoint_size, $breakpoints, $backward_tensor_symbol_size, "
-			"$backward_tensor_symbols, $backward_exec_symbol_size, $backward_exec_symbols)";
-		sqlite3_stmt* graph_insert_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, graph_insert_qs, sizeof(graph_insert_qs), &graph_insert_stmt, 0));
-		ccv_array_t* const repo = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
-		_ccv_nnc_symbolic_graph_push_repo(graph, repo);
-		ccv_array_t* const ws = ccv_array_new(sizeof(int), 1, 0);
-		int i;
-		for (i = 0; i < repo->rnum; i++)
-			_ccv_nnc_symbolic_graph_write(*(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, i), repo, i,
-				tensor_symbol_insert_stmt, exec_symbol_insert_stmt, graph_insert_stmt, ws);
-		ccv_array_free(ws);
-		sqlite3_finalize(tensor_symbol_insert_stmt);
-		sqlite3_finalize(exec_symbol_insert_stmt);
-		sqlite3_finalize(graph_insert_stmt);
-		// Write tensor binds.
-		const char tensor_bind_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_bind "
-			"(id INTEGER, graph INTEGER, type INTEGER, format INTEGER, datatype INTEGER, "
-			"dim BLOB, data BLOB, PRIMARY KEY (id, graph))";
-		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, tensor_bind_create_table_qs, 0, 0, 0));
-		// Remove everything in that table.
-		assert_sqlite(SQLITE_OK == sqlite3_exec(conn, "DELETE FROM tensor_bind", 0, 0, 0));
-		const char tensor_bind_insert_qs[] =
-			"REPLACE INTO tensor_bind "
-			"(id, graph, type, format, datatype, dim, data) VALUES ("
-			"$id, $graph, $type, $format, $datatype, $dim, $data)";
-		sqlite3_stmt* tensor_bind_insert_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_insert_qs, sizeof(tensor_bind_insert_qs), &tensor_bind_insert_stmt, 0));
-		for (i = 0; i < tensor_bind_size; i++)
+		const int graph_idx = _ccv_nnc_symbolic_graph_index_in_repo(tensor_binds[i].symbol.graph, repo);
+		if (graph_idx < 0)
+			continue;
+		sqlite3_bind_int(tensor_bind_insert_stmt, 1, tensor_binds[i].symbol.d);
+		sqlite3_bind_int(tensor_bind_insert_stmt, 2, graph_idx);
+		if (tensor_binds[i].tensor)
 		{
-			const int graph_idx = _ccv_nnc_symbolic_graph_index_in_repo(tensor_binds[i].symbol.graph, repo);
-			if (graph_idx < 0)
-				continue;
-			sqlite3_bind_int(tensor_bind_insert_stmt, 1, tensor_binds[i].symbol.d);
-			sqlite3_bind_int(tensor_bind_insert_stmt, 2, graph_idx);
-			if (tensor_binds[i].tensor)
+			const ccv_nnc_tensor_t* const tensor = tensor_binds[i].tensor;
+			assert(!CCV_IS_TENSOR_VIEW(tensor));
+			sqlite3_bind_int(tensor_bind_insert_stmt, 3, tensor->info.type);
+			sqlite3_bind_int(tensor_bind_insert_stmt, 4, tensor->info.format);
+			sqlite3_bind_int(tensor_bind_insert_stmt, 5, tensor->info.datatype);
+			sqlite3_bind_blob(tensor_bind_insert_stmt, 6, tensor->info.dim, sizeof(tensor->info.dim), 0);
+			const size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
+#ifdef HAVE_CUDA
+			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 			{
-				const ccv_nnc_tensor_t* const tensor = tensor_binds[i].tensor;
-				assert(!CCV_IS_TENSOR_VIEW(tensor));
-				sqlite3_bind_int(tensor_bind_insert_stmt, 3, tensor->info.type);
-				sqlite3_bind_int(tensor_bind_insert_stmt, 4, tensor->info.format);
-				sqlite3_bind_int(tensor_bind_insert_stmt, 5, tensor->info.datatype);
-				sqlite3_bind_blob(tensor_bind_insert_stmt, 6, tensor->info.dim, sizeof(tensor->info.dim), 0);
-				sqlite3_bind_blob(tensor_bind_insert_stmt, 7, tensor->data.u8, ccv_nnc_tensor_data_size(tensor->info), 0);
-			} else {
-				assert(tensor_binds[i].symbol.d >= 0);
-				const ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_binds[i].symbol.d);
-				sqlite3_bind_int(tensor_bind_insert_stmt, 3, symbol_info->info.type);
-				sqlite3_bind_int(tensor_bind_insert_stmt, 4, symbol_info->info.format);
-				sqlite3_bind_int(tensor_bind_insert_stmt, 5, symbol_info->info.datatype);
-				sqlite3_bind_blob(tensor_bind_insert_stmt, 6, symbol_info->info.dim, sizeof(symbol_info->info.dim), 0);
-			}
-			sqlite3_step(tensor_bind_insert_stmt);
-			sqlite3_reset(tensor_bind_insert_stmt);
-			sqlite3_clear_bindings(tensor_bind_insert_stmt);
+				if (!workspace)
+				{
+					workspace = ccmalloc(data_size);
+					workspace_size = data_size;
+				} else if (data_size > workspace_size) {
+					workspace = ccrealloc(workspace, data_size);
+					workspace_size = data_size;
+				}
+				cumemcpy(workspace, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->info.type, data_size);
+				sqlite3_bind_blob(tensor_bind_insert_stmt, 7, workspace, data_size, 0);
+			} else
+				sqlite3_bind_blob(tensor_bind_insert_stmt, 7, tensor->data.u8, data_size, 0);
+#else
+			sqlite3_bind_blob(tensor_bind_insert_stmt, 7, tensor->data.u8, data_size, 0);
+#endif
+		} else {
+			assert(tensor_binds[i].symbol.d >= 0);
+			const ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, tensor_binds[i].symbol.d);
+			sqlite3_bind_int(tensor_bind_insert_stmt, 3, symbol_info->info.type);
+			sqlite3_bind_int(tensor_bind_insert_stmt, 4, symbol_info->info.format);
+			sqlite3_bind_int(tensor_bind_insert_stmt, 5, symbol_info->info.datatype);
+			sqlite3_bind_blob(tensor_bind_insert_stmt, 6, symbol_info->info.dim, sizeof(symbol_info->info.dim), 0);
 		}
-		sqlite3_finalize(tensor_bind_insert_stmt);
-		ccv_array_free(repo);
-		sqlite3_close(conn);
+		sqlite3_step(tensor_bind_insert_stmt);
+		sqlite3_reset(tensor_bind_insert_stmt);
+		sqlite3_clear_bindings(tensor_bind_insert_stmt);
 	}
+	sqlite3_finalize(tensor_bind_insert_stmt);
+#ifdef HAVE_CUDA
+	if (workspace)
+		ccfree(workspace);
+#endif
+	ccv_array_free(repo);
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_exec(conn, "COMMIT", 0, 0, 0));
+	sqlite3_close(conn);
 }
 
 static ccv_nnc_symbolic_graph_t* _ccv_nnc_symbolic_graph_get(const ccv_array_t* const repo, const ccv_nnc_symbolic_graph_t* const pos)
@@ -533,95 +563,101 @@ static void _ccv_nnc_symbolic_graph_rewire(const ccv_array_t* const repo, ccv_nn
 void ccv_nnc_symbolic_graph_read(const char* const fn, ccv_nnc_symbolic_graph_t** const graph_ref, ccv_nnc_tensor_bind_t** const tensor_binds_ref, int* const tensor_bind_size_ref)
 {
 	sqlite3* conn = 0;
-	if (SQLITE_OK == sqlite3_open(fn, &conn))
+	if (SQLITE_OK != sqlite3_open(fn, &conn))
+		return;
+	ccv_array_t* const repo = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
+	const char graph_select_qs[] =
+		"SELECT graph, tensor_symbol_size, exec_symbol_size, sources, destinations, sub_graphs, peer, p, p_idx, "
+		"exec_idx, breakpoint_size, breakpoints, backward_tensor_symbol_size, "
+		"backward_tensor_symbols, backward_exec_symbol_size, backward_exec_symbols FROM graph ORDER BY graph";
+	sqlite3_stmt* graph_select_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, graph_select_qs, sizeof(graph_select_qs), &graph_select_stmt, 0));
+	sqlite3_stmt* tensor_symbol_select_stmt = 0;
+	const char tensor_symbol_select_qs[] =
+		"SELECT id, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, inc, "
+		"s_ref, name, type, format, datatype, dim FROM tensor_symbol WHERE graph=$graph ORDER BY id";
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_select_qs, sizeof(tensor_symbol_select_qs), &tensor_symbol_select_stmt, 0));
+	const char exec_symbol_select_qs[] =
+		"SELECT id, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
+		"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
+		"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs "
+		"FROM graph_exec_symbol WHERE graph=$graph ORDER BY id";
+	sqlite3_stmt* exec_symbol_select_stmt = 0;
+	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_select_qs, sizeof(exec_symbol_select_qs), &exec_symbol_select_stmt, 0));
+	while (SQLITE_ROW == sqlite3_step(graph_select_stmt))
 	{
-		ccv_array_t* const repo = ccv_array_new(sizeof(ccv_nnc_symbolic_graph_t*), 1, 0);
-		const char graph_select_qs[] =
-			"SELECT graph, tensor_symbol_size, exec_symbol_size, sources, destinations, sub_graphs, peer, p, p_idx, "
-			"exec_idx, breakpoint_size, breakpoints, backward_tensor_symbol_size, "
-			"backward_tensor_symbols, backward_exec_symbol_size, backward_exec_symbols FROM graph ORDER BY graph";
-		sqlite3_stmt* graph_select_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, graph_select_qs, sizeof(graph_select_qs), &graph_select_stmt, 0));
-		sqlite3_stmt* tensor_symbol_select_stmt = 0;
-		const char tensor_symbol_select_qs[] =
-			"SELECT id, assign_ref, r_assign_ref, bypass_ref, r_bypass_ref, p_ref, alias_ref, peer_ref, flags, ofs, inc, "
-			"s_ref, name, type, format, datatype, dim FROM tensor_symbol WHERE graph=$graph ORDER BY id";
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_symbol_select_qs, sizeof(tensor_symbol_select_qs), &tensor_symbol_select_stmt, 0));
-		const char exec_symbol_select_qs[] =
-			"SELECT id, input_size, output_size, graph_ref_size, flags, peer_ref, inputs, outputs, outgoings, "
-			"name, cmd_cmd, cmd_backend, cmd_algorithm, cmd_info, hint, graph_ref, case_of_expr, case_of_flags, "
-			"case_of_argument_offset, case_of_argument_size, p_while_expr, p_while_input_size, p_while_inputs "
-			"FROM graph_exec_symbol WHERE graph=$graph ORDER BY id";
-		sqlite3_stmt* exec_symbol_select_stmt = 0;
-		assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, exec_symbol_select_qs, sizeof(exec_symbol_select_qs), &exec_symbol_select_stmt, 0));
-		while (SQLITE_ROW == sqlite3_step(graph_select_stmt))
-		{
-			ccv_nnc_symbolic_graph_t* const graph = ccv_nnc_symbolic_graph_new();
-			const int graph_idx = sqlite3_column_int(graph_select_stmt, 0);
-			assert(graph_idx == repo->rnum);
-			ccv_array_push(repo, &graph);
-			_ccv_nnc_symbolic_graph_read(graph_idx, graph_select_stmt, tensor_symbol_select_stmt, exec_symbol_select_stmt, graph);
-		}
-		int i;
-		for (i = 0; i < repo->rnum; i++)
-			_ccv_nnc_symbolic_graph_rewire(repo, *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, i));
-		*graph_ref = (repo->rnum > 0) ? *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, 0) : 0;
-		assert((tensor_bind_size_ref && tensor_binds_ref) || (!tensor_bind_size_ref && !tensor_binds_ref));
-		if (tensor_bind_size_ref && tensor_binds_ref)
-		{
-			const char tensor_bind_count_qs[] =
-				"SELECT COUNT(*) FROM tensor_bind";
-			sqlite3_stmt* tensor_bind_count_stmt = 0;
-			assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_count_qs, sizeof(tensor_bind_count_qs), &tensor_bind_count_stmt, 0));
-			sqlite3_step(tensor_bind_count_stmt);
-			const int tensor_bind_size = *tensor_bind_size_ref = sqlite3_column_int(tensor_bind_count_stmt, 0);
-			sqlite3_finalize(tensor_bind_count_stmt);
-			// Respect the insert order (rowid).
-			if (!tensor_bind_size)
-				*tensor_binds_ref = 0;
-			else {
-				const char tensor_bind_select_qs[] =
-					"SELECT id, graph, type, format, datatype, dim, data FROM tensor_bind";
-				sqlite3_stmt* tensor_bind_select_stmt = 0;
-				ccv_nnc_tensor_bind_t* const tensor_binds = *tensor_binds_ref = (ccv_nnc_tensor_bind_t*)ccmalloc(sizeof(ccv_nnc_tensor_bind_t) * tensor_bind_size);
-				assert_sqlite(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_select_qs, sizeof(tensor_bind_select_qs), &tensor_bind_select_stmt, 0));
-				for (i = 0; SQLITE_ROW == sqlite3_step(tensor_bind_select_stmt); i++)
-				{
-					assert(i < tensor_bind_size);
-					tensor_binds[i].symbol.d = sqlite3_column_int(tensor_bind_select_stmt, 0);
-					const int graph_idx = sqlite3_column_int(tensor_bind_select_stmt, 1);
-					assert(graph_idx < repo->rnum);
-					tensor_binds[i].symbol.graph = (graph_idx >= 0) ? *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, graph_idx) : 0;
-					ccv_nnc_tensor_param_t info;
-					info.type = sqlite3_column_int(tensor_bind_select_stmt, 2);
-					info.format = sqlite3_column_int(tensor_bind_select_stmt, 3);
-					info.datatype = sqlite3_column_int(tensor_bind_select_stmt, 4);
-					const int* const dim = sqlite3_column_blob(tensor_bind_select_stmt, 5);
-					memset(info.dim, 0, sizeof(info.dim));
-					if (dim)
-						memcpy(info.dim, dim, ccv_min(sizeof(info.dim), sqlite3_column_bytes(tensor_bind_select_stmt, 5)));
-					const void* const data = sqlite3_column_blob(tensor_bind_select_stmt, 7);
-					if (!data)
-						tensor_binds[i].tensor = 0;
-					else {
-						tensor_binds[i].tensor = ccv_nnc_tensor_new(0, info, 0);
-						size_t data_size = ccv_nnc_tensor_data_size(info);
-						memcpy(tensor_binds[i].tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_bind_select_stmt, 6)));
-					}
-				}
-				for (; i < tensor_bind_size; i++)
-				{
-					tensor_binds[i].symbol.d = CCV_NNC_NO_TENSOR_SYMBOL;
-					tensor_binds[i].symbol.graph = 0;
-					tensor_binds[i].tensor = 0;
-				}
-				sqlite3_finalize(tensor_bind_select_stmt);
-			}
-		}
-		ccv_array_free(repo);
-		sqlite3_finalize(graph_select_stmt);
-		sqlite3_finalize(tensor_symbol_select_stmt);
-		sqlite3_finalize(exec_symbol_select_stmt);
-		sqlite3_close(conn);
+		ccv_nnc_symbolic_graph_t* const graph = ccv_nnc_symbolic_graph_new();
+		const int graph_idx = sqlite3_column_int(graph_select_stmt, 0);
+		assert(graph_idx == repo->rnum);
+		ccv_array_push(repo, &graph);
+		_ccv_nnc_symbolic_graph_read(graph_idx, graph_select_stmt, tensor_symbol_select_stmt, exec_symbol_select_stmt, graph);
 	}
+	int i;
+	for (i = 0; i < repo->rnum; i++)
+		_ccv_nnc_symbolic_graph_rewire(repo, *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, i));
+	*graph_ref = (repo->rnum > 0) ? *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, 0) : 0;
+	assert((tensor_bind_size_ref && tensor_binds_ref) || (!tensor_bind_size_ref && !tensor_binds_ref));
+	if (tensor_bind_size_ref && tensor_binds_ref)
+	{
+		const char tensor_bind_count_qs[] =
+			"SELECT COUNT(*) FROM tensor_bind";
+		sqlite3_stmt* tensor_bind_count_stmt = 0;
+		SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_count_qs, sizeof(tensor_bind_count_qs), &tensor_bind_count_stmt, 0));
+		sqlite3_step(tensor_bind_count_stmt);
+		const int tensor_bind_size = *tensor_bind_size_ref = sqlite3_column_int(tensor_bind_count_stmt, 0);
+		sqlite3_finalize(tensor_bind_count_stmt);
+		// Respect the insert order (rowid).
+		if (!tensor_bind_size)
+			*tensor_binds_ref = 0;
+		else {
+			const char tensor_bind_select_qs[] =
+				"SELECT id, graph, type, format, datatype, dim, data FROM tensor_bind";
+			sqlite3_stmt* tensor_bind_select_stmt = 0;
+			ccv_nnc_tensor_bind_t* const tensor_binds = *tensor_binds_ref = (ccv_nnc_tensor_bind_t*)ccmalloc(sizeof(ccv_nnc_tensor_bind_t) * tensor_bind_size);
+			SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_bind_select_qs, sizeof(tensor_bind_select_qs), &tensor_bind_select_stmt, 0));
+			for (i = 0; SQLITE_ROW == sqlite3_step(tensor_bind_select_stmt); i++)
+			{
+				assert(i < tensor_bind_size);
+				tensor_binds[i].symbol.d = sqlite3_column_int(tensor_bind_select_stmt, 0);
+				const int graph_idx = sqlite3_column_int(tensor_bind_select_stmt, 1);
+				assert(graph_idx < repo->rnum);
+				tensor_binds[i].symbol.graph = (graph_idx >= 0) ? *(ccv_nnc_symbolic_graph_t**)ccv_array_get(repo, graph_idx) : 0;
+				ccv_nnc_tensor_param_t info;
+				info.type = sqlite3_column_int(tensor_bind_select_stmt, 2);
+				info.format = sqlite3_column_int(tensor_bind_select_stmt, 3);
+				info.datatype = sqlite3_column_int(tensor_bind_select_stmt, 4);
+				const int* const dim = sqlite3_column_blob(tensor_bind_select_stmt, 5);
+				memset(info.dim, 0, sizeof(info.dim));
+				if (dim)
+					memcpy(info.dim, dim, ccv_min(sizeof(info.dim), sqlite3_column_bytes(tensor_bind_select_stmt, 5)));
+				const void* const data = sqlite3_column_blob(tensor_bind_select_stmt, 6);
+				if (!data)
+					tensor_binds[i].tensor = 0;
+				else {
+					tensor_binds[i].tensor = ccv_nnc_tensor_new(0, info, 0);
+					size_t data_size = ccv_nnc_tensor_data_size(info);
+#ifdef HAVE_CUDA
+					if (CCV_TENSOR_GET_MEMORY(info.type) == CCV_TENSOR_GPU_MEMORY)
+						cumemcpy(tensor_binds[i].tensor->data.u8, info.type, data, CCV_TENSOR_CPU_MEMORY, ccv_min(data_size, sqlite3_column_bytes(tensor_bind_select_stmt, 6)));
+					else
+						memcpy(tensor_binds[i].tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_bind_select_stmt, 6)));
+#else
+					memcpy(tensor_binds[i].tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_bind_select_stmt, 6)));
+#endif
+				}
+			}
+			for (; i < tensor_bind_size; i++)
+			{
+				tensor_binds[i].symbol.d = CCV_NNC_NO_TENSOR_SYMBOL;
+				tensor_binds[i].symbol.graph = 0;
+				tensor_binds[i].tensor = 0;
+			}
+			sqlite3_finalize(tensor_bind_select_stmt);
+		}
+	}
+	ccv_array_free(repo);
+	sqlite3_finalize(graph_select_stmt);
+	sqlite3_finalize(tensor_symbol_select_stmt);
+	sqlite3_finalize(exec_symbol_select_stmt);
+	sqlite3_close(conn);
 }

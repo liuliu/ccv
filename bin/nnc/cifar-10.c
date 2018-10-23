@@ -162,6 +162,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	stream_contexts[1] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	int p = 0, q = 1;
 	const int epoch_end = (training_set->rnum + batch_size - 1) / batch_size;
+	ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0);
 	unsigned int current_time = get_current_time();
 	for (i = 0; i < 100000; i++)
 	{
@@ -199,6 +200,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		{
 			ccv_nnc_stream_context_wait(stream_contexts[p]);
 			ccv_nnc_stream_context_wait(stream_contexts[q]);
+			ccv_cnnp_model_checkpoint(cifar_10, "cifar-10.checkpoint", 0);
 			unsigned int elapsed_time = get_current_time() - current_time;
 			int correct = 0;
 			p = 0, q = 1;
