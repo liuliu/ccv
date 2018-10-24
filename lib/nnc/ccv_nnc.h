@@ -1735,6 +1735,32 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 
 /** @} */
 
+/**
+ * @defgroup level_3_5_parallel Automatic Graph Parallelization
+ * @{
+ */
+
+/**
+ * Turn the existing graph to be capable to run on several devices with different data inputs at parallel.
+ * With this method, additional tensor symbols will be created that runs on different devices. That has
+ * been said, there are concepts of "scatter" and "gather". "scatter" tensor symbols will be copied to
+ * different devices, while "gather" tensors will be summed from different devices to the default device.
+ * Right now, the way to gather tensors only supports "sum".
+ * @param graph The symbolic graph.
+ * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
+ * @param scatters The tensor symbols to be scattered.
+ * @param scatter_size The size of the scatter tensor symbols array.
+ * @param gathers The tensor symbols to be gathered.
+ * @param gather_size The size of the gather tensor symbols array.
+ * @param sources The source execution node symbols array.
+ * @param source_size The size of source node symbols array.
+ * @param destinations The destinations execution node symbols array.
+ * @param destination_size The size of destination node symbols array.
+ */
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+
+/** @} */
+
 /** @} */
 
 /**
@@ -1785,14 +1811,16 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_constant_new_impl(ccv_
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_variable_t) ccv_nnc_tensor_variable_alias_new(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info);
 /**
- * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this method.
+ * Get the underlying tensor for the tensor variable. The tensor allocation may be performed when calling this
+ * method.
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable to get the underlying tensor.
  * @return The underlying tensor.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_variable(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable);
 /**
- * Set a tensor on the tensor variable. Tensor variable doesn't take over the life-cycle management of the tensor (in similar way as the tensor binds).
+ * Set a tensor on the tensor variable. Tensor variable doesn't take over the life-cycle management of the tensor
+ * (in similar way as the tensor binds).
  * @param graph The dynamic graph.
  * @param tensor_variable The tensor variable to set.
  * @param tensor The tensor that is going to be associated with the tensor variable.
@@ -1822,7 +1850,8 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
  */
 void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
 /**
- * Apply one step of minimization (most likely, a gradient descent) to the parameters with a given loss (or losses).
+ * Apply one step of minimization (most likely, a gradient descent) to the parameters with a given loss (or
+ * losses).
  * @param dynamic_graph The dynamic graph.
  * @param minimizer The wrapped command that represents a particular optimization strategy.
  * @param losses The losses we are trying to minimize.

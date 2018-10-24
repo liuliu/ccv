@@ -580,17 +580,18 @@ static int _ccv_nnc_device_id_for_exec(const ccv_nnc_graph_exec_info_t* const ex
 {
 	int i;
 	int device_id = -1;
-	for (i = 0; i < exec_info->input_size; i++)
-		if (exec_info->inputs[i] &&
-			CCV_TENSOR_GET_MEMORY(exec_info->inputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
-			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type) < device_id))
-			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type);
-	if (device_id < 0)
+	// The device id of the exec is determined by its outputs.
 	for (i = 0; i < exec_info->output_size; i++)
 		if (exec_info->outputs[i] &&
 			CCV_TENSOR_GET_MEMORY(exec_info->outputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
 			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type) < device_id))
 			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type);
+	if (device_id < 0)
+		for (i = 0; i < exec_info->input_size; i++)
+			if (exec_info->inputs[i] &&
+				CCV_TENSOR_GET_MEMORY(exec_info->inputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
+				(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type) < device_id))
+				device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type);
 	return device_id >= 0 ? device_id : 0; // The default one.
 }
 
