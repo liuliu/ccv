@@ -92,7 +92,7 @@ void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph
 		loss_symbols, loss_size, parameter_symbols, parameter_size,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sources, 0), sources->rnum,
 		(ccv_nnc_graph_exec_symbol_t*)ccv_array_get(destinations, 0), destinations->rnum,
-		updated_parameter_symbols, saved_aux_symbols, update_exec_symbols);
+		0, updated_parameter_symbols, saved_aux_symbols, update_exec_symbols);
 	ccv_nnc_tensor_symbol_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_tensor_symbol_alias_new_hook(dynamic_graph->tape, 0, 0);
 	ccv_nnc_graph_exec_symbol_new_hook(dynamic_graph->tape, 0, 0);

@@ -21,7 +21,7 @@ int ccv_nnc_minimizer_saved_aux_size(const ccv_nnc_cmd_t minimizer)
 	return aux_size;
 }
 
-void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols)
+void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const gradients, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols)
 {
 	assert(parameter_size > 0);
 	assert(loss_size > 0);
@@ -36,6 +36,8 @@ void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, cons
 	for (i = 0; i < parameter_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t gradient = ccv_nnc_tensor_symbol_for_backward(graph, parameters[i]);
+		if (gradients)
+			gradients[i] = gradient;
 		const ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_for_backward(graph, gradient);
 		inputs[0] = gradient;
 		inputs[1] = parameters[i];

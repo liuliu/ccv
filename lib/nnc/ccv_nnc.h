@@ -1645,11 +1645,12 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
  * @param source_size The size of source nodes array.
  * @param destinations The destinations execution nodes array.
  * @param destination_size The size of destination nodes array.
- * @param updated_parameters The tensor symbols that reperesents the updated parameters, should be the same size as the parameters array.
+ * @param gradients The tensor symbols that represents the gradient for update, should be the same size as the parameters array. This can be 0 (optional).
+ * @param updated_parameters The tensor symbols that represents the updated parameters, should be the same size as the parameters array.
  * @param saved_aux The tensor symbols that is helpful for particular optimization strategy.
  * @param graph_exec_symbols The execution node symbols for the updates, should be the same size as the parameters array.
  */
-void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
+void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const gradients, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
 /**
  * The number of extra saved aux per parameter only depends on the commands. For example, SGD with momentum requires 1 aux (for momentum).
  * Others require more.
@@ -1745,7 +1746,10 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
  * With this method, additional tensor symbols will be created that runs on different devices. That has
  * been said, there are concepts of "scatter" and "gather". "scatter" tensor symbols will be copied to
  * different devices, while "gather" tensors will be summed from different devices to the default device.
- * Right now, the way to gather tensors only supports "sum".
+ *
+ * Limitations: right now, the way to gather tensors only supports "sum". The data parallel only supports
+ * GPU, thus, the nodes will be duplicated are GPU computations and GPU memory backed tensors.
+ *
  * @param graph The symbolic graph.
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
  * @param scatters The tensor symbols to be scattered.
