@@ -149,16 +149,38 @@ struct ccv_nnc_graph_exec_arena_s {
 #define CCV_NNC_ENCODE_WHILE_COUNT_SYMBOL(d) ((int)((~(uint32_t)d) << 4 | 0xe))
 #define CCV_NNC_DECODE_WHILE_COUNT_SYMBOL(symbol) ((~(uint32_t)(symbol)) >> 4)
 
-inline static void ccv_array_replace_int(ccv_array_t* ints, const int idx, const int outgoing)
+inline static void ccv_array_replace_unique_int(ccv_array_t* ints, const int idx, const int outgoing)
 {
 	int i;
-	for (i = 0; i < ints->rnum; i++)
+	int flag = 0;
+	for (i = 0; i < ints->rnum;)
+	{
 		if (*(int*)ccv_array_get(ints, i) == idx)
 		{
+			if (flag)
+			{
+				if (i < ints->rnum - 1)
+					*(int*)ccv_array_get(ints, i) = *(int*)ccv_array_get(ints, ints->rnum - 1);
+				--ints->rnum;
+				continue;
+			}
 			*(int*)ccv_array_get(ints, i) = outgoing;
-			return;
+			flag = 1;
+		} else if (*(int*)ccv_array_get(ints, i) == outgoing) {
+			// Remove this from the list.
+			if (flag)
+			{
+				if (i < ints->rnum - 1)
+					*(int*)ccv_array_get(ints, i) = *(int*)ccv_array_get(ints, ints->rnum - 1);
+				--ints->rnum;
+				continue;
+			}
+			flag = 1;
 		}
-	ccv_array_push(ints, &outgoing);
+		++i;
+	}
+	if (!flag)
+		ccv_array_push(ints, &outgoing);
 }
 
 void ccv_nnc_symbolic_graph_symbol_infer(const ccv_nnc_symbolic_graph_t* const symbolic_graph, const ccv_nnc_graph_visit_t* const visit, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, const ccv_nnc_tensor_symbol_info_t* const p_tensor_symbol_info, const int p_tensor_symbol_info_size, ccv_nnc_tensor_symbol_info_t* const tensor_symbol_info, ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info);
