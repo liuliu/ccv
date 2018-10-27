@@ -89,9 +89,6 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
-	FILE *w = fopen("cifar-10.dot", "w+");
-	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, w);
-	fclose(w);
 	ccv_nnc_tensor_t* input_tensors[2];
 	input_tensors[0] = ccv_nnc_tensor_new(0, input, 0);
 	input_tensors[1] = ccv_nnc_tensor_new(0, input, 0);
