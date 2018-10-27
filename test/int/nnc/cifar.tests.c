@@ -221,9 +221,8 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 
 TEST_CASE("cifar-10 with resnet16 to > 85% under 3 minutes")
 {
-	if (!ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) ||
-		!ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN))
-		return;
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
+			ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
 	FILE* train = fopen("/fast/Data/cifar-10/cifar-10-batches-bin/data_batch.bin", "rb");
 	FILE* test = fopen("/fast/Data/cifar-10/cifar-10-batches-bin/test_batch.bin", "rb");
 	if (!train || !test)
@@ -232,7 +231,7 @@ TEST_CASE("cifar-10 with resnet16 to > 85% under 3 minutes")
 			fclose(train);
 		if (test)
 			fclose(test);
-		return;
+		GUARD_ELSE_RETURN(0);
 	}
 	int i, j, k;
 	unsigned char bytes[32 * 32 + 1];

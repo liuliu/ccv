@@ -91,6 +91,8 @@ static void INTERNAL_CATCH_UNIQUE_NAME(__test_case_func__) (char* __case_name__,
 
 #define ABORT_CASE (*__case_result__) = -1; return;
 
+#define GUARD_ELSE_RETURN(x) if (x) {} else { (*__case_result__) = -2; return; }
+
 #define REQUIRE(a, err, ...) { \
 if (!(a)) \
 { \

@@ -23,7 +23,7 @@ static int case_print_hi(char* str, const char* const hi)
 	return nchr;
 }
 
-static void case_run(case_t* test_case, const char* const match_test, int i, int total, int* pass, int* fail)
+static void case_run(case_t* test_case, const char* const match_test, int i, int total, int* pass, int* skip, int* fail)
 {
 	// Change the current directory.
 	if (test_case->dir && test_case->dir[0] != 0 && strcmp(test_case->dir, ".") != 0)
@@ -51,6 +51,15 @@ static void case_run(case_t* test_case, const char* const match_test, int i, int
 			printf("    \n");
 		} else
 			printf("\r[%d/%d] [PASS] %s    \n", i + 1, total, test_case->name);
+	} else if (result == -2) {
+		(*skip)++;
+		if (isatty(fileno(stdout)))
+		{
+			printf("\n\033[0;34m[%d/%d]\033[0;0m \033[1;32m[SKIP]\033[0;0m ", i + 1, total);
+			case_print_hi(test_case->name, match_test);
+			printf("\n");
+		} else
+			printf("\n[%d/%d] [SKIP] %s\n", i + 1, total, test_case->name);
 	} else {
 		(*fail)++;
 		if (isatty(fileno(stdout)))
@@ -63,19 +72,35 @@ static void case_run(case_t* test_case, const char* const match_test, int i, int
 	}
 }
 
-static void case_conclude(int pass, int fail)
+static void case_conclude(int pass, int skip, int fail)
 {
 	if (isatty(fileno(stdout)))
 	{
-		if (fail == 0)
-			printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
-		else
-			printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+		if (skip > 0)
+		{
+			if (fail == 0)
+				printf("\033[0;32mall test case(s) passed, %d test case(s) skipped, congratulations!\033[0;0m\n", skip);
+			else
+				printf("\033[0;31m%d of %d test case(s) passed, %d test case(s) skipped\033[0;0m\n", pass, fail + pass, skip);
+		} else {
+			if (fail == 0)
+				printf("\033[0;32mall test case(s) passed, congratulations!\033[0;0m\n");
+			else
+				printf("\033[0;31m%d of %d test case(s) passed\033[0;0m\n", pass, fail + pass);
+		}
 	} else {
-		if (fail == 0)
-			printf("all test case(s) passed, congratulations!\n");
-		else
-			printf("%d of %d test case(s) passed\n", pass, fail + pass);
+		if (skip > 0)
+		{
+			if (fail == 0)
+				printf("all test case(s) passed, %d test case(s) skipped, congratulations!\n", skip);
+			else
+				printf("%d of %d test case(s) passed, %d test case(s) skipped\n", pass, fail + pass, skip);
+		} else {
+			if (fail == 0)
+				printf("all test case(s) passed, congratulations!\n");
+			else
+				printf("%d of %d test case(s) passed\n", pass, fail + pass);
+		}
 	}
 }
 
@@ -114,7 +139,7 @@ int main(int argc, char** argv)
 			break;
 		}
 	}
-	int len, pass = 0, fail = 0;
+	int len, pass = 0, skip = 0, fail = 0;
 	// In scan mode, we will scan the whole section for a matching test case.
 	if (scan_mode)
 	{
@@ -139,7 +164,7 @@ int main(int argc, char** argv)
 			if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
 				(!match_test || strstr(test_case->name, match_test)))
 			{
-				case_run(test_case, match_test, j++, total, &pass, &fail);
+				case_run(test_case, match_test, j++, total, &pass, &skip, &fail);
 				chdir(cur_dir);
 			}
 		}
@@ -158,13 +183,13 @@ int main(int argc, char** argv)
 		{
 			case_t* test_case = (case_t*)((unsigned char*)__start_case_data + i * case_size);
 			if (!match_test || strstr(test_case->name, match_test))
-				case_run(test_case, match_test, j++, matched_total, &pass, &fail);
+				case_run(test_case, match_test, j++, matched_total, &pass, &skip, &fail);
 			chdir(cur_dir);
 		}
 	}
 	if (__test_case_teardown)
 		__test_case_teardown();
-	case_conclude(pass, fail);
+	case_conclude(pass, skip, fail);
 	return fail;
 }
 
@@ -488,20 +513,20 @@ int main(int argc, char** argv)
 	char* cur_dir = getcwd(dir_buf, 1024);
 	if (__test_case_setup)
 		__test_case_setup();
-	int j = 0, pass = 0, fail = 0;
+	int j = 0, pass = 0, skip = 0, fail = 0;
 	for (i = 0; i < len; i++)
 	{
 		case_t* test_case = (case_t*)(start_pointer + i);
 		if (test_case->sig_head == the_sig && test_case->sig_tail == the_sig + 2 &&
 			(!match_test || strstr(test_case->name, match_test)))
 		{
-			case_run(test_case, match_test, j++, total, &pass, &fail);
+			case_run(test_case, match_test, j++, total, &pass, &skip, &fail);
 			chdir(cur_dir);
 		}
 	}
 	if (__test_case_teardown)
 		__test_case_teardown();
-	case_conclude(pass, fail);
+	case_conclude(pass, skip, fail);
 	return fail;
 }
 
