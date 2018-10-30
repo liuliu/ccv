@@ -80,8 +80,8 @@ TEST_CASE("schedule symbolic graph to data parallel")
 		cpu_fits[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16), 0);
 		for (i = 0; i < 16; i++)
 			cpu_fits[0]->data.f32[i] = cpu_fits[1]->data.f32[i] = (int)(dsfmt_genrand_open_close(&dsfmt) * 7.4); // Between 0 to 7.
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_inputs[0], cpu_inputs[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_for_data_parallel(symbolic_graph, x, 1))), 0);
-		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_fits[0], cpu_fits[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, label), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_for_data_parallel(symbolic_graph, label, 1))), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_inputs[0], cpu_inputs[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(symbolic_graph, x, 1))), 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_fits[0], cpu_fits[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, label), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(symbolic_graph, label, 1))), 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, bias1), ccv_nnc_tensor_from_symbol(tensor_arena, bias3)), 0);
 		for (i = 0; i < 8 * 3 * 5 * 5; i++)
 			w1_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);

@@ -483,7 +483,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	ccv_nnc_graph_visit_free(visit);
 }
 
-ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_data_parallel(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id)
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id)
 {
 	assert(graph->data_parallel.tensor_symbol_idx);
 	assert(symbol.d >= 0);
