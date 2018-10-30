@@ -454,6 +454,11 @@ void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const st
  * @param signal The signal to be destroyed.
  */
 void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
+/**
+ * Return number of devices.
+ * @param type The type of devices (CCV_NNC_STREAM_CONTEXT_GPU / CCV_NNC_STREAM_CONTEXT_CPU)
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
 
 /** @} */
 

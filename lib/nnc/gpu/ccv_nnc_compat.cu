@@ -131,6 +131,13 @@ void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal)
 	cudaEventDestroy(compat_signal->event);
 }
 
+int ccv_nnc_gpu_device_count(void)
+{
+	int count = 0;
+	cudaGetDeviceCount(&count);
+	return count;
+}
+
 ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);

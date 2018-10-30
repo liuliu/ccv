@@ -138,6 +138,15 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal)
 	ccfree(signal);
 }
 
+int ccv_nnc_device_count(const int type)
+{
+#ifdef HAVE_CUDA
+	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
+		return ccv_nnc_gpu_device_count();
+#endif
+	return 1; // I don't get core count for CPU yet.
+}
+
 ccv_nnc_stream_scheduler_t* ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_scheduler_t* scheduler = stream_context->scheduler;

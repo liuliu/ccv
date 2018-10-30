@@ -11,11 +11,12 @@ enum {
 	CCV_NNC_PARALLEL_GATHER = 0x2,
 };
 
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	if (parallel == 1)
 		return;
-	assert(parallel > 0); // TODO: Support automatically enumerate devices.
+	if (parallel == 0)
+		parallel = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
 	int i, j, k;
 	// Tensor symbol has to be on device 0 or any.
@@ -490,10 +491,10 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_data_parallel(const ccv_nnc_sy
 	if (device_id == 0)
 		return symbol;
 	const int devices = graph->data_parallel.devices;
-	if (graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id] < 0)
+	if (graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id - 1] < 0)
 		return NO_TENSOR_SYMBOL;
 	ccv_nnc_tensor_symbol_t tensor = {
-		.d = graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id],
+		.d = graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id - 1],
 		.graph = graph,
 	};
 	return tensor;
