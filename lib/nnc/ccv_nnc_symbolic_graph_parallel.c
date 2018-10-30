@@ -117,7 +117,17 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	} ccv_nnc_graph_visit_endfor
 	const int devices = parallel;
 	// Now, actually create these tensors.
-	int* const dup_tensor_idx = cccalloc((devices - 1) * tensor_symbol_size, sizeof(int));
+	if (!graph->data_parallel.tensor_symbol_idx)
+		graph->data_parallel.tensor_symbol_idx = (int*)ccmalloc(sizeof(int) * (devices - 1) * tensor_symbol_size);
+	else if (graph->data_parallel.tensor_symbol_size * (graph->data_parallel.devices - 1) != tensor_symbol_size * (devices - 1))
+		// This may shrink too, but that is OK.
+		graph->data_parallel.tensor_symbol_idx = (int*)ccrealloc(graph->data_parallel.tensor_symbol_idx, sizeof(int) * (devices - 1) * tensor_symbol_size);
+	graph->data_parallel.tensor_symbol_size = tensor_symbol_size;
+	graph->data_parallel.devices = devices;
+	int* const dup_tensor_idx = graph->data_parallel.tensor_symbol_idx;
+	// dup_tensor_idx is the only array starts with 0 here.
+	for (i = 0; i < (devices - 1) * tensor_symbol_size; i++)
+		dup_tensor_idx[i] = -1;
 	for (i = 0; i < dup_tensors->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(dup_tensors, i);
@@ -129,7 +139,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			const int alias_ref = tensor_symbol->alias_ref - 1;
 			for (j = 0; j < devices - 1; j++)
 			{
-				const int dup_d = dup_tensor_idx[alias_ref * (devices - 1) + j] - 1;
+				const int dup_d = dup_tensor_idx[alias_ref * (devices - 1) + j];
 				CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
 				assert(dup_d >= 0);
 				// Get tensor symbol again, it may be invalid after added new symbol (we use it for ofs and inc).
@@ -139,7 +149,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 					.graph = graph,
 				}, tensor_symbol->ofs, tensor_symbol->inc, info, 0);
 				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
-				dup_tensor_idx[d * (devices - 1) + j] = new_symbol.d + 1;
+				dup_tensor_idx[d * (devices - 1) + j] = new_symbol.d;
 			}
 		} else {
 			for (j = 0; j < devices - 1; j++)
@@ -147,7 +157,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				CCV_TENSOR_SET_DEVICE_ID(info.type, j + 1); // Set the device id.
 				const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, info, 0);
 				ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
-				dup_tensor_idx[d * (devices - 1) + j] = new_symbol.d + 1;
+				dup_tensor_idx[d * (devices - 1) + j] = new_symbol.d;
 			}
 		}
 	}
@@ -186,7 +196,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			{
 				const int idx = exec_symbol->inputs[k];
 				if (idx >= 0)
-					inputs[k].d = dup_tensor_idx[idx * (devices - 1) + j] ? dup_tensor_idx[idx * (devices - 1) + j] - 1 : idx;
+					inputs[k].d = dup_tensor_idx[idx * (devices - 1) + j] >= 0 ? dup_tensor_idx[idx * (devices - 1) + j] : idx;
 				else
 					inputs[k].d = idx;
 				inputs[k].graph = idx != CCV_NNC_NO_TENSOR_SYMBOL ? graph : 0;
@@ -196,7 +206,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			{
 				const int idx = exec_symbol->outputs[k];
 				if (idx >= 0)
-					outputs[k].d = dup_tensor_idx[idx * (devices - 1) + j] ? dup_tensor_idx[idx * (devices - 1) + j] - 1 : idx;
+					outputs[k].d = dup_tensor_idx[idx * (devices - 1) + j] >= 0 ? dup_tensor_idx[idx * (devices - 1) + j] : idx;
 				else
 					outputs[k].d = idx;
 				outputs[k].graph = idx != CCV_NNC_NO_TENSOR_SYMBOL ? graph : 0;
@@ -283,7 +293,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			{
 				for (k = 0; k < input_size; k++)
 				{
-					const int idx = dup_tensor_idx[inputs[k].d * (devices - 1) + j] - 1;
+					const int idx = dup_tensor_idx[inputs[k].d * (devices - 1) + j];
 					assert(idx >= 0);
 					outputs[k].d = idx;
 					outputs[k].graph = graph;
@@ -343,7 +353,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 					for (k = 0; k < input_size; k++)
 					{
 						const int idx = gather_inputs[k];
-						inputs[k].d = dup_tensor_idx[idx * (devices - 1) + j] - 1;
+						inputs[k].d = dup_tensor_idx[idx * (devices - 1) + j];
 						assert(inputs[k].d >= 0);
 						inputs[k].graph = graph,
 						outputs[k].d = gather_tensor_idx[idx * devices + j + 1] - 1;
@@ -395,9 +405,9 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			{
 				for (k = 0; k < input_size; k++)
 				{
-					assert(dup_tensor_idx[inputs[k].d * (devices - 1) + j]);
+					assert(dup_tensor_idx[inputs[k].d * (devices - 1) + j] >= 0);
 					inputs[k].graph = graph;
-					outputs[k].d = dup_tensor_idx[inputs[k].d * (devices - 1) + j] - 1;
+					outputs[k].d = dup_tensor_idx[inputs[k].d * (devices - 1) + j];
 					outputs[k].graph = graph;
 				}
 				const ccv_nnc_graph_exec_symbol_t copy = ccv_nnc_graph_exec_symbol_new(graph, CMD_DATA_TRANSFER_FORWARD(), inputs, input_size, outputs, input_size, 0);
@@ -406,7 +416,6 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			}
 		}
 	}
-	ccfree(dup_tensor_idx);
 	ccv_array_free(dup_execs);
 	// Now everything is dup'ed, connect them all.
 	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), node, idx) {
@@ -471,4 +480,21 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	ccfree(gather_exec_idx);
 	ccfree(tensor_flags);
 	ccv_nnc_graph_visit_free(visit);
+}
+
+ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_for_data_parallel(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id)
+{
+	assert(graph->data_parallel.tensor_symbol_idx);
+	assert(symbol.d >= 0);
+	assert(symbol.d < graph->data_parallel.tensor_symbol_size);
+	if (device_id == 0)
+		return symbol;
+	const int devices = graph->data_parallel.devices;
+	if (graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id] < 0)
+		return NO_TENSOR_SYMBOL;
+	ccv_nnc_tensor_symbol_t tensor = {
+		.d = graph->data_parallel.tensor_symbol_idx[symbol.d * (devices - 1) + device_id],
+		.graph = graph,
+	};
+	return tensor;
 }

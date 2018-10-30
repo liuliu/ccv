@@ -1762,6 +1762,15 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
  * @param destination_size The size of destination node symbols array.
  */
 void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+/**
+ * Get the symbol that is on a device other than the default one. The list will be flushed if the
+ * ccv_nnc_symbolic_graph_data_parallel function is called again.
+ * @param graph The symbolic graph.
+ * @param symbol The tensor symbol we want to retrieve its counterparts on a different device.
+ * @param device_id The device numeric id for this symbol.
+ * @return A tensor symbol that is on a different device.
+ */
+CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_for_data_parallel(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id);
 
 /** @} */
 

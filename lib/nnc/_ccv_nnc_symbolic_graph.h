@@ -93,10 +93,12 @@ struct ccv_nnc_symbolic_graph_s {
 		int exec;
 	} reuse; // The reuse slot for tensor or graph exec symbols.
 	// Start for backward (automatic differentiation) handling
-	int backward_tensor_symbol_size;
-	int* backward_tensor_symbols;
-	int backward_exec_symbol_size;
-	int* backward_exec_symbols;
+	struct {
+		int tensor_symbol_size;
+		int* tensor_symbol_idx;
+		int exec_symbol_size;
+		int* exec_symbol_idx;
+	} backward;
 	// End of backward (automatic differentiation) handling.
 	// Hooks
 	struct {
@@ -113,6 +115,12 @@ struct ccv_nnc_symbolic_graph_s {
 			void* context;
 		} graph_exec_symbol_new;
 	} hooks;
+	// For parallel, get duplicated tensors.
+	struct {
+		int devices;
+		int tensor_symbol_size;
+		int* tensor_symbol_idx;
+	} data_parallel;
 };
 
 struct ccv_nnc_tensor_arena_s {

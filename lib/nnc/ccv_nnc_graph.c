@@ -583,15 +583,15 @@ static int _ccv_nnc_device_id_for_exec(const ccv_nnc_graph_exec_info_t* const ex
 	// The device id of the exec is determined by its outputs.
 	for (i = 0; i < exec_info->output_size; i++)
 		if (exec_info->outputs[i] &&
-			CCV_TENSOR_GET_MEMORY(exec_info->outputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
-			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type) < device_id))
-			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->type);
+			CCV_TENSOR_GET_MEMORY(exec_info->outputs[i]->info.type) == CCV_TENSOR_GPU_MEMORY &&
+			(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->info.type) < device_id))
+			device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->outputs[i]->info.type);
 	if (device_id < 0)
 		for (i = 0; i < exec_info->input_size; i++)
 			if (exec_info->inputs[i] &&
-				CCV_TENSOR_GET_MEMORY(exec_info->inputs[i]->type) == CCV_TENSOR_GPU_MEMORY &&
-				(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type) < device_id))
-				device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->type);
+				CCV_TENSOR_GET_MEMORY(exec_info->inputs[i]->info.type) == CCV_TENSOR_GPU_MEMORY &&
+				(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->info.type) < device_id))
+				device_id = CCV_TENSOR_GET_DEVICE_ID(exec_info->inputs[i]->info.type);
 	return device_id >= 0 ? device_id : 0; // The default one.
 }
 
@@ -914,7 +914,7 @@ ccv_nnc_stream_context_t* ccv_nnc_graph_default_stream(const ccv_nnc_graph_t* co
 	return 0;
 }
 
-static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, const int flags, FILE* out)
+static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_info_t* const exec_info, ccv_nnc_stream_context_t** const streams, const int flags, FILE* out)
 {
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		fputc('{', out);
@@ -924,7 +924,10 @@ static void _ccv_nnc_graph_dot_exec(const int index, const ccv_nnc_graph_exec_in
 		fputs("|Command: ", out);
 		fputs(ccv_nnc_cmd_name(exec_info->cmd.cmd), out);
 		if (exec_info->schedule.stream >= 0)
-			fprintf(out, "|Stream: %d", exec_info->schedule.stream);
+		{
+			const int device_id = streams ? CCV_TENSOR_GET_DEVICE_ID(streams[exec_info->schedule.stream]->type) : 0;
+			fprintf(out, "|Stream: %d (d%d)", exec_info->schedule.stream, device_id);
+		}
 		if (exec_info->schedule.sign >= 0)
 			fprintf(out, "|Signal: %d", exec_info->schedule.sign);
 		if (exec_info->schedule.wait_size > 0)
@@ -944,7 +947,7 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* c
 	// if it has an alias pointer, or, it is a long form.
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 		fputc('{', out);
-	int is_tensor_view = CCV_IS_TENSOR_VIEW(tensor);
+	const int is_tensor_view = CCV_IS_TENSOR_VIEW(tensor);
 	if (is_tensor_view)
 		fprintf(out, "tensorview%d", index);
 	else
@@ -956,7 +959,8 @@ static void _ccv_nnc_graph_dot_tensor(const int index, const ccv_nnc_tensor_t* c
 		fputs(" (t)", out);
 	if (flags == CCV_NNC_LONG_DOT_GRAPH)
 	{
-		fprintf(out, "|zone%d", zone);
+		const int device_id = CCV_TENSOR_GET_DEVICE_ID(tensor->info.type);
+		fprintf(out, "|d%d|zone%d", device_id, zone);
 		for (i = 0; i < depth; i++) // Print subscription to denote depth.
 			fputc('\'', out);
 		uintptr_t aptr = (uintptr_t)tensor->data.u8;
@@ -1209,10 +1213,10 @@ static void _ccv_nnc_graph_dot_tensor_multiview(const ccv_nnc_tensor_multiview_t
 		*tensor_index += _ccv_nnc_graph_dot_tensor_multiview_count(mv);
 }
 
-static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* const tensor_index)
+static void _ccv_nnc_graph_dot_node(const ccv_nnc_graph_exec_info_t* const exec_info, const int exec_index, ccv_nnc_stream_context_t** const streams, const ccv_nnc_tensor_dot_recovery_t recovery, const int flags, const int depth, FILE* out, int* const tensor_index)
 {
 	fprintf(out, "node%d [shape=record,label=\"", exec_index);
-	_ccv_nnc_graph_dot_exec(exec_index, exec_info, flags, out);
+	_ccv_nnc_graph_dot_exec(exec_index, exec_info, streams, flags, out);
 	int i;
 	int k = *tensor_index;
 	if (exec_info->input_size > 0)
@@ -1401,7 +1405,7 @@ static void _ccv_nnc_graph_dot_sub_graphs(const ccv_nnc_graph_exec_info_t* const
 			if (CCV_NNC_GRAPH_REF(exec_info)[0])
 				_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, depth + 1, out, &k, exec_index);
 			else {
-				_ccv_nnc_graph_dot_node(exec_info, *exec_index, recovery, flags, depth, out, &k);
+				_ccv_nnc_graph_dot_node(exec_info, *exec_index, graph->streams, recovery, flags, depth, out, &k);
 				++(*exec_index);
 			}
 		}
@@ -1449,7 +1453,7 @@ void ccv_nnc_graph_dot(const ccv_nnc_graph_t* const graph, const int flags, FILE
 		if (CCV_NNC_GRAPH_REF(exec_info)[0])
 			_ccv_nnc_graph_dot_sub_graphs(exec_info, recovery, graph->sub_graphs, flags, 1, out, &k, &c);
 		else {
-			_ccv_nnc_graph_dot_node(exec_info, c, recovery, flags, 0, out, &k);
+			_ccv_nnc_graph_dot_node(exec_info, c, graph->streams, recovery, flags, 0, out, &k);
 			++c;
 		}
 	}

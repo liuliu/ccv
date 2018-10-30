@@ -114,14 +114,14 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		for (i = 0; i < graph->breakpoint_size; i++)
 			new_graph->breakpoints[i].graph = new_graph;
 	}
-	if (graph->backward_tensor_symbols)
+	if (graph->backward.tensor_symbol_idx)
 	{
-		new_graph->backward_tensor_symbols = (int*)ccmalloc(sizeof(int) * (new_graph->backward_tensor_symbol_size + new_graph->backward_exec_symbol_size));
-		if (new_graph->backward_tensor_symbol_size > 0)
-			memcpy(new_graph->backward_tensor_symbols, graph->backward_tensor_symbols, sizeof(int) * new_graph->backward_tensor_symbol_size);
-		new_graph->backward_exec_symbols = new_graph->backward_tensor_symbols + new_graph->backward_tensor_symbol_size;
-		if (new_graph->backward_exec_symbol_size > 0)
-			memcpy(new_graph->backward_exec_symbols, graph->backward_exec_symbols, sizeof(int) * new_graph->backward_exec_symbol_size);
+		new_graph->backward.tensor_symbol_idx = (int*)ccmalloc(sizeof(int) * (new_graph->backward.tensor_symbol_size + new_graph->backward.exec_symbol_size));
+		if (new_graph->backward.tensor_symbol_size > 0)
+			memcpy(new_graph->backward.tensor_symbol_idx, graph->backward.tensor_symbol_idx, sizeof(int) * new_graph->backward.tensor_symbol_size);
+		new_graph->backward.exec_symbol_idx = new_graph->backward.tensor_symbol_idx + new_graph->backward.tensor_symbol_size;
+		if (new_graph->backward.exec_symbol_size > 0)
+			memcpy(new_graph->backward.exec_symbol_idx, graph->backward.exec_symbol_idx, sizeof(int) * new_graph->backward.exec_symbol_size);
 	}
 	if (subst)
 	{
@@ -1324,8 +1324,10 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
 			flag = fputs(" (0", out); // Output if it is zero init'ed.
 		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
-			if (flag)
-				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
+			flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
+		if (CCV_TENSOR_GET_MEMORY(symbol_info->info.type) == CCV_TENSOR_GPU_MEMORY &&
+			CCV_TENSOR_GET_DEVICE(symbol_info->info.type) != CCV_COMPUTE_DEVICE_ANY)
+			flag = (flag >= 0) ? fprintf(out, ",d%d", CCV_TENSOR_GET_DEVICE_ID(symbol_info->info.type)) : fprintf(out, " (d%d", CCV_TENSOR_GET_DEVICE_ID(symbol_info->info.type));
 		if (flag >= 0)
 			fputs(")", out);
 	}
@@ -1356,6 +1358,9 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 				flag = fputs(" (0", out); // Output if it is zero init'ed.
 			if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
 				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
+			if (CCV_TENSOR_GET_MEMORY(alias_info->info.type) == CCV_TENSOR_GPU_MEMORY &&
+				CCV_TENSOR_GET_DEVICE(alias_info->info.type) != CCV_COMPUTE_DEVICE_ANY)
+				flag = (flag >= 0) ? fprintf(out, ",d%d", CCV_TENSOR_GET_DEVICE_ID(alias_info->info.type)) : fprintf(out, " (d%d", CCV_TENSOR_GET_DEVICE_ID(alias_info->info.type));
 			if (flag >= 0)
 				fputs(")", out);
 		}
@@ -1710,8 +1715,10 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		ccfree(graph->breakpoints);
 	ccv_array_free(graph->tensor_symbol_info);
 	ccv_array_free(graph->exec_symbol_info);
-	if (graph->backward_tensor_symbols)
-		ccfree(graph->backward_tensor_symbols);
+	if (graph->backward.tensor_symbol_idx)
+		ccfree(graph->backward.tensor_symbol_idx);
+	if (graph->data_parallel.tensor_symbol_idx)
+		ccfree(graph->data_parallel.tensor_symbol_idx);
 	ccfree(graph);
 }
 

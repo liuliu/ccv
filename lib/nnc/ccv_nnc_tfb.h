@@ -49,7 +49,7 @@ enum {
 #define CCV_TENSOR_GET_MEMORY(type) ((type) & 0x3)
 #define CCV_TENSOR_GET_DEVICE(type) ((type) & 0xfff00)
 #define CCV_TENSOR_GET_DEVICE_ID(type) (CCV_TENSOR_GET_DEVICE(type) >> 8)
-#define CCV_TENSOR_SET_DEVICE_ID(type, device_id) (type) = (((type) & ~0xfff00) | ((device_id) & 0xfff << 8))
+#define CCV_TENSOR_SET_DEVICE_ID(type, device_id) (type) = (((type) & ~0xfff00) | (((device_id) & 0xfff) << 8))
 
 enum {
 	CCV_TENSOR_VIEW       = 0x01000000,
