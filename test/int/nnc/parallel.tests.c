@@ -38,10 +38,11 @@ TEST_CASE("schedule symbolic graph to data parallel")
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
 		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
+		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 16, 8), 0);
 		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "label");
 		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8), "y5");
 		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "loss");
-		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
+		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4a, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_tensor_symbol_t updated_params[4];
 		ccv_nnc_tensor_symbol_t gradients[4];
