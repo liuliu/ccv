@@ -429,7 +429,7 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size + sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size);
 	compiled_data->updated_trainables = (ccv_nnc_tensor_symbol_t*)(compiled_data->saved_aux + saved_aux_size * trainable_size);
 	compiled_data->update_execs = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->updated_trainables + trainable_size);
-	ccv_nnc_tensor_symbol_t* const gradients = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * trainable_size);
+	ccv_nnc_tensor_symbol_t* const gradients = parallel > 1 ? (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * trainable_size) : 0;
 	ccv_nnc_symbolic_graph_minimize(model->graph, compiled_data->minimizer, f, output_size, (ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, 0), trainable_size, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), gradients, compiled_data->updated_trainables, compiled_data->saved_aux, compiled_data->update_execs);
 	for (i = 0; i < output_size; i++)
 	{
@@ -440,7 +440,7 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS);
 	ccv_nnc_symbolic_graph_set_destinations(model->graph, compiled_data->update_execs, trainable_size);
-	if (compiled_data->parallel > 1)
+	if (parallel > 1)
 	{
 		ccv_nnc_symbolic_graph_data_parallel(model->graph, compiled_data->parallel,
 			(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, 0), trainable_size,
@@ -454,6 +454,7 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 				if (copy.d != CCV_NNC_NO_GRAPH_EXEC_SYMBOL)
 					compiled_data->dest_to_evals[compiled_data->dest_to_eval_size++] = copy;
 			}
+		ccfree(gradients);
 	}
 	compiled_data->gradient_init = 1;
 }
