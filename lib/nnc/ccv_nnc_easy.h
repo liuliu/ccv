@@ -72,6 +72,10 @@
  */
 #define NO_TENSOR_SYMBOL (ccv_nnc_tensor_symbol_t){.d = CCV_NNC_NO_TENSOR_SYMBOL}
 /**
+ * This represents a graph exec symbol that is empty (exec = nil)
+ */
+#define NO_GRAPH_EXEC_SYMBOL (ccv_nnc_graph_exec_symbol_t){.d = CCV_NNC_NO_GRAPH_EXEC_SYMBOL}
+/**
  * Pass a list of tensor symbols to NNC functions that accepts (tensor symbol array, tensor symbol array size).
  * This method effectively gives two parameters as one.
  */

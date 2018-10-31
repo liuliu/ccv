@@ -1719,6 +1719,8 @@ void ccv_nnc_symbolic_graph_free(ccv_nnc_symbolic_graph_t* const graph)
 		ccfree(graph->backward.tensor_symbol_idx);
 	if (graph->data_parallel.tensor_symbol_idx)
 		ccfree(graph->data_parallel.tensor_symbol_idx);
+	if (graph->data_parallel.exec_symbol_idx)
+		ccfree(graph->data_parallel.exec_symbol_idx);
 	ccfree(graph);
 }
 

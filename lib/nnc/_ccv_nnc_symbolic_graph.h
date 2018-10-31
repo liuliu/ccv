@@ -120,6 +120,8 @@ struct ccv_nnc_symbolic_graph_s {
 		int devices;
 		int tensor_symbol_size;
 		int* tensor_symbol_idx;
+		int exec_symbol_size;
+		int* exec_symbol_idx;
 	} data_parallel;
 };
 

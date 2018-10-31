@@ -771,6 +771,10 @@ enum {
 	CCV_NNC_WHILE_COUNT_TENSOR_SYMBOL = -2, /**< Special symbol reference for while loop count tensor. */
 };
 
+enum {
+	CCV_NNC_NO_GRAPH_EXEC_SYMBOL = -1, /**< Special symbol reference for no exec symbol. */
+};
+
 #define CCV_NNC_IS_WHILE_COUNT_TENSOR_SYMBOL(d) (((uint32_t)(d) & 0xf) == 0xe)
 
 /**
@@ -1776,6 +1780,15 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
  * @return A tensor symbol that is on a different device.
  */
 CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t symbol, const int device_id);
+/**
+ * Get the execution node that is on a device other than the default one. The list will be flushed
+ * if the ccv_nnc_symbolic_graph_data_parallel function is called again.
+ * @param graph The symbolic graph.
+ * @param symbol The execution node we want to retrieve its counterparts on a different device.
+ * @param device_id The device numeric id for this symbol.
+ * @return A execution node that is on a different device.
+ */
+CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id);
 
 /** @} */
 
@@ -2090,6 +2103,13 @@ enum {
  * @param fn The file name.
  */
 void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
+/**
+ * Apply data parallel to the composed model. This method has to be called before we call either
+ * evaluate or fit and after the model is compiled.
+ * @param model The composed model.
+ * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
+ */
+void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int parallel);
 /**
  * This method set the max workspace size. If the graph is already compiled. It will re-run
  * autotune to use the new workspace size to find the best algorithm.
