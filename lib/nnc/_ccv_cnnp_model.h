@@ -39,7 +39,7 @@ typedef struct {
 	int gradient_init; // Have init gradient graph.
 	int is_test;
 	int stream_type;
-	int parallel; // How many parallel devices.
+	int parallel_count; // How many parallel devices.
 	size_t workspace_size; // Set the default workspace size.
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;

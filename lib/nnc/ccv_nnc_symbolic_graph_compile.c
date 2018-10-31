@@ -110,16 +110,18 @@ static int _ccv_nnc_tensor_block_a_after_b_exclusively(const ccv_sparse_matrix_t
 {
 	assert(a);
 	assert(b);
-	int x, y;
+	int x, y, max_hop = 0;
 	for (x = 0; x < a->rnum; x++)
 		for (y = 0; y < b->rnum; y++)
 		{
 			ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, *(int*)ccv_array_get(a, x), *(int*)ccv_array_get(b, y));
 			if (!cell.i32 || cell.i32[0] == 0)
 				return 0;
+			max_hop = ccv_max(cell.i32[0], max_hop);
 		}
 	// We've entered this nested-for loop, therefore, it must be verifiably, deterministically after b now.
-	return (a->rnum > 0 && b->rnum > 0);
+	// The max hop also denotes if that is the case, how many hops, maximally speaking, we need to get from a to b.
+	return max_hop;
 }
 
 // If every a's head is deterministically after b's tail
