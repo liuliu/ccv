@@ -62,6 +62,7 @@ typedef union ccv_numeric_data_u {
 	int* i32;
 	float* f32;
 	int64_t* i64;
+	uint64_t* u64;
 	double* f64;
 	void* ptr; // Raw pointer
 } ccv_numeric_data_t;
