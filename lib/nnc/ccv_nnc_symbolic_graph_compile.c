@@ -195,6 +195,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				// Tensors that we actually need to allocate (exclude the alias).
 				++allocable_tensor_size;
 		}
+	ccv_sparse_matrix_t* tensor_df = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_sparse_matrix_t* tensor_dt = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	ccv_sparse_matrix_t* tensor_itf = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	// Overlap count.
 	for (i = 0; i < tensor_block_size; i++)
@@ -205,8 +207,18 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				// If any of the i's head is deterministically later than j's tail
 				// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
 				const uint8_t one = 1;
-				int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
-				int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
+				const int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
+				if (i_hop_j > 0)
+				{
+					ccv_set_sparse_matrix_cell(tensor_dt, i, j, &i_hop_j);
+					ccv_set_sparse_matrix_cell(tensor_df, j, i, &i_hop_j);
+				}
+				const int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
+				if (j_hop_i > 0)
+				{
+					ccv_set_sparse_matrix_cell(tensor_dt, j, i, &j_hop_i);
+					ccv_set_sparse_matrix_cell(tensor_df, i, j, &j_hop_i);
+				}
 				// It cannot be that both i can hop to j can j can hop to i.
 				assert(!(i_hop_j > 0 && j_hop_i > 0));
 				if (!i_hop_j && !j_hop_i)
@@ -309,10 +321,11 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			int q = a.index;
 			if (a.companion >= 0)
 			{
-				const int a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
-				const int c_hop_a = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.index], tensor_blocks[a.companion]);
-				assert((a_hop_c > 0 && c_hop_a == 0) || (a_hop_c == 0 && c_hop_a > 0));
-				if (a_hop_c > 0)
+				const ccv_numeric_data_t a_hop_c = ccv_get_sparse_matrix_cell(tensor_dt, a.companion, a.index);
+				const ccv_numeric_data_t c_hop_a = ccv_get_sparse_matrix_cell(tensor_dt, a.index, a.companion);
+				assert((a_hop_c.i32 && a_hop_c.i32[0] > 0 && (c_hop_a.i32 == 0 || c_hop_a.i32[0] == 0)) ||
+						((a_hop_c.i32 == 0 || a_hop_c.i32[0] == 0) && c_hop_a.i32 && c_hop_a.i32[0] > 0));
+				if (a_hop_c.i32 && a_hop_c.i32[0] > 0)
 					q = a.companion;
 				else
 					p = a.companion;
@@ -321,17 +334,17 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			{
 				const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 				assert(a.companion != companion_ref);
-				const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[companion_ref]);
-				if (b_hop_p > 0)
+				const ccv_numeric_data_t b_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, p, companion_ref);
+				if (b_hop_p.i32 && b_hop_p.i32[0] > 0)
 					p = companion_ref;
 				else {
-					const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[q]);
-					if (q_hop_b > 0)
+					const ccv_numeric_data_t q_hop_b = ccv_get_sparse_matrix_cell(tensor_dt, companion_ref, q);
+					if (q_hop_b.i32 && q_hop_b.i32[0] > 0)
 						q = companion_ref;
 					else { // Otherwise, b is in between p and q.
-						const int p_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[p]);
-						const int b_hop_q = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[q], tensor_blocks[companion_ref]);
-						assert(p_hop_b > 0 && b_hop_q > 0);
+						const ccv_numeric_data_t p_hop_b = ccv_get_sparse_matrix_cell(tensor_dt, companion_ref, p);
+						const ccv_numeric_data_t b_hop_q = ccv_get_sparse_matrix_cell(tensor_dt, q, companion_ref);
+						assert(p_hop_b.i32 && p_hop_b.i32[0] > 0 && b_hop_q.i32 && b_hop_q.i32[0] > 0);
 					}
 				}
 			}
@@ -345,8 +358,20 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					(y == 0 || tensor_blocks[y - 1].type == type) /* check the tensor block type matches. */ && \
 					(x == tensor_block_size + 1 || tensor_blocks[x - 1].type == type)) \
 				{ \
-					int y_hop_p = (y == 0) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[p], tensor_blocks[y - 1]); \
-					int q_hop_x = (x == tensor_block_size + 1) ? exec_dep->rows : _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[x - 1], tensor_blocks[q]); \
+					int y_hop_p; \
+					if (y == 0) \
+						y_hop_p = exec_dep->rows; \
+					else { \
+						const ccv_numeric_data_t hop = ccv_get_sparse_matrix_cell(tensor_dt, p, y - 1); \
+						y_hop_p = hop.i32 ? hop.i32[0] : 0; \
+					} \
+					int q_hop_x; \
+					if (x == tensor_block_size + 1) \
+						q_hop_x = exec_dep->rows; \
+					else { \
+						const ccv_numeric_data_t hop = ccv_get_sparse_matrix_cell(tensor_dt, x - 1, q); \
+						q_hop_x = hop.i32 ? hop.i32[0] : 0; \
+					} \
 					int hop = y_hop_p + q_hop_x; \
 					/* a.index doesn't overlap with y and x (in between) */ \
 					if ((y == 0 || y_hop_p) && (x == tensor_block_size + 1 || q_hop_x) && hop < min_hop) \
@@ -396,8 +421,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		// Assign out companion as well.
 		if (a.companion >= 0)
 		{
-			const int a_hop_c = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[a.companion], tensor_blocks[a.index]);
-			if (a_hop_c > 0)
+			const ccv_numeric_data_t a_hop_c = ccv_get_sparse_matrix_cell(tensor_dt, a.companion, a.index);
+			if (a_hop_c.i32 && a_hop_c.i32[0] > 0)
 				strings[1] = a.companion + 1;
 			else {
 				strings[1] = strings[0];
@@ -410,15 +435,15 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		{
 			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 			assert(tensor_blocks[a.index].type == tensor_blocks[companion_ref].type);
-			const int b_hop_p = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[strings[0] - 1], tensor_blocks[companion_ref]);
-			if (b_hop_p > 0)
+			const ccv_numeric_data_t b_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, strings[0] - 1, companion_ref);
+			if (b_hop_p.i32 && b_hop_p.i32[0] > 0)
 			{
 				for (i = 0; i < string_size; i++)
 					strings[i + 1] = strings[i];
 				strings[0] = companion_ref + 1;
 			} else {
-				const int q_hop_b = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[companion_ref], tensor_blocks[strings[string_size - 1] - 1]);
-				if (q_hop_b > 0)
+				const ccv_numeric_data_t q_hop_b = ccv_get_sparse_matrix_cell(tensor_dt, companion_ref, strings[string_size - 1] - 1);
+				if (q_hop_b.i32 && q_hop_b.i32[0] > 0)
 					strings[string_size] = companion_ref + 1;
 				else {
 					// Because b_hop_p is 0, q_hop_b is nil, p != q, and b must in between p and q. Therefore, I must have 2 allocations.
@@ -496,6 +521,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		j += string_size;
 	}
 	ccv_array_free(opt);
+	ccv_matrix_free(tensor_df);
+	ccv_matrix_free(tensor_dt);
 	ccv_matrix_free(tensor_itf);
 #define for_block(y, x, val) do { \
 		if (((uint64_t*)val)[0] > 0 && y > 0 && x < tensor_block_size + 1) \
