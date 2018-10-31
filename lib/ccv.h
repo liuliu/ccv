@@ -750,6 +750,13 @@ ccv_sparse_matrix_t* ccv_get_sparse_matrix(ccv_matrix_t* mat);
  */
 ccv_sparse_matrix_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix_t* mat, int i);
 /**
+ * Get cell for a vector of a sparse matrix.
+ * @param mat The sparse matrix.
+ * @param vector The vector.
+ * @param index The index of the cell.
+ */
+ccv_numeric_data_t ccv_get_sparse_matrix_cell_from_vector(const ccv_sparse_matrix_t* mat, ccv_sparse_matrix_vector_t* vector, int i);
+/**
  * Get cell from a sparse matrix.
  * @param mat The sparse matrix.
  * @param row The row index.

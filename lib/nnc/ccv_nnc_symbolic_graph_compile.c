@@ -407,21 +407,25 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				}
 			}
 			for (y = 0; y < y_size; y++)
-				for (x = 0; x < x_size; x++)
-				{
-					const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell(alloc, y_buf[y], x_buf[x]);
-					if (val.u64 && val.u64[0] >= a.size)
+			{
+				ccv_sparse_matrix_vector_t* const y_vector = ccv_get_sparse_matrix_vector(alloc, y_buf[y]);
+				if (y_vector)
+					for (x = 0; x < x_size; x++)
 					{
-						const ccv_numeric_data_t y_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, p, y_buf[y] - 1);
-						const ccv_numeric_data_t q_hop_x = ccv_get_sparse_matrix_cell(tensor_dt, x_buf[x] - 1, q);
-						assert(y_hop_p.i32 && y_hop_p.i32[0] > 0);
-						assert(q_hop_x.i32 && q_hop_x.i32[0] > 0);
-						const int hop = y_hop_p.i32[0] + q_hop_x.i32[0];
-						if (hop < min_hop)
-							min_y = y_buf[y], min_x = x_buf[x], min_hop = hop,
-								min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						const ccv_numeric_data_t val = ccv_get_sparse_matrix_cell_from_vector(alloc, y_vector, x_buf[x]);
+						if (val.u64 && val.u64[0] >= a.size)
+						{
+							const ccv_numeric_data_t y_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, p, y_buf[y] - 1);
+							const ccv_numeric_data_t q_hop_x = ccv_get_sparse_matrix_cell(tensor_dt, x_buf[x] - 1, q);
+							assert(y_hop_p.i32 && y_hop_p.i32[0] > 0);
+							assert(q_hop_x.i32 && q_hop_x.i32[0] > 0);
+							const int hop = y_hop_p.i32[0] + q_hop_x.i32[0];
+							if (hop < min_hop)
+								min_y = y_buf[y], min_x = x_buf[x], min_hop = hop,
+									min_val[0] = val.u64[0], min_val[1] = val.u64[1];
+						}
 					}
-				}
+			}
 			// If I found a place, stop, and exit.
 			if (min_y > 0 || min_x < tensor_block_size + 1)
 			{

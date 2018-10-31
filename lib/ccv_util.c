@@ -576,14 +576,10 @@ ccv_sparse_matrix_vector_t* ccv_get_sparse_matrix_vector(const ccv_sparse_matrix
 	return 0;
 }
 
-ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t* mat, int row, int col)
+ccv_numeric_data_t ccv_get_sparse_matrix_cell_from_vector(const ccv_sparse_matrix_t* mat, ccv_sparse_matrix_vector_t* vector, int vidx)
 {
 	ccv_numeric_data_t cell = {}; // zero-init.
-	ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(mat, (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row);
-	if (!vector || !vector->rnum)
-		return cell;
 	const size_t cell_size = CCV_GET_DATA_TYPE_SIZE(mat->type) * CCV_GET_CHANNEL(mat->type);
-	const int vidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? row : col;
 	if (mat->type & CCV_DENSE_VECTOR)
 	{
 		cell.u8 = vector->data.u8 + cell_size * vidx;
@@ -626,6 +622,15 @@ ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t* mat, in
 			return cell;
 		}
 	}
+}
+
+ccv_numeric_data_t ccv_get_sparse_matrix_cell(const ccv_sparse_matrix_t* mat, int row, int col)
+{
+	ccv_sparse_matrix_vector_t* vector = ccv_get_sparse_matrix_vector(mat, (mat->major == CCV_SPARSE_COL_MAJOR) ? col : row);
+	if (!vector || !vector->rnum)
+		return (ccv_numeric_data_t){};
+	const int vidx = (mat->major == CCV_SPARSE_COL_MAJOR) ? row : col;
+	return ccv_get_sparse_matrix_cell_from_vector(mat, vector, vidx);
 }
 
 static void _ccv_sparse_matrix_vector_inc_size(const ccv_sparse_matrix_t* const mat, ccv_sparse_matrix_vector_t* const vector)
