@@ -72,8 +72,10 @@ typedef struct {
 	uint64_t size;
 } ccv_nnc_tensor_opt_t;
 
-#define more_than(i1, i2, aux) (((i1).size > (i2).size) || ((i1).size == (i2).size && (i1).oc >= (i2).oc))
-static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
+// We first sort the same type together (because they won't be reused at all.
+// And then we sort by size, after that, sort by oc.
+#define more_than(i1, i2, aux) (((i1).type < (i2).type) || ((i1).type == (i2).type && ((i1).size > (i2).size) || ((i1).size == (i2).size && (i1).oc >= (i2).oc)))
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_type_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
 // If b has items overlap with a, a is still after b (inclusive).
@@ -305,8 +307,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					ccv_array_push(opt, &b);
 				}
 		}
-		// Order opt array by the size.
-		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
+		// Order opt array by the type, size and then oc.
+		_ccv_nnc_tensor_opt_sort_by_type_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
 		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;
 		uint64_t min_val[2] = {
