@@ -253,8 +253,12 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		// Find the one with largest overlap, and it is not assigned.
 		int max_oc = 0;
 		ccv_array_clear(opt);
+		int current_type = 0; // Deal with one type at a time.
 		for (i = 0; i < tensor_block_size; i++)
-			if (oc[i] >= max_oc && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && !assigned[i] && IS_PRIMARY_COMPANION(i, tensor_blocks[i]))
+			if (oc[i] >= max_oc &&
+				TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && !assigned[i] &&
+				IS_PRIMARY_COMPANION(i, tensor_blocks[i]) &&
+				(!current_type || tensor_blocks[i].type == current_type))
 			{
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_blocks[i].size,
@@ -263,6 +267,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					.oc = oc[i],
 					.type = tensor_blocks[i].type,
 				};
+				assert(a.type);
+				current_type = a.type; // Now we now the primary type we should deal with.
 				if (tensor_blocks[i].companion_ref)
 				{
 					const int companion_ref = tensor_blocks[i].companion_ref - 1;
@@ -286,7 +292,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
-				if (k != a.index && !tensor_blocks[k].companion_ref && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size && tensor_blocks[k].type == a.type)
+				if (k != a.index && !tensor_blocks[k].companion_ref &&
+					TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] &&
+					tensor_blocks[k].size > a.size && tensor_blocks[k].type == a.type)
 				{
 					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
 					// Good, push to opt array.
