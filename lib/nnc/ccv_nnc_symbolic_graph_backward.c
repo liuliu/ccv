@@ -1520,49 +1520,39 @@ static void _ccv_nnc_symbolic_graph_add_init_zeros(const ccv_nnc_symbolic_graph_
 	}
 }
 
-static void _ccv_nnc_symbolic_graph_add_tape_vars(const ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep, const ccv_nnc_graph_exec_symbol_info_t* const forw_exec, ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, ccv_array_t* const symbols)
+static void _ccv_nnc_symbolic_graph_add_tape_vars(const ccv_nnc_symbolic_graph_backward_prep_t* const sub_prep, ccv_nnc_symbolic_graph_t* const root, ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const sub_graph, ccv_array_t* const symbols)
 {
-	int i, j;
+	int i;
 	for (i = 0; i < sub_graph->tensor_symbol_info->rnum; i++)
 	{
 		const ccv_nnc_tensor_symbol_info_t* const symbol_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(sub_graph->tensor_symbol_info, i);
 		if ((symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR) && symbol_info->peer_ref)
 		{
 			const int peer_ref = symbol_info->peer_ref - 1;
-			if (sub_prep->tensor_symbol_info[peer_ref].p_ref)
+			const ccv_nnc_tensor_symbol_t root_symbol = ccv_nnc_tensor_symbol_resolve(root, (ccv_nnc_tensor_symbol_t){
+				.d = peer_ref,
+				.graph = sub_prep->graph,
+			});
+			if (root_symbol.d >= 0)
 			{
-				const int p_ref = sub_prep->tensor_symbol_info[peer_ref].p_ref - 1;
-				int flag = 0;
-				// This is only relevant if p_ref is in the input.
-				// The reason why output is irrelevant is because if output is ever used
-				// in backward graph, it has to be generated in the forward graph. If
-				// it is generated, it has to be already on the tape. Thus, keeping it
-				// longer doesn't make any sense.
-				// For input, we need to maintain this tensor until the backward graph
-				// because the input is not recorded on the tape, only the write is
-				// recorded on the tape (the pointer is kept on the tape, but the tape
-				// doesn't generate the data region and doesn't maintain that region).
-				// Therefore, can be retrieved later.
-				for (j = 0; !flag && j < forw_exec->input_size; j++)
-					flag = (forw_exec->inputs[j] == p_ref);
-				if (flag)
+				ccv_nnc_tensor_symbol_hookup(root, sub_graph, root_symbol, (ccv_nnc_tensor_symbol_t){
+					.d = i,
+					.graph = sub_graph,
+				});
+				if (symbols)
 				{
-					ccv_nnc_tensor_symbol_t p_symbol = {
-						.d = p_ref,
-						.graph = graph,
-					};
-					ccv_array_push(symbols, &p_symbol);
-					ccv_nnc_tensor_symbol_hookup(graph, sub_graph, p_symbol, (ccv_nnc_tensor_symbol_t){
+					const ccv_nnc_tensor_symbol_t p_symbol = ccv_nnc_tensor_symbol_resolve(graph, (ccv_nnc_tensor_symbol_t){
 						.d = i,
 						.graph = sub_graph,
 					});
+					ccv_array_push(symbols, &p_symbol);
 				}
 			}
 		}
 	}
 }
 
-static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph)
+static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_backward_prep_t* const backward_prep, const ccv_nnc_tensor_symbol_t* const f_symbols, const int f_symbol_size, const ccv_nnc_tensor_symbol_t* const wrt_symbols, const int wrt_symbol_size, ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_t* const root)
 {
 	assert(graph == backward_prep->graph || graph->peer == backward_prep->graph);
 	const int exec_symbol_info_size = backward_prep->exec_symbol_info_size;
@@ -1624,7 +1614,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 			if (!sub_f_symbols)
 				sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 			_ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(forw_exec, sub_prep->graph, graph_ref, tensor_symbol_info, back_info->input_bitmasks, back_info->output_bitmasks, sub_f_symbols, sub_wrt_symbols);
-			_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
+			_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph, root);
 			back_exec->symbol = ccv_nnc_symbolic_graph_while(graph, back_exec->cmd.cmd, sub_graph, forw_exec->name);
 			if (!sub_execs)
 				sub_execs = ccv_array_new(sizeof(ccv_nnc_graph_exec_symbol_t), 0, 0);
@@ -1646,7 +1636,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 					ccv_array_push(symbols, &(((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->inputs[j]))->symbol));
 			// Find whether in the wrt symbols, anything we need to init to zero, if there are, these need to be inputs here too.
 			_ccv_nnc_symbolic_graph_add_init_zeros(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, graph, sub_graph, symbols);
-			_ccv_nnc_symbolic_graph_add_tape_vars(sub_prep, forw_exec, graph, sub_graph, symbols);
+			_ccv_nnc_symbolic_graph_add_tape_vars(sub_prep, root, graph, sub_graph, symbols);
 			// input_size at this point, may be different from the back_exec->input_size, the reason is because we may added zeroing tensors as input tensors.
 			const int input_size = symbols->rnum;
 			for (j = 0; j < back_exec->output_size; j++)
@@ -1705,7 +1695,7 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 				if (!sub_f_symbols)
 					sub_f_symbols = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
 				_ccv_nnc_symbolic_graph_backward_prep_sub_f_wrt_symbols(forw_exec, sub_prep->graph, graph_ref, tensor_symbol_info, back_info->input_bitmasks, back_info->output_bitmasks, sub_f_symbols, sub_wrt_symbols);
-				_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph);
+				_ccv_nnc_symbolic_graph_backward_gen(sub_prep, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_f_symbols, 0), sub_f_symbols->rnum, (ccv_nnc_tensor_symbol_t*)ccv_array_get(sub_wrt_symbols, 0), sub_wrt_symbols->rnum, sub_graph, root);
 				ccv_array_clear(symbol_map);
 				k = 0;
 				for (j = 0; j < back_exec->output_size; j++)
@@ -1753,6 +1743,8 @@ static void _ccv_nnc_symbolic_graph_backward_gen(const ccv_nnc_symbolic_graph_ba
 						ccv_nnc_tensor_symbol_hookup(graph, sub_graph, ((ccv_nnc_autograd_tensor_symbol_t*)ccv_array_get(autograd_tensor_symbols, back_exec->inputs[j]))->symbol, autograd_symbol->symbol);
 						++k;
 					}
+				// Need to make sure tape vars are hooked up.
+				_ccv_nnc_symbolic_graph_add_tape_vars(sub_prep, root, graph, sub_graph, 0);
 			}
 		} else {
 			ccv_array_clear(symbols);
@@ -1966,7 +1958,7 @@ void ccv_nnc_symbolic_graph_backward(ccv_nnc_symbolic_graph_t* const graph, cons
 	ccv_nnc_symbolic_graph_backward_prep_t backward_prep = _ccv_nnc_symbolic_graph_backward_prep(graph, sources, source_size, destinations, destination_size);
 	_ccv_nnc_symbolic_graph_backward_prep_prune_ops(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, sources, source_size, destinations, destination_size);
 	_ccv_nnc_symbolic_graph_backward_prep_gen(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, 0, sources, source_size, destinations, destination_size);
-	_ccv_nnc_symbolic_graph_backward_gen(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, graph);
+	_ccv_nnc_symbolic_graph_backward_gen(&backward_prep, f_symbols, f_symbol_size, wrt_symbols, wrt_symbol_size, graph, graph);
 	_ccv_nnc_symbolic_graph_backward_prep_free(backward_prep);
 }
 

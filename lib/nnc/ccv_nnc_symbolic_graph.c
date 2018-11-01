@@ -599,6 +599,7 @@ int ccv_nnc_tensor_symbol_map_raw(ccv_nnc_symbolic_graph_t* const graph, const c
 
 void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv_nnc_symbolic_graph_t* const dest_graph, const ccv_nnc_tensor_symbol_t src_tensor_symbol, const ccv_nnc_tensor_symbol_t dest_tensor_symbol)
 {
+	assert(src_graph != dest_graph);
 	assert(src_graph->p == dest_graph || dest_graph->p == src_graph);
 	assert(src_tensor_symbol.d >= 0);
 	assert(dest_tensor_symbol.d >= 0);
@@ -614,19 +615,35 @@ void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv
 			.graph = dest_graph,
 			.d = _ccv_nnc_symbolic_graph_map_tensor_symbol(dest_graph, sub_tensor_symbol, MAP_TENSOR_USE_AS_OUTPUT),
 		};
+	ccv_nnc_symbolic_graph_t* curr_graph = src_graph;
+	while (curr_graph && curr_graph != dest_graph)
+		curr_graph = curr_graph->p;
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_symbolic_graph_t* sub_graph;
-	if (src_graph->p == dest_graph)
+	int map_use;
+	if (curr_graph)
 	{
+		// src_graph is the sub graph, dest_graph is the parent graph.
 		graph = dest_graph;
 		sub_graph = src_graph;
 		// Swap tensor_symbol and sub_tensor_symbol
 		ccv_nnc_tensor_symbol_t x;
 		CCV_SWAP(tensor_symbol, sub_tensor_symbol, x);
+		map_use = MAP_TENSOR_USE_AS_OUTPUT;
 	} else {
-		assert(dest_graph->p == src_graph);
 		graph = src_graph;
 		sub_graph = dest_graph;
+		map_use = MAP_TENSOR_USE_AS_INPUT;
+	}
+	ccv_nnc_symbolic_graph_t* p_graph = sub_graph;
+	while (p_graph && p_graph->p != graph)
+		p_graph = p_graph->p;
+	assert(p_graph);
+	if (p_graph != sub_graph)
+	{
+		sub_tensor_symbol.d = _ccv_nnc_symbolic_graph_map_tensor_symbol(p_graph, sub_tensor_symbol, map_use);
+		sub_tensor_symbol.graph = p_graph;
+		sub_graph = p_graph;
 	}
 	assert(tensor_symbol.d < graph->tensor_symbol_info->rnum);
 	assert(sub_tensor_symbol.d < sub_graph->tensor_symbol_info->rnum);
@@ -645,6 +662,16 @@ void ccv_nnc_tensor_symbol_hookup(ccv_nnc_symbolic_graph_t* const src_graph, ccv
 	const int s_idx = *(int*)ccv_array_get(tensor_info->s_ref, p_idx);
 	assert(s_idx == 0); // Otherwise it is assigned before
 	*(int*)ccv_array_get(tensor_info->s_ref, p_idx) = sub_tensor_symbol.d + 1;
+	ccv_nnc_graph_exec_symbol_info_t* const exec_symbol_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, sub_graph->exec_idx - 1);
+	switch (map_use)
+	{
+		case MAP_TENSOR_USE_AS_INPUT:
+			_ccv_nnc_graph_exec_add_input_if_needed(exec_symbol_info, tensor_symbol.d);
+			break;
+		case MAP_TENSOR_USE_AS_OUTPUT:
+			_ccv_nnc_graph_exec_add_output_if_needed(exec_symbol_info, tensor_symbol.d);
+			break;
+	}
 }
 
 void ccv_nnc_tensor_symbol_set_bypasses(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_map_t* const symbol_map, const int symbol_map_size)
@@ -1526,8 +1553,8 @@ static void _ccv_nnc_symbolic_graph_dot_case_of_label(const ccv_nnc_graph_exec_s
 	fputs("</td></tr>", out);
 	if (exec_symbol_info->input_size > 0)
 	{
-		fprintf(out, "<tr><td rowspan=\"%d\">Input</td>", ccv_min(exec_symbol_info->input_size, exec_symbol_info->output_size));
-		for (i = 0; i < ccv_min(exec_symbol_info->input_size, exec_symbol_info->output_size); i++)
+		fprintf(out, "<tr><td rowspan=\"%d\">Input</td>", exec_symbol_info->input_size);
+		for (i = 0; i < exec_symbol_info->input_size; i++)
 		{
 			if (i > 0)
 				fputs("<tr>", out);
