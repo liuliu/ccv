@@ -283,7 +283,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			// Copy it out, because after insertion, it may hold invalid pointer.
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
 			assert(a.companion == -1);
-			const int companion_ref = tensor_blocks[i].companion_ref - 1;
+			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
 				if (k != a.index && !tensor_blocks[k].companion_ref && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] && tensor_blocks[k].size > a.size && tensor_blocks[k].type == a.type)
