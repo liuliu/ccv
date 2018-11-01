@@ -1143,6 +1143,12 @@ void ccv_nnc_graph_exec_symbol_io(const ccv_nnc_symbolic_graph_t* const graph, c
  */
 void ccv_nnc_graph_exec_symbol_to(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int** const tos, int* const to_size);
 /**
+ * Find the size allocated on the opaque tensor arena structure.
+ * @param tensor_arena The tensor arena object generated through compilation.
+ * @return The total allocated size in bytes.
+ */
+CCV_WARN_UNUSED(uint64_t) ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_arena);
+/**
  * Function prototype for tensor symbol creation callback.
  */
 typedef void(*ccv_nnc_tensor_symbol_new_hook_f)(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_param_t info, const char* const name);

@@ -74,8 +74,8 @@ typedef struct {
 
 // We first sort the same type together (because they won't be reused at all.
 // And then we sort by size, after that, sort by oc.
-#define more_than(i1, i2, aux) ((i1).oc >= (i2).oc)
-static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_oc, ccv_nnc_tensor_opt_t, more_than)
+#define more_than(i1, i2, aux) (((i1).size > (i2).size) || ((i1).size == (i2).size && (i1).oc >= (i2).oc))
+static CCV_IMPLEMENT_QSORT(_ccv_nnc_tensor_opt_sort_by_size_and_oc, ccv_nnc_tensor_opt_t, more_than)
 #undef more_than
 
 // If b has items overlap with a, a is still after b (inclusive).
@@ -318,24 +318,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					ccv_array_push(opt, &b);
 				}
 		}
-		// Filter out opt array if the size is smaller than the max size we have. The reason is because
-		// if we cannot accommodate the larger sizes, no matter how many smaller sizes we allocated,
-		// we still cannot accommodate the larger sizes. Thus, allocate the larger sizes only for now.
-		for (i = 0; i < opt->rnum;)
-		{
-			ccv_nnc_tensor_opt_t* a = (ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
-			if (a->size == max_size)
-				++i;
-			else {
-				assert(a->size < max_size);
-				// We don't care the order, so just move the one from the end to the current position and move on.
-				if (i < opt->rnum - 1)
-					*a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, opt->rnum - 1);
-				--opt->rnum;
-			}
-		}
 		// Order opt array by the oc because type and size should be equal at this point.
-		_ccv_nnc_tensor_opt_sort_by_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
+		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
 		int min_y = 0, min_x = tensor_block_size + 1, min_i = -1, min_hop = exec_dep->rows * 3;
 		uint64_t min_val[2] = {
@@ -3860,6 +3844,15 @@ void ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena
 	assert(tensor_arena->graph_ref == (intptr_t)symbol.graph);
 	assert(symbol.d < tensor_arena->vt_tensor_size);
 	tensor_arena->vt_tensors[symbol.d]->data.ptr = tensor->data.ptr;
+}
+
+uint64_t ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_arena)
+{
+	uint64_t total_size = 0;
+	int i;
+	for (i = 0; i < tensor_arena->buffer_size; i++)
+		total_size += tensor_arena->buffers[i].size;
+	return total_size;
 }
 
 void ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_arena)
