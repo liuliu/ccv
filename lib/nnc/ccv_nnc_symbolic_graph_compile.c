@@ -250,8 +250,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	ccv_array_t* opt = ccv_array_new(sizeof(ccv_nnc_tensor_opt_t), 1, 0);
 	for (j = 0; j < allocable_tensor_size;)
 	{
-		// Find the one with largest overlap, and it is not assigned.
+		// Find the one with largest overlap (in case overlap is the same, larger size), and it is not assigned.
 		int max_oc = 0;
+		uint64_t max_size = 0;
 		ccv_array_clear(opt);
 		int current_type = 0; // Deal with one type at a time.
 		for (i = 0; i < tensor_block_size; i++)
@@ -276,21 +277,19 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					a.oc += oc[companion_ref];
 				}
 				// In case we have a tie, take them all in the array.
-				if (a.oc > max_oc)
-					ccv_array_clear(opt), max_oc = a.oc;
+				if (a.oc > max_oc || (a.oc == max_oc && a.size > max_size))
+					ccv_array_clear(opt), max_oc = a.oc, max_size = a.size;
 				ccv_array_push(opt, &a);
 			}
 		assert(opt->rnum > 0);
 		// Go through opt array, find all tensors that doesn't interfere with it, and have tensor size larger than it.
 		// Push them with the "companion" into the opt array as well.
 		const int rnum = opt->rnum;
-		uint64_t max_size = 0;
 		for (i = 0; i < rnum; i++)
 		{
 			// Copy it out, because after insertion, it may hold invalid pointer.
 			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
 			assert(a.companion == -1);
-			max_size = ccv_max(max_size, a.size);
 			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 			for (k = 0; k < tensor_block_size; k++)
 				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
@@ -314,7 +313,6 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					b.companion = k;
 					b.oc = a.oc + oc[k];
 					b.size = tensor_blocks[k].size;
-					max_size = ccv_max(max_size, b.size);
 					ccv_array_push(opt, &b);
 				}
 		}
