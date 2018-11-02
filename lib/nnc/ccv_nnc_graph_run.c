@@ -366,7 +366,12 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		int i;
 		for (i = 0; i < node->schedule.wait_size; i++)
 			ccv_nnc_stream_context_wait_signal(node_stream, graph->signals[node->schedule.waits[i]]);
+		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
+		for (i = 0; i < node->input_size; i++)
+			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0));
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
+		for (i = 0; i < node->output_size; i++)
+			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
 		if (node->schedule.sign >= 0)
 			ccv_nnc_stream_context_emit_signal(node_stream, graph->signals[node->schedule.sign]);
 	}
