@@ -694,6 +694,32 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	// Algorithm to allocate signals and streams for this graph.
 	ccv_array_t* const empty_streams = ccv_array_new(sizeof(int), 0, 0);
 	ccv_array_t* const stream_data = ccv_array_new(sizeof(ccv_nnc_stream_data_t), 0, 0);
+	ccv_array_t** const outgoings = cccalloc(exec_info_size, sizeof(ccv_array_t*));
+	// Filter out outgoing nodes that we will be able to access it afterwards anyway.
+	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
+		if (node->outgoings)
+		{
+			outgoings[idx] = ccv_array_new(sizeof(int), 0, 0);
+			for (i = 0; i < node->outgoings->rnum; i++)
+			{
+				const int di = *(int*)ccv_array_get(node->outgoings, i);
+				int flag = 0;
+				for (j = 0; !flag && j < node->outgoings->rnum; j++)
+				{
+					if (j != i)
+					{
+						const int dj = *(int*)ccv_array_get(node->outgoings, j);
+						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, di, dj);
+						flag = (cell.i32 && cell.i32[0]);
+					}
+				}
+				if (!flag)
+					ccv_array_push(outgoings[idx], &di);
+			}
+			// If we have outgoing nodes, I cannot filter out all of them.
+			assert(node->outgoings->rnum == 0 || outgoings[idx]->rnum > 0);
+		}
+	} ccv_nnc_graph_visit_endfor
 	ccv_array_t** const incomings = cccalloc(exec_info_size, sizeof(ccv_array_t*));
 	int sign_count = 0;
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
@@ -724,11 +750,11 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 				const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
 				if (data->exec_idx == incoming_idx) // Check if the output of this stream has all assigned.
 				{
-					assert(incoming_exec_info->outgoings);
+					assert(outgoings[incoming_idx]);
 					int flag = 0;
-					for (j = 0; !flag && j < incoming_exec_info->outgoings->rnum; j++)
+					for (j = 0; !flag && j < outgoings[incoming_idx]->rnum; j++)
 					{
-						const int d = *(int*)ccv_array_get(incoming_exec_info->outgoings, j);
+						const int d = *(int*)ccv_array_get(outgoings[incoming_idx], j);
 						// Don't consider the current node as not assigned.
 						flag = (d != idx && exec_info[d].schedule.stream < 0); // If some of the output is not assigned.
 					}
@@ -772,15 +798,23 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		// The stream is assigned, now go through the incomings again to decide whether I have any signs to wait.
 		if (incomings[idx] && incomings[idx]->rnum > 0)
 			_ccv_nnc_graph_schedule_assign_signs(incomings[idx], node, stream_idx, (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, stream_idx), &sign_count, exec_info, exec_info_size);
-		if (node->outgoings)
-			for (i = 0; i < node->outgoings->rnum; i++)
+		if (outgoings[idx])
+			for (i = 0; i < outgoings[idx]->rnum; i++)
 			{
-				const int d = *(int*)ccv_array_get(node->outgoings, i);
+				const int d = *(int*)ccv_array_get(outgoings[idx], i);
 				if (!incomings[d])
 					incomings[d] = ccv_array_new(sizeof(int), 1, 0);
 				ccv_array_push(incomings[d], &idx);
 			}
 	} ccv_nnc_graph_visit_endfor
+	for (i = 0; i < exec_info_size; i++)
+		if (outgoings[i])
+		ccv_array_free(outgoings[i]);
+	ccfree(outgoings);
+	for (i = 0; i < exec_info_size; i++)
+		if (incomings[i])
+			ccv_array_free(incomings[i]);
+	ccfree(incomings);
 	int graph_wait_size = 0;
 	for (i = 0; i < graph->destinations->rnum; i++)
 	{
@@ -806,10 +840,6 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	}
 	graph->wait_size = graph_wait_size;
 	ccv_matrix_free(exec_dep);
-	for (i = 0; i < exec_info_size; i++)
-		if (incomings[i])
-			ccv_array_free(incomings[i]);
-	ccfree(incomings);
 	ccv_array_free(empty_streams);
 	for (i = 0; i < stream_data->rnum; i++)
 	{

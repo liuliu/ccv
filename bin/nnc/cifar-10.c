@@ -133,7 +133,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, w);
 	fclose(w);
 	int i, j, k;
-	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	const int device_count = 1; // ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_t* input_tensors[2][device_count];
 	for (i = 0; i < device_count; i++)
 	{
