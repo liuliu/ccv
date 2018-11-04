@@ -104,6 +104,6 @@ static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, cc
 		self->isa->add_to_output(self, outputs);
 }
 
-void ccv_cnnp_model_tensors_init(ccv_cnnp_compiled_data_t* const compiled_data);
+void ccv_cnnp_model_tensors_init(const ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data);
 
 #endif

@@ -394,6 +394,7 @@ enum {
 #define CCV_STREAM_GET_CONTEXT(type) ((type) & 0x3)
 #define CCV_STREAM_GET_DEVICE(type) ((type) & 0xff00)
 #define CCV_STREAM_GET_DEVICE_ID(type) (CCV_STREAM_GET_DEVICE(type) >> 8)
+#define CCV_STREAM_SET_DEVICE_ID(type, device_id) (type) = (((type) & ~0xfff00) | (((device_id) & 0xfff) << 8))
 /**
  * Create a new stream context.
  * @param type A combination of CPU / GPU and DEVICE_ID.
@@ -459,6 +460,14 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
  * @param type The type of devices (CCV_NNC_STREAM_CONTEXT_GPU / CCV_NNC_STREAM_CONTEXT_CPU)
  */
 CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
+/**
+ * Return the device id from the tensors operates on.
+ * @param inputs An array of input tensors.
+ * @param input_size The size of input array.
+ * @param outputs An array of output tensors.
+ * @param output_size The size of output array.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
 
 /** @} */
 
@@ -2131,6 +2140,12 @@ void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t wor
  * @param minimizer The wrapped command that represents a new optimization strategy.
  */
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer);
+/**
+ * Get the default stream from a compiled model. If the model is not compiled, the default stream is
+ * 0.
+ * @param model The composed model.
+ */
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_cnnp_model_default_stream(const ccv_cnnp_model_t* const model);
 /**
  * Free a given model.
  * @param model The composed model.

@@ -36,7 +36,7 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 			return;
 		}
 		if (!compiled_data->trainable_tensors)
-			ccv_cnnp_model_tensors_init(compiled_data);
+			ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 		for (i = 0; i < trainable_size && SQLITE_ROW == sqlite3_step(tensor_checkpoint_select_stmt); i++)
 		{
 			const void* const data = sqlite3_column_blob(tensor_checkpoint_select_stmt, 1);

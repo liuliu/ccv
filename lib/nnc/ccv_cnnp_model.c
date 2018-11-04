@@ -394,12 +394,31 @@ static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc
 	}
 }
 
+typedef struct {
+	int parallel_count;
+	ccv_nnc_symbolic_graph_t* graph;
+	ccv_nnc_graph_exec_arena_t* graph_exec_arena;
+} ccv_nnc_graph_exec_update_t;
+
 static void _ccv_cnnp_cmd_update_for_execs(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint)
 {
-	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = (ccv_nnc_graph_exec_arena_t*)context;
+	ccv_nnc_graph_exec_update_t* const graph_exec_update = (ccv_nnc_graph_exec_update_t*)context;
+	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = graph_exec_update->graph_exec_arena;
 	ccv_nnc_graph_exec_t graph_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, symbol);
 	ccv_nnc_graph_exec_set(graph_exec.graph, graph_exec, cmd);
 	ccv_nnc_graph_exec_set_hint(graph_exec.graph, graph_exec, hint);
+	const ccv_nnc_symbolic_graph_t* const graph = graph_exec_update->graph;
+	const int parallel_count = graph_exec_update->parallel_count;
+	int i;
+	for (i = 1; i < parallel_count; i++)
+	{
+		const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, ccv_nnc_graph_exec_symbol_copy(graph, symbol, i));
+		if (!CCV_NO_GRAPH_EXEC(copy))
+		{
+			ccv_nnc_graph_exec_set(copy.graph, copy, cmd);
+			ccv_nnc_graph_exec_set_hint(copy.graph, copy, hint);
+		}
+	}
 }
 
 static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const fits, const int fit_size)
@@ -459,14 +478,15 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	compiled_data->gradient_init = 1;
 }
 
-void ccv_cnnp_model_tensors_init(ccv_cnnp_compiled_data_t* const compiled_data)
+void ccv_cnnp_model_tensors_init(const ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data)
 {
 	assert(!compiled_data->trainable_tensors);
 	const int trainable_size = compiled_data->trainables->rnum;
+	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	const int retain_size = compiled_data->retains->rnum;
-	compiled_data->trainable_tensors = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * trainable_size + sizeof(ccv_nnc_tensor_t*) * retain_size);
+	compiled_data->trainable_tensors = (ccv_nnc_tensor_t**)ccmalloc(sizeof(ccv_nnc_tensor_t*) * trainable_size + sizeof(ccv_nnc_tensor_t*) * retain_size * parallel_count);
 	compiled_data->retain_tensors = compiled_data->trainable_tensors + trainable_size;
-	int i;
+	int i, j;
 	for (i = 0; i < trainable_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t trainable = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i);
@@ -475,7 +495,15 @@ void ccv_cnnp_model_tensors_init(ccv_cnnp_compiled_data_t* const compiled_data)
 	for (i = 0; i < retain_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retains, i);
-		compiled_data->retain_tensors[i] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(retained.graph, retained), 0);
+		compiled_data->retain_tensors[i * parallel_count] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(retained.graph, retained), 0);
+		for (j = 1; j < parallel_count; j++)
+		{
+			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(graph, retained, j);
+			if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
+				compiled_data->retain_tensors[i * parallel_count + j] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(retained.graph, copy), 0);
+			else
+				compiled_data->retain_tensors[i * parallel_count + j] = 0;
+		}
 	}
 }
 
@@ -493,7 +521,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 		_ccv_cnnp_model_gradient_jit(model, fits, fit_size);
 	const int tensors_init = !!compiled_data->trainable_tensors;
 	if (!compiled_data->trainable_tensors)
-		ccv_cnnp_model_tensors_init(compiled_data);
+		ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	assert((input_size % parallel_count) == 0);
 	assert((output_size % parallel_count) == 0);
@@ -569,12 +597,24 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	for (i = 0; i < retain_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retains, i);
-		ccv_nnc_tensor_t* const tensor = compiled_data->retain_tensors[i];
+		ccv_nnc_tensor_t* const tensor = compiled_data->retain_tensors[i * parallel_count];
 		const ccv_nnc_tensor_bind_t retained_bind = {
 			.symbol = retained,
 			.tensor = tensor
 		};
 		ccv_array_push(tensor_binds, &retained_bind);
+		for (j = 1; j < parallel_count; j++)
+		{
+			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(model->graph, retained, j);
+			if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
+			{
+				const ccv_nnc_tensor_bind_t bind = {
+					.symbol = copy,
+					.tensor = compiled_data->retain_tensors[i * parallel_count + j]
+				};
+				ccv_array_push(tensor_binds, &bind);
+			}
+		}
 	}
 	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->graph, &compiled_data->tensor_arena, &compiled_data->graph_exec_arena);
 	// If tensor is not init'ed, we need to init states first.
@@ -607,6 +647,14 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_array_free(tensor_binds);
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
+}
+
+ccv_nnc_stream_context_t* ccv_cnnp_model_default_stream(const ccv_cnnp_model_t* const model)
+{
+	const ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (!compiled_data || !compiled_data->graph)
+		return 0;
+	return ccv_nnc_graph_default_stream(compiled_data->graph);
 }
 
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -657,7 +705,12 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 	if (compiled_data->is_test)
 	{
 		compiled_data->is_test = 0;
-		ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+		ccv_nnc_graph_exec_update_t update = {
+			.parallel_count = parallel_count,
+			.graph = model->graph,
+			.graph_exec_arena = compiled_data->graph_exec_arena,
+		};
+		ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
 }
@@ -672,7 +725,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	assert(output_size > 0);
 	const int tensors_init = !!compiled_data->trainable_tensors;
 	if (!compiled_data->trainable_tensors)
-		ccv_cnnp_model_tensors_init(compiled_data);
+		ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
 	assert((input_size % parallel_count) == 0);
 	assert((output_size % parallel_count) == 0);
@@ -732,6 +785,18 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 			.tensor = tensor
 		};
 		ccv_array_push(tensor_binds, &retained_bind);
+		for (j = 1; j < parallel_count; j++)
+		{
+			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(model->graph, retained, j);
+			if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
+			{
+				const ccv_nnc_tensor_bind_t bind = {
+					.symbol = copy,
+					.tensor = compiled_data->retain_tensors[i * parallel_count + j]
+				};
+				ccv_array_push(tensor_binds, &bind);
+			}
+		}
 	}
 	// If we generated gradient for the graph, only compile part of the graph because the rest is irrelevant for evaluation.
 	if (compiled_data->gradient_init)
@@ -751,7 +816,12 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 		ccv_cnnp_model_init_states(model, model->graph, _ccv_cnnp_init_states_for_tensors, &tensor_init_states);
 	}
 	compiled_data->is_test = 1;
-	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+	ccv_nnc_graph_exec_update_t update = {
+		.parallel_count = parallel_count,
+		.graph = model->graph,
+		.graph_exec_arena = compiled_data->graph_exec_arena,
+	};
+	ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
 	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
 	ccv_array_free(tensor_binds);
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
@@ -798,7 +868,12 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	if (!compiled_data->is_test)
 	{
 		compiled_data->is_test = 1;
-		ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
+		ccv_nnc_graph_exec_update_t update = {
+			.parallel_count = parallel_count,
+			.graph = model->graph,
+			.graph_exec_arena = compiled_data->graph_exec_arena,
+		};
+		ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE)
 		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
@@ -862,8 +937,9 @@ static void _ccv_cnnp_compiled_data_free(ccv_cnnp_compiled_data_t* const compile
 			ccv_nnc_tensor_free(compiled_data->trainable_tensors[i]);
 	ccv_array_free(compiled_data->trainables);
 	if (compiled_data->retain_tensors)
-		for (i = 0; i < compiled_data->retains->rnum; i++)
-			ccv_nnc_tensor_free(compiled_data->retain_tensors[i]);
+		for (i = 0; i < compiled_data->retains->rnum * ccv_max(compiled_data->parallel_count, 1); i++)
+			if (compiled_data->retain_tensors[i])
+				ccv_nnc_tensor_free(compiled_data->retain_tensors[i]);
 	ccv_array_free(compiled_data->retains);
 	if (compiled_data->graph)
 		ccv_nnc_graph_free(compiled_data->graph);
