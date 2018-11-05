@@ -399,7 +399,7 @@ int ccv_nnc_cmd_bitmask(const ccv_nnc_cmd_t cmd, const int input_size, const int
 	return 0;
 }
 
-int ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+int ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int default_device_id)
 {
 	int i;
 	int device_id = -1;
@@ -415,7 +415,7 @@ int ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int in
 				CCV_TENSOR_GET_MEMORY(inputs[i]->info.type) == CCV_TENSOR_GPU_MEMORY &&
 				(device_id < 0 || CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type) < device_id))
 				device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);
-	return device_id >= 0 ? device_id : 0; // The default one.
+	return device_id >= 0 ? device_id : default_device_id; // The default one.
 }
 
 int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
@@ -425,7 +425,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 		return 0;
 #ifdef HAVE_CUDA
 	if (!stream_context)
-		cudevice(ccv_nnc_device_id_for_io(inputs, input_size, outputs, output_size));
+		cudevice(ccv_nnc_device_id_for_io(inputs, input_size, outputs, output_size, -1));
 #endif
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)

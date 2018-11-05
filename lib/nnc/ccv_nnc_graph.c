@@ -706,7 +706,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	ccv_nnc_graph_visit_for(visit, exec_info, node, idx) {
 		// Go through the incomings.
 		int stream_idx = -1;
-		const int device_id = ccv_nnc_device_id_for_io(node->inputs, node->input_size, node->outputs, node->output_size);
+		const int device_id = ccv_nnc_device_id_for_io(node->inputs, node->input_size, node->outputs, node->output_size, 0);
 		if (incomings[idx])
 		{
 			for (i = incomings[idx]->rnum - 1; stream_idx < 0 && i >= 0; i--)
@@ -885,7 +885,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			const int sign = node->schedule.sign;
 			if (!graph->signals[sign])
 			{
-				const int device_id = ccv_nnc_device_id_for_io(node->inputs, node->input_size, node->outputs, node->output_size);
+				const int device_id = ccv_nnc_device_id_for_io(node->inputs, node->input_size, node->outputs, node->output_size, 0);
 				int type = stream_type;
 				CCV_TENSOR_SET_DEVICE_ID(type, device_id);
 				graph->signals[sign] = ccv_nnc_stream_signal_new(type);
@@ -905,7 +905,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			if (sub_graph)
 			{
 				const int exec_idx = sub_graph->exec_idx - 1;
-				const int device_id = ccv_nnc_device_id_for_io(exec_info[exec_idx].inputs, exec_info[exec_idx].input_size, exec_info[exec_idx].outputs, exec_info[exec_idx].output_size);
+				const int device_id = ccv_nnc_device_id_for_io(exec_info[exec_idx].inputs, exec_info[exec_idx].input_size, exec_info[exec_idx].outputs, exec_info[exec_idx].output_size, 0);
 				const int stream_idx = exec_info[exec_idx].schedule.stream;
 				_ccv_nnc_graph_static_schedule(sub_graph, stream_type, device_id, graph->streams[stream_idx]);
 			}

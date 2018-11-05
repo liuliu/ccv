@@ -466,8 +466,9 @@ CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
  * @param input_size The size of input array.
  * @param outputs An array of output tensors.
  * @param output_size The size of output array.
+ * @param default_device_id The default device id if cannot find any.
  */
-CCV_WARN_UNUSED(int) ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size);
+CCV_WARN_UNUSED(int) ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int default_device_id);
 
 /** @} */
 
