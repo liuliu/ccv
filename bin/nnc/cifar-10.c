@@ -197,7 +197,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		copy_signal[1][i] = ccv_nnc_stream_signal_new(type);
 	}
 	int p = 0, q = 1;
-	const int epoch_end = (training_set->rnum + batch_size - 1) / batch_size;
+	const int epoch_end = (training_set->rnum + batch_size * device_count - 1) / (batch_size * device_count);
 	unsigned int current_time = get_current_time();
 	ccv_cnnp_model_set_data_parallel(cifar_10, device_count);
 	for (i = 0; i < 100000; i++)
