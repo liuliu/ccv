@@ -495,14 +495,12 @@ void ccv_cnnp_model_tensors_init(const ccv_nnc_symbolic_graph_t* const graph, cc
 	for (i = 0; i < retain_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t retained = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retains, i);
-		compiled_data->retain_tensors[i * parallel_count] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(retained.graph, retained), 0);
+		ccv_nnc_tensor_param_t info = ccv_nnc_tensor_symbol_params(retained.graph, retained);
+		compiled_data->retain_tensors[i * parallel_count] = ccv_nnc_tensor_new(0, info, 0);
 		for (j = 1; j < parallel_count; j++)
 		{
-			const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(graph, retained, j);
-			if (copy.d != CCV_NNC_NO_TENSOR_SYMBOL)
-				compiled_data->retain_tensors[i * parallel_count + j] = ccv_nnc_tensor_new(0, ccv_nnc_tensor_symbol_params(retained.graph, copy), 0);
-			else
-				compiled_data->retain_tensors[i * parallel_count + j] = 0;
+			CCV_TENSOR_SET_DEVICE_ID(info.type, j);
+			compiled_data->retain_tensors[i * parallel_count + j] = ccv_nnc_tensor_new(0, info, 0);
 		}
 	}
 }
@@ -613,6 +611,9 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 					.tensor = compiled_data->retain_tensors[i * parallel_count + j]
 				};
 				ccv_array_push(tensor_binds, &bind);
+			} else if (compiled_data->retain_tensors[i * parallel_count + j]) { // We shouldn't allocate this, free it up.
+				ccv_nnc_tensor_free(compiled_data->retain_tensors[i * parallel_count + j]);
+				compiled_data->retain_tensors[i * parallel_count + j] = 0;
 			}
 		}
 	}
@@ -795,6 +796,9 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 					.tensor = compiled_data->retain_tensors[i * parallel_count + j]
 				};
 				ccv_array_push(tensor_binds, &bind);
+			} else if (compiled_data->retain_tensors[i * parallel_count + j]) { // We shouldn't allocate this, free it up.
+				ccv_nnc_tensor_free(compiled_data->retain_tensors[i * parallel_count + j]);
+				compiled_data->retain_tensors[i * parallel_count + j] = 0;
 			}
 		}
 	}

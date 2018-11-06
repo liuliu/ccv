@@ -100,6 +100,14 @@ struct ccv_nnc_symbolic_graph_s {
 		int* exec_symbol_idx;
 	} backward;
 	// End of backward (automatic differentiation) handling.
+	// For parallel, get duplicated tensors.
+	struct {
+		int count;
+		int tensor_symbol_size;
+		int* tensor_symbol_idx;
+		int exec_symbol_size;
+		int* exec_symbol_idx;
+	} data_parallel;
 	// Hooks
 	struct {
 		struct {
@@ -115,14 +123,6 @@ struct ccv_nnc_symbolic_graph_s {
 			void* context;
 		} graph_exec_symbol_new;
 	} hooks;
-	// For parallel, get duplicated tensors.
-	struct {
-		int devices;
-		int tensor_symbol_size;
-		int* tensor_symbol_idx;
-		int exec_symbol_size;
-		int* exec_symbol_idx;
-	} data_parallel;
 };
 
 struct ccv_nnc_tensor_arena_s {
