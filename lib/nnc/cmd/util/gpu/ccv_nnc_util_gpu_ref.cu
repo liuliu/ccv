@@ -24,8 +24,6 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		size_t size = ccv_nnc_tensor_count(a->info) * sizeof(float);
 		if (stream_context)
 		{
-			int device = ccv_nnc_stream_context_get_device(stream_context);
-			cudaSetDevice(device);
 			cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 			if (CCV_TENSOR_GET_MEMORY(a->info.type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(b->info.type) == CCV_TENSOR_GPU_MEMORY)
 				cudaMemcpyAsync(b->data.u8, a->data.u8, size, cudaMemcpyHostToDevice, stream);

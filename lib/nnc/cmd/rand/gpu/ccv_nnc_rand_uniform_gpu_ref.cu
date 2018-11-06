@@ -29,8 +29,6 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
 	return CCV_NNC_EXEC_SUCCESS;
 }

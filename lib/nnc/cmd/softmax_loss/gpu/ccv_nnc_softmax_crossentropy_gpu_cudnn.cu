@@ -30,8 +30,6 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 	assert(output_size == 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
 	static const float one = 1, zero = 0;
@@ -108,8 +106,6 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && d->info.dim[i] > 0; i++)
 		{ assert(d->info.dim[i] == h->info.dim[i]); }
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	_ccv_nnc_copy_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, d->data.f32, h->data.f32);
 	if (b->info.datatype == CCV_32F)
 		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);

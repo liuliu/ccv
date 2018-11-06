@@ -13,8 +13,6 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 {
 	assert(output_size >= 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	int z;
 	static const float one = 1;
 	int k = 0;
@@ -46,8 +44,6 @@ static int _ccv_nnc_ewsum_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hin
 static int _ccv_nnc_ewsum_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	static const float one = 1;
 	int i;
 	if (input_size <= 0 || inputs[0] == 0)

@@ -26,8 +26,6 @@ static int _ccv_nnc_conv_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(input_size >= 2);
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[1]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
@@ -92,8 +90,6 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	assert(input_size >= 2);
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (!workmem)
 		return -1;
@@ -168,8 +164,6 @@ static int _ccv_nnc_conv_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// outputs: [output gradient], weight updates, bias updates
 	assert((input_size >= 2 && output_size >= 2));
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
@@ -283,8 +277,6 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	// outputs:  output gradient, weight updates, bias updates [unused]
 	assert(input_size >= 2 && output_size >= 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
 	if (!workmem)
 		return -1;

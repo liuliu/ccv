@@ -14,8 +14,6 @@ static int _ccv_nnc_max_pool_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	assert(input_size == 1);
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	cudnnPoolingDescriptor_t max_pool = ccv_nnc_stream_context_get_pooling_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetPooling2dDescriptor(max_pool, CUDNN_POOLING_MAX, CUDNN_NOT_PROPAGATE_NAN,
 		cmd.info.size.dim[0], cmd.info.size.dim[1],
@@ -37,8 +35,6 @@ static int _ccv_nnc_max_pool_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 	assert(input_size == 3);
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	cudnnPoolingDescriptor_t max_pool = ccv_nnc_stream_context_get_pooling_descriptor(stream_context);
 	CUDNN_ENFORCE(cudnnSetPooling2dDescriptor(max_pool, CUDNN_POOLING_MAX, CUDNN_NOT_PROPAGATE_NAN,
 		cmd.info.size.dim[0], cmd.info.size.dim[1],

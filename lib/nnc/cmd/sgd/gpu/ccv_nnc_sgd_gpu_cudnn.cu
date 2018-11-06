@@ -14,8 +14,6 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(input_size == 3);
 	assert(output_size == 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	const float neg_rate = -cmd.info.minimize.rate;
 	const float decay = cmd.info.minimize.decay;
 	const float momentum = cmd.info.minimize.momentum;

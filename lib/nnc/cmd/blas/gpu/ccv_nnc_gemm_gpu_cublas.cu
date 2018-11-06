@@ -37,8 +37,6 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? b->inc[0] : b->inc[1]) : bdim[0];
 
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	static const float one = 1;
 	static const float zero = 0;
 	const float* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
@@ -79,8 +77,6 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const int g_batch_inc = CCV_IS_TENSOR_VIEW(g) ? ((g_nd == 1) ? g->inc[0] : g->inc[1]) : gdim[0];
 
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	const float * const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
 	if (bias)
 	{

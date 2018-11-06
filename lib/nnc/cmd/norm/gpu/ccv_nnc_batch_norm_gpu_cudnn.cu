@@ -13,8 +13,6 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 {
 	assert(input_size == 5);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	cudnnBatchNormMode_t mode;
 	if (cmd.info.bnorm.count == 1)
 	{
@@ -72,8 +70,6 @@ static int _ccv_nnc_batch_norm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	assert(input_size == 15);
 	assert(output_size == 5);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
-	const int device = ccv_nnc_stream_context_get_device(stream_context);
-	cudaSetDevice(device);
 	cudnnBatchNormMode_t mode;
 	if (cmd.info.bnorm.count == 1)
 	{

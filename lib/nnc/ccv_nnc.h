@@ -460,15 +460,6 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
  * @param type The type of devices (CCV_NNC_STREAM_CONTEXT_GPU / CCV_NNC_STREAM_CONTEXT_CPU)
  */
 CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
-/**
- * Return the device id from the tensors operates on.
- * @param inputs An array of input tensors.
- * @param input_size The size of input array.
- * @param outputs An array of output tensors.
- * @param output_size The size of output array.
- * @param default_device_id The default device id if cannot find any.
- */
-CCV_WARN_UNUSED(int) ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int default_device_id);
 
 /** @} */
 
