@@ -65,59 +65,67 @@ void cuunregister(void* ptr)
 }
 
 typedef struct {
-	ccv_nnc_stream_context_t super;
 	cudaStream_t stream;
 	cublasHandle_t cublas;
 	struct {
 		int n;
 		float* data;
 	} ones;
+	size_t workspace_size;
+	void* workspace;
+#ifdef HAVE_CUDNN
+	cudnnHandle_t cudnn;
+	void* rngs; // user-allocated GPU memory that will hold random number generator states.
+#endif
+} ccv_nnc_stream_context_device_local_t;
+
+typedef struct {
+	ccv_nnc_stream_context_t super;
 	struct {
 		size_t workspace_size;
 		void* workspace;
 	} cpu;
-	struct {
-		size_t workspace_size;
-		void* workspace;
-	} gpu;
-#ifdef HAVE_CUDNN
-	cudnnHandle_t cudnn;
-	void* rngs; // user-allocated GPU memory that will hold random number generator states.
 	unsigned long long seed;
-#endif
+	union {
+		ccv_nnc_stream_context_device_local_t _inline_gpu;
+		struct {
+			ccv_nnc_stream_context_device_local_t* _heap_gpus;
+			int _heap_gpu_size;
+		};
+	};
 } ccv_nnc_stream_context_compat_t;
 
-static int cpu_stream_compat_init_per_thread;
-static int gpu_stream_compat_init_per_thread;
-
-static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat(const int type)
+static ccv_nnc_stream_context_device_local_t* _ccv_nnc_stream_compat_device_local(ccv_nnc_stream_context_compat_t* const stream_compat)
 {
-	if (type == CCV_STREAM_CONTEXT_GPU)
+	int device_id = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
+	if (device_id == CCV_STREAM_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY))
 	{
-		int device = 0;
-		cudaGetDevice(&device);
-		static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context[CCV_STREAM_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY)];
-		ccv_nnc_stream_context_compat_t* stream_compat = ccv_nnc_per_thread_gpu_stream_context + device;
-		if (!stream_compat->super.type)
+		cudaGetDevice(&device_id);
+		if (stream_compat->_heap_gpu_size <= device_id)
 		{
-			stream_compat->super.type = CCV_STREAM_CONTEXT_GPU;
-			CCV_STREAM_SET_DEVICE_ID(stream_compat->super.type, device);
-#ifdef cudaStreamPerThread
-			stream_compat->stream = cudaStreamPerThread;
-#endif
+			if (!stream_compat->_heap_gpus)
+				stream_compat->_heap_gpus = (ccv_nnc_stream_context_device_local_t*)cccalloc(device_id + 1, sizeof(ccv_nnc_stream_context_device_local_t));
+			else {
+				stream_compat->_heap_gpus = (ccv_nnc_stream_context_device_local_t*)ccrealloc(stream_compat->_heap_gpus, sizeof(ccv_nnc_stream_context_device_local_t) * (device_id + 1));
+				memset(stream_compat->_heap_gpus + stream_compat->_heap_gpu_size, 0, sizeof(ccv_nnc_stream_context_device_local_t) * (device_id + 1 - stream_compat->_heap_gpu_size));
+			}
+			stream_compat->_heap_gpu_size = device_id + 1;
 		}
-		gpu_stream_compat_init_per_thread = 1;
-		return stream_compat;
+		return stream_compat->_heap_gpus + device_id;
 	} else {
-		assert(type == CCV_STREAM_CONTEXT_CPU);
-		static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_cpu_stream_context = {
-			.super = {
-				.type = CCV_STREAM_CONTEXT_CPU,
-			},
-		};
-		cpu_stream_compat_init_per_thread = 1;
-		return &ccv_nnc_per_thread_cpu_stream_context;
+		cudaSetDevice(device_id);
+		return &stream_compat->_inline_gpu;
 	}
+}
+
+static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat()
+{
+	static __thread ccv_nnc_stream_context_compat_t ccv_nnc_per_thread_gpu_stream_context = {
+		.super = {
+			.type = CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_ANY,
+		},
+	};
+	return &ccv_nnc_per_thread_gpu_stream_context;
 }
 
 typedef struct {
@@ -139,22 +147,20 @@ void ccv_nnc_stream_compat_emit_signal(const ccv_nnc_stream_context_t* const str
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-	cudaSetDevice(device);
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
-	cudaEventRecord(compat_signal->event, stream_compat->stream);
+	cudaEventRecord(compat_signal->event, device_local->stream);
 }
 
 void ccv_nnc_stream_compat_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-	cudaSetDevice(device);
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	ccv_nnc_stream_compat_signal_t* compat_signal = (ccv_nnc_stream_compat_signal_t*)signal;
-	cudaStreamWaitEvent(stream_compat->stream, compat_signal->event, 0);
+	cudaStreamWaitEvent(device_local->stream, compat_signal->event, 0);
 }
 
 void ccv_nnc_deinit_stream_signal(ccv_nnc_stream_signal_t* const signal)
@@ -176,29 +182,21 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 {
 	assert(CCV_STREAM_GET_CONTEXT(((int*)stream_context)[0]) == CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)ccrealloc(stream_context, sizeof(ccv_nnc_stream_context_compat_t));
-	stream_compat->cpu.workspace = 0;
-	stream_compat->cpu.workspace_size = 0;
-	stream_compat->gpu.workspace = 0;
-	stream_compat->gpu.workspace_size = 0;
-	int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-	cudaSetDevice(device);
-	cudaStreamCreate(&stream_compat->stream);
-	stream_compat->cublas = 0;
-	stream_compat->ones.data = 0;
-#ifdef HAVE_CUDNN
-	stream_compat->cudnn = 0;
-	stream_compat->rngs = 0;
-#endif
+	const ccv_nnc_stream_context_t super = stream_compat->super;
+	memset(stream_compat, 0, sizeof(ccv_nnc_stream_context_compat_t));
+	stream_compat->super = super;
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	cudaStreamCreate(&device_local->stream);
 	return (ccv_nnc_stream_context_t*)stream_compat;
 }
 
 void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = _ccv_nnc_default_stream_compat();
 	if (mem == CCV_TENSOR_CPU_MEMORY)
 	{
-		if (!stream_compat)
-			stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_CPU);
 		if (stream_compat->cpu.workspace_size >= workspace_size)
 			return stream_compat->cpu.workspace;
 		stream_compat->cpu.workspace_size = workspace_size;
@@ -208,57 +206,56 @@ void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const 
 		const int success = ccmemalign(&stream_compat->cpu.workspace, 16, workspace_size);
 		return success != 0 ? 0 : stream_compat->cpu.workspace;
 	} else if (mem == CCV_TENSOR_GPU_MEMORY) {
-		if (!stream_compat)
-			stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-		if (stream_compat->gpu.workspace_size >= workspace_size)
-			return stream_compat->gpu.workspace;
-		stream_compat->gpu.workspace_size = workspace_size;
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-		cudaSetDevice(device);
-		if (stream_compat->gpu.workspace)
-			cudaFree(stream_compat->gpu.workspace);
-		stream_compat->gpu.workspace = 0;
-		cudaMalloc(&stream_compat->gpu.workspace, workspace_size);
-		return stream_compat->gpu.workspace;
+		ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+		if (device_local->workspace_size >= workspace_size)
+			return device_local->workspace;
+		device_local->workspace_size = workspace_size;
+		if (device_local->workspace)
+			cudaFree(device_local->workspace);
+		device_local->workspace = 0;
+		cudaMalloc(&device_local->workspace, workspace_size);
+		return device_local->workspace;
 	}
 	return 0;
 }
 
-static void _ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_compat_t* const stream_compat)
+void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 {
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = _ccv_nnc_default_stream_compat();
 	if (stream_compat->cpu.workspace)
 	{
 		ccfree(stream_compat->cpu.workspace);
 		stream_compat->cpu.workspace = 0;
 		stream_compat->cpu.workspace_size = 0;
 	}
-	if (stream_compat->gpu.workspace)
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
+	if (device == CCV_STREAM_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY))
 	{
-		cudaFree(stream_compat->gpu.workspace);
-		stream_compat->gpu.workspace = 0;
-		stream_compat->gpu.workspace_size = 0;
-	}
-}
-
-void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
-{
-	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	if (stream_compat)
-		_ccv_nnc_stream_compat_drain(stream_compat);
-	else {
-		if (gpu_stream_compat_init_per_thread)
-			_ccv_nnc_stream_compat_drain(_ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU));
-		if (cpu_stream_compat_init_per_thread)
-			_ccv_nnc_stream_compat_drain(_ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_CPU));
+		int i;
+		for (i = 0; i < stream_compat->_heap_gpu_size; i++)
+			if (stream_compat->_heap_gpus[i].workspace)
+			{
+				cudaSetDevice(i);
+				cudaFree(stream_compat->_heap_gpus[i].workspace);
+				stream_compat->_heap_gpus[i].workspace = 0;
+				stream_compat->_heap_gpus[i].workspace_size = 0;
+			}
+	} else if (stream_compat->_inline_gpu.workspace) {
+		cudaFree(stream_compat->_inline_gpu.workspace);
+		stream_compat->_inline_gpu.workspace = 0;
+		stream_compat->_inline_gpu.workspace_size = 0;
 	}
 }
 
 void ccv_nnc_synchronize_stream_context(const ccv_nnc_stream_context_t* const stream_context)
 {
-	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-	cudaSetDevice(device);
-	cudaStreamSynchronize(stream_compat->stream);
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
+	if (!stream_compat)
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	cudaStreamSynchronize(device_local->stream);
 }
 
 #if CUDA_VERSION >= 10000
@@ -279,16 +276,17 @@ static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t 
 void ccv_nnc_stream_compat_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	// If the stream is completed, no need to wait.
-	if (cudaStreamQuery(stream_compat->stream) == cudaSuccess)
+	if (cudaStreamQuery(device_local->stream) == cudaSuccess)
 		return;
 	ccv_nnc_stream_scheduler_t* const scheduler = self->super;
 	pthread_mutex_lock(&scheduler->mutex);
 	++scheduler->stream_wait_task_count;
 #if CUDA_VERSION >= 10000
-	cudaLaunchHostFunc(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self);
+	cudaLaunchHostFunc(device_local->stream, _ccv_nnc_stream_compat_task_resume, self);
 #else
-	cudaStreamAddCallback(stream_compat->stream, _ccv_nnc_stream_compat_task_resume, self, 0);
+	cudaStreamAddCallback(device_local->stream, _ccv_nnc_stream_compat_task_resume, self, 0);
 #endif
 	pthread_mutex_unlock(&scheduler->mutex);
 	swapcontext(&scheduler->callee, &scheduler->caller);
@@ -297,23 +295,45 @@ void ccv_nnc_stream_compat_task_synchronize(ccv_nnc_stream_task_t* const self, c
 void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
-	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-	cudaSetDevice(device);
 	if (stream_compat->cpu.workspace)
 		ccfree(stream_compat->cpu.workspace);
-	if (stream_compat->gpu.workspace)
-		cudaFree(stream_compat->gpu.workspace);
-	cudaStreamDestroy(stream_compat->stream);
-	if (stream_compat->cublas)
-		cublasDestroy(stream_compat->cublas);
-	if (stream_compat->ones.data)
-		cudaFree(stream_compat->ones.data);
+	const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
+	if (device == CCV_STREAM_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY))
+	{
+		int i;
+		for (i = 0; i < stream_compat->_heap_gpu_size; i++)
+			if (stream_compat->_heap_gpus[i].workspace)
+			{
+				cudaSetDevice(i);
+				if (stream_compat->_heap_gpus[i].workspace)
+					cudaFree(stream_compat->_heap_gpus[i].workspace);
+				cudaStreamDestroy(stream_compat->_heap_gpus[i].stream);
+				if (stream_compat->_heap_gpus[i].cublas)
+					cublasDestroy(stream_compat->_heap_gpus[i].cublas);
+				if (stream_compat->_heap_gpus[i].ones.data)
+					cudaFree(stream_compat->_heap_gpus[i].ones.data);
 #ifdef HAVE_CUDNN
-	if (stream_compat->cudnn)
-		cudnnDestroy(stream_compat->cudnn);
-	if (stream_compat->rngs)
-		cudaFree(stream_compat->rngs);
+				if (stream_compat->_heap_gpus[i].cudnn)
+					cudnnDestroy(stream_compat->_heap_gpus[i].cudnn);
+				if (stream_compat->_heap_gpus[i].rngs)
+					cudaFree(stream_compat->_heap_gpus[i].rngs);
 #endif
+			}
+	} else {
+		if (stream_compat->_inline_gpu.workspace)
+			cudaFree(stream_compat->_inline_gpu.workspace);
+		cudaStreamDestroy(stream_compat->_inline_gpu.stream);
+		if (stream_compat->_inline_gpu.cublas)
+			cublasDestroy(stream_compat->_inline_gpu.cublas);
+		if (stream_compat->_inline_gpu.ones.data)
+			cudaFree(stream_compat->_inline_gpu.ones.data);
+#ifdef HAVE_CUDNN
+		if (stream_compat->_inline_gpu.cudnn)
+			cudnnDestroy(stream_compat->_inline_gpu.cudnn);
+		if (stream_compat->_inline_gpu.rngs)
+			cudaFree(stream_compat->_inline_gpu.rngs);
+#endif
+	}
 }
 
 int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context)
@@ -330,25 +350,25 @@ int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stre
 
 cudaStream_t ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context)
 {
-	const ccv_nnc_stream_context_compat_t* stream_compat = (const ccv_nnc_stream_context_compat_t*)stream_context;
+	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	return stream_compat->stream;
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	return device_local->stream;
 }
 
 cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	if (!stream_compat->cublas)
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	if (!device_local->cublas)
 	{
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-		cudaSetDevice(device);
-		cublasCreate(&stream_compat->cublas);
-		cublasSetStream(stream_compat->cublas, stream_compat->stream);
+		cublasCreate(&device_local->cublas);
+		cublasSetStream(device_local->cublas, device_local->stream);
 	}
-	return stream_compat->cublas;
+	return device_local->cublas;
 }
 
 // A simple kernel to set all values to 1.
@@ -363,20 +383,18 @@ float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const str
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	if (!stream_compat->ones.data || n > stream_compat->ones.n)
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	if (!device_local->ones.data || n > device_local->ones.n)
 	{
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-		cudaSetDevice(device);
-		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-		if (stream_compat->ones.data)
-			cudaFree(stream_compat->ones.data);
-		stream_compat->ones.n = n;
-		stream_compat->ones.data = (float*)cumalloc(device, sizeof(float) * n);
+		if (device_local->ones.data)
+			cudaFree(device_local->ones.data);
+		device_local->ones.n = n;
+		cudaMalloc(&device_local->ones.data, sizeof(float) * n);
 		const int block_x = (n + 255) >> 8;
-		ones<<<block_x, 256, 0, stream>>>(stream_compat->ones.data, n);
+		ones<<<block_x, 256, 0, device_local->stream>>>(device_local->ones.data, n);
 	}
-	return stream_compat->ones.data;
+	return device_local->ones.data;
 }
 
 #ifdef HAVE_CUDNN
@@ -384,15 +402,14 @@ cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* c
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
-	if (!stream_compat->cudnn)
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
+	if (!device_local->cudnn)
 	{
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-		cudaSetDevice(device);
-		CUDNN_ENFORCE(cudnnCreate(&stream_compat->cudnn));
-		CUDNN_ENFORCE(cudnnSetStream(stream_compat->cudnn, stream_compat->stream));
+		CUDNN_ENFORCE(cudnnCreate(&device_local->cudnn));
+		CUDNN_ENFORCE(cudnnSetStream(device_local->cudnn, device_local->stream));
 	}
-	return stream_compat->cudnn;
+	return device_local->cudnn;
 }
 
 cudnnActivationDescriptor_t ccv_nnc_stream_context_get_activation_descriptor(const ccv_nnc_stream_context_t* const stream_context)
@@ -416,23 +433,22 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
-		stream_compat = _ccv_nnc_default_stream_compat(CCV_STREAM_CONTEXT_GPU);
+		stream_compat = _ccv_nnc_default_stream_compat();
+	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
 	size_t state_size;
 	cudnnDropoutGetStatesSize(cudnn, &state_size);
-	if (stream_compat->rngs)
+	if (device_local->rngs)
 	{
 #if CUDNN_VERSION >= 7100
-		cudnnRestoreDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
+		cudnnRestoreDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
 #else
 		++stream_compat->seed;
-		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
+		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
 #endif
 	} else {
-		const int device = CCV_STREAM_GET_DEVICE_ID(stream_compat->super.type);
-		cudaSetDevice(device);
-		cudaMalloc(&stream_compat->rngs, state_size);
+		cudaMalloc(&device_local->rngs, state_size);
 		stream_compat->seed = (unsigned long long)stream_compat;
-		cudnnSetDropoutDescriptor(desc, cudnn, p, stream_compat->rngs, state_size, stream_compat->seed);
+		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
 	}
 	return desc;
 }

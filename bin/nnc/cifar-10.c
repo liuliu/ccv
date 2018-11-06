@@ -126,6 +126,7 @@ ccv_cnnp_model_t* _cifar_10_alexnet(void)
 static void train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet56();
+	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
@@ -133,7 +134,6 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, w);
 	fclose(w);
 	int i, j, k;
-	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_t* input_tensors[2][device_count];
 	for (i = 0; i < device_count; i++)
 	{
@@ -200,7 +200,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	const int epoch_end = (training_set->rnum + batch_size * device_count - 1) / (batch_size * device_count);
 	unsigned int current_time = get_current_time();
 	ccv_cnnp_model_set_data_parallel(cifar_10, device_count);
-	for (i = 0; i < 100000; i++)
+	for (i = 0; i < 100000 / device_count; i++)
 	{
 		for (j = 0; j < device_count; j++)
 			memset(cpu_inputs[p][j]->data.f32, 0, sizeof(float) * batch_size * 32 * 32 * 3);
@@ -282,10 +282,10 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 						++correct;
 				}
 			}
-			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
+			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size * device_count, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
 			current_time = get_current_time();
 		}
-		if ((i + 1) % 10000 == 0)
+		if ((i + 1) % (10000 / device_count) == 0)
 		{
 			learn_rate *= 0.5;
 			ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
