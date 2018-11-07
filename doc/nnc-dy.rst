@@ -17,7 +17,7 @@ NNC's **dynamic graph execution** design will attempt to address above problems 
 Naming The Variable
 -------------------
 
-Like in most frameworks, **dynamic graph execution** in NNC operates at variables. **Dynamic graph** executes command on a set of input variables, writes the result to a set of output variables. Variables can be inspected anytime with ``ccv_nnc_tensor_from_variable``. The underlying tensor may not be allocated when the variable is created. ``ccv_nnc_tensor_variable_t`` is an opaque structure and its inner work shouldn't be of an interest to users.
+Like in most frameworks, **dynamic graph execution** in NNC operates at variables. **Dynamic graph** executes command on a set of input variables, writes the result to a set of output variables. Variables can be inspected anytime with :cpp:func:`ccv_nnc_tensor_from_variable`. The underlying tensor may not be allocated when the variable is created. :cpp:any:`ccv_nnc_tensor_variable_t` is an opaque structure and its inner work shouldn't be of an interest to users.
 
 Tracing The Operation
 ---------------------
@@ -31,12 +31,12 @@ Upon *automatic differentiation*, no tape is used (or, the **symbolic graph** se
 Optimizations
 -------------
 
-In **PyTorch**, there is a need to ``requires_grad`` such that the framework knows which variable should be discarded to save memory. If it is not done carefully, the memory usage can grow unbounded. **Dynamic graph** here provides ``ccv_nnc_tensor_variable_free`` where when a tensor variable is freed, we will release its memory when it is safe. This method meant to hook up with object finalization methods in host languages (C++'s destructor, Objective-C's ``dealloc``, ``deinit`` in Swift, ``finalize`` in Java, ``tp_dealloc`` in Python).
+In **PyTorch**, there is a need to ``requires_grad`` such that the framework knows which variable should be discarded to save memory. If it is not done carefully, the memory usage can grow unbounded. **Dynamic graph** here provides :cpp:func:`ccv_nnc_tensor_variable_free` where when a tensor variable is freed, we will release its memory when it is safe. This method meant to hook up with object finalization methods in host languages (C++'s destructor, Objective-C's ``dealloc``, ``deinit`` in Swift, ``finalize`` in Java, ``tp_dealloc`` in Python).
 
 Interoperability (Not Ready)
 ----------------------------
 
-There are some sticky issues with interoperability between **static graph** (the **symbolic graph** we formed by hand) with **dynamic graph**. The way they interoperate is through ``CCV_NNC_CUSTOM_FORWARD`` / ``CCV_NNC_CUSTOM_BACKWARD`` functions. When a **static graph** includes a **dynamic graph**, its tape needs to book-keeping for the **dynamic graph**. When a **dynamic graph** includes a **static graph**, it also needs to create a tape at that point for the execution. All these implies significant changes for the ``ccv_nnc_tensor_tape_t`` implementation to accommodate these new requirements.
+There are some sticky issues with interoperability between **static graph** (the **symbolic graph** we formed by hand) with **dynamic graph**. The way they interoperate is through ``CCV_NNC_CUSTOM_FORWARD`` / ``CCV_NNC_CUSTOM_BACKWARD`` functions. When a **static graph** includes a **dynamic graph**, its tape needs to book-keeping for the **dynamic graph**. When a **dynamic graph** includes a **static graph**, it also needs to create a tape at that point for the execution. All these implies significant changes for the :cpp:any:`ccv_nnc_tensor_tape_t` implementation to accommodate these new requirements.
 
 Future Optimizations
 --------------------

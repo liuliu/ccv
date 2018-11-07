@@ -1973,9 +1973,46 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  * 5. All these can be done efficiently, on a scale of hundreds of Gigabytes data.
  */
 
+/**
+ * @defgroup level_5_dataframe Dataframe API
+ * @{
+ */
+
+/**
+ * A data enumeration function to supply data for a given row index (and length).
+ */
+typedef void (*ccv_cnnp_column_data_enum_f)(const int row_idx, const int row_size, void** const data, const int column_idx, void* const context);
+/**
+ * Column data.
+ */
+typedef struct {
+	ccv_cnnp_column_data_enum_f data_enum;
+	void* context;
+} ccv_cnnp_column_data_t;
+/**
+ * An opaque structure point to the dataframe object.
+ */
 typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(void);
+/**
+ * Create a dataframe object with given column data.
+ * @param column_data The column data that can be loaded.
+ * @param column_size The size of column data array.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size);
+/**
+ * Derive a new column out of existing columns in the dataframe.
+ * @param dataframe The dataframe object that contains existing columns.
+ * @param column_idxs The columns that will be used to derive new column.
+ * @param column_idx_size The size of existing columns array.
+ * @param context The context that can be used to generate new column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, void* const context);
+/**
+ * Free the dataframe object.
+ */
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
+
+/** @} */
 
 /**
  * @page model Model
@@ -1999,6 +2036,11 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
  * The simpler composed model is the sequential model. A sequential model is a model that consists a sequence of models
  * that contains one input and one output. The output of the earlier model feed into the later one, thus, a sequential
  * evaluation path.
+ */
+
+/**
+ * @defgroup level_5_model Model API
+ * @{
  */
 
 /**
@@ -2219,6 +2261,8 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DI
  * @return A flatten layer model.
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(void);
+
+/** @} */
 
 /** @} */
 

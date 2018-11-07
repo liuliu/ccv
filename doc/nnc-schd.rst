@@ -1,7 +1,7 @@
 NNC Static Schedule A Graph
 ===========================
 
-A concrete graph runs in topological order sequentially when you invoke ``ccv_nnc_graph_run``. Thus, all dependencies executed before the subsequent command got executed. This default behavior doesn't leverage massive parallelism built in today's CPU / GPU environment, leaves too much computation power on the table.
+A concrete graph runs in topological order sequentially when you invoke :cpp:func:`ccv_nnc_graph_run`. Thus, all dependencies executed before the subsequent command got executed. This default behavior doesn't leverage massive parallelism built in today's CPU / GPU environment, leaves too much computation power on the table.
 
 NNC supports to static schedule a graph such that all the parallelism are utilized. That's been said, **static scheduling** shouldn't be confused with **automatic parallelization**. The later term suggests to turn a non-parallelizable graph into a parallelizable ones by adding additional data transfers or graph transformations. **Static scheduling** considers dependencies of a command, and try to schedule independent commands onto different streams.
 
