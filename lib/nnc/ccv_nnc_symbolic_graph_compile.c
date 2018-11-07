@@ -877,6 +877,7 @@ static int _ccv_nnc_is_symbolic_graph_exec_input_or_output(const int p_ref, cons
 {
 	int i;
 	int is_input = 0;
+	assert(node);
 	for (i = 0; i < node->input_size && !is_input; i++)
 		if (p_ref == node->inputs[i])
 			is_input = 1;
@@ -1178,6 +1179,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 		{
+			assert(graph_prep->sub_preps[i]);
 			const int exec_idx = graph_prep->sub_preps[i]->exec_idx - 1;
 			const ccv_nnc_graph_exec_symbol_info_t* const node = graph_prep->exec_symbol_info + exec_idx;
 			if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
@@ -1287,6 +1289,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	// Now after refs assigned out, handle the case I need to preserve because I am a sub graph of while loop.
 	if (graph_prep->flags & CCV_NNC_GRAPH_EXEC_P_WHILE)
 	{
+		assert(graph_prep->p);
 		const ccv_nnc_graph_exec_symbol_info_t* node = graph_prep->p->exec_symbol_info + (graph_prep->exec_idx - 1);
 		const int p_idx = graph_prep->p_idx - 1;
 		for (i = 0; i < node->input_size; i++)
@@ -1984,6 +1987,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			// For this case, there is no exception.
 			tensor_blocks[i].unfoldable_except_ref = 0;
 		} else if (tensor_symbol_info[i].p_ref) {
+			assert(p_node_info);
 			const int p_ref_is_in_or_out = _ccv_nnc_is_symbolic_graph_exec_input_or_output(tensor_symbol_info[i].p_ref - 1, p_node_info);
 			// If I am a case of graph, and this tensor is the input from the parent graph, you cannot fold it as input.
 			if (p_node_info->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
@@ -2982,6 +2986,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 	ccv_nnc_graph_visit_for(visit, exec_symbol_info, node, idx) {
 		for (p = 0; p < node->graph_ref_size; p++)
 		{
+			assert(symbolic_graph->sub_graphs);
 			ccv_nnc_symbolic_graph_t* const sub_graph = *(ccv_nnc_symbolic_graph_t**)ccv_array_get(symbolic_graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[p] - 1);
 			ccv_array_t* const dup_breakpoints = _ccv_nnc_dup_breakpoints_with_p_node_inputs(sub_graph, node);
 			ccv_nnc_symbolic_graph_prep_t* const sub_prep = _ccv_nnc_symbolic_graph_prep_new(sub_graph, tensor_binds, tensor_bind_size, 0, 0, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->sources, 0), sub_graph->sources->rnum, (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(sub_graph->destinations, 0), sub_graph->destinations->rnum, tensor_symbol_info, symbolic_graph->tensor_symbol_info->rnum, exec_symbol_info, symbolic_graph->exec_symbol_info->rnum);

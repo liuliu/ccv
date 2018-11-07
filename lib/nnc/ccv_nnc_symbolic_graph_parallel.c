@@ -177,7 +177,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	// dup_exec_idx is the array starts with 0 here.
 	for (i = 0; i < (parallel_count - 1) * graph_exec_symbol_size; i++)
 		dup_exec_idx[i] = -1;
-	int max_io_size = 1;
+	int max_io_size = 2;
 	for (i = 0; i < dup_execs->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(dup_execs, i);

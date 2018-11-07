@@ -1927,7 +1927,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  */
 
 /**
- * @page dataframe Dataframe
+ * @page dataframe What is "dataframe" in ML?
  *
  * A large part of machine learning consists of go through data, process them to a shape / form that makes sense,
  * and pass that into the model to train. Deep learning frameworks such as TensorFlow or PyTorch provides some
@@ -1981,7 +1981,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
 /**
  * A data enumeration function to supply data for a given row index (and length).
  */
-typedef void (*ccv_cnnp_column_data_enum_f)(const int row_idx, const int row_size, void** const data, const int column_idx, void* const context);
+typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int row_idx, const int row_size, void** const data, void* const context);
 /**
  * Column data.
  */
@@ -2000,13 +2000,17 @@ typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size);
 /**
+ * A map function that takes the data from multiple columns and derive new data out of it.
+ */
+typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int column_size, void** const data, void* const context);
+/**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
  * @param column_idxs The columns that will be used to derive new column.
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, void* const context);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int* const column_idxs, const int column_idx_size, void* const context);
 /**
  * Free the dataframe object.
  */
@@ -2015,7 +2019,7 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 /** @} */
 
 /**
- * @page model Model
+ * @page model Models, layers, and Keras
  *
  * With Keras API in mind, this model implementation essentially is a light-weight way to group neural network layers
  * together. This is a rare case in NNC (or ccv in general) where Object-Oriented programming makes sense. I borrowed

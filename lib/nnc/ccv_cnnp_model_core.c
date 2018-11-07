@@ -393,7 +393,7 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
-	const int n = ccv_nnc_tensor_get_n(weight_params);
+	const int n = ccv_max(ccv_nnc_tensor_get_n(weight_params), 1);
 	const int count = ccv_nnc_tensor_count(weight_params);
 	const float glorot = sqrtf(2) / sqrtf(count / n + n);
 	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, self->weights);
