@@ -1998,7 +1998,7 @@ typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
  * @param column_data The column data that can be loaded.
  * @param column_size The size of column data array.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_size);
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */

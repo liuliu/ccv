@@ -142,7 +142,7 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 			uint16_t c; /* number of incoming edges. */ \
 		} ccv_nnc_incoming_t; \
 		/* Statistics of how many incoming edges for all nodes of a graph. */ \
-		int _heap_mem_ = (node_size > 1024); \
+		const int _heap_mem_ = (node_size > 1024); \
 		int _i_, _j_; \
 		ccv_nnc_incoming_t* _incomings_; \
 		if (_heap_mem_) \
@@ -172,14 +172,15 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 			_exist_size_[_q_] = 0; \
 			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
 			{ \
-				if (!_incomings_[_exists_[_p_][_i_]].r) \
+				const int32_t _idx_ = _exists_[_p_][_i_]; \
+				if (!_incomings_[_idx_].r) \
 					continue; \
-				_incomings_[_exists_[_p_][_i_]].r = 0; \
+				_incomings_[_idx_].r = 0; \
 				/* mark as not reached */ \
-				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
-					for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
+				if ((nodes)[_idx_].outgoings) \
+					for (_j_ = 0; _j_ < (nodes)[_idx_].outgoings->rnum; _j_++) \
 					{ \
-						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+						const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, _j_); \
 						++_incomings_[d].c; \
 						_exists_[_q_][_exist_size_[_q_]] = d; \
 						++_exist_size_[_q_]; \
@@ -210,19 +211,20 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 			_exist_size_[_q_] = 0; \
 			for (_i_ = 0; _i_ < _exist_size_[_p_];) \
 			{ \
-				visitor(((nodes) + _exists_[_p_][_i_]), (_exists_[_p_][_i_]), (_incomings_[_exists_[_p_][_i_]].d)); \
+				const int32_t _idx_ = _exists_[_p_][_i_]; \
+				visitor(((nodes) + _idx_), (_idx_), (_incomings_[_idx_].d)); \
 				/* mark as reached */ \
-				if (_incomings_[_exists_[_p_][_i_]].d) \
+				if (_incomings_[_idx_].d) \
 				{ \
 					++_d_; \
-					_incomings_[_exists_[_p_][_i_]].r = 1; \
+					_incomings_[_idx_].r = 1; \
 				} \
-				if ((nodes)[_exists_[_p_][_i_]].outgoings) \
+				if ((nodes)[_idx_].outgoings) \
 				{ \
-					if ((nodes)[_exists_[_p_][_i_]].outgoings->rnum == 1) \
+					if ((nodes)[_idx_].outgoings->rnum == 1) \
 					{ \
 						/* Optimizing for the case have only one child. Go through that directly. */ \
-						const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, 0); \
+						const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, 0); \
 						--_incomings_[d].c; \
 						if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
 						{ \
@@ -230,9 +232,9 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 							continue; \
 						} \
 					} else \
-						for (_j_ = 0; _j_ < (nodes)[_exists_[_p_][_i_]].outgoings->rnum; _j_++) \
+						for (_j_ = 0; _j_ < (nodes)[_idx_].outgoings->rnum; _j_++) \
 						{ \
-							const int d = *(int*)ccv_array_get((nodes)[_exists_[_p_][_i_]].outgoings, _j_); \
+							const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, _j_); \
 							--_incomings_[d].c; \
 							/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
 							if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
