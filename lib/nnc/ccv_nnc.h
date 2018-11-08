@@ -2009,10 +2009,29 @@ typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int c
  * @param column_idxs The columns that will be used to derive new column.
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
+ * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int* const column_idxs, const int column_idx_size, void* const context);
 /**
+ * The opaque pointer to the iterator.
+ */
+typedef struct ccv_cnnp_dataframe_iter_s ccv_cnnp_dataframe_iter_t;
+/**
+ * Get a new iterator of the dataframe.
+ * @param dataframe The dataframe object to iterate through.
+ * @param column_idxs The columns that will be iterated.
+ * @param column_idx_size The size of columns array.
+ * @return The opaque iterator object.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_iter_t*) ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size);
+/**
+ * Free the dataframe iterator object.
+ * @param iter The dataframe iterator to be freed.
+ */
+void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter);
+/**
  * Free the dataframe object.
+ * @param dataframe The dataframe object to be freed.
  */
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
 

@@ -803,7 +803,8 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		if (exec_info[idx].schedule.stream != 0) // If this exec_info doesn't end with default stream, we need to wait.
 			++graph_wait_size;
 	}
-	graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
+	if (graph_wait_size > 0)
+		graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
 	graph_wait_size = 0;
 	for (i = 0; i < graph->destinations->rnum; i++)
 	{

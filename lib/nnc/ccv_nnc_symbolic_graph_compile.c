@@ -1621,6 +1621,7 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 	int i, found = 0;
 	// Try to insert head.
 	ccv_array_t* head = tensor_blocks.head;
+	assert(head);
 	for (i = 0; i < head->rnum;)
 	{
 		const int head_idx = *(int*)ccv_array_get(head, i);
@@ -1663,6 +1664,7 @@ static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec
 	// Try to insert tail.
 	found = 0;
 	ccv_array_t* tail = tensor_blocks.tail;
+	assert(tail);
 	for (i = 0; i < tail->rnum;)
 	{
 		const int tail_idx = *(int*)ccv_array_get(tail, i);
