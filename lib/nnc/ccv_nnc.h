@@ -1981,12 +1981,17 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
 /**
  * A data enumeration function to supply data for a given row index (and length).
  */
-typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int row_idx, const int row_size, void** const data, void* const context);
+typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int row_idx, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * A destructor for data.
+ */
+typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data);
 /**
  * Column data.
  */
 typedef struct {
 	ccv_cnnp_column_data_enum_f data_enum;
+	ccv_cnnp_column_data_deinit_f deinit;
 	void* context;
 } ccv_cnnp_column_data_t;
 /**
@@ -2002,7 +2007,7 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_col
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
-typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int column_size, void** const data, void* const context);
+typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int column_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
@@ -2011,7 +2016,7 @@ typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int c
  * @param context The context that can be used to generate new column.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int* const column_idxs, const int column_idx_size, void* const context);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context);
 /**
  * The opaque pointer to the iterator.
  */
@@ -2024,6 +2029,23 @@ typedef struct ccv_cnnp_dataframe_iter_s ccv_cnnp_dataframe_iter_t;
  * @return The opaque iterator object.
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_iter_t*) ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size);
+/**
+ * Get the next item from the iterator.
+ * @param iter The iterator to go through.
+ * @param data_ref The output for the data.
+ * @param column_idx_size The size of the data_ref array.
+ * @param stream_context The stream context to extract data asynchronously.
+ * @return 0 if the iteration is successful, -1 if it is ended.
+ */
+int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int column_idx_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Prefetch next item on the iterator with the given stream context. You can call this method multiple times
+ * to prefetch multiple items ahead of time.
+ * @param iter The iterator to go through.
+ * @param stream_context The stream context to extract data asynchronously.
+ * @return 0 if the prefetch is successful, -1 if it is ended.
+ */
+int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Free the dataframe iterator object.
  * @param iter The dataframe iterator to be freed.

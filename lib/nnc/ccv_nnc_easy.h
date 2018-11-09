@@ -53,6 +53,8 @@
 
 #define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
 
+#define COLUMN_ID_LIST_X(...)(int []){__VA_ARGS__}
+
 /**
  * @defgroup convenience_api Convenience API
  * @{
@@ -108,12 +110,12 @@
  */
 #define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
- * Pass both default sources and default sources size to function that accepts (sources, source size)
+ * Pass both default sources and default sources size to function that accepts (sources, source size).
  * @param x A given symbolic graph.
  */
 #define SYMBOLIC_GRAPH_SOURCES(x) ccv_nnc_symbolic_graph_sources(x), ccv_nnc_symbolic_graph_source_size(x)
 /**
- * Pass both default destinations and default destinations size to function that accepts (destinations, destination size)
+ * Pass both default destinations and default destinations size to function that accepts (destinations, destination size).
  * @param x A given symbolic graph.
  */
 #define SYMBOLIC_GRAPH_DESTINATIONS(x) ccv_nnc_symbolic_graph_destinations(x), ccv_nnc_symbolic_graph_destination_size(x)
@@ -132,6 +134,11 @@
  * This method effectively gives two parameters as one.
  */
 #define MODEL_IO_LIST(...) MODEL_IO_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
+ * Pass a list of dataframe column ids to iteration function that accepts (column id array, column id array size).
+ * This method effectively gives two parameters as one.
+ */
+#define COLUMN_ID_LIST(...) COLUMN_ID_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
 #define TRAVERSE_FULL 0,0,0,0
 
