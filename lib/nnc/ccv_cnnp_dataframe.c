@@ -139,7 +139,7 @@ static void* _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafra
 		int i;
 		for (i = 0; i < column_idx_size; i++)
 			derived_column_data->data[i] = _ccv_cnnp_dataframe_column_data(dataframe, cached_data, row_idx, derived_column_data->column_idxs[i], stream_context);
-		derived_column_data->map(derived_column_data->data[i], derived_column_data->column_idx_size, &data, derived_column_data->context, stream_context);
+		derived_column_data->map(derived_column_data->data, derived_column_data->column_idx_size, &data, derived_column_data->context, stream_context);
 	} else {
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
 		column_data->data_enum(column_idx, row_idx, 1, &data, column_data->context, stream_context);
@@ -194,6 +194,7 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 {
+	int i, j;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
 	khiter_t k;
 	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
@@ -203,7 +204,6 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 			continue;
 		ccv_array_t* const columns = kh_val(data_ctx, k);
 		assert(columns->rnum <= column_size);
-		int i, j;
 		for (i = 0; i < columns->rnum; i++)
 		{
 			ccv_array_t* const column = *(ccv_array_t**)ccv_array_get(columns, i);
@@ -218,6 +218,13 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 	}
 	kh_destroy(ctx, data_ctx);
 	if (dataframe->derived_column_data)
+	{
+		for (i = 0; i < dataframe->derived_column_data->rnum; i++)
+		{
+			ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i);
+			ccfree(derived_column_data->data);
+		}
 		ccv_array_free(dataframe->derived_column_data);
+	}
 	ccfree(dataframe);
 }
