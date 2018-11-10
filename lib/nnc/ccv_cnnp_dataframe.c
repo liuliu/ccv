@@ -34,6 +34,10 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const
 	return dataframe;
 }
 
+void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
+{
+}
+
 int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context)
 {
 	assert(column_idx_size > 0);
@@ -58,6 +62,7 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 }
 
 typedef struct {
+	int flag; // Mark this as cached or not.
 	uint64_t ctx; // The stream context.
 	void* data;
 } ccv_cnnp_dataframe_data_item_t;
@@ -91,6 +96,8 @@ ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* con
 
 static void _ccv_cnnp_dataframe_enqueue_data(ccv_cnnp_dataframe_t* const dataframe, void* const data, const int column_idx, const uint64_t ctx)
 {
+	if (!data)
+		return;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
 	int ret = 0;
 	khiter_t k = kh_put(ctx, data_ctx, ctx, &ret);
@@ -132,7 +139,7 @@ static void* _ccv_cnnp_dataframe_dequeue_data(ccv_cnnp_dataframe_t* const datafr
 
 static void* _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_data_item_t* const cached_data, const int row_idx, const int column_idx, ccv_nnc_stream_context_t* const stream_context)
 {
-	if (cached_data[column_idx].data)
+	if (cached_data[column_idx].flag)
 		return cached_data[column_idx].data;
 	void* data = _ccv_cnnp_dataframe_dequeue_data(dataframe, column_idx, stream_context);
 	if (column_idx >= dataframe->column_size)
@@ -147,6 +154,7 @@ static void* _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafra
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
 		column_data->data_enum(column_idx, row_idx, 1, &data, column_data->context, stream_context);
 	}
+	cached_data[column_idx].flag = 1;
 	cached_data[column_idx].ctx = (uint64_t)(uintptr_t)stream_context;
 	cached_data[column_idx].data = data;
 	return data;
@@ -160,9 +168,10 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 	int i;
 	// Push existing data back to reusable state (note, these may not be reused immediately because they may be on a different stream context).
 	for (i = 0; i < column_size; i++)
-		if (iter->cached_data[i].data)
+		if (iter->cached_data[i].flag)
 		{
 			_ccv_cnnp_dataframe_enqueue_data(dataframe, iter->cached_data[i].data, i, iter->cached_data[i].ctx);
+			iter->cached_data[i].flag = 0;
 			iter->cached_data[i].data = 0;
 			iter->cached_data[i].ctx = 0;
 		}
@@ -300,7 +309,7 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 	int i;
 	// Push existing data back to reusable state (note, these may not be reused immediately because they may be on a different stream context).
 	for (i = 0; i < column_size; i++)
-		if (iter->cached_data[i].data)
+		if (iter->cached_data[i].flag)
 			_ccv_cnnp_dataframe_enqueue_data(dataframe, iter->cached_data[i].data, i, iter->cached_data[i].ctx);
 	// Push prefetches back to reusable state.
 	_ccv_cnnp_null_prefetches(iter);

@@ -2011,12 +2011,31 @@ typedef void (*ccv_cnnp_column_data_map_f)(void** const column_data, const int c
 /**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
+ * @param map The map function used to derive new column from existing columns.
+ * @param deinit The deinit function will be used to destroy the derived data.
  * @param column_idxs The columns that will be used to derive new column.
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
  * @return The new column index.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context);
+/**
+ * Shuffle an existing dataframe.
+ * @param dataframe The dataframe that is about to be shuffled.
+ */
+void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe);
+/**
+ * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
+ * one specific column. This will also reduce the multi-column dataframe down to 1 column
+ * by selecting the one column to reduce.
+ * @param dataframe The dataframe that is about to be reduced.
+ * @param reduce The reduce function used to reduce n rows into 1.
+ * @param deinit The deinit function will be used to destroy the derived data.
+ * @param column_idx The column we selected to reduce.
+ * @param batch_size How many rows will be reduced to 1 row from the original data.
+ * @return The reduced dataframe.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_deinit_f deinit, const int column_idx, const int batch_size);
 /**
  * The opaque pointer to the iterator.
  */
