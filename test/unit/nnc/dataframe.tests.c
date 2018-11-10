@@ -115,16 +115,19 @@ TEST_CASE("iterate through derived column")
 	ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
 	REQUIRE_EQ(_ccv_iter_accessed, 2, "the iterator is accessed again, for prefetching");
 	_ccv_iter_accessed = 0;
-	for (i = 4; i < 8; i++)
+	for (i = 4; i < 6; i++)
 	{
 		ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
 		result[i] = (int)(intptr_t)data;
 	}
-	REQUIRE_EQ(_ccv_iter_accessed, 3, "the iterator accessed 3 times, the first is prefetching");
-	ccv_cnnp_dataframe_iter_free(iter2);
-	for (i = 0; i < 8; i++)
+	REQUIRE_EQ(_ccv_iter_accessed, 1, "the iterator accessed 3 times, the first is prefetching");
+	REQUIRE_EQ(ccv_cnnp_dataframe_iter_prefetch(iter2, 0), 0, "success");
+	REQUIRE_EQ(ccv_cnnp_dataframe_iter_prefetch(iter2, 0), 0, "success");
+	REQUIRE_EQ(ccv_cnnp_dataframe_iter_prefetch(iter2, 0), -1, "should fail");
+	for (i = 0; i < 6; i++)
 		++int_array[i];
-	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
+	ccv_cnnp_dataframe_iter_free(iter2);
+	REQUIRE_ARRAY_EQ(int, int_array, result, 6, "iterated result and actual result should be the same up to 6");
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
