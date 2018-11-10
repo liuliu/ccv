@@ -2047,6 +2047,13 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
  */
 int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, ccv_nnc_stream_context_t* const stream_context);
 /**
+ * Set the cursor of the iterator. When set to 0, the iterator effectively restarts.
+ * @param iter The iterator to go through.
+ * @param idx The index of the cursor.
+ * @return 0 if it is successful, -1 if it is not (exceed the range).
+ */
+int ccv_cnnp_dataframe_iter_set_cursor(ccv_cnnp_dataframe_iter_t* const iter, const int idx);
+/**
  * Free the dataframe iterator object.
  * @param iter The dataframe iterator to be freed.
  */
