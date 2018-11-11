@@ -45,7 +45,7 @@ TEST_CASE("iterate through a simple dataframe")
 	// iter2 test some prefetch capacities.
 	ccv_cnnp_dataframe_iter_t* const iter2 = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(0));
 	for (i = 0; i < 3; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	_ccv_iter_accessed = 0;
 	for (i = 0; i < 3; i++)
 	{
@@ -56,7 +56,7 @@ TEST_CASE("iterate through a simple dataframe")
 	ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
 	result[3] = (int)(intptr_t)data;
 	REQUIRE_EQ(_ccv_iter_accessed, 1, "the iterator is accessed, because no prefetching");
-	ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+	ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	REQUIRE_EQ(_ccv_iter_accessed, 2, "the iterator is accessed again, for prefetching");
 	_ccv_iter_accessed = 0;
 	for (i = 4; i < 8; i++)
@@ -70,18 +70,18 @@ TEST_CASE("iterate through a simple dataframe")
 	// iter3 test more prefetch behavior.
 	ccv_cnnp_dataframe_iter_t* const iter3 = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(0));
 	for (i = 0; i < 3; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	for (i = 0; i < 2; i++)
 	{
 		_ccv_iter_accessed = 0;
 		ccv_cnnp_dataframe_iter_next(iter3, &data, 1, 0);
 		REQUIRE_EQ(_ccv_iter_accessed, 0, "no iterator accessed");
 		result[i] = (int)(intptr_t)data;
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 		REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed for prefetching");
 	}
 	for (i = 2; i < 4; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	_ccv_iter_accessed = 0;
 	for (i = 2; i < 7; i++)
 	{
@@ -92,7 +92,7 @@ TEST_CASE("iterate through a simple dataframe")
 	ccv_cnnp_dataframe_iter_next(iter3, &data, 1, 0);
 	result[7] = (int)(intptr_t)data;
 	REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed twice");
-	const int fail1 = ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+	const int fail1 = ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	REQUIRE_EQ(fail1, -1, "cannot advance no more");
 	ccv_cnnp_dataframe_iter_free(iter3);
 	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
@@ -132,7 +132,7 @@ TEST_CASE("iterate through derived column")
 	// iter2 test some prefetch capacities.
 	ccv_cnnp_dataframe_iter_t* const iter2 = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
 	for (i = 0; i < 3; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	_ccv_iter_accessed = 0;
 	for (i = 0; i < 3; i++)
 	{
@@ -143,7 +143,7 @@ TEST_CASE("iterate through derived column")
 	ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
 	result[3] = (int)(intptr_t)data;
 	REQUIRE_EQ(_ccv_iter_accessed, 1, "the iterator is accessed, because no prefetching");
-	ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+	ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	REQUIRE_EQ(_ccv_iter_accessed, 2, "the iterator is accessed again, for prefetching");
 	_ccv_iter_accessed = 0;
 	for (i = 4; i < 6; i++)
@@ -152,11 +152,11 @@ TEST_CASE("iterate through derived column")
 		result[i] = (int)(intptr_t)data;
 	}
 	REQUIRE_EQ(_ccv_iter_accessed, 1, "the iterator accessed 3 times, the first is prefetching");
-	const int success0 = ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+	const int success0 = ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	REQUIRE_EQ(success0, 0, "success");
-	const int success1 = ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+	const int success1 = ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	REQUIRE_EQ(success1, 0, "success");
-	const int fail0 = ccv_cnnp_dataframe_iter_prefetch(iter2, 0);
+	const int fail0 = ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
 	REQUIRE_EQ(fail0, -1, "should fail");
 	for (i = 0; i < 6; i++)
 		++int_array[i];
@@ -165,18 +165,18 @@ TEST_CASE("iterate through derived column")
 	// iter3 test more prefetch behavior.
 	ccv_cnnp_dataframe_iter_t* const iter3 = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
 	for (i = 0; i < 3; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	for (i = 0; i < 2; i++)
 	{
 		_ccv_iter_accessed = 0;
 		ccv_cnnp_dataframe_iter_next(iter3, &data, 1, 0);
 		REQUIRE_EQ(_ccv_iter_accessed, 0, "no iterator accessed");
 		result[i] = (int)(intptr_t)data;
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 		REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed for prefetching");
 	}
 	for (i = 2; i < 4; i++)
-		ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+		ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	_ccv_iter_accessed = 0;
 	for (i = 2; i < 7; i++)
 	{
@@ -187,11 +187,65 @@ TEST_CASE("iterate through derived column")
 	ccv_cnnp_dataframe_iter_next(iter3, &data, 1, 0);
 	result[7] = (int)(intptr_t)data;
 	REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed twice");
-	const int fail1 = ccv_cnnp_dataframe_iter_prefetch(iter3, 0);
+	const int fail1 = ccv_cnnp_dataframe_iter_prefetch(iter3, 1, 0);
 	REQUIRE_EQ(fail1, -1, "cannot advance no more");
 	for (i = 0; i < 8; i++)
 		++int_array[i];
 	ccv_cnnp_dataframe_iter_free(iter3);
+	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("iterate through derived column with cursor reset")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	assert(derived > 0);
+	int i;
+	void* data;
+	int result[8];
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
+	for (i = 0; i < 3; i++)
+		ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+	for (i = 0; i < 2; i++)
+	{
+		_ccv_iter_accessed = 0;
+		ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+		REQUIRE_EQ(_ccv_iter_accessed, 0, "no iterator accessed");
+		result[i] = (int)(intptr_t)data;
+		ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+		REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed for prefetching");
+	}
+	for (i = 2; i < 4; i++)
+		ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+	ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
+	ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+	ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+	_ccv_iter_accessed = 0;
+	for (i = 0; i < 7; i++)
+	{
+		ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+		result[i] = (int)(intptr_t)data;
+	}
+	REQUIRE_EQ(_ccv_iter_accessed, 5, "5 iterator accessed");
+	_ccv_iter_accessed = 0;
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	result[7] = (int)(intptr_t)data;
+	REQUIRE_EQ(_ccv_iter_accessed, 1, "iterator accessed");
+	const int fail1 = ccv_cnnp_dataframe_iter_prefetch(iter, 1, 0);
+	REQUIRE_EQ(fail1, -1, "cannot advance no more");
+	for (i = 0; i < 8; i++)
+		++int_array[i];
+	ccv_cnnp_dataframe_iter_free(iter);
 	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
 	ccv_cnnp_dataframe_free(dataframe);
 }

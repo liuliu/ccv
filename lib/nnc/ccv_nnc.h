@@ -2061,10 +2061,11 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
  * Prefetch next item on the iterator with the given stream context. You can call this method multiple times
  * to prefetch multiple items ahead of time.
  * @param iter The iterator to go through.
+ * @param prefetch_count How much ahead we should advance for.
  * @param stream_context The stream context to extract data asynchronously.
  * @return 0 if the prefetch is successful, -1 if it is ended.
  */
-int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, ccv_nnc_stream_context_t* const stream_context);
+int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, const int prefetch_count, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Set the cursor of the iterator. When set to 0, the iterator effectively restarts.
  * @param iter The iterator to go through.
