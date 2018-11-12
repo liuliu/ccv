@@ -17,7 +17,6 @@ struct ccv_cnnp_dataframe_s {
 typedef struct {
 	int column_idx_size;
 	int* column_idxs;
-	void** data;
 	void* context;
 	ccv_cnnp_column_data_deinit_f deinit;
 	ccv_cnnp_column_data_map_f map;
@@ -49,13 +48,11 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 		{ assert(column_idxs[i] < column_size); }
 	ccv_cnnp_derived_column_data_t column_data = {
 		.column_idx_size = column_idx_size,
-		.data = (void*)ccmalloc(sizeof(void*) * column_idx_size + sizeof(int) * column_idx_size),
+		.column_idxs = (int*)ccmalloc(sizeof(int) * column_idx_size),
 		.context = context,
 		.map = map,
 		.deinit = deinit,
 	};
-	memset(column_data.data, 0, sizeof(void*) * column_idx_size);
-	column_data.column_idxs = (int*)(column_data.data + column_idx_size);
 	memcpy(column_data.column_idxs, column_idxs, sizeof(int) * column_idx_size);
 	ccv_array_push(dataframe->derived_column_data, &column_data);
 	return dataframe->column_size + dataframe->derived_column_data->rnum - 1;
@@ -72,8 +69,11 @@ struct ccv_cnnp_dataframe_iter_s {
 	int prefetch_head;
 	int prefetch_tail;
 	int column_idx_size;
-	ccv_array_t* prefetches; // The prefetch contents.
+	int fetched_size; // The size of fetched data.
 	ccv_cnnp_dataframe_t* dataframe;
+	void**** derived_data; // This is ridiculous, but it is true.
+	void** fetched_data; // The cache to store fetched data.
+	ccv_array_t* prefetches; // The prefetch contents.
 	int* column_idxs;
 	ccv_cnnp_dataframe_data_item_t cached_data[1]; // The data cached when deriving data.
 };
@@ -91,6 +91,9 @@ ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* con
 	iter->column_idx_size = column_idx_size;
 	iter->column_idxs = (int*)(iter->cached_data + column_size);
 	memcpy(iter->column_idxs, column_idxs, sizeof(int) * column_idx_size);
+	// Preallocate fetched data.
+	iter->fetched_size = 1;
+	iter->fetched_data = (void**)ccmalloc(sizeof(void*) * column_size);
 	return iter;
 }
 
@@ -137,27 +140,49 @@ static void* _ccv_cnnp_dataframe_dequeue_data(ccv_cnnp_dataframe_t* const datafr
 	return data;
 }
 
-static void* _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_data_item_t* const cached_data, const int row_idx, const int row_size, const int column_idx, const int cached_step, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, void** const fetched_data, const int row_idx, const int row_size, const int column_idx, const int cached_step, ccv_nnc_stream_context_t* const stream_context)
 {
+	int i;
 	if (cached_data[column_idx * cached_step].flag)
-		return cached_data[column_idx * cached_step].data;
-	void* data = _ccv_cnnp_dataframe_dequeue_data(dataframe, column_idx, stream_context);
+	{
+		for (i = 1; i < row_size; i++)
+			{ assert(cached_data[i + column_idx * cached_step].flag); }
+		for (i = 0; i < row_size; i++)
+			fetched_data[i] = cached_data[i + column_idx * cached_step].data;
+		return;
+	} else {
+		for (i = 1; i < row_size; i++)
+			{ assert(!cached_data[i + column_idx * cached_step].flag); }
+		for (i = 0; i < row_size; i++)
+			fetched_data[i] = _ccv_cnnp_dataframe_dequeue_data(dataframe, column_idx, stream_context);
+	}
 	if (column_idx >= dataframe->column_size)
 	{
-		const ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, column_idx - dataframe->column_size);
+		const int derived_column_idx = column_idx - dataframe->column_size;
+		const ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, derived_column_idx);
 		const int column_idx_size = derived_column_data->column_idx_size;
 		int i;
+		if (!iter->derived_data)
+			iter->derived_data = (void****)cccalloc(dataframe->derived_column_data->rnum, sizeof(void***));
+		if (!iter->derived_data[derived_column_idx])
+			iter->derived_data[derived_column_idx] = (void***)cccalloc(derived_column_data->column_idx_size, sizeof(void**));
+		void*** const derived_data = iter->derived_data[derived_column_idx];
 		for (i = 0; i < column_idx_size; i++)
-			derived_column_data->data[i] = _ccv_cnnp_dataframe_column_data(dataframe, cached_data, row_idx, row_size, derived_column_data->column_idxs[i], cached_step, stream_context);
-		derived_column_data->map(derived_column_data->data, derived_column_data->column_idx_size, &data, derived_column_data->context, stream_context);
+		{
+			derived_data[i] = iter->fetched_data + derived_column_data->column_idxs[i] * iter->fetched_size;
+			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, derived_data[i], row_idx, row_size, derived_column_data->column_idxs[i], cached_step, stream_context);
+		}
+		derived_column_data->map(derived_data, derived_column_data->column_idx_size, row_size, fetched_data, derived_column_data->context, stream_context);
 	} else {
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
-		column_data->data_enum(column_idx, row_idx, 1, &data, column_data->context, stream_context);
+		column_data->data_enum(column_idx, row_idx, row_size, fetched_data, column_data->context, stream_context);
 	}
-	cached_data[column_idx * cached_step].flag = 1;
-	cached_data[column_idx * cached_step].ctx = (uint64_t)(uintptr_t)stream_context;
-	cached_data[column_idx * cached_step].data = data;
-	return data;
+	for (i = 0; i < row_size; i++)
+	{
+		cached_data[i + column_idx * cached_step].flag = 1;
+		cached_data[i + column_idx * cached_step].ctx = (uint64_t)(uintptr_t)stream_context;
+		cached_data[i + column_idx * cached_step].data = fetched_data[i];
+	}
 }
 
 int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** const data_ref, const int column_idx_size, ccv_nnc_stream_context_t* const stream_context)
@@ -203,7 +228,7 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 	for (i = 0; i < column_idx_size; i++)
 	{
 		const int column_idx = iter->column_idxs[i];
-		data_ref[i] = _ccv_cnnp_dataframe_column_data(dataframe, iter->cached_data, idx, 1, column_idx, 1, stream_context);
+		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, idx, 1, column_idx, 1, stream_context);
 	}
 	++iter->idx;
 	return 0;
@@ -246,6 +271,31 @@ static void _ccv_cnnp_null_prefetches(ccv_cnnp_dataframe_iter_t* const iter)
 	}
 	iter->prefetch_head = 0;
 	iter->prefetch_tail = -1;
+}
+
+static void _ccv_cnnp_prefetch_cached_data(ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, const int row_idx, const int max_to_prefetch, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_cnnp_dataframe_t* const dataframe = iter->dataframe;
+	assert(dataframe);
+	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+	assert(iter->prefetches);
+	const int lines = iter->prefetches->rnum / column_size;
+	int i, j;
+	// Reset
+	for (i = 0; i < column_size; i++)
+		for (j = 0; j < max_to_prefetch; j++)
+		{
+			cached_data[j + i * lines].flag = 0;
+			cached_data[j + i * lines].data = 0;
+			cached_data[j + i * lines].ctx = 0;
+		}
+	if (iter->fetched_size < max_to_prefetch)
+	{
+		iter->fetched_data = ccrealloc(iter->fetched_data, sizeof(void*) * max_to_prefetch * column_size);
+		iter->fetched_size = max_to_prefetch;
+	}
+	for (i = 0; i < iter->column_idx_size; i++)
+		_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, iter->fetched_data + iter->column_idxs[i] * iter->fetched_size, row_idx, max_to_prefetch, iter->column_idxs[i], lines, stream_context);
 }
 
 int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, const int prefetch_count, ccv_nnc_stream_context_t* const stream_context)
@@ -309,15 +359,26 @@ int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, cons
 	}
 	ccv_array_t* const prefetches = iter->prefetches;
 	ccv_cnnp_dataframe_data_item_t* const cached_data = (ccv_cnnp_dataframe_data_item_t*)ccv_array_get(prefetches, iter->prefetch_tail);
-	// Reset
-	for (i = 0; i < column_size; i++)
+	// If the tail is before the head, we must have enough space for the max_to_prefetch
+	if (iter->prefetch_tail < iter->prefetch_head)
 	{
-		cached_data[i * lines].flag = 0;
-		cached_data[i * lines].data = 0;
-		cached_data[i * lines].ctx = 0;
+		assert(iter->prefetch_tail + max_to_prefetch - 1 < iter->prefetch_head);
+		_ccv_cnnp_prefetch_cached_data(iter, cached_data, next, max_to_prefetch, stream_context);
+		iter->prefetch_tail += max_to_prefetch - 1;
+	} else {
+		// First, fetch to the end.
+		const int fetch_to_end = ccv_min(max_to_prefetch, lines - iter->prefetch_tail);
+		_ccv_cnnp_prefetch_cached_data(iter, cached_data, next, fetch_to_end, stream_context);
+		if (fetch_to_end == max_to_prefetch)
+			iter->prefetch_tail += fetch_to_end - 1;
+		else {
+			// Need to fetch more.
+			ccv_cnnp_dataframe_data_item_t* const more_data = (ccv_cnnp_dataframe_data_item_t*)ccv_array_get(prefetches, 0);
+			assert(max_to_prefetch > fetch_to_end);
+			_ccv_cnnp_prefetch_cached_data(iter, more_data, next + fetch_to_end, max_to_prefetch - fetch_to_end, stream_context);
+			iter->prefetch_tail = max_to_prefetch - fetch_to_end - 1;
+		}
 	}
-	for (i = 0; i < iter->column_idx_size; i++)
-		_ccv_cnnp_dataframe_column_data(dataframe, cached_data, next, 1, iter->column_idxs[i], lines, stream_context);
 	return 0;
 }
 
@@ -347,6 +408,14 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 	_ccv_cnnp_null_prefetches(iter);
 	if (iter->prefetches)
 		ccv_array_free(iter->prefetches);
+	if (iter->derived_data)
+	{
+		for (i = 0; i < dataframe->derived_column_data->rnum; i++)
+			if (iter->derived_data[i])
+				ccfree(iter->derived_data[i]);
+		ccfree(iter->derived_data);
+	}
+	ccfree(iter->fetched_data);
 	ccfree(iter);
 }
 
@@ -380,7 +449,7 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 		for (i = 0; i < dataframe->derived_column_data->rnum; i++)
 		{
 			ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i);
-			ccfree(derived_column_data->data);
+			ccfree(derived_column_data->column_idxs);
 		}
 		ccv_array_free(dataframe->derived_column_data);
 	}
