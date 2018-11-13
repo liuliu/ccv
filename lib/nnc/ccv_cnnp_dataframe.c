@@ -3,12 +3,24 @@
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
 #include "3rdparty/khash/khash.h"
+#ifdef HAVE_GSL
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#else
+#include "3rdparty/sfmt/SFMT.h"
+#endif
 
 KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
 
 struct ccv_cnnp_dataframe_s {
 	int row_size;
 	int column_size;
+	int* shuffled_idx;
+#ifdef HAVE_GSL
+	gsl_rng* rng;
+#else
+	sfmt_t sfmt;
+#endif
 	khash_t(ctx)* data_ctx; // The stream context based cache for data entity of columns. This helps us to avoid allocations when iterate through data.
 	ccv_array_t* derived_column_data;
 	ccv_cnnp_column_data_t column_data[1];
@@ -35,6 +47,27 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const
 
 void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 {
+	assert(dataframe->row_size);
+	int i;
+	if (!dataframe->shuffled_idx)
+	{
+		dataframe->shuffled_idx = (int*)ccmalloc(sizeof(int) * dataframe->row_size);
+		for (i = 0; i < dataframe->row_size; i++)
+			dataframe->shuffled_idx[i] = i;
+#ifdef HAVE_GSL
+		assert(!dataframe->rng);
+		gsl_rng_env_setup();
+		dataframe->rng = gsl_rng_alloc(gsl_rng_default);
+		gsl_rng_set(dataframe->rng, (unsigned long int)dataframe);
+#else
+		sfmt_init_gen_rand(&dataframe->sfmt, (uint32_t)dataframe);
+#endif
+	}
+#ifdef HAVE_GSL
+	gsl_ran_shuffle(dataframe->rng, dataframe->shuffled_idx, dataframe->row_size, sizeof(int));
+#else
+	sfmt_genrand_shuffle(&dataframe->sfmt, dataframe->shuffled_idx, dataframe->row_size, sizeof(int));
+#endif
 }
 
 int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context)
@@ -78,6 +111,9 @@ struct ccv_cnnp_dataframe_iter_s {
 	ccv_cnnp_dataframe_data_item_t cached_data[1]; // The data cached when deriving data.
 };
 
+#define INDEX_DATA(iter) ((int*)((iter)->fetched_data))
+#define FETCHED_DATA(iter, idx) ((iter)->fetched_data + ((idx) + 1) * (iter)->fetched_size)
+
 ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size)
 {
 	assert(column_idx_size > 0);
@@ -93,7 +129,7 @@ ccv_cnnp_dataframe_iter_t* ccv_cnnp_dataframe_iter_new(ccv_cnnp_dataframe_t* con
 	memcpy(iter->column_idxs, column_idxs, sizeof(int) * column_idx_size);
 	// Preallocate fetched data.
 	iter->fetched_size = 1;
-	iter->fetched_data = (void**)ccmalloc(sizeof(void*) * column_size);
+	iter->fetched_data = (void**)ccmalloc(sizeof(void*) * (column_size + 1));
 	return iter;
 }
 
@@ -140,7 +176,7 @@ static void* _ccv_cnnp_dataframe_dequeue_data(ccv_cnnp_dataframe_t* const datafr
 	return data;
 }
 
-static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, void** const fetched_data, const int row_idx, const int row_size, const int column_idx, const int cached_step, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, void** const fetched_data, const int* const row_idxs, const int row_size, const int column_idx, const int cached_step, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	if (cached_data[column_idx * cached_step].flag)
@@ -169,13 +205,13 @@ static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafram
 		void*** const derived_data = iter->derived_data[derived_column_idx];
 		for (i = 0; i < column_idx_size; i++)
 		{
-			derived_data[i] = iter->fetched_data + derived_column_data->column_idxs[i] * iter->fetched_size;
-			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, derived_data[i], row_idx, row_size, derived_column_data->column_idxs[i], cached_step, stream_context);
+			derived_data[i] = FETCHED_DATA(iter, derived_column_data->column_idxs[i]);
+			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, derived_data[i], row_idxs, row_size, derived_column_data->column_idxs[i], cached_step, stream_context);
 		}
 		derived_column_data->map(derived_data, derived_column_data->column_idx_size, row_size, fetched_data, derived_column_data->context, stream_context);
 	} else {
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
-		column_data->data_enum(column_idx, row_idx, row_size, fetched_data, column_data->context, stream_context);
+		column_data->data_enum(column_idx, row_idxs, row_size, fetched_data, column_data->context, stream_context);
 	}
 	for (i = 0; i < row_size; i++)
 	{
@@ -226,10 +262,7 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 			iter->prefetch_head = 0;
 	}
 	for (i = 0; i < column_idx_size; i++)
-	{
-		const int column_idx = iter->column_idxs[i];
-		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, idx, 1, column_idx, 1, stream_context);
-	}
+		_ccv_cnnp_dataframe_column_data(dataframe, iter, iter->cached_data, data_ref + i, dataframe->shuffled_idx ? dataframe->shuffled_idx + idx : &idx, 1, iter->column_idxs[i], 1, stream_context);
 	++iter->idx;
 	return 0;
 }
@@ -273,7 +306,7 @@ static void _ccv_cnnp_null_prefetches(ccv_cnnp_dataframe_iter_t* const iter)
 	iter->prefetch_tail = -1;
 }
 
-static void _ccv_cnnp_prefetch_cached_data(ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, const int row_idx, const int max_to_prefetch, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_prefetch_cached_data(ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, const int idx, const int max_to_prefetch, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_dataframe_t* const dataframe = iter->dataframe;
 	assert(dataframe);
@@ -291,11 +324,18 @@ static void _ccv_cnnp_prefetch_cached_data(ccv_cnnp_dataframe_iter_t* const iter
 		}
 	if (iter->fetched_size < max_to_prefetch)
 	{
-		iter->fetched_data = ccrealloc(iter->fetched_data, sizeof(void*) * max_to_prefetch * column_size);
+		iter->fetched_data = ccrealloc(iter->fetched_data, sizeof(void*) * max_to_prefetch * (column_size + 1));
 		iter->fetched_size = max_to_prefetch;
 	}
-	for (i = 0; i < iter->column_idx_size; i++)
-		_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, iter->fetched_data + iter->column_idxs[i] * iter->fetched_size, row_idx, max_to_prefetch, iter->column_idxs[i], lines, stream_context);
+	if (dataframe->shuffled_idx)
+		for (i = 0; i < iter->column_idx_size; i++)
+			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, FETCHED_DATA(iter, iter->column_idxs[i]), dataframe->shuffled_idx + idx, max_to_prefetch, iter->column_idxs[i], lines, stream_context);
+	else {
+		for (i = 0; i < max_to_prefetch; i++)
+			INDEX_DATA(iter)[i] = idx + i;
+		for (i = 0; i < iter->column_idx_size; i++)
+			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, FETCHED_DATA(iter, iter->column_idxs[i]), INDEX_DATA(iter), max_to_prefetch, iter->column_idxs[i], lines, stream_context);
+	}
 }
 
 int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, const int prefetch_count, ccv_nnc_stream_context_t* const stream_context)
@@ -453,5 +493,11 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 		}
 		ccv_array_free(dataframe->derived_column_data);
 	}
+	if (dataframe->shuffled_idx)
+		ccfree(dataframe->shuffled_idx);
+#ifdef HAVE_GSL
+	if (dataframe->rng)
+		gsl_rng_free(dataframe->rng);
+#endif
 	ccfree(dataframe);
 }

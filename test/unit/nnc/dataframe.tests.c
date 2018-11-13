@@ -13,12 +13,12 @@ TEST_SETUP()
 
 static int _ccv_iter_accessed = 0;
 
-static void _ccv_iter_int(const int column_idx, const int row_idx, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_iter_int(const int column_idx, const int* row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	int* const array = (int*)context;
 	int i;
 	for (i = 0; i < row_size; i++)
-		data[i] = (void*)(intptr_t)array[row_idx + i];
+		data[i] = (void*)(intptr_t)array[row_idxs[i]];
 	++_ccv_iter_accessed;
 }
 
@@ -343,6 +343,60 @@ TEST_CASE("iterate with prefetch more than 1 item, variant 2")
 		++int_array[i];
 	ccv_cnnp_dataframe_iter_free(iter);
 	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("data is shuffled")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	ccv_cnnp_dataframe_shuffle(dataframe);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	assert(derived > 0);
+	int i;
+	void* data;
+	int result[8];
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
+	_ccv_iter_accessed = 0;
+	ccv_cnnp_dataframe_iter_prefetch(iter, 3, 0);
+	REQUIRE_EQ(_ccv_iter_accessed, 1, "iter accessed once for prefetching");
+	for (i = 0; i < 3; i++)
+	{
+		_ccv_iter_accessed = 0;
+		ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+		REQUIRE_EQ(_ccv_iter_accessed, 0, "no iterator accessed");
+		result[i] = (int)(intptr_t)data;
+	}
+	ccv_cnnp_dataframe_iter_prefetch(iter, 2, 0);
+	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+	result[3] = (int)(intptr_t)data;
+	ccv_cnnp_dataframe_iter_prefetch(iter, 2, 0);
+	_ccv_iter_accessed = 0;
+	for (i = 4; i < 8; i++)
+	{
+		ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);
+		result[i] = (int)(intptr_t)data;
+	}
+	REQUIRE_EQ(_ccv_iter_accessed, 1, "no iterator accessed");
+	for (i = 0; i < 8; i++)
+		++int_array[i];
+	ccv_cnnp_dataframe_iter_free(iter);
+	REQUIRE_ARRAY_NOT_EQ(int, int_array, result, 8, "iterated result and actual result should not be the same");
+	int covered[8] = {};
+	for (i = 0; i < 8; i++)
+		covered[result[i] - 3] = 1;
+	int is_covered[8] = {
+		1, 1, 1, 1, 1, 1, 1, 1
+	};
+	REQUIRE_ARRAY_EQ(int, covered, is_covered, 8, "data should covered all");
 	ccv_cnnp_dataframe_free(dataframe);
 }
 

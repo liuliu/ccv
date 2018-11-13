@@ -1981,7 +1981,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
 /**
  * A data enumeration function to supply data for a given row index (and length).
  */
-typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int row_idx, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
  * A destructor for data.
  */

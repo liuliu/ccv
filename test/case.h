@@ -159,15 +159,17 @@ if ((a) == (b)) \
 
 #define REQUIRE_ARRAY_NOT_EQ(type, a, b, len, err, ...) { \
 int __case_i__; \
-for (__case_i__ = 0; __case_i__ < (len); __case_i__++) \
-	if (((type*)(a))[__case_i__] == ((type*)(b))[__case_i__]) \
-	{ \
-		if (isatty(fileno(stdout))) \
-			printf("\n\t\033[0;31mREQUIRE_ARRAY_NOT_EQ\033[0;0m: %s:%d: %s[%d](%lg) == %s[%d](%lg), " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], ##__VA_ARGS__); \
-		else \
-			printf("\n\tREQUIRE_ARRAY_NOT_EQ: %s:%d: %s[%d](%lg) == %s[%d](%lg), " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], ##__VA_ARGS__); \
-		ABORT_CASE; \
-	} }
+int __flag__ = 0; \
+for (__case_i__ = 0; !__flag__ && __case_i__ < (len); __case_i__++) \
+	__flag__ = (((type*)(a))[__case_i__] != ((type*)(b))[__case_i__]); \
+if (!__flag__) \
+{ \
+	if (isatty(fileno(stdout))) \
+		printf("\n\t\033[0;31mREQUIRE_ARRAY_NOT_EQ\033[0;0m: %s:%d: %s[%d](%lg) == %s[%d](%lg), " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], ##__VA_ARGS__); \
+	else \
+		printf("\n\tREQUIRE_ARRAY_NOT_EQ: %s:%d: %s[%d](%lg) == %s[%d](%lg), " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], ##__VA_ARGS__); \
+	ABORT_CASE; \
+} }
 
 #define REQUIRE_NOT_EQ_WITH_TOLERANCE(a, b, t, err, ...) { \
 if ((double)((a) - (b)) <= (t) && (double)((a) - (b)) >= -(t)) \
@@ -181,14 +183,16 @@ if ((double)((a) - (b)) <= (t) && (double)((a) - (b)) >= -(t)) \
 
 #define REQUIRE_ARRAY_NOT_EQ_WITH_TOLERANCE(type, a, b, len, t, err, ...) { \
 int __case_i__; \
-for (__case_i__ = 0; __case_i__ < (len); __case_i__++) \
-	if ((double)(((type*)(a))[__case_i__] - ((type*)(b))[__case_i__]) <= (t) && (double)(((type*)(a))[__case_i__] - ((type*)(b))[__case_i__]) >= -(t)) \
-	{ \
-		if (isatty(fileno(stdout))) \
-			printf("\n\t\033[0;31mREQUIRE_ARRAY_NOT_EQ_WITH_TOLERANCE\033[0;0m: %s:%d: %s[%d](%lg) == %s[%d](%lg) | +-%lg, " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], (double)(t), ##__VA_ARGS__); \
-		else \
-			printf("\n\tREQUIRE_ARRAY_NOT_EQ_WITH_TOLERANCE: %s:%d: %s[%d](%lg) == %s[%d](%lg) | +-%lg, " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], (double)(t), ##__VA_ARGS__); \
-		ABORT_CASE; \
-	} }
+int __flag__ = 0; \
+for (__case_i__ = 0; !__flag__ && __case_i__ < (len); __case_i__++) \
+	__flag__ = ((double)(((type*)(a))[__case_i__] - ((type*)(b))[__case_i__]) > (t) || (double)(((type*)(a))[__case_i__] - ((type*)(b))[__case_i__]) < -(t)); \
+if (!__flag__) \
+{ \
+	if (isatty(fileno(stdout))) \
+		printf("\n\t\033[0;31mREQUIRE_ARRAY_NOT_EQ_WITH_TOLERANCE\033[0;0m: %s:%d: %s[%d](%lg) == %s[%d](%lg) | +-%lg, " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], (double)(t), ##__VA_ARGS__); \
+	else \
+		printf("\n\tREQUIRE_ARRAY_NOT_EQ_WITH_TOLERANCE: %s:%d: %s[%d](%lg) == %s[%d](%lg) | +-%lg, " err, __FILE__, __LINE__, #a, __case_i__, (double)((type*)(a))[__case_i__], #b, __case_i__, (double)((type*)(b))[__case_i__], (double)(t), ##__VA_ARGS__); \
+	ABORT_CASE; \
+} }
 
 #endif
