@@ -1979,7 +1979,7 @@ void ccv_nnc_dynamic_graph_dot(const ccv_nnc_dynamic_graph_t* const graph, const
  */
 
 /**
- * A data enumeration function to supply data for a given row index (and length).
+ * A data enumeration function to supply data for given row indexes.
  */
 typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int* const row_idxs, const int row_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
@@ -2025,6 +2025,10 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const datafram
  */
 void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe);
 /**
+ * A reduce function that takes multiple rows of one column, and reduce to one row.
+ */
+typedef void (*ccv_cnnp_column_data_reduce_f)(void** const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+/**
  * Reduce a dataframe by batch size. Thus, n rows are reduced to 1 row per reduce function on
  * one specific column. This will also reduce the multi-column dataframe down to 1 column
  * by selecting the one column to reduce.
@@ -2033,9 +2037,10 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe);
  * @param deinit The deinit function will be used to destroy the derived data.
  * @param column_idx The column we selected to reduce.
  * @param batch_size How many rows will be reduced to 1 row from the original data.
+ * @param context The context that can be used in reduce function.
  * @return The reduced dataframe.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_deinit_f deinit, const int column_idx, const int batch_size);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f deinit, const int column_idx, const int batch_size, void* const context);
 /**
  * The opaque pointer to the iterator.
  */

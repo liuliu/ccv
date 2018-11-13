@@ -358,9 +358,9 @@ TEST_CASE("data is shuffled")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	ccv_cnnp_dataframe_shuffle(dataframe);
 	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
+	ccv_cnnp_dataframe_shuffle(dataframe);
 	int i;
 	void* data;
 	int result[8];
@@ -397,6 +397,117 @@ TEST_CASE("data is shuffled")
 		1, 1, 1, 1, 1, 1, 1, 1
 	};
 	REQUIRE_ARRAY_EQ(int, covered, is_covered, 8, "data should covered all");
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+static void _ccv_iter_reduce_int(void** const input_data, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	int i;
+	int total = 0;
+	for (i = 0; i < batch_size; i++)
+		total += (int)(intptr_t)input_data[i];
+	data[0] = (void*)(intptr_t)total;
+}
+
+TEST_CASE("dataframe reduce")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, 0, 3, 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(0));
+	int i;
+	void* data;
+	int result[3];
+	_ccv_iter_accessed = 0;
+	for (i = 0; ; i++)
+	{
+		if (0 != ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+			break;
+		result[i] = (int)(intptr_t)data;
+	}
+	REQUIRE_EQ(_ccv_iter_accessed, 3, "should only accessed iterator 3 times");
+	int should_result[3] = {
+		9, 18, 17
+	};
+	REQUIRE_ARRAY_EQ(int, should_result, result, 3, "iterated result and actual result should not be the same");
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(reduce);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("dataframe map before reduce")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	assert(derived > 0);
+	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, derived, 3, 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(0));
+	int i;
+	void* data;
+	int result[3];
+	for (i = 0; ; i++)
+	{
+		if (0 != ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+			break;
+		result[i] = (int)(intptr_t)data;
+	}
+	int should_result[3] = {
+		12, 21, 19
+	};
+	REQUIRE_ARRAY_EQ(int, should_result, result, 3, "iterated result and actual result should not be the same");
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(reduce);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
+TEST_CASE("dataframe map after reduce")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, 0, 3, 0);
+	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	assert(derived > 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(derived));
+	int i;
+	void* data;
+	int result[3];
+	for (i = 0; ; i++)
+	{
+		if (0 != ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+			break;
+		result[i] = (int)(intptr_t)data;
+	}
+	int should_result[3] = {
+		10, 19, 18
+	};
+	REQUIRE_ARRAY_EQ(int, should_result, result, 3, "iterated result and actual result should not be the same");
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(reduce);
 	ccv_cnnp_dataframe_free(dataframe);
 }
 

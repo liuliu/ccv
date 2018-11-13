@@ -2,37 +2,7 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#include "3rdparty/khash/khash.h"
-#ifdef HAVE_GSL
-#include <gsl/gsl_rng.h>
-#include <gsl/gsl_randist.h>
-#else
-#include "3rdparty/sfmt/SFMT.h"
-#endif
-
-KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
-
-struct ccv_cnnp_dataframe_s {
-	int row_size;
-	int column_size;
-	int* shuffled_idx;
-#ifdef HAVE_GSL
-	gsl_rng* rng;
-#else
-	sfmt_t sfmt;
-#endif
-	khash_t(ctx)* data_ctx; // The stream context based cache for data entity of columns. This helps us to avoid allocations when iterate through data.
-	ccv_array_t* derived_column_data;
-	ccv_cnnp_column_data_t column_data[1];
-};
-
-typedef struct {
-	int column_idx_size;
-	int* column_idxs;
-	void* context;
-	ccv_cnnp_column_data_deinit_f deinit;
-	ccv_cnnp_column_data_map_f map;
-} ccv_cnnp_derived_column_data_t;
+#include "_ccv_cnnp_dataframe.h"
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_size)
 {
@@ -461,6 +431,8 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 {
+	if (dataframe->isa.deinit)
+		dataframe->isa.deinit(dataframe);
 	int i, j;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
 	khiter_t k;
