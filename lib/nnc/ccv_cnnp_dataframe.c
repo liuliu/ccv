@@ -329,6 +329,12 @@ int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, cons
 		iter->prefetch_tail = iter->prefetch_head = 0; // Advance!
 		next = iter->idx;
 		lines = iter->prefetches->rnum / column_size;
+		// Reset to enough space.
+		if (lines < max_to_prefetch)
+		{
+			ccv_array_resize(iter->prefetches, max_to_prefetch * column_size);
+			lines = max_to_prefetch;
+		}
 	} else {
 		assert(iter->prefetches);
 		ccv_array_t* const prefetches = iter->prefetches;
