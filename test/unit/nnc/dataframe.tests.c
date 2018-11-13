@@ -511,4 +511,47 @@ TEST_CASE("dataframe map after reduce")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
+TEST_CASE("dataframe map after reduce shuffled")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_column_data_t columns[] = {
+		{
+			.data_enum = _ccv_iter_int,
+			.context = int_array,
+		}
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
+	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, 0, 3, 0);
+	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	ccv_cnnp_dataframe_shuffle(reduce);
+	assert(derived > 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(derived));
+	int i;
+	void* data;
+	int result[3];
+	for (i = 0; ; i++)
+	{
+		if (0 != ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+			break;
+		result[i] = (int)(intptr_t)data;
+	}
+	int covered[3] = {};
+	for (i = 0; i < 3; i++)
+		if (result[i] == 10)
+			covered[0] = 1;
+		else if (result[i] == 19)
+			covered[1] = 1;
+		else if (result[i] == 18)
+			covered[2] = 1;
+	int is_covered[3] = {
+		1, 1, 1
+	};
+	REQUIRE_ARRAY_EQ(int, covered, is_covered, 3, "data should covered all");
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(reduce);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"
