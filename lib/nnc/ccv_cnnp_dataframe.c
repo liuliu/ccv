@@ -4,11 +4,11 @@
 #include "ccv_internal.h"
 #include "_ccv_cnnp_dataframe.h"
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_size)
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_count)
 {
 	assert(column_size > 0);
 	ccv_cnnp_dataframe_t* const dataframe = (ccv_cnnp_dataframe_t*)cccalloc(1, sizeof(ccv_cnnp_dataframe_t) + sizeof(ccv_cnnp_column_data_t) * (column_size - 1));
-	dataframe->row_size = row_size;
+	dataframe->row_count = row_count;
 	dataframe->column_size = column_size;
 	dataframe->data_ctx = kh_init(ctx);
 	memcpy(dataframe->column_data, column_data, sizeof(ccv_cnnp_column_data_t) * column_size);
@@ -17,12 +17,12 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const
 
 void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 {
-	assert(dataframe->row_size);
+	assert(dataframe->row_count);
 	int i;
 	if (!dataframe->shuffled_idx)
 	{
-		dataframe->shuffled_idx = (int*)ccmalloc(sizeof(int) * dataframe->row_size);
-		for (i = 0; i < dataframe->row_size; i++)
+		dataframe->shuffled_idx = (int*)ccmalloc(sizeof(int) * dataframe->row_count);
+		for (i = 0; i < dataframe->row_count; i++)
 			dataframe->shuffled_idx[i] = i;
 #ifdef HAVE_GSL
 		assert(!dataframe->rng);
@@ -34,9 +34,9 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 #endif
 	}
 #ifdef HAVE_GSL
-	gsl_ran_shuffle(dataframe->rng, dataframe->shuffled_idx, dataframe->row_size, sizeof(int));
+	gsl_ran_shuffle(dataframe->rng, dataframe->shuffled_idx, dataframe->row_count, sizeof(int));
 #else
-	sfmt_genrand_shuffle(&dataframe->sfmt, dataframe->shuffled_idx, dataframe->row_size, sizeof(int));
+	sfmt_genrand_shuffle(&dataframe->sfmt, dataframe->shuffled_idx, dataframe->row_count, sizeof(int));
 #endif
 }
 
@@ -254,7 +254,7 @@ int ccv_cnnp_dataframe_iter_next(ccv_cnnp_dataframe_iter_t* const iter, void** c
 			iter->cached_data[i].ctx = 0;
 		}
 	const int idx = iter->idx;
-	if (idx == dataframe->row_size)
+	if (idx == dataframe->row_count)
 		return -1;
 	if (iter->prefetch_tail != -1) // If there is something in prefetch log.
 	{
@@ -361,13 +361,13 @@ int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, cons
 	assert(dataframe);
 	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
 	int i, j;
-	assert(iter->idx <= dataframe->row_size);
+	assert(iter->idx <= dataframe->row_count);
 	int lines, next, max_to_prefetch;
 	if (iter->prefetch_tail == -1)
 	{
-		if (iter->idx == dataframe->row_size)
+		if (iter->idx == dataframe->row_count)
 			return -1; // Cannot be done.
-		max_to_prefetch = ccv_min(dataframe->row_size - iter->idx, prefetch_count);
+		max_to_prefetch = ccv_min(dataframe->row_count - iter->idx, prefetch_count);
 		if (!iter->prefetches)
 		{
 			iter->prefetches = ccv_array_new(sizeof(ccv_cnnp_dataframe_data_item_t), max_to_prefetch * column_size, 0);
@@ -388,9 +388,9 @@ int ccv_cnnp_dataframe_iter_prefetch(ccv_cnnp_dataframe_iter_t* const iter, cons
 		assert(prefetches->rnum % column_size == 0);
 		lines = prefetches->rnum / column_size;
 		const int prefetched = iter->prefetch_tail >= iter->prefetch_head ? iter->prefetch_tail - iter->prefetch_head + 1: lines - iter->prefetch_head + iter->prefetch_tail + 1;
-		if (iter->idx + prefetched == dataframe->row_size) // Nothing to prefetch.
+		if (iter->idx + prefetched == dataframe->row_count) // Nothing to prefetch.
 			return -1;
-		max_to_prefetch = ccv_min(dataframe->row_size - (iter->idx + prefetched), prefetch_count);
+		max_to_prefetch = ccv_min(dataframe->row_count - (iter->idx + prefetched), prefetch_count);
 		// Not enough space, need to resize.
 		if (prefetched + max_to_prefetch > lines)
 		{
@@ -449,7 +449,7 @@ int ccv_cnnp_dataframe_iter_set_cursor(ccv_cnnp_dataframe_iter_t* const iter, co
 {
 	ccv_cnnp_dataframe_t* const dataframe = iter->dataframe;
 	assert(dataframe);
-	if (idx >= dataframe->row_size)
+	if (idx >= dataframe->row_count)
 		return -1;
 	if (idx == iter->idx)
 		return 0;

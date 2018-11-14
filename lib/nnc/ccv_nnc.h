@@ -2009,8 +2009,9 @@ typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
  * Create a dataframe object with given column data.
  * @param column_data The column data that can be loaded.
  * @param column_size The size of column data array.
+ * @param row_count The number of rows in this dataframe.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_size);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_count);
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
@@ -2235,6 +2236,7 @@ enum {
  * disk.
  * @param model The composed model.
  * @param fn The file name.
+ * @param flags Whether we perform read / write on this checkpoint, or read only / write only.
  */
 void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const fn, const int flags);
 /**

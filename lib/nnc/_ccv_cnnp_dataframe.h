@@ -27,7 +27,7 @@ KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
 
 struct ccv_cnnp_dataframe_s {
 	ccv_cnnp_dataframe_vtab_t isa;
-	int row_size;
+	int row_count;
 	int column_size;
 	int* shuffled_idx;
 #ifdef HAVE_GSL
