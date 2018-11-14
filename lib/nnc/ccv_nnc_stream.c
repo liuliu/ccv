@@ -26,6 +26,11 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 	return (ccv_nnc_stream_context_t*)stream_cpu;
 }
 
+CCV_WARN_UNUSED(int) ccv_nnc_stream_context_type(const ccv_nnc_stream_context_t* const stream_context)
+{
+	return stream_context->type;
+}
+
 #ifndef HAVE_CUDA
 static __thread ccv_nnc_stream_cpu_t ccv_nnc_per_thread_stream_cpu = {
 	.super = {

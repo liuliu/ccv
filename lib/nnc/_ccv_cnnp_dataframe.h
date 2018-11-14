@@ -41,6 +41,7 @@ struct ccv_cnnp_dataframe_s {
 };
 
 typedef struct {
+	int stream_type;
 	int column_idx_size;
 	int* column_idxs;
 	void* context;

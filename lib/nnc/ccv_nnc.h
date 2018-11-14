@@ -402,6 +402,12 @@ enum {
  */
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_new(const int type);
 /**
+ * Get the type of the stream context.
+ * @param stream_context The stream context we want to inspect.
+ * @return The type of the stream context.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_stream_context_type(const ccv_nnc_stream_context_t* const stream_context);
+/**
  * Get a stream context local workspace memory. This memory region will be reused
  * the next time when you call this method on the same stream context.
  * @param stream_context The stream context which provides the workspace memory.
@@ -1990,6 +1996,7 @@ typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data);
  * Column data.
  */
 typedef struct {
+	int stream_type; // The type of stream context for this column. Each column only compatible with one stream type.
 	ccv_cnnp_column_data_enum_f data_enum;
 	ccv_cnnp_column_data_deinit_f deinit;
 	void* context;
@@ -2012,13 +2019,14 @@ typedef void (*ccv_cnnp_column_data_map_f)(void*** const column_data, const int 
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
  * @param map The map function used to derive new column from existing columns.
+ * @param stream_type The type of stream context for this derived column.
  * @param deinit The deinit function will be used to destroy the derived data.
  * @param column_idxs The columns that will be used to derive new column.
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context);
 /**
  * Shuffle an existing dataframe.
  * @param dataframe The dataframe that is about to be shuffled.

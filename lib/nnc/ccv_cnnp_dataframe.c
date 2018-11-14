@@ -40,7 +40,7 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 #endif
 }
 
-int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context)
+int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context)
 {
 	assert(column_idx_size > 0);
 	if (!dataframe->derived_column_data)
@@ -50,6 +50,7 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 	for (i = 0; i < column_idx_size; i++)
 		{ assert(column_idxs[i] < column_size); }
 	ccv_cnnp_derived_column_data_t column_data = {
+		.stream_type = stream_type,
 		.column_idx_size = column_idx_size,
 		.column_idxs = (int*)ccmalloc(sizeof(int) * column_idx_size),
 		.context = context,
@@ -67,6 +68,13 @@ typedef struct {
 	void* data;
 } ccv_cnnp_dataframe_data_item_t;
 
+typedef struct {
+	ccv_nnc_stream_context_t* stream_context;
+	ccv_nnc_stream_signal_t* signal;
+} ccv_cnnp_dataframe_column_ctx_t;
+
+KHASH_MAP_INIT_INT64(iter_ctx, ccv_cnnp_dataframe_column_ctx_t*)
+
 struct ccv_cnnp_dataframe_iter_s {
 	int idx;
 	int prefetch_head;
@@ -76,6 +84,7 @@ struct ccv_cnnp_dataframe_iter_s {
 	ccv_cnnp_dataframe_t* dataframe;
 	void**** derived_data; // This is ridiculous, but it is true.
 	void** fetched_data; // The cache to store fetched data.
+	khash_t(iter_ctx)* column_ctx; // Column context specific to a stream context. The key will be a parent stream context and value will be child stream context + signal.
 	ccv_array_t* prefetches; // The prefetch contents.
 	int* column_idxs;
 	ccv_cnnp_dataframe_data_item_t cached_data[1]; // The data cached when deriving data.
@@ -146,6 +155,32 @@ static void* _ccv_cnnp_dataframe_dequeue_data(ccv_cnnp_dataframe_t* const datafr
 	return data;
 }
 
+static ccv_cnnp_dataframe_column_ctx_t _ccv_cnnp_child_column_ctx_for_stream_type(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_iter_t* const iter, const int column_idx, ccv_nnc_stream_context_t* const stream_context, const int stream_type)
+{
+	ccv_cnnp_dataframe_column_ctx_t child_ctx = {
+		.stream_context = stream_context,
+	};
+	if (stream_context && ccv_nnc_stream_context_type(stream_context) != stream_type)
+	{
+		if (!iter->column_ctx)
+			iter->column_ctx = kh_init(iter_ctx);
+		khash_t(iter_ctx)* const column_ctx = iter->column_ctx;
+		int ret = 0;
+		khiter_t k = kh_put(iter_ctx, column_ctx, (uint64_t)(uintptr_t)stream_context, &ret);
+		assert(ret >= 0);
+		const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+		ccv_cnnp_dataframe_column_ctx_t* const ctx = (ret == 0) ? kh_val(column_ctx, k) : cccalloc(column_size, sizeof(ccv_cnnp_dataframe_column_ctx_t));
+		if (ret != 0)
+			kh_val(column_ctx, k) = ctx;
+		if (!ctx[column_idx].stream_context)
+			ctx[column_idx].stream_context = ccv_nnc_stream_context_new(stream_type);
+		if (!ctx[column_idx].signal)
+			ctx[column_idx].signal = ccv_nnc_stream_signal_new(stream_type);
+		child_ctx = ctx[column_idx];
+	}
+	return child_ctx;
+}
+
 static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_dataframe_iter_t* const iter, ccv_cnnp_dataframe_data_item_t* const cached_data, void** const fetched_data, const int* const row_idxs, const int row_size, const int column_idx, const int cached_step, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
@@ -178,10 +213,22 @@ static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafram
 			derived_data[i] = FETCHED_DATA(iter, derived_column_data->column_idxs[i]);
 			_ccv_cnnp_dataframe_column_data(dataframe, iter, cached_data, derived_data[i], row_idxs, row_size, derived_column_data->column_idxs[i], cached_step, stream_context);
 		}
-		derived_column_data->map(derived_data, derived_column_data->column_idx_size, row_size, fetched_data, derived_column_data->context, stream_context);
+		ccv_cnnp_dataframe_column_ctx_t child_ctx = _ccv_cnnp_child_column_ctx_for_stream_type(dataframe, iter, column_idx, stream_context, derived_column_data->stream_type);
+		derived_column_data->map(derived_data, derived_column_data->column_idx_size, row_size, fetched_data, derived_column_data->context, child_ctx.stream_context);
+		if (child_ctx.stream_context != stream_context)
+		{
+			ccv_nnc_stream_context_emit_signal(child_ctx.stream_context, child_ctx.signal);
+			ccv_nnc_stream_context_wait_signal(stream_context, child_ctx.signal);
+		}
 	} else {
 		const ccv_cnnp_column_data_t* const column_data = dataframe->column_data + column_idx;
-		column_data->data_enum(column_idx, row_idxs, row_size, fetched_data, column_data->context, stream_context);
+		ccv_cnnp_dataframe_column_ctx_t child_ctx = _ccv_cnnp_child_column_ctx_for_stream_type(dataframe, iter, column_idx, stream_context, column_data->stream_type);
+		column_data->data_enum(column_idx, row_idxs, row_size, fetched_data, column_data->context, child_ctx.stream_context);
+		if (child_ctx.stream_context != stream_context)
+		{
+			ccv_nnc_stream_context_emit_signal(child_ctx.stream_context, child_ctx.signal);
+			ccv_nnc_stream_context_wait_signal(stream_context, child_ctx.signal);
+		}
 	}
 	for (i = 0; i < row_size; i++)
 	{
@@ -432,6 +479,25 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 		ccfree(iter->derived_data);
 	}
 	ccfree(iter->fetched_data);
+	if (iter->column_ctx)
+	{
+		khash_t(iter_ctx)* const column_ctx = iter->column_ctx;
+		khiter_t k;
+		for (k = kh_begin(column_ctx); k != kh_end(column_ctx); ++k)
+		{
+			if (!kh_exist(column_ctx, k))
+				continue;
+			ccv_cnnp_dataframe_column_ctx_t* const ctx = kh_val(column_ctx, k);
+			for (i = 0; i < column_size; i++)
+			{
+				if (ctx[i].stream_context)
+					ccv_nnc_stream_context_free(ctx[i].stream_context);
+				if (ctx[i].signal)
+					ccv_nnc_stream_signal_free(ctx[i].signal);
+			}
+		}
+		kh_destroy(iter_ctx, column_ctx);
+	}
 	ccfree(iter);
 }
 

@@ -121,7 +121,7 @@ TEST_CASE("iterate through derived column")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
 	int result[8];
@@ -212,7 +212,7 @@ TEST_CASE("iterate through derived column with cursor reset")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	int i;
 	void* data;
@@ -266,7 +266,7 @@ TEST_CASE("iterate with prefetch more than 1 item, variant 1")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	int i;
 	void* data;
@@ -311,7 +311,7 @@ TEST_CASE("iterate with prefetch more than 1 item, variant 2")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	int i;
 	void* data;
@@ -358,7 +358,7 @@ TEST_CASE("data is shuffled")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	ccv_cnnp_dataframe_shuffle(dataframe);
 	int i;
@@ -455,7 +455,7 @@ TEST_CASE("dataframe map before reduce")
 		}
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
-	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(dataframe, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, derived, 3, 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(0));
@@ -490,7 +490,7 @@ TEST_CASE("dataframe map after reduce")
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
 	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, 0, 3, 0);
-	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	assert(derived > 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(derived));
 	int i;
@@ -524,7 +524,7 @@ TEST_CASE("dataframe map after reduce shuffled")
 	};
 	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(columns, sizeof(columns) / sizeof(columns[0]), 8);
 	ccv_cnnp_dataframe_t* const reduce = ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_iter_reduce_int, 0, 0, 3, 0);
-	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, COLUMN_ID_LIST(0), 0);
+	const int derived = ccv_cnnp_dataframe_map(reduce, _ccv_int_plus_1, 0, 0, COLUMN_ID_LIST(0), 0);
 	ccv_cnnp_dataframe_shuffle(reduce);
 	assert(derived > 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(reduce, COLUMN_ID_LIST(derived));
