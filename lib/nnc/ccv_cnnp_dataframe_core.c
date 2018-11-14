@@ -62,7 +62,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 		.deinit = deinit,
 		.context = reducer,
 	};
-	ccv_cnnp_dataframe_t* const reduce_dataframe = ccv_cnnp_dataframe_new(&reduce_column, 1, (dataframe->row_size + batch_size - 1) / batch_size);
+	ccv_cnnp_dataframe_t* const reduce_dataframe = ccv_cnnp_dataframe_new(&reduce_column, 1, (dataframe->row_count + batch_size - 1) / batch_size);
 	reduce_dataframe->isa.deinit = _ccv_cnnp_reducer_deinit;
 	return reduce_dataframe;
 }
