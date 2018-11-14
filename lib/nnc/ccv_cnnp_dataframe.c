@@ -160,7 +160,7 @@ static ccv_cnnp_dataframe_column_ctx_t _ccv_cnnp_child_column_ctx_for_stream_typ
 	ccv_cnnp_dataframe_column_ctx_t child_ctx = {
 		.stream_context = stream_context,
 	};
-	if (stream_context && ccv_nnc_stream_context_type(stream_context) != stream_type)
+	if (stream_context && ccv_nnc_stream_context_type(stream_context) != stream_type && stream_type != 0)
 	{
 		if (!iter->column_ctx)
 			iter->column_ctx = kh_init(iter_ctx);
