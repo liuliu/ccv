@@ -554,4 +554,50 @@ TEST_CASE("dataframe map after reduce shuffled")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
+TEST_CASE("iterate through newly added column")
+{
+	int int_array[8] = {
+		2, 3, 4, 5, 6, 7, 8, 9
+	};
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_new(0, 0, 8);
+	const int derived = ccv_cnnp_dataframe_add(dataframe, _ccv_iter_int, 0, 0, int_array);
+	assert(derived >= 0);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
+	int result[8];
+	int i = 0;
+	void* data;
+	while (0 == ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
+		result[i++] = (int)(intptr_t)data;
+	ccv_cnnp_dataframe_iter_free(iter);
+	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated result and actual result should be the same");
+	// iter2 test some prefetch capacities.
+	ccv_cnnp_dataframe_iter_t* const iter2 = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(derived));
+	for (i = 0; i < 3; i++)
+		ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
+	_ccv_iter_accessed = 0;
+	for (i = 0; i < 3; i++)
+	{
+		ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
+		result[i] = (int)(intptr_t)data;
+	}
+	REQUIRE_EQ(_ccv_iter_accessed, 0, "the iterator is not accessed at all, because prefetching");
+	ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
+	result[3] = (int)(intptr_t)data;
+	REQUIRE_EQ(_ccv_iter_accessed, 1, "the iterator is accessed, because no prefetching");
+	ccv_cnnp_dataframe_iter_prefetch(iter2, 4, 0);
+	REQUIRE_EQ(_ccv_iter_accessed, 2, "the iterator is accessed again, for prefetching");
+	_ccv_iter_accessed = 0;
+	for (i = 4; i < 6; i++)
+	{
+		ccv_cnnp_dataframe_iter_next(iter2, &data, 1, 0);
+		result[i] = (int)(intptr_t)data;
+	}
+	REQUIRE_EQ(_ccv_iter_accessed, 0, "the iterator accessed 0 times");
+	const int fail0 = ccv_cnnp_dataframe_iter_prefetch(iter2, 1, 0);
+	REQUIRE_EQ(fail0, -1, "should fail");
+	ccv_cnnp_dataframe_iter_free(iter2);
+	REQUIRE_ARRAY_EQ(int, int_array, result, 6, "iterated result and actual result should be the same up to 6");
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"

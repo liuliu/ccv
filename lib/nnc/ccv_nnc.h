@@ -2013,6 +2013,16 @@ typedef struct ccv_cnnp_dataframe_s ccv_cnnp_dataframe_t;
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_count);
 /**
+ * Add a new column to the dataframe.
+ * @param dataframe The dataframe object to add column to.
+ * @param data_enum The data provider function for the new column.
+ * @param stream_type The type of stream context for this derived column.
+ * @param deinit The deinit function will be used to destroy the derived data.
+ * @param context The context that can be used to generate new column.
+ * @return The new column index.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, void* const context);
+/**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
 typedef void (*ccv_cnnp_column_data_map_f)(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);

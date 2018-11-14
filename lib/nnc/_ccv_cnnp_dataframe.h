@@ -46,6 +46,7 @@ typedef struct {
 	int* column_idxs;
 	void* context;
 	ccv_cnnp_column_data_deinit_f deinit;
+	ccv_cnnp_column_data_enum_f data_enum;
 	ccv_cnnp_column_data_map_f map;
 } ccv_cnnp_derived_column_data_t;
 

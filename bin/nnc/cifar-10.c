@@ -151,7 +151,7 @@ typedef struct {
 	int device_count;
 } ccv_nnc_reduce_context_t;
 
-static void _reduce_batch_new(void** const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _reduce_train_batch_new(void** const input_data, const int batch_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_reduce_context_t* const reduce_context = (ccv_nnc_reduce_context_t*)context;
 	const int total_size = reduce_context->batch_size * reduce_context->device_count;
@@ -289,7 +289,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		.device_count = device_count
 	};
 	ccv_cnnp_dataframe_shuffle(raw_data);
-	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(raw_data, _reduce_batch_new, _input_fit_deinit, 0, batch_size * device_count, &reduce_context);
+	ccv_cnnp_dataframe_t* const batch_data = ccv_cnnp_dataframe_reduce_new(raw_data, _reduce_train_batch_new, _input_fit_deinit, 0, batch_size * device_count, &reduce_context);
 	int device_columns[device_count];
 	ccv_nnc_map_context_t map_context[device_count];
 	for (i = 0; i < device_count; i++)
