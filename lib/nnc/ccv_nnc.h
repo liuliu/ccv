@@ -1991,15 +1991,20 @@ typedef void (*ccv_cnnp_column_data_enum_f)(const int column_idx, const int* con
 /**
  * A destructor for data.
  */
-typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data);
+typedef void (*ccv_cnnp_column_data_deinit_f)(void* const data, void* const context);
+/**
+ * A destructor for context.
+ */
+typedef void (*ccv_cnnp_column_data_context_deinit_f)(void* const context);
 /**
  * Column data.
  */
 typedef struct {
-	int stream_type; // The type of stream context for this column. Each column only compatible with one stream type.
-	ccv_cnnp_column_data_enum_f data_enum;
-	ccv_cnnp_column_data_deinit_f deinit;
-	void* context;
+	int stream_type; /**< The type of stream context for this column. Each column only compatible with one stream type. */
+	ccv_cnnp_column_data_enum_f data_enum; /**< The data enumeration function for this column. */
+	ccv_cnnp_column_data_deinit_f data_deinit; /**< The deinit function that will be used to destroy the data. */
+	void* context; /**< The context go along with this column. */
+	ccv_cnnp_column_data_context_deinit_f context_deinit; /**< The deinit function that will be used to destroy the context. */
 } ccv_cnnp_column_data_t;
 /**
  * An opaque structure point to the dataframe object.
@@ -2017,11 +2022,12 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_new(const ccv_cnnp_col
  * @param dataframe The dataframe object to add column to.
  * @param data_enum The data provider function for the new column.
  * @param stream_type The type of stream context for this derived column.
- * @param deinit The deinit function will be used to destroy the derived data.
+ * @param data_deinit The deinit function will be used to destroy the derived data.
  * @param context The context that can be used to generate new column.
+ * @param context_deinit The deinit function will be used to destroy the context.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, void* const context);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
@@ -2031,18 +2037,25 @@ typedef void (*ccv_cnnp_column_data_map_f)(void*** const column_data, const int 
  * @param dataframe The dataframe object that contains existing columns.
  * @param map The map function used to derive new column from existing columns.
  * @param stream_type The type of stream context for this derived column.
- * @param deinit The deinit function will be used to destroy the derived data.
+ * @param data_deinit The deinit function will be used to destroy the derived data.
  * @param column_idxs The columns that will be used to derive new column.
  * @param column_idx_size The size of existing columns array.
  * @param context The context that can be used to generate new column.
+ * @param context_deinit The deinit function will be used to destroy the context.
  * @return The new column index.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
  * Shuffle an existing dataframe.
  * @param dataframe The dataframe that is about to be shuffled.
  */
 void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe);
+/**
+ * Query row count of the dataframe.
+ * @param dataframe The dataframe we want to query row count.
+ * @return The row count of the dataframe.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const dataframe);
 /**
  * A reduce function that takes multiple rows of one column, and reduce to one row.
  */
@@ -2053,13 +2066,14 @@ typedef void (*ccv_cnnp_column_data_reduce_f)(void** const input_data, const int
  * by selecting the one column to reduce.
  * @param dataframe The dataframe that is about to be reduced.
  * @param reduce The reduce function used to reduce n rows into 1.
- * @param deinit The deinit function will be used to destroy the derived data.
+ * @param data_deinit The deinit function will be used to destroy the derived data.
  * @param column_idx The column we selected to reduce.
  * @param batch_size How many rows will be reduced to 1 row from the original data.
  * @param context The context that can be used in reduce function.
+ * @param context_deinit The deinit function will be used to destroy the context.
  * @return The reduced dataframe.
  */
-CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f deinit, const int column_idx, const int batch_size, void* const context);
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
  * The opaque pointer to the iterator.
  */
@@ -2107,6 +2121,37 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter);
  * @param dataframe The dataframe object to be freed.
  */
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe);
+
+/** @} */
+
+/**
+ * @defgroup level_5_dataframe_add_ons Dataframe Add-ons
+ * @{
+ */
+
+/**
+ * Turn a ccv_array_t to a dataframe object.
+ * @param array The array we want to turn into a dataframe object.
+ * @return The new dataframe object.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_array_new(ccv_array_t* const array);
+/**
+ * Derive a new column that copies a tensor array from given column to the derived column on GPU.
+ * @param dataframe The dataframe object that get the derived column.
+ * @param column_idx The original column contains tensor array on CPU.
+ * @param tensor_size How many tensors in the tensor array.
+ * @param device_id The device we want to copy the tensors to.
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_size, int device_id);
+/**
+ * Add a new column contains some tensors. This will add a new column that each row is the tensor specified
+ * as the parameters. It comes handy when you want to have some auxiliary tensors along with each row.
+ * @param dataframe The dataframe object that get the new column.
+ * @param params The parameters for the tensors.
+ * @return The index of the newly added column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux_tensors(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params);
 
 /** @} */
 

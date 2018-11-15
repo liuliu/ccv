@@ -2,7 +2,40 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#include "_ccv_cnnp_dataframe.h"
+#include "3rdparty/khash/khash.h"
+#ifdef HAVE_GSL
+#include <gsl/gsl_rng.h>
+#include <gsl/gsl_randist.h>
+#else
+#include "3rdparty/sfmt/SFMT.h"
+#endif
+
+KHASH_MAP_INIT_INT64(ctx, ccv_array_t*)
+
+struct ccv_cnnp_dataframe_s {
+	int row_count;
+	int column_size;
+	int* shuffled_idx;
+#ifdef HAVE_GSL
+	gsl_rng* rng;
+#else
+	sfmt_t sfmt;
+#endif
+	khash_t(ctx)* data_ctx; // The stream context based cache for data entity of columns. This helps us to avoid allocations when iterate through data.
+	ccv_array_t* derived_column_data;
+	ccv_cnnp_column_data_t column_data[1];
+};
+
+typedef struct {
+	int stream_type;
+	int column_idx_size;
+	int* column_idxs;
+	ccv_cnnp_column_data_enum_f data_enum;
+	ccv_cnnp_column_data_deinit_f data_deinit;
+	void* context;
+	ccv_cnnp_column_data_context_deinit_f context_deinit;
+	ccv_cnnp_column_data_map_f map;
+} ccv_cnnp_derived_column_data_t;
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_new(const ccv_cnnp_column_data_t* const column_data, const int column_size, const int row_count)
 {
@@ -41,21 +74,27 @@ void ccv_cnnp_dataframe_shuffle(ccv_cnnp_dataframe_t* const dataframe)
 #endif
 }
 
-int ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, void* const context)
+int ccv_cnnp_dataframe_row_count(ccv_cnnp_dataframe_t* const dataframe)
+{
+	return dataframe->row_count;
+}
+
+int ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_enum_f data_enum, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
 {
 	if (!dataframe->derived_column_data)
 		dataframe->derived_column_data = ccv_array_new(sizeof(ccv_cnnp_derived_column_data_t), 1, 0);
 	ccv_cnnp_derived_column_data_t column_data = {
 		.stream_type = stream_type,
-		.context = context,
 		.data_enum = data_enum,
-		.deinit = deinit,
+		.data_deinit = data_deinit,
+		.context = context,
+		.context_deinit = context_deinit,
 	};
 	ccv_array_push(dataframe->derived_column_data, &column_data);
 	return dataframe->column_size + dataframe->derived_column_data->rnum - 1;
 }
 
-int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f deinit, const int* const column_idxs, const int column_idx_size, void* const context)
+int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_map_f map, const int stream_type, ccv_cnnp_column_data_deinit_f data_deinit, const int* const column_idxs, const int column_idx_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
 {
 	assert(column_idx_size > 0);
 	if (!dataframe->derived_column_data)
@@ -68,9 +107,10 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 		.stream_type = stream_type,
 		.column_idx_size = column_idx_size,
 		.column_idxs = (int*)ccmalloc(sizeof(int) * column_idx_size),
-		.context = context,
 		.map = map,
-		.deinit = deinit,
+		.data_deinit = data_deinit,
+		.context = context,
+		.context_deinit = context_deinit,
 	};
 	memcpy(column_data.column_idxs, column_idxs, sizeof(int) * column_idx_size);
 	ccv_array_push(dataframe->derived_column_data, &column_data);
@@ -522,8 +562,6 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 
 void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 {
-	if (dataframe->isa.deinit)
-		dataframe->isa.deinit(dataframe);
 	int i, j;
 	khash_t(ctx)* const data_ctx = dataframe->data_ctx;
 	khiter_t k;
@@ -537,11 +575,20 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 		for (i = 0; i < columns->rnum; i++)
 		{
 			ccv_array_t* const column = *(ccv_array_t**)ccv_array_get(columns, i);
-			// Get the property deinit function.
-			ccv_cnnp_column_data_deinit_f deinit = (i < dataframe->column_size) ? dataframe->column_data[i].deinit : ((ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i - dataframe->column_size))->deinit;
-			if (deinit)
+			void* context;
+			ccv_cnnp_column_data_deinit_f data_deinit;
+			if (i < dataframe->column_size)
+			{
+				data_deinit = dataframe->column_data[i].data_deinit;
+				context = dataframe->column_data[i].context;
+			} else {
+				ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i - dataframe->column_size);
+				data_deinit = derived_column_data->data_deinit;
+				context = derived_column_data->context;
+			}
+			if (data_deinit)
 				for (j = 0; j < column->rnum; j++)
-					deinit(*(void**)ccv_array_get(column, j));
+					data_deinit(*(void**)ccv_array_get(column, j), context);
 			ccv_array_free(column);
 		}
 		ccv_array_free(columns);
@@ -552,10 +599,15 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 		for (i = 0; i < dataframe->derived_column_data->rnum; i++)
 		{
 			ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i);
+			if (derived_column_data->context_deinit)
+				derived_column_data->context_deinit(derived_column_data->context);
 			ccfree(derived_column_data->column_idxs);
 		}
 		ccv_array_free(dataframe->derived_column_data);
 	}
+	for (i = 0; i < dataframe->column_size; i++)
+		if (dataframe->column_data[i].context_deinit)
+			dataframe->column_data[i].context_deinit(dataframe->column_data[i].context);
 	if (dataframe->shuffled_idx)
 		ccfree(dataframe->shuffled_idx);
 #ifdef HAVE_GSL

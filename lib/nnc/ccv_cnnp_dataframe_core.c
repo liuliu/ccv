@@ -2,7 +2,6 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
-#include "_ccv_cnnp_dataframe.h"
 
 typedef struct {
 	int column_idx;
@@ -12,6 +11,7 @@ typedef struct {
 	ccv_cnnp_dataframe_t* dataframe;
 	ccv_cnnp_dataframe_iter_t* iter;
 	void* context;
+	ccv_cnnp_column_data_context_deinit_f context_deinit;
 	void* batch_data[1];
 } ccv_cnnp_dataframe_reducer_t;
 
@@ -38,16 +38,17 @@ static void _ccv_cnnp_reducer_enum(const int column_idx, const int* const row_id
 	}
 }
 
-static void _ccv_cnnp_reducer_deinit(ccv_cnnp_dataframe_t* const self)
+static void _ccv_cnnp_reducer_deinit(void* const context)
 {
-	assert(self->column_size >= 1);
-	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)self->column_data[0].context;
+	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)context;
 	if (reducer->iter)
 		ccv_cnnp_dataframe_iter_free(reducer->iter);
+	if (reducer->context_deinit)
+		reducer->context_deinit(reducer->context);
 	ccfree(reducer);
 }
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f deinit, const int column_idx, const int batch_size, void* const context)
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit)
 {
 	assert(batch_size > 0);
 	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_reducer_t) + sizeof(void*) * (batch_size - 1));
@@ -57,12 +58,12 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	reducer->dataframe = dataframe;
 	reducer->iter = 0;
 	reducer->context = context;
+	reducer->context_deinit = context_deinit;
 	ccv_cnnp_column_data_t reduce_column = {
 		.data_enum = _ccv_cnnp_reducer_enum,
-		.deinit = deinit,
+		.data_deinit = data_deinit,
 		.context = reducer,
+		.context_deinit = _ccv_cnnp_reducer_deinit,
 	};
-	ccv_cnnp_dataframe_t* const reduce_dataframe = ccv_cnnp_dataframe_new(&reduce_column, 1, (dataframe->row_count + batch_size - 1) / batch_size);
-	reduce_dataframe->isa.deinit = _ccv_cnnp_reducer_deinit;
-	return reduce_dataframe;
+	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
 }
