@@ -2139,11 +2139,12 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_array_new(ccv_arr
  * Derive a new column that copies a tensor array from given column to the derived column on GPU.
  * @param dataframe The dataframe object that get the derived column.
  * @param column_idx The original column contains tensor array on CPU.
+ * @param tensor_offset Only copy as outputs[i] = inputs[i + tensor_offset].
  * @param tensor_size How many tensors in the tensor array.
  * @param device_id The device we want to copy the tensors to.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_size, int device_id);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, int device_id);
 /**
  * Add a new column contains some tensors. This will add a new column that each row is the tensor specified
  * as the parameters. It comes handy when you want to have some auxiliary tensors along with each row.
@@ -2151,7 +2152,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const 
  * @param params The parameters for the tensors.
  * @return The index of the newly added column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux_tensors(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params);
 
 /** @} */
 

@@ -21,6 +21,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_from_array_new(ccv_array_t* const array
 }
 
 typedef struct {
+	int tensor_offset;
 	int tensor_size;
 	int device_id;
 } ccv_cnnp_copy_to_gpu_context_t;
@@ -42,7 +43,7 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 	int i, j;
 	for (i = 0; i < batch_size; i++)
 	{
-		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i];
+		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + copy_to_gpu_context->tensor_offset;
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
 		{
@@ -60,12 +61,13 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 	}
 }
 
-int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_size, int device_id)
+int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, int device_id)
 {
 	assert(tensor_size > 0);
 	int stream_type = CCV_STREAM_CONTEXT_GPU;
 	CCV_STREAM_SET_DEVICE_ID(stream_type, device_id);
 	ccv_cnnp_copy_to_gpu_context_t* const copy_to_gpu_context = (ccv_cnnp_copy_to_gpu_context_t*)ccmalloc(sizeof(ccv_cnnp_copy_to_gpu_context_t));
+	copy_to_gpu_context->tensor_offset = tensor_offset;
 	copy_to_gpu_context->tensor_size = tensor_size;
 	copy_to_gpu_context->device_id = device_id;
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_to_gpu, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), copy_to_gpu_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
@@ -85,7 +87,7 @@ static void _ccv_cnnp_tensor_new(const int column_idx, const int* const row_idxs
 			data[i] = ccv_nnc_tensor_new(0, params, 0);
 }
 
-int ccv_cnnp_dataframe_add_aux_tensors(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params)
+int ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params)
 {
 	int stream_type = CCV_TENSOR_GET_MEMORY(params.type) == CCV_TENSOR_CPU_MEMORY ? CCV_STREAM_CONTEXT_CPU : CCV_STREAM_CONTEXT_GPU;
 	CCV_STREAM_SET_DEVICE_ID(stream_type, CCV_TENSOR_GET_DEVICE_ID(params.type));

@@ -10,6 +10,7 @@ typedef struct {
 	ccv_cnnp_column_data_reduce_f reduce;
 	ccv_cnnp_dataframe_t* dataframe;
 	ccv_cnnp_dataframe_iter_t* iter;
+	ccv_cnnp_column_data_deinit_f data_deinit;
 	void* context;
 	ccv_cnnp_column_data_context_deinit_f context_deinit;
 	void* batch_data[1];
@@ -38,6 +39,13 @@ static void _ccv_cnnp_reducer_enum(const int column_idx, const int* const row_id
 	}
 }
 
+static void _ccv_cnnp_reducer_data_deinit(void* const data, void* const context)
+{
+	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)context;
+	assert(reducer->data_deinit);
+	reducer->data_deinit(data, reducer->context);
+}
+
 static void _ccv_cnnp_reducer_deinit(void* const context)
 {
 	ccv_cnnp_dataframe_reducer_t* const reducer = (ccv_cnnp_dataframe_reducer_t*)context;
@@ -57,11 +65,12 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	reducer->reduce = reduce;
 	reducer->dataframe = dataframe;
 	reducer->iter = 0;
+	reducer->data_deinit = data_deinit;
 	reducer->context = context;
 	reducer->context_deinit = context_deinit;
 	ccv_cnnp_column_data_t reduce_column = {
 		.data_enum = _ccv_cnnp_reducer_enum,
-		.data_deinit = data_deinit,
+		.data_deinit = data_deinit ? _ccv_cnnp_reducer_data_deinit : 0, // Redirect to our data deinit method.
 		.context = reducer,
 		.context_deinit = _ccv_cnnp_reducer_deinit,
 	};

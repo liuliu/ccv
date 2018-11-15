@@ -254,6 +254,7 @@ static void _ccv_cnnp_dataframe_column_data(ccv_cnnp_dataframe_t* const datafram
 	}
 	if (column_idx >= dataframe->column_size)
 	{
+		assert(dataframe->derived_column_data);
 		const int derived_column_idx = column_idx - dataframe->column_size;
 		const ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, derived_column_idx);
 		ccv_cnnp_dataframe_column_ctx_t child_ctx = _ccv_cnnp_child_column_ctx_for_stream_type(dataframe, iter, column_idx, stream_context, derived_column_data->stream_type);
@@ -532,6 +533,7 @@ void ccv_cnnp_dataframe_iter_free(ccv_cnnp_dataframe_iter_t* const iter)
 		ccv_array_free(iter->prefetches);
 	if (iter->derived_data)
 	{
+		assert(dataframe->derived_column_data);
 		for (i = 0; i < dataframe->derived_column_data->rnum; i++)
 			if (iter->derived_data[i])
 				ccfree(iter->derived_data[i]);
@@ -582,6 +584,7 @@ void ccv_cnnp_dataframe_free(ccv_cnnp_dataframe_t* const dataframe)
 				data_deinit = dataframe->column_data[i].data_deinit;
 				context = dataframe->column_data[i].context;
 			} else {
+				assert(dataframe->derived_column_data);
 				ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, i - dataframe->column_size);
 				data_deinit = derived_column_data->data_deinit;
 				context = derived_column_data->context;
