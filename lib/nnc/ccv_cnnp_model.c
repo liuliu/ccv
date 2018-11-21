@@ -463,7 +463,9 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	{
 		ccv_nnc_symbolic_graph_data_parallel(model->graph, compiled_data->parallel_count,
 			(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, 0), trainable_size,
+			0, 0,
 			gradients, trainable_size,
+			CCV_NNC_PARALLEL_REDUCE_OP_SUM,
 			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		for (i = 0; i < dest_to_eval_size; i++)

@@ -464,8 +464,17 @@ void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal);
 /**
  * Return number of devices.
  * @param type The type of devices (CCV_NNC_STREAM_CONTEXT_GPU / CCV_NNC_STREAM_CONTEXT_CPU)
+ * @return The number of devices.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
+/**
+ * Remap a source device as the destination device.
+ * @param type The type of devices (CCV_NNC_STREAM_CONTEXT_GPU / CCV_NNC_STREAM_CONTEXT_CPU)
+ * @param source The original device id.
+ * @param destination The new device id.
+ * @return 0 if the device remap is successful, -1 if it is not.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_device_remap(const int type, const int source, const int destination);
 
 /** @} */
 
@@ -1763,6 +1772,13 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
  * @{
  */
 
+enum {
+	/**
+	 * Op for gather / allreducer. Currently only supports sum.
+	 */
+	CCV_NNC_PARALLEL_REDUCE_OP_SUM,
+};
+
 /**
  * Turn the existing graph to be capable to run on several devices with different data inputs at parallel.
  * With this method, additional tensor symbols will be created that runs on different devices. That has
@@ -1776,14 +1792,17 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
  * @param scatters The tensor symbols to be scattered.
  * @param scatter_size The size of the scatter tensor symbols array.
+ * @param allreducers The tensor symbols that to be allreduced.
+ * @param allreducer_size The size of the allreducer tensor symbols array.
  * @param gathers The tensor symbols to be gathered.
  * @param gather_size The size of the gather tensor symbols array.
+ * @param reduce_op_type The reduce op for gather / allreducer.
  * @param sources The source execution node symbols array.
  * @param source_size The size of source node symbols array.
  * @param destinations The destinations execution node symbols array.
  * @param destination_size The size of destination node symbols array.
  */
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.

@@ -274,35 +274,6 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 				learn_rate *= 0.5;
 				ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
 			}
-			ccv_nnc_stream_context_wait(stream_contexts[p]);
-			ccv_nnc_stream_context_wait(stream_contexts[q]);
-			correct = 0;
-			p = 0, q = 1;
-			for (j = 0; j < test_set->rnum; j += batch_size * device_count)
-			{
-				ccv_cnnp_dataframe_iter_next(test_iter, (void**)input_fits, device_count * 2, 0);
-				for (k = 0; k < device_count; k++)
-				{
-					input_fit_inputs[k] = input_fits[k][0];
-					outputs[k] = (ccv_nnc_tensor_t*)input_fits[device_count + k];
-				}
-				ccv_cnnp_model_evaluate(cifar_10, input_fit_inputs, device_count, outputs, device_count, 0);
-				ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs, device_count, 0);
-				for (k = 0; k < ccv_min(test_set->rnum - j, batch_size * device_count); k++)
-				{
-					ccv_categorized_t* const categorized = (ccv_categorized_t*)ccv_array_get(test_set, j + k);
-					const int d = k / batch_size;
-					const int b = k % batch_size;
-					float max = -FLT_MAX;
-					int t = -1;
-					int fi;
-					for (fi = 0; fi < 10; fi++)
-						if (cpu_outputs[d]->data.f32[b * 10 + fi] > max)
-							max = cpu_outputs[d]->data.f32[b * 10 + fi], t = fi;
-					if (categorized->c == t)
-						++correct;
-				}
-			}
 			ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
 			// Reshuffle and reset cursor.
 			ccv_cnnp_dataframe_shuffle(raw_train_data);
@@ -310,6 +281,35 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		}
 		int t;
 		CCV_SWAP(p, q, t);
+	}
+	ccv_nnc_stream_context_wait(stream_contexts[p]);
+	ccv_nnc_stream_context_wait(stream_contexts[q]);
+	correct = 0;
+	p = 0, q = 1;
+	for (j = 0; j < test_set->rnum; j += batch_size * device_count)
+	{
+		ccv_cnnp_dataframe_iter_next(test_iter, (void**)input_fits, device_count * 2, 0);
+		for (k = 0; k < device_count; k++)
+		{
+			input_fit_inputs[k] = input_fits[k][0];
+			outputs[k] = (ccv_nnc_tensor_t*)input_fits[device_count + k];
+		}
+		ccv_cnnp_model_evaluate(cifar_10, input_fit_inputs, device_count, outputs, device_count, 0);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs, device_count, 0);
+		for (k = 0; k < ccv_min(test_set->rnum - j, batch_size * device_count); k++)
+		{
+			ccv_categorized_t* const categorized = (ccv_categorized_t*)ccv_array_get(test_set, j + k);
+			const int d = k / batch_size;
+			const int b = k % batch_size;
+			float max = -FLT_MAX;
+			int t = -1;
+			int fi;
+			for (fi = 0; fi < 10; fi++)
+				if (cpu_outputs[d]->data.f32[b * 10 + fi] > max)
+					max = cpu_outputs[d]->data.f32[b * 10 + fi], t = fi;
+			if (categorized->c == t)
+				++correct;
+		}
 	}
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_train_data);

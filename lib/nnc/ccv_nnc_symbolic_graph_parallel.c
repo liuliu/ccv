@@ -11,12 +11,13 @@ enum {
 	CCV_NNC_PARALLEL_GATHER = 0x2,
 };
 
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
-	if (parallel == 1)
+	assert(reduce_op_type == CCV_NNC_PARALLEL_REDUCE_OP_SUM);
+	const int parallel_count = (parallel == 0) ? ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) : parallel;
+	if (parallel_count == 1)
 		return;
-	if (parallel == 0)
-		parallel = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
+	assert(parallel_count > 1);
 	ccv_nnc_graph_visit_t* const visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), graph->exec_symbol_info->rnum, sources, source_size, destinations, destination_size, 0);
 	int i, j, k;
 	// Tensor symbol has to be on device 0 or any.
@@ -118,8 +119,6 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				}
 		}
 	} ccv_nnc_graph_visit_endfor
-	const int parallel_count = parallel;
-	assert(parallel_count > 1);
 	// Now, actually create these tensors.
 	if (!graph->data_parallel.tensor_symbol_idx)
 		graph->data_parallel.tensor_symbol_idx = (int*)ccmalloc(sizeof(int) * (parallel_count - 1) * tensor_symbol_size);
