@@ -7,11 +7,12 @@
 #pragma mark - Level-3.5 API
 
 enum {
-	CCV_NNC_PARALLEL_SCATTER = 0x1,
-	CCV_NNC_PARALLEL_GATHER = 0x2,
+	CCV_NNC_PARALLEL_BROADCAST = 0x1,
+	CCV_NNC_PARALLEL_ALLREDUCER = 0x2,
+	CCV_NNC_PARALLEL_REDUCER = 0x3,
 };
 
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
 {
 	assert(reduce_op_type == CCV_NNC_PARALLEL_REDUCE_OP_SUM);
 	const int parallel_count = (parallel == 0) ? ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU) : parallel;
@@ -49,10 +50,34 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	const int graph_exec_symbol_size = graph->exec_symbol_info->rnum;
 	int* const tensor_flags = cccalloc(tensor_symbol_size + graph_exec_symbol_size, sizeof(int));
 	int* const exec_flags = tensor_flags + tensor_symbol_size;
-	for (i = 0; i < scatter_size; i++)
-		tensor_flags[scatters[i].d] = CCV_NNC_PARALLEL_SCATTER;
-	for (i = 0; i < gather_size; i++)
-		tensor_flags[gathers[i].d] = CCV_NNC_PARALLEL_GATHER;
+	for (i = 0; i < broadcast_size; i++)
+	{
+		// Doesn't support alias for these.
+		tensor_flags[broadcasts[i].d] = CCV_NNC_PARALLEL_BROADCAST;
+		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, broadcasts[i].d))->alias_ref);
+	}
+	for (i = 0; i < allreducer_size; i++)
+	{
+		// Doesn't support alias for these.
+		tensor_flags[allreducers[i].d] = CCV_NNC_PARALLEL_ALLREDUCER;
+		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, allreducers[i].d))->alias_ref);
+	}
+	for (i = 0; i < reducer_size; i++)
+	{
+		// Doesn't support alias for these.
+		tensor_flags[reducers[i].d] = CCV_NNC_PARALLEL_REDUCER;
+		assert(!((ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, reducers[i].d))->alias_ref);
+	}
+	// No overlap between broadcasts, allreducers, reducers.
+	for (i = 0; i < broadcast_size; i++)
+		for (j = 0; j < reducer_size; j++)
+			{ assert(broadcasts[i].d != reducers[j].d); }
+	for (i = 0; i < broadcast_size; i++)
+		for (j = 0; j < allreducer_size; j++)
+			{ assert(broadcasts[i].d != allreducers[j].d); }
+	for (i = 0; i < allreducer_size; i++)
+		for (j = 0; j < reducer_size; j++)
+			{ assert(allreducers[i].d != reducers[j].d); }
 	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), node, idx) {
 		int parallelizable_data = 0;
 		int gather_inputs = 0;
@@ -65,7 +90,11 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				{
 					if (CCV_TENSOR_GET_DEVICE(tensor_symbol->info.type) == CCV_COMPUTE_DEVICE_ANY)
 						CCV_TENSOR_SET_DEVICE_ID(tensor_symbol->info.type, 0);
-					if (tensor_flags[node->inputs[i]] == CCV_NNC_PARALLEL_GATHER)
+					// Don't support alias for broadcast / allreducer / reducer.
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_BROADCAST);
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_ALLREDUCER);
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_REDUCER);
+					if (tensor_flags[node->inputs[i]] == CCV_NNC_PARALLEL_REDUCER)
 						gather_inputs = 1;
 					parallelizable_data = 1;
 				}
@@ -78,21 +107,25 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				{
 					if (CCV_TENSOR_GET_DEVICE(tensor_symbol->info.type) == CCV_COMPUTE_DEVICE_ANY)
 						CCV_TENSOR_SET_DEVICE_ID(tensor_symbol->info.type, 0);
-					if (tensor_flags[node->outputs[i]] == CCV_NNC_PARALLEL_SCATTER)
+					// Don't support alias for broadcast / allreducer / reducer.
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_BROADCAST);
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_ALLREDUCER);
+					assert(!tensor_symbol->alias_ref || tensor_flags[tensor_symbol->alias_ref - 1] != CCV_NNC_PARALLEL_REDUCER);
+					if (tensor_flags[node->outputs[i]] == CCV_NNC_PARALLEL_BROADCAST)
 						scatter_outputs = 1;
 					parallelizable_data = 1;
 				}
 			}
-		assert(!(scatter_outputs && gather_inputs)); // This node cannot be both scatter and gather.
+		assert(!(scatter_outputs && gather_inputs)); // This node cannot be both broadcast and reducer.
 		if (scatter_outputs ^ gather_inputs)
 		{
 			if (scatter_outputs)
-				exec_flags[idx] = CCV_NNC_PARALLEL_SCATTER;
+				exec_flags[idx] = CCV_NNC_PARALLEL_BROADCAST;
 			else if (gather_inputs)
-				exec_flags[idx] = CCV_NNC_PARALLEL_GATHER;
+				exec_flags[idx] = CCV_NNC_PARALLEL_REDUCER;
 			ccv_array_push(scatter_gather_execs, &idx);
 		} else if (parallelizable_data && !scatter_outputs && !gather_inputs) {
-			// If this node contains GPU data that need to be parallelized, and this node itself is not a scatter node or a gather node..
+			// If this node contains GPU data that need to be parallelized, and this node itself is not a broadcast node or a reducer node..
 			ccv_array_push(dup_execs, &idx);
 			for (i = 0; i < node->input_size; i++)
 				if (node->inputs[i] >= 0)
@@ -182,14 +215,14 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		const int d = *(int*)ccv_array_get(dup_execs, i);
 		ccv_nnc_graph_exec_symbol_info_t* const exec_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, d);
 		max_io_size = ccv_max(max_io_size, exec_symbol->input_size + exec_symbol->output_size);
-		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->input_size); // For scatter copy.
+		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->input_size); // For broadcast copy.
 	}
 	for (i = 0; i < scatter_gather_execs->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(scatter_gather_execs, i);
 		ccv_nnc_graph_exec_symbol_info_t* const exec_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, d);
-		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->output_size); // For scatter node.
-		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->input_size); // For gather node.
+		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->output_size); // For broadcast node.
+		max_io_size = ccv_max(max_io_size, 2 * exec_symbol->input_size); // For reducer node.
 	}
 	max_io_size = ccv_max(max_io_size, parallel_count + 1); // tensors from all parallel_count, the output is the summed one.
 	ccv_nnc_tensor_symbol_t max_io[max_io_size];
@@ -230,9 +263,9 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	}
 	// Create new tensors for gathering.
 	int* const gather_tensor_idx = cccalloc(parallel_count * tensor_symbol_size, sizeof(int));
-	for (i = 0; i < gather_size; i++)
+	for (i = 0; i < reducer_size; i++)
 	{
-		const int idx = gathers[i].d;
+		const int idx = reducers[i].d;
 		ccv_nnc_tensor_symbol_info_t* const tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, idx);
 		ccv_nnc_tensor_param_t info = tensor_symbol->info;
 		const int flags = tensor_symbol->flags;
@@ -273,12 +306,12 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	ccv_nnc_graph_exec_symbol_t sum_symbols[sum_size];
 	int gather_inputs[sum_size];
 	int* const gather_exec_idx = cccalloc(tensor_symbol_size, sizeof(int));
-	// Create node for scatter (thus, transfer data to different parallel_count) and gather (transfer data back to a device, and sum).
+	// Create node for broadcast (thus, transfer data to different parallel_count) and reducer (transfer data back to a device, and sum).
 	for (i = 0; i < scatter_gather_execs->rnum; i++)
 	{
 		const int d = *(int*)ccv_array_get(scatter_gather_execs, i);
-		// For scatter, we create data transfers as our dup node, and create connections to these data transfers.
-		if (exec_flags[d] == CCV_NNC_PARALLEL_SCATTER)
+		// For broadcast, we create data transfers as our dup node, and create connections to these data transfers.
+		if (exec_flags[d] == CCV_NNC_PARALLEL_BROADCAST)
 		{
 			ccv_nnc_graph_exec_symbol_info_t* const exec_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, d);
 			ccv_nnc_tensor_symbol_t* const inputs = max_io;
@@ -286,7 +319,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			for (j = 0; j < exec_symbol->output_size; j++)
 			{
 				const int idx = exec_symbol->outputs[j];
-				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_SCATTER)
+				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_BROADCAST)
 				{
 					inputs[input_size++] = (ccv_nnc_tensor_symbol_t){
 						.d = idx,
@@ -314,7 +347,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				dup_exec_idx[d * (parallel_count - 1) + j] = copy.d;
 				ccv_nnc_graph_exec_symbol_concat(graph, source, copy);
 			}
-		} else if (exec_flags[d] == CCV_NNC_PARALLEL_GATHER) {
+		} else if (exec_flags[d] == CCV_NNC_PARALLEL_REDUCER) {
 			// Gather is a bit more sophisticated, we need to use the new tensor to hold the summed value.
 			// This is what we have right now, I will use NCCL later.
 			ccv_nnc_tensor_symbol_t* const inputs = max_io;
@@ -323,7 +356,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			for (j = 0; j < exec_symbol->input_size; j++)
 			{
 				const int idx = exec_symbol->inputs[j];
-				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_GATHER)
+				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_REDUCER)
 				{
 					if (gather_exec_idx[idx])
 						ccv_nnc_graph_exec_symbol_concat(graph, (ccv_nnc_graph_exec_symbol_t){
@@ -382,7 +415,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 			for (j = 0; j < exec_symbol->input_size; j++)
 			{
 				const int idx = exec_symbol->inputs[j];
-				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_GATHER)
+				if (idx >= 0 && tensor_flags[idx] == CCV_NNC_PARALLEL_REDUCER)
 					exec_symbol->inputs[j] = gather_tensor_idx[idx * parallel_count] - 1;
 			}
 		}
@@ -395,7 +428,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 	{
 		const int idx = *(int*)ccv_array_get(dup_execs, i);
 		ccv_nnc_graph_exec_symbol_info_t* const node = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, idx);
-		if (exec_flags[idx] == CCV_NNC_PARALLEL_GATHER)
+		if (exec_flags[idx] == CCV_NNC_PARALLEL_REDUCER)
 			continue;
 		// We try to make copy command as compact as possible by having one copy for multiple tensors if they used together.
 		ccv_nnc_tensor_symbol_t* const inputs = max_io;
@@ -404,10 +437,10 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		{
 			const int input = node->inputs[j];
 			// Now, figure out whether we need to create copy command.
-			if (input >= 0 && input < tensor_symbol_size && tensor_flags[input] == CCV_NNC_PARALLEL_SCATTER)
+			if (input >= 0 && input < tensor_symbol_size && tensor_flags[input] == CCV_NNC_PARALLEL_BROADCAST)
 			{
 				inputs[input_size++].d = input;
-				tensor_flags[input] = 0; // Rest to 0.
+				tensor_flags[input] = 0; // Reset to 0.
 			}
 		}
 		if (input_size > 0)
@@ -440,8 +473,8 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				.d = d,
 				.graph = graph,
 			};
-			// If it is gather node, no need to scatter for this.
-			if (exec_flags[idx] != CCV_NNC_PARALLEL_GATHER)
+			// If it is reducer node, no need to broadcast for this.
+			if (exec_flags[idx] != CCV_NNC_PARALLEL_REDUCER)
 				for (j = 0; j < node->input_size; j++)
 				{
 					const int input = node->inputs[j];
@@ -468,7 +501,7 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 		}
 	} ccv_nnc_graph_visit_endfor
 	ccfree(scatter_exec_idx);
-	// Check whether this node has outgoing to the gather node, if so, replace that to the sum node.
+	// Check whether this node has outgoing to the reducer node, if so, replace that to the sum node.
 	ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), node, idx) {
 		if (node->outgoings && node->outgoings->rnum)
 			for (i = 0; i < node->outgoings->rnum; i++)
@@ -476,11 +509,11 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 				const int outgoing_idx = *(int*)ccv_array_get(node->outgoings, i);
 				if (outgoing_idx >= graph_exec_symbol_size)
 					continue;
-				if (exec_flags[outgoing_idx] == CCV_NNC_PARALLEL_GATHER)
+				if (exec_flags[outgoing_idx] == CCV_NNC_PARALLEL_REDUCER)
 					for (j = 0; j < node->output_size; j++)
 					{
 						const int output_idx = node->outputs[j];
-						if (output_idx >= 0 && tensor_flags[output_idx] == CCV_NNC_PARALLEL_GATHER)
+						if (output_idx >= 0 && tensor_flags[output_idx] == CCV_NNC_PARALLEL_REDUCER)
 						{
 							assert(gather_exec_idx[output_idx]);
 							ccv_array_replace_unique_int(node->outgoings, outgoing_idx, gather_exec_idx[output_idx] - 1);

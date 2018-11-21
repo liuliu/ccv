@@ -1774,7 +1774,7 @@ void ccv_nnc_symbolic_graph_simplify(ccv_nnc_symbolic_graph_t* const graph, cons
 
 enum {
 	/**
-	 * Op for gather / allreducer. Currently only supports sum.
+	 * Op for reducer / allreducer. Currently only supports sum.
 	 */
 	CCV_NNC_PARALLEL_REDUCE_OP_SUM,
 };
@@ -1782,27 +1782,30 @@ enum {
 /**
  * Turn the existing graph to be capable to run on several devices with different data inputs at parallel.
  * With this method, additional tensor symbols will be created that runs on different devices. That has
- * been said, there are concepts of "scatter" and "gather". "scatter" tensor symbols will be copied to
- * different devices, while "gather" tensors will be summed from different devices to the default device.
+ * been said, there are concepts of "broadcast" and "reduce". "broadcast" tensor symbols will be copied to
+ * different devices, while "reduce" tensors will be summed from different devices to the default device.
+ * "allreducer" concept is simpler. The allreduce operation will be performed on these tensors and then
+ * be used on different devices again.
  *
- * Limitations: right now, the way to gather tensors only supports "sum". The data parallel only supports
- * GPU, thus, the nodes will be duplicated are GPU computations and GPU memory backed tensors.
+ * Limitations: right now, the way to reduce / allreduce tensors only supports "sum". The data parallel
+ * only supports GPU, thus, the nodes will be duplicated are GPU computations and GPU memory backed
+ * tensors.
  *
  * @param graph The symbolic graph.
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
- * @param scatters The tensor symbols to be scattered.
- * @param scatter_size The size of the scatter tensor symbols array.
+ * @param broadcasts The tensor symbols to be broadcasted.
+ * @param broadcast_size The size of the broadcast tensor symbols array.
  * @param allreducers The tensor symbols that to be allreduced.
  * @param allreducer_size The size of the allreducer tensor symbols array.
- * @param gathers The tensor symbols to be gathered.
- * @param gather_size The size of the gather tensor symbols array.
- * @param reduce_op_type The reduce op for gather / allreducer.
+ * @param reducers The tensor symbols to be reduced.
+ * @param reducer_size The size of the reducer tensor symbols array.
+ * @param reduce_op_type The reduce op for reducer / allreducer.
  * @param sources The source execution node symbols array.
  * @param source_size The size of source node symbols array.
  * @param destinations The destinations execution node symbols array.
  * @param destination_size The size of destination node symbols array.
  */
-void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const scatters, const int scatter_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const gathers, const int gather_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.
