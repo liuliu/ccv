@@ -1789,7 +1789,7 @@ enum {
  *
  * Limitations: right now, the way to reduce / allreduce tensors only supports "sum". The data parallel
  * only supports GPU, thus, the nodes will be duplicated are GPU computations and GPU memory backed
- * tensors.
+ * tensors. Also, right now, the tensors to be broadcasted / allreduced / reduced should have no aliases.
  *
  * @param graph The symbolic graph.
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
