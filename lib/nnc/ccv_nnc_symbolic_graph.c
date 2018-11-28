@@ -788,7 +788,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		exec_info->outputs = exec_info->inputs + input_size;
 	}
 	int i;
-	int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0;
+	int tensor_memory = 0, tensor_formats = 0, tensor_datatypes = 0, tensor_auto = 0;
 	for (i = 0; i < input_size; i++)
 	{
 		const int d = ccv_nnc_tensor_symbol_map_raw(graph, inputs[i]);
@@ -796,6 +796,7 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		if (d >= 0)
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
+			tensor_auto = tensor_auto || ccv_nnc_is_tensor_auto(tensor_info->info);
 			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
 		}
 	}
@@ -806,10 +807,13 @@ static void _ccv_nnc_graph_exec_symbol_set_io(ccv_nnc_symbolic_graph_t* const gr
 		if (d >= 0)
 		{
 			const ccv_nnc_tensor_symbol_info_t* const tensor_info = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, d);
+			tensor_auto = tensor_auto || ccv_nnc_is_tensor_auto(tensor_info->info);
 			tensor_memory |= CCV_TENSOR_GET_MEMORY(tensor_info->info.type), tensor_formats |= tensor_info->info.format, tensor_datatypes |= tensor_info->info.datatype;
 		}
 	}
-	exec_info->cmd.backend = ccv_nnc_cmd_find_backend(exec_info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
+	// If there is no auto tensor, we try to find backend (we don't know which backend if the tensor is auto).
+	if (!tensor_auto)
+		exec_info->cmd.backend = ccv_nnc_cmd_find_backend(exec_info->cmd, tensor_memory, tensor_formats, tensor_datatypes);
 }
 
 ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
