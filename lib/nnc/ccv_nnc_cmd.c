@@ -282,10 +282,12 @@ uint32_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memo
 {
 	if (cmd.cmd == CCV_NNC_NOOP ||
 		cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD ||
-		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
+		cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD ||
+		tensor_memory == 0 || tensor_formats == 0 || tensor_datatypes == 0)
 		return cmd.backend;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	assert(tensor_memory != 0 && tensor_formats != 0 && tensor_datatypes != 0);
 	int i;
 	for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
 	{
