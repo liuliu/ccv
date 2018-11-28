@@ -57,8 +57,12 @@ struct ccv_nnc_stream_task_s {
 
 struct ccv_nnc_stream_context_s {
 	int type;
+	// For scheduler
 	ccv_nnc_stream_task_t* main; // main task.
 	ccv_nnc_stream_scheduler_t* scheduler;
+	// For neighbor discovery
+	ccv_nnc_stream_context_neighbor_discovery_f neighbor_discovery;
+	void* neighbor_discovery_context;
 };
 
 // Return the scheduler from a stream (if not created, create one).

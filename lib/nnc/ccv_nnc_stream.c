@@ -107,6 +107,19 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	ccfree(stream_context);
 }
 
+void ccv_nnc_stream_context_set_neighbor_discovery(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_stream_context_neighbor_discovery_f discovery, void* const context)
+{
+	stream_context->neighbor_discovery = discovery;
+	stream_context->neighbor_discovery_context = context;
+}
+
+ccv_nnc_stream_context_t* ccv_nnc_stream_context_find_neighbor(ccv_nnc_stream_context_t* const stream_context, const int device_id)
+{
+	if (stream_context->neighbor_discovery)
+		return stream_context->neighbor_discovery(device_id, stream_context->neighbor_discovery_context);
+	return 0;
+}
+
 ccv_nnc_stream_signal_t* ccv_nnc_stream_signal_new(const int type)
 {
 	ccv_nnc_stream_signal_t* const signal = (ccv_nnc_stream_signal_t*)ccmalloc(sizeof(ccv_nnc_stream_signal_t));

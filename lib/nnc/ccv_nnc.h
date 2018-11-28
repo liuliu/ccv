@@ -475,6 +475,28 @@ CCV_WARN_UNUSED(int) ccv_nnc_device_count(const int type);
  * @return 0 if the device remap is successful, -1 if it is not.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_device_remap(const int type, const int source, const int destination);
+/**
+ * The neighbor discovery function that will be called with the device id.
+ */
+typedef ccv_nnc_stream_context_t*(*ccv_nnc_stream_context_neighbor_discovery_f)(const int device_id, void* const context);
+/**
+ * Set the neighbor stream context discovery mechanism. This method exposes how
+ * neighbor should be defined per stream context. This method is useful for
+ * commands that operates cross devices and need to find the correct stream
+ * context for these devices. Stream context itself is bounded to one device
+ * only.
+ * @param stream_context The stream context that bounds to a discovery mechanism.
+ * @param discovery The neighbor discovery function to invoke.
+ * @param context The associated context with the neighbor discovery function.
+ */
+void ccv_nnc_stream_context_set_neighbor_discovery(ccv_nnc_stream_context_t* const stream_context, ccv_nnc_stream_context_neighbor_discovery_f discovery, void* const context);
+/**
+ * Find a neighbor stream context on a given device id for current stream context.
+ * @param stream_context The stream context which we will look for neighbors.
+ * @param device_id On which device the stream context may exist.
+ * @return 0 if no stream context found. Otherwise, return the stream context on that device.
+ */
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_context_find_neighbor(ccv_nnc_stream_context_t* const stream_context, const int device_id);
 
 /** @} */
 
