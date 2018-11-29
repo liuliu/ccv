@@ -792,3 +792,22 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 	ccv_nnc_stream_context_return_convolution_descriptor(convolution_desc.stream_context, convolution_desc.descriptor);
 }
 #endif
+
+#ifdef HAVE_NCCL
+ncclComm_t ccv_nnc_nccl_get_comm(const int device_id)
+{
+	static int init = 0;
+	static ncclComm_t comms[CCV_TENSOR_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY)];
+	if (!init)
+	{
+		const int dev_count = ccv_nnc_gpu_device_count();
+		int devs[dev_count];
+		int i;
+		for (i = 0; i < dev_count; i++)
+			devs[i] = i;
+		NCCL_ENFORCE(ncclCommInitAll(comms, dev_count, devs));
+		init = 1;
+	}
+	return comms[device_id];
+}
+#endif

@@ -61,6 +61,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #undef HAVE_CUDNN
 #endif
 #endif
+#ifdef HAVE_NCCL
+#include <nccl.h>
+#if NCCL_VERSION_CODE < 2200 // Doesn't support NCCL with version lower than 2.2
+#undef HAVE_NCCL
+#endif
+#endif
 
 #define CUDA_NUM_THREADS (512)
 #define CUDA_1D_KERNEL_LOOP(i, n) \
@@ -145,6 +151,24 @@ typedef struct {
 } ccv_nnc_cudnn_convolution_descriptor_t;
 ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(const ccv_nnc_stream_context_t* const stream_context, const ccv_nnc_hint_t hint);
 void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution_descriptor_t convolution_desc);
+#endif
+
+#ifdef HAVE_NCCL
+CCV_WARN_UNUSED(ncclComm_t) ccv_nnc_nccl_get_comm(const int device_id);
+
+#ifdef NDEBUG
+#define NCCL_ENFORCE(status) status
+#else
+#define NCCL_ENFORCE(status) {                                    \
+	if (status != ncclSuccess) {                                  \
+		printf("[%s:%d]:NCCL - Error: %s\n",                      \
+				__FILE__, __LINE__, ncclGetErrorString(status));  \
+		cudaDeviceReset();                                        \
+		exit(EXIT_FAILURE);                                       \
+	}                                                             \
+}
+#endif
+
 #endif
 }
 #endif
