@@ -24,7 +24,6 @@ static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 		assert(CCV_TENSOR_GET_DEVICE(inputs[i]->info.type) == CCV_TENSOR_GET_DEVICE(outputs[i]->info.type));
 	}
 	NCCL_ENFORCE(ncclGroupStart());
-	cudaStream_t blocking_streams[input_size] = {};
 	for (i = 0; i < input_size; i++)
 	{
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(inputs[i]->info.type);
