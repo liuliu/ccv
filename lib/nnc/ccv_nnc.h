@@ -449,13 +449,19 @@ CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_signal_new(const int ty
  * @param stream The stream context where the signal will be emitted.
  * @param signal The signal to be emitted. It has to be on the same device as the stream.
  */
-void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+void ccv_nnc_stream_context_emit_signal(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const signal);
 /**
  * Wait a signal on a stream.
  * @param stream The stream context that will be blocked by the signal.
  * @param signal The signal to be waited. It can be on a different device of the stream.
  */
 void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal);
+/**
+ * Get on which stream context this signal is going to be emitted on.
+ * @param signal The signal we want to inspect.
+ * @return The most recent stream context you called ccv_nnc_stream_context_emit_signal with.
+ */
+CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_signal_get_emitter(const ccv_nnc_stream_signal_t* const signal);
 /**
  * Deallocate the signal.
  * @param signal The signal to be destroyed.

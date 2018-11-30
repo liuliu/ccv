@@ -124,6 +124,7 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_signal_new(const int type)
 {
 	ccv_nnc_stream_signal_t* const signal = (ccv_nnc_stream_signal_t*)ccmalloc(sizeof(ccv_nnc_stream_signal_t));
 	signal->type = type;
+	signal->emit_context = 0;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(type) == CCV_STREAM_CONTEXT_GPU)
 		return ccv_nnc_init_stream_signal(signal);
@@ -131,12 +132,18 @@ ccv_nnc_stream_signal_t* ccv_nnc_stream_signal_new(const int type)
 	return signal;
 }
 
-void ccv_nnc_stream_context_emit_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)
+void ccv_nnc_stream_context_emit_signal(ccv_nnc_stream_context_t* const stream, ccv_nnc_stream_signal_t* const signal)
 {
+	signal->emit_context = stream;
 #ifdef HAVE_CUDA
 	if (CCV_STREAM_GET_CONTEXT(signal->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_stream_compat_emit_signal(stream, signal);
 #endif
+}
+
+ccv_nnc_stream_context_t* ccv_nnc_stream_signal_get_emitter(const ccv_nnc_stream_signal_t* const signal)
+{
+	return signal->emit_context;
 }
 
 void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const stream, const ccv_nnc_stream_signal_t* const signal)

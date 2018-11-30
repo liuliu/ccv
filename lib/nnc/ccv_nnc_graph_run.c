@@ -319,6 +319,29 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	_ccv_nnc_graph_exec_unwrap_phi(graph, exec, ref);
 }
 
+typedef struct {
+	ccv_nnc_graph_t* graph;
+	ccv_nnc_graph_exec_info_t* node;
+	ccv_nnc_stream_context_t* stream;
+} ccv_nnc_graph_neighbor_context_discovery_t;
+
+static ccv_nnc_stream_context_t* _ccv_nnc_graph_neighbor_context_discovery(const int device_id, void* const context)
+{
+	const ccv_nnc_graph_neighbor_context_discovery_t* const discovery = (ccv_nnc_graph_neighbor_context_discovery_t*)context;
+	if (CCV_STREAM_GET_DEVICE_ID(ccv_nnc_stream_context_type(discovery->stream)) == device_id)
+		return discovery->stream;
+	ccv_nnc_graph_t* const graph = discovery->graph;
+	ccv_nnc_graph_exec_info_t* const node = discovery->node;
+	int i;
+	for (i = 0; i < node->schedule.wait_size; i++)
+	{
+		ccv_nnc_stream_context_t* stream_context = ccv_nnc_stream_signal_get_emitter(graph->signals[node->schedule.waits[i]]);
+		if (stream_context && CCV_STREAM_GET_DEVICE_ID(ccv_nnc_stream_context_type(stream_context)) == device_id)
+			return stream_context;
+	}
+	return 0;
+}
+
 static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node, const int idx, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_scheduler_t* const scheduler, const int flags)
 {
 	_ccv_nnc_graph_exec_unwrap_io(graph, node);
@@ -369,6 +392,12 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
 		for (i = 0; i < node->input_size; i++)
 			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0));
+		ccv_nnc_graph_neighbor_context_discovery_t discovery_context = {
+			.graph = graph,
+			.node = node,
+			.stream = node_stream
+		};
+		ccv_nnc_stream_context_set_neighbor_discovery(node_stream, _ccv_nnc_graph_neighbor_context_discovery, &discovery_context);
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
 		for (i = 0; i < node->output_size; i++)
 			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
@@ -830,5 +859,5 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 		ccv_nnc_stream_schedule_task(scheduler, task);
 		return CCV_NNC_EXEC_SUCCESS;
 	} else
-		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, stream_context, flags, sources, source_size, destinations, destination_size);
+		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, 0 /* In this case, we don't support stream context yet. */, flags, sources, source_size, destinations, destination_size);
 }

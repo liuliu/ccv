@@ -17,6 +17,7 @@
 
 struct ccv_nnc_stream_signal_s {
 	int type;
+	ccv_nnc_stream_context_t* emit_context;
 };
 
 typedef struct ccv_nnc_stream_task_s ccv_nnc_stream_task_t;

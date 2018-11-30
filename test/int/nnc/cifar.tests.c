@@ -253,7 +253,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 30; i++)
+	for (i = 0; epoch < 40; i++)
 	{
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
