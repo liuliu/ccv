@@ -154,7 +154,7 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 #endif
 
 #ifdef HAVE_NCCL
-CCV_WARN_UNUSED(ncclComm_t) ccv_nnc_nccl_get_comm(const int device_id);
+CCV_WARN_UNUSED(ncclComm_t) ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* const stream, const int device_count, const int device_id);
 
 #ifdef NDEBUG
 #define NCCL_ENFORCE(status) status

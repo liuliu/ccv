@@ -93,6 +93,10 @@ typedef struct {
 			int _heap_gpu_size;
 		};
 	};
+#ifdef HAVE_NCCL
+	ncclComm_t* comms;
+	int comm_count;
+#endif
 } ccv_nnc_stream_context_compat_t;
 
 static ccv_nnc_stream_context_device_local_t* _ccv_nnc_stream_compat_device_local(ccv_nnc_stream_context_compat_t* const stream_compat)
@@ -334,6 +338,14 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 			cudaFree(stream_compat->_inline_gpu.rngs);
 #endif
 	}
+#ifdef HAVE_NCCL
+	if (stream_compat->comms)
+	{
+		int i;
+		for (i = 0; i < stream_compat->comm_count; i++)
+			NCCL_ENFORCE(ncclCommDestroy(stream_compat->comms[i]));
+	}
+#endif
 }
 
 int ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context)
@@ -794,20 +806,41 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 #endif
 
 #ifdef HAVE_NCCL
-ncclComm_t ccv_nnc_nccl_get_comm(const int device_id)
+static void _ccv_nnc_nccl_redo_comms(ncclComm_t* const comms, const int comm_count, const int device_count)
 {
-	static int init = 0;
-	static ncclComm_t comms[CCV_TENSOR_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY)];
-	if (!init)
+	int i;
+	for (i = 0; i < comm_count; i++)
+		NCCL_ENFORCE(ncclCommDestroy(comms[i]));
+	int devs[device_count];
+	for (i = 0; i < device_count; i++)
+		devs[i] = i;
+	NCCL_ENFORCE(ncclCommInitAll(comms, device_count, devs));
+}
+
+ncclComm_t ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* const stream, const int device_count, const int device_id)
+{
+	assert(device_count > 0);
+	if (stream)
 	{
-		const int dev_count = ccv_nnc_gpu_device_count();
-		int devs[dev_count];
-		int i;
-		for (i = 0; i < dev_count; i++)
-			devs[i] = i;
-		NCCL_ENFORCE(ncclCommInitAll(comms, dev_count, devs));
-		init = 1;
+		ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+		if (stream_compat->comms && stream_compat->comm_count == device_count)
+			return stream_compat->comms[device_id];
+		if (stream_compat->comms)
+			stream_compat->comms = (ncclComm_t*)ccrealloc(stream_compat->comms, sizeof(ncclComm_t) * device_count);
+		else
+			stream_compat->comms = (ncclComm_t*)ccmalloc(sizeof(ncclComm_t) * device_count);
+		_ccv_nnc_nccl_redo_comms(stream_compat->comms, stream_compat->comm_count, device_count);
+		stream_compat->comm_count = device_count;
+		return stream_compat->comms[device_id];
+	} else {
+		static ncclComm_t comms[CCV_TENSOR_GET_DEVICE_ID(CCV_COMPUTE_DEVICE_ANY)];
+		static int comm_count = 0;
+		if (comm_count != device_count)
+		{
+			_ccv_nnc_nccl_redo_comms(comms, comm_count, device_count);
+			comm_count = device_count;
+		}
+		return comms[device_id];
 	}
-	return comms[device_id];
 }
 #endif
