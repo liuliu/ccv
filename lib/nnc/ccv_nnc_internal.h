@@ -86,7 +86,7 @@ static inline void ccv_nnc_hint_tensor_backward(const ccv_nnc_cmd_param_t cmd, c
 void ccv_nnc_hint_tensor_auto_forward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 void ccv_nnc_hint_tensor_auto_backward_from_gradient(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 void ccv_nnc_hint_tensor_auto_backward_from_inputs(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
-CCV_WARN_UNUSED(int) ccv_nnc_device_id_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int default_device_id);
+int ccv_nnc_device_ids_for_io(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, int* const device_ids, const int max_device_id_size);
 
 static inline off_t ccv_nnc_tensor_view_offset(const ccv_nnc_tensor_view_t* const tv, const int ofs[CCV_NNC_MAX_DIM_ALLOC])
 {

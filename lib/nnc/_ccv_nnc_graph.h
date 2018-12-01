@@ -43,8 +43,15 @@ typedef struct {
 	ccv_nnc_cmd_t cmd;
 	ccv_nnc_hint_t hint;
 	struct {
-		int sign;
-		int stream; // The assigned stream for this to be executed.
+		int stream_size; // This controls the size of both _heap_signals and _heap_streams. When this is <= 1, we don't have _heap variant.
+		union {
+			int _inline_signals[1];
+			int* _heap_signals;
+		};
+		union {
+			int _inline_streams[1]; // The assigned stream for this to be executed.
+			int* _heap_streams;
+		};
 		int wait_size;
 		int* waits;
 	} schedule;
@@ -68,6 +75,9 @@ typedef struct {
 		} p_while;
 	};
 } ccv_nnc_graph_exec_info_t;
+
+#define SCHEDULE_SIGNALS(node) ((node).stream_size <= 1 ? (node)._inline_signals : (node)._heap_signals)
+#define SCHEDULE_STREAMS(node) ((node).stream_size <= 1 ? (node)._inline_streams : (node)._heap_streams)
 
 // This struct is used to move pointers from "from" to "to". This is used to bridge between the current loop
 // and the next one. These tensor trees wraps / unwraps follow the conventional tree_execs, but of a graph.

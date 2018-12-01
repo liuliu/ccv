@@ -304,13 +304,13 @@ static void _ccv_nnc_graph_exec_cases_of_coro(ccv_nnc_stream_task_t* const self,
 	{
 		assert(ref < exec->graph_ref_size);
 		ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(exec)[ref] - 1);
-		assert(graph->streams[exec->schedule.stream] == sub_graph->streams[0]);
+		assert(graph->streams[SCHEDULE_STREAMS(exec->schedule)[0]] == sub_graph->streams[0]);
 		ccv_nnc_graph_topsorted_run_coro_t params = {
 			.graph = sub_graph,
 			.exec_idx = exec_idx,
 			.exec = exec,
 			.tensor_tape = tensor_tape,
-			.stream_context = graph->streams[exec->schedule.stream],
+			.stream_context = graph->streams[SCHEDULE_STREAMS(exec->schedule)[0]],
 			.flags = flags
 		};
 		// Directly call it.
@@ -356,7 +356,7 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 	{
 		if (node->flags & CCV_NNC_GRAPH_EXEC_CASE_OF)
 		{
-			ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
+			ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(node->schedule)[0]];
 			ccv_nnc_graph_exec_cases_of_coro_t params = {
 				.graph = graph,
 				.exec_idx = idx,
@@ -371,13 +371,13 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 			return task;
 		} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1);
-			assert(graph->streams[node->schedule.stream] == sub_graph->streams[0]);
+			assert(graph->streams[SCHEDULE_STREAMS(node->schedule)[0]] == sub_graph->streams[0]);
 			ccv_nnc_graph_topsorted_run_coro_t params = {
 				.graph = sub_graph,
 				.exec_idx = idx,
 				.exec = node,
 				.tensor_tape = tensor_tape,
-				.stream_context = graph->streams[node->schedule.stream],
+				.stream_context = graph->streams[SCHEDULE_STREAMS(node->schedule)[0]],
 				.flags = flags
 			};
 			ccv_nnc_stream_task_t* const task = ccv_nnc_stream_task_new(scheduler, _ccv_nnc_graph_topsorted_run_coro, &params, 0);
@@ -385,7 +385,7 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 			return task;
 		}
 	} else {
-		ccv_nnc_stream_context_t* const node_stream = graph->streams[node->schedule.stream];
+		ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(node->schedule)[0]];
 		int i;
 		for (i = 0; i < node->schedule.wait_size; i++)
 			ccv_nnc_stream_context_wait_signal(node_stream, graph->signals[node->schedule.waits[i]]);
@@ -401,8 +401,8 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
 		for (i = 0; i < node->output_size; i++)
 			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
-		if (node->schedule.sign >= 0)
-			ccv_nnc_stream_context_emit_signal(node_stream, graph->signals[node->schedule.sign]);
+		if (SCHEDULE_SIGNALS(node->schedule)[0] >= 0)
+			ccv_nnc_stream_context_emit_signal(node_stream, graph->signals[SCHEDULE_SIGNALS(node->schedule)[0]]);
 	}
 	return 0;
 }
@@ -417,7 +417,7 @@ static void _ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(ccv_nnc_graph_t
 			ccv_nnc_graph_exec_info_t* const outgoing_node = exec_info + outgoing_idx;
 			// An outgoing stream can be blocked by multiple other tasks from other streams. But it is OK,
 			// because on next round of execution, that one will be marked as blocked again.
-			graph->block_stream_tasks[outgoing_node->schedule.stream] = task;
+			graph->block_stream_tasks[SCHEDULE_STREAMS(outgoing_node->schedule)[0]] = task;
 		}
 }
 
@@ -431,8 +431,8 @@ static void _ccv_nnc_graph_wait_any_sub_tasks(ccv_nnc_stream_task_t* const self,
 			for (j = 0; j < pending_node_size; j++)
 			{
 				ccv_nnc_graph_exec_info_t* const node = exec_info + pending_nodes[j];
-				if (graph->block_stream_tasks[node->schedule.stream] == sub_tasks[i])
-					graph->block_stream_tasks[node->schedule.stream] = 0;
+				if (graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]] == sub_tasks[i])
+					graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]] = 0;
 			}
 }
 
@@ -451,17 +451,17 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 	{
 		ccv_nnc_graph_exec_info_t* const node = exec_info + i;
 		// If stream is blocked by but not blocked by current executing task.
-		if (graph->block_stream_tasks[node->schedule.stream])
+		if (graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]])
 		{
 			pending_nodes[0][pending_node_size[0]++] = i;
-			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[node->schedule.stream]);
+			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]]);
 			continue;
 		}
 		ccv_nnc_stream_task_t* const task = _ccv_nnc_graph_exec_run_task(graph, node, i, tensor_tape, self->super, flags);
 		if (task && !task->done)
 		{
 			sub_tasks[sub_task_size++] = task;
-			graph->block_stream_tasks[node->schedule.stream] = task;
+			graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]] = task;
 			_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
 		}
 	}
@@ -475,9 +475,9 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 		{
 			const int idx = pending_nodes[p][i];
 			ccv_nnc_graph_exec_info_t* const node = exec_info + idx;
-			if (graph->block_stream_tasks[node->schedule.stream])
+			if (graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]])
 			{
-				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[node->schedule.stream]);
+				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]]);
 				pending_nodes[q][pending_node_size[q]++] = idx;
 				continue;
 			}
@@ -485,7 +485,7 @@ static void _ccv_nnc_graph_exec_run_loop(ccv_nnc_stream_task_t* const self, ccv_
 			if (task && !task->done)
 			{
 				sub_tasks[sub_task_size++] = task;
-				graph->block_stream_tasks[node->schedule.stream] = task;
+				graph->block_stream_tasks[SCHEDULE_STREAMS(node->schedule)[0]] = task;
 				_ccv_nnc_graph_mark_outgoing_streams_blocked_by_task(graph, exec_info, node, task);
 			}
 		}
@@ -541,7 +541,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 				// Reached breakpoints, now check the breakpoint, if not met, break out.
 				// Wait until everything on the stream is executed.
 				for (i = graph->breakpoint_offset; i < graph_breakpoint_size; i++)
-					ccv_nnc_stream_task_synchronize(self, graph->streams[exec_info[i].schedule.stream]);
+					ccv_nnc_stream_task_synchronize(self, graph->streams[SCHEDULE_STREAMS(exec_info[i].schedule)[0]]);
 				_ccv_nnc_graph_exec_unwrap_while_expr(graph, exec);
 				if (!exec->p_while.expr(exec->p_while.inputs, exec->p_while.input_size, exec->p_while.data))
 				{
