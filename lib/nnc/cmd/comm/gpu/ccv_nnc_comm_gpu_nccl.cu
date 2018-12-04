@@ -71,6 +71,8 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_ALLREDUCE_BACKWARD, CCV_NNC_BACKEND_GPU_NC
 #endif
 }
 
+#ifdef HAVE_NCCL
+
 static int _ccv_nnc_broadcast_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 1);
@@ -148,6 +150,8 @@ static int _ccv_nnc_reduce_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	// For allreduce, forward and backward are the same.
 	return _ccv_nnc_broadcast_forw(cmd, hint, flags, inputs, 1, outputs, output_size, stream_context);
 }
+
+#endif
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_BROADCAST_FORWARD, CCV_NNC_BACKEND_GPU_NCCL)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
