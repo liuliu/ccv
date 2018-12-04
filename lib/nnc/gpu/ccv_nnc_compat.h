@@ -82,14 +82,14 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 #ifdef NDEBUG
 #define CUBLAS_ENFORCE(status) status
 #else
-#define CUBLAS_ENFORCE(status) {                                  \
+#define CUBLAS_ENFORCE(status) do {                               \
 	if (status != CUBLAS_STATUS_SUCCESS) {                        \
 		printf("[%s:%d]:CUBLAS - Error: %d\n",                    \
 				__FILE__, __LINE__, (int)status);                 \
 		cudaDeviceReset();                                        \
 		exit(EXIT_FAILURE);                                       \
 	}                                                             \
-}
+} while (0)
 #endif
 
 // Return floating point one on device memory.
@@ -118,14 +118,14 @@ void ccv_nnc_stream_context_return_tensor_descriptor(const ccv_nnc_stream_contex
 #ifdef NDEBUG
 #define CUDNN_ENFORCE(status) status
 #else
-#define CUDNN_ENFORCE(status) {                                   \
+#define CUDNN_ENFORCE(status) do {                                \
 	if (status != CUDNN_STATUS_SUCCESS) {                         \
 		printf("[%s:%d]:CUDNN - Error: %s\n",                     \
 				__FILE__, __LINE__, cudnnGetErrorString(status)); \
 		cudaDeviceReset();                                        \
 		exit(EXIT_FAILURE);                                       \
 	}                                                             \
-}
+} while (0)
 #endif
 
 typedef struct {
@@ -159,14 +159,14 @@ CCV_WARN_UNUSED(ncclComm_t) ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* cons
 #ifdef NDEBUG
 #define NCCL_ENFORCE(status) status
 #else
-#define NCCL_ENFORCE(status) {                                    \
+#define NCCL_ENFORCE(status) do {                                 \
 	if (status != ncclSuccess) {                                  \
 		printf("[%s:%d]:NCCL - Error: %s\n",                      \
 				__FILE__, __LINE__, ncclGetErrorString(status));  \
 		cudaDeviceReset();                                        \
 		exit(EXIT_FAILURE);                                       \
 	}                                                             \
-}
+} while (0)
 #endif
 
 #endif

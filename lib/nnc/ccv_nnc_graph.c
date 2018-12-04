@@ -791,16 +791,18 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			for (i = 0; i < device_id_size; i++)
 			{
 				int stream_idx = -1;
-				for (j = incomings[idx]->rnum - 1; stream_idx < 0 && j >= 0; j--)
+				// Select the smallest stream rank.
+				for (j = 0; j < incomings[idx]->rnum; j++)
 				{
 					const int incoming_idx = *(int*)ccv_array_get(incomings[idx], j);
 					assert(incoming_idx < exec_info_size);
-					for (k = 0; stream_idx < 0 && k < exec_info[incoming_idx].schedule.stream_size; k++)
+					for (k = 0; k < exec_info[incoming_idx].schedule.stream_size; k++)
 					{
 						const int s = SCHEDULE_STREAMS(exec_info[incoming_idx].schedule)[k];
 						assert(s >= 0);
 						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
-						if (data->device_id == device_ids[i] && data->exec_idx == incoming_idx)
+						if (data->device_id == device_ids[i] && data->exec_idx == incoming_idx &&
+							(stream_idx < 0 || s < stream_idx))
 							stream_idx = s;
 					}
 				}
@@ -844,25 +846,33 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		for (i = 0; i < device_id_size; i++)
 		{
 			int stream_idx = stream_idxs[i];
-			// Try to find one in the empty streams.
-			for (j = 0; stream_idx < 0 && j < empty_streams->rnum; j++)
+			// Try to find one in the empty streams. Prefer the smallest one.
+			if (stream_idx < 0)
 			{
-				const int s = *(int*)ccv_array_get(empty_streams, j);
-				assert(s >= 0);
-				const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
-				if (data->device_id != device_ids[i])
-					continue;
-				const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, data->exec_idx);
-				// If there is a path to conclude that exec_idx is before idx, then we can reuse
-				// this stream. Otherwise the work in this "empty stream" could still be ongoing,
-				// and we may delay the following work unnecessarily.
-				if (cell.i32 && cell.i32[0] > 0)
+				for (j = 0; j < empty_streams->rnum; j++)
 				{
-					// This stream is lifted out of empty streams.
-					if (j < empty_streams->rnum - 1)
-						*(int*)ccv_array_get(empty_streams, j) = *(int*)ccv_array_get(empty_streams, empty_streams->rnum - 1);
+					const int s = *(int*)ccv_array_get(empty_streams, j);
+					assert(s >= 0);
+					const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
+					// Prefer the smallest stream rank.
+					if (data->device_id != device_ids[i] || (stream_idx >= 0 && s >= stream_idx))
+						continue;
+					const ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(exec_dep, idx, data->exec_idx);
+					// If there is a path to conclude that exec_idx is before idx, then we can reuse
+					// this stream. Otherwise the work in this "empty stream" could still be ongoing,
+					// and we may delay the following work unnecessarily.
+					if (cell.i32 && cell.i32[0] > 0)
+					{
+						k = j;
+						stream_idx = s;
+					}
+				}
+				if (stream_idx >= 0) // Remove from empty streams.
+				{
+					assert(k >= 0 && k < empty_streams->rnum);
+					if (k < empty_streams->rnum - 1)
+						*(int*)ccv_array_get(empty_streams, k) = *(int*)ccv_array_get(empty_streams, empty_streams->rnum - 1);
 					--empty_streams->rnum;
-					stream_idx = s;
 				}
 			}
 			if (stream_idx >= 0) // If found, good, update to latest exec in this stream.
@@ -905,41 +915,8 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 		if (incomings[i])
 			ccv_array_free(incomings[i]);
 	ccfree(incomings);
-	int graph_wait_size = 0;
-	for (i = 0; i < graph->destinations->rnum; i++)
-	{
-		const int idx = *(int*)ccv_array_get(graph->destinations, i);
-		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
-			if (SCHEDULE_STREAMS(exec_info[idx].schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
-				++graph_wait_size;
-	}
-	if (graph_wait_size > 0)
-		graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
-	graph_wait_size = 0;
-	for (i = 0; i < graph->destinations->rnum; i++)
-	{
-		const int idx = *(int*)ccv_array_get(graph->destinations, i);
-		ccv_nnc_graph_exec_info_t* const destination_exec_info = exec_info + idx;
-		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
-			if (SCHEDULE_STREAMS(destination_exec_info->schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
-			{
-				ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
-				if (SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] < 0)
-					SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] = signal_size++;
-				else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(destination_exec_info->schedule)[j]))
-					continue;
-				graph->waits[graph_wait_size++] = SCHEDULE_SIGNALS(destination_exec_info->schedule)[j];
-			}
-	}
-	graph->wait_size = graph_wait_size;
 	ccv_matrix_free(exec_dep);
 	ccv_array_free(empty_streams);
-	for (i = 0; i < stream_data->rnum; i++)
-	{
-		ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
-		if (data->signal_set)
-			ccv_array_free(data->signal_set);
-	}
 	ccv_nnc_stream_data_t* const default_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
 	if (device_id >= 0)
 	{
@@ -982,6 +959,39 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			((ccv_nnc_stream_data_t*)ccv_array_get(stream_data, exchange_stream_idx))->device_id = default_data->device_id;
 			default_data->device_id = device_id;
 		}
+	}
+	int graph_wait_size = 0;
+	for (i = 0; i < graph->destinations->rnum; i++)
+	{
+		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
+			if (SCHEDULE_STREAMS(exec_info[idx].schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
+				++graph_wait_size;
+	}
+	if (graph_wait_size > 0)
+		graph->waits = (graph->waits) ? ccrealloc(graph->waits, sizeof(int) * graph_wait_size) : ccmalloc(sizeof(int) * graph_wait_size);
+	graph_wait_size = 0;
+	for (i = 0; i < graph->destinations->rnum; i++)
+	{
+		const int idx = *(int*)ccv_array_get(graph->destinations, i);
+		ccv_nnc_graph_exec_info_t* const destination_exec_info = exec_info + idx;
+		for (j = 0; j < exec_info[idx].schedule.stream_size; j++)
+			if (SCHEDULE_STREAMS(destination_exec_info->schedule)[j] != 0) // If this exec_info doesn't end with default stream, we need to wait.
+			{
+				ccv_nnc_stream_data_t* const default_stream_data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, 0);
+				if (SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] < 0)
+					SCHEDULE_SIGNALS(destination_exec_info->schedule)[j] = signal_size++;
+				else if (default_stream_data->signal_set && ccv_array_find_int(default_stream_data->signal_set, SCHEDULE_SIGNALS(destination_exec_info->schedule)[j]))
+					continue;
+				graph->waits[graph_wait_size++] = SCHEDULE_SIGNALS(destination_exec_info->schedule)[j];
+			}
+	}
+	graph->wait_size = graph_wait_size;
+	for (i = 0; i < stream_data->rnum; i++)
+	{
+		ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, i);
+		if (data->signal_set)
+			ccv_array_free(data->signal_set);
 	}
 	// Allocate streams & signals
 	graph->stream_size = stream_data->rnum;

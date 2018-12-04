@@ -466,6 +466,7 @@ TEST_CASE("schedule GPU work with both while loop and case..of")
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw1, hbias1, hw2, hbias2, hw3, hbias3, hw4, hbias4, hbiasc), TENSOR_LIST(a_tensor, w1_tensor, bias1_tensor, w2_tensor, bias2_tensor, w3_tensor, bias3_tensor, w4_tensor, bias4_tensor, biasc_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_stream_context_wait(stream_context); // TODO: We need to wait here for now because the scheduling is not serial yet. Once we specified we can be blocked by previous task, this should be OK.
 	// Run again on the same graph immediately. It shouldn't mess with the result, still sequential.
 	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
 	ccv_nnc_stream_context_wait(stream_context);

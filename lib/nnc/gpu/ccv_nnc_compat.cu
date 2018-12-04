@@ -324,6 +324,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 #endif
 			}
 	} else {
+		cudevice(device);
 		if (stream_compat->_inline_gpu.workspace)
 			cudaFree(stream_compat->_inline_gpu.workspace);
 		cudaStreamDestroy(stream_compat->_inline_gpu.stream);
