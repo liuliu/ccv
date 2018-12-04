@@ -13,7 +13,7 @@ static int _ccv_nnc_softmax_crossentropy_forw_bitmask(const int input_size, cons
 	return 0;
 }
 
-static int _ccv_nnc_softmax_crossentropy_allow_inplace_forw(const int input_idx, const int output_idx)
+static int _ccv_nnc_softmax_crossentropy_allow_inplace_forw(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return (input_idx == 0 && output_idx == 1);
 }
@@ -27,7 +27,7 @@ static int _ccv_nnc_softmax_crossentropy_back_bitmask(const int input_size, cons
 	return 0;
 }
 
-static int _ccv_nnc_softmax_crossentropy_allow_inplace_back(const int input_idx, const int output_idx)
+static int _ccv_nnc_softmax_crossentropy_allow_inplace_back(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (input_idx == 1 && output_idx == 0)
 		return 1;

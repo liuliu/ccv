@@ -309,7 +309,7 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 		// First, go over to see whether there is enforce inplace.
 		int enforce_idx = -1;
 		for (j = 0; enforce_idx < 0 && j < input_size; j++)
-			if (inputs[j] && ccv_nnc_cmd_enforce_inplace(cmd, j, i))
+			if (inputs[j] && ccv_nnc_cmd_enforce_inplace(cmd, j, input_size, i, output_size))
 				enforce_idx = j;
 		if (enforce_idx >= 0)
 			{ assert(outputs[i] == inputs[enforce_idx] && outputs[i]->symbol.d != CCV_NNC_NO_TENSOR_SYMBOL); }

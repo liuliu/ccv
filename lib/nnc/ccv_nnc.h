@@ -365,18 +365,22 @@ CCV_WARN_UNUSED(int) ccv_nnc_cmd_attr(const ccv_nnc_cmd_t cmd, const int flags);
  * Check whether this command allow inplace operation against a particular input and output (index from 0).
  * @param cmd The wrapped command.
  * @param input_idx The index of the input tensor we want to check.
+ * @param input_size The total number of inputs.
  * @param output_idx the index of the output tensor we want to check.
+ * @param output_size The total number of outputs.
  * @return 1 if the input tensor can be used as the output tensor.
  */
-CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size);
 /**
  * Check whether this command need to enforce inplace operation against a particular input and output (index from 0).
  * @param cmd The wrapped command.
  * @param input_idx The index of the input tensor we want to check.
+ * @param input_size The total number of inputs.
  * @param output_idx the index of the output tensor we want to check.
+ * @param output_size The total number of outputs.
  * @return 1 if the input tensor is required to be used as the output tensor.
  */
-CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx);
+CCV_WARN_UNUSED(int) ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size);
 
 /** @} */
 

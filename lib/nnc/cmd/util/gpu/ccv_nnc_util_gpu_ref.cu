@@ -18,10 +18,7 @@ static int _ccv_nnc_data_transfer(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t 
 		ccv_nnc_tensor_t* b = outputs[i];
 		assert(!CCV_IS_TENSOR_VIEW(b));
 		assert(ccv_nnc_tensor_count(a->info) == ccv_nnc_tensor_count(b->info));
-		// Assume it is 32f.
-		assert(CCV_GET_DATA_TYPE(a->type) == CCV_32F);
-		assert(CCV_GET_DATA_TYPE(b->type) == CCV_32F);
-		size_t size = ccv_nnc_tensor_count(a->info) * sizeof(float);
+		size_t size = ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->type);
 		if (stream_context)
 		{
 			cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);

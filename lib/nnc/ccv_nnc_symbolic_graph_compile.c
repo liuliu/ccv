@@ -2154,7 +2154,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		for (x = 0; x < node->input_size; x++)
 			for (y = 0; y < node->output_size; y++)
 				/* Some operations enforces some tensors to be the same for inputs / outputs. */
-				if (ccv_nnc_cmd_enforce_inplace(node->cmd, x, y))
+				if (ccv_nnc_cmd_enforce_inplace(node->cmd, x, node->input_size, y, node->output_size))
 				{
 					// If both unassigned, it is fine.
 					if (node->inputs[x] < 0 && node->outputs[y] < 0)
@@ -2212,7 +2212,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 				for (y = 0; y < node->output_size; y++)
 					/* Only proceed if the input symbol is different from the output symbol, */
 					/* and the input symbol meets the output symbol exactly at the same spot. */
-					if (ccv_nnc_cmd_allow_inplace(node->cmd, x, y) &&
+					if (ccv_nnc_cmd_allow_inplace(node->cmd, x, node->input_size, y, node->output_size) &&
 						node->outputs[y] >= 0 &&
 						ref != node->outputs[y] &&
 						TENSOR_EXPECT_COMPUTABLE(tensor_blocks[node->outputs[y]]))

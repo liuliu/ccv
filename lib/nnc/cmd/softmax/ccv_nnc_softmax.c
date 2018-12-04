@@ -2,12 +2,12 @@
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_internal.h>
 
-static int _ccv_nnc_arbitary_inplace(const int input_idx, const int output_idx)
+static int _ccv_nnc_arbitary_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return 1;
 }
 
-static int _ccv_nnc_allow_graident_inplace(const int input_idx, const int output_idx)
+static int _ccv_nnc_allow_graident_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return (input_idx == 0 && output_idx == 0);
 }

@@ -244,25 +244,25 @@ void ccv_nnc_hint_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_para
 		ccv_nnc_hint_tensor_auto_backward_from_inputs(cmd.info, inputs, input_size, hint, outputs, output_size);
 }
 
-int ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx)
+int ccv_nnc_cmd_allow_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (cmd.cmd == CCV_NNC_NOOP || cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD || cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
 		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.allow_inplace)
-		return registry.allow_inplace(input_idx, output_idx);
+		return registry.allow_inplace(input_idx, input_size, output_idx, output_size);
 	return 0;
 }
 
-int ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int output_idx)
+int ccv_nnc_cmd_enforce_inplace(const ccv_nnc_cmd_t cmd, const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	if (cmd.cmd == CCV_NNC_NOOP || cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD || cmd.cmd == CCV_NNC_GRAPH_FORWARD || cmd.cmd == CCV_NNC_GRAPH_BACKWARD)
 		return 0;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	const ccv_nnc_cmd_registry_t registry = init_map[cmd_idx].registry;
 	if (registry.enforce_inplace)
-		return registry.enforce_inplace(input_idx, output_idx);
+		return registry.enforce_inplace(input_idx, input_size, output_idx, output_size);
 	return 0;
 }
 
