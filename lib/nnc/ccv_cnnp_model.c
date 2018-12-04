@@ -389,7 +389,7 @@ static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc
 	for (i = 1; i < parallel_count; i++)
 	{
 		ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(graph, symbol, i));
-		if (!copy)
+		if (copy)
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensor, 1, &copy, 1, 0);
 	}
 }
@@ -462,9 +462,9 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	if (parallel_count > 1)
 	{
 		ccv_nnc_symbolic_graph_data_parallel(model->graph, compiled_data->parallel_count,
-			(ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, 0), trainable_size,
 			0, 0,
 			gradients, trainable_size,
+			0, 0,
 			CCV_NNC_PARALLEL_REDUCE_OP_SUM,
 			SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 		ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
@@ -638,6 +638,12 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	{
 		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, compiled_data->saved_aux[i].source);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &tensor, 1, 0);
+		for (j = 1; j < parallel_count; j++)
+		{
+			ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->saved_aux[i].source, j));
+			if (copy)
+				ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &copy, 1, 0);
+		}
 	}
 	const int dest_to_eval_size = compiled_data->dest_to_eval_size;
 	compiled_data->dest_to_eval_exec_size = 0;
