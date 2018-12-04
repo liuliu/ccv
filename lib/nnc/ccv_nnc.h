@@ -2375,8 +2375,16 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
  * Get the default stream from a compiled model. If the model is not compiled, the default stream is
  * 0.
  * @param model The composed model.
+ * @return The default stream for this model.
  */
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_cnnp_model_default_stream(const ccv_cnnp_model_t* const model);
+/**
+ * Get the allocated memory size (exclude workspace) from a compiled model. If the model is not compiled
+ * the size is 0.
+ * @param model The composed model.
+ * @return The number of bytes for memory allocated.
+ */
+CCV_WARN_UNUSED(uint64_t) ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* const model);
 /**
  * Free a given model.
  * @param model The composed model.

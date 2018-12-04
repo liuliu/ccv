@@ -666,6 +666,14 @@ ccv_nnc_stream_context_t* ccv_cnnp_model_default_stream(const ccv_cnnp_model_t* 
 	return ccv_nnc_graph_default_stream(compiled_data->graph);
 }
 
+uint64_t ccv_cnnp_model_memory_size(const ccv_cnnp_model_t* const model)
+{
+	const ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	if (!compiled_data || !compiled_data->tensor_arena)
+		return 0;
+	return ccv_nnc_tensor_arena_size(compiled_data->tensor_arena);
+}
+
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
@@ -899,9 +907,10 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	compiled_data->minimizer = minimizer;
+	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	if (compiled_data->update_execs)
 	{
-		int i;
+		int i, j;
 		const int trainable_size = compiled_data->trainables->rnum;
 		ccv_nnc_graph_exec_symbol_t* const update_execs = compiled_data->update_execs;
 		ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
@@ -911,8 +920,17 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 		{
 			ccv_nnc_graph_exec_symbol_set(symbolic_graph, update_execs[i], minimizer);
 			ccv_nnc_graph_exec_t const update_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, update_execs[i]);
-			if (update_exec.graph)
+			if (!CCV_NO_GRAPH_EXEC(update_exec))
 				ccv_nnc_graph_exec_set(update_exec.graph, update_exec, minimizer);
+			for (j = 1; j < parallel_count; j++)
+			{
+				ccv_nnc_graph_exec_symbol_t copy_symbol = ccv_nnc_graph_exec_symbol_copy(symbolic_graph, update_execs[i], j);
+				if (copy_symbol.graph)
+					ccv_nnc_graph_exec_symbol_set(symbolic_graph, copy_symbol, minimizer);
+				const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, copy_symbol);
+				if (!CCV_NO_GRAPH_EXEC(copy))
+					ccv_nnc_graph_exec_set(copy.graph, copy, minimizer);
+			}
 		}
 	}
 }

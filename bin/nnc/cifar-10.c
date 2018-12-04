@@ -341,7 +341,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 				}
 			}
 			ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
-			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.2f%% (%.3f seconds)\n", (i + 1) / epoch_end, epoch_end * batch_size * device_count, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000);
+			PRINT(CCV_CLI_INFO, "Epoch %03d (%d), %.2f%% (%.3f seconds), %lu bytes\n", (i + 1) / epoch_end, epoch_end * batch_size * device_count, (float)correct / test_set->rnum * 100, (float)elapsed_time / 1000, (unsigned long)ccv_cnnp_model_memory_size(cifar_10));
 			current_time = get_current_time();
 			// Reshuffle and reset cursor.
 			ccv_cnnp_dataframe_shuffle(raw_train_data);
