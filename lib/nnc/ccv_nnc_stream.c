@@ -5,6 +5,7 @@
 #include "gpu/ccv_nnc_compat.h"
 #endif
 #include "_ccv_nnc_stream.h"
+#include "3rdparty/valgrind/valgrind.h"
 
 typedef struct {
 	ccv_nnc_stream_context_t super;
@@ -397,6 +398,7 @@ ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const
 	getcontext(&task->context);
 	task->context.uc_stack.ss_sp = task->stack;
 	task->context.uc_stack.ss_size = CCV_NNC_TASK_STACK_SIZE;
+	VALGRIND_STACK_REGISTER(task->stack, task->stack + CCV_NNC_TASK_STACK_SIZE);
 	task->context.uc_link = 0;
 	const ccv_nnc_ptr_splitter_u p = {
 		.ptr = task,
