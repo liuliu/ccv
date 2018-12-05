@@ -23,8 +23,8 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 		return;
 	const int tensors_init = !!compiled_data->trainable_tensors;
 	int i;
-	const int trainable_size = compiled_data->trainables->rnum;
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
+	const int trainable_size = compiled_data->trainables->rnum;
 	const int retain_size = compiled_data->retains->rnum * parallel_count;
 	if (!tensors_init || flags == CCV_CNNP_MODEL_CHECKPOINT_READ_ONLY)
 	{
@@ -41,7 +41,7 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 		for (i = 0; i < trainable_size && SQLITE_ROW == sqlite3_step(tensor_checkpoint_select_stmt); i++)
 		{
 			const void* const data = sqlite3_column_blob(tensor_checkpoint_select_stmt, 1);
-			ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i];
+			ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i * parallel_count];
 			size_t data_size = ccv_nnc_tensor_data_size(tensor->info);
 #ifdef HAVE_CUDA
 			if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
@@ -92,7 +92,7 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 #endif
 	for (i = 0; i < trainable_size; i++)
 	{
-		const ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i];
+		const ccv_nnc_tensor_t* const tensor = compiled_data->trainable_tensors[i * parallel_count];
 		assert(!CCV_IS_TENSOR_VIEW(tensor));
 		sqlite3_bind_int(tensor_checkpoint_insert_stmt, 1, i);
 		sqlite3_bind_int(tensor_checkpoint_insert_stmt, 2, tensor->info.type);
