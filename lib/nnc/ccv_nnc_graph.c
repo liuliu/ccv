@@ -791,18 +791,17 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			for (i = 0; i < device_id_size; i++)
 			{
 				int stream_idx = -1;
-				// Select the smallest stream rank.
-				for (j = 0; j < incomings[idx]->rnum; j++)
+				// Select the last matching stream idx. This makes sure we start with stream that is most likely last used.
+				for (j = incomings[idx]->rnum - 1; stream_idx < 0 && j >= 0; j--)
 				{
 					const int incoming_idx = *(int*)ccv_array_get(incomings[idx], j);
 					assert(incoming_idx < exec_info_size);
-					for (k = 0; k < exec_info[incoming_idx].schedule.stream_size; k++)
+					for (k = 0; stream_idx < 0 && k < exec_info[incoming_idx].schedule.stream_size; k++)
 					{
 						const int s = SCHEDULE_STREAMS(exec_info[incoming_idx].schedule)[k];
 						assert(s >= 0);
 						const ccv_nnc_stream_data_t* const data = (ccv_nnc_stream_data_t*)ccv_array_get(stream_data, s);
-						if (data->device_id == device_ids[i] && data->exec_idx == incoming_idx &&
-							(stream_idx < 0 || s < stream_idx))
+						if (data->device_id == device_ids[i] && data->exec_idx == incoming_idx)
 							stream_idx = s;
 					}
 				}
