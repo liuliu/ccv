@@ -104,6 +104,25 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 	if (stream_cpu->workspace)
 		ccfree(stream_cpu->workspace);
 #endif
+	if (stream_context->scheduler)
+	{
+		ccv_nnc_stream_scheduler_t* const scheduler = stream_context->scheduler;
+		pthread_mutex_destroy(&scheduler->mutex);
+		pthread_cond_destroy(&scheduler->notify);
+		pthread_cond_destroy(&scheduler->wait);
+		if (scheduler->empty_tasks)
+		{
+			int i;
+			for (i = 0; i < scheduler->empty_tasks->rnum; i++)
+			{
+				ccv_nnc_stream_task_t* const task = *(ccv_nnc_stream_task_t**)ccv_array_get(scheduler->empty_tasks, i);
+				ccfree(task->stack);
+				ccfree(task);
+			}
+			ccv_array_free(scheduler->empty_tasks);
+		}
+		ccfree(scheduler);
+	}
 	ccfree(stream_context);
 }
 
@@ -176,11 +195,30 @@ ccv_nnc_stream_scheduler_t* ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_
 {
 	ccv_nnc_stream_scheduler_t* scheduler = stream_context->scheduler;
 	if (!scheduler)
+	{
 		stream_context->scheduler = scheduler = (ccv_nnc_stream_scheduler_t*)cccalloc(1, sizeof(ccv_nnc_stream_scheduler_t));
+		pthread_mutex_init(&scheduler->mutex, 0);
+		pthread_cond_init(&scheduler->notify, 0);
+		pthread_cond_init(&scheduler->wait, 0);
+	}
 	return scheduler;
 }
 
-void ccv_nnc_stream_scheduler_add_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task)
+void ccv_nnc_stream_scheduler_prepend_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task)
+{
+	if (scheduler->head)
+	{
+		scheduler->head->prev = task;
+		task->next = scheduler->head;
+	} else {
+		scheduler->tail = task;
+		task->next = 0;
+	}
+	scheduler->head = task;
+	task->prev = 0;
+}
+
+void ccv_nnc_stream_scheduler_append_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task)
 {
 	if (scheduler->tail)
 	{
@@ -212,7 +250,7 @@ static void _ccv_nnc_stream_task_done(ccv_nnc_stream_task_t* const task)
 	{
 		ccv_nnc_stream_task_t* const notify = task->notify;
 		task->notify = 0;
-		ccv_nnc_stream_scheduler_add_task(task->super, notify);
+		ccv_nnc_stream_scheduler_prepend_task(task->super, notify);
 		int i;
 		const int other_size = notify->other_size;
 		notify->other_size = 0;
@@ -235,9 +273,9 @@ static void _ccv_nnc_stream_task_done(ccv_nnc_stream_task_t* const task)
 static void* _ccv_nnc_stream_schedule_main(void* userdata)
 {
 	ccv_nnc_stream_scheduler_t* const scheduler = (ccv_nnc_stream_scheduler_t*)userdata;
+	pthread_mutex_lock(&scheduler->mutex);
 	for (;;)
 	{
-		pthread_mutex_lock(&scheduler->mutex);
 		if (scheduler->head == 0 && scheduler->stream_wait_task_count == 0)
 		{
 			scheduler->active = 0;
@@ -255,6 +293,7 @@ static void* _ccv_nnc_stream_schedule_main(void* userdata)
 		pthread_mutex_unlock(&scheduler->mutex);
 		swapcontext(&scheduler->caller, &task->context);
 		task->context = scheduler->callee;
+		pthread_mutex_lock(&scheduler->mutex);
 		if (task->done)
 			_ccv_nnc_stream_task_done(task);
 	}
@@ -291,10 +330,9 @@ static void _ccv_nnc_stream_schedule_try(ccv_nnc_stream_scheduler_t* const sched
 		pthread_mutex_unlock(&scheduler->mutex);
 		swapcontext(&scheduler->caller, &task->context);
 		task->context = scheduler->callee;
+		pthread_mutex_lock(&scheduler->mutex);
 		if (task->done)
 			_ccv_nnc_stream_task_done(task);
-		// Lock again for the next run loop.
-		pthread_mutex_lock(&scheduler->mutex);
 	}
 }
 
@@ -302,7 +340,8 @@ void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, c
 {
 	int activate_scheduler = 0;
 	pthread_mutex_lock(&scheduler->mutex);
-	ccv_nnc_stream_scheduler_add_task(scheduler, task);
+	// Append to the end, for swap tasks, they all prepend. Thus, this ensures all tasks scheduled this way will be executed later.
+	ccv_nnc_stream_scheduler_append_task(scheduler, task);
 	if (!scheduler->active)
 		activate_scheduler = 1;
 	pthread_mutex_unlock(&scheduler->mutex);
@@ -332,11 +371,16 @@ static void _ccv_nnc_stream_task_entry_point(uint32_t part0, uint32_t part1)
 ccv_nnc_stream_task_t* ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata, const size_t userdata_size)
 {
 	ccv_nnc_stream_task_t* task;
+	pthread_mutex_lock(&scheduler->mutex);
 	if (scheduler->empty_tasks && scheduler->empty_tasks->rnum)
 	{
 		task = *(ccv_nnc_stream_task_t**)ccv_array_get(scheduler->empty_tasks, scheduler->empty_tasks->rnum - 1);
 		--scheduler->empty_tasks->rnum;
+		pthread_mutex_unlock(&scheduler->mutex);
+		if (userdata_size)
+			task->stack = (char*)ccrealloc(task->stack, CCV_NNC_TASK_STACK_SIZE + userdata_size);
 	} else {
+		pthread_mutex_unlock(&scheduler->mutex);
 		task = (ccv_nnc_stream_task_t*)cccalloc(1, sizeof(ccv_nnc_stream_task_t));
 		task->stack = (char*)cccalloc(CCV_NNC_TASK_STACK_SIZE + userdata_size, 1);
 		task->super = scheduler;
@@ -369,7 +413,11 @@ void ccv_nnc_stream_task_resume(ccv_nnc_stream_task_t* const task)
 	task->context = scheduler->callee;
 	scheduler->caller = old_context;
 	if (task->done)
+	{
+		pthread_mutex_lock(&scheduler->mutex);
 		_ccv_nnc_stream_task_done(task);
+		pthread_mutex_unlock(&scheduler->mutex);
+	}
 }
 
 void ccv_nnc_stream_task_synchronize(ccv_nnc_stream_task_t* const self, ccv_nnc_stream_context_t* const stream)

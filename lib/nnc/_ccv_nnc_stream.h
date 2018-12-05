@@ -70,8 +70,10 @@ struct ccv_nnc_stream_context_s {
 CCV_WARN_UNUSED(ccv_nnc_stream_scheduler_t*) ccv_nnc_stream_context_get_scheduler(ccv_nnc_stream_context_t* const stream_context);
 // This method activates the scheduler (if necessary), and runs the given task.
 void ccv_nnc_stream_schedule_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
-// Add a task to the list of tasks scheduler going to execute.
-void ccv_nnc_stream_scheduler_add_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
+// Add a task to the beginning of the list of tasks scheduler going to execute.
+void ccv_nnc_stream_scheduler_prepend_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
+// Add a task to the end of the list of tasks scheduler going to execute.
+void ccv_nnc_stream_scheduler_append_task(ccv_nnc_stream_scheduler_t* const scheduler, ccv_nnc_stream_task_t* const task);
 // Create a task off a stream. If userdata_size is non-zero, we copied it over.
 CCV_WARN_UNUSED(ccv_nnc_stream_task_t*) ccv_nnc_stream_task_new(ccv_nnc_stream_scheduler_t* const scheduler, const ccv_nnc_stream_task_f func, void* const userdata, const size_t userdata_size);
 // Run a given task immediately from within an existing task.

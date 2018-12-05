@@ -271,7 +271,7 @@ static void _ccv_nnc_stream_compat_task_resume(cudaStream_t stream, cudaError_t 
 	ccv_nnc_stream_task_t* const task = (ccv_nnc_stream_task_t*)userdata;
 	ccv_nnc_stream_scheduler_t* const scheduler = task->super;
 	pthread_mutex_lock(&scheduler->mutex);
-	ccv_nnc_stream_scheduler_add_task(scheduler, task);
+	ccv_nnc_stream_scheduler_prepend_task(scheduler, task);
 	--scheduler->stream_wait_task_count;
 	pthread_cond_signal(&scheduler->wait);
 	pthread_mutex_unlock(&scheduler->mutex);
