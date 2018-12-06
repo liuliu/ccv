@@ -358,7 +358,19 @@ void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph,
 						.d = broadcast_reduce_tensor_idx[idx] - 1,
 						.graph = graph,
 					};
-					const ccv_nnc_graph_exec_symbol_t reduce = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMM_REDUCE_FORWARD(), inputs, parallel_count, outputs, 1, 0);
+					// Create new symbol for all other tensors to facilitate copy (this is not useful for NCCL, but useful for REF implementation).
+					ccv_nnc_tensor_symbol_info_t* const tensor_symbol = (ccv_nnc_tensor_symbol_info_t*)ccv_array_get(graph->tensor_symbol_info, idx);
+					ccv_nnc_tensor_param_t info = tensor_symbol->info;
+					const int flags = tensor_symbol->flags;
+					// No alias handling.
+					assert(!tensor_symbol->alias_ref);
+					for (k = 1; k < parallel_count; k++)
+					{
+						const ccv_nnc_tensor_symbol_t new_symbol = ccv_nnc_tensor_symbol_new(graph, info, 0);
+						ccv_nnc_tensor_symbol_set_flags(graph, new_symbol, flags);
+						outputs[k] = new_symbol;
+					}
+					const ccv_nnc_graph_exec_symbol_t reduce = ccv_nnc_graph_exec_symbol_new(graph, CMD_COMM_REDUCE_FORWARD(), inputs, parallel_count, outputs, parallel_count, 0);
 					// Refresh the pointer to keep it up to date.
 					exec_symbol = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, d);
 					ccv_nnc_graph_exec_symbol_concat(graph, reduce, (ccv_nnc_graph_exec_symbol_t){
