@@ -111,6 +111,15 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 	ccv_array_push(ints, &idx);
 }
 
+static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t idx)
+{
+	int i;
+	for (i = 0; i < ints->rnum; i++)
+		if (*(uint32_t*)ccv_array_get(ints, i) == idx)
+			return;
+	ccv_array_push(ints, &idx);
+}
+
 #ifdef __cplusplus
 #define REGISTER_COMMAND_BACKEND(x, y) extern "C" void _register_command_ ## x ## _backend_ ## y
 #define REGISTER_COMMAND(x) extern "C" void _register_command_ ## x
@@ -132,7 +141,7 @@ static inline void ccv_array_add_unique_int(ccv_array_t* ints, const int idx)
 
 // Defines common graph visit macros
 
-// The visitor function / macro takes parameter visitor(node_type* node, int index, int level, int term);
+// The visitor function / macro takes parameter visitor(node_type* node, int index, int term);
 #define CCV_NNC_GRAPH_VISIT(_graph, nodes, node_size, sources, source_size, destinations, destination_size, allow_subset, visitor) \
 	do { \
 		/* Use the same data structure to do topological ordering. */ \
@@ -288,7 +297,7 @@ static inline void ccv_nnc_graph_visit_free(ccv_nnc_graph_visit_t* graph_visit)
 		typeof ((nodes)) const _node_ __attribute__((unused)) = (nodes) + _index_; \
 
 #define ccv_nnc_graph_visit_for(graph_visit, nodes, ...) \
-	CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, ##__VA_ARGS__, _node_unused_, _index_unused_, _level_unused_, _term_unused_)
+	CCV_NNC_GRAPH_VISIT_FOR1(graph_visit, nodes, ##__VA_ARGS__, _node_unused_, _index_unused_, _term_unused_)
 
 #define ccv_nnc_graph_visit_endfor } }
 
