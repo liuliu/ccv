@@ -807,7 +807,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 			const int d = *(int*)ccv_array_get(node->outgoings, i); \
 			node->rank = ccv_max(incomings[d].rank + 1, node->rank); \
 		}
-		CCV_NNC_GRAPH_VISIT(graph, incomings, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, 0, visitor);
+	CCV_NNC_GRAPH_VISIT(graph, incomings, exec_info_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, 0, visitor);
 #undef visitor
 	int device_ids[max_device_id_size];
 	int outgoing_device_ids[max_device_id_size];
@@ -926,7 +926,7 @@ static void _ccv_nnc_graph_static_schedule(ccv_nnc_graph_t* const graph, const i
 	} ccv_nnc_graph_visit_endfor
 	for (i = 0; i < exec_info_size; i++)
 		if (outgoings[i])
-		ccv_array_free(outgoings[i]);
+			ccv_array_free(outgoings[i]);
 	ccfree(outgoings);
 	for (i = 0; i < exec_info_size; i++)
 		if (incomings[i].outgoings)
