@@ -15,7 +15,11 @@ That all sounds very much like a thin wrapper around CUDA runtime. The key diffe
 Static Schedule
 ---------------
 
-The **static schedule** for a graph is really simple. Each node in the graph will be assigned to a stream depending on its incoming nodes. It will inherit the last incoming node's stream if that is not inherited yet by other nodes. If it is, a new stream is created (or if another stream is deterministically idle for this node, thus, is last used by a node that is an ancestor of the current node) and assigned to this node. Proper signals are created to make sure the current node will only be executed when every incoming node finishes.
+Conceptually, the **static scheduling** algorithm for a graph is trivial. A new stream can be spawned whenever there is a split. The new stream can be either recycled from a stream that is terminated or a newly created. However, there are some factors at play. For example, if there are repeated branch-and-merge, you can alternate streams for your execution. Consider ``N1 -> (N2, N3) -> N4``, you can assign ``N1``, ``N2`` to stream 0, and ``N3``, ``N4`` to stream 1. Alternatively, you can assign ``N1``, ``N2``, ``N4`` to stream 0 and ``N3`` to stream 1. Both are equivalent if stream only maintains the execution order. In NNC's implementation however, stream also maintains execution context and workspace memory for BLAS, CuDNN etc. We prefer the second scheduling.
+
+The **static scheduling** algorithm implemented in NNC went through a few iterations. The current iteration first do a reverse traversal of the graph, assign each node a rank. The rank is the length of the longest chain follows the current node. When traverse the graph, if the current node hasn't assigned stream yet, we will find a recyclable stream (a stream that is deterministically terminated before the current node), or create a new stream. From the current node, we will find its highest ranked unassigned following node, assign the new stream to it. We use this node as the new node, repeat steps until no unassigned following node can be found. If two nodes have the same rank, we break the tie by checking whether in this given stream, we already encountered the same command before (thus, sharing workspace memory and execution context is possible).
+
+As part of the static scheduling work, a node can be associated with multiple streams. This is useful for commands that need to communicate across devices because each stream can only be associated with one device.
 
 ``while`` and ``case..of``
 --------------------------
