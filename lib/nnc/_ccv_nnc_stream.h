@@ -56,8 +56,15 @@ struct ccv_nnc_stream_task_s {
 	ccv_nnc_stream_task_f func;
 };
 
+typedef struct {
+	// Empty, this will likely hold things such as NCCL communicator.
+} ccv_nnc_stream_resource_container_t;
+
 struct ccv_nnc_stream_context_s {
 	int type;
+	// For resource container
+	ccv_nnc_stream_resource_container_t* _inline_container[1];
+	ccv_nnc_stream_resource_container_t** resource_container;
 	// For scheduler
 	ccv_nnc_stream_task_t* main; // main task.
 	ccv_nnc_stream_scheduler_t* scheduler;

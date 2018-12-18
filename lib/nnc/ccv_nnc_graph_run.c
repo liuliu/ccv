@@ -534,6 +534,9 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	ccv_nnc_stream_context_t* const stream_context = params->stream_context;
 	const int flags = params->flags;
 	int i, j;
+	// Assign the resource container pointer.
+	for (i = 0; i < graph->stream_size; i++)
+		graph->streams[i]->resource_container = stream_context->_inline_container;
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0);
 	if (exec_idx == -1)
 	{
