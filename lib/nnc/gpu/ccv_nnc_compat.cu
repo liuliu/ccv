@@ -132,7 +132,6 @@ static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat()
 			.type = CCV_STREAM_CONTEXT_GPU | CCV_COMPUTE_DEVICE_ANY,
 		},
 	};
-	ccv_nnc_per_thread_gpu_stream_context.super.resource_container = ccv_nnc_per_thread_gpu_stream_context.super._inline_container;
 	return &ccv_nnc_per_thread_gpu_stream_context;
 }
 
@@ -833,6 +832,8 @@ ncclComm_t ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* const stream, const i
 	if (stream)
 	{
 		ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream;
+		if (!stream_compat->super.resource_container)
+			stream_compat->super.resource_container = stream_compat->super._inline_container;
 		if (!stream_compat->super.resource_container[0])
 			stream_compat->super.resource_container[0] = (ccv_nnc_stream_resource_container_t*)cccalloc(1, sizeof(ccv_nnc_stream_resource_container_compat_t));
 		ccv_nnc_stream_resource_container_compat_t* const resource_container_compat = (ccv_nnc_stream_resource_container_compat_t*)stream_compat->super.resource_container[0];
