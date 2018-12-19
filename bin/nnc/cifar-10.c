@@ -1,4 +1,3 @@
-#include <ctype.h>
 #include <ccv.h>
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
