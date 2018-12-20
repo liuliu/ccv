@@ -10,25 +10,20 @@ static ccv_cnnp_model_t* _building_block_new(const int filters, const int expans
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_io_t shortcut = input;
-	ccv_cnnp_model_t* const identity = ccv_cnnp_identity((ccv_cnnp_param_t){
-		.norm = CCV_CNNP_BATCH_NORM,
-		.activation = CCV_CNNP_ACTIVATION_RELU,
-	});
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(input));
 	if (projection_shortcut)
 	{
 		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 			.no_bias = 1,
 			.hint = HINT((strides, strides), (0, 0)),
 		});
-		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(output));
+		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(input));
 	}
 	ccv_cnnp_model_t* const conv1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
 		.hint = HINT((strides, strides), (0, 0)),
 	});
-	output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(output));
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* const conv2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
@@ -36,12 +31,16 @@ static ccv_cnnp_model_t* _building_block_new(const int filters, const int expans
 	});
 	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const conv3 = ccv_cnnp_convolution(1, filters * expansion, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-		.no_bias = 1,
+		.norm = CCV_CNNP_BATCH_NORM,
 		.hint = HINT((1, 1), (0, 0)),
 	});
 	output = ccv_cnnp_model_apply(conv3, MODEL_IO_LIST(output));
 	ccv_cnnp_model_t* const add = ccv_cnnp_add();
 	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
+	ccv_cnnp_model_t* const identity = ccv_cnnp_identity((ccv_cnnp_param_t){
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+	});
+	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
@@ -87,11 +86,6 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 	output = ccv_cnnp_model_apply(_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_block_layer_new(256, 4, 2, 23), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* identity = ccv_cnnp_identity((ccv_cnnp_param_t){
-		.norm = CCV_CNNP_BATCH_NORM,
-		.activation = CCV_CNNP_ACTIVATION_RELU,
-	});
-	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_dense(1000, (ccv_cnnp_param_t){
