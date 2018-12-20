@@ -8,8 +8,10 @@
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa;
 
+#define CCV_CNNP_IS_MODEL_INPUT(x) ((x)->isa == &ccv_cnnp_input_isa)
+
 struct ccv_cnnp_model_io_s {
-	uint8_t tbits; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
+	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
 	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
 	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
 	ccv_array_t* outgoings; // Array of ccv_cnnp_model_io_t.
@@ -150,6 +152,7 @@ static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_
 		for (j = 0; j < sub_model->output_size; j++)
 			outputs[i + j] = sub_model->outputs[j];
 	}
+	assert(i <= 0);
 }
 
 static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_state_initializer_f initializer, void* const context)
@@ -193,8 +196,6 @@ static const ccv_cnnp_model_vtab_t ccv_cnnp_functional_model_isa = {
 	.set_is_test = _ccv_cnnp_functional_model_set_is_test,
 };
 
-#define CCV_CNNP_IS_MODEL_INPUT(x) ((x)->isa == &ccv_cnnp_input_isa)
-
 ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size)
 {
 	assert(output_size > 0);
@@ -216,9 +217,9 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 			for (j = 0; j < output->incomings->rnum; j++)
 			{
 				const ccv_cnnp_model_io_t input = *(ccv_cnnp_model_io_t*)ccv_array_get(output->incomings, j);
-				if (input->tbits) // visited.
+				++input->visit; // Mark it as visited.
+				if (input->visit != input->outgoings->rnum) // Not all dependencies visited.
 					continue;
-				input->tbits = 1; // Mark it as visited.
 				if (!CCV_CNNP_IS_MODEL_INPUT(input->model))
 					ccv_array_push(reverse_top, &input);
 				else
@@ -228,10 +229,10 @@ ccv_cnnp_model_t* ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, co
 	for (i = 0; i < reverse_top->rnum; i++)
 	{
 		const ccv_cnnp_model_io_t output = *(ccv_cnnp_model_io_t*)ccv_array_get(reverse_top, i);
-		output->tbits = 0; // Clean the tbits back.
+		output->visit = 0; // Clean the visit back.
 	}
 	for (i = 0; i < input_size; i++)
-		inputs[i]->tbits = 0; // Clean the tbits back.
+		inputs[i]->visit = 0; // Clean the visit back.
 	assert(input_count == input_size); // Assuming they all match.
 	const int sequence_size = reverse_top->rnum + input_size;
 	ccv_cnnp_functional_model_t* const functional_model = (ccv_cnnp_functional_model_t*)cccalloc(1, sizeof(ccv_cnnp_functional_model_t) + sizeof(ccv_cnnp_model_t*) * (sequence_size - 1) + sizeof(ccv_nnc_tensor_symbol_t) * tensor_output_size);
@@ -253,7 +254,7 @@ ccv_cnnp_model_io_t ccv_cnnp_model_apply(ccv_cnnp_model_t* const model, const cc
 	if (!model->io)
 	{
 		model->io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
-		model->io->tbits = 0;
+		model->io->visit = 0;
 		model->io->model = model;
 		model->io->incomings = ccv_array_new(sizeof(ccv_cnnp_model_io_t), 1, 0);
 		model->io->outgoings = 0;
@@ -1000,7 +1001,7 @@ ccv_cnnp_model_io_t ccv_cnnp_input(void)
 	ccv_cnnp_model_t* const input = (ccv_cnnp_model_t*)cccalloc(1, sizeof(ccv_cnnp_model_t) + sizeof(ccv_nnc_tensor_symbol_t));
 	input->isa = &ccv_cnnp_input_isa;
 	input->io = ccmalloc(sizeof(struct ccv_cnnp_model_io_s));
-	input->io->tbits = 0;
+	input->io->visit = 0;
 	input->io->incomings = 0;
 	input->io->outgoings = 0;
 	input->io->model = input;

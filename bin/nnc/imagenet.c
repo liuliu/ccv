@@ -80,7 +80,7 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 		}),
 		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.hint = HINT((2, 2), (1, 1)),
-		}),
+		})
 	));
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
@@ -100,8 +100,20 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
+static void train_imagenet(const int batch_size)
+{
+	ccv_cnnp_model_t* const imagenet = _imagenet_resnet101_v1d();
+	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 224, 224);
+	float learn_rate = 0.001;
+	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	FILE* w = fopen("imagenet.dot", "w+");
+	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, w);
+	fclose(w);
+}
+
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
+	train_imagenet(256);
 	return 0;
 }
