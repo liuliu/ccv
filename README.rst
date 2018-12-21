@@ -29,6 +29,11 @@ Many computer vision tasks nowadays consist of quite a few preprocessing layers:
 
 For computer vision community, there is no shortage of good algorithms, good implementation is what it lacks of. After years, we stuck in between either the high-performance, battle-tested but old algorithm implementations, or the new, shining but Matlab algorithms. ccv is my take on this problem, hope you enjoy it.
 
+Deep Learning
+-------------
+
+https://libnnc.org
+
 License
 -------
 
