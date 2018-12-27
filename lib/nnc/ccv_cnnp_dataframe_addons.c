@@ -194,7 +194,7 @@ static void _ccv_cnnp_image_manip(ccv_dense_matrix_t* image, const ccv_cnnp_rand
 
 static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
-	sfmt_t sfmt[batch_size];
+	sfmt_t* const sfmt = (sfmt_t*)alloca(sizeof(sfmt_t) * batch_size);
 	ccv_cnnp_random_jitter_context_t* const ctx = (ccv_cnnp_random_jitter_context_t*)context;
 	int i;
 	for (i = 0; i < batch_size; i++)
