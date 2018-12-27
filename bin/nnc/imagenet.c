@@ -2,9 +2,10 @@
 #include <ccv_internal.h>
 #include <nnc/ccv_nnc.h>
 #include <nnc/ccv_nnc_easy.h>
-#include <3rdparty/dsfmt/dSFMT.h>
 #include <sys/time.h>
 #include <ctype.h>
+#include <getopt.h>
+#include <stddef.h>
 
 static ccv_cnnp_model_t* _building_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
@@ -94,7 +95,7 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-static void train_imagenet(const int batch_size)
+static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
 	ccv_cnnp_model_t* const imagenet = _imagenet_resnet101_v1d();
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 224, 224);
@@ -103,11 +104,101 @@ static void train_imagenet(const int batch_size)
 	FILE* w = fopen("imagenet.dot", "w+");
 	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, w);
 	fclose(w);
+	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
+	ccv_cnnp_random_jitter_t random_jitter = {
+		.brightness = 0.4,
+		.contrast = 0.4,
+		.saturation = 0.4,
+		.lighting = 0.1,
+		.symmetric = 1,
+		.resize = {
+			.min = 224,
+			.max = 448,
+		},
+		.size = {
+			.cols = 224,
+			.rows = 224,
+		},
+	};
+	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
+	ccv_cnnp_dataframe_shuffle(train_data);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(image_jitter_idx));
+	ccv_dense_matrix_t* image = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void **)&image, 1, 0);
+	ccv_dense_matrix_t* visual = 0;
+	ccv_shift(image, (ccv_matrix_t*)&visual, CCV_8U, 0, 0);
+	ccv_write(visual, "one.png", 0, CCV_IO_PNG_FILE, 0);
+	ccv_cnnp_dataframe_iter_free(iter);
+}
+
+static ccv_cnnp_dataframe_t* _dataframe_from_disk_new(const char* const list, const char* const base_dir)
+{
+	FILE *r = fopen(list, "r");
+	assert(r && "list doesn't exists");
+	int dirlen = (base_dir != 0) ? strlen(base_dir) + 1 : 0;
+	ccv_array_t* categorizeds = ccv_array_new(sizeof(ccv_categorized_t), 64, 0);
+	int c;
+	char* file = (char*)malloc(1024);
+	while (fscanf(r, "%d %s", &c, file) != EOF)
+	{
+		char* filename = (char*)ccmalloc(1024);
+		if (base_dir != 0)
+		{
+			strncpy(filename, base_dir, 1024);
+			filename[dirlen - 1] = '/';
+		}
+		strncpy(filename + dirlen, file, 1024 - dirlen);
+		ccv_file_info_t file_info = {
+			.filename = filename,
+		};
+		// imageNet's category class starts from 1, thus, minus 1 to get 0-index
+		ccv_categorized_t categorized = ccv_categorized(c - 1, 0, &file_info);
+		ccv_array_push(categorizeds, &categorized);
+	}
+	free(file);
+	fclose(r);
+	ccv_cnnp_dataframe_t* data = ccv_cnnp_dataframe_from_array_new(categorizeds);
+	return data;
 }
 
 int main(int argc, char** argv)
 {
 	ccv_nnc_init();
-	train_imagenet(256);
+	static struct option imagenet_options[] = {
+		/* help */
+		{"help", 0, 0, 0},
+		/* required parameters */
+		{"train-list", 1, 0, 0},
+		{"test-list", 1, 0, 0},
+		/* optional parameters */
+		{"base-dir", 1, 0, 0},
+		{0, 0, 0, 0}
+	};
+	int c;
+	char* train_list = 0;
+	char* test_list = 0;
+	char* base_dir = 0;
+	while (getopt_long_only(argc, argv, "", imagenet_options, &c) != -1)
+	{
+		switch (c)
+		{
+			case 0:
+				exit(0);
+			case 1:
+				train_list = optarg;
+				break;
+			case 2:
+				test_list = optarg;
+				break;
+			case 3:
+				base_dir = optarg;
+				break;
+		}
+	}
+	ccv_cnnp_dataframe_t* const train_data = _dataframe_from_disk_new(train_list, base_dir);
+	ccv_cnnp_dataframe_t* const test_data = _dataframe_from_disk_new(test_list, base_dir);
+	train_imagenet(256, train_data, test_data);
+	ccv_cnnp_dataframe_free(train_data);
+	ccv_cnnp_dataframe_free(test_data);
 	return 0;
 }

@@ -2207,6 +2207,43 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const 
  * @return The index of the newly added column.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const dataframe, const ccv_nnc_tensor_param_t params);
+/**
+ * Read image off a said column. That column should contain the filename (as char array). The new column
+ * will contain the ccv_dense_matrix_t / ccv_nnc_tensor_t (both are toll-free bridging) of the image.
+ * @param dataframe The dataframe object that loads the images.
+ * @param column_idx The column which contains the filename.
+ * @param filename_offset The offset to the filename (as char array) from that column. For example, the column
+ *        could be a struct and filename could be one of the field. In that case, you can pass offsetof(S, filename)
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t filename_offset);
+/**
+ * The structure to describe how to apply random jitter to the image.
+ */
+typedef struct {
+	float contrast; /**< The random contrast, the final contrast will be 1 - contrast + random_unit * contrast * 2 */
+	float saturation; /**< The saturation, the final saturation will be 1 - saturation + random_unit * saturation * 2 */
+	float brightness; /**< The brightness, the final brightness will be 1 - brightness + random_unit * brightness * 2 */
+	float lighting; /**< AlexNet style PCA based image jitter */
+	int symmetric; /**< Apply random flip on x-axis (around y-axis */
+	struct {
+		int min; /**< The minimal dimension of resize */
+		int max; /**< The maximal dimension of resize. The final resize can be computed from min + (max - min) * random_unit */
+	} resize;
+	struct {
+		int rows; /**< The height of the final image. */
+		int cols; /**< The width of the final image. */
+	} size;
+} ccv_cnnp_random_jitter_t;
+/**
+ * Apply random jitter on a image to generate a new image.
+ * @param dataframe The dataframe object that contains the original image.
+ * @param column_idx The column which contains the original image.
+ * @param datatype The final datatype of the image. We only support CCV_32F right now.
+ * @param random_jitter The random jitter parameters to be applied to.
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter);
 
 /** @} */
 

@@ -242,9 +242,9 @@ typedef struct {
 	ccv_numeric_data_t data;
 } ccv_compressed_sparse_matrix_t;
 
-#define ccv_clamp(x, a, b) (((x) < (a)) ? (a) : (((x) > (b)) ? (b) : (x)))
-#define ccv_min(a, b) (((a) < (b)) ? (a) : (b))
-#define ccv_max(a, b) (((a) > (b)) ? (a) : (b))
+#define ccv_clamp(x, a, b) ({ typeof (a) _a = (a); typeof (b) _b = (b); typeof (x) _x = (x); (_x < _a) ? _a : ((_x > _b) ? _b : _x); })
+#define ccv_min(a, b) ({ typeof (a) _a = (a); typeof (b) _b = (b); (_a < _b) ? _a : _b; })
+#define ccv_max(a, b) ({ typeof (a) _a = (a); typeof (b) _b = (b); (_a > _b) ? _a : _b; })
 
 /**
  * @defgroup ccv_memory memory alloc/dealloc
