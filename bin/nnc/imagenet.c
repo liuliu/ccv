@@ -112,8 +112,8 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		.lighting = 0.1,
 		.symmetric = 1,
 		.resize = {
-			.min = 224,
-			.max = 448,
+			.min = 128,
+			.max = 200,
 		},
 		.size = {
 			.cols = 224,

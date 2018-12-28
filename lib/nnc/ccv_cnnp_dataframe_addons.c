@@ -51,6 +51,8 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 	for (i = 0; i < batch_size; i++)
 	{
 		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + copy_to_gpu_context->tensor_offset;
+		for (j = 0; j < copy_to_gpu_context->tuple.size; j++)
+			ccv_nnc_tensor_pin_memory(inputs[j]);
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
 		{
@@ -216,23 +218,30 @@ static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_
 		else if (input->rows < resize || input->cols < resize)
 			ccv_resample(input, &resized, CCV_32F, ccv_max(resize, (int)(input->rows * (float)resize / input->cols + 0.5)), ccv_max(resize, (int)(input->cols * (float)resize / input->rows + 0.5)), CCV_INTER_CUBIC);
 		else
-			ccv_shift(input, (ccv_matrix_t**)resized, CCV_32F, 0, 0); // converting to 32f
+			ccv_shift(input, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
+		if (random_jitter.symmetric && (sfmt_genrand_uint32(&sfmt[i]) & 1) == 0)
+			ccv_flip(resized, &resized, 0, CCV_FLIP_X);
+		_ccv_cnnp_image_manip(resized, random_jitter, &sfmt[i]);
 		// Then slice down.
 		ccv_dense_matrix_t* patch = 0;
 		if (random_jitter.size.cols > 0 && random_jitter.size.rows > 0 &&
-			(resized->cols != random_jitter.size.cols || resized->rows != random_jitter.size.rows))
+			((resized->cols != random_jitter.size.cols || resized->rows != random_jitter.size.rows) ||
+			 (random_jitter.offset.x != 0 || random_jitter.offset.y != 0)))
 		{
-			assert(resized->cols >= random_jitter.size.cols);
-			assert(resized->rows >= random_jitter.size.rows);
-			int x = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->cols - random_jitter.size.cols + 1)), 0, resized->cols - random_jitter.size.cols);
-			int y = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->rows - random_jitter.size.rows + 1)), 0, resized->rows - random_jitter.size.rows);
+			int x = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->cols - random_jitter.size.cols + 1)),
+						ccv_min(0, resized->cols - random_jitter.size.cols),
+						ccv_max(0, resized->cols - random_jitter.size.cols));
+			int y = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->rows - random_jitter.size.rows + 1)),
+					ccv_min(0, resized->rows - random_jitter.size.rows),
+					ccv_max(0, resized->rows - random_jitter.size.rows));
+			if (random_jitter.offset.x != 0)
+				x += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.x * 2 - random_jitter.offset.x;
+			if (random_jitter.offset.y != 0)
+				y += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.y * 2 - random_jitter.offset.y;
 			ccv_slice(resized, (ccv_matrix_t**)&patch, CCV_32F, y, x, random_jitter.size.rows, random_jitter.size.cols);
 			ccv_matrix_free(resized);
 		} else
 			patch = resized;
-		if (random_jitter.symmetric && (sfmt_genrand_uint32(&sfmt[i]) & 1) == 0)
-			ccv_flip(patch, &patch, 0, CCV_FLIP_X);
-		_ccv_cnnp_image_manip(patch, random_jitter, &sfmt[i]);
 		data[i] = patch;
 	} parallel_endfor
 }
@@ -245,6 +254,62 @@ int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe
 	random_jitter_context->datatype = datatype;
 	random_jitter_context->random_jitter = random_jitter;
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
+typedef struct {
+	int datatype;
+	float mean[3];
+	float inv_std[3];
+} ccv_cnnp_normalize_context_t;
+
+static void _ccv_cnnp_normalize(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_cnnp_normalize_context_t* const normalize = (ccv_cnnp_normalize_context_t*)context;
+	float* mean = normalize->mean;
+	float* inv_std = normalize->inv_std;
+	parallel_for(i, batch_size) {
+		ccv_dense_matrix_t* input = (ccv_dense_matrix_t*)column_data[0][i];
+		assert(CCV_GET_CHANNEL(input->type) == CCV_C3);
+		if (data[i])
+		{
+			ccv_dense_matrix_t* const output = (ccv_dense_matrix_t*)data[i];
+			if (output->rows != input->rows || output->cols != input->cols)
+			{
+				ccv_matrix_free(data[i]);
+				data[i] = ccv_dense_matrix_new(input->rows, input->cols, CCV_C3 | CCV_32F, 0, 0);
+			}
+		}
+		ccv_dense_matrix_t* const output = (ccv_dense_matrix_t*)data[i];
+		if (CCV_GET_DATA_TYPE(input->type) != CCV_32F)
+		{
+			// Do the type conversion.
+			ccv_shift(input, (ccv_matrix_t**)&output, CCV_32F, 0, 0);
+			input = output;
+			ccv_make_matrix_mutable(output);
+		}
+		int j;
+		const int count = input->rows * input->cols;
+		float* aptr = input->data.f32;
+		float* bptr = output->data.f32;
+		for (j = 0; j < count; j++)
+		{
+			bptr[j * 3] = (aptr[j * 3] - mean[0]) * inv_std[0];
+			bptr[j * 3 + 1] = (aptr[j * 3 + 1] - mean[1]) * inv_std[1];
+			bptr[j * 3 + 2] = (aptr[j * 3 + 2] - mean[2]) * inv_std[2];
+		}
+	} parallel_endfor
+}
+
+int ccv_cnnp_dataframe_image_normalize(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, float mean[3], float std[3])
+{
+	assert(datatype == CCV_32F);
+	ccv_cnnp_normalize_context_t* const normalize = (ccv_cnnp_normalize_context_t*)ccmalloc(sizeof(ccv_cnnp_normalize_context_t));
+	normalize->datatype = datatype;
+	memcpy(normalize->mean, mean, sizeof(float) * 3);
+	int i;
+	for (i = 0; i < 3; i++)
+		normalize->inv_std[i] = 1. / std[i];
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_normalize, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), normalize, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
 typedef struct {
@@ -292,7 +357,93 @@ int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int 
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
-ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_data_batch_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size)
+typedef struct {
+	ccv_cnnp_dataframe_tuple_t tuple;
+	int format;
+	int batch_count;
+	int group_count;
+} ccv_cnnp_batch_context_t;
+
+static void _ccv_cnnp_batching_new(void** const input_data, const int input_size, void** const output_data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
-	return 0;
+	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)context;
+	const int output_tuple_size = batch->tuple.size;
+	const int batch_count = batch->batch_count;
+	const int group_count = batch->group_count;
+	const int input_tuple_size = output_tuple_size / group_count;
+	int i, j;
+	assert(input_size > 0);
+	if (!output_data[0])
+	{
+		ccv_nnc_tensor_t** const inputs = (ccv_nnc_tensor_t**)input_data[0];
+		ccv_nnc_tensor_t** const tensors = (ccv_nnc_tensor_t**)(output_data[0] = ccmalloc(sizeof(ccv_nnc_tensor_t*) * output_tuple_size));
+		for (i = 0; i < group_count; i++)
+			for (j = 0; j < input_tuple_size; j++)
+			{
+				ccv_nnc_tensor_param_t params = inputs[j]->info;
+				assert(params.datatype == CCV_32F); // Only support 32 bit float yet.
+				assert(params.format == CCV_TENSOR_FORMAT_NHWC || params.format == CCV_TENSOR_FORMAT_NCHW);
+				params.format = batch->format;
+				// Special-case for dim count is 3 and 1, in these two cases, the N is not provided.
+				const int nd = ccv_nnc_tensor_nd(params.dim);
+				if (nd == 3 || nd == 1)
+					memmove(params.dim + 1, params.dim, sizeof(int) * nd);
+				params.dim[0] = batch_count; // Set the batch count now.
+				tensors[i * input_tuple_size + j] = ccv_nnc_tensor_new(0, params, 0);
+			}
+	}
+	for (i = 0; i < group_count; i++)
+		for (j = 0; j < input_tuple_size; j++)
+		{
+			ccv_nnc_tensor_t* const output = ((ccv_nnc_tensor_t**)output_data[0])[i * input_tuple_size + j];
+			parallel_for(k, batch_count) {
+				ccv_nnc_tensor_t* const input = ((ccv_nnc_tensor_t**)input_data[(k + i * batch_count) % input_size])[j];
+				const size_t tensor_count = ccv_nnc_tensor_count(input->info);
+				float* const aptr = input->data.f32;
+				float* const bptr = output->data.f32 + k * tensor_count;
+				if (input->info.format == output->info.format)
+					memcpy(bptr, aptr, sizeof(float) * tensor_count);
+				else {
+					// Do a simple format conversion.
+					const int c = ccv_nnc_tensor_get_c(input->info);
+					const size_t hw_count = tensor_count / c;
+					size_t x;
+					int y;
+					if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
+						for (x = 0; x < hw_count; x++)
+							for (y = 0; y < c; y++)
+								bptr[y * hw_count + x] = aptr[x * c + y];
+					else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
+						for (x = 0; x < hw_count; x++)
+							for (y = 0; y < c; y++)
+								bptr[x * c + y] = aptr[y * hw_count + x];
+				}
+			} parallel_endfor
+		}
+}
+
+static void _ccv_cnnp_batching_deinit(void* const self, void* const context)
+{
+	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)context;
+	ccv_nnc_tensor_t** const tensors = (ccv_nnc_tensor_t**)self;
+	const int size = batch->tuple.size;
+	int i;
+	for (i = 0; i < size; i++)
+		ccv_nnc_tensor_free(tensors[i]);
+	ccfree(tensors);
+}
+
+ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_batching_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size, const int batch_count, const int group_count, const int format)
+{
+	assert(format == CCV_TENSOR_FORMAT_NCHW || format == CCV_TENSOR_FORMAT_NHWC);
+	assert(column_idx_size >= 1);
+	assert(batch_count > 0);
+	assert(group_count > 0);
+	const int derived = ccv_cnnp_dataframe_make_tuple(dataframe, column_idxs, column_idx_size);
+	ccv_cnnp_batch_context_t* const batch = (ccv_cnnp_batch_context_t*)ccmalloc(sizeof(ccv_cnnp_batch_context_t));
+	batch->tuple.size = column_idx_size * group_count;
+	batch->format = format;
+	batch->batch_count = batch_count;
+	batch->group_count = group_count;
+	return ccv_cnnp_dataframe_reduce_new(dataframe, _ccv_cnnp_batching_new, _ccv_cnnp_batching_deinit, derived, batch_count * group_count, batch, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }

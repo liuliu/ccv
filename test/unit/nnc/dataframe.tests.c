@@ -665,33 +665,4 @@ TEST_CASE("extract value out of a tuple")
 	REQUIRE_ARRAY_EQ(int, int_array, result, 8, "iterated tuple should be the same");
 }
 
-TEST_CASE("derive one-hot tensor from label")
-{
-	int int_array[8] = {
-		2, 3, 4, 5, 6, 7, 8, 9
-	};
-	ccv_array_t* const array = ccv_array_new(sizeof(int), 8, 0);
-	ccv_array_resize(array, 8);
-	memcpy(ccv_array_get(array, 0), int_array, sizeof(int) * 8);
-	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
-	const int oh = ccv_cnnp_dataframe_one_hot(dataframe, 0, 0, 10, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	assert(oh > 0);
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(oh));
-	ccv_nnc_tensor_t* const one_hot = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(10), 0);
-	void* data;
-	int i = 0, j;
-	while (0 == ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
-	{
-		for (j = 0; j < 10; j++)
-			one_hot->data.f32[j] = 0;
-		one_hot->data.f32[int_array[i]] = 1;
-		REQUIRE_TENSOR_EQ(one_hot, (ccv_nnc_tensor_t*)data, "The one-hot tensor should be the same");
-		++i;
-	}
-	ccv_cnnp_dataframe_iter_free(iter);
-	ccv_cnnp_dataframe_free(dataframe);
-	ccv_nnc_tensor_free(one_hot);
-	ccv_array_free(array);
-}
-
 #include "case_main.h"
