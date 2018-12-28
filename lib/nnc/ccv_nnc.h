@@ -2237,11 +2237,11 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add_aux(ccv_cnnp_dataframe_t* const data
  * will contain the ccv_dense_matrix_t / ccv_nnc_tensor_t (both are toll-free bridging) of the image.
  * @param dataframe The dataframe object that loads the images.
  * @param column_idx The column which contains the filename.
- * @param filename_offset The offset to the filename (as char array) from that column. For example, the column
+ * @param structof The offset to the filename (as char array) from that column. For example, the column
  *        could be a struct and filename could be one of the field. In that case, you can pass offsetof(S, filename)
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t filename_offset);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof);
 /**
  * The structure to describe how to apply random jitter to the image.
  */
@@ -2269,6 +2269,20 @@ typedef struct {
  * @return The index of the newly derived column.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter);
+/**
+ * Generate a one-hot tensor off the label from a struct.
+ * @param dataframe The dataframe object that contains the label.
+ * @param column_idx The column which contains the label (as int).
+ * @param structof The offset to the label (as int) from that column. For example, the column
+ *        could be a struct and label could be one of the field. You can pass offsetof(S, filename)
+ * @param range The range of the label, from [0...range - 1]
+ * @param onval The value when it hit.
+ * @param offval The value for the others.
+ * @param datatype The datatype of the tensor.
+ * @param format The format of the tensor.
+ * @return The index of the newly derived column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format);
 
 /** @} */
 

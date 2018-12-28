@@ -118,16 +118,16 @@ static void _ccv_cnnp_read_image(void*** const column_data, const int column_siz
 	parallel_for(i, batch_size) {
 		if (data[i])
 			ccv_matrix_free(data[i]);
-		off_t offset = (off_t)context;
-		char* const filename = *(char**)((char*)column_data[0][i] + offset);
+		off_t structof = (off_t)context;
+		char* const filename = *(char**)((char*)column_data[0][i] + structof);
 		data[i] = 0;
 		ccv_read(filename, (ccv_dense_matrix_t**)&data[i], CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 	} parallel_endfor
 }
 
-int ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t filename_offset)
+int ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof)
 {
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_read_image, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), (void*)(uintptr_t)filename_offset, 0);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_read_image, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), (void*)(uintptr_t)structof, 0);
 }
 
 #pragma mark - Apply Random Jitter to Image
@@ -245,6 +245,51 @@ int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe
 	random_jitter_context->datatype = datatype;
 	random_jitter_context->random_jitter = random_jitter;
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
+typedef struct {
+	int range;
+	int datatype;
+	int format;
+	float onval;
+	float offval;
+	off_t structof;
+} ccv_cnnp_one_hot_context_t;
+
+static void _ccv_cnnp_one_hot(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	ccv_cnnp_one_hot_context_t* const one_hot = (ccv_cnnp_one_hot_context_t*)context;
+	ccv_nnc_tensor_param_t params = {
+		.datatype = one_hot->datatype,
+		.type = CCV_TENSOR_CPU_MEMORY,
+		.format = one_hot->format,
+		.dim = {
+			one_hot->range,
+		},
+	};
+	int i, j;
+	for (i = 0; i < batch_size; i++)
+	{
+		const int label = *(int*)((char*)column_data[0][i] + one_hot->structof);
+		if (!data[i])
+			data[i] = ccv_nnc_tensor_new(0, params, 0);
+		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];
+		for (j = 0; j < one_hot->range; j++)
+			tensor->data.f32[j] = (j == label) ? one_hot->onval : one_hot->offval;
+	}
+}
+
+int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format)
+{
+	assert(datatype == CCV_32F);
+	ccv_cnnp_one_hot_context_t* const one_hot = (ccv_cnnp_one_hot_context_t*)ccmalloc(sizeof(ccv_cnnp_one_hot_context_t));
+	one_hot->range = range;
+	one_hot->datatype = datatype;
+	one_hot->format = format;
+	one_hot->onval = onval;
+	one_hot->offval = offval;
+	one_hot->structof = structof;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_one_hot, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(column_idx), one_hot, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
 ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_data_batch_new(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size)
