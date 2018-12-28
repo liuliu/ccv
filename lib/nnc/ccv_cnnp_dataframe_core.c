@@ -2,6 +2,9 @@
 #include "ccv_nnc_easy.h"
 #include "ccv_nnc_internal.h"
 #include "ccv_internal.h"
+#include "_ccv_cnnp_dataframe.h"
+
+#pragma mark - Reducer
 
 typedef struct {
 	int column_idx;
@@ -75,4 +78,61 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 		.context_deinit = _ccv_cnnp_reducer_deinit,
 	};
 	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
+}
+
+#pragma mark - Make Tuple
+
+static void _ccv_cnnp_tuple_deinit(void* const data, void* const context)
+{
+	ccfree(data);
+}
+
+static void _ccv_cnnp_make_tuple(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_cnnp_dataframe_tuple_t* const tuple = (ccv_cnnp_dataframe_tuple_t*)context;
+	int i, j;
+	for (i = 0; i < batch_size; i++)
+	{
+		if (!data[i])
+			data[i] = ccmalloc(sizeof(void*) * tuple->size);
+		void** tuple_data = (void**)data[i];
+		for (j = 0; j < column_size; j++)
+			tuple_data[j] = column_data[j][i];
+	}
+}
+
+int ccv_cnnp_dataframe_make_tuple(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size)
+{
+	ccv_cnnp_dataframe_tuple_t* const tuple = (ccv_cnnp_dataframe_tuple_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_tuple_t));
+	tuple->size = column_idx_size;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_make_tuple, 0, _ccv_cnnp_tuple_deinit, column_idxs, column_idx_size, tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
+int ccv_cnnp_dataframe_tuple_size(const ccv_cnnp_dataframe_t* const dataframe, const int column_idx)
+{
+	const ccv_cnnp_dataframe_tuple_t* const tuple = (ccv_cnnp_dataframe_tuple_t*)ccv_cnnp_dataframe_column_context(dataframe, column_idx);
+	return tuple->size;
+}
+
+typedef struct {
+	int index;
+} ccv_cnnp_dataframe_extract_tuple_t;
+
+static void _ccv_cnnp_extract_tuple(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_cnnp_dataframe_extract_tuple_t* const extract_tuple = (ccv_cnnp_dataframe_extract_tuple_t*)context;
+	const int index = extract_tuple->index;
+	int i;
+	for (i = 0; i < batch_size; i++)
+	{
+		void** tuple_data = (void**)column_data[0][i];
+		data[i] = tuple_data[index];
+	}
+}
+
+int ccv_cnnp_dataframe_extract_tuple(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int index)
+{
+	ccv_cnnp_dataframe_extract_tuple_t* const extract_tuple = (ccv_cnnp_dataframe_extract_tuple_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_extract_tuple_t));
+	extract_tuple->index = index;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_extract_tuple, 0, 0, &column_idx, 1, extract_tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }

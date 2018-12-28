@@ -117,6 +117,18 @@ int ccv_cnnp_dataframe_map(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_colum
 	return dataframe->column_size + dataframe->derived_column_data->rnum - 1;
 }
 
+void* ccv_cnnp_dataframe_column_context(const ccv_cnnp_dataframe_t* const dataframe, const int column_idx)
+{
+	assert(column_idx >= 0);
+	const int column_size = dataframe->column_size + (dataframe->derived_column_data ? dataframe->derived_column_data->rnum : 0);
+	assert(column_idx < column_size);
+	if (column_idx < dataframe->column_size)
+		return dataframe->column_data[column_idx].context;
+	assert(dataframe->derived_column_data);
+	ccv_cnnp_derived_column_data_t* const derived_column_data = (ccv_cnnp_derived_column_data_t*)ccv_array_get(dataframe->derived_column_data, column_idx - dataframe->column_size);
+	return derived_column_data->context;
+}
+
 typedef struct {
 	int flag; // Mark this as cached or not.
 	uint64_t ctx; // The stream context.

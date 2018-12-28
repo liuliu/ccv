@@ -2129,6 +2129,31 @@ typedef void (*ccv_cnnp_column_data_reduce_f)(void** const input_data, const int
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
+ * Make a tuple out of columns specified. Thus, the new derived column will contains a tuple
+ * with data from all the columns specified here.
+ * @param dataframe The dataframe that will contain the new column.
+ * @param column_idxs The columns to be tupled.
+ * @param column_idx_size The number of columns.
+ * @return The derived column with the tuple.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_make_tuple(ccv_cnnp_dataframe_t* const dataframe, const int* const column_idxs, const int column_idx_size);
+/**
+ * The size of the tuple. It is equal to the number of columns we specified. The behavior of
+ * calling this method on a column that is not a tuple is undefined.
+ * @param dataframe The dataframe that contains the tuple column.
+ * @param column_idx The tuple column we are going to inspect.
+ * @return The tuple size of the column.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_tuple_size(const ccv_cnnp_dataframe_t* const dataframe, const int column_idx);
+/**
+ * Extract a data out of a tuple.
+ * @param dataframe The dataframe that will contain the new column.
+ * @param column_idx The column that is a tuple.
+ * @param index The index into the tuple.
+ * @return The derived column with the extracted value.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_tuple(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int index);
+/**
  * The opaque pointer to the iterator.
  */
 typedef struct ccv_cnnp_dataframe_iter_s ccv_cnnp_dataframe_iter_t;
