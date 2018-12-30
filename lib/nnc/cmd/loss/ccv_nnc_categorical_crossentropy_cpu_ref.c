@@ -24,17 +24,36 @@ static int _ccv_nnc_categorical_crossentropy_forw(const ccv_nnc_cmd_t cmd, const
 	const int batch_size = axis_count < 2 ? 1 : a->info.dim[0];
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
-		{ assert(b->info.dim[i] == c->info.dim[i]); }
 	if (b->info.datatype == CCV_32F)
 	{
-		parallel_for(i, batch_size) {
-			const int label = (int)(b->data.f32[i] + 0.5);
-			assert(label >= 0 && label < count);
-			const float p = a->data.f32[i * count + label];
-			c->data.f32[i] = -logf(p);
-		} parallel_endfor
+		// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+		// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+		const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+		if (range == 1)
+		{
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+				{ assert(b->info.dim[i] == c->info.dim[i]); }
+			parallel_for(i, batch_size) {
+				const int label = (int)(b->data.f32[i] + 0.5);
+				assert(label >= 0 && label < count);
+				const float p = a->data.f32[i * count + label];
+				c->data.f32[i] = -logf(p);
+			} parallel_endfor
+		} else {
+			assert(range == count);
+			parallel_for(i, batch_size) {
+				int j;
+				float p = 0;
+				float* const bp = b->data.f32 + i * count;
+				float* const ap = a->data.f32 + i * count;
+				for (j = 0; j < count; j++)
+					p += -bp[j] * logf(ap[j]);
+				c->data.f32[i] = p;
+			} parallel_endfor
+		}
 	} else if (b->info.datatype == CCV_32S) {
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+			{ assert(b->info.dim[i] == c->info.dim[i]); }
 		parallel_for(i, batch_size) {
 			const int label = b->data.i32[i];
 			assert(label >= 0 && label < count);
@@ -61,23 +80,42 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 	const int batch_size = axis_count < 2 ? 1 : a->info.dim[0];
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
-		{ assert(a->info.dim[i] == h->info.dim[i]); }
 	if (g)
 	{
 		if (b->info.datatype == CCV_32F)
 		{
-			parallel_for(i, batch_size) {
-				int j;
-				const float gp = g->data.f32[i];
-				const int label = (int)(b->data.f32[i] + 0.5);
-				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = 0;
-				const float p = a->data.f32[i * count + label];
-				hp[label] = -gp / p;
-			} parallel_endfor
+			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+			// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+			const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+			if (range == 1)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				parallel_for(i, batch_size) {
+					int j;
+					const float gp = g->data.f32[i];
+					const int label = (int)(b->data.f32[i] + 0.5);
+					float* const hp = h->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = 0;
+					const float p = a->data.f32[i * count + label];
+					hp[label] = -gp / p;
+				} parallel_endfor
+			} else {
+				assert(range == count);
+				parallel_for(i, batch_size) {
+					int j;
+					const float gp = g->data.f32[i];
+					float* const hp = h->data.f32 + i * count;
+					float* const ap = a->data.f32 + i * count;
+					float* const bp = b->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = -gp * bp[j] / ap[j];
+				} parallel_endfor
+			}
 		} else if (b->info.datatype == CCV_32S) {
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+				{ assert(a->info.dim[i] == h->info.dim[i]); }
 			parallel_for(i, batch_size) {
 				int j;
 				const float gp = g->data.f32[i];
@@ -92,16 +130,36 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 	} else {
 		if (b->info.datatype == CCV_32F)
 		{
-			parallel_for(i, batch_size) {
-				int j;
-				const int label = (int)(b->data.f32[i] + 0.5);
-				float* const hp = h->data.f32 + i * count;
-				for (j = 0; j < count; j++)
-					hp[j] = 0;
-				const float p = a->data.f32[i * count + label];
-				hp[label] = -1. / p;
-			} parallel_endfor
+			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+			// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+			const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+			if (range == 1)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				parallel_for(i, batch_size) {
+					int j;
+					const int label = (int)(b->data.f32[i] + 0.5);
+					float* const hp = h->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = 0;
+					const float p = a->data.f32[i * count + label];
+					hp[label] = -1. / p;
+				} parallel_endfor
+			} else {
+				assert(range == count);
+				parallel_for(i, batch_size) {
+					int j;
+					float* const hp = h->data.f32 + i * count;
+					float* const ap = a->data.f32 + i * count;
+					float* const bp = b->data.f32 + i * count;
+					for (j = 0; j < count; j++)
+						hp[j] = -bp[j] / ap[j];
+				} parallel_endfor
+			}
 		} else if (b->info.datatype == CCV_32S) {
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+				{ assert(a->info.dim[i] == h->info.dim[i]); }
 			parallel_for(i, batch_size) {
 				int j;
 				const int label = b->data.i32[i];

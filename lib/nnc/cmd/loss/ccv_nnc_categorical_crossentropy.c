@@ -1,5 +1,6 @@
 #include <ccv.h>
 #include <nnc/ccv_nnc.h>
+#include <nnc/ccv_nnc_easy.h>
 #include <nnc/ccv_nnc_internal.h>
 
 static int _ccv_nnc_categorical_crossentropy_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
@@ -23,6 +24,10 @@ static void _ccv_nnc_categorical_crossentropy_tensor_auto_forw(const ccv_nnc_cmd
 	outputs[0] = inputs[0];
 	// The output should have the same dimentionality of the label data.
 	memcpy(outputs[0].dim, inputs[1].dim, sizeof(outputs[0].dim));
+	const int nd = ccv_nnc_tensor_nd(outputs[0].dim);
+	// Set channel to 1 if it is not..
+	if (nd > 1 && ccv_nnc_tensor_get_c(outputs[0]) > 1)
+		ccv_nnc_tensor_set_c(&outputs[0], nd, 1);
 }
 
 static void _ccv_nnc_categorical_crossentropy_tensor_auto_back(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)

@@ -152,7 +152,7 @@ static void _reduce_train_batch_new(void** const input_data, const int input_siz
 		{
 			outputs[i * 2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(batch_size, 3, 32, 32), 0);
 			ccv_nnc_tensor_pin_memory(outputs[i * 2]);
-			outputs[i * 2 + 1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(batch_size, 1), 0);
+			outputs[i * 2 + 1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(batch_size, 10), 0);
 			ccv_nnc_tensor_pin_memory(outputs[i * 2 + 1]);
 		}
 	}
@@ -160,6 +160,7 @@ static void _reduce_train_batch_new(void** const input_data, const int input_siz
 	for (i = 0; i < device_count; i++)
 	{
 		memset(outputs[i * 2]->data.f32, 0, sizeof(float) * batch_size * 3 * 32 * 32);
+		memset(outputs[i * 2 + 1]->data.f32, 0, sizeof(float) * batch_size * 10);
 		float* mean = reduce_context->mean;
 		for (j = 0; j < batch_size; j++)
 		{
@@ -184,7 +185,7 @@ static void _reduce_train_batch_new(void** const input_data, const int input_siz
 							ip[fi * 32 + (31 - fj) + fk * 32 * 32] = cp[(fi - pady) * 32 * 3 + (fj - padx) * 3 + fk] - mean[fk];
 			}
 			assert(categorized->c >= 0 && categorized->c < 10);
-			outputs[i * 2 + 1]->data.f32[j] = categorized->c;
+			outputs[i * 2 + 1]->data.f32[j * 10 + categorized->c] = 1;
 		}
 	}
 }

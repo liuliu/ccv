@@ -15,6 +15,16 @@ __global__ void _ccv_nnc_categorical_crossentropy_forw_kernel(const int batch_si
 	}
 }
 
+__global__ void _ccv_nnc_categorical_crossentropy_one_hot_forw_kernel(const int batch_size, const int count, const float* const label, const float* const a, float* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size) {
+		float p = label[i * count] * logf(a[i * count]);
+		for (int j = 1; j < count; j++)
+			p += label[i * count + j] * logf(a[i * count + j]);
+		c[i] = -p;
+	}
+}
+
 __global__ void _ccv_nnc_categorical_crossentropy_forw_kernel(const int batch_size, const int count, const int* const label, const float* const a, float* const c)
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
@@ -37,12 +47,25 @@ static int _ccv_nnc_categorical_crossentropy_forw(const ccv_nnc_cmd_t cmd, const
 	const int count = ccv_nnc_tensor_count(a->info) / batch_size;
 	int i;
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
-		{ assert(b->info.dim[i] == c->info.dim[i]); }
 	if (b->info.datatype == CCV_32F)
-		_ccv_nnc_categorical_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, c->data.f32);
-	else if (b->info.datatype == CCV_32S)
+	{
+		// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+		// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+		const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+		if (range == 1)
+		{
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+				{ assert(b->info.dim[i] == c->info.dim[i]); }
+			_ccv_nnc_categorical_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, c->data.f32);
+		} else {
+			assert(range == count);
+			_ccv_nnc_categorical_crossentropy_one_hot_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, c->data.f32);
+		}
+	} else if (b->info.datatype == CCV_32S) {
+		for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && b->info.dim[i] > 0; i++)
+			{ assert(b->info.dim[i] == c->info.dim[i]); }
 		_ccv_nnc_categorical_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, a->data.f32, c->data.f32);
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -61,6 +84,14 @@ __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_si
 	}
 }
 
+__global__ void _ccv_nnc_categorical_crossentropy_one_hot_back_kernel(const int batch_size_count, const int count, const float* const g, const float* const label, const float* const a, float* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		const int idx = i / count;
+		h[i] = -g[idx] * label[i] / a[i];
+	}
+}
+
 __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_size, const int count, const float* const g, const int* const label, const float* const a, float* const h)
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
@@ -74,6 +105,13 @@ __global__ void _ccv_nnc_categorical_crossentropy_back_kernel(const int batch_si
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = (int)(label[i] + 0.5);
 		h[i * count + idx] = -1. / a[i * count + idx];
+	}
+}
+
+__global__ void _ccv_nnc_categorical_crossentropy_one_hot_back_kernel(const int batch_size_count, const int count, const float* const label, const float* const a, float* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		h[i] = -label[i] / a[i];
 	}
 }
 
@@ -102,21 +140,49 @@ static int _ccv_nnc_categorical_crossentropy_back(const ccv_nnc_cmd_t cmd, const
 	const int bcount = ccv_nnc_tensor_count(a->info);
 	const int count = bcount / batch_size;
 	int i;
-	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
-		{ assert(a->info.dim[i] == h->info.dim[i]); }
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	_ccv_nnc_set_zero_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, h->data.f32);
 	if (g)
 	{
 		if (b->info.datatype == CCV_32F)
-			_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
-		else if (b->info.datatype == CCV_32S)
+		{
+			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+			// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+			const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+			if (range == 1)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
+			} else {
+				assert(range == count);
+				_ccv_nnc_categorical_crossentropy_one_hot_back_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, g->data.f32, b->data.f32, a->data.f32, h->data.f32);
+			}
+		} else if (b->info.datatype == CCV_32S) {
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+				{ assert(a->info.dim[i] == h->info.dim[i]); }
 			_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, g->data.f32, b->data.i32, a->data.f32, h->data.f32);
+		}
 	} else {
 		if (b->info.datatype == CCV_32F)
-			_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, h->data.f32);
-		else if (b->info.datatype == CCV_32S)
+		{
+			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+			// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+			const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+			if (range == 1)
+			{
+				for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+					{ assert(a->info.dim[i] == h->info.dim[i]); }
+				_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, a->data.f32, h->data.f32);
+			} else {
+				assert(range == count);
+				_ccv_nnc_categorical_crossentropy_one_hot_back_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, b->data.f32, a->data.f32, h->data.f32);
+			}
+		} else if (b->info.datatype == CCV_32S) {
+			for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && a->info.dim[i] > 0; i++)
+				{ assert(a->info.dim[i] == h->info.dim[i]); }
 			_ccv_nnc_categorical_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, a->data.f32, h->data.f32);
+		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }

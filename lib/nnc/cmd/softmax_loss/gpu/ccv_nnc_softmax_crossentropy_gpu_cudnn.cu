@@ -17,6 +17,17 @@ __global__ void _ccv_nnc_softmax_crossentropy_forw_kernel(const int batch_size, 
 	}
 }
 
+__global__ void _ccv_nnc_softmax_crossentropy_one_hot_forw_kernel(const int batch_size, const int count, const float* const label, const float* const a, float* const c)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size) {
+		const float maxval = c[i];
+		float p = label[i * count] * (maxval - a[i * count]);
+		for (int j = 1; j < count; j++)
+			p += label[i * count + j] * (maxval - a[i * count + j]);
+		c[i] = p;
+	}
+}
+
 __global__ void _ccv_nnc_softmax_crossentropy_forw_kernel(const int batch_size, const int count, const int* const label, const float* const a, float* const c)
 {
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
@@ -57,9 +68,16 @@ static int _ccv_nnc_softmax_crossentropy_forw(const ccv_nnc_cmd_t cmd, const ccv
 		CUDNN_ENFORCE(cudnnReduceTensor(cudnn, reduce_max, 0, 0, workspace, workspace_size, &one, a.descriptor, a.data.u8, &zero, c.descriptor, c.data.u8));
 		ccv_nnc_stream_context_return_reduce_tensor_descriptor(stream_context, reduce_max);
 		ccv_nnc_cudnn_deinit_tensor_view_descriptor(c);
-		if (inputs[0]->info.datatype == CCV_32F)
-			_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
-		else if (inputs[0]->info.datatype == CCV_32S)
+		if (inputs[1]->info.datatype == CCV_32F)
+		{
+			// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+			// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+			const int range = ccv_nnc_tensor_nd(inputs[1]->info.dim) > 1 ? ccv_nnc_tensor_get_c(inputs[1]->info) : (batch_size == 1 ? inputs[1]->info.dim[0] : 1);
+			if (range == 1)
+				_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
+			else
+				_ccv_nnc_softmax_crossentropy_one_hot_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.f32, inputs[0]->data.f32, outputs[0]->data.f32);
+		} else if (inputs[1]->info.datatype == CCV_32S)
 			_ccv_nnc_softmax_crossentropy_forw_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, inputs[1]->data.i32, inputs[0]->data.f32, outputs[0]->data.f32);
 	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
@@ -78,6 +96,13 @@ __global__ void _ccv_nnc_softmax_crossentropy_back_kernel(const int batch_size, 
 	CUDA_1D_KERNEL_LOOP(i, batch_size) {
 		const int idx = (int)(label[i] + 0.5);
 		h[i * count + idx] -= 1;
+	}
+}
+
+__global__ void _ccv_nnc_softmax_crossentropy_one_hot_back_kernel(const int batch_size_count, const int count, const float* const label, float* const h)
+{
+	CUDA_1D_KERNEL_LOOP(i, batch_size_count) {
+		h[i] -= label[i];
 	}
 }
 
@@ -108,8 +133,15 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
 	_ccv_nnc_copy_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, d->data.f32, h->data.f32);
 	if (b->info.datatype == CCV_32F)
-		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);
-	else if (b->info.datatype == CCV_32S)
+	{
+		// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is
+		// the channel count. Otherwise, the range is 1 (and the only axis is the batch size).
+		const int range = ccv_nnc_tensor_nd(b->info.dim) > 1 ? ccv_nnc_tensor_get_c(b->info) : (batch_size == 1 ? b->info.dim[0] : 1);
+		if (range == 1)
+			_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.f32, h->data.f32);
+		else
+			_ccv_nnc_softmax_crossentropy_one_hot_back_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, count, b->data.f32, h->data.f32);
+	} else if (b->info.datatype == CCV_32S)
 		_ccv_nnc_softmax_crossentropy_back_kernel<<<CUDA_GET_BLOCKS(batch_size), CUDA_NUM_THREADS, 0, stream>>>(batch_size, count, b->data.i32, h->data.f32);
 	if (inputs[0])
 	{
