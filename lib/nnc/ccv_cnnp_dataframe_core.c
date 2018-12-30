@@ -80,6 +80,24 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 	return ccv_cnnp_dataframe_new(&reduce_column, 1, (ccv_cnnp_dataframe_row_count(dataframe) + batch_size - 1) / batch_size);
 }
 
+#pragma mark - Extract
+
+static void _ccv_cnnp_extract_value(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	const off_t offset = (off_t)(uintptr_t)context;
+	int i;
+	for (i = 0; i < batch_size; i++)
+	{
+		char* const values = (char*)column_data[0][i];
+		data[i] = *(void**)(values + offset);
+	}
+}
+
+int ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t offset)
+{
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_extract_value, 0, 0, &column_idx, 1, (void*)(uintptr_t)offset, 0);
+}
+
 #pragma mark - Make Tuple
 
 static void _ccv_cnnp_tuple_deinit(void* const data, void* const context)
@@ -114,25 +132,7 @@ int ccv_cnnp_dataframe_tuple_size(const ccv_cnnp_dataframe_t* const dataframe, c
 	return tuple->size;
 }
 
-typedef struct {
-	int index;
-} ccv_cnnp_dataframe_extract_tuple_t;
-
-static void _ccv_cnnp_extract_tuple(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
-{
-	const ccv_cnnp_dataframe_extract_tuple_t* const extract_tuple = (ccv_cnnp_dataframe_extract_tuple_t*)context;
-	const int index = extract_tuple->index;
-	int i;
-	for (i = 0; i < batch_size; i++)
-	{
-		void** tuple_data = (void**)column_data[0][i];
-		data[i] = tuple_data[index];
-	}
-}
-
 int ccv_cnnp_dataframe_extract_tuple(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int index)
 {
-	ccv_cnnp_dataframe_extract_tuple_t* const extract_tuple = (ccv_cnnp_dataframe_extract_tuple_t*)ccmalloc(sizeof(ccv_cnnp_dataframe_extract_tuple_t));
-	extract_tuple->index = index;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_extract_tuple, 0, 0, &column_idx, 1, extract_tuple, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return ccv_cnnp_dataframe_extract_value(dataframe, column_idx, index * sizeof(void*));
 }

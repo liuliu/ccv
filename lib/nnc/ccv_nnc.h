@@ -2129,6 +2129,17 @@ typedef void (*ccv_cnnp_column_data_reduce_f)(void** const input_data, const int
  */
 CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const dataframe, ccv_cnnp_column_data_reduce_f reduce, ccv_cnnp_column_data_deinit_f data_deinit, const int column_idx, const int batch_size, void* const context, ccv_cnnp_column_data_context_deinit_f context_deinit);
 /**
+ * Extract a value out of a struct. Assuming the data points to a struct. This method extract
+ * n-offset value of that struct. For example, if you have struct { ccv_nnc_tensor_t* a; ccv_nnc_tensor_t* b; } S;
+ * if you want to extract the b tensor to a different column, you can call this function with
+ * offsetof(S, b).
+ * @param dataframe The dataframe object to be extracted.
+ * @param column_idx The column that we want to extract value of.
+ * @param offset The offset. For example, offsetof(S, b).
+ * @return The new column that contains the extracted value.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_extract_value(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t offset);
+/**
  * Make a tuple out of columns specified. Thus, the new derived column will contains a tuple
  * with data from all the columns specified here. Tuple here represented as void* tuple[], an
  * array of void* pointers.
