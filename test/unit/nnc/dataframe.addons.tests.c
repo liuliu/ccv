@@ -117,7 +117,11 @@ TEST_CASE("read image and add random jitter")
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(im));
 	ccv_dense_matrix_t* data;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
-	REQUIRE_MATRIX_FILE_EQ(data, "data/nature.random-jitter.bin", "should be the same random jitter image.");
+	ccv_dense_matrix_t* gt = 0;
+	ccv_read("data/nature.random-jitter.bin", &gt, CCV_IO_ANY_FILE);
+	// I cannot use REQUIRE_MATRIX_FILE_EQ here because ccv_matrix_eq is too strict.
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, data->data.f32, gt->data.f32, 224 * 224 * 3, 1e-6, "should be the same random jitter image.");
+	ccv_matrix_free(gt);
 	ccv_matrix_free(image);
 	ccv_array_free(array);
 	ccv_cnnp_dataframe_iter_free(iter);
