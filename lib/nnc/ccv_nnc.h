@@ -2251,7 +2251,9 @@ typedef struct {
 	float saturation; /**< The saturation, the final saturation will be 1 - saturation + random_unit * saturation * 2 */
 	float brightness; /**< The brightness, the final brightness will be 1 - brightness + random_unit * brightness * 2 */
 	float lighting; /**< AlexNet style PCA based image jitter */
+	float aspect_ratio; /**< Stretch aspect ratio between [1 / (1 + asepct_ratio), 1 + aspect_ratio] */
 	int symmetric; /**< Apply random flip on x-axis (around y-axis */
+	int seed; /**< The seed for random generator. */
 	struct {
 		int min; /**< The minimal dimension of resize */
 		int max; /**< The maximal dimension of resize. The final resize can be computed from min + (max - min) * random_unit */
@@ -2264,6 +2266,10 @@ typedef struct {
 		int x; /**< The extra random offset on x-axis. */
 		int y; /**< The extra random offset on y-axis. */
 	} offset;
+	struct {
+		float mean[3]; /**< Normalize the image with mean. */
+		float std[3];/**< Normalize the image with std. pixel = (pixel - mean) / std */
+	} normalize;
 } ccv_cnnp_random_jitter_t;
 /**
  * Apply random jitter on a image to generate a new image.
@@ -2274,17 +2280,6 @@ typedef struct {
  * @return The index of the newly derived column.
  */
 CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, const ccv_cnnp_random_jitter_t random_jitter);
-/**
- * Normalize the image based on provided mean / std. The final pixel is computed with
- * dest = (source - mean) / std
- * @param dataframe The dataframe object that contains the original image.
- * @param column_idx The column which contains the original image.
- * @param datatype The final datatype of the image. We only support CCV_32F input and output right now.
- * @param mean The mean value for RGB channel.
- * @param std The std value for RGB channel.
- * @return The index of the newly derived column.
- */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_image_normalize(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, float mean[3], float std[3]);
 /**
  * Generate a one-hot tensor off the label from a struct.
  * @param dataframe The dataframe object that contains the label.

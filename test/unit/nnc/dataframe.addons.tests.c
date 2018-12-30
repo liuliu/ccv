@@ -78,4 +78,50 @@ TEST_CASE("batching tensors")
 	ccv_array_free(array);
 }
 
+TEST_CASE("read image and add random jitter")
+{
+	ccv_dense_matrix_t* image = 0;
+	ccv_read("../../../samples/nature.png", &image, CCV_IO_RGB_COLOR | CCV_IO_ANY_FILE);
+	ccv_array_t* const array = ccv_array_new(sizeof(ccv_dense_matrix_t), 1, 0);
+	ccv_array_push(array, image);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const ccv_cnnp_random_jitter_t random_jitter = {
+		.resize = {
+			.min = 200,
+			.max = 200,
+		},
+		.size = {
+			.rows = 224,
+			.cols = 224,
+		},
+		.normalize = {
+			.mean = {
+				123.68, 116.779, 103.939
+			},
+			.std = {
+				58.393, 57.12, 57.375
+			},
+		},
+		.offset = {
+			.x = 10,
+			.y = 10,
+		},
+		.aspect_ratio = 0.33,
+		.contrast = 0.4,
+		.saturation = 0.4,
+		.brightness = 0.4,
+		.lighting = 0.1,
+		.seed = 1,
+	};
+	const int im = ccv_cnnp_dataframe_image_random_jitter(dataframe, 0, CCV_32F, random_jitter);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(im));
+	ccv_dense_matrix_t* data;
+	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
+	REQUIRE_MATRIX_FILE_EQ(data, "data/nature.random-jitter.bin", "should be the same random jitter image.");
+	ccv_matrix_free(image);
+	ccv_array_free(array);
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"

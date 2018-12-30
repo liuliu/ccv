@@ -196,6 +196,19 @@ static void _ccv_cnnp_image_manip(ccv_dense_matrix_t* image, const ccv_cnnp_rand
 		}
 }
 
+static void _ccv_cnnp_normalize(ccv_dense_matrix_t* const image, const float mean[3], const float inv_std[3])
+{
+	int i;
+	const int count = image->rows * image->cols;
+	float* aptr = image->data.f32;
+	for (i = 0; i < count; i++)
+	{
+		aptr[i * 3] = (aptr[i * 3] - mean[0]) * inv_std[0];
+		aptr[i * 3 + 1] = (aptr[i * 3 + 1] - mean[1]) * inv_std[1];
+		aptr[i * 3 + 2] = (aptr[i * 3 + 2] - mean[2]) * inv_std[2];
+	}
+}
+
 static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	sfmt_t* const sfmt = (sfmt_t*)alloca(sizeof(sfmt_t) * batch_size);
@@ -211,17 +224,30 @@ static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_
 			ccv_matrix_free(data[i]);
 		ccv_dense_matrix_t* const input = (ccv_dense_matrix_t*)column_data[0][i];
 		const int resize = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (random_jitter.resize.max - random_jitter.resize.min) + 0.5) + random_jitter.resize.min, random_jitter.resize.min, random_jitter.resize.max);
+		int resize_rows = ccv_max(resize, (int)(input->rows * (float)resize / input->cols + 0.5));
+		int resize_cols = ccv_max(resize, (int)(input->cols * (float)resize / input->rows + 0.5));
+		if (random_jitter.aspect_ratio > 0)
+		{
+			const float aspect_ratio = sqrtf((random_jitter.aspect_ratio + (1 - 1 / (1 + random_jitter.aspect_ratio))) * sfmt_genrand_real1(&sfmt[i]) + 1 / (1 + random_jitter.aspect_ratio));
+			resize_rows = (int)(resize_rows * aspect_ratio + 0.5);
+			resize_cols = (int)(resize_cols / aspect_ratio + 0.5);
+		}
 		ccv_dense_matrix_t* resized = 0;
 		// First, resize.
 		if (input->rows > resize && input->cols > resize)
-			ccv_resample(input, &resized, CCV_32F, ccv_max(resize, (int)(input->rows * (float)resize / input->cols + 0.5)), ccv_max(resize, (int)(input->cols * (float)resize / input->rows + 0.5)), CCV_INTER_AREA);
-		else if (input->rows < resize || input->cols < resize)
-			ccv_resample(input, &resized, CCV_32F, ccv_max(resize, (int)(input->rows * (float)resize / input->cols + 0.5)), ccv_max(resize, (int)(input->cols * (float)resize / input->rows + 0.5)), CCV_INTER_CUBIC);
+			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_AREA);
+		else if (input->rows != resize_rows || input->cols != resize_cols)
+			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_CUBIC);
 		else
 			ccv_shift(input, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
 		if (random_jitter.symmetric && (sfmt_genrand_uint32(&sfmt[i]) & 1) == 0)
 			ccv_flip(resized, &resized, 0, CCV_FLIP_X);
 		_ccv_cnnp_image_manip(resized, random_jitter, &sfmt[i]);
+		// Apply normalization before slice. Slice will introduce 0 padding, which won't be correct before normalization.
+		if (random_jitter.normalize.mean[0] != 0 || random_jitter.normalize.std[0] != 1 ||
+			random_jitter.normalize.mean[1] != 0 || random_jitter.normalize.std[1] != 1 ||
+			random_jitter.normalize.mean[2] != 0 || random_jitter.normalize.std[2] != 1)
+			_ccv_cnnp_normalize(resized, random_jitter.normalize.mean, random_jitter.normalize.std);
 		// Then slice down.
 		ccv_dense_matrix_t* patch = 0;
 		if (random_jitter.size.cols > 0 && random_jitter.size.rows > 0 &&
@@ -250,66 +276,17 @@ int ccv_cnnp_dataframe_image_random_jitter(ccv_cnnp_dataframe_t* const dataframe
 {
 	assert(datatype == CCV_32F);
 	ccv_cnnp_random_jitter_context_t* const random_jitter_context = (ccv_cnnp_random_jitter_context_t*)ccmalloc(sizeof(ccv_cnnp_random_jitter_context_t));
-	sfmt_init_gen_rand(&random_jitter_context->sfmt, (uint32_t)(uintptr_t)dataframe);
+	if (random_jitter.seed)
+		sfmt_init_gen_rand(&random_jitter_context->sfmt, (uint32_t)random_jitter.seed);
+	else
+		sfmt_init_gen_rand(&random_jitter_context->sfmt, (uint32_t)(uintptr_t)dataframe);
 	random_jitter_context->datatype = datatype;
 	random_jitter_context->random_jitter = random_jitter;
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
-}
-
-typedef struct {
-	int datatype;
-	float mean[3];
-	float inv_std[3];
-} ccv_cnnp_normalize_context_t;
-
-static void _ccv_cnnp_normalize(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
-{
-	ccv_cnnp_normalize_context_t* const normalize = (ccv_cnnp_normalize_context_t*)context;
-	float* mean = normalize->mean;
-	float* inv_std = normalize->inv_std;
-	parallel_for(i, batch_size) {
-		ccv_dense_matrix_t* input = (ccv_dense_matrix_t*)column_data[0][i];
-		assert(CCV_GET_CHANNEL(input->type) == CCV_C3);
-		if (data[i])
-		{
-			ccv_dense_matrix_t* const output = (ccv_dense_matrix_t*)data[i];
-			if (output->rows != input->rows || output->cols != input->cols)
-			{
-				ccv_matrix_free(data[i]);
-				data[i] = ccv_dense_matrix_new(input->rows, input->cols, CCV_C3 | CCV_32F, 0, 0);
-			}
-		}
-		ccv_dense_matrix_t* const output = (ccv_dense_matrix_t*)data[i];
-		if (CCV_GET_DATA_TYPE(input->type) != CCV_32F)
-		{
-			// Do the type conversion.
-			ccv_shift(input, (ccv_matrix_t**)&output, CCV_32F, 0, 0);
-			input = output;
-			ccv_make_matrix_mutable(output);
-		}
-		int j;
-		const int count = input->rows * input->cols;
-		float* aptr = input->data.f32;
-		float* bptr = output->data.f32;
-		for (j = 0; j < count; j++)
-		{
-			bptr[j * 3] = (aptr[j * 3] - mean[0]) * inv_std[0];
-			bptr[j * 3 + 1] = (aptr[j * 3 + 1] - mean[1]) * inv_std[1];
-			bptr[j * 3 + 2] = (aptr[j * 3 + 2] - mean[2]) * inv_std[2];
-		}
-	} parallel_endfor
-}
-
-int ccv_cnnp_dataframe_image_normalize(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int datatype, float mean[3], float std[3])
-{
-	assert(datatype == CCV_32F);
-	ccv_cnnp_normalize_context_t* const normalize = (ccv_cnnp_normalize_context_t*)ccmalloc(sizeof(ccv_cnnp_normalize_context_t));
-	normalize->datatype = datatype;
-	memcpy(normalize->mean, mean, sizeof(float) * 3);
 	int i;
+	// The std in the random jitter should be inv_std.
 	for (i = 0; i < 3; i++)
-		normalize->inv_std[i] = 1. / std[i];
-	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_normalize, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), normalize, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+		random_jitter_context->random_jitter.normalize.std[i] = random_jitter_context->random_jitter.normalize.std[i] ? 1. / random_jitter_context->random_jitter.normalize.std[i] : 1;
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_random_jitter, 0, _ccv_cnnp_image_deinit, COLUMN_ID_LIST(column_idx), random_jitter_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
 }
 
 typedef struct {
