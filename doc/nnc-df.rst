@@ -29,3 +29,10 @@ Others
 ------
 
 Comparing with other dataframe APIs, the implementation at this time is pretty raw. We don't support sorting, or a more generic filtering (you can use reduce to do some filtering, but it is limited), or joining multiple dataframes. It is unclear to me how to implement these efficiently without worrying at certain point it becomes bottleneck. On the other hand, the above implementation is as efficient as you can get (because it is raw).
+
+Use Dataframe with Addons
+-------------------------
+
+The raw dataframe API (i.e. :cpp:func:`ccv_cnnp_dataframe_new`, :cpp:func:`ccv_cnnp_dataframe_map` and :cpp:func:`ccv_cnnp_dataframe_reduce_new`) are hard to use. Unlike helper functions such as :cpp:func:`CPU_TENSOR_NCHW` in ``ccv_nnc_easy.h``, there is no helper functions to fill in the :cpp:class:`ccv_cnnp_column_data_t`. This is intentional. You should interact dataframe with its addons API instead.
+
+The addons API are implemented with the raw dataframe API. It provides the ability to load data from :cpp:class:`ccv_array_t`.

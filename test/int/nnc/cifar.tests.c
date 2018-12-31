@@ -90,7 +90,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	if (device_count < 1)
 		return -1;
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 32, 32);
-	float learn_rate = 0.001;
+	float learn_rate = 0.002 / device_count;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
@@ -184,6 +184,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		int t;
 		CCV_SWAP(p, q, t);
 	}
+	ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
 	ccv_nnc_stream_context_wait(stream_contexts[p]);
 	ccv_nnc_stream_context_wait(stream_contexts[q]);
 	correct = 0;

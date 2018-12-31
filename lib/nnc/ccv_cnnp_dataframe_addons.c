@@ -51,8 +51,6 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 	for (i = 0; i < batch_size; i++)
 	{
 		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + copy_to_gpu_context->tensor_offset;
-		for (j = 0; j < copy_to_gpu_context->tuple.size; j++)
-			ccv_nnc_tensor_pin_memory(inputs[j]);
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
 		{
@@ -66,6 +64,8 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 				outputs[j] = ccv_nnc_tensor_new(0, params, 0);
 			}
 		}
+		for (j = 0; j < copy_to_gpu_context->tuple.size; j++)
+			ccv_nnc_tensor_pin_memory(inputs[j]);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, inputs, copy_to_gpu_context->tuple.size, outputs, copy_to_gpu_context->tuple.size, stream_context);
 	}
 }

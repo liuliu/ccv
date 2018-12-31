@@ -18,6 +18,7 @@ ccv_nnc_stream_context_t* ccv_nnc_stream_context_new(const int type)
 {
 	ccv_nnc_stream_cpu_t* const stream_cpu = (ccv_nnc_stream_cpu_t*)cccalloc(1, sizeof(ccv_nnc_stream_cpu_t));
 	stream_cpu->super.type = type;
+	stream_cpu->super.signal_container = kh_init(signal_container);
 	stream_cpu->workspace_size = 0;
 	stream_cpu->workspace = 0;
 #ifdef HAVE_CUDA
@@ -124,6 +125,16 @@ void ccv_nnc_stream_context_free(ccv_nnc_stream_context_t* const stream_context)
 		}
 		ccfree(scheduler);
 	}
+	khash_t(signal_container)* const signal_container = stream_context->signal_container;
+	khiter_t k;
+	for (k = kh_begin(signal_container); k != kh_end(signal_container); ++k)
+	{
+		if (!kh_exist(signal_container, k))
+			continue;
+		ccv_nnc_stream_signal_t* const signal = kh_val(signal_container, k);
+		ccv_nnc_stream_signal_free(signal);
+	}
+	kh_destroy(signal_container, signal_container);
 	ccfree(stream_context);
 }
 
@@ -172,6 +183,19 @@ void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const st
 	if (CCV_STREAM_GET_CONTEXT(signal->type) == CCV_STREAM_CONTEXT_GPU)
 		ccv_nnc_stream_compat_wait_signal(stream, signal);
 #endif
+}
+
+ccv_nnc_stream_signal_t* ccv_nnc_stream_context_get_signal(ccv_nnc_stream_context_t* const stream, const int64_t identifier)
+{
+	khash_t(signal_container)* const signal_container = stream->signal_container;
+	int ret = 0;
+	khiter_t k = kh_put(signal_container, signal_container, identifier, &ret);
+	assert(ret >= 0);
+	// If ret == 0, the key already exist, we can get the columns directly, otherwise, create and assign back.
+	ccv_nnc_stream_signal_t* const signal = (ret == 0) ? kh_val(signal_container, k) : ccv_nnc_stream_signal_new(stream->type);
+	if (ret != 0)
+		kh_val(signal_container, k) = signal;
+	return signal;
 }
 
 void ccv_nnc_stream_signal_free(ccv_nnc_stream_signal_t* const signal)

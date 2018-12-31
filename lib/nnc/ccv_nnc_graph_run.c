@@ -549,6 +549,15 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 			ccv_nnc_stream_task_wait_any(self, &previous_main, 1);
 		} else
 			stream_context->main = self;
+		if (stream_context != graph->streams[0])
+		{
+			// Make sure when we start work on streams[0], the current stream context is done.
+			ccv_nnc_stream_signal_t* const signal = ccv_nnc_stream_context_get_signal(stream_context, (int64_t)(intptr_t)graph);
+			ccv_nnc_stream_context_emit_signal(stream_context, signal);
+			ccv_nnc_stream_context_wait_signal(graph->streams[0], signal);
+		}
+	} else {
+		assert(stream_context == graph->streams[0]);
 	}
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
 	{
@@ -620,6 +629,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	}
 	if (stream_context != graph->streams[0])
 	{
+		assert(exec_idx == -1);
 		ccv_nnc_stream_context_emit_signal(graph->streams[0], graph->extern_signal);
 		ccv_nnc_stream_context_wait_signal(stream_context, graph->extern_signal);
 	}

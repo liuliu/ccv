@@ -468,6 +468,16 @@ void ccv_nnc_stream_context_wait_signal(const ccv_nnc_stream_context_t* const st
  */
 CCV_WARN_UNUSED(ccv_nnc_stream_context_t*) ccv_nnc_stream_signal_get_emitter(const ccv_nnc_stream_signal_t* const signal);
 /**
+ * Get a signal handle for a stream context, you can then wait this signal for this stream.
+ * This is handy if you want to have a stream context specific signal that can be identified
+ * with an identifier, and don't want to maintain it yourself. The returned signal cannot
+ * be freed and managed by the stream itself.
+ * @param stream The stream where the signal will be bind to.
+ * @param identifier The identifier for this signal.
+ * @return A signal that is binded to this stream and ready to be used.
+ */
+CCV_WARN_UNUSED(ccv_nnc_stream_signal_t*) ccv_nnc_stream_context_get_signal(ccv_nnc_stream_context_t* const stream, const int64_t identifier);
+/**
  * Deallocate the signal.
  * @param signal The signal to be destroyed.
  */
