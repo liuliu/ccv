@@ -200,12 +200,12 @@ static void _ccv_cnnp_normalize(ccv_dense_matrix_t* const image, const float mea
 {
 	int i;
 	const int count = image->rows * image->cols;
-	float* aptr = image->data.f32;
+	float* ap = image->data.f32;
 	for (i = 0; i < count; i++)
 	{
-		aptr[i * 3] = (aptr[i * 3] - mean[0]) * inv_std[0];
-		aptr[i * 3 + 1] = (aptr[i * 3 + 1] - mean[1]) * inv_std[1];
-		aptr[i * 3 + 2] = (aptr[i * 3 + 2] - mean[2]) * inv_std[2];
+		ap[i * 3] = (ap[i * 3] - mean[0]) * inv_std[0];
+		ap[i * 3 + 1] = (ap[i * 3 + 1] - mean[1]) * inv_std[1];
+		ap[i * 3 + 2] = (ap[i * 3 + 2] - mean[2]) * inv_std[2];
 	}
 }
 
@@ -309,16 +309,16 @@ static void _ccv_cnnp_one_hot(void*** const column_data, const int column_size, 
 			one_hot->range,
 		},
 	};
-	int i, j;
-	for (i = 0; i < batch_size; i++)
-	{
+	parallel_for(i, batch_size) {
+		int j;
 		const int label = *(int*)((char*)column_data[0][i] + one_hot->structof);
 		if (!data[i])
 			data[i] = ccv_nnc_tensor_new(0, params, 0);
 		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];
+		assert(label >= 0 && label < one_hot->range);
 		for (j = 0; j < one_hot->range; j++)
 			tensor->data.f32[j] = (j == label) ? one_hot->onval : one_hot->offval;
-	}
+	} parallel_endfor
 }
 
 int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format)
@@ -348,7 +348,7 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 	const int batch_count = batch->batch_count;
 	const int group_count = batch->group_count;
 	const int input_tuple_size = output_tuple_size / group_count;
-	int i, j;
+	int i, j, k;
 	assert(input_size > 0);
 	if (!output_data[0])
 	{
@@ -362,9 +362,35 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 				assert(params.format == CCV_TENSOR_FORMAT_NHWC || params.format == CCV_TENSOR_FORMAT_NCHW);
 				params.format = batch->format;
 				// Special-case for dim count is 3 and 1, in these two cases, the N is not provided.
-				const int nd = ccv_nnc_tensor_nd(params.dim);
-				if (nd == 3 || nd == 1)
-					memmove(params.dim + 1, params.dim, sizeof(int) * nd);
+				if (batch->format == inputs[j]->info.format)
+				{
+					const int nd = ccv_nnc_tensor_nd(params.dim);
+					if (nd == 3 || nd == 1)
+					{
+						memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+						memcpy(params.dim + 1, inputs[j]->info.dim, sizeof(int) * nd);
+					}
+				} else {
+					const int nd = ccv_nnc_tensor_nd(params.dim);
+					if (nd == 1)
+					{
+						memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+						memcpy(params.dim + 1, inputs[j]->info.dim, sizeof(int) * nd);
+					} else if (nd >= 3) {
+						memset(params.dim, 0, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
+						const int hw = ccv_nnc_tensor_hw(inputs[j]->info, nd);
+						if (batch->format == CCV_TENSOR_FORMAT_NCHW)
+						{
+							params.dim[1] = ccv_nnc_tensor_get_c(inputs[j]->info);
+							for (k = 0; k < CCV_NNC_MAX_DIM; k++)
+								params.dim[k + 2] = inputs[j]->info.dim[k + hw];
+						} else {
+							params.dim[CCV_NNC_MAX_DIM + 1] = ccv_nnc_tensor_get_c(inputs[j]->info);
+							for (k = 0; k < CCV_NNC_MAX_DIM; k++)
+								params.dim[k + 1] = inputs[j]->info.dim[k + hw];
+						}
+					}
+				}
 				params.dim[0] = batch_count; // Set the batch count now.
 				tensors[i * input_tuple_size + j] = ccv_nnc_tensor_new(0, params, 0);
 			}
@@ -376,10 +402,10 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 			parallel_for(k, batch_count) {
 				ccv_nnc_tensor_t* const input = ((ccv_nnc_tensor_t**)input_data[(k + i * batch_count) % input_size])[j];
 				const size_t tensor_count = ccv_nnc_tensor_count(input->info);
-				float* const aptr = input->data.f32;
-				float* const bptr = output->data.f32 + k * tensor_count;
+				float* const ap = input->data.f32;
+				float* const bp = output->data.f32 + k * tensor_count;
 				if (input->info.format == output->info.format)
-					memcpy(bptr, aptr, sizeof(float) * tensor_count);
+					memcpy(bp, ap, sizeof(float) * tensor_count);
 				else {
 					// Do a simple format conversion.
 					const int c = ccv_nnc_tensor_get_c(input->info);
@@ -389,11 +415,11 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 					if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
 						for (x = 0; x < hw_count; x++)
 							for (y = 0; y < c; y++)
-								bptr[y * hw_count + x] = aptr[x * c + y];
+								bp[y * hw_count + x] = ap[x * c + y];
 					else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
 						for (x = 0; x < hw_count; x++)
 							for (y = 0; y < c; y++)
-								bptr[x * c + y] = aptr[y * hw_count + x];
+								bp[x * c + y] = ap[y * hw_count + x];
 				}
 			} parallel_endfor
 		}
