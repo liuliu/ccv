@@ -59,7 +59,7 @@ static ccv_cnnp_model_t* _block_layer_new(const int filters, const int strides, 
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-ccv_cnnp_model_t* _cifar_10_resnet18(void)
+ccv_cnnp_model_t* _cifar_10_resnet20(void)
 {
 	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* init_conv = ccv_cnnp_convolution(1, 16, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
@@ -85,7 +85,7 @@ ccv_cnnp_model_t* _cifar_10_resnet18(void)
 
 static int train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
-	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet18();
+	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet20();
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	if (device_count < 1)
 		return -1;
@@ -172,7 +172,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		if ((i + 1) % epoch_end == 0)
 		{
 			++epoch;
-			if (epoch % 15 == 0)
+			if (epoch % 20 == 0)
 			{
 				learn_rate *= 0.25;
 				ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
@@ -227,7 +227,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	return correct;
 }
 
-TEST_CASE("cifar-10 with resnet18 to > 85% under 3 minutes")
+TEST_CASE("cifar-10 with resnet20 to > 85% under 3 minutes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
 			ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
@@ -297,7 +297,7 @@ TEST_CASE("cifar-10 with resnet18 to > 85% under 3 minutes")
 	int correct = train_cifar_10(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 8500, "accuracy %.2f after 30 epoch should be higher than 85%%", (float)correct / 10000);
+	REQUIRE(correct > 8500, "accuracy %.2f after 65 epoch should be higher than 85%%", (float)correct / 10000);
 }
 
 #include "case_main.h"
