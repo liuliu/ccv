@@ -7,6 +7,13 @@
 #include <getopt.h>
 #include <stddef.h>
 
+static unsigned int get_current_time(void)
+{
+	struct timeval tv;
+	gettimeofday(&tv, NULL);
+	return tv.tv_sec * 1000 + tv.tv_usec / 1000;
+}
+
 static ccv_cnnp_model_t* _building_block_new(const int filters, const int expansion, const int strides, const int projection_shortcut)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
@@ -112,9 +119,10 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		.lighting = 0.1,
 		.symmetric = 1,
 		.resize = {
-			.min = 128,
-			.max = 200,
+			.min = 180,
+			.max = 280,
 		},
+		.aspect_ratio = 0.25,
 		.size = {
 			.cols = 224,
 			.rows = 224,
@@ -122,13 +130,19 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(image_jitter_idx));
-	ccv_dense_matrix_t* image = 0;
-	ccv_cnnp_dataframe_iter_next(iter, (void **)&image, 1, 0);
-	ccv_dense_matrix_t* visual = 0;
-	ccv_shift(image, (ccv_matrix_t*)&visual, CCV_8U, 0, 0);
-	ccv_write(visual, "one.png", 0, CCV_IO_PNG_FILE, 0);
+	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_idx, one_hot_idx), 256, 3, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_train_data, COLUMN_ID_LIST(0));
+	ccv_nnc_tensor_t** tensor_tuple;
+	int i;
+	unsigned int elapsed_time = get_current_time();
+	for (i = 0; i < 100; i++)
+	{
+		ccv_cnnp_dataframe_iter_next(iter, (void **)&tensor_tuple, 1, 0);
+	}
+	printf("Elapsed time %u ms\n", get_current_time() - elapsed_time);
 	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(batch_train_data);
 }
 
 static ccv_cnnp_dataframe_t* _dataframe_from_disk_new(const char* const list, const char* const base_dir)
