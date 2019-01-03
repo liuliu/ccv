@@ -160,6 +160,17 @@ static void _ccv_cnnp_image_lighting(ccv_dense_matrix_t* image, const float alph
 	}
 }
 
+static float _ccv_cnnp_random_logexp(sfmt_t* const sfmt, const float jitter)
+{
+	// We want to get something around logarithmic scale, thus, 0 is no good, and infinity is no good. 1 is the same.
+	// jitter is some turbulence we want around 1. We want the range range to be around [1 / (1 + jitter), 1 + jitter]
+	// but the distribution is not uniform (50% fall under 1, and 50% fall above 1). The way to do this is to first
+	// get to logarithmic range, doing a uniform sampling, and then convert back.
+	double log_jitter_limit = log(1 + jitter);
+	double log_random_jitter = sfmt_genrand_real1(sfmt) * 2 * log_jitter_limit - log_jitter_limit;
+	return (float)exp(log_random_jitter); // Convert it back to exponential form.
+}
+
 static void _ccv_cnnp_image_manip(ccv_dense_matrix_t* image, const ccv_cnnp_random_jitter_t random_jitter, sfmt_t* const sfmt)
 {
 	assert(sfmt && CCV_GET_CHANNEL(image->type) == CCV_C3);
@@ -174,19 +185,19 @@ static void _ccv_cnnp_image_manip(ccv_dense_matrix_t* image, const ccv_cnnp_rand
 				if (random_jitter.brightness == 0)
 					break;
 				// introduce some brightness changes to the original image
-				ccv_scale(image, (ccv_matrix_t**)&image, 0, sfmt_genrand_real1(sfmt) * random_jitter.brightness * 2 + (1 - random_jitter.brightness));
+				ccv_scale(image, (ccv_matrix_t**)&image, 0, _ccv_cnnp_random_logexp(sfmt, random_jitter.brightness));
 				break;
 			case 1:
 				// introduce some saturation changes to the original image
 				if (random_jitter.saturation == 0)
 					break;
-				ccv_saturation(image, &image, 0, sfmt_genrand_real1(sfmt) * random_jitter.saturation * 2 + (1 - random_jitter.saturation));
+				ccv_saturation(image, &image, 0, _ccv_cnnp_random_logexp(sfmt, random_jitter.saturation));
 				break;
 			case 2:
 				// introduce some contrast changes to the original image
 				if (random_jitter.contrast == 0)
 					break;
-				ccv_contrast(image, &image, 0, sfmt_genrand_real1(sfmt) * random_jitter.contrast * 2 + (1 - random_jitter.contrast));
+				ccv_contrast(image, &image, 0, _ccv_cnnp_random_logexp(sfmt, random_jitter.contrast));
 				break;
 			case 3:
 				if (random_jitter.lighting == 0)
@@ -228,7 +239,7 @@ static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_
 		int resize_cols = ccv_max(resize, (int)(input->cols * (float)resize / input->rows + 0.5));
 		if (random_jitter.aspect_ratio > 0)
 		{
-			const float aspect_ratio = sqrtf((random_jitter.aspect_ratio + (1 - 1 / (1 + random_jitter.aspect_ratio))) * sfmt_genrand_real1(&sfmt[i]) + 1 / (1 + random_jitter.aspect_ratio));
+			const float aspect_ratio = sqrtf(_ccv_cnnp_random_logexp(&sfmt[i],  random_jitter.aspect_ratio));
 			resize_rows = (int)(resize_rows * aspect_ratio + 0.5);
 			resize_cols = (int)(resize_cols / aspect_ratio + 0.5);
 		}

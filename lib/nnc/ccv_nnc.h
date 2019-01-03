@@ -2269,9 +2269,9 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_read_image(ccv_cnnp_dataframe_t* const d
  * The structure to describe how to apply random jitter to the image.
  */
 typedef struct {
-	float contrast; /**< The random contrast, the final contrast will be 1 - contrast + random_unit * contrast * 2 */
-	float saturation; /**< The saturation, the final saturation will be 1 - saturation + random_unit * saturation * 2 */
-	float brightness; /**< The brightness, the final brightness will be 1 - brightness + random_unit * brightness * 2 */
+	float contrast; /**< The random contrast, the final contrast will be [1 / (1 + contrast), 1 + contrast] */
+	float saturation; /**< The saturation, the final saturation will be [1 / (1 + saturation), 1 + saturation] */
+	float brightness; /**< The brightness, the final brightness will be between [1 / (1 + brightness), 1 + brightness] */
 	float lighting; /**< AlexNet style PCA based image jitter */
 	float aspect_ratio; /**< Stretch aspect ratio between [1 / (1 + asepct_ratio), 1 + aspect_ratio] */
 	int symmetric; /**< Apply random flip on x-axis (around y-axis */
