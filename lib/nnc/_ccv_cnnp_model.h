@@ -62,7 +62,7 @@ struct ccv_cnnp_model_s {
 	const ccv_cnnp_model_vtab_t* isa;
 	int input_size;
 	int output_size;
-	ccv_cnnp_model_io_t io; // The opaque io that can be nil.
+	ccv_array_t* io; // The opaque io that can be nil.
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;

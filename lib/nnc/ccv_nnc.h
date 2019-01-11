@@ -2591,6 +2591,54 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DI
  */
 CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(void);
 
+enum {
+	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
+	CCV_CNNP_NO_TENSOR, /**< The parameter is not used. */
+	CCV_CNNP_INIT_SHARED_TENSOR, /**< The parameter is a provided tensor for initialization. */
+	CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, /**< The parameter is a provided tensor that can be updated. */
+};
+
+typedef struct {
+	int type; /**< The type of the parameter, could be CCV_CNNP_IO, NO_TENSOR, INIT_SHARED_TENSOR, or INIT_SHARED_TENSOR_TRAINABLE */
+	ccv_nnc_tensor_t* tensor; /**< The tensor that is going to be used for initialization. */
+} ccv_cnnp_tensor_param_t;
+/**
+ * A generic model based on the command. If the tensors are labeled as ccv_cnnp_io_t, it will participate
+ * as the input / output of the model. If it is a init tensor, the model will use this tensor for that parameter.
+ * More over, if it is marked as trainable, that tensor will be differentiated against when you call
+ * ccv_cnnp_model_fit. This model however doesn't take over ownership of the tensor. You should manage the life
+ * cycle of the given tensor and it is your responsibility to make sure they outlive the model. Also, all inputs and
+ * outputs marked as init tensors will be shared if you reuse this model in other places.
+ * @param cmd The command to generate this model.
+ * @param hint The hint to run the command.
+ * @param flags The flags with the command.
+ * @param inputs A list of ccv_cnnp_tensor_param_t identify each input as either a init tensor or a ccv_cnnp_io_t.
+ * @param input_size The size of input list.
+ * @param outputs A list of ccv_cnnp_tensor_param_t identify each output as either a init tensor or a ccv_cnnp_io_t.
+ * @param output_size The size of output list.
+ * @return A model based on the given command.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const ccv_cnnp_tensor_param_t* const outputs, const int output_size);
+
+typedef struct {
+	ccv_nnc_tensor_symbol_t symbol; /**< The tensor symbol this is reference to. */
+	int type; /**< The type of the parameter, could be CCV_CNNP_IO, INIT_SHARED_TENSOR, or INIT_SHARED_TENSOR_TRAINABLE */
+	ccv_nnc_tensor_t* tensor; /**< The tensor that is going to be used for initialization. */
+} ccv_cnnp_tensor_symbol_param_t;
+/**
+ * A generic model based on the symbolic graph we provided. A list of tensor symbols are labeled whether it
+ * is ccv_cnnp_io_t or not (we identify whether this is a input or output based on whether it is in the graph).
+ * If it is not, we init it with a given tensor. If it is marked as trainable, that tensor will be differentiated
+ * against when you call ccv_cnnp_model_fit. The model doesn't take ownership over the init tensors. You are
+ * responsible to make sure the init tensors outlive the model until the initialization occurred. Also, these
+ * tensors will be shared if the model is reused.
+ * @param graph The symbolic graph that is our blue print for this model.
+ * @param tensor_symbol_params The list of tensor symbol parameters that labels a given symbol.
+ * @param tensor_symbol_param_size The size of the list.
+ * @return A model based on the given symbolic graph.
+ */
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size);
+
 /** @} */
 
 /** @} */

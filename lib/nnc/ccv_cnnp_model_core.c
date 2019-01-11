@@ -741,3 +741,48 @@ ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], c
 	model_pool->params = params;
 	return (ccv_cnnp_model_t*)model_pool;
 }
+
+#pragma mark - Command Layer
+
+typedef struct {
+	ccv_cnnp_model_t super;
+	ccv_cnnp_tensor_param_t* inputs;
+	int input_size;
+	ccv_cnnp_tensor_param_t* outputs;
+	int output_size;
+} ccv_cnnp_model_cmd_exec_t;
+
+static void _ccv_cnnp_cmd_exec_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
+{
+}
+
+static const ccv_cnnp_model_vtab_t ccv_cnnp_cmd_exec_isa = {
+	.build = _ccv_cnnp_cmd_exec_build,
+};
+
+ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const ccv_cnnp_tensor_param_t* const outputs, const int output_size)
+{
+	assert(input_size >= 0);
+	assert(output_size >= 0);
+	assert(input_size + output_size > 0);
+	// TODO: Check the cmd mask to see whether it is valid.
+	int i;
+	int io_input_size = 0;
+	for (i = 0; i < input_size; i++)
+		if (inputs->type == CCV_CNNP_IO)
+			++io_input_size;
+	int io_output_size = 0;
+	for (i = 0; i < output_size; i++)
+		if (outputs->type == CCV_CNNP_IO)
+			++io_output_size;
+	ccv_cnnp_model_cmd_exec_t* const model_cmd_exec = (ccv_cnnp_model_cmd_exec_t*)cccalloc(1, sizeof(ccv_cnnp_model_cmd_exec_t) + sizeof(ccv_nnc_tensor_symbol_t) * io_output_size + sizeof(ccv_cnnp_tensor_param_t) * (input_size + output_size));
+	model_cmd_exec->super.isa = &ccv_cnnp_cmd_exec_isa;
+	model_cmd_exec->super.input_size = io_input_size;
+	model_cmd_exec->super.outputs = (ccv_nnc_tensor_symbol_t*)(model_cmd_exec + 1);
+	model_cmd_exec->super.output_size = io_output_size;
+	model_cmd_exec->input_size = input_size;
+	model_cmd_exec->output_size = output_size;
+	model_cmd_exec->inputs = (ccv_cnnp_tensor_param_t*)(model_cmd_exec->super.outputs + io_output_size);
+	model_cmd_exec->outputs = model_cmd_exec->inputs + input_size;
+	return (ccv_cnnp_model_t*)model_cmd_exec;
+}

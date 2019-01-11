@@ -177,4 +177,20 @@ TEST_CASE("functional model's IO can represent multiple outputs")
 	ccv_cnnp_model_free(final);
 }
 
+TEST_CASE("make sure reuse model enables share weights")
+{
+	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, (ccv_cnnp_param_t){});
+	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(output0, output1));
+	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(1);
+	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1), CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	// TODO: I should run this, but I don't have L2 loss yet.
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"
