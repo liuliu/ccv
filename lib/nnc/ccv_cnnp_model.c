@@ -113,21 +113,23 @@ typedef struct {
 static void _ccv_cnnp_functional_model_deinit(ccv_cnnp_model_t* const super)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
-	int i, j;
+	int i, j = 0, k;
 	for (i = 0; i < self->sequence_size; i++)
 	{
 		ccv_cnnp_model_t* const model = self->sequence[i]->model;
 		if (!model)
 			continue;
+		self->sequence[j++] = (ccv_cnnp_model_io_t)model;
 		// Go through all their IO to remove itself as model.
 		assert(model->io);
-		for (j = 0; j < model->io->rnum; j++)
+		for (k = 0; k < model->io->rnum; k++)
 		{
-			ccv_cnnp_model_io_t model_io = *(ccv_cnnp_model_io_t*)ccv_array_get(model->io, j);
+			ccv_cnnp_model_io_t model_io = *(ccv_cnnp_model_io_t*)ccv_array_get(model->io, k);
 			model_io->model = 0;
 		}
-		ccv_cnnp_model_free(model);
 	}
+	for (i = 0; i < j; i++)
+		ccv_cnnp_model_free((ccv_cnnp_model_t*)self->sequence[i]);
 }
 
 static void _ccv_cnnp_functional_model_build(ccv_cnnp_model_t* const super, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)

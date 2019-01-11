@@ -2614,11 +2614,11 @@ typedef struct {
  * @param flags The flags with the command.
  * @param inputs A list of ccv_cnnp_tensor_param_t identify each input as either a init tensor or a ccv_cnnp_io_t.
  * @param input_size The size of input list.
- * @param outputs A list of ccv_cnnp_tensor_param_t identify each output as either a init tensor or a ccv_cnnp_io_t.
- * @param output_size The size of output list.
+ * @param output_size The size of the outputs. There is no need to give ccv_cnnp_tensor_param_t for outputs because
+ *        all of them are CCV_CNNP_IO type.
  * @return A model based on the given command.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const ccv_cnnp_tensor_param_t* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int output_size);
 
 typedef struct {
 	ccv_nnc_tensor_symbol_t symbol; /**< The tensor symbol this is reference to. */
@@ -2635,9 +2635,13 @@ typedef struct {
  * @param graph The symbolic graph that is our blue print for this model.
  * @param tensor_symbol_params The list of tensor symbol parameters that labels a given symbol.
  * @param tensor_symbol_param_size The size of the list.
+ * @param inputs The inputs to this graph. We can figure out which ones are inputs, but this gives us the order.
+ * @param input_size The size of the input list.
+ * @param outputs The outputs from this graph. We can figure out which ones are outputs, but this gives us the order.
+ * @param output_size The size of the output list.
  * @return A model based on the given symbolic graph.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
 
 /** @} */
 
