@@ -184,7 +184,8 @@ TEST_CASE("make sure reuse model enables share weights")
 	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, (ccv_cnnp_param_t){});
 	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
 	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
-	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(output0, output1));
+	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(), MODEL_IO_LIST(output0, output1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(final_output));
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(1);
 	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1), CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
