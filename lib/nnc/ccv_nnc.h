@@ -2614,11 +2614,12 @@ typedef struct {
  * @param flags The flags with the command.
  * @param inputs A list of ccv_cnnp_tensor_param_t identify each input as either a init tensor or a ccv_cnnp_io_t.
  * @param input_size The size of input list.
+ * @param outputs A list of types identify each output as ccv_cnnp_io_t or a none tensor.
  * @param output_size The size of the outputs. There is no need to give ccv_cnnp_tensor_param_t for outputs because
  *        all of them are CCV_CNNP_IO type.
  * @return A model based on the given command.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int* const outputs, const int output_size);
 
 typedef struct {
 	ccv_nnc_tensor_symbol_t symbol; /**< The tensor symbol this is reference to. */

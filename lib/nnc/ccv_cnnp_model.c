@@ -388,22 +388,22 @@ typedef struct {
 	ccv_nnc_tensor_arena_t* tensor_arena;
 } ccv_nnc_tensor_init_states_t;
 
-static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_symbol_t symbol)
+static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const input, const ccv_nnc_tensor_symbol_t output_symbol)
 {
 	ccv_nnc_tensor_init_states_t* const tensor_init_states = (ccv_nnc_tensor_init_states_t*)context;
 	ccv_nnc_tensor_arena_t* const tensor_arena = tensor_init_states->tensor_arena;
-	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(tensor_arena, symbol);
-	if (!tensor)
+	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, output_symbol);
+	if (!output_tensor)
 		return;
-	ccv_nnc_cmd_exec(cmd, hint, flags, 0, 0, &tensor, 1, 0);
+	ccv_nnc_cmd_exec(cmd, hint, flags, &input, input ? 1 : 0, &output_tensor, 1, 0);
 	const ccv_nnc_symbolic_graph_t* const graph = tensor_init_states->graph;
 	const int parallel_count = tensor_init_states->parallel_count;
 	int i;
 	for (i = 1; i < parallel_count; i++)
 	{
-		ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(graph, symbol, i));
+		ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(graph, output_symbol, i));
 		if (copy)
-			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensor, 1, &copy, 1, 0);
+			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &output_tensor, 1, &copy, 1, 0);
 	}
 }
 

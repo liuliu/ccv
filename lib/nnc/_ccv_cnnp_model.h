@@ -12,7 +12,7 @@
 
 #include "ccv_nnc.h"
 
-typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_symbol_t symbol);
+typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const input, const ccv_nnc_tensor_symbol_t output_symbol);
 typedef void(*ccv_cnnp_cmd_updater_f)(void* const context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint);
 /**
  * This is the virtual table of the model.
