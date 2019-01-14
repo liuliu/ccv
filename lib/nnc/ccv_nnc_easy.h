@@ -58,6 +58,10 @@
 
 #define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
 
+#define MODEL_CMD_TENSOR_MAP_X(...)(ccv_cnnp_tensor_param_t []){__VA_ARGS__}
+
+#define MODEL_CMD_TENSOR_LIST_X(...)(int []){__VA_ARGS__}
+
 #define COLUMN_ID_LIST_X(...)(int []){__VA_ARGS__}
 
 /**
@@ -139,6 +143,16 @@
  * This method effectively gives two parameters as one.
  */
 #define MODEL_IO_LIST(...) MODEL_IO_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+/**
+ * Pass a list of CNNP tensor params to ccv_cnnp_cmd_exec which accepts (tensor params array, tensor params array size).
+ * This method effectively gives two parameters as one.
+ */
+#define MODEL_CMD_TENSOR_MAP(...) MODEL_CMD_TENSOR_MAP_X(__VA_ARGS__), (sizeof(MODEL_CMD_TENSOR_MAP_X(__VA_ARGS__)) / sizeof(ccv_cnnp_tensor_param_t))
+/**
+ * Pass a list of CNNP tensor type to ccv_cnnp_cmd_exec which accepts (tensor type array, tensor type array size).
+ * This method effectively gives two parameters as one.
+ */
+#define MODEL_CMD_TENSOR_LIST(...) MODEL_CMD_TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of dataframe column ids to iteration function that accepts (column id array, column id array size).
  * This method effectively gives two parameters as one.

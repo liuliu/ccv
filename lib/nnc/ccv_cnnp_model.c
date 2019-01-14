@@ -446,14 +446,26 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	memcpy(compiled_data->dest_to_evals, ccv_nnc_symbolic_graph_destinations(model->graph), sizeof(ccv_nnc_graph_exec_symbol_t) * dest_to_eval_size);
 	int i, j;
 	const int output_size = model->output_size;
-	assert(fit_size == output_size * parallel_count);
+	assert(!fits || fit_size == output_size * parallel_count);
 	ccv_nnc_tensor_symbol_t f[output_size];
 	ccv_nnc_graph_exec_symbol_t loss_func[output_size];
-	for (i = 0; i < output_size; i++)
+	if (compiled_data->loss.cmd == CCV_NNC_NOOP)
 	{
-		const ccv_nnc_tensor_symbol_t fit = compiled_data->fits[i] = ccv_nnc_tensor_symbol_new(model->graph, fits[i]->info, 0);
-		f[i] = ccv_nnc_tensor_symbol_new(model->graph, ccv_nnc_tensor_auto, 0);
-		loss_func[i] = ccv_nnc_graph_exec_symbol_new(model->graph, compiled_data->loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(f[i]), 0);
+		// If no loss function provided, there is no fits.
+		for (i = 0; i < output_size; i++)
+		{
+			compiled_data->fits[i] = NO_TENSOR_SYMBOL;
+			f[i] = model->outputs[i];
+			loss_func[i] = (ccv_nnc_graph_exec_symbol_t){};
+			// This can also be the symbol generated the output, but that is less clear from here (especially given simplification we can do).
+		}
+	} else {
+		for (i = 0; i < output_size; i++)
+		{
+			const ccv_nnc_tensor_symbol_t fit = compiled_data->fits[i] = ccv_nnc_tensor_symbol_new(model->graph, fits[i]->info, 0);
+			f[i] = ccv_nnc_tensor_symbol_new(model->graph, ccv_nnc_tensor_auto, 0);
+			loss_func[i] = ccv_nnc_graph_exec_symbol_new(model->graph, compiled_data->loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(f[i]), 0);
+		}
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	const int trainable_size = compiled_data->trainables->rnum;
@@ -467,7 +479,14 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	{
 		const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(model->graph, f[i]);
 		const ccv_nnc_graph_exec_symbol_t set = ccv_nnc_graph_exec_symbol_new(model->graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(df), 0);
-		ccv_nnc_graph_exec_symbol_concat(model->graph, loss_func[i], set);
+		if (loss_func[i].graph)
+			ccv_nnc_graph_exec_symbol_concat(model->graph, loss_func[i], set);
+		else {
+			// Otherwise, the set can just be the subsequent ops for all destination symbols (this is before the minimize call.
+			ccv_nnc_graph_exec_symbol_t* const destinations = ccv_nnc_symbolic_graph_destinations(model->graph);
+			for (j = 0; j < ccv_nnc_symbolic_graph_destination_size(model->graph); j++)
+				ccv_nnc_graph_exec_symbol_concat(model->graph, destinations[j], set);
+		}
 		// Relies on autogen to find the output execs.
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS);
@@ -544,7 +563,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_FIT_MODE;
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
-	assert(output_size == fit_size);
+	assert(!fits || output_size == fit_size);
 	assert(output_size > 0);
 	if (!compiled_data->gradient_init)
 		_ccv_cnnp_model_gradient_jit(model, fits, fit_size);
@@ -591,21 +610,23 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	}
 	const int fit_size_per_p = fit_size / parallel_count;
 	for (i = 0; i < fit_size_per_p; i++)
-	{
-		const ccv_nnc_tensor_bind_t bind = {
-			.symbol = compiled_data->fits[i],
-			.tensor = fits[i]
-		};
-		ccv_array_push(tensor_binds, &bind);
-		for (j = 1; j < parallel_count; j++)
+		if (compiled_data->fits[i].d >= 0)
 		{
+			assert(fits);
 			const ccv_nnc_tensor_bind_t bind = {
-				.symbol = ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->fits[i], j),
-				.tensor = fits[i + fit_size_per_p * j]
+				.symbol = compiled_data->fits[i],
+				.tensor = fits[i]
 			};
 			ccv_array_push(tensor_binds, &bind);
+			for (j = 1; j < parallel_count; j++)
+			{
+				const ccv_nnc_tensor_bind_t bind = {
+					.symbol = ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->fits[i], j),
+					.tensor = fits[i + fit_size_per_p * j]
+				};
+				ccv_array_push(tensor_binds, &bind);
+			}
 		}
-	}
 	const int trainable_size = compiled_data->trainables->rnum;
 	const int retain_size = compiled_data->retains->rnum;
 	for (i = 0; i < trainable_size; i++)
@@ -729,7 +750,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 	assert(compiled_data);
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
-	assert(fit_size == output_size);
+	assert(!fits || fit_size == output_size);
 	assert(model->graph);
 	int i, j;
 	if (!compiled_data->graph || compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_FIT_MODE)
@@ -762,11 +783,13 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		}
 		const int fit_size_per_p = fit_size / parallel_count;
 		for (i = 0; i < fit_size_per_p; i++)
-		{
-			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, compiled_data->fits[i], fits[i]);
-			for (j = 1; j < parallel_count; j++)
-				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->fits[i], j), fits[i + fit_size_per_p * j]);
-		}
+			if (compiled_data->fits[i].d >= 0)
+			{
+				assert(fits);
+				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, compiled_data->fits[i], fits[i]);
+				for (j = 1; j < parallel_count; j++)
+					ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->fits[i], j), fits[i + fit_size_per_p * j]);
+			}
 	}
 	if (compiled_data->is_test)
 	{

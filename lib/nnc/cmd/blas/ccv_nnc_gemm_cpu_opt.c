@@ -120,7 +120,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = CCV_NNC_CMD_OPT_GEMM_ALGO_COUNT;
@@ -129,7 +129,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_FORWARD, CCV_NNC_BACKEND_CPU_OPT)(ccv_nnc_
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_GEMM_BACKWARD, CCV_NNC_BACKEND_CPU_OPT)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
-	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC;
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW;
 	registry->tensor_datatypes = CCV_32F;
 	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
 	registry->algorithms = CCV_NNC_CMD_OPT_GEMM_ALGO_COUNT;

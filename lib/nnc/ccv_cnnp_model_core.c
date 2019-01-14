@@ -825,12 +825,13 @@ ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			assert(inputs[i].tensor);
 		}
 	int io_output_size = 0;
-	for (i = 0; i < input_size; i++)
+	for (i = 0; i < output_size; i++)
 		if (outputs[i] == CCV_CNNP_IO)
 			++io_output_size;
 		else {
 			assert(outputs[i] == CCV_CNNP_NO_TENSOR);
 		}
+	assert(io_output_size > 0);
 	ccv_cnnp_model_cmd_exec_t* const model_cmd_exec = (ccv_cnnp_model_cmd_exec_t*)cccalloc(1, sizeof(ccv_cnnp_model_cmd_exec_t) + sizeof(ccv_nnc_tensor_symbol_t) * (io_output_size + input_size + output_size) + sizeof(ccv_cnnp_tensor_param_t) * input_size + sizeof(int) * output_size);
 	model_cmd_exec->super.isa = &ccv_cnnp_cmd_exec_isa;
 	model_cmd_exec->super.input_size = io_input_size;
