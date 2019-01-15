@@ -229,7 +229,7 @@ TEST_CASE("train model with share weights and L2 loss")
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(1, 1);
 	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(1, 1);
 	ccv_nnc_tensor_param_t b1 = CPU_TENSOR_NCHW(1, 1);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0.1, 1, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0.1, 0.1, 0, 0), CMD_NOOP());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
 	ccv_nnc_tensor_t* a1_tensor = ccv_nnc_tensor_new(0, a1, 0);
@@ -237,21 +237,24 @@ TEST_CASE("train model with share weights and L2 loss")
 	ccv_nnc_tensor_t* b1_tensor = ccv_nnc_tensor_new(0, b1, 0);
 	ccv_nnc_tensor_t* o0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(1), 0);
 	a0_tensor->data.f32[0] = 1;
-	a1_tensor->data.f32[0] = 2;
+	a1_tensor->data.f32[0] = 3;
 	b0_tensor->data.f32[0] = 2;
-	b1_tensor->data.f32[0] = 4;
+	b1_tensor->data.f32[0] = 3;
 	int i;
 	for (i = 0; i < 10; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 1, 0, 0));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0));
 	for (i = 0; i < 100; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0));
+	for (i = 0; i < 1000; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
 	a0_tensor->data.f32[0] = 2;
 	a1_tensor->data.f32[0] = 2; // The final result should be 4.
-	b0_tensor->data.f32[0] = 3; // diff is 1
-	b1_tensor->data.f32[0] = 5; // diff is 1, and 1^2 + 1^2 = 2.
+	b0_tensor->data.f32[0] = 2; // diff is 0.5
+	b1_tensor->data.f32[0] = 3; // diff is 0.5, and 0.5^2 + 0.5^2 = 0.5.
 	ccv_cnnp_model_evaluate(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
-	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 2, 0.5, "We should linear regressed this.");
+	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 0.5, 2 * 1e-2, "We should linear regressed this.");
 	ccv_nnc_tensor_free(a0_tensor);
 	ccv_nnc_tensor_free(a1_tensor);
 	ccv_nnc_tensor_free(b0_tensor);
