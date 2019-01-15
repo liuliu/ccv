@@ -84,6 +84,62 @@ ccv_cnnp_model_t* _cifar_10_resnet56(void)
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
+ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, const int residual)
+{
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_t* conv = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.norm = CCV_CNNP_BATCH_NORM,
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (1, 1)),
+	});
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv, MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* pool = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
+		.hint = HINT((strides, strides), (0, 0)),
+	});
+	output = ccv_cnnp_model_apply(pool, MODEL_IO_LIST(output));
+	if (residual)
+	{
+		ccv_cnnp_model_io_t shortcut = output;
+		ccv_cnnp_model_t* res1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (1, 1)),
+		});
+		output = ccv_cnnp_model_apply(res1, MODEL_IO_LIST(output));
+		ccv_cnnp_model_t* res2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (1, 1)),
+		});
+		output = ccv_cnnp_model_apply(res2, MODEL_IO_LIST(output));
+		ccv_cnnp_model_t* const add = ccv_cnnp_add();
+		output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
+	}
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
+}
+
+ccv_cnnp_model_t* _cifar_10_dawn(void)
+{
+	ccv_cnnp_model_t* prep = ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+		.norm = CCV_CNNP_BATCH_NORM,
+		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (1, 1)),
+	});
+	ccv_cnnp_model_t* layer1 = _dawn_layer_new(128, 2, 1);
+	ccv_cnnp_model_t* layer2 = _dawn_layer_new(256, 2, 0);
+	ccv_cnnp_model_t* layer3 = _dawn_layer_new(512, 2, 1);
+	return ccv_cnnp_sequential_new(MODEL_LIST(
+		prep,
+		layer1,
+		layer2,
+		layer3,
+		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}),
+		ccv_cnnp_flatten(),
+		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
+		})));
+}
+
 ccv_cnnp_model_t* _cifar_10_alexnet(void)
 {
 	return ccv_cnnp_sequential_new(MODEL_LIST(
@@ -124,7 +180,7 @@ ccv_cnnp_model_t* _cifar_10_alexnet(void)
 
 static void train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
-	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet56();
+	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn();
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;

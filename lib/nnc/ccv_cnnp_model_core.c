@@ -688,7 +688,8 @@ static void _ccv_cnnp_max_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
+	const ccv_nnc_graph_exec_symbol_t exec = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
+	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->params.hint);
 	outputs[0] = pool_output;
 }
 
@@ -723,7 +724,8 @@ static void _ccv_cnnp_average_pool_build(ccv_cnnp_model_t* const super, ccv_nnc_
 	ccv_nnc_tensor_param_t output_params;
 	ccv_nnc_hint_tensor_auto(cmd, &params, 1, self->params.hint, &output_params, 1);
 	const ccv_nnc_tensor_symbol_t pool_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
-	ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
+	const ccv_nnc_graph_exec_symbol_t exec = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0]), TENSOR_SYMBOL_LIST(pool_output), 0);
+	ccv_nnc_graph_exec_symbol_set_hint(graph, exec, self->params.hint);
 	outputs[0] = pool_output;
 }
 
