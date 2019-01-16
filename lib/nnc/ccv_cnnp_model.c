@@ -448,7 +448,6 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	const int output_size = model->output_size;
 	assert(!fits || fit_size == output_size * parallel_count);
 	ccv_nnc_tensor_symbol_t f[output_size];
-	ccv_nnc_graph_exec_symbol_t loss_func[output_size];
 	if (compiled_data->loss.cmd == CCV_NNC_NOOP)
 	{
 		// If no loss function provided, there is no fits.
@@ -456,15 +455,13 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 		{
 			compiled_data->fits[i] = NO_TENSOR_SYMBOL;
 			f[i] = model->outputs[i];
-			loss_func[i] = (ccv_nnc_graph_exec_symbol_t){};
-			// This can also be the symbol generated the output, but that is less clear from here (especially given simplification we can do).
 		}
 	} else {
 		for (i = 0; i < output_size; i++)
 		{
 			const ccv_nnc_tensor_symbol_t fit = compiled_data->fits[i] = ccv_nnc_tensor_symbol_new(model->graph, fits[i]->info, 0);
 			f[i] = ccv_nnc_tensor_symbol_new(model->graph, ccv_nnc_tensor_auto, 0);
-			loss_func[i] = ccv_nnc_graph_exec_symbol_new(model->graph, compiled_data->loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(f[i]), 0);
+			ccv_nnc_graph_exec_symbol_new(model->graph, compiled_data->loss, TENSOR_SYMBOL_LIST(model->outputs[i], fit), TENSOR_SYMBOL_LIST(f[i]), 0);
 		}
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
