@@ -809,7 +809,8 @@ typedef struct {
 
 enum {
 	CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS = 0x01, /**< Initialize underlying tensor for the symbol with zeros */
-	CCV_NNC_TENSOR_SYMBOL_TAPE_VAR = 0x02, /**< Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC) */
+	CCV_NNC_TENSOR_SYMBOL_INIT_ONES = 0x02, /**< Initialize underlying tensor for the symbol with ones */
+	CCV_NNC_TENSOR_SYMBOL_TAPE_VAR = 0x04, /**< Mark this as a tape variable (it cannot be folded, will contain flag CCV_TAPE_ALLOC) */
 	// The one below is special.
 	CCV_NNC_TENSOR_SYMBOL_DEAD = 0x80000000, /**< Mark this tensor symbol as dead, any future usage will cause assertion */
 };

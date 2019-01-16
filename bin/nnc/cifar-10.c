@@ -93,7 +93,7 @@ ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, const in
 		.hint = HINT((1, 1), (1, 1)),
 	});
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv, MODEL_IO_LIST(input));
-	ccv_cnnp_model_t* pool = ccv_cnnp_average_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
+	ccv_cnnp_model_t* pool = ccv_cnnp_max_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
 		.hint = HINT((strides, strides), (0, 0)),
 	});
 	output = ccv_cnnp_model_apply(pool, MODEL_IO_LIST(output));
@@ -133,7 +133,7 @@ ccv_cnnp_model_t* _cifar_10_dawn(void)
 		layer1,
 		layer2,
 		layer3,
-		ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}),
+		ccv_cnnp_max_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}),
 		ccv_cnnp_flatten(),
 		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
@@ -305,7 +305,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			ccv_cnnp_dataframe_shuffle(raw_train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
 		}
-		if ((i + 1) % (10000 / device_count) == 0)
+		if ((i + 1) % (5000 / device_count) == 0)
 		{
 			learn_rate *= 0.5;
 			ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));

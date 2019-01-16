@@ -205,7 +205,7 @@ static void _ccv_cnnp_identity_init_states(ccv_cnnp_model_t* const super, ccv_nn
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 	if (self->scale.graph)
-		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 	int i;
 	if (self->zero_inits)
 		for (i = 0; i < self->zero_inits->rnum; i++)
@@ -396,12 +396,13 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
 	const int n = ccv_max(ccv_nnc_tensor_get_n(weight_params), 1);
 	const int count = ccv_nnc_tensor_count(weight_params);
-	const float glorot = sqrtf(2) / sqrtf(count / n + n);
-	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, 0, self->weights);
+	const float std = sqrtf(2) / sqrtf(count / n);
+	const float bound = sqrtf(3) * std;
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 	if (self->scale.graph)
-		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 	int i;
 	if (self->zero_inits)
 		for (i = 0; i < self->zero_inits->rnum; i++)
@@ -584,14 +585,14 @@ static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_s
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	const ccv_nnc_tensor_param_t weight_params = ccv_nnc_tensor_symbol_params(graph, self->weights);
-	const int n = weight_params.dim[0];
 	const int c = weight_params.dim[1];
-	const float glorot = sqrtf(2) / sqrtf(c + n);
-	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-glorot, glorot), ccv_nnc_no_hint, 0, 0, self->weights);
+	const float std = sqrtf(2) / sqrtf(c);
+	const float bound = sqrtf(3) * std;
+	initializer(context, CMD_RANDOM_UNIFORM_FORWARD(-bound, bound), ccv_nnc_no_hint, 0, 0, self->weights);
 	if (self->bias.graph)
 		initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, self->bias);
 	if (self->scale.graph)
-		initializer(context, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, self->scale);
+		initializer(context, CMD_RANDOM_UNIFORM_FORWARD(0, 1), ccv_nnc_no_hint, 0, 0, self->scale);
 	int i;
 	if (self->zero_inits)
 		for (i = 0; i < self->zero_inits->rnum; i++)

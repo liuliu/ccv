@@ -55,6 +55,8 @@ enum {
 #define TENSOR_SET_UNFOLDABLE_AS_OUTPUT(t) (t.flags = (t.flags | UNFOLDABLE_AS_OUTPUT))
 #define TENSOR_IS_UNFOLDABLE_AS_OUTPUT(t) (t.flags & UNFOLDABLE_AS_OUTPUT)
 
+#define TENSOR_REQUIRE_INIT(flags) (((flags) & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS) || ((flags) & CCV_NNC_TENSOR_SYMBOL_INIT_ONES))
+
 // Holds additional information about the exe nodes.
 typedef struct {
 	int flags;
@@ -2057,7 +2059,7 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 			assert(TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]));
 			/* If this is first encounter, its head starts (this tensor is init'ed outside of the graph
 			 * from the very beginning of the graph life-cycle and ends here. */
-			if (tensor_blocks[d].head->rnum == 0 && !(tensor_symbol_info[d].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS))
+			if (tensor_blocks[d].head->rnum == 0 && !TENSOR_REQUIRE_INIT(tensor_symbol_info[d].flags))
 			{
 				for (j = 0; j < source_size; j++)
 				{
@@ -3597,7 +3599,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	// After the graph is materialized, we need to handle the case that some of these tensors require to be initialized to zero before use.
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
-		if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
+		if (TENSOR_REQUIRE_INIT(tensor_symbol_info[i].flags))
 		{
 			int ref = i;
 			while (tensor_symbol_info[ref].alias_ref)
@@ -3612,7 +3614,11 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 				continue;
 			ccv_nnc_tensor_t* tensor = tensor_arena->vt_tensors[ref];
 			// Now, we have the original tensor, we can get the actual tensor, and construct the set command.
-			ccv_nnc_graph_exec_t set_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_GENERIC(), 0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
+			ccv_nnc_graph_exec_t set_exec;
+			if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
+				set_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(0), 0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
+			else if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_INIT_ONES)
+				set_exec = ccv_nnc_graph_exec_new(graph, ccv_nnc_cmd(CCV_NNC_SET_FORWARD, 0, CMD_BLAS(1), 0), ccv_nnc_no_hint, 0, 0, &tensor, 1);
 			for (j = 0; j < tensor_blocks[ref].head->rnum; j++)
 			{
 				const int outgoing = *(int*)ccv_array_get(tensor_blocks[ref].head, j);

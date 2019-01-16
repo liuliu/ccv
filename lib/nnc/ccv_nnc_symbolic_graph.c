@@ -1354,6 +1354,8 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 		int flag = -1;
 		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
 			flag = fputs(" (0", out); // Output if it is zero init'ed.
+		else if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ONES)
+				flag = fputs(" (1", out); // Output if it is one init'ed.
 		if (symbol_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
 			flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
 		if (CCV_TENSOR_GET_MEMORY(symbol_info->info.type) == CCV_TENSOR_GPU_MEMORY &&
@@ -1387,6 +1389,8 @@ static void _ccv_nnc_symbolic_graph_dot_tensor_symbol(const int index, const ccv
 			int flag = -1;
 			if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ZEROS)
 				flag = fputs(" (0", out); // Output if it is zero init'ed.
+			else if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_INIT_ONES)
+				flag = fputs(" (1", out); // Output if it is one init'ed.
 			if (alias_info->flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR)
 				flag = (flag >= 0) ? fputs(",t", out) : fputs(" (t", out); // Output is a tape variable
 			if (CCV_TENSOR_GET_MEMORY(alias_info->info.type) == CCV_TENSOR_GPU_MEMORY &&

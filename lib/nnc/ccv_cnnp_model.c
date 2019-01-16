@@ -468,6 +468,11 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 		}
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+	ccv_nnc_symbolic_graph_simplify(model->graph,
+		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_OPS_FUSION), // Only do Ops fusion, in this way, we can fuse the loss function.
+		f, model->output_size,
+		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
+	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	const int trainable_size = compiled_data->trainables->rnum;
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimizer);
 	compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size + sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size);
@@ -478,16 +483,8 @@ static void _ccv_cnnp_model_gradient_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	for (i = 0; i < output_size; i++)
 	{
 		const ccv_nnc_tensor_symbol_t df = ccv_nnc_tensor_symbol_for_backward(model->graph, f[i]);
-		const ccv_nnc_graph_exec_symbol_t set = ccv_nnc_graph_exec_symbol_new(model->graph, CMD_SET_FORWARD(1), 0, 0, TENSOR_SYMBOL_LIST(df), 0);
-		if (loss_func[i].graph)
-			ccv_nnc_graph_exec_symbol_concat(model->graph, loss_func[i], set);
-		else {
-			// Otherwise, the set can just be the subsequent ops for all destination symbols (this is before the minimize call.
-			ccv_nnc_graph_exec_symbol_t* const destinations = ccv_nnc_symbolic_graph_destinations(model->graph);
-			for (j = 0; j < ccv_nnc_symbolic_graph_destination_size(model->graph); j++)
-				ccv_nnc_graph_exec_symbol_concat(model->graph, destinations[j], set);
-		}
-		// Relies on autogen to find the output execs.
+		// Init this to 1 so we can backprop.
+		ccv_nnc_tensor_symbol_set_flags(model->graph, df, CCV_NNC_TENSOR_SYMBOL_INIT_ONES);
 	}
 	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS);
 	ccv_nnc_symbolic_graph_set_destinations(model->graph, compiled_data->update_execs, trainable_size);
