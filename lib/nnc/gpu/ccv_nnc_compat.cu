@@ -135,25 +135,6 @@ static ccv_nnc_stream_context_compat_t* _ccv_nnc_default_stream_compat()
 	return &ccv_nnc_per_thread_gpu_stream_context;
 }
 
-static cudnnDataType_t _ccv_nnc_cudnn_datatype(int datatype)
-{
-	switch (datatype)
-	{
-		case CCV_8U:
-			return CUDNN_DATA_INT8;
-		case CCV_32S:
-			return CUDNN_DATA_INT32;
-		case CCV_16F:
-			return CUDNN_DATA_HALF;
-		case CCV_32F:
-			return CUDNN_DATA_FLOAT;
-		case CCV_64F:
-			return CUDNN_DATA_DOUBLE;
-	}
-	assert(0 && "shouldn't be here");
-	return CUDNN_DATA_FLOAT;
-}
-
 typedef struct {
 	ccv_nnc_stream_signal_t super;
 	cudaEvent_t event;
@@ -438,6 +419,25 @@ float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const str
 }
 
 #ifdef HAVE_CUDNN
+
+static cudnnDataType_t _ccv_nnc_cudnn_datatype(int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_8U:
+			return CUDNN_DATA_INT8;
+		case CCV_32S:
+			return CUDNN_DATA_INT32;
+		case CCV_16F:
+			return CUDNN_DATA_HALF;
+		case CCV_32F:
+			return CUDNN_DATA_FLOAT;
+		case CCV_64F:
+			return CUDNN_DATA_DOUBLE;
+	}
+	return CUDNN_DATA_FLOAT;
+}
+
 cudnnHandle_t ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
