@@ -48,6 +48,7 @@ enum {
 	CCV_32F = 0x04000,
 	CCV_64S = 0x08000,
 	CCV_64F = 0x10000,
+	CCV_16F = 0x20000, // We can still squeeze in 2 more types. (0xFF000 are for data types).
 };
 
 enum {
@@ -57,7 +58,13 @@ enum {
 	CCV_C4 = 0x004,
 };
 
-static const int _ccv_get_data_type_size[] = { -1, 1, 4, -1, 4, -1, -1, -1, 8, -1, -1, -1, -1, -1, -1, -1, 8 };
+static const int _ccv_get_data_type_size[] = {
+	-1, 1, 4,
+	-1, 4,
+	-1, -1, -1, 8,
+	-1, -1, -1, -1, -1, -1, -1, 8,
+	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, 2
+};
 
 #define CCV_GET_DATA_TYPE(x) ((x) & 0xFF000)
 #define CCV_GET_DATA_TYPE_SIZE(x) _ccv_get_data_type_size[CCV_GET_DATA_TYPE(x) >> 12]

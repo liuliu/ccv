@@ -11,6 +11,8 @@ TEST_CASE("type size macro")
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_32F), 4, "CCV_32F should have size 4");
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_64S), 8, "CCV_64S should have size 8");
 	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_64F), 8, "CCV_64F should have size 8");
+	REQUIRE_EQ(CCV_GET_DATA_TYPE_SIZE(CCV_16F), 2, "CCV_64F should have size 2");
+	REQUIRE_EQ(sizeof(ccv_float16_t), 2, "sizeof float16 should be 2");
 }
 
 TEST_CASE("dynamic array")

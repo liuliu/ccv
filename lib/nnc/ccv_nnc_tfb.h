@@ -57,9 +57,14 @@ enum {
 	CCV_TENSOR_PINNED_MEM = 0x04000000, // tensor is pinned in CUDA. This matches CCV_PINNED_MEM.
 };
 
+typedef struct {
+	short v;
+} ccv_float16_t; // In this way, you cannot perform any operations on float16.
+
 typedef union ccv_numeric_data_u {
 	unsigned char* u8;
 	int* i32;
+	ccv_float16_t* f16;
 	float* f32;
 	int64_t* i64;
 	uint64_t* u64;
@@ -125,6 +130,7 @@ typedef struct {
 			union {
 				unsigned char u8;
 				int i32;
+				ccv_float16_t f16;
 				float f32;
 				int64_t i64;
 				double f64;
@@ -146,6 +152,7 @@ typedef struct {
 	union {
 		unsigned char u8;
 		int i32;
+		ccv_float16_t f16;
 		float f32;
 		int64_t i64;
 		double f64;
