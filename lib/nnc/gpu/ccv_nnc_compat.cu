@@ -69,8 +69,16 @@ typedef struct {
 	cublasHandle_t cublas;
 	struct {
 		int n;
+		__half* data;
+	} ones_16;
+	struct {
+		int n;
 		float* data;
-	} ones;
+	} ones_32;
+	struct {
+		int n;
+		double* data;
+	} ones_64;
 	size_t workspace_size;
 	void* workspace;
 #ifdef HAVE_CUDNN
@@ -317,8 +325,12 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 				cudaStreamDestroy(stream_compat->_heap_gpus[i].stream);
 				if (stream_compat->_heap_gpus[i].cublas)
 					cublasDestroy(stream_compat->_heap_gpus[i].cublas);
-				if (stream_compat->_heap_gpus[i].ones.data)
-					cudaFree(stream_compat->_heap_gpus[i].ones.data);
+				if (stream_compat->_heap_gpus[i].ones_16.data)
+					cudaFree(stream_compat->_heap_gpus[i].ones_16.data);
+				if (stream_compat->_heap_gpus[i].ones_32.data)
+					cudaFree(stream_compat->_heap_gpus[i].ones_32.data);
+				if (stream_compat->_heap_gpus[i].ones_64.data)
+					cudaFree(stream_compat->_heap_gpus[i].ones_64.data);
 #ifdef HAVE_CUDNN
 				if (stream_compat->_heap_gpus[i].cudnn)
 					cudnnDestroy(stream_compat->_heap_gpus[i].cudnn);
@@ -333,8 +345,12 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 		cudaStreamDestroy(stream_compat->_inline_gpu.stream);
 		if (stream_compat->_inline_gpu.cublas)
 			cublasDestroy(stream_compat->_inline_gpu.cublas);
-		if (stream_compat->_inline_gpu.ones.data)
-			cudaFree(stream_compat->_inline_gpu.ones.data);
+		if (stream_compat->_inline_gpu.ones_16.data)
+			cudaFree(stream_compat->_inline_gpu.ones_16.data);
+		if (stream_compat->_inline_gpu.ones_32.data)
+			cudaFree(stream_compat->_inline_gpu.ones_32.data);
+		if (stream_compat->_inline_gpu.ones_64.data)
+			cudaFree(stream_compat->_inline_gpu.ones_64.data);
 #ifdef HAVE_CUDNN
 		if (stream_compat->_inline_gpu.cudnn)
 			cudnnDestroy(stream_compat->_inline_gpu.cudnn);
@@ -393,29 +409,45 @@ cublasHandle_t ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t*
 }
 
 // A simple kernel to set all values to 1.
-__global__ static void ones(float* x, int n)
+template<typename NUM>
+__global__ static void _ones(NUM* x, int n)
 {
 	const int thidx = blockIdx.x * blockDim.x + threadIdx.x;
 	if (thidx < n)
 		x[thidx] = 1.;
 }
 
-float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n)
+template<typename ONES>
+static void* _ccv_nnc_stream_context_get_ones(ONES &device_ones, const int n, cudaStream_t &stream)
+{
+	if (!device_ones.data || n > device_ones.n)
+	{
+		if (device_ones.data)
+			cudaFree(device_ones.data);
+		device_ones.n = n;
+		cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n);
+		const int block_x = (n + 255) >> 8;
+		_ones<<<block_x, 256, 0, stream>>>(device_ones.data, n);
+	}
+	return device_ones.data;
+}
+
+void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n, const int datatype)
 {
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
 	ccv_nnc_stream_context_device_local_t* const device_local = _ccv_nnc_stream_compat_device_local(stream_compat);
-	if (!device_local->ones.data || n > device_local->ones.n)
+	switch (datatype)
 	{
-		if (device_local->ones.data)
-			cudaFree(device_local->ones.data);
-		device_local->ones.n = n;
-		cudaMalloc(&device_local->ones.data, sizeof(float) * n);
-		const int block_x = (n + 255) >> 8;
-		ones<<<block_x, 256, 0, device_local->stream>>>(device_local->ones.data, n);
+		case CCV_16F:
+			return _ccv_nnc_stream_context_get_ones(device_local->ones_16, n, device_local->stream);
+		case CCV_64F:
+			return _ccv_nnc_stream_context_get_ones(device_local->ones_64, n, device_local->stream);
+		case CCV_32F:
+		default:
+			return _ccv_nnc_stream_context_get_ones(device_local->ones_32, n, device_local->stream);
 	}
-	return device_local->ones.data;
 }
 cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
 {

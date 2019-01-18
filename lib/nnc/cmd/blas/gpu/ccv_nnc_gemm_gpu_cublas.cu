@@ -39,9 +39,9 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 	static const float one = 1;
 	static const float zero = 0;
-	const float* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
 	if (bias)
 	{
+		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size, b->info.datatype);
 		CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bdim[0], batch_size, 1, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bdim[0], device_ones, CUDA_R_32F, 1, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, CUBLAS_OP_N, bdim[0], batch_size, adim[0], &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), winc[1], a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), a_batch_inc, &one, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 	} else
@@ -79,7 +79,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 	if (bias)
 	{
-		const float * const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size);
+		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size, bias->info.datatype);
 		if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, gdim[0], 1, batch_size, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_batch_inc, device_ones, CUDA_R_32F, batch_size, &zero, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), gdim[0], ccv_nnc_cuda_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		else

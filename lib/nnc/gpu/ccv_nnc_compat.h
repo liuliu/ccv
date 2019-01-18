@@ -55,6 +55,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 // CUDA objects are C++ objects, this is a C++ header.
 #include <cuda.h>
 #include <cublas_v2.h>
+#include <cuda_fp16.h>
 #ifdef HAVE_CUDNN
 #include <cudnn.h>
 #if CUDNN_VERSION < 5000 // Doesn't support CUDNN with version lower than 5000 (major version 5).
@@ -94,7 +95,7 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 #endif
 
 // Return floating point one on device memory.
-CCV_WARN_UNUSED(float*) ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n);
+CCV_WARN_UNUSED(void*) ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n, const int datatype);
 
 #ifdef HAVE_CUDNN
 CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context);
