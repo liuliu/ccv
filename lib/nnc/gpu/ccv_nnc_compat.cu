@@ -417,10 +417,27 @@ float* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const str
 	}
 	return device_local->ones.data;
 }
+cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_8U:
+			return CUDA_R_8I;
+		case CCV_32S:
+			return CUDA_R_32F;
+		case CCV_16F:
+			return CUDA_R_16F;
+		case CCV_32F:
+			return CUDA_R_32F;
+		case CCV_64F:
+			return CUDA_R_64F;
+	}
+	return CUDA_R_32F;
+}
 
 #ifdef HAVE_CUDNN
 
-static cudnnDataType_t _ccv_nnc_cudnn_datatype(int datatype)
+static cudnnDataType_t _ccv_nnc_cudnn_datatype(const int datatype)
 {
 	switch (datatype)
 	{

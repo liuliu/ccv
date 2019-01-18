@@ -74,6 +74,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #define CUDA_GET_BLOCKS(n) ccv_min(((n) + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS, 4096)
 
 extern "C" {
+CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_datatype(const int datatype);
 // Stream context methods to get the underlying objects, note that none of these methods are thread-safe.
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
