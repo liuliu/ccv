@@ -32,17 +32,17 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 		if (i < convnet->count - 1)
 		{
 			if (layer->type == CCV_CONVNET_FULL_CONNECT)
-				tensor_info = ONE_CPU_TENSOR(rows * cols * partition);
+				tensor_info = CPU_TENSOR_NHWC(32F, rows * cols * partition);
 			else
-				tensor_info = ONE_CPU_TENSOR(rows, cols, (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->input.matrix.channels));
+				tensor_info = CPU_TENSOR_NHWC(32F, rows, cols, (layer->type == CCV_CONVNET_CONVOLUTIONAL ? layer->net.convolutional.count : layer->input.matrix.channels));
 			tensor_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, tensor_info, 0);
 		}
 		ccv_nnc_graph_exec_symbol_t exec_symbol = {0};
 		if (layer->type == CCV_CONVNET_CONVOLUTIONAL)
 		{
-			ccv_nnc_tensor_symbol_t w_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, ONE_CPU_TENSOR(layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels), 0);
+			ccv_nnc_tensor_symbol_t w_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, CPU_TENSOR_NHWC(32F, layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels), 0);
 			w_symbols[i] = w_symbol;
-			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, ONE_CPU_TENSOR(layer->net.convolutional.count), 0);
+			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, CPU_TENSOR_NHWC(32F, layer->net.convolutional.count), 0);
 			bias_symbols[i] = bias_symbol;
 			ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, layer->net.convolutional.count, layer->net.convolutional.rows, layer->net.convolutional.cols, layer->net.convolutional.channels);
 			exec_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol, w_symbol, bias_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
@@ -50,14 +50,14 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			ccv_nnc_cmd_t cmd = CMD_MAX_POOL_FORWARD(layer->net.pool.size, layer->net.pool.size);
 			exec_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else if (layer->type == CCV_CONVNET_FULL_CONNECT) {
-			ccv_nnc_tensor_symbol_t w_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, ONE_CPU_TENSOR(layer->net.full_connect.count, layer->input.node.count), 0);
+			ccv_nnc_tensor_symbol_t w_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, CPU_TENSOR_NHWC(32F, layer->net.full_connect.count, layer->input.node.count), 0);
 			w_symbols[i] = w_symbol;
-			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, ONE_CPU_TENSOR(layer->net.full_connect.count), 0);
+			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, CPU_TENSOR_NHWC(32F, layer->net.full_connect.count), 0);
 			bias_symbols[i] = bias_symbol;
 			ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(layer->net.full_connect.count);
 			// If the input is not what I expected (array), reshape it.
 			if (input_info.dim[0] != ccv_nnc_tensor_count(input_info))
-				input_symbol = ccv_nnc_tensor_symbol_alias_new(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input_info)).dim, ONE_CPU_TENSOR(ccv_nnc_tensor_count(input_info)), 0);
+				input_symbol = ccv_nnc_tensor_symbol_alias_new(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)).dim, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)), 0);
 			exec_symbol = ccv_nnc_graph_exec_symbol_new(symbolic_vgg, cmd, TENSOR_SYMBOL_LIST(input_symbol, w_symbol, bias_symbol), TENSOR_SYMBOL_LIST(tensor_symbol), 0);
 		} else {
 			assert("unreachable");
@@ -100,7 +100,7 @@ TEST_CASE("run vgg-d graph from its symbolic representation")
 	ccv_matrix_free(input);
 	ccv_dense_matrix_t* b = 0;
 	ccv_convnet_encode(convnet, &sliced, &b, 1);
-	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1000), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1000), 0);
 	ccv_nnc_tensor_symbol_t* w_symbols = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * convnet->count);
 	ccv_nnc_tensor_symbol_t* bias_symbols = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * convnet->count);
 	ccv_nnc_graph_exec_symbol_t source_symbol, dest_symbol;

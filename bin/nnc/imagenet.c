@@ -105,7 +105,7 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
 	ccv_cnnp_model_t* const imagenet = _imagenet_resnet101_v1d();
-	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 224, 224);
+	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 224, 224);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE* w = fopen("imagenet.dot", "w+");

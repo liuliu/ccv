@@ -12,9 +12,9 @@ TEST_SETUP()
 
 TEST_CASE("broadcasting semantics for add [[1, 2, 3], [4, 5, 6]] + [7, 8, 9]")
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3), 0);
-	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	a->data.f32[0] = 1;
 	a->data.f32[1] = 2;
 	a->data.f32[2] = 3;
@@ -29,7 +29,7 @@ TEST_CASE("broadcasting semantics for add [[1, 2, 3], [4, 5, 6]] + [7, 8, 9]")
 		8, 10, 12,
 		11, 13, 15
 	};
-	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, ONE_CPU_TENSOR(2, 3), 0);
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
@@ -38,9 +38,9 @@ TEST_CASE("broadcasting semantics for add [[1, 2, 3], [4, 5, 6]] + [7, 8, 9]")
 
 TEST_CASE("broadcasting semantics for add [[1], [2], [3], [4]] + [5, 6]")
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 1), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2), 0);
-	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 2), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
 	a->data.f32[0] = 1;
 	a->data.f32[1] = 2;
 	a->data.f32[2] = 3;
@@ -54,7 +54,7 @@ TEST_CASE("broadcasting semantics for add [[1], [2], [3], [4]] + [5, 6]")
 		8, 9,
 		9, 10
 	};
-	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, ONE_CPU_TENSOR(4, 2), 0);
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 4, 2), 0);
 	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
@@ -63,9 +63,9 @@ TEST_CASE("broadcasting semantics for add [[1], [2], [3], [4]] + [5, 6]")
 
 TEST_CASE("broadcasting semantics for mul [[1, 2, 3], [4, 5, 6]] * [7, 8, 9]")
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(3), 0);
-	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 3), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 3), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	a->data.f32[0] = 1;
 	a->data.f32[1] = 2;
 	a->data.f32[2] = 3;
@@ -80,7 +80,7 @@ TEST_CASE("broadcasting semantics for mul [[1, 2, 3], [4, 5, 6]] * [7, 8, 9]")
 		7, 16, 27,
 		28, 40, 54
 	};
-	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, ONE_CPU_TENSOR(2, 3), 0);
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
@@ -89,9 +89,9 @@ TEST_CASE("broadcasting semantics for mul [[1, 2, 3], [4, 5, 6]] * [7, 8, 9]")
 
 TEST_CASE("broadcasting semantics for mul [[1], [2], [3], [4]] * [5, 6]")
 {
-	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 1), 0);
-	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2), 0);
-	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 2), 0);
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 1), 0);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2), 0);
+	ccv_nnc_tensor_t* const c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 2), 0);
 	a->data.f32[0] = 1;
 	a->data.f32[1] = 2;
 	a->data.f32[2] = 3;
@@ -105,7 +105,7 @@ TEST_CASE("broadcasting semantics for mul [[1], [2], [3], [4]] * [5, 6]")
 		15, 18,
 		20, 24
 	};
-	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, ONE_CPU_TENSOR(4, 2), 0);
+	ccv_nnc_tensor_t ct = ccv_nnc_tensor(ctp, CPU_TENSOR_NHWC(32F, 4, 2), 0);
 	REQUIRE_TENSOR_EQ(c, &ct, "result should be equal");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);

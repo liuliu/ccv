@@ -449,6 +449,7 @@ void* ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stre
 			return _ccv_nnc_stream_context_get_ones(device_local->ones_32, n, device_local->stream);
 	}
 }
+
 cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
 {
 	switch (datatype)
@@ -459,6 +460,21 @@ cudaDataType_t ccv_nnc_cuda_datatype(const int datatype)
 			return CUDA_R_32F;
 		case CCV_16F:
 			return CUDA_R_16F;
+		case CCV_32F:
+			return CUDA_R_32F;
+		case CCV_64F:
+			return CUDA_R_64F;
+	}
+	return CUDA_R_32F;
+}
+
+cudaDataType_t ccv_nnc_cuda_compute_datatype(const int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_8U:
+		case CCV_32S:
+		case CCV_16F:
 		case CCV_32F:
 			return CUDA_R_32F;
 		case CCV_64F:
@@ -925,5 +941,23 @@ ncclComm_t ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* const stream, const i
 		}
 		return comms[device_id];
 	}
+}
+
+ncclDataType_t ccv_nnc_nccl_datatype(const int datatype)
+{
+	switch (datatype)
+	{
+		case CCV_8U:
+			return ncclUint8;
+		case CCV_32S:
+			return ncclInt;
+		case CCV_16F:
+			return ncclHalf;
+		case CCV_32F:
+			return ncclFloat;
+		case CCV_64F:
+			return ncclDouble;
+	}
+	return ncclFloat;
 }
 #endif

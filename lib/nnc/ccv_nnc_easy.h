@@ -162,20 +162,16 @@
 #define TRAVERSE_FULL 0,0,0,0
 
 // We will support NUMA allocation on CPU in the future. Currently, this is not very meaningful (except enforce no memory reuse between tensors).
-#define CPU_NUMA_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define CPU_NUMA_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define CPU_NUMA_TENSOR_CHWN(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_CHWN,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define ONE_CPU_NUMA_TENSOR CPU_NUMA_TENSOR_NHWC // The default is NHWC
-#define CPU_TENSOR_NHWC(...) CPU_NUMA_TENSOR_NHWC(ANY, __VA_ARGS__)
-#define CPU_TENSOR_NCHW(...) CPU_NUMA_TENSOR_NCHW(ANY, __VA_ARGS__)
-#define CPU_TENSOR_CHWN(...) CPU_NUMA_TENSOR_CHWN(ANY, __VA_ARGS__)
-#define ONE_CPU_TENSOR CPU_TENSOR_NHWC // The default is NHWC
-#define CPU_TENSOR_LABEL(...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_000) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32S,.dim={__VA_ARGS__}})
+#define CPU_NUMA_TENSOR_NHWC(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
+#define CPU_NUMA_TENSOR_NCHW(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
+#define CPU_NUMA_TENSOR_CHWN(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_CPU_MEMORY,.format=CCV_TENSOR_FORMAT_CHWN,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
+#define CPU_TENSOR_NHWC(dt, ...) CPU_NUMA_TENSOR_NHWC(ANY, dt, __VA_ARGS__)
+#define CPU_TENSOR_NCHW(dt, ...) CPU_NUMA_TENSOR_NCHW(ANY, dt, __VA_ARGS__)
+#define CPU_TENSOR_CHWN(dt, ...) CPU_NUMA_TENSOR_CHWN(ANY, dt, __VA_ARGS__)
 // This way, we can do error check on the device type :)
-#define GPU_TENSOR_NHWC(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define GPU_TENSOR_NCHW(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define GPU_TENSOR_CHWN(device_id, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_CHWN,.datatype=CCV_32F,.dim={__VA_ARGS__}})
-#define ONE_GPU_TENSOR GPU_TENSOR_NHWC // The default is NHWC
+#define GPU_TENSOR_NHWC(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NHWC,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
+#define GPU_TENSOR_NCHW(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_NCHW,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
+#define GPU_TENSOR_CHWN(device_id, dt, ...) ((ccv_nnc_tensor_param_t){.type=(CCV_COMPUTE_DEVICE_##device_id) | CCV_TENSOR_GPU_MEMORY,.format=CCV_TENSOR_FORMAT_CHWN,.datatype=CCV_##dt,.dim={__VA_ARGS__}})
 /** @} */
 
 #define DIM_ALLOC(...) (int [CCV_NNC_MAX_DIM_ALLOC]){__VA_ARGS__}

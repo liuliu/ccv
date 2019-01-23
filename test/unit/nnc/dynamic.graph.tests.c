@@ -14,7 +14,7 @@ TEST_SETUP()
 TEST_CASE("dynamic graph to compute log(19)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, a)->data.f32[0] = 19;
 	ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a), TENSOR_VARIABLE_LIST(b));
@@ -26,12 +26,12 @@ TEST_CASE("dynamic graph to compute log(19)")
 TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) where x = 19")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 19;
 	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(f));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, f), TENSOR_VARIABLE_LIST(f));
-	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 1.2;
 	ccv_nnc_tensor_variable_t z = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(z));
@@ -57,34 +57,34 @@ TEST_CASE("dynamic graph to compute f(x) = x * log(x) + 1.2 * x, f'(x) where x =
 TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1, 4));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 4));
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 0.472;
-	ccv_nnc_tensor_variable_t x1 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 1));
-	ccv_nnc_tensor_variable_t w1 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1, 1));
+	ccv_nnc_tensor_variable_t x1 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
+	ccv_nnc_tensor_variable_t w1 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 1));
 	ccv_nnc_tensor_from_variable(graph, w1)->data.f32[0] = 0.234;
-	ccv_nnc_tensor_variable_t b1 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t b1 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b1)->data.f32[0] = 0.1;
-	ccv_nnc_tensor_variable_t x11 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 1), DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 1));
+	ccv_nnc_tensor_variable_t x11 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 1), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x1, w1, b1), TENSOR_VARIABLE_LIST(x11));
-	ccv_nnc_tensor_variable_t x2 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 2));
-	ccv_nnc_tensor_variable_t w2 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1, 2));
+	ccv_nnc_tensor_variable_t x2 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 2));
+	ccv_nnc_tensor_variable_t w2 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 2));
 	ccv_nnc_tensor_from_variable(graph, w2)->data.f32[0] = 0.374;
 	ccv_nnc_tensor_from_variable(graph, w2)->data.f32[1] = 0.886;
-	ccv_nnc_tensor_variable_t b2 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t b2 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b2)->data.f32[0] = 0.2;
-	ccv_nnc_tensor_variable_t x21 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 2), DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 1));
+	ccv_nnc_tensor_variable_t x21 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 2), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x2, w2, b2), TENSOR_VARIABLE_LIST(x21));
-	ccv_nnc_tensor_variable_t x3 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 3));
-	ccv_nnc_tensor_variable_t w3 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1, 3));
+	ccv_nnc_tensor_variable_t x3 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 3));
+	ccv_nnc_tensor_variable_t w3 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 3));
 	ccv_nnc_tensor_from_variable(graph, w3)->data.f32[0] = 0.484;
 	ccv_nnc_tensor_from_variable(graph, w3)->data.f32[1] = 0.912;
 	ccv_nnc_tensor_from_variable(graph, w3)->data.f32[2] = 0.235;
-	ccv_nnc_tensor_variable_t b3 = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t b3 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b3)->data.f32[0] = 0.3;
-	ccv_nnc_tensor_variable_t x31 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 3), DIM_ALLOC(1, 4), ONE_CPU_TENSOR(1, 1));
+	ccv_nnc_tensor_variable_t x31 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 3), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x3, w3, b3), TENSOR_VARIABLE_LIST(x31));
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_tensor_t* xt = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 4), 0);
+	ccv_nnc_tensor_t* xt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4), 0);
 	xt->data.f32[0] = 0.472;
 	xt->data.f32[1] = xt->data.f32[0] * 0.234 + 0.1;
 	xt->data.f32[2] = xt->data.f32[0] * 0.374 + xt->data.f32[1] * 0.886 + 0.2;
@@ -100,12 +100,12 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 TEST_CASE("batch norm in dynamic graph (enforce inplace)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(2, 2, 2, 10));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10));
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
-	ccv_nnc_tensor_variable_t scale = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(10));
-	ccv_nnc_tensor_variable_t bias = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(10));
-	ccv_nnc_tensor_variable_t mean = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(10));
-	ccv_nnc_tensor_variable_t var = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(10));
+	ccv_nnc_tensor_variable_t scale = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 10));
+	ccv_nnc_tensor_variable_t bias = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 10));
+	ccv_nnc_tensor_variable_t mean = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 10));
+	ccv_nnc_tensor_variable_t var = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 10));
 	ccv_nnc_tensor_variable_t saved_mean = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_variable_t saved_inv_std = ccv_nnc_tensor_variable_new(graph);
 	dsfmt_t dsfmt;
@@ -127,14 +127,14 @@ TEST_CASE("batch norm in dynamic graph (enforce inplace)")
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	REQUIRE(mean_tensor_ptr == ccv_nnc_tensor_from_variable(graph, mean), "enforced inplace, tensor view pointer unchanged");
 	REQUIRE(var_tensor_ptr == ccv_nnc_tensor_from_variable(graph, var), "enforced inplace, tensor view pointer unchanged");
-	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 2, 2, 10), 0);
-	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(2, 2, 2, 10), 0);
-	ccv_nnc_tensor_t* scale_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(10), 0);
-	ccv_nnc_tensor_t* bias_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(10), 0);
-	ccv_nnc_tensor_t* mean_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(10), 0);
-	ccv_nnc_tensor_t* var_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(10), 0);
-	ccv_nnc_tensor_t* saved_mean_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 1, 1, 10), 0);
-	ccv_nnc_tensor_t* saved_inv_std_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1, 1, 1, 10), 0);
+	ccv_nnc_tensor_t* x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), 0);
+	ccv_nnc_tensor_t* y_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 2, 2, 10), 0);
+	ccv_nnc_tensor_t* scale_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* bias_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* mean_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* var_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_t* saved_mean_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 10), 0);
+	ccv_nnc_tensor_t* saved_inv_std_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1, 1, 10), 0);
 	memcpy(x_tensor->data.f32, ccv_nnc_tensor_from_variable(graph, x)->data.f32, sizeof(float) * 2 * 2 * 2 * 10);
 	for (i = 0; i < 10; i++)
 		scale_tensor->data.f32[i] = 1;
@@ -161,8 +161,8 @@ TEST_CASE("batch norm in dynamic graph (enforce inplace)")
 TEST_CASE("empty inputs / outputs for dynamic graph")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t df = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t df = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_from_variable(graph, df)->data.f32[0] = 1;
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
@@ -176,8 +176,8 @@ TEST_CASE("long dynamic graph with unused variables freed")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	int i;
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
-	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
 	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.5;
 	for (i = 0; i < 10; i++)
@@ -211,8 +211,8 @@ TEST_CASE("repeat multiple x * y with y as a constant")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	int i;
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
-	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
 	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.5;
 	for (i = 0; i < 10; i++)
@@ -234,8 +234,8 @@ TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
 	int i;
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
-	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_constant_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t ox = x;
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 32;
 	ccv_nnc_tensor_from_variable(graph, y)->data.f32[0] = 0.9;
@@ -261,14 +261,14 @@ TEST_CASE("repeat multiple x * y with y as a constant, compute d(x)")
 TEST_CASE("compute f(x) = x * log(x) + x, f'(x) when x = 10 (and intermediate results all freed)")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_variable_t f = ccv_nnc_tensor_variable_new(graph);
 	ccv_nnc_tensor_from_variable(graph, x)->data.f32[0] = 10;
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(y));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x, y), TENSOR_VARIABLE_LIST(y));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(y, x), TENSOR_VARIABLE_LIST(f));
-	ccv_nnc_tensor_variable_t df = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
+	ccv_nnc_tensor_variable_t df = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(df));
 	ccv_nnc_dynamic_graph_backward(graph, f, df, TENSOR_VARIABLE_LIST(x), TENSOR_VARIABLE_LIST(x));
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
@@ -279,8 +279,8 @@ TEST_CASE("compute f(x) = x * log(x) + x, f'(x) when x = 10 (and intermediate re
 TEST_CASE("dynamic graph with binded value")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, ONE_CPU_TENSOR(1));
-	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_variable_t x = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
+	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	x_tensor->data.f32[0] = 10;
 	ccv_nnc_tensor_variable_set(graph, x, x_tensor);
 	ccv_nnc_tensor_variable_t y = ccv_nnc_tensor_variable_new(graph);

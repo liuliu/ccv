@@ -109,7 +109,7 @@ ccv_nnc_graph_t* ccv_nnc_graph_from_while_exec(const ccv_nnc_graph_t* const grap
 
 ccv_nnc_tensor_t ccv_nnc_tensor_for_while_count(const ccv_nnc_graph_t* const while_graph)
 {
-	return ccv_nnc_tensor(&while_graph->while_count, ONE_CPU_TENSOR(1), 0);
+	return ccv_nnc_tensor(&while_graph->while_count, CPU_TENSOR_NHWC(64S, 1), 0);
 }
 
 void ccv_nnc_graph_set_while_expr(ccv_nnc_graph_t* const while_graph, const ccv_nnc_graph_while_f while_expr, const void* const while_data, ccv_nnc_tensor_t* const* const inputs, const int input_size, const ccv_nnc_graph_exec_t* const breakpoints, const int breakpoint_size)

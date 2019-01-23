@@ -23,7 +23,7 @@ TEST_CASE("derive one-hot tensor from label")
 	const int oh = ccv_cnnp_dataframe_one_hot(dataframe, 0, 0, 10, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
 	assert(oh > 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(oh));
-	ccv_nnc_tensor_t* const one_hot = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(10), 0);
+	ccv_nnc_tensor_t* const one_hot = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 10), 0);
 	void* data;
 	int i = 0, j;
 	while (0 == ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0))
@@ -53,7 +53,7 @@ TEST_CASE("batching tensors")
 	assert(oh > 0);
 	ccv_cnnp_dataframe_t* const batch = ccv_cnnp_dataframe_batching_new(dataframe, COLUMN_ID_LIST(oh), 3, 2, CCV_TENSOR_FORMAT_NCHW);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch, COLUMN_ID_LIST(0));
-	ccv_nnc_tensor_t* const one_hot = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(3, 10), 0);
+	ccv_nnc_tensor_t* const one_hot = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 3, 10), 0);
 	void* data;
 	int i = 0, j;
 	ccv_cnnp_dataframe_iter_next(iter, &data, 1, 0);

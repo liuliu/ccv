@@ -14,12 +14,12 @@ TEST_SETUP()
 TEST_CASE("solve least square sum with stochastic gradient descent on symbolic graph")
 {
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(2, 2), "a");
-	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(2, 2), "w");
-	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(2), "bias");
-	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(2, 2), "b");
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "a");
+	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "w");
+	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "bias");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "b");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(2), TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "gemm");
-	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(2, 2), "c");
+	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "c");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(b, b), TENSOR_SYMBOL_LIST(c), "square");
 	ccv_nnc_tensor_symbol_t s = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "s");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_REDUCE_SUM_FORWARD(0, 1), TENSOR_SYMBOL_LIST(c), TENSOR_SYMBOL_LIST(s), "sum");
@@ -77,20 +77,20 @@ TEST_CASE("solve least square sum with stochastic gradient descent on symbolic g
 TEST_CASE("solve least square sum with stochastic gradient descent on dynamic graph")
 {
 	ccv_nnc_dynamic_graph_t* const graph = ccv_nnc_dynamic_graph_new();
-	ccv_nnc_tensor_variable_t w = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(2, 2));
-	ccv_nnc_tensor_variable_t aux = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(2, 2));
+	ccv_nnc_tensor_variable_t w = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 2));
+	ccv_nnc_tensor_variable_t aux = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 2));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(aux));
 	ccv_nnc_dynamic_graph_exec(graph, CMD_RANDOM_UNIFORM_FORWARD(-0.5, 0.5), ccv_nnc_no_hint, 0, 0, 0, TENSOR_VARIABLE_LIST(w));
 	int i;
 	for (i = 0; i < 1000; i++)
 	{
-		ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(2, 2));
+		ccv_nnc_tensor_variable_t a = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2, 2));
 		ccv_nnc_tensor_t* const a_tensor = ccv_nnc_tensor_from_variable(graph, a);
 		a_tensor->data.f32[0] = 10;
 		a_tensor->data.f32[1] = 1;
 		a_tensor->data.f32[2] = 3;
 		a_tensor->data.f32[3] = 5;
-		ccv_nnc_tensor_variable_t bias = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(2));
+		ccv_nnc_tensor_variable_t bias = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 2));
 		ccv_nnc_tensor_t* const bias_tensor = ccv_nnc_tensor_from_variable(graph, bias);
 		bias_tensor->data.f32[0] = 1;
 		bias_tensor->data.f32[1] = -1;

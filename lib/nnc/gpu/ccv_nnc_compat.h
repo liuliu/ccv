@@ -75,7 +75,8 @@ CCV_WARN_UNUSED(int) ccv_nnc_gpu_device_count(void);
 #define CUDA_GET_BLOCKS(n) ccv_min(((n) + CUDA_NUM_THREADS - 1) / CUDA_NUM_THREADS, 4096)
 
 extern "C" {
-CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_datatype(const int datatype);
+CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_datatype(const int datatype); // Get the datatype corresponding to cuda datatype.
+CCV_WARN_UNUSED(cudaDataType_t) ccv_nnc_cuda_compute_datatype(const int datatype); // Get the datatype that is accurate enough to be accumulator.
 // Stream context methods to get the underlying objects, note that none of these methods are thread-safe.
 CCV_WARN_UNUSED(int) ccv_nnc_stream_context_get_device(const ccv_nnc_stream_context_t* const stream_context);
 CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_stream_context_t* const stream_context);
@@ -157,6 +158,7 @@ void ccv_nnc_cudnn_deinit_convolution_descriptor(const ccv_nnc_cudnn_convolution
 
 #ifdef HAVE_NCCL
 CCV_WARN_UNUSED(ncclComm_t) ccv_nnc_nccl_get_comm(ccv_nnc_stream_context_t* const stream, const int device_count, const int device_id);
+CCV_WARN_UNUSED(ncclDataType_t) ccv_nnc_nccl_datatype(const int datatype); // Get the datatype corresponding to nccl datatype.
 
 #ifdef NDEBUG
 #define NCCL_ENFORCE(status) status

@@ -20,13 +20,13 @@ static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, 
 TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "x");
 	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph, "while");
-	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "a");
-	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "b");
-	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "y");
-	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "z");
+	ccv_nnc_tensor_symbol_t a = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "a");
+	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "b");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "y");
+	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "z");
 	ccv_nnc_graph_exec_symbol_new(while_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(a, x), TENSOR_SYMBOL_LIST(y), "prod");
 	ccv_nnc_graph_exec_symbol_t sum = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_EWSUM_FORWARD(), TENSOR_SYMBOL_LIST(y, b), TENSOR_SYMBOL_LIST(z), "sum");
 	ccv_nnc_graph_exec_symbol_t noop = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_NOOP(), 0, 0, 0, 0, "noop");
@@ -39,9 +39,9 @@ TEST_CASE("while z = a * x + b (x <- z) compiled a and b binded to a tensor")
 	ccv_nnc_graph_t* graph = 0;
 	ccv_nnc_tensor_arena_t* tensor_arena = 0;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
-	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* a_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	a_tensor->data.f32[0] = 0.3;
-	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* b_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	b_tensor->data.f32[0] = 1.1;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph,
 		TENSOR_BIND_MAP(KV(a, a_tensor), KV(b, b_tensor)), // Binding the tensors.

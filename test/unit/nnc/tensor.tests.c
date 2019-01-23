@@ -95,7 +95,7 @@ TEST_CASE("zero out a tensor view")
 
 TEST_CASE("hint tensor")
 {
-	ccv_nnc_tensor_param_t a = ONE_CPU_TENSOR(234, 128, 3);
+	ccv_nnc_tensor_param_t a = CPU_TENSOR_NHWC(32F, 234, 128, 3);
 	ccv_nnc_hint_t hint = {
 		.border = {
 			.begin = {1, 1},
@@ -107,8 +107,8 @@ TEST_CASE("hint tensor")
 	};
 	ccv_nnc_cmd_t cmd = CMD_CONVOLUTION_FORWARD(1, 128, 4, 5, 3);
 	ccv_nnc_tensor_param_t b;
-	ccv_nnc_tensor_param_t w = ONE_CPU_TENSOR(128, 4, 5, 3);
-	ccv_nnc_tensor_param_t bias = ONE_CPU_TENSOR(128);
+	ccv_nnc_tensor_param_t w = CPU_TENSOR_NHWC(32F, 128, 4, 5, 3);
+	ccv_nnc_tensor_param_t bias = CPU_TENSOR_NHWC(32F, 128);
 	ccv_nnc_hint_tensor_auto(cmd, TENSOR_PARAM_LIST(a, w, bias), hint, &b, 1);
 	REQUIRE_EQ(b.dim[0], 30, "height should be 30");
 	REQUIRE_EQ(b.dim[1], 19, "width should be 19");

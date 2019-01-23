@@ -16,12 +16,12 @@ static double fsh[4] = { -2, -1, 1, 2 };
 
 TEST_CASE("numerical gradient versus analytical gradient for convolutional network")
 {
-	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(31, 21, 2), 0);
-	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(31, 21, 4), 0);
+	ccv_nnc_tensor_t* a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 31, 21, 2), 0);
+	ccv_nnc_tensor_t* b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 31, 21, 4), 0);
 	ccv_nnc_cmd_t forw_cmd = CMD_CONVOLUTION_FORWARD(1, 4, 5, 3, 2);
 	ccv_nnc_hint_t hint = ccv_nnc_hint_auto(forw_cmd.info, a->info, b->info);
-	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4, 5, 3, 2), 0);
-	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(4), 0);
+	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 5, 3, 2), 0);
+	ccv_nnc_tensor_t* bias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
 	dsfmt_t dsfmt;
 	dsfmt_init_gen_rand(&dsfmt, 1);
 	int i, j;
@@ -33,7 +33,7 @@ TEST_CASE("numerical gradient versus analytical gradient for convolutional netwo
 	for (i = 0; i < 4; i++)
 		bias->data.f32[i] = 0;
 	ccv_nnc_cmd_exec(forw_cmd, hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
-	ccv_nnc_tensor_t* ba = ccv_nnc_tensor_new(b->data.f32, ONE_CPU_TENSOR(31 * 21 * 4), 0);
+	ccv_nnc_tensor_t* ba = ccv_nnc_tensor_new(b->data.f32, CPU_TENSOR_NHWC(32F, 31 * 21 * 4), 0);
 	ccv_nnc_tensor_t* m = ccv_nnc_tensor_new(0, ba->info, 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_FORWARD(), hint, 0, TENSOR_LIST(ba), TENSOR_LIST(m), 0);
 	ccv_nnc_cmd_t back_cmd = CMD_CONVOLUTION_BACKWARD(1, 4, 5, 3, 2);

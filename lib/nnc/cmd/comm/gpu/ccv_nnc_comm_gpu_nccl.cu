@@ -29,12 +29,14 @@ static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_t* const a = inputs[i];
+		assert(a->info.datatype == b->info.datatype);
+		const int datatype = a->info.datatype;
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 		ncclComm_t comm = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
 		ccv_nnc_stream_context_t* const neighbor_context = stream_context ? ccv_nnc_stream_context_find_neighbor(stream_context, device_id) : 0;
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(neighbor_context);
 		ccv_nnc_tensor_t* const b = outputs[i];
-		NCCL_ENFORCE(ncclAllReduce(a->data.f32, b->data.f32, tensor_count, ncclFloat, ncclSum, comm, stream));
+		NCCL_ENFORCE(ncclAllReduce(a->data.f32, b->data.f32, tensor_count, ccv_nnc_nccl_datatype(datatype), ncclSum, comm, stream));
 	}
 	NCCL_ENFORCE(ncclGroupEnd());
 	return CCV_NNC_EXEC_SUCCESS;
@@ -53,7 +55,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_ALLREDUCE_FORWARD, CCV_NNC_BACKEND_GPU_NCC
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_allreduce_forw;
@@ -64,7 +66,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_ALLREDUCE_BACKWARD, CCV_NNC_BACKEND_GPU_NC
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_allreduce_back;
@@ -95,11 +97,13 @@ static int _ccv_nnc_broadcast_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	for (i = 0; i < output_size; i++)
 	{
 		ccv_nnc_tensor_t* const b = outputs[i];
+		assert(a->info.datatype == b->info.datatype);
+		const int datatype = a->info.datatype;
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(b->info.type);
 		ncclComm_t comm = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
 		ccv_nnc_stream_context_t* const neighbor_context = stream_context ? ccv_nnc_stream_context_find_neighbor(stream_context, device_id) : 0;
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(neighbor_context);
-		NCCL_ENFORCE(ncclBroadcast(a->data.f32, b->data.f32, tensor_count, ncclFloat, root, comm, stream));
+		NCCL_ENFORCE(ncclBroadcast(a->data.f32, b->data.f32, tensor_count, ccv_nnc_nccl_datatype(datatype), root, comm, stream));
 	}
 	NCCL_ENFORCE(ncclGroupEnd());
 	return CCV_NNC_EXEC_SUCCESS;
@@ -127,11 +131,13 @@ static int _ccv_nnc_reduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_t* const a = inputs[i];
+		assert(a->info.datatype == b->info.datatype);
+		const int datatype = a->info.datatype;
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 		ncclComm_t comm = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
 		ccv_nnc_stream_context_t* const neighbor_context = stream_context ? ccv_nnc_stream_context_find_neighbor(stream_context, device_id) : 0;
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(neighbor_context);
-		NCCL_ENFORCE(ncclReduce(a->data.f32, b->data.f32, tensor_count, ncclFloat, ncclSum, root, comm, stream));
+		NCCL_ENFORCE(ncclReduce(a->data.f32, b->data.f32, tensor_count, ccv_nnc_nccl_datatype(datatype), ncclSum, root, comm, stream));
 	}
 	NCCL_ENFORCE(ncclGroupEnd());
 	return CCV_NNC_EXEC_SUCCESS;
@@ -157,7 +163,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_BROADCAST_FORWARD, CCV_NNC_BACKEND_GPU_NCC
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_broadcast_forw;
@@ -168,7 +174,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_BROADCAST_BACKWARD, CCV_NNC_BACKEND_GPU_NC
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_broadcast_back;
@@ -179,7 +185,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_REDUCE_FORWARD, CCV_NNC_BACKEND_GPU_NCCL)(
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_reduce_forw;
@@ -190,7 +196,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_COMM_REDUCE_BACKWARD, CCV_NNC_BACKEND_GPU_NCCL)
 {
 #ifdef HAVE_NCCL
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_reduce_back;

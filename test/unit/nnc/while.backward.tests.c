@@ -20,13 +20,13 @@ static int while_4(ccv_nnc_tensor_t* const* const inputs, const int input_size, 
 TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 {
 	ccv_nnc_graph_t* graph = ccv_nnc_graph_new();
-	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_t* x0 = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
-	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* y = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* x0 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
+	ccv_nnc_tensor_t* x = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	x->type |= CCV_TAPE_ALLOC;
-	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* z = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	z->type |= CCV_TAPE_ALLOC;
-	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* g = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_graph_t* while_graph = ccv_nnc_graph_new();
 	ccv_nnc_graph_exec_t loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_FORWARD, while_graph);
 	ccv_nnc_tensor_multiview_t xx;
@@ -49,7 +49,7 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 	ccv_nnc_graph_t* while_back_graph = ccv_nnc_graph_new();
 	while_back_graph->peer = while_graph;
 	ccv_nnc_graph_exec_t back_loop = ccv_nnc_graph_while(graph, CCV_NNC_GRAPH_BACKWARD, while_back_graph);
-	ccv_nnc_tensor_t* dx = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(1), 0);
+	ccv_nnc_tensor_t* dx = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_graph_exec_t back_prod0 = ccv_nnc_graph_exec_new(while_back_graph, CMD_EWPROD_BACKWARD(), ccv_nnc_no_hint, TENSOR_LIST(g, y, (ccv_nnc_tensor_t*)&xx, (ccv_nnc_tensor_t*)&zz), TENSOR_LIST(dx, g));
 	ccv_nnc_graph_exec_t back_noop = ccv_nnc_graph_exec_new(while_back_graph, CMD_NOOP(), ccv_nnc_no_hint, 0, 0, 0, 0);
 	ccv_nnc_graph_exec_concat(while_back_graph, back_noop, back_prod0);
@@ -79,13 +79,13 @@ TEST_CASE("graph with a while loop to compute back propagation 0.34 * 1.11 ^ 5")
 TEST_CASE("symbolic graph with a while loop z = log(x * y) (x <- z) 5 times, then u = v * z, compute y'")
 {
 	ccv_nnc_symbolic_graph_t* symbolic_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "x");
-	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "y");
+	ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "x");
+	ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y");
 	ccv_nnc_symbolic_graph_t* while_graph = ccv_nnc_symbolic_graph_new();
-	ccv_nnc_tensor_symbol_t xy = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "xy");
-	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, ONE_CPU_TENSOR(1), "z");
-	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "u");
-	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, ONE_CPU_TENSOR(1), "v");
+	ccv_nnc_tensor_symbol_t xy = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "xy");
+	ccv_nnc_tensor_symbol_t z = ccv_nnc_tensor_symbol_new(while_graph, CPU_TENSOR_NHWC(32F, 1), "z");
+	ccv_nnc_tensor_symbol_t u = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "u");
+	ccv_nnc_tensor_symbol_t v = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "v");
 	ccv_nnc_symbolic_graph_while(symbolic_graph, CCV_NNC_GRAPH_FORWARD, while_graph, "while0");
 	ccv_nnc_graph_exec_symbol_t prod0 = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(x, y), TENSOR_SYMBOL_LIST(xy), "prod0");
 	ccv_nnc_graph_exec_symbol_t log0 = ccv_nnc_graph_exec_symbol_new(while_graph, CMD_EWLOG_FORWARD(), TENSOR_SYMBOL_LIST(xy), TENSOR_SYMBOL_LIST(z), "log0");

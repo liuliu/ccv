@@ -19,7 +19,7 @@ TEST_CASE("nccl with allreduce in blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
@@ -28,10 +28,10 @@ TEST_CASE("nccl with allreduce in blocking mode")
 	ccv_nnc_tensor_t* cpu_tensors[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_tensors[i] = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+		cpu_tensors[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[i], 1, &cpu_tensors[i], 1, 0);
 	}
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD((device_count - 1) * device_count / 2), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	for (i = 0; i < device_count; i++)
 		REQUIRE_TENSOR_EQ(demo_tensor, cpu_tensors[i], "all values should be summed");
@@ -51,7 +51,7 @@ TEST_CASE("nccl with broadcast in blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i + 1), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
@@ -60,10 +60,10 @@ TEST_CASE("nccl with broadcast in blocking mode")
 	ccv_nnc_tensor_t* cpu_tensors[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_tensors[i] = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+		cpu_tensors[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[i], 1, &cpu_tensors[i], 1, 0);
 	}
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	for (i = 0; i < device_count; i++)
 		REQUIRE_TENSOR_EQ(demo_tensor, cpu_tensors[i], "all values should be summed");
@@ -83,16 +83,16 @@ TEST_CASE("nccl with reduce in blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i + 1), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
 	}
 	ccv_nnc_cmd_exec(CMD_COMM_REDUCE_FORWARD(), ccv_nnc_no_hint, 0, tensors, device_count, tensors, 1, 0);
 	ccv_nnc_tensor_t* cpu_tensor;
-	cpu_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	cpu_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[0], 1, &cpu_tensor, 1, 0);
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD((device_count + 1) * device_count / 2), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	REQUIRE_TENSOR_EQ(demo_tensor, cpu_tensor, "all values should be summed");
 	ccv_nnc_tensor_free(demo_tensor);
@@ -116,7 +116,7 @@ TEST_CASE("nccl with allreduce in non-blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i + 0.5), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
@@ -129,10 +129,10 @@ TEST_CASE("nccl with allreduce in non-blocking mode")
 	ccv_nnc_tensor_t* cpu_tensors[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_tensors[i] = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+		cpu_tensors[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[i], 1, &cpu_tensors[i], 1, contexts[i]);
 	}
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD((device_count - 1) * device_count / 2 + 0.5 * device_count), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	for (i = 0; i < device_count; i++)
 		ccv_nnc_stream_context_wait(contexts[i]);
@@ -156,7 +156,7 @@ TEST_CASE("nccl with broadcast in non-blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i + 1), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
@@ -169,10 +169,10 @@ TEST_CASE("nccl with broadcast in non-blocking mode")
 	ccv_nnc_tensor_t* cpu_tensors[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_tensors[i] = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+		cpu_tensors[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[i], 1, &cpu_tensors[i], 1, contexts[i]);
 	}
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD(1), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	for (i = 0; i < device_count; i++)
 		ccv_nnc_stream_context_wait(contexts[i]);
@@ -196,7 +196,7 @@ TEST_CASE("nccl with reduce in non-blocking mode")
 	int i;
 	for (i = 0; i < device_count; i++)
 	{
-		ccv_nnc_tensor_param_t info = ONE_GPU_TENSOR(000, 100);
+		ccv_nnc_tensor_param_t info = GPU_TENSOR_NHWC(000, 32F, 100);
 		CCV_TENSOR_SET_DEVICE_ID(info.type, i);
 		tensors[i] = ccv_nnc_tensor_new(0, info, 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(i + 1), ccv_nnc_no_hint, 0, 0, 0, &tensors[i], 1, 0);
@@ -207,9 +207,9 @@ TEST_CASE("nccl with reduce in non-blocking mode")
 	ccv_nnc_stream_context_set_neighbor_discovery(contexts[0], _neighbor_discovery, contexts);
 	ccv_nnc_cmd_exec(CMD_COMM_REDUCE_FORWARD(), ccv_nnc_no_hint, 0, tensors, device_count, tensors, 1, contexts[0]);
 	ccv_nnc_tensor_t* cpu_tensor;
-	cpu_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	cpu_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &tensors[0], 1, &cpu_tensor, 1, contexts[0]);
-	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, ONE_CPU_TENSOR(100), 0);
+	ccv_nnc_tensor_t* demo_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SET_FORWARD((device_count + 1) * device_count / 2), ccv_nnc_no_hint, 0, 0, 0, &demo_tensor, 1, 0);
 	ccv_nnc_stream_context_wait(contexts[0]);
 	REQUIRE_TENSOR_EQ(demo_tensor, cpu_tensor, "all values should be summed");

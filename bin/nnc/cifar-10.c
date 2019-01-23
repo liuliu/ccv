@@ -182,7 +182,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn();
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, batch_size, 3, 32, 32);
+	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE *w = fopen("cifar-10.dot", "w+");
@@ -192,7 +192,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
 	for (i = 0; i < device_count; i++)
 	{
-		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(batch_size, 10), 0);
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 10), 0);
 		ccv_nnc_tensor_pin_memory(cpu_outputs[i]);
 	}
 	ccv_cnnp_dataframe_t* const raw_train_data = ccv_cnnp_dataframe_from_array_new(training_set);
@@ -231,7 +231,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		int stream_type = CCV_STREAM_CONTEXT_GPU;
 		CCV_STREAM_SET_DEVICE_ID(stream_type, i);
 		train_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_train_data, 0, i * 2, 2, i);
-		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, batch_size, 10);
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 32F, batch_size, 10);
 		CCV_TENSOR_SET_DEVICE_ID(params.type, i);
 		train_device_columns[device_count + i] = ccv_cnnp_dataframe_add_aux(batch_train_data, params);
 		test_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_test_data, 0, i, 1, i);

@@ -18,30 +18,30 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 	ccv_nnc_tensor_t* updated[4];
 	ccv_nnc_tensor_t* cpu_inputs[2];
 	ccv_nnc_tensor_t* cpu_fits[2];
-	ccv_nnc_tensor_t* w1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-	ccv_nnc_tensor_t* w3_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
+	ccv_nnc_tensor_t* w1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+	ccv_nnc_tensor_t* w3_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
 	{
 		ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 3, 32, 32), 0);
-		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 3, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 3, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 3, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 32, 32), 0);
 		const ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(x, w1, bias1), TENSOR_SYMBOL_LIST(y1), "conv1");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv1, HINT((1, 1), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 16, 16), 0);
+		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 16, 16), 0);
 		const ccv_nnc_graph_exec_symbol_t avg2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(2, 2), TENSOR_SYMBOL_LIST(y1), TENSOR_SYMBOL_LIST(y2), "avg2");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, avg2, HINT((2, 2)));
-		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 8, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 8, 8), 0);
+		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 8, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 8, 8), 0);
 		const ccv_nnc_graph_exec_symbol_t conv3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(y2, w3, bias3), TENSOR_SYMBOL_LIST(y3), "conv3");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 1, 1), 0);
+		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 16, 8), 0);
-		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "label");
-		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8), "y5");
-		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "loss");
+		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
+		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "label");
+		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8), "y5");
+		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "loss");
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4a, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_tensor_symbol_t updated_params[4];
@@ -69,16 +69,16 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 			&graph, &tensor_arena, &graph_exec_arena);
 		ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 		GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16, 3, 32, 32), 0);
-		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16, 3, 32, 32), 0);
+		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
+		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
 		dsfmt_t dsfmt;
 		dsfmt_init_gen_rand(&dsfmt, 0);
 		for (i = 0; i < 16 * 3 * 32 * 32; i++)
 			cpu_inputs[0]->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 		for (i = 0; i < 16 * 3 * 32 * 32; i++)
 			cpu_inputs[1]->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-		cpu_fits[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16), 0);
-		cpu_fits[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16), 0);
+		cpu_fits[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16), 0);
+		cpu_fits[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16), 0);
 		for (i = 0; i < 16; i++)
 			cpu_fits[0]->data.f32[i] = cpu_fits[1]->data.f32[i] = (int)(dsfmt_genrand_open_close(&dsfmt) * 7.4); // Between 0 to 7.
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_inputs[0], cpu_inputs[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(symbolic_graph, x, 1))), 0);
@@ -91,10 +91,10 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
 		ccv_nnc_graph_run(graph, 0, ccv_nnc_graph_default_stream(graph), 0, TRAVERSE_FULL);
 		ccv_nnc_stream_context_wait(ccv_nnc_graph_default_stream(graph));
-		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
-		updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
-		updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
+		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
+		updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
+		updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[0]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[1]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[2]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[3])), updated, 4, 0);
 		ccv_nnc_symbolic_graph_free(symbolic_graph);
 		ccv_nnc_graph_free(graph);
@@ -104,25 +104,25 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 	// Now, doing exactly the same, but with no parallel.
 	{
 		ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 3, 32, 32), 0);
-		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 3, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 3, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 3, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 32, 32), 0);
 		const ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(x, w1, bias1), TENSOR_SYMBOL_LIST(y1), "conv1");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv1, HINT((1, 1), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 16, 16), 0);
+		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 16, 16), 0);
 		const ccv_nnc_graph_exec_symbol_t avg2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(2, 2), TENSOR_SYMBOL_LIST(y1), TENSOR_SYMBOL_LIST(y2), "avg2");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, avg2, HINT((2, 2)));
-		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 8, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 8, 8), 0);
+		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 8, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 8, 8), 0);
 		const ccv_nnc_graph_exec_symbol_t conv3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(y2, w3, bias3), TENSOR_SYMBOL_LIST(y3), "conv3");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 1, 1), 0);
+		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32), "label");
-		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8), "y5");
-		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32), "loss");
+		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32), "label");
+		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8), "y5");
+		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32), "loss");
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_tensor_symbol_t updated_params[4];
@@ -145,10 +145,10 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 			&graph, &tensor_arena, &graph_exec_arena);
-		ccv_nnc_tensor_t* cpu_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32, 3, 32, 32), 0);
+		ccv_nnc_tensor_t* cpu_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32, 3, 32, 32), 0);
 		memcpy(cpu_input->data.f32, cpu_inputs[0]->data.f32, sizeof(float) * 16 * 3 * 32 * 32);
 		memcpy(cpu_input->data.f32 + 16 * 3 * 32 * 32, cpu_inputs[1]->data.f32, sizeof(float) * 16 * 3 * 32 * 32);
-		ccv_nnc_tensor_t* cpu_fit = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32), 0);
+		ccv_nnc_tensor_t* cpu_fit = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32), 0);
 		memcpy(cpu_fit->data.f32, cpu_fits[0]->data.f32, sizeof(float) * 16);
 		memcpy(cpu_fit->data.f32 + 16, cpu_fits[1]->data.f32, sizeof(float) * 16);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x)), 0);
@@ -157,10 +157,10 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
 		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 		ccv_nnc_tensor_t* np_updated[4];
-		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
-		np_updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
-		np_updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
+		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
+		np_updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
+		np_updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[0]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[1]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[2]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[3])), np_updated, 4, 0);
 		ccv_nnc_symbolic_graph_free(symbolic_graph);
 		ccv_nnc_graph_free(graph);
@@ -197,30 +197,30 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 	ccv_nnc_tensor_t* updated[4];
 	ccv_nnc_tensor_t* cpu_inputs[2];
 	ccv_nnc_tensor_t* cpu_fits[2];
-	ccv_nnc_tensor_t* w1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-	ccv_nnc_tensor_t* w3_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
+	ccv_nnc_tensor_t* w1_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+	ccv_nnc_tensor_t* w3_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
 	{
 		ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 3, 32, 32), 0);
-		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 3, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 3, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 3, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 32, 32), 0);
 		const ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(x, w1, bias1), TENSOR_SYMBOL_LIST(y1), "conv1");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv1, HINT((1, 1), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 16, 16), 0);
+		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 16, 16), 0);
 		const ccv_nnc_graph_exec_symbol_t avg2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(2, 2), TENSOR_SYMBOL_LIST(y1), TENSOR_SYMBOL_LIST(y2), "avg2");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, avg2, HINT((2, 2)));
-		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 8, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 8, 8), 0);
+		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 8, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 8, 8), 0);
 		const ccv_nnc_graph_exec_symbol_t conv3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(y2, w3, bias3), TENSOR_SYMBOL_LIST(y3), "conv3");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8, 1, 1), 0);
+		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 16, 8), 0);
-		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "label");
-		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16, 8), "y5");
-		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 16), "loss");
+		const ccv_nnc_tensor_symbol_t y4a = ccv_nnc_tensor_symbol_alias_new(symbolic_graph, y4, ccv_nnc_no_ofs, DIM_ALLOC(16, 8), GPU_TENSOR_NCHW(000, 32F, 16, 8), 0);
+		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "label");
+		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16, 8), "y5");
+		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 16), "loss");
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4a, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_tensor_symbol_t updated_params[4];
@@ -248,16 +248,16 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 			&graph, &tensor_arena, &graph_exec_arena);
 		ccv_nnc_graph_static_schedule(graph, CCV_STREAM_CONTEXT_GPU);
 		GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16, 3, 32, 32), 0);
-		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16, 3, 32, 32), 0);
+		cpu_inputs[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
+		cpu_inputs[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16, 3, 32, 32), 0);
 		dsfmt_t dsfmt;
 		dsfmt_init_gen_rand(&dsfmt, 0);
 		for (i = 0; i < 16 * 3 * 32 * 32; i++)
 			cpu_inputs[0]->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 		for (i = 0; i < 16 * 3 * 32 * 32; i++)
 			cpu_inputs[1]->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-		cpu_fits[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16), 0);
-		cpu_fits[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16), 0);
+		cpu_fits[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16), 0);
+		cpu_fits[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 16), 0);
 		for (i = 0; i < 16; i++)
 			cpu_fits[0]->data.f32[i] = cpu_fits[1]->data.f32[i] = (int)(dsfmt_genrand_open_close(&dsfmt) * 7.4); // Between 0 to 7.
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_inputs[0], cpu_inputs[1]), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x), ccv_nnc_tensor_from_symbol(tensor_arena, ccv_nnc_tensor_symbol_copy(symbolic_graph, x, 1))), 0);
@@ -270,10 +270,10 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
 		ccv_nnc_graph_run(graph, 0, ccv_nnc_graph_default_stream(graph), 0, TRAVERSE_FULL);
 		ccv_nnc_stream_context_wait(ccv_nnc_graph_default_stream(graph));
-		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
-		updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
-		updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
+		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
+		updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
+		updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[0]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[1]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[2]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[3])), updated, 4, 0);
 		ccv_nnc_symbolic_graph_free(symbolic_graph);
 		ccv_nnc_graph_free(graph);
@@ -283,25 +283,25 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 	// Now, doing exactly the same, but with no parallel.
 	{
 		ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
-		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 3, 32, 32), 0);
-		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 3, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 3, 32, 32), 0);
+		const ccv_nnc_tensor_symbol_t w1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 3, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 32, 32), 0);
 		const ccv_nnc_graph_exec_symbol_t conv1 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(x, w1, bias1), TENSOR_SYMBOL_LIST(y1), "conv1");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv1, HINT((1, 1), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 16, 16), 0);
+		const ccv_nnc_tensor_symbol_t y2 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 16, 16), 0);
 		const ccv_nnc_graph_exec_symbol_t avg2 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(2, 2), TENSOR_SYMBOL_LIST(y1), TENSOR_SYMBOL_LIST(y2), "avg2");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, avg2, HINT((2, 2)));
-		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8, 8, 5, 5), 0);
-		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 8), 0);
-		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 8, 8), 0);
+		const ccv_nnc_tensor_symbol_t w3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8, 8, 5, 5), 0);
+		const ccv_nnc_tensor_symbol_t bias3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 8), 0);
+		const ccv_nnc_tensor_symbol_t y3 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 8, 8), 0);
 		const ccv_nnc_graph_exec_symbol_t conv3 = ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_CONVOLUTION_FORWARD(1, 8, 5, 5), TENSOR_SYMBOL_LIST(y2, w3, bias3), TENSOR_SYMBOL_LIST(y3), "conv3");
 		ccv_nnc_graph_exec_symbol_set_hint(symbolic_graph, conv3, HINT((2, 2), (2, 2)));
-		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8, 1, 1), 0);
+		const ccv_nnc_tensor_symbol_t y4 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8, 1, 1), 0);
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_AVERAGE_POOL_FORWARD(8, 8), TENSOR_SYMBOL_LIST(y3), TENSOR_SYMBOL_LIST(y4), "avg4");
-		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32), "label");
-		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32, 8), "y5");
-		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32), "loss");
+		const ccv_nnc_tensor_symbol_t label = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32), "label");
+		const ccv_nnc_tensor_symbol_t y5 = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32, 8), "y5");
+		const ccv_nnc_tensor_symbol_t loss = ccv_nnc_tensor_symbol_new(symbolic_graph, GPU_TENSOR_NCHW(000, 32F, 32), "loss");
 		ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_SOFTMAX_CROSSENTROPY_FORWARD(), TENSOR_SYMBOL_LIST(y4, label), TENSOR_SYMBOL_LIST(loss, y5), "softmax crossentropy");
 		ccv_nnc_graph_exec_symbol_autogen(symbolic_graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 		ccv_nnc_tensor_symbol_t updated_params[4];
@@ -324,10 +324,10 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 			updated_params, 4,
 			SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph),
 			&graph, &tensor_arena, &graph_exec_arena);
-		ccv_nnc_tensor_t* cpu_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32, 3, 32, 32), 0);
+		ccv_nnc_tensor_t* cpu_input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32, 3, 32, 32), 0);
 		memcpy(cpu_input->data.f32, cpu_inputs[0]->data.f32, sizeof(float) * 16 * 3 * 32 * 32);
 		memcpy(cpu_input->data.f32 + 16 * 3 * 32 * 32, cpu_inputs[1]->data.f32, sizeof(float) * 16 * 3 * 32 * 32);
-		ccv_nnc_tensor_t* cpu_fit = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32), 0);
+		ccv_nnc_tensor_t* cpu_fit = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 32), 0);
 		memcpy(cpu_fit->data.f32, cpu_fits[0]->data.f32, sizeof(float) * 16);
 		memcpy(cpu_fit->data.f32 + 16, cpu_fits[1]->data.f32, sizeof(float) * 16);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_input), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, x)), 0);
@@ -336,10 +336,10 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
 		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 		ccv_nnc_tensor_t* np_updated[4];
-		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 3, 5, 5), 0);
-		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
-		np_updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8, 8, 5, 5), 0);
-		np_updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(8), 0);
+		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
+		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
+		np_updated[2] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 8, 5, 5), 0);
+		np_updated[3] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[0]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[1]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[2]), ccv_nnc_tensor_from_symbol(tensor_arena, updated_params[3])), np_updated, 4, 0);
 		ccv_nnc_symbolic_graph_free(symbolic_graph);
 		ccv_nnc_graph_free(graph);
