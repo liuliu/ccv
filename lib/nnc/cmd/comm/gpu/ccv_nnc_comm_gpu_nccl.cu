@@ -29,13 +29,13 @@ static int _ccv_nnc_allreduce_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	for (i = 0; i < input_size; i++)
 	{
 		ccv_nnc_tensor_t* const a = inputs[i];
-		assert(a->info.datatype == b->info.datatype);
 		const int datatype = a->info.datatype;
 		const int device_id = CCV_TENSOR_GET_DEVICE_ID(a->info.type);
 		ncclComm_t comm = ccv_nnc_nccl_get_comm(stream_context, device_count, device_id);
 		ccv_nnc_stream_context_t* const neighbor_context = stream_context ? ccv_nnc_stream_context_find_neighbor(stream_context, device_id) : 0;
 		cudaStream_t stream = ccv_nnc_stream_context_get_stream(neighbor_context);
 		ccv_nnc_tensor_t* const b = outputs[i];
+		assert(a->info.datatype == b->info.datatype);
 		NCCL_ENFORCE(ncclAllReduce(a->data.f32, b->data.f32, tensor_count, ccv_nnc_nccl_datatype(datatype), ncclSum, comm, stream));
 	}
 	NCCL_ENFORCE(ncclGroupEnd());
