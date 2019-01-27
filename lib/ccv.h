@@ -1311,6 +1311,10 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
  * @param high_thresh The high threshold that makes the point acceptable.
  */
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
+/*
+Same as **ccv_canny** but remove the execution of sobel and receive its result as input variables dxi and dyi instead
+*/
+void ccv_canny_no_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh,int* dxi,int* dyi);
 void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 /**
@@ -1515,8 +1519,9 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
  * @param a The input matrix.
  * @param params A **ccv_swt_param_t** structure that defines various aspect of the SWT function.
  * @return A **ccv_array_t** of **ccv_comp_t** with detection results.
+ * @param parallelize_channels A boolean to decide wheter or not paralelize the execution of **ccv_swt**
  */
-CCV_WARN_UNUSED(ccv_array_t*) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params);
+CCV_WARN_UNUSED(ccv_array_t*) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params, int parallelize_channels);
 
 /* it makes sense now to include a simple data structure that encapsulate the common idiom of
  * having file name with a bounding box */
@@ -1901,7 +1906,7 @@ typedef struct {
  * @return A **ccv_tld_t** object holds temporal information about tracking.
  */
 CCV_WARN_UNUSED(ccv_tld_t*) ccv_tld_new(ccv_dense_matrix_t* a, ccv_rect_t box, ccv_tld_param_t params);
-/** 
+/**
  * ccv doesn't have retain / release semantics. Thus, a TLD instance cannot retain the most recent frame it tracks for future reference, you have to pass that in by yourself.
  * @param tld The TLD instance for continuous tracking
  * @param a The last frame used for tracking (ccv_tld_track_object will check signature of this against the last frame TLD instance tracked)

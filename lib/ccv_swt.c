@@ -1,5 +1,6 @@
 #include "ccv.h"
 #include "ccv_internal.h"
+#include <omp.h>
 
 const ccv_swt_param_t ccv_swt_default_params = {
 	.interval = 1,
@@ -45,15 +46,19 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
-	ccv_dense_matrix_t* cc = 0;
-	ccv_canny(a, &cc, 0, params.size, params.low_thresh, params.high_thresh);
-	ccv_dense_matrix_t* c = 0;
-	ccv_close_outline(cc, &c, 0);
-	ccv_matrix_free(cc);
+
 	ccv_dense_matrix_t* dx = 0;
 	ccv_sobel(a, &dx, 0, params.size, 0);
 	ccv_dense_matrix_t* dy = 0;
 	ccv_sobel(a, &dy, 0, 0, params.size);
+
+	ccv_dense_matrix_t* cc = 0;
+	ccv_canny_no_sobel(a, &cc, 0, params.size, params.low_thresh, params.high_thresh,dx->data.i32,dy->data.i32);
+
+	ccv_dense_matrix_t* c = 0;
+	ccv_close_outline(cc, &c, 0);
+	ccv_matrix_free(cc);
+
 	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
 	ccv_array_t* strokes = ccv_array_new(sizeof(ccv_swt_stroke_t), 64, 0);
@@ -609,7 +614,7 @@ static int _ccv_is_same_textline(const void* a, const void* b, void* data)
 			width * height > thresh[1] * ccv_min(t1->rect.width * t1->rect.height, t2->rect.width * t2->rect.height));
 }
 
-ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
+ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params, int parallelize_channels)
 {
 	int hr = a->rows * 2 / (params.min_height + params.max_height);
 	int wr = a->cols * 2 / (params.min_height + params.max_height);
@@ -638,20 +643,54 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 			pyr = phx;
 		}
 		ccv_dense_matrix_t* swt = 0;
-		params.direction = CCV_DARK_TO_BRIGHT;
-		ccv_swt(pyr, &swt, 0, params);
-		/* perform connected component analysis */
-		ccv_array_t* lettersB = _ccv_swt_connected_letters(pyr, swt, params);
-		ccv_matrix_free(swt);
-		ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
-		swt = 0;
-		params.direction = CCV_BRIGHT_TO_DARK;
-		ccv_swt(pyr, &swt, 0, params);
-		ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
-		ccv_matrix_free(swt);
+		ccv_dense_matrix_t* swt_ = 0;
+		ccv_swt_param_t params_ = params;
+		ccv_array_t* textline;
+		ccv_array_t* textline2;
+		ccv_array_t* lettersB;
+		ccv_array_t* lettersF;
+
+		if (parallelize_channels) {
+
+	        #pragma omp parallel num_threads(2)
+	        {
+	            int thread_id = omp_get_thread_num();
+	            if(thread_id==0) {
+	                params.direction = CCV_DARK_TO_BRIGHT;
+	                // Parametros pyr= imagen, swt= variables, parms= para encontrar
+	                ccv_swt(pyr, &swt, 0, params);
+
+	                /* perform connected component analysis */
+	                // Analise dos componentes
+	                lettersB = _ccv_swt_connected_letters(pyr, swt, params);
+	                ccv_matrix_free(swt);
+	                textline = _ccv_swt_merge_textline(lettersB, params);
+	            } else {
+	                params_.direction = CCV_BRIGHT_TO_DARK;
+	                ccv_swt(pyr, &swt_, 0, params_);
+
+	                lettersF = _ccv_swt_connected_letters(pyr, swt_, params_);
+	                ccv_matrix_free(swt_);
+	        		textline2 = _ccv_swt_merge_textline(lettersF, params_);
+	            }
+	        }
+		} else {
+			params.direction = CCV_DARK_TO_BRIGHT;
+			ccv_swt(pyr, &swt, 0, params);
+			/* perform connected component analysis */
+			ccv_array_t* lettersB = _ccv_swt_connected_letters(pyr, swt, params);
+			ccv_matrix_free(swt);
+			ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
+			swt = 0;
+			params.direction = CCV_BRIGHT_TO_DARK;
+			ccv_swt(pyr, &swt, 0, params);
+			ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
+			ccv_matrix_free(swt);
+			ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
+		}
 		if (pyr != phx)
 			ccv_matrix_free(pyr);
-		ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
+
 		for (i = 0; i < textline2->rnum; i++)
 			ccv_array_push(textline, ccv_array_get(textline2, i));
 		ccv_array_free(textline2);
