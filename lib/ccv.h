@@ -1311,10 +1311,6 @@ void ccv_hog(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int b_type, int sbin
  * @param high_thresh The high threshold that makes the point acceptable.
  */
 void ccv_canny(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh);
-/*
-Same as **ccv_canny** but remove the execution of sobel and receive its result as input variables dxi and dyi instead
-*/
-void ccv_canny_no_sobel(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, int size, double low_thresh, double high_thresh,int* dxi,int* dyi);
 void ccv_close_outline(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type);
 /* range: exclusive, return value: inclusive (i.e., threshold = 5, 0~5 is background, 6~range-1 is foreground */
 /**
@@ -1519,7 +1515,7 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
  * @param a The input matrix.
  * @param params A **ccv_swt_param_t** structure that defines various aspect of the SWT function.
  * @return A **ccv_array_t** of **ccv_comp_t** with detection results.
- * @param parallelize_channels A boolean to decide wheter or not paralelize the execution of **ccv_swt**
+ * @param parallelize_channels A boolean to decide wheter or not paralelize the execution of **ccv_swt** (0 -> not parallelize, 1 -> parallelize)
  */
 CCV_WARN_UNUSED(ccv_array_t*) ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params, int parallelize_channels);
 

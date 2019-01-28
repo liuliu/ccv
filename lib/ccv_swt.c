@@ -46,19 +46,15 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
-
+	ccv_dense_matrix_t* cc = 0;
+	ccv_canny(a, &cc, 0, params.size, params.low_thresh, params.high_thresh);
+	ccv_dense_matrix_t* c = 0;
+	ccv_close_outline(cc, &c, 0);
+	ccv_matrix_free(cc);
 	ccv_dense_matrix_t* dx = 0;
 	ccv_sobel(a, &dx, 0, params.size, 0);
 	ccv_dense_matrix_t* dy = 0;
 	ccv_sobel(a, &dy, 0, 0, params.size);
-
-	ccv_dense_matrix_t* cc = 0;
-	ccv_canny_no_sobel(a, &cc, 0, params.size, params.low_thresh, params.high_thresh,dx->data.i32,dy->data.i32);
-
-	ccv_dense_matrix_t* c = 0;
-	ccv_close_outline(cc, &c, 0);
-	ccv_matrix_free(cc);
-
 	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
 	ccv_array_t* strokes = ccv_array_new(sizeof(ccv_swt_stroke_t), 64, 0);
