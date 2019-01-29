@@ -485,7 +485,7 @@ cudaDataType_t ccv_nnc_cuda_compute_datatype(const int datatype)
 
 #ifdef HAVE_CUDNN
 
-static cudnnDataType_t _ccv_nnc_cudnn_datatype(const int datatype)
+cudnnDataType_t ccv_nnc_cudnn_datatype(const int datatype)
 {
 	switch (datatype)
 	{
@@ -656,9 +656,9 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor_
 	}
 	if (axis_count <= 4)
 	{
-		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
+		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
 	} else {
-		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), axis_count, dim, stride));
+		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), axis_count, dim, stride));
 	}
 	return tensor_desc;
 }
@@ -813,9 +813,9 @@ ccv_nnc_cudnn_tensor_view_descriptor_t ccv_nnc_cudnn_get_tensor_view_descriptor(
 	}
 	if (CCV_NNC_MAX_DIM == 2)
 	{
-		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
+		CUDNN_ENFORCE(cudnnSetTensor4dDescriptorEx(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), dim[0], dim[1], dim[2], dim[3], stride[0], stride[1], stride[2], stride[3]));
 	} else {
-		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), CCV_NNC_MAX_DIM + 2, dim, stride));
+		CUDNN_ENFORCE(cudnnSetTensorNdDescriptor(tensor_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CCV_NNC_MAX_DIM + 2, dim, stride));
 	}
 	return tensor_desc;
 }
@@ -843,9 +843,9 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 			dim[i] = tensor->info.dim[i];
 		if (nd == 4)
 		{
-			CUDNN_ENFORCE(cudnnSetFilter4dDescriptor(filter_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NCHW, dim[0], dim[1], dim[2], dim[3]));
+			CUDNN_ENFORCE(cudnnSetFilter4dDescriptor(filter_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NCHW, dim[0], dim[1], dim[2], dim[3]));
 		} else {
-			CUDNN_ENFORCE(cudnnSetFilterNdDescriptor(filter_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NCHW, nd, dim));
+			CUDNN_ENFORCE(cudnnSetFilterNdDescriptor(filter_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NCHW, nd, dim));
 		}
 	} else if (tensor->info.format == CCV_TENSOR_FORMAT_NHWC) {
 		dim[0] = tensor->info.dim[0];
@@ -854,9 +854,9 @@ ccv_nnc_cudnn_filter_descriptor_t ccv_nnc_cudnn_get_filter_descriptor(const ccv_
 			dim[i] = tensor->info.dim[i - 1];
 		if (nd == 4)
 		{
-			CUDNN_ENFORCE(cudnnSetFilter4dDescriptor(filter_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NHWC, dim[0], dim[1], dim[2], dim[3]));
+			CUDNN_ENFORCE(cudnnSetFilter4dDescriptor(filter_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NHWC, dim[0], dim[1], dim[2], dim[3]));
 		} else {
-			CUDNN_ENFORCE(cudnnSetFilterNdDescriptor(filter_desc.descriptor, _ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NHWC, nd, dim));
+			CUDNN_ENFORCE(cudnnSetFilterNdDescriptor(filter_desc.descriptor, ccv_nnc_cudnn_datatype(tensor->info.datatype), CUDNN_TENSOR_NHWC, nd, dim));
 		}
 	}
 	return filter_desc;
@@ -882,12 +882,12 @@ ccv_nnc_cudnn_convolution_descriptor_t ccv_nnc_cudnn_get_convolution_descriptor(
 		v[i] = hint.stride.dim[i];
 	if (CCV_NNC_MAX_DIM == 2)
 	{
-		CUDNN_ENFORCE(cudnnSetConvolution2dDescriptor(convolution_desc.descriptor, p[0], p[1], v[0], v[1], 1, 1, CUDNN_CROSS_CORRELATION, _ccv_nnc_cudnn_datatype(datatype)));
+		CUDNN_ENFORCE(cudnnSetConvolution2dDescriptor(convolution_desc.descriptor, p[0], p[1], v[0], v[1], 1, 1, CUDNN_CROSS_CORRELATION, ccv_nnc_cudnn_datatype(datatype)));
 	} else {
 		int u[CCV_NNC_MAX_DIM];
 		for (i = 0; i < CCV_NNC_MAX_DIM; i++)
 			u[i] = 1;
-		CUDNN_ENFORCE(cudnnSetConvolutionNdDescriptor(convolution_desc.descriptor, CCV_NNC_MAX_DIM, p, v, u, CUDNN_CROSS_CORRELATION, _ccv_nnc_cudnn_datatype(datatype)));
+		CUDNN_ENFORCE(cudnnSetConvolutionNdDescriptor(convolution_desc.descriptor, CCV_NNC_MAX_DIM, p, v, u, CUDNN_CROSS_CORRELATION, ccv_nnc_cudnn_datatype(datatype)));
 	}
 	CUDNN_ENFORCE(cudnnSetConvolutionMathType(convolution_desc.descriptor, CUDNN_TENSOR_OP_MATH));
 	return convolution_desc;

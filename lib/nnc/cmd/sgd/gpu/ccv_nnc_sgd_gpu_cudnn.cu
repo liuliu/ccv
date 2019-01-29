@@ -9,6 +9,14 @@ extern "C" {
 
 #ifdef HAVE_CUDNN
 
+template<typename NUM1, typename NUM2>
+__global__ void _ccv_nnc_data_conversion_kernel(const size_t count, const NUM1* const a, NUM2* const b)
+{
+	CUDA_1D_KERNEL_LOOP(i, count) {
+		b[i] = a[i];
+	}
+}
+
 static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(input_size == 3);
@@ -20,12 +28,34 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const float dampening = cmd.info.minimize.dampening;
 	const float inv_dampening = 1 - dampening;
 	const float inv_dampening_decay = inv_dampening * decay;
-	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
+	assert(inputs[1]->info.datatype == inputs[2]->info.datatype &&
+		inputs[2]->info.datatype == outputs[0]->info.datatype &&
+		outputs[0]->info.datatype == outputs[1]->info.datatype);
+	ccv_nnc_cudnn_tensor_view_descriptor_t g;
+	if (inputs[0]->info.datatype != inputs[1]->info.datatype)
+	{
+		// TODO: There should be a faster way to do type cast.
+		assert(!CCV_IS_TENSOR_VIEW(inputs[0]));
+		// Cast from fp16 to fp32 if needed.
+		const size_t tensor_count = ccv_nnc_tensor_count(inputs[0]->info);
+		void* buf = ccv_nnc_stream_context_get_workspace(stream_context, tensor_count * CCV_GET_DATA_TYPE_SIZE(inputs[1]->info.datatype), CCV_TENSOR_GPU_MEMORY);
+		cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
+		if (inputs[0]->info.datatype == CCV_32F && inputs[1]->info.datatype == CCV_16F)
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, inputs[0]->data.f32, (__half*)buf);
+		else if (inputs[0]->info.datatype == CCV_16F && inputs[1]->info.datatype == CCV_32F)
+			_ccv_nnc_data_conversion_kernel<<<CUDA_GET_BLOCKS(tensor_count), CUDA_NUM_THREADS, 0, stream>>>(tensor_count, (__half*)inputs[0]->data.f16, (float*)buf);
+		ccv_nnc_tensor_t tv = *inputs[0];
+		tv.info.datatype = inputs[1]->info.datatype;
+		tv.data.u8 = (uint8_t*)buf;
+		g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)&tv);
+	} else // Otherwise, get g directly.
+		g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t m = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[2]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t b = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t n = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[1]);
 	cudnnOpTensorDescriptor_t add = ccv_nnc_stream_context_get_op_tensor_descriptor(stream_context);
+	// This is done with float no matter what the datatype inputs / outputs are.
 	cudnnSetOpTensorDescriptor(add, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
 	static const float one = 1;
 	static const float zero = 0;

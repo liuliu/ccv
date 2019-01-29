@@ -99,6 +99,7 @@ CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_
 CCV_WARN_UNUSED(void*) ccv_nnc_stream_context_get_ones(const ccv_nnc_stream_context_t* const stream_context, const int n, const int datatype);
 
 #ifdef HAVE_CUDNN
+CCV_WARN_UNUSED(cudnnDataType_t) ccv_nnc_cudnn_datatype(const int datatype);
 CCV_WARN_UNUSED(cudnnHandle_t) ccv_nnc_stream_context_get_cudnn(const ccv_nnc_stream_context_t* const stream_context);
 // CUDNN related descriptors.
 CCV_WARN_UNUSED(cudnnActivationDescriptor_t) ccv_nnc_stream_context_get_activation_descriptor(const ccv_nnc_stream_context_t* const stream_context);
