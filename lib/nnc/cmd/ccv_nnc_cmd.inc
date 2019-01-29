@@ -257,6 +257,8 @@ void _register_command_CCV_NNC_DATA_TRANSFER_FORWARD_backend_CCV_NNC_BACKEND_GPU
 void _register_command_CCV_NNC_DATA_TRANSFER_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_DATATYPE_CONVERSION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_DATATYPE_CONVERSION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(ccv_nnc_cmd_backend_registry_t* const registry);
 #endif
 
 static inline void _ccv_nnc_cmd_init(void)
@@ -420,5 +422,7 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_DATA_TRANSFER_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[9].backends[5]));
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[4].backends[2]));
 	_register_command_CCV_NNC_FORMAT_TRANSFORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[5].backends[2]));
+	_register_command_CCV_NNC_DATATYPE_CONVERSION_FORWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[48].backends[5]));
+	_register_command_CCV_NNC_DATATYPE_CONVERSION_BACKWARD_backend_CCV_NNC_BACKEND_GPU_REF(&(init_map[49].backends[5]));
 #endif
 }
