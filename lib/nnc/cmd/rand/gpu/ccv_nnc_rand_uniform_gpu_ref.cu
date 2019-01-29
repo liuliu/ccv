@@ -8,7 +8,8 @@ extern "C" {
 #include <nnc/gpu/ccv_nnc_compat.h>
 #include <curand_kernel.h>
 
-__global__ void _ccv_nnc_random_uniform_kernel(const int count, const int seed, const float l, const float u, float* const a)
+template<typename NUM>
+__global__ void _ccv_nnc_random_uniform_kernel(const int count, const int seed, const float l, const float u, NUM* const a)
 {
 	const int id = blockIdx.x * blockDim.x + threadIdx.x;
 	curandState_t state;
@@ -29,14 +30,17 @@ static int _ccv_nnc_random_uniform(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t
 	const float l = cmd.info.blas.a[0];
 	const float u = cmd.info.blas.a[1];
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
+	if (a->info.datatype == CCV_32F)
+		_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, a->data.f32);
+	else if (a->info.datatype == CCV_16F)
+		_ccv_nnc_random_uniform_kernel<<<CUDA_GET_BLOCKS(count), CUDA_NUM_THREADS, 0, stream>>>(count, seed, l, u, (__half*)a->data.f16);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
 REGISTER_COMMAND_BACKEND(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_random_uniform;
@@ -45,7 +49,7 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_RANDOM_UNIFORM_FORWARD, CCV_NNC_BACKEND_GPU_REF
 REGISTER_COMMAND_BACKEND(CCV_NNC_RANDOM_UNIFORM_BACKWARD, CCV_NNC_BACKEND_GPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
 {
 	registry->tensor_formats = CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_CHWN;
-	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_datatypes = CCV_32F | CCV_16F;
 	registry->tensor_memory = CCV_TENSOR_GPU_MEMORY;
 	registry->algorithms = 1;
 	registry->exec = _ccv_nnc_random_uniform;
