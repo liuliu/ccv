@@ -232,8 +232,8 @@ TEST_CASE("cifar-10 with resnet20 to > 85% under 3 minutes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
 			ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
-	FILE* train = fopen("/fast/Data/cifar-10/cifar-10-batches-bin/data_batch.bin", "rb");
-	FILE* test = fopen("/fast/Data/cifar-10/cifar-10-batches-bin/test_batch.bin", "rb");
+	FILE* train = fopen("/fast-2t/Data/cifar-10/cifar-10-batches-bin/data_batch.bin", "rb");
+	FILE* test = fopen("/fast-2t/Data/cifar-10/cifar-10-batches-bin/test_batch.bin", "rb");
 	if (!train || !test)
 	{
 		if (train)
