@@ -147,6 +147,9 @@ static void _ccv_cnnp_identity_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 	{
 		ccv_nnc_tensor_param_t bias_params = params;
 		memset(bias_params.dim, 0, sizeof(bias_params.dim));
+		// If the accuracy is not enough, bump it to 32-bit floating point.
+		if (bias_params.datatype != CCV_32F || bias_params.datatype != CCV_64F)
+			bias_params.datatype = CCV_32F;
 		bias_params.dim[0] = ccv_nnc_tensor_get_c(params);
 		output = ccv_nnc_tensor_symbol_new(graph, params, 0);
 		// Both scale and bias are shared between if this model is reused.
@@ -331,6 +334,9 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		const ccv_nnc_tensor_symbol_t convolution_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 		const ccv_nnc_graph_exec_symbol_t convolution = ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(convolution_output), 0);
 		ccv_nnc_graph_exec_symbol_set_hint(graph, convolution, self->params.hint);
+		// If the accuracy is not enough, bump it to 32-bit floating point.
+		if (bias_params.datatype != CCV_32F || bias_params.datatype != CCV_64F)
+			bias_params.datatype = CCV_32F;
 		// Both scale and bias are shared between if this model is reused.
 		if (!self->scale.graph)
 			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
@@ -523,6 +529,9 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 	{
 		const ccv_nnc_tensor_symbol_t dense_output = ccv_nnc_tensor_symbol_new(graph, output_params, 0);
 		ccv_nnc_graph_exec_symbol_new(graph, cmd, TENSOR_SYMBOL_LIST(inputs[0], self->weights), TENSOR_SYMBOL_LIST(dense_output), 0);
+		// If the accuracy is not enough, bump it to 32-bit floating point.
+		if (bias_params.datatype != CCV_32F || bias_params.datatype != CCV_64F)
+			bias_params.datatype = CCV_32F;
 		// Both scale and bias are shared between if this model is reused.
 		if (!self->scale.graph)
 			self->scale = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
