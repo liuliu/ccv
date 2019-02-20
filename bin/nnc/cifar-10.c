@@ -84,7 +84,7 @@ ccv_cnnp_model_t* _cifar_10_resnet56(void)
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, const int residual)
+static ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, const int residual)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
 	ccv_cnnp_model_t* conv = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
@@ -254,6 +254,10 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_nnc_tensor_t* outputs[device_count];
 	for (i = 0; i < 100000 / device_count; i++)
 	{
+		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
+		learn_rate = ((i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end)) / batch_size;
+		learn_rate = ccv_max(learn_rate, 0.000001);
+		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
@@ -304,11 +308,6 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			// Reshuffle and reset cursor.
 			ccv_cnnp_dataframe_shuffle(raw_train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
-		}
-		if ((i + 1) % (5000 / device_count) == 0)
-		{
-			learn_rate *= 0.5;
-			ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
 		}
 		int t;
 		CCV_SWAP(p, q, t);

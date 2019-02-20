@@ -12,85 +12,70 @@ TEST_SETUP()
 	ccv_nnc_init();
 }
 
-static ccv_cnnp_model_t* _building_block_new(const int filters, const int strides, const int border, const int projection_shortcut)
+static ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, const int residual)
 {
 	ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_io_t shortcut = input;
-	ccv_cnnp_model_t* const identity = ccv_cnnp_identity((ccv_cnnp_param_t){
+	ccv_cnnp_model_t* conv = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (1, 1)),
 	});
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(input));
-	if (projection_shortcut)
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv, MODEL_IO_LIST(input));
+	ccv_cnnp_model_t* pool = ccv_cnnp_max_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
+		.hint = HINT((strides, strides), (0, 0)),
+	});
+	output = ccv_cnnp_model_apply(pool, MODEL_IO_LIST(output));
+	if (residual)
 	{
-		ccv_cnnp_model_t* const conv0 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(1, 1), (ccv_cnnp_param_t){
-			.no_bias = 1,
-			.hint = HINT((strides, strides), (0, 0)),
+		ccv_cnnp_model_io_t shortcut = output;
+		ccv_cnnp_model_t* res1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (1, 1)),
 		});
-		shortcut = ccv_cnnp_model_apply(conv0, MODEL_IO_LIST(output));
-	}
-	ccv_cnnp_model_t* const conv1 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-		.norm = CCV_CNNP_BATCH_NORM,
-		.activation = CCV_CNNP_ACTIVATION_RELU,
-		.hint = HINT((strides, strides), (border, border)),
-	});
-	output = ccv_cnnp_model_apply(conv1, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const conv2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-		.no_bias = 1,
-		.hint = HINT((1, 1), (1, 1)),
-	});
-	output = ccv_cnnp_model_apply(conv2, MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* const add = ccv_cnnp_add();
-	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
-}
-
-static ccv_cnnp_model_t* _block_layer_new(const int filters, const int strides, const int border, const int blocks)
-{
-	ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* first_block = _building_block_new(filters, strides, border, 1);
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(first_block, MODEL_IO_LIST(input));
-	int i;
-	for (i = 1; i < blocks; i++)
-	{
-		ccv_cnnp_model_t* block = _building_block_new(filters, 1, 1, 0);
-		output = ccv_cnnp_model_apply(block, MODEL_IO_LIST(output));
+		output = ccv_cnnp_model_apply(res1, MODEL_IO_LIST(output));
+		ccv_cnnp_model_t* res2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.norm = CCV_CNNP_BATCH_NORM,
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (1, 1)),
+		});
+		output = ccv_cnnp_model_apply(res2, MODEL_IO_LIST(output));
+		ccv_cnnp_model_t* const add = ccv_cnnp_add();
+		output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	}
 	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
 }
 
-ccv_cnnp_model_t* _cifar_10_resnet20(void)
+static ccv_cnnp_model_t* _cifar_10_dawn(void)
 {
-	const ccv_cnnp_model_io_t input = ccv_cnnp_input();
-	ccv_cnnp_model_t* init_conv = ccv_cnnp_convolution(1, 16, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
-		.no_bias = 1,
-		.hint = HINT((1, 1), (1, 1)),
-	});
-	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
-	output = ccv_cnnp_model_apply(_block_layer_new(16, 1, 1, 3), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(_block_layer_new(32, 2, 1, 3), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(_block_layer_new(64, 2, 1, 3), MODEL_IO_LIST(output));
-	ccv_cnnp_model_t* identity = ccv_cnnp_identity((ccv_cnnp_param_t){
+	ccv_cnnp_model_t* prep = ccv_cnnp_convolution(1, 64, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
+		.hint = HINT((1, 1), (1, 1)),
 	});
-	output = ccv_cnnp_model_apply(identity, MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(ccv_cnnp_dense(10, (ccv_cnnp_param_t){
-		.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
-	}), MODEL_IO_LIST(output));
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* layer1 = _dawn_layer_new(128, 2, 1);
+	ccv_cnnp_model_t* layer2 = _dawn_layer_new(256, 2, 0);
+	ccv_cnnp_model_t* layer3 = _dawn_layer_new(512, 2, 1);
+	return ccv_cnnp_sequential_new(MODEL_LIST(
+		prep,
+		layer1,
+		layer2,
+		layer3,
+		ccv_cnnp_max_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}),
+		ccv_cnnp_flatten(),
+		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
+		})));
 }
 
 static int train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
-	ccv_cnnp_model_t* const cifar_10 = _cifar_10_resnet20();
+	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn();
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	if (device_count < 1)
 		return -1;
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 32, 32);
-	float learn_rate = 0.002 / device_count;
+	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
@@ -156,8 +141,12 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 65; i++)
+	for (i = 0; epoch < 30; i++)
 	{
+		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
+		learn_rate = ((i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end)) / batch_size;
+		learn_rate = ccv_max(learn_rate, 0.000001);
+		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
@@ -172,11 +161,6 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		if ((i + 1) % epoch_end == 0)
 		{
 			++epoch;
-			if (epoch % 20 == 0)
-			{
-				learn_rate *= 0.25;
-				ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
-			}
 			// Reshuffle and reset cursor.
 			ccv_cnnp_dataframe_shuffle(raw_train_data);
 			ccv_cnnp_dataframe_iter_set_cursor(iter, 0);
@@ -228,7 +212,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	return correct;
 }
 
-TEST_CASE("cifar-10 with resnet20 to > 85% under 3 minutes")
+TEST_CASE("cifar-10 with resnet20 to > 90% under 3 minutes")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_FORWARD, CCV_NNC_BACKEND_GPU_CUDNN) &&
 			ccv_nnc_cmd_ok(CCV_NNC_CONVOLUTION_BACKWARD, CCV_NNC_BACKEND_GPU_CUDNN));
@@ -298,7 +282,7 @@ TEST_CASE("cifar-10 with resnet20 to > 85% under 3 minutes")
 	int correct = train_cifar_10(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 8500, "accuracy %.2f after 65 epoch should be higher than 85%%", (float)correct / 10000);
+	REQUIRE(correct > 9000, "accuracy %.2f after 30 epoch should be higher than 90%%", (float)correct / 10000);
 }
 
 #include "case_main.h"
