@@ -38,22 +38,27 @@ static CCV_IMPLEMENT_QSORT(_ccv_swt_stroke_qsort, ccv_swt_stroke_t, less_than)
 #undef less_than
 
 /* ccv_swt is only the method to generate stroke width map */
-void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+static void _ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params, ccv_dense_matrix_t* const _c, ccv_dense_matrix_t* const _dx, ccv_dense_matrix_t* const _dy)
 {
 	assert(a->type & CCV_C1);
 	ccv_declare_derived_signature(sig, a->sig != 0, ccv_sign_with_format(64, "ccv_swt(%d,%d,%d,%d)", params.direction, params.size, params.low_thresh, params.high_thresh), a->sig, CCV_EOF_SIGN);
 	type = (type == 0) ? CCV_32S | CCV_C1 : CCV_GET_DATA_TYPE(type) | CCV_C1;
 	ccv_dense_matrix_t* db = *b = ccv_dense_matrix_renew(*b, a->rows, a->cols, CCV_C1 | CCV_ALL_DATA_TYPE, type, sig);
 	ccv_object_return_if_cached(, db);
-	ccv_dense_matrix_t* cc = 0;
-	ccv_canny(a, &cc, 0, params.size, params.low_thresh, params.high_thresh);
-	ccv_dense_matrix_t* c = 0;
-	ccv_close_outline(cc, &c, 0);
-	ccv_matrix_free(cc);
-	ccv_dense_matrix_t* dx = 0;
-	ccv_sobel(a, &dx, 0, params.size, 0);
-	ccv_dense_matrix_t* dy = 0;
-	ccv_sobel(a, &dy, 0, 0, params.size);
+	ccv_dense_matrix_t* c = _c;
+	if (!c)
+	{
+		ccv_dense_matrix_t* cc = 0;
+		ccv_canny(a, &cc, 0, params.size, params.low_thresh, params.high_thresh);
+		ccv_close_outline(cc, &c, 0);
+		ccv_matrix_free(cc);
+	}
+	ccv_dense_matrix_t* dx = _dx;
+	if (!dx)
+		ccv_sobel(a, &dx, 0, params.size, 0);
+	ccv_dense_matrix_t* dy = _dy;
+	if (!dy)
+		ccv_sobel(a, &dy, 0, 0, params.size);
 	int i, j, k, w;
 	int* buf = (int*)alloca(sizeof(int) * ccv_max(a->cols, a->rows));
 	ccv_array_t* strokes = ccv_array_new(sizeof(ccv_swt_stroke_t), 64, 0);
@@ -217,9 +222,17 @@ void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_pa
 #undef ray_reset
 #undef ray_increment
 	ccv_array_free(strokes);
-	ccv_matrix_free(c);
-	ccv_matrix_free(dx);
-	ccv_matrix_free(dy);
+	if (c != _c)
+		ccv_matrix_free(c);
+	if (dx != _dx)
+		ccv_matrix_free(dx);
+	if (dy != _dy)
+		ccv_matrix_free(dy);
+}
+
+void ccv_swt(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int type, ccv_swt_param_t params)
+{
+	_ccv_swt(a, b, type, params, 0, 0, 0);
 }
 
 static ccv_array_t* _ccv_swt_connected_component(ccv_dense_matrix_t* a, int ratio, int min_height, int max_height, int min_area)
@@ -637,30 +650,45 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 				ccv_matrix_free(pha);
 			pyr = phx;
 		}
-		ccv_dense_matrix_t* swt = 0;
-		params.direction = CCV_DARK_TO_BRIGHT;
-		ccv_swt(pyr, &swt, 0, params);
-		/* perform connected component analysis */
-		ccv_array_t* lettersB = _ccv_swt_connected_letters(pyr, swt, params);
-		ccv_matrix_free(swt);
-		ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
-		swt = 0;
-		params.direction = CCV_BRIGHT_TO_DARK;
-		ccv_swt(pyr, &swt, 0, params);
-		ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
-		ccv_matrix_free(swt);
+		// Assumes if it is in the cache, then we can fetch these out of cache easily.
+		// (If the assumption is not true, worst case, we have the result cached for
+		// ccv_swt, but we don't for ccv_canny / ccv_close_outline / ccv_sobel, we will
+		// waste computation on these intermediate results.
+		ccv_dense_matrix_t* cc = 0;
+		ccv_canny(pyr, &cc, 0, params.size, params.low_thresh, params.high_thresh);
+		ccv_dense_matrix_t* c = 0;
+		ccv_close_outline(cc, &c, 0);
+		ccv_matrix_free(cc);
+		ccv_dense_matrix_t* dx = 0;
+		ccv_sobel(pyr, &dx, 0, params.size, 0);
+		ccv_dense_matrix_t* dy = 0;
+		ccv_sobel(pyr, &dy, 0, 0, params.size);
+		ccv_array_t* letters_a[2];
+		ccv_array_t* textline_a[2];
+		parallel_for(i, 2) {
+			ccv_dense_matrix_t* swt = 0;
+			params.direction = (i == 0) ? CCV_DARK_TO_BRIGHT : CCV_BRIGHT_TO_DARK;
+			_ccv_swt(pyr, &swt, 0, params, c, dx, dy);
+			/* perform connected component analysis */
+			letters_a[i] = _ccv_swt_connected_letters(pyr, swt, params);
+			ccv_matrix_free(swt);
+			textline_a[i] = _ccv_swt_merge_textline(letters_a[i], params);
+		} parallel_endfor
+		ccv_matrix_free(c);
+		ccv_matrix_free(dx);
+		ccv_matrix_free(dy);
 		if (pyr != phx)
 			ccv_matrix_free(pyr);
-		ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
-		for (i = 0; i < textline2->rnum; i++)
-			ccv_array_push(textline, ccv_array_get(textline2, i));
-		ccv_array_free(textline2);
+		ccv_array_t* textline = textline_a[0];
+		for (i = 0; i < textline_a[1]->rnum; i++)
+			ccv_array_push(textline, ccv_array_get(textline_a[1], i));
+		ccv_array_free(textline_a[1]);
 		ccv_array_t* idx = 0;
 		int ntl = ccv_array_group(textline, &idx, _ccv_is_same_textline, params.same_word_thresh);
 		ccv_array_t* words;
 		if (params.breakdown && ntl > 0)
 		{
-			textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
+			ccv_array_t* const textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
 			ccv_array_zero(textline2);
 			textline2->rnum = ntl;
 			for (i = 0; i < textline->rnum; i++)
@@ -683,11 +711,11 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 			for (i = 0; i < textline2->rnum; i++)
 				ccfree(((ccv_textline_t*)ccv_array_get(textline2, i))->letters);
 			ccv_array_free(textline2);
-			ccv_array_free(lettersB);
-			ccv_array_free(lettersF);
+			ccv_array_free(letters_a[0]);
+			ccv_array_free(letters_a[1]);
 		} else {
-			ccv_array_free(lettersB);
-			ccv_array_free(lettersF);
+			ccv_array_free(letters_a[0]);
+			ccv_array_free(letters_a[1]);
 			words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
 			ccv_array_zero(words);
 			words->rnum = ntl;
