@@ -255,8 +255,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	for (i = 0; i < 100000 / device_count; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
-		learn_rate = ((i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end)) / batch_size;
-		learn_rate = ccv_max(learn_rate, 0.000001);
+		learn_rate = ((i + 1) < 15 * epoch_end ? 0.8 * (i + 1) / (15 * epoch_end) : 0.6 * (35 * epoch_end - (i + 1)) / ((35 - 15) * epoch_end)) / batch_size;
+		learn_rate = ccv_max(learn_rate, 0.00001);
 		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
