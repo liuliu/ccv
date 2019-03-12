@@ -1,5 +1,6 @@
 *.[oda]
 *.~
+*.sqlite3
 *.swp
 tags
 gh-pages
