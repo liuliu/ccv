@@ -21,10 +21,13 @@ const ccv_swt_param_t ccv_swt_default_params = {
 	.distance_ratio = 2.9,
 	.intersect_ratio = 1.3,
 	.letter_thresh = 3,
+	.word_and_letters = 0,
+	.kill_rectangle_shapes_ratio = 0,
 	.elongate_ratio = 1.9,
 	.breakdown = 1,
 	.breakdown_ratio = 1.0,
 };
+
 
 static inline CCV_IMPLEMENT_MEDIAN(_ccv_swt_median, int)
 
@@ -286,6 +289,7 @@ typedef struct {
 	int intensity;
 	double std;
 	double mean;
+	//int pushed;
 	ccv_contour_t* contour;
 } ccv_letter_t;
 
@@ -320,11 +324,52 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 			continue;
 		}
 		double mean = 0;
-		for (j = 0; j < contour->size; j++)
-		{
-			ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
-			mean += buffer[j] = swt->data.i32[point->x + point->y * swt->cols];
+
+
+		/*if((contour->rect.height > params.min_height*2 ) && (contour->rect.width > 2*params.min_height) && (params.kill_rectangle_shapes_ratio > 0)){
+		    double dim_to_adapt = contour->rect.width;
+		    if(contour->rect.height < contour->rect.width)
+		        dim_to_adapt = contour->rect.height;
+
+		    int delta = (int)(dim_to_adapt * params.kill_rectangle_shapes_ratio);
+
+		    if(delta < 2)
+		        delta = 2;
+
+		    int x1 = contour->rect.x + delta;
+		    int y1 = contour->rect.y + delta;
+		    int x2 = contour->rect.x + contour->rect.width - 1 - delta;
+		    int y2 = contour->rect.y + contour->rect.height - 1 - delta;
+
+		    int kill_contour = 1;
+
+            for (j = 0; j < contour->size; j++)
+            {
+                ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
+
+                if ((point->x > x1)&&(point->x < x2)&&(point->y > y1)&&( point->y < y2)){
+                    kill_contour = 0;
+                }
+
+                mean += buffer[j] = swt->data.i32[point->x + point->y * swt->cols];
+            }
+
+            if(kill_contour > 0){
+                //printf("killed rect contour: x:%d, y:%d, w:%d, h:%d, delta:%d\n",contour->rect.x,contour->rect.y,contour->rect.width,contour->rect.height, delta);
+                ccv_contour_free(contour);
+			    continue;
+            }
+
 		}
+		else*/
+		{
+
+            for (j = 0; j < contour->size; j++)
+            {
+                ccv_point_t* point = (ccv_point_t*)ccv_array_get(contour->set, j);
+                mean += buffer[j] = swt->data.i32[point->x + point->y * swt->cols];
+            }
+        }
 		mean = mean / contour->size;
 		double variance = 0;
 		for (j = 0; j < contour->size; j++)
@@ -339,6 +384,7 @@ static ccv_array_t* _ccv_swt_connected_letters(ccv_dense_matrix_t* a, ccv_dense_
 		letter.center.y = letter.rect.y + letter.rect.height / 2;
 		letter.intensity = 0;
 		letter.contour = contour;
+		//letter.pushed = 0;
 		ccv_array_push(letters, &letter);
 	}
 	ccv_array_free(contours);
@@ -483,63 +529,167 @@ static void _ccv_swt_add_letter(ccv_textline_t* textline, ccv_letter_t* letter)
 	}
 }
 
-static ccv_array_t* _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_t params)
+typedef struct {
+	ccv_array_t* regions;
+	ccv_array_t* orphaned_letters;
+} ccv_ret_merge_text_line_t;
+
+static ccv_ret_merge_text_line_t _ccv_swt_merge_textline(ccv_array_t* letters, ccv_swt_param_t params)
 {
 	int i, j;
-	ccv_array_t* pairs = ccv_array_new(sizeof(ccv_letter_pair_t), letters->rnum, 0);
+	ccv_array_t* pairs = 0;
 	double thickness_ratio_inv = 1.0 / params.thickness_ratio;
 	double height_ratio_inv = 1.0 / params.height_ratio;
+	int* non_orphaned_letters = 0;
+	ccv_array_t* orphaned_letters = 0;
+
+	if (params.word_and_letters != 0 && letters->rnum > 0 ){
+	    non_orphaned_letters =  ccmalloc(sizeof(int) * letters->rnum);
+	    memset(non_orphaned_letters, 0, sizeof(int) * letters->rnum);
+	    orphaned_letters = ccv_array_new(sizeof(ccv_letter_t *), letters->rnum, 0);
+	}
+
+
+    pairs = ccv_array_new(sizeof(ccv_letter_pair_t), letters->rnum, 0);
+
 	for (i = 0; i < letters->rnum - 1; i++)
 	{
 		ccv_letter_t* li = (ccv_letter_t*)ccv_array_get(letters, i);
-		for (j = i + 1; j < letters->rnum; j++)
-		{
-			ccv_letter_t* lj = (ccv_letter_t*)ccv_array_get(letters, j);
-			double ratio = (double)li->thickness / lj->thickness;
-			if (ratio > params.thickness_ratio || ratio < thickness_ratio_inv)
-				continue;
-			ratio = (double)li->rect.height / lj->rect.height;
-			if (ratio > params.height_ratio || ratio < height_ratio_inv)
-				continue;
-			if (abs(li->intensity - lj->intensity) > params.intensity_thresh)
-				continue;
-			int dx = li->rect.x - lj->rect.x + (li->rect.width - lj->rect.width) / 2;
-			int dy = li->rect.y - lj->rect.y + (li->rect.height - lj->rect.height) / 2;
-			if (abs(dx) > params.distance_ratio * ccv_max(li->rect.width, lj->rect.width))
-				continue;
-			int oy = ccv_min(li->rect.y + li->rect.height, lj->rect.y + lj->rect.height) - ccv_max(li->rect.y, lj->rect.y);
-			if (oy * params.intersect_ratio < ccv_min(li->rect.height, lj->rect.height))
-				continue;
-			ccv_letter_pair_t pair = { .left = li, .right = lj, .dx = dx, .dy = dy };
-			ccv_array_push(pairs, &pair);
-		}
+
+        for (j = i + 1; j < letters->rnum; j++)
+        {
+            ccv_letter_t* lj = (ccv_letter_t*)ccv_array_get(letters, j);
+            double ratio = (double)li->thickness / lj->thickness;
+            if (ratio > params.thickness_ratio || ratio < thickness_ratio_inv)
+                continue;
+            ratio = (double)li->rect.height / lj->rect.height;
+            if (ratio > params.height_ratio || ratio < height_ratio_inv)
+                continue;
+            if (abs(li->intensity - lj->intensity) > params.intensity_thresh)
+                continue;
+            int dx = li->rect.x - lj->rect.x + (li->rect.width - lj->rect.width) / 2;
+            int dy = li->rect.y - lj->rect.y + (li->rect.height - lj->rect.height) / 2;
+            if (abs(dx) > params.distance_ratio * ccv_max(li->rect.width, lj->rect.width))
+                continue;
+            int oy = ccv_min(li->rect.y + li->rect.height, lj->rect.y + lj->rect.height) - ccv_max(li->rect.y, lj->rect.y);
+            if (oy * params.intersect_ratio < ccv_min(li->rect.height, lj->rect.height))
+                continue;
+            ccv_letter_pair_t pair = { .left = li, .right = lj, .dx = dx, .dy = dy };
+            ccv_array_push(pairs, &pair);
+            if (non_orphaned_letters != 0){
+                non_orphaned_letters[i] = 1;
+                non_orphaned_letters[j] = 1;
+            }
+
+        }
 	}
+
+
+	if (non_orphaned_letters != 0){
+	    for (i = 0; i < letters->rnum; i++){
+	        if (non_orphaned_letters[i] == 0){
+	            ccv_letter_t *l = (ccv_letter_t*)ccv_array_get(letters, i);
+	            ccv_array_push(orphaned_letters, &(l) );
+	        }
+	    }
+	    ccfree(non_orphaned_letters);
+	}
+
+
 	ccv_array_t* idx = 0;
-	int nchains = ccv_array_group(pairs, &idx, _ccv_in_textline, 0);
-	ccv_textline_t* chain = (ccv_textline_t*)ccmalloc(nchains * sizeof(ccv_textline_t));
-	for (i = 0; i < nchains; i++)
-		chain[i].neighbors = 0;
-	for (i = 0; i < pairs->rnum; i++)
-	{
-		j = *(int*)ccv_array_get(idx, i);
-		_ccv_swt_add_letter(chain + j,((ccv_letter_pair_t*)ccv_array_get(pairs, i))->left);
-		_ccv_swt_add_letter(chain + j, ((ccv_letter_pair_t*)ccv_array_get(pairs, i))->right);
-	}
-	ccv_array_free(idx);
-	ccv_array_free(pairs);
-	ccv_array_t* regions = ccv_array_new(sizeof(ccv_textline_t), 5, 0);
-	for (i = 0; i < nchains; i++)
-		if (chain[i].neighbors >= params.letter_thresh && chain[i].rect.width > chain[i].rect.height * params.elongate_ratio)
-			ccv_array_push(regions, chain + i);
-		else if (chain[i].neighbors > 0)
-			ccfree(chain[i].letters);
-	ccfree(chain);
-	return regions;
+	int nchains = 0;
+	ccv_array_t* regions = 0;
+
+
+    nchains = ccv_array_group(pairs, &idx, _ccv_in_textline, 0);
+
+    ccv_textline_t* chain = (ccv_textline_t*)ccmalloc(nchains  * sizeof(ccv_textline_t));
+
+    for (i = 0; i < nchains; i++)
+        chain[i].neighbors = 0;
+
+
+    for (i = 0; i < pairs->rnum; i++)
+    {
+        ccv_letter_pair_t *ppair = (ccv_letter_pair_t*)ccv_array_get(pairs, i);
+
+        j = *(int*)ccv_array_get(idx, i);
+
+        _ccv_swt_add_letter(chain + j, ppair->left);
+        _ccv_swt_add_letter(chain + j, ppair->right);
+    }
+
+    ccv_array_free(idx);
+    ccv_array_free(pairs);
+
+    regions = ccv_array_new(sizeof(ccv_textline_t), nchains, 0);
+
+    for (i = 0; i < nchains; i++)
+    {
+        if (chain[i].neighbors >= params.letter_thresh && chain[i].rect.width > chain[i].rect.height * params.elongate_ratio)
+        {
+            ccv_array_push(regions, chain + i);
+        }
+        else if (chain[i].neighbors > 0)
+        {
+            ccfree(chain[i].letters);
+        }
+    }
+    ccfree(chain);
+
+
+    ccv_ret_merge_text_line_t ret = { .regions = regions, .orphaned_letters = orphaned_letters };
+	return ret;
 }
 
 #define less_than(a, b, aux) ((a)->center.x < (b)->center.x)
 CCV_IMPLEMENT_QSORT(_ccv_sort_letters, ccv_letter_t*, less_than)
 #undef less_than
+
+
+static void _ccv_push_text_line_as_word(ccv_array_t* words, ccv_textline_t* textline, int word_and_letters)
+{
+    if(word_and_letters == 0){
+        ccv_array_push(words, &(textline->rect));
+    }else{
+
+        if (textline->neighbors == 0)
+            return;
+
+        if ((textline->rect.width == 0) && (textline->rect.height == 0)){
+            return;
+        }
+
+        ccv_rect_t r = {.width = 0, .height = 0, .x = 1, .y = textline->neighbors};
+
+        ccv_array_push(words, &(r));
+        ccv_array_push(words, &(textline->rect));
+
+        int i = 0;
+
+        for (i = 0; i < textline->neighbors; i++)
+			ccv_array_push(words, &(textline->letters[i]->rect));
+    }
+
+}
+
+static void _ccv_push_letter_as_word(ccv_array_t* words, ccv_array_t* orphaned_letters){
+
+
+    if (orphaned_letters == 0)
+        return;
+    if (orphaned_letters->rnum == 0)
+        return;
+
+    int i;
+    ccv_rect_t r = {.width = 0, .height = 0, .x = 2, .y = orphaned_letters->rnum};
+    ccv_array_push(words, &(r));
+    for(i = 0; i < orphaned_letters->rnum; ++i){
+        ccv_array_push(words, &(  (*((ccv_letter_t **)ccv_array_get(orphaned_letters, i)))->rect )   );
+    }
+
+
+}
 
 static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t params)
 {
@@ -550,48 +700,73 @@ static ccv_array_t* _ccv_swt_break_words(ccv_array_t* textline, ccv_swt_param_t 
 		if (t->neighbors - 1 > n)
 			n = t->neighbors - 1;
 	}
-	assert(n > 0);
-	int* buffer = (int*)alloca(n * sizeof(int));
-	ccv_array_t* words = ccv_array_new(sizeof(ccv_rect_t), textline->rnum, 0);
+
+	ccv_array_t* words = 0;
+	int word_and_letters = params.word_and_letters;
+    if(word_and_letters){
+        //we will store words and letters ... large count to no do too many realloc
+        words = ccv_array_new(sizeof(ccv_rect_t), textline->rnum*8, 0);
+    }else{
+        words = ccv_array_new(sizeof(ccv_rect_t), textline->rnum, 0);
+
+    }
+	//assert(n > 0);
+	int* buffer;
+	if(n > 0)
+	{
+	    buffer = (int*)alloca(n * sizeof(int));
+	}
+
 	for (i = 0; i < textline->rnum; i++)
 	{
 		ccv_textline_t* t = (ccv_textline_t*)ccv_array_get(textline, i);
-		_ccv_sort_letters(t->letters, t->neighbors, 0);
-		int range = 0;
-		double mean = 0;
-		for (j = 0; j < t->neighbors - 1; j++)
+
+		if(t->neighbors == 1)
 		{
-			buffer[j] = ccv_max(0, t->letters[j + 1]->rect.x - (t->letters[j]->rect.x + t->letters[j]->rect.width));
-			if (buffer[j] >= range)
-				range = buffer[j] + 1;
-			mean += buffer[j];
-		}
-		ccv_dense_matrix_t otsu = ccv_dense_matrix(1, t->neighbors - 1, CCV_32S | CCV_C1, buffer, 0);
-		double var;
-		int threshold = ccv_otsu(&otsu, &var, range);
-		mean = mean / (t->neighbors - 1);
-		if (sqrt(var) > mean * params.breakdown_ratio)
-		{
-			ccv_textline_t nt = { .neighbors = 0, .letters = 0 };
-			_ccv_swt_add_letter(&nt, t->letters[0]);
-			for (j = 0; j < t->neighbors - 1; j++)
-			{
-				if (buffer[j] > threshold)
-				{
-					ccv_array_push(words, &nt.rect);
-					if (nt.letters)
-						ccfree(nt.letters);
-					nt.letters = 0;
-					nt.neighbors = 0;
-				}
-				_ccv_swt_add_letter(&nt, t->letters[j + 1]);
-			}
-			ccv_array_push(words, &nt.rect);
-			if (nt.letters)
-				ccfree(nt.letters);
-		} else {
-			ccv_array_push(words, &(t->rect));
-		}
+		    //ccv_array_push(words, &(t->rect));
+		    _ccv_push_text_line_as_word(words,t,word_and_letters);
+		}else{
+
+            _ccv_sort_letters(t->letters, t->neighbors, 0);
+            int range = 0;
+            double mean = 0;
+            for (j = 0; j < t->neighbors - 1; j++)
+            {
+                buffer[j] = ccv_max(0, t->letters[j + 1]->rect.x - (t->letters[j]->rect.x + t->letters[j]->rect.width));
+                if (buffer[j] >= range)
+                    range = buffer[j] + 1;
+                mean += buffer[j];
+            }
+            ccv_dense_matrix_t otsu = ccv_dense_matrix(1, t->neighbors - 1, CCV_32S | CCV_C1, buffer, 0);
+            double var;
+            int threshold = ccv_otsu(&otsu, &var, range);
+            mean = mean / (t->neighbors - 1);
+            if (sqrt(var) > mean * params.breakdown_ratio)
+            {
+                ccv_textline_t nt = { .neighbors = 0, .letters = 0 };
+                _ccv_swt_add_letter(&nt, t->letters[0]);
+                for (j = 0; j < t->neighbors - 1; j++)
+                {
+                    if (buffer[j] > threshold)
+                    {
+                        //ccv_array_push(words, &nt.rect);
+                        _ccv_push_text_line_as_word(words,&nt,word_and_letters);
+                        if (nt.letters)
+                            ccfree(nt.letters);
+                        nt.letters = 0;
+                        nt.neighbors = 0;
+                    }
+                    _ccv_swt_add_letter(&nt, t->letters[j + 1]);
+                }
+                //ccv_array_push(words, &nt.rect);
+                _ccv_push_text_line_as_word(words,&nt,word_and_letters);
+                if (nt.letters)
+                    ccfree(nt.letters);
+            } else {
+                //ccv_array_push(words, &(t->rect));
+                _ccv_push_text_line_as_word(words,t,word_and_letters);
+            }
+         }
 	}
 	return words;
 }
@@ -621,6 +796,7 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 	ccv_dense_matrix_t* phx = a;
 	ccv_dense_matrix_t* pyr = a;
 	double cscale = 1.0;
+
 	for (k = 0; k < scale_upto; k++)
 	{
 		// create down-sampled image on-demand because swt itself is very memory intensive
@@ -639,25 +815,42 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 		}
 		ccv_dense_matrix_t* swt = 0;
 		params.direction = CCV_DARK_TO_BRIGHT;
+
 		ccv_swt(pyr, &swt, 0, params);
 		/* perform connected component analysis */
 		ccv_array_t* lettersB = _ccv_swt_connected_letters(pyr, swt, params);
+
+
 		ccv_matrix_free(swt);
-		ccv_array_t* textline = _ccv_swt_merge_textline(lettersB, params);
+		ccv_ret_merge_text_line_t retB = _ccv_swt_merge_textline(lettersB, params);
+
+		ccv_array_t* textline = retB.regions;
+
+
 		swt = 0;
 		params.direction = CCV_BRIGHT_TO_DARK;
 		ccv_swt(pyr, &swt, 0, params);
 		ccv_array_t* lettersF = _ccv_swt_connected_letters(pyr, swt, params);
+
+
 		ccv_matrix_free(swt);
 		if (pyr != phx)
 			ccv_matrix_free(pyr);
-		ccv_array_t* textline2 = _ccv_swt_merge_textline(lettersF, params);
+
+		ccv_ret_merge_text_line_t retF = _ccv_swt_merge_textline(lettersF, params);
+
+
+		ccv_array_t* textline2 = retF.regions;
+
 		for (i = 0; i < textline2->rnum; i++)
 			ccv_array_push(textline, ccv_array_get(textline2, i));
 		ccv_array_free(textline2);
 		ccv_array_t* idx = 0;
+
+
 		int ntl = ccv_array_group(textline, &idx, _ccv_is_same_textline, params.same_word_thresh);
 		ccv_array_t* words;
+
 		if (params.breakdown && ntl > 0)
 		{
 			textline2 = ccv_array_new(sizeof(ccv_textline_t), ntl, 0);
@@ -679,36 +872,88 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 			}
 			ccv_array_free(idx);
 			ccv_array_free(textline);
+
 			words = _ccv_swt_break_words(textline2, params);
+
 			for (i = 0; i < textline2->rnum; i++)
 				ccfree(((ccv_textline_t*)ccv_array_get(textline2, i))->letters);
 			ccv_array_free(textline2);
-			ccv_array_free(lettersB);
-			ccv_array_free(lettersF);
+
+			/*for(i=0; i < words->rnum;++i){
+			    ccv_rect_t* t = (ccv_rect_t*)ccv_array_get(words, i);
+			    printf("output words:%d, h:%d, x:%d, y:%d\n",t->rwidth,t->height,t->x,t->y);
+			}*/
+
 		} else {
-			ccv_array_free(lettersB);
-			ccv_array_free(lettersF);
-			words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
-			ccv_array_zero(words);
-			words->rnum = ntl;
-			for (i = 0; i < textline->rnum; i++)
-			{
-				ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
-				if (r->letters)
-					ccfree(r->letters);
-				int k = *(int*)ccv_array_get(idx, i);
-				ccv_rect_t* r2 = (ccv_rect_t*)ccv_array_get(words, k);
-				if (r2->width * r2->height < r->rect.width * r->rect.height)
-					*r2 = r->rect;
-			}
+
+            if(params.word_and_letters == 0){
+                words = ccv_array_new(sizeof(ccv_rect_t), ntl, 0);
+                ccv_array_zero(words);
+                words->rnum = ntl;
+                for (i = 0; i < textline->rnum; i++)
+                {
+                    ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
+                    if (r->letters)
+                        ccfree(r->letters);
+                    int k = *(int*)ccv_array_get(idx, i);
+                    ccv_rect_t* r2 = (ccv_rect_t*)ccv_array_get(words, k);
+                    if (r2->width * r2->height < r->rect.width * r->rect.height)
+                        *r2 = r->rect;
+                }
+            }else{
+                int num_words = ntl;
+                if(retB.orphaned_letters != 0)
+                    num_words += retB.orphaned_letters->rnum;
+                if(retF.orphaned_letters != 0)
+                    num_words += retF.orphaned_letters->rnum;
+
+                words = ccv_array_new(sizeof(ccv_rect_t), num_words, 0);
+                int word_and_letters = params.word_and_letters;
+
+                for (i = 0; i < textline->rnum; i++)
+                {
+                    ccv_textline_t* r = (ccv_textline_t*)ccv_array_get(textline, i);
+                    _ccv_push_text_line_as_word(words,r,word_and_letters);
+                    if (r->letters)
+                        ccfree(r->letters);
+                }
+
+
+            }
 			ccv_array_free(idx);
 			ccv_array_free(textline);
+
 		}
+
+        if(params.word_and_letters != 0){
+            if(retB.orphaned_letters != 0){
+
+                _ccv_push_letter_as_word(words, retB.orphaned_letters);
+                ccv_array_free(retB.orphaned_letters);
+
+            }
+            if(retF.orphaned_letters != 0){
+
+                _ccv_push_letter_as_word(words, retF.orphaned_letters);
+                ccv_array_free(retF.orphaned_letters);
+
+            }
+
+        }
+
+
+	    ccv_array_free(lettersB);
+		ccv_array_free(lettersF);
+
 		if (params.scale_invariant)
 		{
 			for (i = 0; i < words->rnum; i++)
 			{
 				ccv_rect_t* rect = (ccv_rect_t*)ccv_array_get(words, i);
+                //valid case of word and letter mode
+				if(rect->width == 0 && rect->height == 0)
+				     continue;
+
 				rect->x = (int)(rect->x * cscale + 0.5);
 				rect->y = (int)(rect->y * cscale + 0.5);
 				rect->width = (int)(rect->width * cscale + 0.5);
@@ -720,7 +965,9 @@ ccv_array_t* ccv_swt_detect_words(ccv_dense_matrix_t* a, ccv_swt_param_t params)
 		} else
 			all_words = words;
 	}
-	if (params.scale_invariant && params.min_neighbors)
+
+
+	if (params.scale_invariant && params.min_neighbors && params.word_and_letters == 0)
 	{
 		assert(all_words);
 		// de-dup logic, similar to what BBF / DPM have

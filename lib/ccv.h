@@ -718,6 +718,8 @@ typedef struct {
 	double intersect_ratio;
 	double elongate_ratio;
 	int letter_thresh;
+	int word_and_letters;
+	double kill_rectangle_shapes_ratio;
 	/* break textline into words */
 	int breakdown;
 	double breakdown_ratio;
