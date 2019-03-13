@@ -2429,7 +2429,12 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
  */
 void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out);
 /**
- * Fit a model to a given input / output.
+ * Fit a model to a given input / output. This is a combination of running ccv_cnnp_model_evaluate /
+ * ccv_cnnp_model_backward / ccv_cnnp_model_apply_gradients. The difference is that when calling
+ * individual functions, the graph is compiled piece by piece, thus, is less efficient than calling
+ * ccv_cnnp_model_fit directly. However, having the separate functions makes this implementation much
+ * more versatile, for example, can accumulate gradients for multiple batches, or using custom gradients
+ * etc.
  * @param model The composed model.
  * @param inputs The input tensors.
  * @param input_size The size of the input tensors array.
@@ -2447,9 +2452,25 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
  * @param input_size The size of the input tensors array.
  * @param outputs The actual outputs from the model.
  * @param output_size The size of the outputs array.
- * @param stream_context The stream where the fit can be executed upon.
+ * @param stream_context The stream where the evaluation can be executed upon.
  */
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds trainable gradients.
+ * @param model The composed model.
+ * @param ingrads The input gradients.
+ * @param ingrad_size The size of the input gradients array.
+ * @param outgrads The output gradients (w.r.t. the inputs).
+ * @param outgrad_size The size of the output gradients array.
+ * @param stream_context The stream where the gradient computation can be executed upon.
+ */
+void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_stream_context_t* const stream_context);
+/**
+ * Apply the computed gradients to the trainable tensors.
+ * @param model The composed model.
+ * @param stream_context The stream where the gradient computation can be executed upon.
+ */
+void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_stream_context_t* const stream_context);
 enum {
 	/**
 	 * This is the default flag, if the model is not initialized, will attempt to read from the disk.

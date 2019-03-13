@@ -981,6 +981,14 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 			compiled_data->dest_to_eval_execs, compiled_data->dest_to_eval_exec_size);
 }
 
+void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_stream_context_t* const stream_context)
+{
+}
+
+void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_stream_context_t* const stream_context)
+{
+}
+
 void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
