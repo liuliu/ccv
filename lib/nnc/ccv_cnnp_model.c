@@ -552,7 +552,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 {
 	int i, j;
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	assert(!compiled_data->graph || compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE);
+	assert(!compiled_data->graph || compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE);
 	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_FIT_MODE;
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
@@ -801,7 +801,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 {
 	int i, j;
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE;
+	compiled_data->graph_mode = CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE;
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
 	assert(output_size > 0);
@@ -926,7 +926,7 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_grad, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -936,7 +936,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	int i, j;
 	if (!compiled_data->graph ||
 		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
-		(stream_context && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE))
+		(stream_context && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE))
 	{
 		if (compiled_data->graph)
 			ccv_nnc_graph_free(compiled_data->graph);
@@ -974,7 +974,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		};
 		ccv_cnnp_model_set_is_test(model, 1, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
-	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_EVALUATE_MODE)
+	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE)
 		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
 	else
 		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, 0, 0,
