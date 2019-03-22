@@ -548,6 +548,7 @@ void _ccv_cnnp_model_copy_tensors(const ccv_nnc_symbolic_graph_t* const graph, c
 			ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, &compiled_data->trainable_tensors[i * parallel_count], 1, &compiled_data->trainable_tensors[i * parallel_count + j], 1, 0);
 }
 
+// Compile the graph to run ccv_cnnp_model_fit
 static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	int i, j;
@@ -797,6 +798,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
 }
 
+// Compile the graph to run ccv_cnnp_model_evaluate with require_grad = false (MULTISTAGE_MODE_NO_GRAD).
 static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
 	int i, j;
@@ -926,6 +928,11 @@ static void _ccv_cnnp_model_evaluate_jit(ccv_cnnp_model_t* const model, ccv_nnc_
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
+// Compile the graph to run ccv_cnnp_model_evaluate with requires_grad = false (MULTISTAGE_MODE_NO_GRAD).
+static void _ccv_cnnp_model_multistage_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
+{
+}
+
 void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_grad, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
@@ -936,7 +943,9 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 	int i, j;
 	if (!compiled_data->graph ||
 		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
-		(stream_context && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE))
+		(stream_context &&
+		 !((requires_grad && compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE) ||
+		   (!requires_grad && compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))))
 	{
 		if (compiled_data->graph)
 			ccv_nnc_graph_free(compiled_data->graph);
@@ -944,8 +953,10 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 			ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
 		if (compiled_data->graph_exec_arena)
 			ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
-		// Compile the symbolic graph down only when needed.
-		_ccv_cnnp_model_evaluate_jit(model, inputs, input_size, outputs, output_size);
+		if (requires_grad)
+			_ccv_cnnp_model_multistage_jit(model, inputs, input_size, outputs, output_size);
+		else
+			_ccv_cnnp_model_evaluate_jit(model, inputs, input_size, outputs, output_size);
 	} else {
 		assert((input_size % parallel_count) == 0);
 		assert((output_size % parallel_count) == 0);
