@@ -1,5 +1,6 @@
 include ../../../lib/config.mk
 
+export LSAN_OPTIONS=suppressions=known-leaks.txt
 LDFLAGS := -L"../../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../../lib" -I"../../" $(CFLAGS)
 TARGETS = cudnn.tests cublas.tests schedule.tests symbolic.graph.vgg.d.tests graph.vgg.d.tests dense.net.tests cifar.tests parallel.tests nccl.tests

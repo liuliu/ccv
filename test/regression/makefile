@@ -1,5 +1,6 @@
 include ../../lib/config.mk
 
+export LSAN_OPTIONS=suppressions=known-leaks.txt
 LDFLAGS := -L"../../lib" -lccv $(LDFLAGS)
 CFLAGS := -O3 -Wall -I"../../lib" -I"../" $(CFLAGS)
 TARGETS = defects.l0.1.tests
