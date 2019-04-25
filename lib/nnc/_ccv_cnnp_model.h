@@ -52,16 +52,28 @@ typedef struct {
 	struct {
 		ccv_nnc_tensor_t** retainables; // Additional need to retained tensors.
 		ccv_nnc_tensor_t** trainables;
+		ccv_nnc_tensor_t** gradients;
+		ccv_nnc_tensor_t** accum_gradients;
 	} tensors;
 	struct {
+		int to_op_size;
 		int to_size;
-		int to_symbol_size;
-		ccv_nnc_graph_exec_t* tos;
-		ccv_nnc_graph_exec_symbol_t* to_symbols;
+		ccv_nnc_graph_exec_t* to_ops;
+		ccv_nnc_graph_exec_symbol_t* tos;
 	} evaluate; // Data related to ccv_cnnp_model_evaluate
 	struct {
+		int count; // Called backward how many times. Starting with 0.
+		int to_size;
+		ccv_nnc_graph_exec_symbol_t* tos;
+		ccv_nnc_graph_t* accum; // The graph to accumulate gradients.
+		ccv_nnc_tensor_symbol_t* gradients; // The new gradients.
+		ccv_nnc_tensor_symbol_t* accum_gradients; // The old accumulate gradients.
+		ccv_nnc_tensor_symbol_t* updated_accum_gradients; // The new accumulate gradients.
 	} backward;
 	struct {
+		ccv_nnc_graph_t* graph;
+		// ccv_nnc_tensor_symbol_t* updated_trainables The updated_trainables outside in this case pointing to this graph.
+		ccv_nnc_tensor_symbol_t* gradients; // The gradients outside pointing to the main graph. This one points to the graph here.
 	} apply_gradients;
 	ccv_nnc_cmd_t minimizer;
 	ccv_nnc_cmd_t loss;
