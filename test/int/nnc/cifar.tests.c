@@ -181,7 +181,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 			input_fit_inputs[k] = input_fits[k][0];
 			outputs[k] = (ccv_nnc_tensor_t*)input_fits[device_count + k];
 		}
-		ccv_cnnp_model_evaluate(cifar_10, 0, input_fit_inputs, device_count, outputs, device_count, 0);
+		ccv_cnnp_model_evaluate(cifar_10, 0, 1, input_fit_inputs, device_count, outputs, device_count, 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs, device_count, 0);
 		for (k = 0; k < ccv_min(test_set->rnum - j, batch_size * device_count); k++)
 		{

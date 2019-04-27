@@ -66,12 +66,16 @@ typedef struct {
 		int to_size;
 		ccv_nnc_graph_exec_symbol_t* tos;
 		ccv_nnc_graph_t* accum; // The graph to accumulate gradients.
+		ccv_nnc_tensor_arena_t* tensor_arena;
+		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 		ccv_nnc_tensor_symbol_t* gradients; // The new gradients.
 		ccv_nnc_tensor_symbol_t* accum_gradients; // The old accumulate gradients.
 		ccv_nnc_tensor_symbol_t* updated_accum_gradients; // The new accumulate gradients.
 	} backward;
 	struct {
 		ccv_nnc_graph_t* graph;
+		ccv_nnc_tensor_arena_t* tensor_arena;
+		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 		// ccv_nnc_tensor_symbol_t* updated_trainables The updated_trainables outside in this case pointing to this graph.
 		ccv_nnc_tensor_symbol_t* gradients; // The gradients outside pointing to the main graph. This one points to the graph here.
 	} apply_gradients;
