@@ -895,7 +895,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 	}
 	const int evaluate_to_size = compiled_data->evaluate.to_size;
 	compiled_data->evaluate.to_op_size = 0;
-	ccv_array_t* backward_from = ccv_array_new(sizeof(int), 0, 0);
+	ccv_array_t* const backward_from = ccv_array_new(sizeof(int), 0, 0);
 	for (i = 0; i < evaluate_to_size; i++)
 	{
 		ccv_nnc_graph_exec_t const to_op = ccv_nnc_graph_exec_from_symbol(compiled_data->graph_exec_arena, compiled_data->evaluate.tos[i]);
@@ -1059,9 +1059,10 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 			for (j = 1; j < parallel_count; j++)
 				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, outgrad, j), outgrads[i + outgrad_size_per_p * j]);
 		}
-	const int trainable_size = compiled_data->trainables->rnum;
 	// Bind to the gradients if we run more than one pass (gradient accumulation).
 	if (compiled_data->backward.count > 0)
+	{
+		const int trainable_size = compiled_data->trainables->rnum;
 		for (i = 0; i < trainable_size; i++)
 		{
 			ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, compiled_data->gradients[i], compiled_data->tensors.gradients[i]);
@@ -1071,6 +1072,7 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 				ccv_nnc_tensor_bind_symbol(compiled_data->tensor_arena, copy, compiled_data->tensors.gradients[i + j * trainable_size]);
 			}
 		}
+	}
 	// Run the backward pass.
 	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
 	// If we need to run accumulation round, do that now.
@@ -1100,9 +1102,27 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 	_ccv_cnnp_model_bind_tensors(model->graph, compiled_data->updated_trainables, compiled_data->tensors.trainables, trainable_size, parallel_count, tensor_binds);
 	_ccv_cnnp_model_bind_tensors(model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count, tensor_binds);
 	// TODO: Need to find the start point for this.
-	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, 0, 0, SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->apply_gradients.graph, &compiled_data->apply_gradients.tensor_arena, &compiled_data->apply_gradients.graph_exec_arena);
-	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimizer);
+	ccv_array_t* const apply_gradients_from = ccv_array_new(sizeof(int), 0, 0);
 	int i, j;
+	for (i = 0; i < compiled_data->backward.to_size; i++)
+	{
+		const int* tos;
+		int to_size;
+		ccv_nnc_graph_exec_symbol_to(model->graph, compiled_data->backward.tos[i], &tos, &to_size);
+		for (j = 0; j < to_size; j++)
+			ccv_array_add_unique_int(apply_gradients_from, tos[j]);
+	}
+	const int from_size = apply_gradients_from->rnum;
+	ccv_nnc_graph_exec_symbol_t* const froms = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * from_size);
+	for (i = 0; i < from_size; i++)
+		froms[i] = (ccv_nnc_graph_exec_symbol_t){
+			.d = *(int*)ccv_array_get(apply_gradients_from, i),
+			.graph = model->graph
+		};
+	ccv_array_free(apply_gradients_from);
+	ccv_nnc_symbolic_graph_compile(model->graph, (ccv_nnc_tensor_bind_t*)ccv_array_get(tensor_binds, 0), tensor_binds->rnum, 0, 0, froms, from_size, SYMBOLIC_GRAPH_DESTINATIONS(model->graph), &compiled_data->apply_gradients.graph, &compiled_data->apply_gradients.tensor_arena, &compiled_data->apply_gradients.graph_exec_arena);
+	ccfree(froms);
+	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimizer);
 	for (i = 0; i < saved_aux_size * trainable_size; i++)
 	{
 		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->apply_gradients.tensor_arena, compiled_data->saved_aux[i].source);
@@ -1123,9 +1143,27 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	assert(compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE);
+	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(model->graph);
+	assert(compiled_data->graph);
 	if (!compiled_data->apply_gradients.graph)
 		_ccv_cnnp_model_multistage_jit_2(model);
+	if (compiled_data->backward.count > 1)
+	{
+		// Change to bind accum_gradients if we do gradient accumulation (run backward more than once).
+		const int trainable_size = compiled_data->trainables->rnum;
+		int i, j;
+		for (i = 0; i < trainable_size; i++)
+		{
+			ccv_nnc_tensor_bind_symbol(compiled_data->apply_gradients.tensor_arena, compiled_data->gradients[i], compiled_data->tensors.accum_gradients[i]);
+			for (j = 1; j < parallel_count; j++)
+			{
+				const ccv_nnc_tensor_symbol_t copy = ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->gradients[i], j);
+				ccv_nnc_tensor_bind_symbol(compiled_data->apply_gradients.tensor_arena, copy, compiled_data->tensors.accum_gradients[i + j * trainable_size]);
+			}
+		}
+	}
+	ccv_nnc_graph_run(compiled_data->apply_gradients.graph, 0, stream_context, 0, TRAVERSE_FULL);
 	// Reset backward count to 0.
 	compiled_data->backward.count = 0;
 }
