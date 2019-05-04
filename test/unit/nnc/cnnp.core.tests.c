@@ -345,10 +345,10 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 		ccv_cnnp_model_evaluate(sequential, 1, 0, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
+		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		// Backward again to accumulate gradient.
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
+		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		// Backward again to accumulate gradient.
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		ccv_cnnp_model_apply_gradients(sequential, 0);
 	}
