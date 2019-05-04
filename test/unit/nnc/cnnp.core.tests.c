@@ -347,9 +347,13 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		// Backward again to accumulate gradient.
-		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
-		// Backward again to accumulate gradient.
-		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
+		if (i % 2 == 0)
+		{
+			ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
+			// Backward again to accumulate gradient.
+			if (i % 3 == 0)
+				ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
+		}
 		ccv_cnnp_model_apply_gradients(sequential, 0);
 	}
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
