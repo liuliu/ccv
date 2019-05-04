@@ -938,10 +938,9 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 	assert(model->graph);
 	int i, j;
 	if (!compiled_data->graph ||
+		(requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE) ||
 		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
-		(stream_context &&
-		 !((requires_grad && compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE) ||
-		   (!requires_grad && compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))))
+		(stream_context && !requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))
 	{
 		if (compiled_data->graph)
 			ccv_nnc_graph_free(compiled_data->graph);
@@ -1277,6 +1276,12 @@ static void _ccv_cnnp_compiled_data_free(ccv_cnnp_compiled_data_t* const compile
 		ccv_nnc_tensor_arena_free(compiled_data->backward.tensor_arena);
 	if (compiled_data->backward.graph_exec_arena)
 		ccv_nnc_graph_exec_arena_free(compiled_data->backward.graph_exec_arena);
+	if (compiled_data->apply_gradients.graph)
+		ccv_nnc_graph_free(compiled_data->apply_gradients.graph);
+	if (compiled_data->apply_gradients.tensor_arena)
+		ccv_nnc_tensor_arena_free(compiled_data->apply_gradients.tensor_arena);
+	if (compiled_data->apply_gradients.graph_exec_arena)
+		ccv_nnc_graph_exec_arena_free(compiled_data->apply_gradients.graph_exec_arena);
 	ccfree(compiled_data);
 }
 
