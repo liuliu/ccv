@@ -880,19 +880,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 	} else if (parallel_count > 1)
 		_ccv_cnnp_model_copy_tensors(compiled_data->tensors.trainables, compiled_data->trainables->rnum, parallel_count);
 	compiled_data->is_test = is_test;
-	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimizer);
 	ccv_cnnp_model_set_is_test(model, is_test, _ccv_cnnp_cmd_update_for_execs, compiled_data->graph_exec_arena);
-	for (i = 0; i < saved_aux_size * trainable_size; i++)
-	{
-		ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, compiled_data->saved_aux[i].source);
-		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &tensor, 1, 0);
-		for (j = 1; j < parallel_count; j++)
-		{
-			ccv_nnc_tensor_t* const copy = ccv_nnc_tensor_from_symbol(compiled_data->tensor_arena, ccv_nnc_tensor_symbol_copy(model->graph, compiled_data->saved_aux[i].source, j));
-			if (copy)
-				ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, 0, &copy, 1, 0);
-		}
-	}
 	const int evaluate_to_size = compiled_data->evaluate.to_size;
 	compiled_data->evaluate.to_op_size = 0;
 	ccv_array_t* const backward_from = ccv_array_new(sizeof(int), 0, 0);
@@ -1010,7 +998,6 @@ static void _ccv_cnnp_model_multistage_jit_1(ccv_cnnp_model_t* const model)
 			compiled_data->tensors.gradients[i + j * trainable_size] = ccv_nnc_tensor_new(0, info, 0);
 			ccv_nnc_tensor_symbol_t inputs[2];
 			inputs[0] = compiled_data->backward.accum_gradients[i + j * trainable_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
-			ccv_nnc_graph_exec_symbol_new(accum, CMD_SET_FORWARD(0), 0, 0, &inputs[0], 1, 0);
 			inputs[1] = compiled_data->backward.gradients[i + j * trainable_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
 			ccv_nnc_tensor_symbol_t output = compiled_data->backward.updated_accum_gradients[i + j * trainable_size] = ccv_nnc_tensor_symbol_new(accum, info, 0);
 			ccv_nnc_graph_exec_symbol_new(accum, CMD_EWSUM_FORWARD(), inputs, 2, &output, 1, 0);
@@ -1076,14 +1063,7 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
 	// If we need to run accumulation round, do that now.
 	if (compiled_data->backward.count > 0)
-	{
-		if (compiled_data->backward.count == 1)
-			ccv_nnc_graph_run(compiled_data->backward.accum, 0, stream_context, 0, TRAVERSE_FULL);
-		else // Start from destinations because these are accumulation ops.
-			ccv_nnc_graph_run(compiled_data->backward.accum, 0, stream_context, 0,
-				ccv_nnc_graph_destinations(compiled_data->backward.accum),
-				ccv_nnc_graph_destination_size(compiled_data->backward.accum), 0, 0);
-	}
+		ccv_nnc_graph_run(compiled_data->backward.accum, 0, stream_context, 0, TRAVERSE_FULL);
 	// Update the count, this determines whether we need to accumulate or not.
 	++compiled_data->backward.count;
 }
