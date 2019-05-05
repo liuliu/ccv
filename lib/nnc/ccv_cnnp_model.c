@@ -913,7 +913,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_grad, const int is_test, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -922,9 +922,9 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 	assert(input_size == model->input_size * parallel_count);
 	assert(model->graph);
 	if (!compiled_data->graph ||
-		(requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE) ||
+		(params.requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE) ||
 		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
-		(stream_context && !requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))
+		(stream_context && !params.requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))
 	{
 		if (compiled_data->graph)
 			ccv_nnc_graph_free(compiled_data->graph);
@@ -932,8 +932,8 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 			ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
 		if (compiled_data->graph_exec_arena)
 			ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
-		if (requires_grad)
-			_ccv_cnnp_model_multistage_jit_0(model, is_test, inputs, input_size, outputs, output_size);
+		if (params.requires_grad)
+			_ccv_cnnp_model_multistage_jit_0(model, params.is_test, inputs, input_size, outputs, output_size);
 		else
 			_ccv_cnnp_model_multistage_no_grad_jit(model, inputs, input_size, outputs, output_size);
 	} else {
@@ -944,15 +944,15 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_g
 		const int output_size_per_p = output_size / parallel_count;
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, model->outputs, outputs, output_size_per_p, parallel_count);
 	}
-	if (compiled_data->is_test != is_test)
+	if (compiled_data->is_test != params.is_test)
 	{
-		compiled_data->is_test = is_test;
+		compiled_data->is_test = params.is_test;
 		ccv_nnc_graph_exec_update_t update = {
 			.parallel_count = parallel_count,
 			.graph = model->graph,
 			.graph_exec_arena = compiled_data->graph_exec_arena,
 		};
-		ccv_cnnp_model_set_is_test(model, is_test, _ccv_cnnp_cmd_update_for_execs, &update);
+		ccv_cnnp_model_set_is_test(model, params.is_test, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
 		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);

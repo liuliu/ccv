@@ -2445,18 +2445,26 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
  * @param stream_context The stream where the fit can be executed upon.
  */
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+
+/**
+ * The parameters for how evaluation should behave.
+ */
+typedef struct {
+	int requires_grad; /**< Whether we need to keep intermediate results for gradient computations. */
+	int enable_outgrad; /**< Whether we can compute outflow gradients when call ccv_cnnp_model_backward later. */
+	int is_test; /**< Whether we evaluate it as test, or just as forward pass of the training process. */
+} ccv_cnnp_evaluate_param_t;
 /**
  * Evaluate model with output.
  * @param model The composed model.
- * @param requires_grad Whether we need to keep intermediate results for gradient computations.
- * @param is_test Whether we evaluate it as test, or just as forward pass of the training process.
+ * @param params The parameters for how evaluation should behave.
  * @param inputs The input tensors.
  * @param input_size The size of the input tensors array.
  * @param outputs The actual outputs from the model.
  * @param output_size The size of the outputs array.
  * @param stream_context The stream where the evaluation can be executed upon.
  */
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const int requires_grad, const int is_test, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds trainable gradients.
  * @param model The composed model.

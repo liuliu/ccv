@@ -58,7 +58,9 @@ TEST_CASE("compile simple cifar-10 model")
 		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	int t = 0;
 	float max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -73,7 +75,9 @@ TEST_CASE("compile simple cifar-10 model")
 		ccv_cnnp_model_fit(sequential, TENSOR_LIST(input_tensor), TENSOR_LIST(fit_tensor), TENSOR_LIST(output_tensor), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// After training, it should fit.
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	t = 0;
 	max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -90,7 +94,9 @@ TEST_CASE("compile simple cifar-10 model")
 	ccv_cnnp_model_checkpoint(sequential2, "/tmp/compile_simple_cifar_10_model.checkpoint", 0);
 	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
-	ccv_cnnp_model_evaluate(sequential2, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential2, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	t = 0;
 	max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -253,7 +259,9 @@ TEST_CASE("train model with share weights and L2 loss")
 	a1_tensor->data.f32[0] = 2; // The final result should be 4.
 	b0_tensor->data.f32[0] = 2; // diff is 0.5
 	b1_tensor->data.f32[0] = 3; // diff is 0.5, and 0.5^2 + 0.5^2 = 0.5.
-	ccv_cnnp_model_evaluate(final, 0, 1, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
 	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 0.5, 2 * 1e-2, "We should linear regressed this.");
 	ccv_nnc_tensor_free(a0_tensor);
 	ccv_nnc_tensor_free(a1_tensor);
@@ -276,7 +284,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	int t = 0;
 	float max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -291,7 +301,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 	ccv_nnc_tensor_t* const ingrad_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	for (i = 0; i < 100; i++)
 	{
-		ccv_cnnp_model_evaluate(sequential, 1, 0, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+		ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1
+		}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
@@ -299,7 +311,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 	}
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// After training, it should fit.
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	t = 0;
 	max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -327,7 +341,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 		input_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	int t = 0;
 	float max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
@@ -342,7 +358,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 	ccv_nnc_tensor_t* const ingrad_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	for (i = 0; i < 100; i++)
 	{
-		ccv_cnnp_model_evaluate(sequential, 1, 0, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+		ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1
+		}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor), 0);
 		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
@@ -358,7 +376,9 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 	}
 	memset(output_tensor->data.f32, 0, sizeof(float) * 10);
 	// After training, it should fit.
-	ccv_cnnp_model_evaluate(sequential, 0, 1, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
+	ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
 	t = 0;
 	max = output_tensor->data.f32[0];
 	for (i = 1; i < 10; i++)
