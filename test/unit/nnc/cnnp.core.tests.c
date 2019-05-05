@@ -271,9 +271,43 @@ TEST_CASE("train model with share weights and L2 loss")
 	ccv_cnnp_model_free(final);
 }
 
+static ccv_cnnp_model_t* simple_cifar_10_no_softmax(void)
+{
+	return ccv_cnnp_sequential_new(MODEL_LIST(
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (2, 2)),
+		}),
+		ccv_cnnp_max_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.hint = HINT((2, 2), (0, 0)),
+		}),
+		ccv_cnnp_convolution(1, 32, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (2, 2)),
+		}),
+		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.hint = HINT((2, 2), (0, 0)),
+		}),
+		ccv_cnnp_convolution(1, 64, DIM_ALLOC(5, 5), (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+			.hint = HINT((1, 1), (2, 2)),
+		}),
+		ccv_cnnp_average_pool(DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
+			.hint = HINT((2, 2), (0, 0)),
+		}),
+		ccv_cnnp_flatten(),
+		ccv_cnnp_dense(256, (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_RELU,
+		}),
+		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
+			.activation = CCV_CNNP_ACTIVATION_NONE,
+		})
+	));
+}
+
 TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 {
-	ccv_cnnp_model_t* const sequential = simple_cifar_10();
+	ccv_cnnp_model_t* const sequential = simple_cifar_10_no_softmax();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), CMD_NOOP());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
@@ -297,6 +331,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 	// Doing training.
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	fit_tensor->data.f32[0] = target;
+	ccv_nnc_tensor_t* const softmax_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	ccv_nnc_tensor_t* const loss_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const ingrad_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	for (i = 0; i < 100; i++)
@@ -304,8 +339,8 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 		ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1
 		}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor, softmax_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, 0, output_tensor, fit_tensor, loss_tensor, softmax_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		ccv_cnnp_model_apply_gradients(sequential, 0);
 	}
@@ -322,6 +357,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 	REQUIRE_EQ(target, t, "should fit");
 	ccv_nnc_tensor_free(ingrad_tensor);
 	ccv_nnc_tensor_free(fit_tensor);
+	ccv_nnc_tensor_free(softmax_tensor);
 	ccv_nnc_tensor_free(loss_tensor);
 	ccv_nnc_tensor_free(input_tensor);
 	ccv_nnc_tensor_free(output_tensor);
@@ -330,7 +366,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 
 TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated")
 {
-	ccv_cnnp_model_t* const sequential = simple_cifar_10();
+	ccv_cnnp_model_t* const sequential = simple_cifar_10_no_softmax();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
 	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.00033, 0.99, 0.9, 0.9), CMD_NOOP());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
@@ -354,6 +390,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 	// Doing training.
 	ccv_nnc_tensor_t* const fit_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	fit_tensor->data.f32[0] = target;
+	ccv_nnc_tensor_t* const softmax_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	ccv_nnc_tensor_t* const loss_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1), 0);
 	ccv_nnc_tensor_t* const ingrad_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 10), 0);
 	for (i = 0; i < 100; i++)
@@ -361,8 +398,8 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 		ccv_cnnp_model_evaluate(sequential, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1
 		}, TENSOR_LIST(input_tensor), TENSOR_LIST(output_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor), 0);
-		ccv_nnc_cmd_exec(CMD_CATEGORICAL_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, output_tensor, fit_tensor), TENSOR_LIST(ingrad_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(output_tensor, fit_tensor), TENSOR_LIST(loss_tensor, softmax_tensor), 0);
+		ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_BACKWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(0, 0, output_tensor, fit_tensor, loss_tensor, softmax_tensor), TENSOR_LIST(ingrad_tensor), 0);
 		ccv_cnnp_model_backward(sequential, TENSOR_LIST(ingrad_tensor), 0, 0, 0);
 		// Backward again to accumulate gradient.
 		if (i % 2 == 0)
@@ -387,6 +424,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 	REQUIRE_EQ(target, t, "should fit");
 	ccv_nnc_tensor_free(ingrad_tensor);
 	ccv_nnc_tensor_free(fit_tensor);
+	ccv_nnc_tensor_free(softmax_tensor);
 	ccv_nnc_tensor_free(loss_tensor);
 	ccv_nnc_tensor_free(input_tensor);
 	ccv_nnc_tensor_free(output_tensor);
