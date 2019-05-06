@@ -32,10 +32,16 @@ enum {
 	CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE, // This mode allows you to use ccv_cnnp_model_evaluate, ccv_cnnp_model_backward, ccv_cnnp_model_apply_gradients separately.
 };
 
+enum {
+	CCV_CNNP_COMPILED_DATA_GRADIENT_NONE,
+	CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES,
+	CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS,
+};
+
 // This contains relevant information after model compilation.
 typedef struct {
 	int graph_mode;
-	int gradient_init; // Have init gradient graph.
+	int gradient_mode; // Have init gradient graph.
 	int is_test;
 	int stream_type;
 	int parallel_count; // How many parallel devices.
