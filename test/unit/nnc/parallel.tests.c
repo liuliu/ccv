@@ -88,7 +88,7 @@ TEST_CASE("schedule symbolic graph to data parallel")
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9));
 	ccv_nnc_tensor_symbol_map_t saved_aux[saved_aux_size * 4];
 	ccv_nnc_graph_exec_symbol_t updated_execs[4];
-	ccv_nnc_symbolic_graph_minimize(symbolic_graph, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), TENSOR_SYMBOL_LIST(loss), TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), gradients, updated_params, saved_aux, updated_execs);
+	ccv_nnc_symbolic_graph_minimize(symbolic_graph, CMD_SGD_FORWARD(0.001, 0.99, 0.9, 0.9), TENSOR_SYMBOL_LIST(loss), TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), gradients, updated_params, saved_aux, updated_execs);
 	ccv_nnc_symbolic_graph_data_parallel(symbolic_graph, 2, TENSOR_SYMBOL_LIST(w1, bias1, w3, bias3), 0, 0, gradients, 4, CCV_NNC_PARALLEL_REDUCE_OP_SUM, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), updated_execs, 4);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_symbolic_graph_free(symbolic_graph);

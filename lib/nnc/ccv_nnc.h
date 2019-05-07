@@ -1716,16 +1716,18 @@ void ccv_nnc_graph_set_case_of(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
  * @param loss_size The size of the loss symbols array.
  * @param parameters The parameter tensor symbols to optimize.
  * @param parameter_size The size of parameter symbols array.
+ * @param inputs The additional input symbols we compute gradient against.
+ * @param input_size The size of the additional input symbols array.
  * @param sources The source execution nodes array.
  * @param source_size The size of source nodes array.
  * @param destinations The destinations execution nodes array.
  * @param destination_size The size of destination nodes array.
- * @param gradients The tensor symbols that represents the gradient for update, should be the same size as the parameters array. This can be 0 (optional).
+ * @param gradients The tensor symbols that represents the gradient for update, should be the same size as the parameters array + input array size. This can be 0 (optional).
  * @param updated_parameters The tensor symbols that represents the updated parameters, should be the same size as the parameters array.
  * @param saved_aux The tensor symbols that is helpful for particular optimization strategy.
  * @param graph_exec_symbols The execution node symbols for the updates, should be the same size as the parameters array.
  */
-void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const gradients, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
+void ccv_nnc_symbolic_graph_minimize(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_symbol_t* const losses, const int loss_size, const ccv_nnc_tensor_symbol_t* const parameters, const int parameter_size, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size, ccv_nnc_tensor_symbol_t* const gradients, ccv_nnc_tensor_symbol_t* const updated_parameters, ccv_nnc_tensor_symbol_map_t* const saved_aux, ccv_nnc_graph_exec_symbol_t* const graph_exec_symbols);
 /**
  * The number of extra saved aux per parameter only depends on the commands. For example, SGD with momentum requires 1 aux (for momentum).
  * Others require more.
