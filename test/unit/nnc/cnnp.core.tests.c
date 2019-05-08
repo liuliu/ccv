@@ -431,4 +431,98 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 	ccv_cnnp_model_free(sequential);
 }
 
+TEST_CASE("train model with share weights and L2 loss and check out gradients")
+{
+	ccv_cnnp_model_io_t input0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t input1 = ccv_cnnp_input();
+	ccv_cnnp_model_t* const dense = ccv_cnnp_dense(1, (ccv_cnnp_param_t){});
+	ccv_cnnp_model_io_t output0 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input0));
+	ccv_cnnp_model_io_t output1 = ccv_cnnp_model_apply(dense, MODEL_IO_LIST(input1));
+	ccv_cnnp_model_io_t fit0 = ccv_cnnp_input();
+	ccv_cnnp_model_io_t fit1 = ccv_cnnp_input();
+	// Because we don't have L2 loss function available yet, manually create L2 loss.
+	ccv_cnnp_model_io_t diff0 = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
+			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO)),
+		MODEL_IO_LIST(output0, fit0));
+	ccv_cnnp_model_io_t sqr0 = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO)),
+		MODEL_IO_LIST(diff0, diff0));
+	ccv_cnnp_model_io_t diff1 = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
+			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO)),
+		MODEL_IO_LIST(output1, fit1));
+	ccv_cnnp_model_io_t sqr1 = ccv_cnnp_model_apply(
+		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO)),
+		MODEL_IO_LIST(diff1, diff1));
+	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(), MODEL_IO_LIST(sqr0, sqr1));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output));
+	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
+	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
+	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(32F, 1, 1);
+	ccv_nnc_tensor_param_t b1 = CPU_TENSOR_NCHW(32F, 1, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0.1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	ccv_nnc_tensor_t* a1_tensor = ccv_nnc_tensor_new(0, a1, 0);
+	ccv_nnc_tensor_t* b0_tensor = ccv_nnc_tensor_new(0, b0, 0);
+	ccv_nnc_tensor_t* b1_tensor = ccv_nnc_tensor_new(0, b1, 0);
+	ccv_nnc_tensor_t* o0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	// It should fit to 1*0.5+1.5=2, 3*0.5+1.5=3
+	a0_tensor->data.f32[0] = 1;
+	a1_tensor->data.f32[0] = 3;
+	b0_tensor->data.f32[0] = 2;
+	b1_tensor->data.f32[0] = 3;
+	int i;
+	for (i = 0; i < 10; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0));
+	for (i = 0; i < 100; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0));
+	for (i = 0; i < 1000; i++)
+		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
+	a0_tensor->data.f32[0] = 2;
+	a1_tensor->data.f32[0] = 2; // The final result should be 4.
+	b0_tensor->data.f32[0] = 2; // diff is 0.5
+	b1_tensor->data.f32[0] = 3; // diff is 0.5, and 0.5^2 + 0.5^2 = 0.5.
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 0.5, 2 * 1e-2, "We should linear regressed this.");
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.requires_grad = 1,
+		.enable_outgrad = 1,
+	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
+	// Note that I have to use new tensors and have to keep these tensors around since they were binded to the model when evaluate.
+	ccv_nnc_tensor_t* da0_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	ccv_nnc_tensor_t* da1_tensor = ccv_nnc_tensor_new(0, a1, 0);
+	ccv_nnc_tensor_t* db0_tensor = ccv_nnc_tensor_new(0, b0, 0);
+	ccv_nnc_tensor_t* db1_tensor = ccv_nnc_tensor_new(0, b1, 0);
+	ccv_nnc_tensor_t* do0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	do0_tensor->data.f32[0] = 1;
+	ccv_cnnp_model_backward(final, TENSOR_LIST(do0_tensor), TENSOR_LIST(da0_tensor, da1_tensor, db0_tensor, db1_tensor), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(da0_tensor->data.f32[0], 0.5, 1e-1, "da0=2*w*(w*a0+bias-b0), thus, 0.5");
+	REQUIRE_EQ_WITH_TOLERANCE(da1_tensor->data.f32[0], -0.5, 1e-1, "da1=2*w*(w*a1+bias-b1), thus, -0.5");
+	REQUIRE_EQ_WITH_TOLERANCE(db0_tensor->data.f32[0], -1, 1e-1, "db0=-2*(w*a0+bias-b0), thus, -1");
+	REQUIRE_EQ_WITH_TOLERANCE(db1_tensor->data.f32[0], 1, 1e-1, "db1=-2*(w*a1+bias-b1), thus, 1");
+	ccv_nnc_tensor_free(a0_tensor);
+	ccv_nnc_tensor_free(a1_tensor);
+	ccv_nnc_tensor_free(b0_tensor);
+	ccv_nnc_tensor_free(b1_tensor);
+	ccv_nnc_tensor_free(o0_tensor);
+	ccv_nnc_tensor_free(da0_tensor);
+	ccv_nnc_tensor_free(da1_tensor);
+	ccv_nnc_tensor_free(db0_tensor);
+	ccv_nnc_tensor_free(db1_tensor);
+	ccv_nnc_tensor_free(do0_tensor);
+	ccv_cnnp_model_free(final);
+}
+
 #include "case_main.h"

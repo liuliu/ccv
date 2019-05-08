@@ -332,36 +332,6 @@ static int _ccv_nnc_array_dedup_graph_exec_symbols(ccv_nnc_graph_exec_symbol_t* 
 	return graph_exec_symbol_size;
 }
 
-static void _ccv_cnnp_model_redo_graph(ccv_cnnp_model_t* const model)
-{
-	assert(model->graph);
-	assert(model->compiled_data);
-	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
-	ccv_nnc_symbolic_graph_t* const old_graph = model->graph;
-	model->graph = ccv_nnc_symbolic_graph_new();
-	const int input_size = model->input_size;
-	int i;
-	for (i = 0; i < input_size; i++)
-		model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, ccv_nnc_tensor_symbol_params(old_graph, model->inputs[i]), 0);
-	// Only use the old graph to copy input parameters. Now we are done.
-	ccv_nnc_symbolic_graph_free(old_graph);
-	ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
-	ccv_array_clear(compiled_data->trainables);
-	ccv_cnnp_model_add_to_trainable(model, compiled_data->trainables);
-	_ccv_nnc_array_dedup_tensor_symbols(compiled_data->trainables);
-	ccv_array_clear(compiled_data->retainables);
-	ccv_cnnp_model_add_to_output(model, compiled_data->retainables);
-	_ccv_nnc_array_dedup_tensor_symbols(compiled_data->retainables);
-	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
-	ccv_nnc_symbolic_graph_simplify(model->graph,
-		SYMBOLIC_GRAPH_PASSES(CCV_NNC_SIMPLIFY_COMMON_SUBEXPRESSION_ELIMINATION,
-			CCV_NNC_SIMPLIFY_DATA_TRANSFER_OPT,
-			CCV_NNC_SIMPLIFY_OPS_FUSION,
-			CCV_NNC_SIMPLIFY_GRAPH_PRUNING),
-		model->outputs, model->output_size,
-		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
-}
-
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss)
 {
 	assert(input_size == model->input_size);
@@ -488,6 +458,56 @@ static void _ccv_cnnp_cmd_update_for_execs(void* const context, const ccv_nnc_gr
 	}
 }
 
+static void _ccv_cnnp_model_rewind_graph(ccv_cnnp_model_t* const model)
+{
+	assert(model->graph);
+	assert(model->compiled_data);
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data->rewindables);
+	int i;
+	for (i = 0; i < compiled_data->rewindables->rnum; i++)
+	{
+		const ccv_cnnp_rewind_symbol_t* const rewind_symbol = (ccv_cnnp_rewind_symbol_t*)ccv_array_get(compiled_data->rewindables, i);
+		if (rewind_symbol->type == CCV_CNNP_REWIND_GRAPH_EXEC)
+			ccv_nnc_graph_exec_symbol_free(model->graph, rewind_symbol->graph_exec);
+		else if (rewind_symbol->type == CCV_CNNP_REWIND_TENSOR)
+			ccv_nnc_tensor_symbol_free(model->graph, rewind_symbol->tensor);
+	}
+	ccv_array_clear(compiled_data->rewindables);
+	ccv_nnc_graph_exec_symbol_autogen(model->graph, 0, 0, CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
+}
+
+
+static void _ccv_cnnp_model_tensor_symbol_new_hook(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_param_t info, const char* const name)
+{
+	const ccv_cnnp_rewind_symbol_t rewind_symbol = {
+		.type = CCV_CNNP_REWIND_TENSOR,
+		.tensor = symbol
+	};
+	ccv_array_t* const rewind_symbols = (ccv_array_t*)context;
+	ccv_array_push(rewind_symbols, &rewind_symbol);
+}
+
+static void _ccv_cnnp_model_tensor_symbol_alias_new_hook(void* context, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_symbol_t from_symbol, const int ofs[CCV_NNC_MAX_DIM_ALLOC], const int inc[CCV_NNC_MAX_DIM_ALLOC], const ccv_nnc_tensor_param_t info, const char* const name)
+{
+	const ccv_cnnp_rewind_symbol_t rewind_symbol = {
+		.type = CCV_CNNP_REWIND_TENSOR,
+		.tensor = symbol
+	};
+	ccv_array_t* const rewind_symbols = (ccv_array_t*)context;
+	ccv_array_push(rewind_symbols, &rewind_symbol);
+}
+
+static void _ccv_cnnp_model_graph_exec_symbol_new_hook(void* context, const ccv_nnc_graph_exec_symbol_t symbol, const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, const ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name)
+{
+	const ccv_cnnp_rewind_symbol_t rewind_symbol = {
+		.type = CCV_CNNP_REWIND_GRAPH_EXEC,
+		.graph_exec = symbol
+	};
+	ccv_array_t* const rewind_symbols = (ccv_array_t*)context;
+	ccv_array_push(rewind_symbols, &rewind_symbol);
+}
+
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, ccv_nnc_tensor_t* const* const fits, const int fit_size)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
@@ -499,6 +519,11 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 	compiled_data->evaluate.tos = ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * evaluate_to_size * parallel_count + sizeof(ccv_nnc_graph_exec_t) * evaluate_to_size * parallel_count);
 	compiled_data->evaluate.to_ops = (ccv_nnc_graph_exec_t*)(compiled_data->evaluate.tos + evaluate_to_size * parallel_count);
 	memcpy(compiled_data->evaluate.tos, ccv_nnc_symbolic_graph_destinations(model->graph), sizeof(ccv_nnc_graph_exec_symbol_t) * evaluate_to_size);
+	if (!compiled_data->rewindables)
+		compiled_data->rewindables = ccv_array_new(sizeof(ccv_cnnp_rewind_symbol_t), 0, 0);
+	ccv_nnc_tensor_symbol_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_new_hook, compiled_data->rewindables);
+	ccv_nnc_tensor_symbol_alias_new_hook(model->graph, _ccv_cnnp_model_tensor_symbol_alias_new_hook, compiled_data->rewindables);
+	ccv_nnc_graph_exec_symbol_new_hook(model->graph, _ccv_cnnp_model_graph_exec_symbol_new_hook, compiled_data->rewindables);
 	int i, j;
 	const int output_size = model->output_size;
 	assert(!fits || fit_size == output_size * parallel_count);
@@ -669,6 +694,50 @@ static void _ccv_cnnp_model_bind_tensors(const ccv_nnc_symbolic_graph_t* const g
 	}
 }
 
+static void _ccv_cnnp_compiled_data_graph_free(ccv_cnnp_compiled_data_t* const compiled_data)
+{
+	if (compiled_data->graph)
+		ccv_nnc_graph_free(compiled_data->graph);
+	if (compiled_data->tensor_arena)
+		ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
+	if (compiled_data->graph_exec_arena)
+		ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
+}
+
+static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* const compiled_data)
+{
+	if (compiled_data->gradients)
+		ccfree(compiled_data->gradients);
+	if (compiled_data->saved_aux)
+		ccfree(compiled_data->saved_aux);
+	if (compiled_data->evaluate.tos)
+		ccfree(compiled_data->evaluate.tos);
+	if (compiled_data->backward.from_ops)
+		ccfree(compiled_data->backward.from_ops);
+}
+
+static void _ccv_cnnp_compiled_data_backward_free(ccv_cnnp_compiled_data_t* const compiled_data)
+{
+	if (compiled_data->backward.gradients)
+		ccfree(compiled_data->backward.gradients);
+	if (compiled_data->backward.accum)
+		ccv_nnc_graph_free(compiled_data->backward.accum);
+	if (compiled_data->backward.tensor_arena)
+		ccv_nnc_tensor_arena_free(compiled_data->backward.tensor_arena);
+	if (compiled_data->backward.graph_exec_arena)
+		ccv_nnc_graph_exec_arena_free(compiled_data->backward.graph_exec_arena);
+}
+
+static void _ccv_cnnp_compiled_data_apply_gradients_free(ccv_cnnp_compiled_data_t* const compiled_data)
+{
+	if (compiled_data->apply_gradients.graph)
+		ccv_nnc_graph_free(compiled_data->apply_gradients.graph);
+	if (compiled_data->apply_gradients.tensor_arena)
+		ccv_nnc_tensor_arena_free(compiled_data->apply_gradients.tensor_arena);
+	if (compiled_data->apply_gradients.graph_exec_arena)
+		ccv_nnc_graph_exec_arena_free(compiled_data->apply_gradients.graph_exec_arena);
+}
+
 // Compile the graph to run ccv_cnnp_model_fit
 static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size)
 {
@@ -683,7 +752,8 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 	if (compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
 		_ccv_cnnp_model_gradient_init(model, CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES, fits, fit_size);
 	else if (compiled_data->gradient_mode != CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES) {
-		_ccv_cnnp_model_redo_graph(model);
+		_ccv_cnnp_model_rewind_graph(model);
+		_ccv_cnnp_compiled_data_gradient_free(compiled_data);
 		compiled_data->gradient_mode = CCV_CNNP_COMPILED_DATA_GRADIENT_NONE;
 		_ccv_cnnp_model_gradient_init(model, CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES, fits, fit_size);
 	}
@@ -788,12 +858,9 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 	assert(model->graph);
 	if (!compiled_data->graph || compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_FIT_MODE)
 	{
-		if (compiled_data->graph)
-			ccv_nnc_graph_free(compiled_data->graph);
-		if (compiled_data->tensor_arena)
-			ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
-		if (compiled_data->graph_exec_arena)
-			ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
+		_ccv_cnnp_compiled_data_graph_free(compiled_data);
+		_ccv_cnnp_compiled_data_backward_free(compiled_data);
+		_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
 		// Compile the symbolic graph down only when needed.
 		_ccv_cnnp_model_fit_jit(model, inputs, input_size, fits, fit_size, outputs, output_size);
 	} else {
@@ -913,7 +980,8 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 	if (compiled_data->gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_NONE)
 		_ccv_cnnp_model_gradient_init(model, target_gradient_mode, 0, 0); // The type of outputs and fits should be the same. We only use type here.
 	else if (compiled_data->gradient_mode != target_gradient_mode) {
-		_ccv_cnnp_model_redo_graph(model);
+		_ccv_cnnp_model_rewind_graph(model);
+		_ccv_cnnp_compiled_data_gradient_free(compiled_data);
 		compiled_data->gradient_mode = CCV_CNNP_COMPILED_DATA_GRADIENT_NONE;
 		_ccv_cnnp_model_gradient_init(model, target_gradient_mode, 0, 0); // The type of outputs and fits should be the same. We only use type here.
 	}
@@ -1000,12 +1068,9 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		// If a stream context is provided, we need to recompile because we cannot run them efficiently in FIT_MODE.
 		(stream_context && !params.requires_grad && compiled_data->graph_mode != CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD))
 	{
-		if (compiled_data->graph)
-			ccv_nnc_graph_free(compiled_data->graph);
-		if (compiled_data->tensor_arena)
-			ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
-		if (compiled_data->graph_exec_arena)
-			ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
+		_ccv_cnnp_compiled_data_graph_free(compiled_data);
+		_ccv_cnnp_compiled_data_backward_free(compiled_data);
+		_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
 		if (params.requires_grad)
 			_ccv_cnnp_model_multistage_jit_0(model, params.enable_outgrad, params.is_test, inputs, input_size, outputs, output_size);
 		else
@@ -1303,34 +1368,12 @@ static void _ccv_cnnp_compiled_data_free(ccv_cnnp_compiled_data_t* const compile
 		}
 		ccfree(compiled_data->tensors.gradients);
 	}
-	if (compiled_data->graph)
-		ccv_nnc_graph_free(compiled_data->graph);
-	if (compiled_data->tensor_arena)
-		ccv_nnc_tensor_arena_free(compiled_data->tensor_arena);
-	if (compiled_data->graph_exec_arena)
-		ccv_nnc_graph_exec_arena_free(compiled_data->graph_exec_arena);
-	if (compiled_data->gradients)
-		ccfree(compiled_data->gradients);
-	if (compiled_data->saved_aux)
-		ccfree(compiled_data->saved_aux);
-	if (compiled_data->evaluate.tos)
-		ccfree(compiled_data->evaluate.tos);
-	if (compiled_data->backward.from_ops)
-		ccfree(compiled_data->backward.from_ops);
-	if (compiled_data->backward.gradients)
-		ccfree(compiled_data->backward.gradients);
-	if (compiled_data->backward.accum)
-		ccv_nnc_graph_free(compiled_data->backward.accum);
-	if (compiled_data->backward.tensor_arena)
-		ccv_nnc_tensor_arena_free(compiled_data->backward.tensor_arena);
-	if (compiled_data->backward.graph_exec_arena)
-		ccv_nnc_graph_exec_arena_free(compiled_data->backward.graph_exec_arena);
-	if (compiled_data->apply_gradients.graph)
-		ccv_nnc_graph_free(compiled_data->apply_gradients.graph);
-	if (compiled_data->apply_gradients.tensor_arena)
-		ccv_nnc_tensor_arena_free(compiled_data->apply_gradients.tensor_arena);
-	if (compiled_data->apply_gradients.graph_exec_arena)
-		ccv_nnc_graph_exec_arena_free(compiled_data->apply_gradients.graph_exec_arena);
+	if (compiled_data->rewindables)
+		ccv_array_free(compiled_data->rewindables);
+	_ccv_cnnp_compiled_data_graph_free(compiled_data);
+	_ccv_cnnp_compiled_data_gradient_free(compiled_data);
+	_ccv_cnnp_compiled_data_backward_free(compiled_data);
+	_ccv_cnnp_compiled_data_apply_gradients_free(compiled_data);
 	ccfree(compiled_data);
 }
 

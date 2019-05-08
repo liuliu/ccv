@@ -38,6 +38,19 @@ enum {
 	CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES_AND_INPUTS,
 };
 
+enum {
+	CCV_CNNP_REWIND_GRAPH_EXEC,
+	CCV_CNNP_REWIND_TENSOR,
+};
+
+typedef struct {
+	int type;
+	union {
+		ccv_nnc_tensor_symbol_t tensor;
+		ccv_nnc_graph_exec_symbol_t graph_exec;
+	};
+} ccv_cnnp_rewind_symbol_t;
+
 // This contains relevant information after model compilation.
 typedef struct {
 	int graph_mode;
@@ -55,6 +68,7 @@ typedef struct {
 	ccv_nnc_tensor_symbol_t* updated_trainables;
 	ccv_nnc_graph_exec_symbol_t* update_nodes;
 	ccv_nnc_tensor_symbol_map_t* saved_aux;
+	ccv_array_t* rewindables;
 	struct {
 		ccv_nnc_tensor_t** retainables; // Additional need to retained tensors.
 		ccv_nnc_tensor_t** trainables;
