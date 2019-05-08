@@ -496,6 +496,30 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 		.is_test = 1
 	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
 	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 0.5, 2 * 1e-2, "We should linear regressed this.");
+	// Figure out the actual weight and bias term in the model.
+	a0_tensor->data.f32[0] = 0;
+	a1_tensor->data.f32[0] = 0;
+	b0_tensor->data.f32[0] = 0;
+	b1_tensor->data.f32[0] = 0;
+	// The output will be 2*bias^2
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
+	const float bias = sqrtf(o0_tensor->data.f32[0] * 0.5);
+	a0_tensor->data.f32[0] = 1;
+	a1_tensor->data.f32[0] = 1;
+	b0_tensor->data.f32[0] = 0;
+	b1_tensor->data.f32[0] = 0;
+	// The output will be 2*(w+bias)^2
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), TENSOR_LIST(o0_tensor), 0);
+	const float w = sqrt(o0_tensor->data.f32[0] * 0.5) - bias;
+	// Compute the out gradient to verify.
+	a0_tensor->data.f32[0] = 2;
+	a1_tensor->data.f32[0] = 2; // The final result should be 4.
+	b0_tensor->data.f32[0] = 2; // diff is 0.5
+	b1_tensor->data.f32[0] = 3; // diff is 0.5, and 0.5^2 + 0.5^2 = 0.5.
 	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 		.requires_grad = 1,
 		.enable_outgrad = 1,
@@ -508,10 +532,10 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	ccv_nnc_tensor_t* do0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
 	do0_tensor->data.f32[0] = 1;
 	ccv_cnnp_model_backward(final, TENSOR_LIST(do0_tensor), TENSOR_LIST(da0_tensor, da1_tensor, db0_tensor, db1_tensor), 0);
-	REQUIRE_EQ_WITH_TOLERANCE(da0_tensor->data.f32[0], 0.5, 1e-1, "da0=2*w*(w*a0+bias-b0), thus, 0.5");
-	REQUIRE_EQ_WITH_TOLERANCE(da1_tensor->data.f32[0], -0.5, 1e-1, "da1=2*w*(w*a1+bias-b1), thus, -0.5");
-	REQUIRE_EQ_WITH_TOLERANCE(db0_tensor->data.f32[0], -1, 1e-1, "db0=-2*(w*a0+bias-b0), thus, -1");
-	REQUIRE_EQ_WITH_TOLERANCE(db1_tensor->data.f32[0], 1, 1e-1, "db1=-2*(w*a1+bias-b1), thus, 1");
+	REQUIRE_EQ_WITH_TOLERANCE(da0_tensor->data.f32[0], 2 * w * (w * 2 + bias - 2), 1e-5, "da0=2*w*(w*a0+bias-b0), thus, 0.5");
+	REQUIRE_EQ_WITH_TOLERANCE(da1_tensor->data.f32[0], 2 * w * (w * 2 + bias - 3), 1e-5, "da1=2*w*(w*a1+bias-b1), thus, -0.5");
+	REQUIRE_EQ_WITH_TOLERANCE(db0_tensor->data.f32[0], -2 * (w * 2 + bias - 2), 1e-5, "db0=-2*(w*a0+bias-b0), thus, -1");
+	REQUIRE_EQ_WITH_TOLERANCE(db1_tensor->data.f32[0], -2 * (w * 2 + bias - 3), 1e-5, "db1=-2*(w*a1+bias-b1), thus, 1");
 	ccv_nnc_tensor_free(a0_tensor);
 	ccv_nnc_tensor_free(a1_tensor);
 	ccv_nnc_tensor_free(b0_tensor);
