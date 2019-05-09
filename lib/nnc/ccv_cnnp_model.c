@@ -1229,7 +1229,16 @@ static void _ccv_cnnp_model_multistage_jit_2(ccv_cnnp_model_t* const model)
 		int to_size;
 		ccv_nnc_graph_exec_symbol_to(model->graph, compiled_data->backward.tos[i], &tos, &to_size);
 		for (j = 0; j < to_size; j++)
-			ccv_array_add_unique_int(apply_gradients_from, tos[j]);
+		{
+			// Check if this is already show up in the backward graph, if that is the case, it won't be in the apply
+			// gradients graph.
+			const ccv_nnc_graph_exec_t exec = ccv_nnc_graph_exec_from_symbol(compiled_data->graph_exec_arena, (ccv_nnc_graph_exec_symbol_t){
+				.d = tos[j],
+				.graph = model->graph,
+			});
+			if (!exec.graph)
+				ccv_array_add_unique_int(apply_gradients_from, tos[j]);
+		}
 	}
 	const int from_size = apply_gradients_from->rnum;
 	ccv_nnc_graph_exec_symbol_t* const froms = (ccv_nnc_graph_exec_symbol_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_symbol_t) * from_size);
