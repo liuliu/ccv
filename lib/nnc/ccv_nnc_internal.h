@@ -149,22 +149,25 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 			int8_t d; /* tag if this is the destination node. */ \
 			int8_t r; /* tag if this is reached as destination node. */ \
 			uint16_t c; /* number of incoming edges. */ \
+			int32_t edges; /* pointer to incoming edges list. */ \
 		} ccv_nnc_incoming_t; \
-		/* Statistics of how many incoming edges for all nodes of a graph. */ \
-		const int _heap_mem_ = (node_size > 1024); \
 		int _i_, _j_; \
+		/* Statistics of how many incoming edges for all nodes of a graph. */ \
+		int _incoming_edges_ = 0; \
+		for (_i_ = 0; _i_ < (node_size); _i_++) /* assuming it is all reached */ \
+			_incoming_edges_ += ((nodes)[_i_].outgoings) ? (nodes)[_i_].outgoings->rnum : 0; \
+		const int _heap_mem_ = (node_size + _incoming_edges_ > 1024); \
 		ccv_nnc_incoming_t* _incomings_; \
 		if (_heap_mem_) \
-			_incomings_ = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
+			_incomings_ = (ccv_nnc_incoming_t*)ccmalloc(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * ((node_size) * 2 + _incoming_edges_)); \
 		else \
-			_incomings_ = (ccv_nnc_incoming_t*)alloca(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * (node_size) * 2); \
+			_incomings_ = (ccv_nnc_incoming_t*)alloca(sizeof(ccv_nnc_incoming_t) * (node_size) + sizeof(int32_t) * ((node_size) * 2 + _incoming_edges_)); \
 		memset(_incomings_, 0, sizeof(ccv_nnc_incoming_t) * (node_size)); \
-		for (_i_ = 0; _i_ < (node_size); _i_++) /* assuming it is all reached */ \
-			_incomings_[_i_].r = 1; \
 		int32_t* _exists_[2] = { \
 			(int32_t*)(_incomings_ + (node_size)), \
 			(int32_t*)(_incomings_ + (node_size)) + (node_size), \
 		}; \
+		int32_t* const _edges_ = _exists_[1] + (node_size); \
 		for (_i_ = 0; _i_ < (source_size); _i_++) \
 		{ \
 			assert((sources)[_i_].graph == _graph); \
@@ -182,15 +185,84 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
 			{ \
 				const int32_t _idx_ = _exists_[_p_][_i_]; \
-				if (!_incomings_[_idx_].r) \
+				if (_incomings_[_idx_].r == 1) \
 					continue; \
-				_incomings_[_idx_].r = 0; \
+				_incomings_[_idx_].r = 1; \
 				/* mark as not reached */ \
 				if ((nodes)[_idx_].outgoings) \
 					for (_j_ = 0; _j_ < (nodes)[_idx_].outgoings->rnum; _j_++) \
 					{ \
 						const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, _j_); \
 						++_incomings_[d].c; \
+						_exists_[_q_][_exist_size_[_q_]] = d; \
+						++_exist_size_[_q_]; \
+					} \
+			} \
+			/* swap p and q. */ \
+			CCV_SWAP(_p_, _q_, _i_ /* using i as temp holder */); \
+		} \
+		/* Fill incoming edges. */ \
+		for (_i_ = 0; _i_ < (source_size); _i_++) \
+		{ \
+			assert((sources)[_i_].graph == _graph); \
+			_exists_[0][_i_] = (sources)[_i_].d; \
+		} \
+		_exist_size_[0] = (source_size); \
+		_exist_size_[1] = 0; \
+		_p_ = 0, _q_ = 1; /* ping, pong swap. */ \
+		int _bump_ = 1; \
+		while (_exist_size_[_p_] > 0) \
+		{ \
+			_exist_size_[_q_] = 0; \
+			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
+			{ \
+				const int32_t _idx_ = _exists_[_p_][_i_]; \
+				if (_incomings_[_idx_].r == 2) \
+					continue; \
+				_incomings_[_idx_].r = 2; \
+				/* mark as not reached */ \
+				if ((nodes)[_idx_].outgoings) \
+					for (_j_ = 0; _j_ < (nodes)[_idx_].outgoings->rnum; _j_++) \
+					{ \
+						const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, _j_); \
+						if (_incomings_[d].edges == 0) \
+						{ \
+							_incomings_[d].edges = _bump_; \
+							_bump_ += _incomings_[d].c; \
+							_incomings_[d].c = 0; \
+						} \
+						_edges_[_incomings_[d].edges - 1 + _incomings_[d].c] = _idx_; \
+						++_incomings_[d].c; \
+						_exists_[_q_][_exist_size_[_q_]] = d; \
+						++_exist_size_[_q_]; \
+					} \
+			} \
+			/* swap p and q. */ \
+			CCV_SWAP(_p_, _q_, _i_ /* using i as temp holder */); \
+		} \
+		/* Traverse back and mark r if it can be marked */ \
+		for (_i_ = 0; _i_ < (destination_size); _i_++) \
+		{ \
+			assert((destinations)[_i_].graph == _graph); \
+			_exists_[0][_i_] = (destinations)[_i_].d; \
+		} \
+		_exist_size_[0] = (destination_size); \
+		_exist_size_[1] = 0; \
+		_p_ = 0, _q_ = 1; /* ping, pong swap. */ \
+		while (_exist_size_[_p_] > 0) \
+		{ \
+			_exist_size_[_q_] = 0; \
+			for (_i_ = 0; _i_ < _exist_size_[_p_]; _i_++) \
+			{ \
+				const int32_t _idx_ = _exists_[_p_][_i_]; \
+				if (_incomings_[_idx_].r != 2) /* If cannot be traversed in forward pass, cannot in backward pass. */ \
+					continue; \
+				_incomings_[_idx_].r = 3; \
+				/* mark as not reached */ \
+				if (_incomings_[_idx_].edges > 0) \
+					for (_j_ = 0; _j_ < _incomings_[_idx_].c; _j_++) \
+					{ \
+						const int d = _edges_[_incomings_[_idx_].edges - 1 + _j_]; \
 						_exists_[_q_][_exist_size_[_q_]] = d; \
 						++_exist_size_[_q_]; \
 					} \
@@ -226,7 +298,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 				if (_incomings_[_idx_].d) \
 				{ \
 					++_d_; \
-					_incomings_[_idx_].r = 1; \
+					_incomings_[_idx_].r = 4; \
 				} \
 				if ((nodes)[_idx_].outgoings) \
 				{ \
@@ -235,7 +307,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 						/* Optimizing for the case have only one child. Go through that directly. */ \
 						const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, 0); \
 						--_incomings_[d].c; \
-						if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
+						if (_incomings_[d].c == 0 && _incomings_[d].r == 3 && _d_ < (destination_size)) \
 						{ \
 							_exists_[_p_][_i_] = d; \
 							continue; \
@@ -246,7 +318,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 							const int d = *(int*)ccv_array_get((nodes)[_idx_].outgoings, _j_); \
 							--_incomings_[d].c; \
 							/* If all incoming edges are consumed, and not all destination node are computed, push it into next round */ \
-							if (_incomings_[d].c == 0 && _d_ < (destination_size)) \
+							if (_incomings_[d].c == 0 && _incomings_[d].r == 3 && _d_ < (destination_size)) \
 							{ \
 								_exists_[_q_][_exist_size_[_q_]] = d; \
 								++_exist_size_[_q_]; \
@@ -262,7 +334,7 @@ static inline void ccv_array_add_unique_uint(ccv_array_t* ints, const uint32_t i
 		{ \
 			assert((destinations)[_i_].graph == _graph); \
 			/* skip if this is already reached. */ \
-			if (_incomings_[(destinations)[_i_].d].r) \
+			if (_incomings_[(destinations)[_i_].d].r == 4) \
 				continue; \
 			/* this destination node should have every incoming nodes consumed. */ \
 			if (!(allow_subset)) \
