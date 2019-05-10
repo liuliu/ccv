@@ -1,3 +1,16 @@
+2019-05-09
+----------
+I don't know why my graph traversal code doesn't properly address "don't visit nodes that not contribute to the destination". Initially, how the graph was driven done with flood fill.It is all fine until I want to get more serious.
+
+The compounding problem is that I want to, eventually, making the concrete graph computation as fast as do the computation directly (even if the tensors are as simple as scalar (0-dimension tensor)). That means have a more compact representation of the graph, better interpreter (right, you can think the ``ccv_nnc_graph_run`` as "interpreting"), and doesn't do topsort every time.
+
+Unfortunately, that's the absurd world I am in now. Right now, if a graph is not ``ccv_nnc_graph_static_schedule``, running it requires to traverse the graph 4 times: 1. Collect statistics about how many incoming edges for each node; 2. Collect exactly which are the incoming edges; 3. Reverse traverse from destinations to the sources, marking node that can be reached this way; 4. The final traversal, only call node that is marked in step 3. All these is because I don't want the graph representation including both outgoing nodes and incoming nodes. Including incoming nodes is obvious but a struggle for me because I don't want to maintain two sources of truth about the graph structure. Then, I end up with this 4-pass graph traversal.
+
+There are ways to optimize this though. First, let's be honest, flood fill won't give me efficient interpreter. I need the topsorted result available already to be efficient. It seems more and more likely, that "cache" topsorted result thing could be another layer "cache" the opcode for graph interpreter. Very interesting.
+
+After 3 months with the new machine built (4xRTX2080Ti), and fixed the AMD freeze issue, I finally can work on the fp16 support again. Long time indeed!
+
+
 2019-05-06
 ----------
 Designing API is hard.

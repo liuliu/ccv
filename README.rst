@@ -4,7 +4,6 @@ Build Status
 -  Travis CI VM: |Build Status on Travis CI VM|
 -  Linux x64: |Build Status on Linux|
 -  Raspberry Pi 3: |Build Status on Raspberry Pi 3|
--  Jetson TK1: |Build Status on Jetson TK1|
 -  Jetson TX2: |Build Status on Jetson TX2|
 
 Backstory
@@ -47,7 +46,5 @@ ccv's data models and documentations are distributed under Creative Commons Attr
    :target: http://ci.libccv.org/builders/linux-x64-runtests
 .. |Build Status on Raspberry Pi 3| image:: http://ci.libccv.org/png?builder=rbp3-arm-runtests
    :target: http://ci.libccv.org/builders/rbp3-arm-runtests
-.. |Build Status on Jetson TK1| image:: http://ci.libccv.org/png?builder=jetson-tk1-arm-runtests
-   :target: http://ci.libccv.org/builders/jetson-tk1-arm-runtests
 .. |Build Status on Jetson TX2| image:: http://ci.libccv.org/png?builder=jetson-tx2-arm-runtests
    :target: http://ci.libccv.org/builders/jetson-tx2-arm-runtests
