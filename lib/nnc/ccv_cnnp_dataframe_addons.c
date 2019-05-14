@@ -35,10 +35,10 @@ typedef struct {
 
 static void _ccv_cnnp_tensor_list_deinit(void* const data, void* const context)
 {
-	ccv_cnnp_copy_to_gpu_context_t* const copy_to_gpu = (ccv_cnnp_copy_to_gpu_context_t*)context;
+	ccv_cnnp_dataframe_tuple_t* const tuple = (ccv_cnnp_dataframe_tuple_t*)context;
 	ccv_nnc_tensor_t** const tensor_list = (ccv_nnc_tensor_t**)data;
 	int i;
-	for (i = 0; i < copy_to_gpu->tuple.size; i++)
+	for (i = 0; i < tuple->size; i++)
 		if (tensor_list[i])
 			ccv_nnc_tensor_free(tensor_list[i]);
 	ccfree(tensor_list);
@@ -70,7 +70,7 @@ static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_si
 	}
 }
 
-int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, int device_id)
+int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id)
 {
 	assert(tensor_size > 0);
 	int stream_type = CCV_STREAM_CONTEXT_GPU;
@@ -80,6 +80,52 @@ int ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const 
 	copy_to_gpu_context->tensor_offset = tensor_offset;
 	copy_to_gpu_context->device_id = device_id;
 	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_copy_to_gpu, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), copy_to_gpu_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+}
+
+#pragma mark - Use Command to Generate Output Tuple
+
+typedef struct {
+	ccv_cnnp_dataframe_tuple_t tuple;
+	int input_offset;
+	int input_size;
+	ccv_nnc_cmd_t cmd;
+	ccv_nnc_hint_t hint;
+	int flags;
+	ccv_nnc_tensor_param_t output_params[1];
+} ccv_cnnp_cmd_exec_context_t;
+
+static void _ccv_cnnp_dataframe_cmd_exec(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+{
+	const ccv_cnnp_cmd_exec_context_t* const cmd_exec_context = (ccv_cnnp_cmd_exec_context_t*)context;
+	int i, j;
+	for (i = 0; i < batch_size; i++)
+	{
+		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + cmd_exec_context->input_offset;
+		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
+		if (!outputs)
+		{
+			outputs = (ccv_nnc_tensor_t**)(data[i] = ccmalloc(sizeof(ccv_nnc_tensor_t*) * cmd_exec_context->tuple.size));
+			for (j = 0; j < cmd_exec_context->tuple.size; j++)
+				outputs[j] = ccv_nnc_tensor_new(0, cmd_exec_context->output_params[j], 0);
+		}
+		ccv_nnc_cmd_exec(cmd_exec_context->cmd, cmd_exec_context->hint, cmd_exec_context->flags, inputs, cmd_exec_context->input_size, outputs, cmd_exec_context->tuple.size, stream_context);
+	}
+}
+
+int ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type)
+{
+	assert(input_size > 0);
+	assert(output_size > 0);
+	ccv_cnnp_cmd_exec_context_t* const cmd_exec_context = (ccv_cnnp_cmd_exec_context_t*)ccmalloc(sizeof(ccv_cnnp_cmd_exec_context_t) + sizeof(ccv_nnc_tensor_param_t) * (output_size - 1));
+	cmd_exec_context->tuple.size = output_size;
+	cmd_exec_context->input_offset = input_offset;
+	cmd_exec_context->input_size = input_size;
+	cmd_exec_context->cmd = cmd;
+	cmd_exec_context->hint = hint;
+	cmd_exec_context->flags = flags;
+	memcpy(cmd_exec_context->output_params, output_params, sizeof(ccv_nnc_tensor_param_t) * output_size);
+	return ccv_cnnp_dataframe_map(dataframe, _ccv_cnnp_dataframe_cmd_exec, stream_type, _ccv_cnnp_tensor_list_deinit, COLUMN_ID_LIST(column_idx), cmd_exec_context, (ccv_cnnp_column_data_context_deinit_f)ccfree);
+	return 0;
 }
 
 #pragma mark - Make Auxiliary Tensor as a new Column

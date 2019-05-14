@@ -110,7 +110,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE* w = fopen("imagenet.dot", "w+");
-	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, w);
+	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {

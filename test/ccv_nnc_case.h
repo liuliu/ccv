@@ -119,7 +119,7 @@ inline static FILE* _ccv_nnc_cnnp_model_gen(const char* test_case_name)
 
 #define CNNP_MODEL_GEN(cnnp_model, type) do { \
 	FILE* _w_ = _ccv_nnc_cnnp_model_gen(__case_name__); \
-	ccv_cnnp_model_dot(cnnp_model, type, _w_); \
+	ccv_cnnp_model_dot(cnnp_model, type, &_w_, 1); \
 	fclose(_w_); \
 } while (0)
 

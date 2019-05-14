@@ -186,7 +186,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE *w = fopen("cifar-10.dot", "w+");
-	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, w);
+	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];

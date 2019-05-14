@@ -2249,7 +2249,21 @@ CCV_WARN_UNUSED(ccv_cnnp_dataframe_t*) ccv_cnnp_dataframe_from_array_new(ccv_arr
  * @param device_id The device we want to copy the tensors to.
  * @return The index of the newly derived column.
  */
-CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, int device_id);
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_copy_to_gpu(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const int tensor_offset, const int tensor_size, const int device_id);
+/**
+ * Derive a new column by executing a generic command.
+ * @param dataframe The dataframe object that get the derived column.
+ * @param column_idx The original column contains tensor array.
+ * @param cmd The command for this operation.
+ * @param hint The hint to run the command.
+ * @param flags The flags with the command.
+ * @param input_offset Use inputs[i + input_offset] to inputs[i + input_offset + input_size - 1] as the inputs
+ * @param input_size How many tensors in the input array.
+ * @param output_params The parameters for the outputs.
+ * @param output_size How many tensors in the output array.
+ * @param stream_type The type of stream context we are going to use.
+ */
+CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_cmd_exec(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const int input_offset, const int input_size, const ccv_nnc_tensor_param_t* const output_params, const int output_size, const int stream_type);
 /**
  * Add a new column contains some tensors. This will add a new column that each row is the tensor specified
  * as the parameters. It comes handy when you want to have some auxiliary tensors along with each row.
@@ -2427,9 +2441,10 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
  * Generate output that can be parsed by GraphViz (DOT language).
  * @param model The composed model.
  * @param flags Either CCV_NNC_SHORT_DOT_GRAPH or CCV_NNC_LONG_DOT_GRAPH
- * @param out The output file stream.
+ * @param outs The output file streams.
+ * @param out_size The size of output file stream array.
  */
-void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out);
+void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE** const outs, const int out_size);
 /**
  * Fit a model to a given input / output. This is a combination of running ccv_cnnp_model_evaluate /
  * ccv_cnnp_model_backward / ccv_cnnp_model_apply_gradients. The difference is that when calling

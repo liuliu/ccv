@@ -1323,12 +1323,16 @@ void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_c
 	}
 }
 
-void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE* out)
+void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FILE** const outs, const int out_size)
 {
-	if (model->graph)
-		ccv_nnc_symbolic_graph_dot(model->graph, flags, out);
-	if (model->compiled_data && model->compiled_data->graph)
-		ccv_nnc_graph_dot(model->compiled_data->graph, flags, out);
+	if (model->graph && out_size > 0)
+		ccv_nnc_symbolic_graph_dot(model->graph, flags, outs[0]);
+	if (model->compiled_data && model->compiled_data->graph && out_size > 1)
+		ccv_nnc_graph_dot(model->compiled_data->graph, flags, outs[1]);
+	if (model->compiled_data && model->compiled_data->backward.accum && out_size > 2)
+		ccv_nnc_graph_dot(model->compiled_data->backward.accum, flags, outs[2]);
+	if (model->compiled_data && model->compiled_data->apply_gradients.graph && out_size > 3)
+		ccv_nnc_graph_dot(model->compiled_data->apply_gradients.graph, flags, outs[3]);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_input_isa = {};

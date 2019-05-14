@@ -128,4 +128,24 @@ TEST_CASE("read image and add random jitter")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
+TEST_CASE("execute command from dataframe addons API")
+{
+	ccv_nnc_tensor_t* input = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	input->data.f32[0] = 183;
+	ccv_array_t* const array = ccv_array_new(sizeof(ccv_nnc_tensor_t), 1, 0);
+	ccv_array_push(array, input);
+	ccv_cnnp_dataframe_t* const dataframe = ccv_cnnp_dataframe_from_array_new(array);
+	const int tuple_idx = ccv_cnnp_dataframe_make_tuple(dataframe, COLUMN_ID_LIST(0));
+	const ccv_nnc_tensor_param_t output_param = CPU_TENSOR_NCHW(32F, 1);
+	const int log_idx = ccv_cnnp_dataframe_cmd_exec(dataframe, tuple_idx, CMD_EWLOG_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &output_param, 1, CCV_STREAM_CONTEXT_CPU);
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(dataframe, COLUMN_ID_LIST(log_idx));
+	ccv_nnc_tensor_t** data = 0;
+	ccv_cnnp_dataframe_iter_next(iter, (void**)&data, 1, 0);
+	REQUIRE_EQ_WITH_TOLERANCE(data[0]->data.f32[0], log(183), 1e-6, "should be equal to the log(183)");
+	ccv_nnc_tensor_free(input);
+	ccv_array_free(array);
+	ccv_cnnp_dataframe_iter_free(iter);
+	ccv_cnnp_dataframe_free(dataframe);
+}
+
 #include "case_main.h"
