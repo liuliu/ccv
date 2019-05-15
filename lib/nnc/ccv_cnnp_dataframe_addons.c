@@ -373,14 +373,20 @@ static void _ccv_cnnp_one_hot(void*** const column_data, const int column_size, 
 			data[i] = ccv_nnc_tensor_new(0, params, 0);
 		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];
 		assert(label >= 0 && label < one_hot->range);
-		for (j = 0; j < one_hot->range; j++)
-			tensor->data.f32[j] = (j == label) ? one_hot->onval : one_hot->offval;
+		if (tensor->info.datatype == CCV_32F)
+			for (j = 0; j < one_hot->range; j++)
+				tensor->data.f32[j] = (j == label) ? one_hot->onval : one_hot->offval;
+		else if (tensor->info.datatype == CCV_16F)
+			for (j = 0; j < one_hot->range; j++)
+				ccv_float_to_half_precision((j == label) ? &one_hot->onval : &one_hot->offval, (uint16_t*)(tensor->data.f16 + j), 1);
+		else
+			{ assert(0); }
 	} parallel_endfor
 }
 
 int ccv_cnnp_dataframe_one_hot(ccv_cnnp_dataframe_t* const dataframe, const int column_idx, const off_t structof, const int range, const float onval, const float offval, const int datatype, const int format)
 {
-	assert(datatype == CCV_32F);
+	assert(datatype == CCV_32F || datatype == CCV_16F);
 	ccv_cnnp_one_hot_context_t* const one_hot = (ccv_cnnp_one_hot_context_t*)ccmalloc(sizeof(ccv_cnnp_one_hot_context_t));
 	one_hot->range = range;
 	one_hot->datatype = datatype;
@@ -415,7 +421,7 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 			for (j = 0; j < input_tuple_size; j++)
 			{
 				ccv_nnc_tensor_param_t params = inputs[j]->info;
-				assert(params.datatype == CCV_32F); // Only support 32 bit float yet.
+				assert(params.datatype == CCV_32F || params.datatype == CCV_16F); // Only support 32 bit float yet.
 				assert(params.format == CCV_TENSOR_FORMAT_NHWC || params.format == CCV_TENSOR_FORMAT_NCHW);
 				params.format = batch->format;
 				// Special-case for dim count is 3 and 1, in these two cases, the N is not provided.
@@ -459,24 +465,49 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 			parallel_for(k, batch_count) {
 				ccv_nnc_tensor_t* const input = ((ccv_nnc_tensor_t**)input_data[(k + i * batch_count) % input_size])[j];
 				const size_t tensor_count = ccv_nnc_tensor_count(input->info);
-				float* const ap = input->data.f32;
-				float* const bp = output->data.f32 + k * tensor_count;
-				if (input->info.format == output->info.format)
-					memcpy(bp, ap, sizeof(float) * tensor_count);
-				else {
-					// Do a simple format conversion.
-					const int c = ccv_nnc_tensor_get_c(input->info);
-					const size_t hw_count = tensor_count / c;
-					size_t x;
-					int y;
-					if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
-						for (x = 0; x < hw_count; x++)
-							for (y = 0; y < c; y++)
-								bp[y * hw_count + x] = ap[x * c + y];
-					else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
-						for (x = 0; x < hw_count; x++)
-							for (y = 0; y < c; y++)
-								bp[x * c + y] = ap[y * hw_count + x];
+				if (input->info.datatype == CCV_32F)
+				{
+					float* const ap = input->data.f32;
+					float* const bp = output->data.f32 + k * tensor_count;
+					if (input->info.format == output->info.format)
+						memcpy(bp, ap, sizeof(float) * tensor_count);
+					else {
+						// Do a simple format conversion.
+						const int c = ccv_nnc_tensor_get_c(input->info);
+						const size_t hw_count = tensor_count / c;
+						size_t x;
+						int y;
+						if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[y * hw_count + x] = ap[x * c + y];
+						else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[x * c + y] = ap[y * hw_count + x];
+					}
+				} else if (input->info.datatype == CCV_16F) {
+					ccv_float16_t* const ap = input->data.f16;
+					ccv_float16_t* const bp = output->data.f16 + k * tensor_count;
+					if (input->info.format == output->info.format)
+						memcpy(bp, ap, sizeof(ccv_float16_t) * tensor_count);
+					else {
+						// Do a simple format conversion.
+						const int c = ccv_nnc_tensor_get_c(input->info);
+						const size_t hw_count = tensor_count / c;
+						size_t x;
+						int y;
+						if (input->info.format == CCV_TENSOR_FORMAT_NHWC && output->info.format == CCV_TENSOR_FORMAT_NCHW)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[y * hw_count + x] = ap[x * c + y];
+						else if (input->info.format == CCV_TENSOR_FORMAT_NCHW && output->info.format == CCV_TENSOR_FORMAT_NHWC)
+							for (x = 0; x < hw_count; x++)
+								for (y = 0; y < c; y++)
+									bp[x * c + y] = ap[y * hw_count + x];
+					}
+				} else {
+					assert(0);
 				}
 			} parallel_endfor
 		}
