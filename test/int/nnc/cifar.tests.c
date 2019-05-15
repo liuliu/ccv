@@ -77,6 +77,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
 	for (i = 0; i < device_count; i++)

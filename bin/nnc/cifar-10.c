@@ -185,6 +185,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
 	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	FILE *w = fopen("cifar-10.dot", "w+");
 	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
@@ -275,7 +276,6 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 			input_fit_fits[j] = input_fits[j][1];
 			outputs[j] = (ccv_nnc_tensor_t*)input_fits[device_count + j];
 		}
-		CCV_CLI_SET_OUTPUT_LEVEL_AND_ABOVE(CCV_CLI_VERBOSE);
 		ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);

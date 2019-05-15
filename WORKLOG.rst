@@ -1,3 +1,16 @@
+2019-05-14
+----------
+Autotune implementation needs some work.
+
+I didn't spend much time on autotune. It only surfaced this issue when I tries to implement the fp16 support. The original issue is from cudnn's ``cudnnGetConvolutionBackwardDataAlgorithm`` method. For fp16, this method will return a wrong preferred algorithm, thus, failed the following operation. The find method doesn't have this bug. That triggered me to look into why the ``cudnnFindConvolutionBackwardDataAlgorithmEx`` method is not called because it is part of the autotune process.
+
+It turns out that there is a bug in the ``ccv_nnc_graph_autotune`` where given 0 sources and 0 destinations, it doesn't run the full graph. Then there is a bug in the convolution's autotune implementation where given 0 workspace size, it will skip the autotune completely. On top of that, we cannot really use the autotune as it is on the complete graph. The autotune process will run the command multiple times against different backends, therefore, if the command is not idempotent (it shouldn't), this will contaminant the final output.
+
+I think the proper autotune implementation should allocate some inputs and outputs. When autotuning, copying the original inputs over. This can be repeated as much time as you would like. The only gotcha: there are some commands require inputs and outputs to be the same (enforce_inplace), that allocation need to handle this as well.
+
+As of now, I workaround this problem by only autotune until backward finishes, and the autotune function avoid repeat too much times by identify there is only one backend. It is not as ideal.
+
+
 2019-05-09
 ----------
 I don't know why my graph traversal code doesn't properly address "don't visit nodes that not contribute to the destination". Initially, how the graph was driven done with flood fill.It is all fine until I want to get more serious.

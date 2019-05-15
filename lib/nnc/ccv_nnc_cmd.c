@@ -327,6 +327,52 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	int64_t best_measured = -1;
 	const int cmd_idx = _ccv_nnc_cmd_ph(cmd.cmd);
 	assert(cmd_idx >= 0 && cmd_idx < sizeof(init_map) / sizeof(init_map[0]));
+	int flag = 0;
+	for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
+	{
+		const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
+		// We have the exec kernel, and support all the tensor memory types.
+		if (api_registry.exec &&
+			(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
+			(api_registry.tensor_formats & tensor_formats) == tensor_formats &&
+			(api_registry.tensor_datatypes & tensor_datatypes) == tensor_datatypes)
+			if ((++flag) >= 2) // If we have more than 2 suitable backend, we can do this now.
+				break;
+	}
+	if (flag == 0)
+		return cmd;
+#ifdef HAVE_CUDA
+	if (!stream_context)
+	{
+		int device_id;
+		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, &device_id, 1) > 0)
+			cudevice(device_id);
+	}
+#endif
+	if (flag == 1)
+	{
+		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
+		{
+			const ccv_nnc_cmd_backend_registry_t api_registry = init_map[cmd_idx].backends[i];
+			// We have the exec kernel, and support all the tensor memory types.
+			if (api_registry.exec &&
+				(api_registry.tensor_memory & tensor_memory) == tensor_memory &&
+				(api_registry.tensor_formats & tensor_formats) == tensor_formats &&
+				(api_registry.tensor_datatypes & tensor_datatypes) == tensor_datatypes)
+			{
+				tuned_cmd.backend = backend_init_map[i].backend;
+				// If a given API exist an autotune function, use that to pick the top algorithm.
+				if (api_registry.autotune)
+				{
+					tuned_cmd.algorithm = api_registry.autotune(tuned_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					// Drain the context, autotune can use excessive amount of memory. Need to drain it now.
+					ccv_nnc_stream_context_drain(stream_context);
+				}
+				break;
+			}
+		}
+		return tuned_cmd;
+	}
 	// We need to have trial loop through all the data.
 	for (k = 0; k < AUTO_TUNE_TRIAL_SIZE; k++)
 	{

@@ -91,7 +91,7 @@ static int _ccv_nnc_conv_forw_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	assert(output_size == 1);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
-	if (!workmem)
+	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[1]);
@@ -278,12 +278,10 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	assert(input_size >= 2 && output_size >= 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	void* const workmem = ccv_nnc_stream_context_get_workspace(stream_context, max_workspace_size, CCV_TENSOR_GPU_MEMORY);
-	if (!workmem)
+	if (max_workspace_size && !workmem)
 		return -1;
 	const ccv_nnc_cudnn_tensor_view_descriptor_t g = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[0]);
 	const ccv_nnc_cudnn_tensor_view_descriptor_t a = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)inputs[1]);
-	const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
-	const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
 	const ccv_nnc_cudnn_filter_descriptor_t dw = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)outputs[1]);
 	const ccv_nnc_cudnn_convolution_descriptor_t conv = ccv_nnc_cudnn_get_convolution_descriptor(stream_context, hint, outputs[1]->info.datatype);
 	cudnnSetConvolutionGroupCount(conv.descriptor, cmd.info.convolution.groups);
@@ -291,27 +289,32 @@ static int _ccv_nnc_conv_back_autotune(const ccv_nnc_cmd_t cmd, const size_t max
 	cudnnConvolutionBwdFilterAlgoPerf_t filter_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT];
 	CUDNN_ENFORCE(cudnnFindConvolutionBackwardFilterAlgorithmEx(cudnn, a.descriptor, a.data.u8, g.descriptor, g.data.u8, conv.descriptor, dw.descriptor, dw.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_FILTER_ALGO_COUNT, &count, filter_perfs, workmem, max_workspace_size));
 	int i;
-	cudnnConvolutionBwdFilterAlgo_t filter_algorithm;
+	cudnnConvolutionBwdFilterAlgo_t filter_algorithm = CUDNN_CONVOLUTION_BWD_FILTER_ALGO_COUNT;
 	for(i = 0; i < count; i++)
 		if ((size_t)filter_perfs[i].memory <= max_workspace_size && filter_perfs[i].status == CUDNN_STATUS_SUCCESS)
 		{
 			filter_algorithm = filter_perfs[i].algo;
 			break;
 		}
-	cudnnConvolutionBwdDataAlgoPerf_t data_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT];
-	CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
-	cudnnConvolutionBwdDataAlgo_t data_algorithm;
-	for(i = 0; i < count; i++)
-		if ((size_t)data_perfs[i].memory <= max_workspace_size && data_perfs[i].status == CUDNN_STATUS_SUCCESS)
-		{
-			data_algorithm = data_perfs[i].algo;
-			break;
-		}
+	cudnnConvolutionBwdDataAlgo_t data_algorithm = CUDNN_CONVOLUTION_BWD_DATA_ALGO_COUNT;
+	if (outputs[0])
+	{
+		const ccv_nnc_cudnn_filter_descriptor_t w = ccv_nnc_cudnn_get_filter_descriptor(stream_context, (const ccv_nnc_tensor_t*)inputs[2]);
+		const ccv_nnc_cudnn_tensor_view_descriptor_t h = ccv_nnc_cudnn_get_tensor_view_descriptor(stream_context, (const ccv_nnc_tensor_view_t*)outputs[0]);
+		cudnnConvolutionBwdDataAlgoPerf_t data_perfs[CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT];
+		CUDNN_ENFORCE(cudnnFindConvolutionBackwardDataAlgorithmEx(cudnn, w.descriptor, w.data.u8, g.descriptor, g.data.u8, conv.descriptor, h.descriptor, h.data.u8, CCV_NNC_CMD_CUDNN_CONV_BWD_DATA_ALGO_COUNT, &count, data_perfs, workmem, max_workspace_size));
+		for(i = 0; i < count; i++)
+			if ((size_t)data_perfs[i].memory <= max_workspace_size && data_perfs[i].status == CUDNN_STATUS_SUCCESS)
+			{
+				data_algorithm = data_perfs[i].algo;
+				break;
+			}
+		ccv_nnc_cudnn_deinit_filter_descriptor(w);
+		ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
+	}
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(a);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);
-	ccv_nnc_cudnn_deinit_filter_descriptor(w);
 	ccv_nnc_cudnn_deinit_filter_descriptor(dw);
-	ccv_nnc_cudnn_deinit_tensor_view_descriptor(h);
 	ccv_nnc_cudnn_deinit_convolution_descriptor(conv);
 	int filter = -1, data = -1;
 	switch (filter_algorithm)
