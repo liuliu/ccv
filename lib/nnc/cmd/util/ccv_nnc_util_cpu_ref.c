@@ -14,17 +14,16 @@
 void _ccv_nnc_tensor_transfer_cpu_ref(const ccv_nnc_tensor_view_t* const a, ccv_nnc_tensor_view_t* const b)
 {
 	// Assuming this is float 32.
-	int dim[CCV_NNC_MAX_DIM + 2];
-	int ainc[CCV_NNC_MAX_DIM + 2];
-	int binc[CCV_NNC_MAX_DIM + 2];
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
+	assert(a->info.datatype == b->info.datatype);
 	if (!CCV_IS_TENSOR_VIEW(a) && !CCV_IS_TENSOR_VIEW(b))
 	{
 		// Super optimal case, just do memcpy.
-		memcpy(b->data.f32, a->data.f32, ccv_nnc_tensor_count(a->info) * sizeof(float));
+		memcpy(b->data.u8, a->data.u8, ccv_nnc_tensor_count(a->info) * CCV_GET_DATA_TYPE_SIZE(a->info.datatype));
 		return;
 	}
+	int dim[CCV_NNC_MAX_DIM + 2];
+	int ainc[CCV_NNC_MAX_DIM + 2];
+	int binc[CCV_NNC_MAX_DIM + 2];
 	ccv_nnc_tensor_view_get_dim(a, dim);
 	assert(ccv_nnc_tensor_view_check_dim(b, dim));
 	ccv_nnc_tensor_view_get_inc(a, ainc);
@@ -73,7 +72,6 @@ void _ccv_nnc_tensor_set_cpu_ref(ccv_nnc_tensor_view_t* const a, const float b)
 	// Assuming this is float 32.
 	int dim[CCV_NNC_MAX_DIM + 2];
 	int ainc[CCV_NNC_MAX_DIM + 2];
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	int x;
 	if (!CCV_IS_TENSOR_VIEW(a))
 	{
@@ -198,8 +196,6 @@ static void _ccv_nnc_tensor_nhwc_nchw(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	int binc[CCV_NNC_MAX_DIM + 2];
 	int k;
 	// In case it is Toll-free bridged matrix object (NHWC format is possible).
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0 || a->info.dim[CCV_NNC_MAX_DIM + 1] == 0);
-	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;
@@ -252,8 +248,6 @@ static void _ccv_nnc_tensor_nchw_nhwc(const ccv_nnc_tensor_view_t* a, ccv_nnc_te
 	int binc[CCV_NNC_MAX_DIM + 2];
 	int k;
 	// In case it is Toll-free bridged matrix object (NHWC format is possible).
-	assert(a->info.dim[CCV_NNC_MAX_DIM + 2] == 0);
-	assert(b->info.dim[CCV_NNC_MAX_DIM + 2] == 0 || b->info.dim[CCV_NNC_MAX_DIM + 1] == 0);
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 	const int a_offset = CCV_NNC_MAX_DIM + 2 - a_nd;

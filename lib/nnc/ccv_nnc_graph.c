@@ -1667,17 +1667,31 @@ void ccv_nnc_graph_autotune(ccv_nnc_graph_t* const graph, const size_t max_works
 	int i;
 #define visitor(node, idx, ...) \
 	do { \
-		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size); \
-		for (i = 0; i < node->input_size; i++) \
-			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
-		for (i = 0; i < node->output_size; i++) \
-			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
-		node->cmd = ccv_nnc_cmd_autotune(node->cmd, max_workspace_size, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
+		if (node->cmd.cmd == CCV_NNC_NOOP) \
+			continue; \
+		if (node->cmd.cmd == CCV_NNC_GRAPH_FORWARD || node->cmd.cmd == CCV_NNC_GRAPH_BACKWARD) \
+			for (i = 0; i < node->graph_ref_size; i++) \
+			{ \
+				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[i] - 1); \
+				ccv_nnc_graph_autotune(sub_graph, max_workspace_size, flags, 0, 0, 0, 0); \
+			} \
+		else { \
+			/* Need to unwrap these tensors */ \
+			for (i = 0; i < node->input_size + node->output_size; i++) \
+				if (node->inputs[i] && CCV_IS_TENSOR_MULTIVIEW(node->inputs[i])) \
+					node->inputs[i] = _ccv_nnc_any_tensor_from_tensor_multiview((ccv_nnc_tensor_multiview_t*)node->inputs[i]); \
+			PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size); \
+			for (i = 0; i < node->input_size; i++) \
+				PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, node->inputs[i], (node->inputs[i] ? node->inputs[i]->data.u8 : 0)); \
+			for (i = 0; i < node->output_size; i++) \
+				PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, node->outputs[i], (node->outputs[i] ? node->outputs[i]->data.u8 : 0)); \
+			node->cmd = ccv_nnc_cmd_autotune(node->cmd, max_workspace_size, node->hint, flags, node->inputs, node->input_size, node->outputs, node->output_size, 0); \
+		} \
 	} while (0)
-	const ccv_nnc_graph_exec_t* const graph_sources = sources ? sources : (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0);
-	const int graph_source_size = source_size ? source_size : graph->sources->rnum;
-	const ccv_nnc_graph_exec_t* const graph_destinations = destinations ? destinations : (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0);
-	const int graph_destination_size = destination_size ? destination_size : graph->destinations->rnum;
+	const ccv_nnc_graph_exec_t* const graph_sources = sources ? sources : (graph->sources ? (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0): 0);
+	const int graph_source_size = source_size ? source_size : (graph->sources ? graph->sources->rnum : 0);
+	const ccv_nnc_graph_exec_t* const graph_destinations = destinations ? destinations : (graph->destinations ? (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0) : 0);
+	const int graph_destination_size = destination_size ? destination_size : (graph->destinations ? graph->destinations->rnum : 0);
 	CCV_NNC_GRAPH_VISIT(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0, visitor);
 #undef visitor
 }

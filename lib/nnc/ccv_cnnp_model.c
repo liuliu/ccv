@@ -813,17 +813,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 			compiled_data->evaluate.to_ops[compiled_data->evaluate.to_op_size++] = to;
 	}
 	ccv_nnc_graph_static_schedule(compiled_data->graph, compiled_data->stream_type);
-	// ccv_nnc_graph_autotune will apply the same operation again and again and again. Need to end only in idempotent operations (gradient update shouldn't be included).
-	ccv_nnc_graph_exec_t* const backward_ops = (ccv_nnc_graph_exec_t*)ccmalloc(sizeof(ccv_nnc_graph_exec_t) * compiled_data->backward.to_size);
-	int backward_op_size = 0;
-	for (i = 0; i < compiled_data->backward.to_size; i++)
-	{
-		const ccv_nnc_graph_exec_t backward_op = ccv_nnc_graph_exec_from_symbol(compiled_data->graph_exec_arena, compiled_data->backward.tos[i]);
-		if (backward_op.graph)
-			backward_ops[backward_op_size++] = backward_op;
-	}
-	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, 0, 0, backward_ops, backward_op_size);
-	free(backward_ops);
+	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
 ccv_nnc_stream_context_t* ccv_cnnp_model_default_stream(const ccv_cnnp_model_t* const model)

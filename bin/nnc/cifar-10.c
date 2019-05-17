@@ -335,7 +335,10 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	ccv_nnc_stream_context_free(stream_contexts[0]);
 	ccv_nnc_stream_context_free(stream_contexts[1]);
 	for (i = 0; i < device_count; i++)
+	{
 		ccv_nnc_tensor_free(cpu_outputs[i]);
+		ccv_nnc_tensor_free(cpu_outputs_16f[i]);
+	}
 }
 
 int main(int argc, char** argv)

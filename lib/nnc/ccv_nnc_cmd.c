@@ -303,6 +303,18 @@ uint32_t ccv_nnc_cmd_find_backend(const ccv_nnc_cmd_t cmd, const int tensor_memo
 
 #define AUTO_TUNE_TRIAL_SIZE (3)
 
+static void _ccv_nnc_cmd_set_device_id(ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+#ifdef HAVE_CUDA
+	if (!stream_context)
+	{
+		int device_id;
+		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, &device_id, 1) > 0)
+			cudevice(device_id);
+	}
+#endif
+}
+
 ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	// This is a custom cmd kernel, no need to autotune.
@@ -341,14 +353,35 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 	}
 	if (flag == 0)
 		return cmd;
-#ifdef HAVE_CUDA
-	if (!stream_context)
+	_ccv_nnc_cmd_set_device_id(inputs, input_size, outputs, output_size, stream_context);
+	// Allocate inputs / outputs and fill them in.
+	ccv_nnc_tensor_t** const copy_inputs = (ccv_nnc_tensor_t**)malloc(sizeof(ccv_nnc_tensor_t*) * (input_size + output_size * 2));
+	ccv_nnc_tensor_t** const copy_outputs = copy_inputs + input_size;
+	ccv_nnc_tensor_t** const allocated_outputs = copy_outputs + output_size;
+	for (i = 0; i < input_size; i++)
+		copy_inputs[i] = (inputs[i]) ? ccv_nnc_tensor_new(0, inputs[i]->info, 0) : 0;
+	for (i = 0; i < output_size; i++)
 	{
-		int device_id;
-		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, &device_id, 1) > 0)
-			cudevice(device_id);
+		allocated_outputs[i] = copy_outputs[i] = 0;
+		if (outputs[i])
+		{
+			for (j = 0; j < input_size; j++)
+				if (inputs[j])
+				{
+					if (outputs[i] == inputs[j])
+					{
+						copy_outputs[i] = copy_inputs[j];
+						break;
+					} else if (outputs[i]->data.u8 == inputs[j]->data.u8 &&
+						ccv_nnc_tensor_count(outputs[i]->info) == ccv_nnc_tensor_count(inputs[j]->info)) {
+						allocated_outputs[i] = copy_outputs[i] = ccv_nnc_tensor_new(copy_inputs[j]->data.u8, outputs[i]->info, 0);
+						break;
+					}
+				}
+			if (!copy_outputs[i])
+				allocated_outputs[i] = copy_outputs[i] = ccv_nnc_tensor_new(0, outputs[i]->info, 0);
+		}
 	}
-#endif
 	if (flag == 1)
 	{
 		for (i = 0; i < CCV_NNC_BACKEND_COUNT; i++)
@@ -364,13 +397,22 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 				// If a given API exist an autotune function, use that to pick the top algorithm.
 				if (api_registry.autotune)
 				{
-					tuned_cmd.algorithm = api_registry.autotune(tuned_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, inputs, input_size, copy_inputs, input_size, stream_context);
+					_ccv_nnc_cmd_set_device_id(copy_inputs, input_size, copy_outputs, output_size, stream_context);
+					tuned_cmd.algorithm = api_registry.autotune(tuned_cmd, max_workspace_size, hint, flags, copy_inputs, input_size, copy_outputs, output_size, stream_context);
 					// Drain the context, autotune can use excessive amount of memory. Need to drain it now.
 					ccv_nnc_stream_context_drain(stream_context);
 				}
 				break;
 			}
 		}
+		for (i = 0; i < input_size; i++)
+			if (copy_inputs[i])
+				ccv_nnc_tensor_free(copy_inputs[i]);
+		for (i = 0; i < output_size; i++)
+			if (allocated_outputs[i])
+				ccv_nnc_tensor_free(allocated_outputs[i]);
+		ccfree(copy_inputs);
 		return tuned_cmd;
 	}
 	// We need to have trial loop through all the data.
@@ -393,7 +435,9 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					// Assuming k == 0 is sufficient, and we can skip.
 					if (k > 0)
 						continue;
-					candid_cmd.algorithm = api_registry.autotune(candid_cmd, max_workspace_size, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+					ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, inputs, input_size, copy_inputs, input_size, stream_context);
+					_ccv_nnc_cmd_set_device_id(copy_inputs, input_size, copy_outputs, output_size, stream_context);
+					candid_cmd.algorithm = api_registry.autotune(candid_cmd, max_workspace_size, hint, flags, copy_inputs, input_size, copy_outputs, output_size, stream_context);
 					// Drain the context, autotune can use excessive amount of memory. Need to drain it now.
 					ccv_nnc_stream_context_drain(stream_context);
 					uint64_t elapsed = ccv_nnc_cmd_mono_time();
@@ -412,9 +456,11 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 					for (j = 0; j < api_registry.algorithms; j++)
 					{
 						candid_cmd.algorithm = j;
+						ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, inputs, input_size, copy_inputs, input_size, stream_context);
+						_ccv_nnc_cmd_set_device_id(copy_inputs, input_size, copy_outputs, output_size, stream_context);
 						uint64_t elapsed = ccv_nnc_cmd_mono_time();
 						// Ready to run.
-						int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+						int status = ccv_nnc_cmd_exec(candid_cmd, hint, flags, copy_inputs, input_size, copy_outputs, output_size, stream_context);
 						elapsed = ccv_nnc_cmd_mono_time() - elapsed;
 						if (status == CCV_NNC_EXEC_SUCCESS &&
 							(best_measured == -1 || elapsed < best_measured))
@@ -427,6 +473,13 @@ ccv_nnc_cmd_t ccv_nnc_cmd_autotune(const ccv_nnc_cmd_t cmd, const size_t max_wor
 			}
 		}
 	}
+	for (i = 0; i < input_size; i++)
+		if (copy_inputs[i])
+			ccv_nnc_tensor_free(copy_inputs[i]);
+	for (i = 0; i < output_size; i++)
+		if (allocated_outputs[i])
+			ccv_nnc_tensor_free(allocated_outputs[i]);
+	ccfree(copy_inputs);
 	return tuned_cmd;
 }
 
@@ -491,14 +544,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	// If it is no-op, return as if succeed already.
 	if (cmd.cmd == CCV_NNC_NOOP)
 		return 0;
-#ifdef HAVE_CUDA
-	if (!stream_context)
-	{
-		int device_id;
-		if (ccv_nnc_device_ids_for_io(inputs, input_size, outputs, output_size, &device_id, 1) > 0)
-			cudevice(device_id);
-	}
-#endif
+	_ccv_nnc_cmd_set_device_id(inputs, input_size, outputs, output_size, stream_context);
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 	{

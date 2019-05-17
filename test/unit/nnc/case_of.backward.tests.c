@@ -78,6 +78,7 @@ TEST_CASE("symbolic graph for piece-wise function y = f(x), compute y'")
 	p1_tensor->data.f32[0] = 0.5;
 	x_tensor->data.f32[0] = 0.76;
 	dy_tensor->data.f32[0] = 1;
+	ccv_nnc_graph_autotune(graph, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_graph_run(graph, tape, 0, 0, &source, 1, &destination, 1);
 	dx_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	REQUIRE_EQ_WITH_TOLERANCE(dx_tensor->data.f32[0], 1, 1e-5, "y = x in (0, 1), y' = 1 (gradient passthrough)");

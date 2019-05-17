@@ -166,6 +166,7 @@ TEST_CASE("compile symbolic graph with case..of")
 	ccv_nnc_tensor_t* b12_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b12);
 	b12_tensor->data.f32[0] = 0.32;
 	b12_tensor->data.f32[1] = -0.2;
+	ccv_nnc_graph_autotune(graph, 0, 0, TRAVERSE_FULL);
 	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	yt->data.f32[0] = 0.32;
 	yt->data.f32[1] = -0.2;
