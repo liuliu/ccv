@@ -133,15 +133,47 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_cnnp_dataframe_shuffle(train_data);
 	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
 	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_train_data, COLUMN_ID_LIST(0));
-	ccv_nnc_tensor_t** tensor_tuple;
-	int i;
-	unsigned int elapsed_time = get_current_time();
+	int i, j;
+	int train_device_columns[device_count * 2];
+	for (i = 0; i < device_count; i++)
+	{
+		int stream_type = CCV_STREAM_CONTEXT_GPU;
+		CCV_STREAM_SET_DEVICE_ID(stream_type, i);
+		train_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_train_data, 0, i * 2, 2, i);
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 32F, batch_size, 1000);
+		CCV_TENSOR_SET_DEVICE_ID(params.type, i);
+		train_device_columns[device_count + i] = ccv_cnnp_dataframe_add_aux(batch_train_data, params);
+	}
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_train_data, train_device_columns, device_count * 2);
+	ccv_nnc_stream_context_t* stream_contexts[2];
+	stream_contexts[0] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	stream_contexts[1] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
+	int p = 0, q = 1;
+	// const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size * device_count - 1) / (batch_size * device_count);
+	ccv_cnnp_model_set_data_parallel(imagenet, device_count);
+	ccv_cnnp_model_checkpoint(imagenet, "imagenet.checkpoint", 0);
+	unsigned int current_time = get_current_time();
+	ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[p]);
+	ccv_nnc_tensor_t** input_fits[device_count * 2];
+	ccv_nnc_tensor_t* input_fit_inputs[device_count];
+	ccv_nnc_tensor_t* input_fit_fits[device_count];
+	ccv_nnc_tensor_t* outputs[device_count];
 	for (i = 0; i < 100; i++)
 	{
-		ccv_cnnp_dataframe_iter_next(iter, (void **)&tensor_tuple, 1, 0);
+		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
+		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
+		for (j = 0; j < device_count; j++)
+		{
+			input_fit_inputs[j] = input_fits[j][0];
+			input_fit_fits[j] = input_fits[j][1];
+			outputs[j] = (ccv_nnc_tensor_t*)input_fits[device_count + j];
+		}
+		ccv_cnnp_model_fit(imagenet, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
+		// Prefetch the next round.
+		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
+		unsigned int elapsed_time = get_current_time() - current_time;
+		PRINT(CCV_CLI_INFO, "%.3lf GiB (%.3f seconds)\n", (unsigned long)ccv_cnnp_model_memory_size(imagenet) / 1024 / 1024.0 / 1024, (float)elapsed_time / 1000);
 	}
-	printf("Elapsed time %u ms\n", get_current_time() - elapsed_time);
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_train_data);
 }
@@ -212,7 +244,7 @@ int main(int argc, char** argv)
 	}
 	ccv_cnnp_dataframe_t* const train_data = _dataframe_from_disk_new(train_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = _dataframe_from_disk_new(test_list, base_dir);
-	train_imagenet(256, train_data, test_data);
+	train_imagenet(64, train_data, test_data);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	return 0;
