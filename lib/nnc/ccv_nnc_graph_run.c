@@ -4,6 +4,9 @@
 #include "ccv_internal.h"
 #include "_ccv_nnc_graph.h"
 #include "_ccv_nnc_stream.h"
+#ifdef HAVE_CUDA
+#include "gpu/ccv_nnc_compat.h"
+#endif
 
 #pragma mark - Level-2 API
 
@@ -220,34 +223,97 @@ static void _ccv_nnc_graph_exec_begin_synchronize_multiviews(ccv_nnc_graph_t* co
 
 static void _ccv_nnc_print_tensor_verbose(const ccv_nnc_tensor_t* const tensor)
 {
-	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) != CCV_TENSOR_CPU_MEMORY)
+	if (tensor->info.dim[0] <= 0)
 		return;
 	int i;
-	switch (tensor->info.datatype)
+	const int len = ccv_min(tensor->info.dim[0], 3);
+	if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_GPU_MEMORY)
 	{
-		case CCV_32F:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
-			break;
-		case CCV_64F:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f64[i]);
-			break;
-		case CCV_32S:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %d", tensor->data.i32[i]);
-			break;
-		case CCV_64S:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %lld", (long long)tensor->data.i64[i]);
-			break;
-		case CCV_8U:
-			for (i = 0; i < ccv_min(tensor->info.dim[0], 3); i++)
-				PRINT(CCV_CLI_VERBOSE, " %d", (int)tensor->data.u8[i]);
-			break;
+#ifdef HAVE_CUDA
+		switch (tensor->info.datatype)
+		{
+			case CCV_16F: {
+				uint16_t data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.f16, tensor->info.type, len * sizeof(uint16_t));
+				float fp32[len];
+				ccv_half_precision_to_float(data, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
+			case CCV_32F: {
+				float data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.f32, tensor->info.type, len * sizeof(float));
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", data[i]);
+				break;
+			}
+			case CCV_64F: {
+				double data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.f64, tensor->info.type, len * sizeof(double));
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", data[i]);
+				break;
+			}
+			case CCV_32S: {
+				int data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.i32, tensor->info.type, len * sizeof(int));
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", data[i]);
+				break;
+			}
+			case CCV_64S: {
+				int64_t data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.i64, tensor->info.type, len * sizeof(int64_t));
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %lld", (long long)data[i]);
+				break;
+			}
+			case CCV_8U: {
+				uint8_t data[len];
+				cumemcpy(data, CCV_TENSOR_CPU_MEMORY, tensor->data.u8, tensor->info.type, len * sizeof(uint8_t));
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", (int)data[i]);
+				break;
+			}
+		}
+		if (ccv_nnc_tensor_count(tensor->info) > 3)
+			PRINT(CCV_CLI_VERBOSE, " ..");
+#endif
+	} else if (CCV_TENSOR_GET_MEMORY(tensor->info.type) == CCV_TENSOR_CPU_MEMORY) {
+		switch (tensor->info.datatype)
+		{
+			case CCV_16F: {
+				float fp32[len];
+				ccv_half_precision_to_float((uint16_t*)tensor->data.f16, fp32, len);
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", fp32[i]);
+				break;
+			}
+			case CCV_32F:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f32[i]);
+				break;
+			case CCV_64F:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %f", tensor->data.f64[i]);
+				break;
+			case CCV_32S:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", tensor->data.i32[i]);
+				break;
+			case CCV_64S:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %lld", (long long)tensor->data.i64[i]);
+				break;
+			case CCV_8U:
+				for (i = 0; i < len; i++)
+					PRINT(CCV_CLI_VERBOSE, " %d", (int)tensor->data.u8[i]);
+				break;
+		}
+		if (ccv_nnc_tensor_count(tensor->info) > 3)
+			PRINT(CCV_CLI_VERBOSE, " ..");
 	}
-	if (ccv_nnc_tensor_count(tensor->info) > 3)
-		PRINT(CCV_CLI_VERBOSE, " ..");
 }
 
 typedef struct {
@@ -403,7 +469,12 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		}
 		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
 		for (i = 0; i < node->input_size; i++)
-			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)\n", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0));
+		{
+			PRINT(CCV_CLI_VERBOSE, "|-> %d. %p (%p)", i + 1, inputs[i], (inputs[i] ? inputs[i]->data.u8 : 0));
+			if (inputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+				_ccv_nnc_print_tensor_verbose(inputs[i]);
+			PRINT(CCV_CLI_VERBOSE, "\n");
+		}
 		ccv_nnc_stream_context_t* const node_stream = graph->streams[SCHEDULE_STREAMS(node->schedule)[0]];
 		ccv_nnc_graph_neighbor_context_discovery_t discovery_context = {
 			.graph = graph,
@@ -413,7 +484,12 @@ static inline ccv_nnc_stream_task_t* _ccv_nnc_graph_exec_run_task(ccv_nnc_graph_
 		ccv_nnc_stream_context_set_neighbor_discovery(node_stream, _ccv_nnc_graph_neighbor_context_discovery, &discovery_context);
 		ccv_nnc_cmd_exec(node->cmd, node->hint, flags, inputs, node->input_size, outputs, node->output_size, node_stream);
 		for (i = 0; i < node->output_size; i++)
-			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)\n", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
+		{
+			PRINT(CCV_CLI_VERBOSE, "|<- %d. %p (%p)", i + 1, outputs[i], (outputs[i] ? outputs[i]->data.u8 : 0));
+			if (outputs[i] && CCV_CLI_OUTPUT_LEVEL_IS(CCV_CLI_VERBOSE))
+				_ccv_nnc_print_tensor_verbose(outputs[i]);
+			PRINT(CCV_CLI_VERBOSE, "\n");
+		}
 		for (i = 0; i < node->schedule.stream_size; i++)
 			if (SCHEDULE_SIGNALS(node->schedule)[i] >= 0)
 			{

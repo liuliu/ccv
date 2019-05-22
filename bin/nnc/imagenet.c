@@ -105,13 +105,11 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data)
 {
 	ccv_cnnp_model_t* const imagenet = _imagenet_resnet101_v1d();
-	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 224, 224);
+	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 224, 224);
 	float learn_rate = 0.001;
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
-	FILE* w = fopen("imagenet.dot", "w+");
-	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
-	fclose(w);
+	ccv_cnnp_model_set_workspace_size(imagenet, 1llu * 1024 * 1024 * 1024);
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {
 		.brightness = 0.4,
@@ -123,44 +121,64 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			.min = 180,
 			.max = 280,
 		},
-		.aspect_ratio = 0.25,
+		.normalize = {
+			.mean = {
+				123.68, 116.779, 103.939
+			},
+			.std = {
+				58.393, 57.12, 57.375
+			},
+		},
+		.aspect_ratio = 0,
 		.size = {
 			.cols = 224,
 			.rows = 224,
 		},
 	};
 	const int image_jitter_idx = ccv_cnnp_dataframe_image_random_jitter(train_data, read_image_idx, CCV_32F, random_jitter);
+	ccv_nnc_tensor_param_t fp16_params = CPU_TENSOR_NHWC(16F, 224, 224, 3);
+	const int image_jitter_in_idx = ccv_cnnp_dataframe_make_tuple(train_data, COLUMN_ID_LIST(image_jitter_idx));
+	const int image_jitter_out_fp16_idx = ccv_cnnp_dataframe_cmd_exec(train_data, image_jitter_in_idx, CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, 0, 1, &fp16_params, 1, 0);
+	const int image_jitter_fp16_idx = ccv_cnnp_dataframe_extract_tuple(train_data, image_jitter_out_fp16_idx, 0);
+	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1, 0, CCV_16F, CCV_TENSOR_FORMAT_NCHW);
 	ccv_cnnp_dataframe_shuffle(train_data);
-	const int one_hot_idx = ccv_cnnp_dataframe_one_hot(train_data, 0, offsetof(ccv_categorized_t, c), 1000, 1, 0, CCV_32F, CCV_TENSOR_FORMAT_NCHW);
-	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
+	ccv_cnnp_dataframe_t* const batch_train_data = ccv_cnnp_dataframe_batching_new(train_data, COLUMN_ID_LIST(image_jitter_fp16_idx, one_hot_idx), batch_size, device_count, CCV_TENSOR_FORMAT_NCHW);
 	int i, j;
-	int train_device_columns[device_count * 2];
+	int train_device_columns[device_count * 2 + 1];
 	for (i = 0; i < device_count; i++)
 	{
 		int stream_type = CCV_STREAM_CONTEXT_GPU;
 		CCV_STREAM_SET_DEVICE_ID(stream_type, i);
 		train_device_columns[i] = ccv_cnnp_dataframe_copy_to_gpu(batch_train_data, 0, i * 2, 2, i);
-		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 32F, batch_size, 1000);
+		ccv_nnc_tensor_param_t params = GPU_TENSOR_NCHW(000, 16F, batch_size, 1000);
 		CCV_TENSOR_SET_DEVICE_ID(params.type, i);
 		train_device_columns[device_count + i] = ccv_cnnp_dataframe_add_aux(batch_train_data, params);
 	}
-	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_train_data, train_device_columns, device_count * 2);
+	train_device_columns[device_count * 2] = 0;
+	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(batch_train_data, train_device_columns, device_count * 2 + 1);
 	ccv_nnc_stream_context_t* stream_contexts[2];
 	stream_contexts[0] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	stream_contexts[1] = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
 	int p = 0, q = 1;
 	// const int epoch_end = (ccv_cnnp_dataframe_row_count(train_data) + batch_size * device_count - 1) / (batch_size * device_count);
 	ccv_cnnp_model_set_data_parallel(imagenet, device_count);
-	ccv_cnnp_model_checkpoint(imagenet, "imagenet.checkpoint", 0);
+	// ccv_cnnp_model_checkpoint(imagenet, "imagenet.checkpoint", 0);
 	unsigned int current_time = get_current_time();
 	ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[p]);
-	ccv_nnc_tensor_t** input_fits[device_count * 2];
+	ccv_nnc_tensor_t* cpu_outputs[device_count];
+	for (i = 0; i < device_count; i++)
+		cpu_outputs[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(16F, batch_size, 1000), 0);
+	ccv_nnc_tensor_t* oh_fp32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1000), 0);
+	ccv_nnc_tensor_t* out_fp32 = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, batch_size, 1000), 0);
+	ccv_nnc_tensor_t** input_fits[device_count * 2 + 1];
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; i < 100; i++)
+	uint64_t correct = 0;
+	uint64_t all = 0;
+	for (i = 0; i < 10000; i++)
 	{
-		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
+		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
 		{
@@ -171,11 +189,57 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 		ccv_cnnp_model_fit(imagenet, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
+		ccv_nnc_stream_context_wait(stream_contexts[p]);
+		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs, device_count, 0);
+		if (i == 0)
+		{
+			FILE* w1 = fopen("imagenet.dot", "w+");
+			FILE* w2 = fopen("imagenet-computation.dot", "w+");
+			FILE* w[] = {w1, w2};
+			ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, w, 2);
+			fclose(w1);
+			fclose(w2);
+		}
+		for (j = 0; j < device_count; j++)
+		{
+			ccv_nnc_tensor_t* fit = input_fits[device_count * 2][j * 2 + 1];
+			ccv_nnc_tensor_t* cpu_fit = cpu_outputs[j];
+			ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(fit, cpu_fit), TENSOR_LIST(oh_fp32, out_fp32), 0);
+			int fi, fj;
+			for (fi = 0; fi < batch_size; fi++)
+			{
+				float max = -1;
+				int max_idx = -1;
+				for (fj = 0; fj < 1000; fj++)
+					if (out_fp32->data.f32[fi * 1000 + fj] > max)
+					{
+						max = cpu_fit->data.f32[fi * 1000 + fj];
+						max_idx = fj;
+					}
+				assert(max_idx >= 0);
+				int right = -1;
+				for (fj = 0; fj < 1000; fj++)
+					if (oh_fp32->data.f32[fi * 1000 + fj] > 0.5)
+					{
+						right = fj;
+						break;
+					}
+				if (right == max_idx)
+					++correct;
+			}
+		}
+		all += device_count * batch_size;
 		unsigned int elapsed_time = get_current_time() - current_time;
-		PRINT(CCV_CLI_INFO, "%.3lf GiB (%.3f seconds)\n", (unsigned long)ccv_cnnp_model_memory_size(imagenet) / 1024 / 1024.0 / 1024, (float)elapsed_time / 1000);
+		PRINT(CCV_CLI_INFO, "%.3lf GiB (%.3f seconds), %lf%%\n", (unsigned long)ccv_cnnp_model_memory_size(imagenet) / 1024 / 1024.0 / 1024, (float)elapsed_time / 1000, (double)correct / all * 100);
+		int t;
+		CCV_SWAP(p, q, t);
 	}
 	ccv_cnnp_dataframe_iter_free(iter);
 	ccv_cnnp_dataframe_free(batch_train_data);
+	for (i = 0; i < device_count; i++)
+		ccv_nnc_tensor_free(cpu_outputs[i]);
+	ccv_nnc_tensor_free(oh_fp32);
+	ccv_nnc_tensor_free(out_fp32);
 }
 
 static ccv_cnnp_dataframe_t* _dataframe_from_disk_new(const char* const list, const char* const base_dir)
@@ -244,7 +308,7 @@ int main(int argc, char** argv)
 	}
 	ccv_cnnp_dataframe_t* const train_data = _dataframe_from_disk_new(train_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = _dataframe_from_disk_new(test_list, base_dir);
-	train_imagenet(64, train_data, test_data);
+	train_imagenet(96, train_data, test_data);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	return 0;
