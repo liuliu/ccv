@@ -1,3 +1,22 @@
+2019-05-22
+----------
+Besides lacking of debugger.
+
+Without debugger, currently, to run cnnp programs, there are several issues.
+
+ 1. Ad-hoc looking at GPU tensors and getting statistics are hard (this is partially addressed by having GPU tensor's first 3 values in the VERBOSE output now, but we don't have statistics);
+ 2. There are issues with nan if the learn rate is too large (of course!). Since GPU is running asynchronously, it poses challenges to scream at the point when we hit nan, and give enough trace to look back to see whether it is because we have some faulty ops, learn rate too high, initial gradient is too much (not an issue until we implement non-1 gradient propagation, this is useful to increase / decrease scales for fp16);
+ 3. Extract loss / accuracy from the data is far from obvious. I need to manually transfer the data to the CPU, and write some code to collect the accuracy;
+
+There are several ways to do this. I can have a stats function that given a list of tensors, generate statistics (min, max, average, std), and then transfer these stats back to CPU for inspection. This requires to modify the graph, but could be relatively easy. To gather accuracy would actually be harder. For one, we use one hot, and later we are going to use mixup, which means the ground truth is actually not inside cnnp itself. Not to mention we want a way to extract accuracy from cnnp when evaluate against test set.
+
+Stats are fine, we can have assertion enabled mode and assertion disabled mode which will be faster but no protection from abnormal stats. Accuracy seems to be something you need to track over time, therefore, the overhead need to be very low. I think the asynchronous execution nature on GPU really makes the debug process harder. Maybe we should call this debug mode, where we always copy out the tensor stats.
+
+Another thing, is to backtrack and restart from a given epoch. We currently cannot do that because the checkpoint file gets consistently rewritten. We don't keep a journal of the checkpoints, thus, we cannot restart from a given checkpoint. This shouldn't be that hard, it just feels like something we can leverage SQLite, but it is not obvious how (SQLite supports WAL and MVCC, but that is for different use cases).
+
+BTW, the ``ccv_resample`` method seems to be broken and can end up with nans. I need to dig into why (it seems from CUBIC, but I need more data).
+
+
 2019-05-14
 ----------
 Autotune implementation needs some work.
