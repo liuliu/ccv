@@ -321,7 +321,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			}
 			unsigned int elapsed_time = get_current_time() - current_time;
 			current_time = get_current_time();
-			PRINT(CCV_CLI_INFO, "Epoch %d (%d), test accuracy %lf%%, time %.3f\n", epoch, t, (double)correct / ccv_cnnp_dataframe_row_count(test_data), (float)elapsed_time / 1000);
+			PRINT(CCV_CLI_INFO, "Epoch %d (%d), test accuracy %lf%%, time %.3f\n", epoch, t, (double)correct * 100 / ccv_cnnp_dataframe_row_count(test_data), (float)elapsed_time / 1000);
 			ccv_cnnp_dataframe_iter_set_cursor(test_iter, 0);
 			++epoch;
 			ccv_cnnp_dataframe_shuffle(train_data);
