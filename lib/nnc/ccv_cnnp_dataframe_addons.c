@@ -291,13 +291,17 @@ static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_
 		}
 		ccv_dense_matrix_t* resized = 0;
 		// First, resize.
-		if (input->rows > resize && input->cols > resize)
+		if (input->rows >= resize_rows && input->cols >= resize_cols)
+		{
 			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_AREA);
-		else if (input->rows != resize_rows || input->cols != resize_cols)
+			assert(!ccv_any_nan(resized));
+		} else if (input->rows != resize_rows || input->cols != resize_cols) {
 			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_CUBIC);
-		else
+			assert(!ccv_any_nan(resized));
+		} else {
 			ccv_shift(input, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
-		assert(!ccv_any_nan(resized));
+			assert(!ccv_any_nan(resized));
+		}
 		if (random_jitter.symmetric && (sfmt_genrand_uint32(&sfmt[i]) & 1) == 0)
 			ccv_flip(resized, &resized, 0, CCV_FLIP_X);
 		_ccv_cnnp_image_manip(resized, random_jitter, &sfmt[i]);

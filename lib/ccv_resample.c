@@ -372,8 +372,10 @@ void ccv_resample(ccv_dense_matrix_t* a, ccv_dense_matrix_t** b, int btype, int 
 			_ccv_resample_cubic_integer_only(a, db);
 	} else if (type & CCV_INTER_LINEAR) {
 		assert(0 && "CCV_INTER_LINEAR is not implemented");
-	} else if (type & CCV_INTER_LINEAR) {
+	} else if (type & CCV_INTER_LANCZOS) {
 		assert(0 && "CCV_INTER_LANCZOS is not implemented");
+	} else {
+		assert(0 && "Not implemented");
 	}
 }
 
