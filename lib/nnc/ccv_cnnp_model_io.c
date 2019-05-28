@@ -36,7 +36,7 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 			sqlite3_close(conn);
 			return;
 		}
-		if (!compiled_data->tensors.trainables)
+		if (!tensors_init)
 			ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 		for (i = 0; i < trainable_size && SQLITE_ROW == sqlite3_step(tensor_checkpoint_select_stmt); i++)
 		{
@@ -72,9 +72,6 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 		sqlite3_close(conn);
 		return;
 	}
-	// If it is not init, nothing to checkpoint.
-	if (!tensors_init)
-		return;
 	const char tensor_checkpoint_create_table_qs[] = "CREATE TABLE IF NOT EXISTS tensor_checkpoint "
 		"(id INTEGER, type INTEGER, format INTEGER, datatype INTEGER, "
 		"dim BLOB, data BLOB, PRIMARY KEY (id))";

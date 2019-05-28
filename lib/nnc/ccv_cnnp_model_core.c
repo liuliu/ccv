@@ -132,7 +132,7 @@ typedef struct {
 		ccv_nnc_cmd_param_t params;
 	} bnorm;
 	ccv_array_t* zero_inits;
-	ccv_array_t* retains;
+	ccv_array_t* retainables;
 	ccv_cnnp_param_t params;
 } ccv_cnnp_model_identity_t;
 
@@ -166,10 +166,10 @@ static void _ccv_cnnp_identity_build(ccv_cnnp_model_t* const super, ccv_nnc_symb
 		ccv_array_push(self->zero_inits, &var);
 		const ccv_nnc_tensor_symbol_t out_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t out_var = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
-		if (!self->retains)
-			self->retains = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_array_push(self->retains, &out_mean);
-		ccv_array_push(self->retains, &out_var);
+		if (!self->retainables)
+			self->retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		ccv_array_push(self->retainables, &out_mean);
+		ccv_array_push(self->retainables, &out_var);
 		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const int hw = ccv_nnc_tensor_hw(params, ccv_nnc_tensor_nd(params.dim));
@@ -228,10 +228,10 @@ static void _ccv_cnnp_identity_add_to_output(ccv_cnnp_model_t* const super, ccv_
 {
 	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
 	int i;
-	if (self->retains)
-		for (i = 0; i < self->retains->rnum; i++)
+	if (self->retainables)
+		for (i = 0; i < self->retainables->rnum; i++)
 		{
-			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retains, i);
+			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
 			ccv_array_push(outputs, &symbol);
 		}
 }
@@ -251,8 +251,8 @@ static void _ccv_cnnp_identity_deinit(ccv_cnnp_model_t* const super)
 	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
 	if (self->zero_inits)
 		ccv_array_free(self->zero_inits);
-	if (self->retains)
-		ccv_array_free(self->retains);
+	if (self->retainables)
+		ccv_array_free(self->retainables);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_identity_isa = {
@@ -290,7 +290,7 @@ typedef struct {
 		ccv_nnc_cmd_param_t params;
 	} bnorm;
 	ccv_array_t* zero_inits;
-	ccv_array_t* retains;
+	ccv_array_t* retainables;
 	int groups;
 	int filters;
 	int kdim[CCV_NNC_MAX_DIM_ALLOC];
@@ -351,10 +351,10 @@ static void _ccv_cnnp_convolution_build(ccv_cnnp_model_t* const super, ccv_nnc_s
 		ccv_array_push(self->zero_inits, &var);
 		const ccv_nnc_tensor_symbol_t out_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t out_var = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
-		if (!self->retains)
-			self->retains = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_array_push(self->retains, &out_mean);
-		ccv_array_push(self->retains, &out_var);
+		if (!self->retainables)
+			self->retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		ccv_array_push(self->retainables, &out_mean);
+		ccv_array_push(self->retainables, &out_var);
 		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const int hw = ccv_nnc_tensor_hw(output_params, ccv_nnc_tensor_nd(output_params.dim));
@@ -429,10 +429,10 @@ static void _ccv_cnnp_convolution_add_to_output(ccv_cnnp_model_t* const super, c
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	int i;
-	if (self->retains)
-		for (i = 0; i < self->retains->rnum; i++)
+	if (self->retainables)
+		for (i = 0; i < self->retainables->rnum; i++)
 		{
-			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retains, i);
+			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
 			ccv_array_push(outputs, &symbol);
 		}
 }
@@ -452,8 +452,8 @@ static void _ccv_cnnp_convolution_deinit(ccv_cnnp_model_t* const super)
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	if (self->zero_inits)
 		ccv_array_free(self->zero_inits);
-	if (self->retains)
-		ccv_array_free(self->retains);
+	if (self->retainables)
+		ccv_array_free(self->retainables);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_convolution_isa = {
@@ -496,7 +496,7 @@ typedef struct {
 		ccv_nnc_cmd_param_t params;
 	} bnorm;
 	ccv_array_t* zero_inits;
-	ccv_array_t* retains;
+	ccv_array_t* retainables;
 	int count;
 	ccv_cnnp_param_t params;
 } ccv_cnnp_model_dense_t;
@@ -546,10 +546,10 @@ static void _ccv_cnnp_dense_build(ccv_cnnp_model_t* const super, ccv_nnc_symboli
 		ccv_array_push(self->zero_inits, &var);
 		const ccv_nnc_tensor_symbol_t out_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t out_var = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
-		if (!self->retains)
-			self->retains = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_array_push(self->retains, &out_mean);
-		ccv_array_push(self->retains, &out_var);
+		if (!self->retainables)
+			self->retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
+		ccv_array_push(self->retainables, &out_mean);
+		ccv_array_push(self->retainables, &out_var);
 		const ccv_nnc_tensor_symbol_t saved_mean = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const ccv_nnc_tensor_symbol_t saved_inv_std = ccv_nnc_tensor_symbol_new(graph, bias_params, 0);
 		const int hw = ccv_nnc_tensor_hw(output_params, ccv_nnc_tensor_nd(output_params.dim));
@@ -622,10 +622,10 @@ static void _ccv_cnnp_dense_add_to_output(ccv_cnnp_model_t* const super, ccv_arr
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	int i;
-	if (self->retains)
-		for (i = 0; i < self->retains->rnum; i++)
+	if (self->retainables)
+		for (i = 0; i < self->retainables->rnum; i++)
 		{
-			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retains, i);
+			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
 			ccv_array_push(outputs, &symbol);
 		}
 }
@@ -645,8 +645,8 @@ static void _ccv_cnnp_dense_deinit(ccv_cnnp_model_t* const super)
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	if (self->zero_inits)
 		ccv_array_free(self->zero_inits);
-	if (self->retains)
-		ccv_array_free(self->retains);
+	if (self->retainables)
+		ccv_array_free(self->retainables);
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_dense_isa = {

@@ -160,7 +160,11 @@ static int _ccv_nnc_softmax_crossentropy_back(const ccv_nnc_cmd_t cmd, const ccv
 	for (i = 0; i < CCV_NNC_MAX_DIM_ALLOC && d->info.dim[i] > 0; i++)
 		{ assert(d->info.dim[i] == h->info.dim[i]); }
 	cudaStream_t stream = ccv_nnc_stream_context_get_stream(stream_context);
-	_ccv_nnc_copy_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, d->data.f32, h->data.f32);
+	assert(h->info.datatype == d->info.datatype);
+	if (h->info.datatype == CCV_16F)
+		_ccv_nnc_copy_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, (__half*)d->data.f16, (__half*)h->data.f16);
+	else
+		_ccv_nnc_copy_kernel<<<CUDA_GET_BLOCKS(bcount), CUDA_NUM_THREADS, 0, stream>>>(bcount, d->data.f32, h->data.f32);
 	if (b->info.datatype == CCV_32F || b->info.datatype == CCV_16F)
 	{
 		// If has more than 1 axis, then the range is the channel count. Otherwise, if our batch size is 1, then the range is

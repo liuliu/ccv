@@ -83,6 +83,19 @@ CCV_WARN_UNUSED(cudaStream_t) ccv_nnc_stream_context_get_stream(const ccv_nnc_st
 CCV_WARN_UNUSED(cublasHandle_t) ccv_nnc_stream_context_get_cublas(const ccv_nnc_stream_context_t* const stream_context);
 
 #ifdef NDEBUG
+#define CUDA_ENFORCE(status) status
+#else
+#define CUDA_ENFORCE(status) do {                               \
+	if (status != cudaSuccess) {                                \
+		printf("[%s:%d]:CUDA - Error: %d\n",                    \
+				__FILE__, __LINE__, (int)status);               \
+		cudaDeviceReset();                                      \
+		exit(EXIT_FAILURE);                                     \
+	}                                                           \
+} while (0)
+#endif
+
+#ifdef NDEBUG
 #define CUBLAS_ENFORCE(status) status
 #else
 #define CUBLAS_ENFORCE(status) do {                               \

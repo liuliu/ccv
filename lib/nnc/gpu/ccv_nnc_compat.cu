@@ -26,19 +26,24 @@ void cudevice(int device)
 
 void cumemcpy(void* dest, const int dest_type, const void* src, const int src_type, size_t n)
 {
-	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY)
-		cudaMemcpy(dest, src, n, cudaMemcpyHostToDevice);
-	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
-		cudaMemcpy(dest, src, n, cudaMemcpyDeviceToHost);
-	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
-		cudaMemcpy(dest, src, n, cudaMemcpyHostToHost);
+	if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
+		const int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
+		cudaSetDevice(device_b);
+		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyHostToDevice));
+	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY) {
+		const int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
+		cudaSetDevice(device_a);
+		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyDeviceToHost));
+	} else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_CPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_CPU_MEMORY)
+		CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyHostToHost));
 	else if (CCV_TENSOR_GET_MEMORY(src_type) == CCV_TENSOR_GPU_MEMORY && CCV_TENSOR_GET_MEMORY(dest_type) == CCV_TENSOR_GPU_MEMORY) {
-		int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
-		int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
+		const int device_a = CCV_TENSOR_GET_DEVICE_ID(src_type);
+		const int device_b = CCV_TENSOR_GET_DEVICE_ID(dest_type);
+		cudaSetDevice(device_b);
 		if (device_a == device_b)
-			cudaMemcpy(dest, src, n, cudaMemcpyDeviceToDevice);
+			CUDA_ENFORCE(cudaMemcpy(dest, src, n, cudaMemcpyDeviceToDevice));
 		else
-			cudaMemcpyPeer(dest, device_b, src, device_a, n);
+			CUDA_ENFORCE(cudaMemcpyPeer(dest, device_b, src, device_a, n));
 	}
 }
 
@@ -339,7 +344,7 @@ void ccv_nnc_deinit_stream_context(ccv_nnc_stream_context_t* const stream_contex
 #endif
 			}
 	} else {
-		cudevice(device);
+		cudaSetDevice(device);
 		if (stream_compat->_inline_gpu.workspace)
 			cudaFree(stream_compat->_inline_gpu.workspace);
 		cudaStreamDestroy(stream_compat->_inline_gpu.stream);
