@@ -92,7 +92,7 @@ ccv_cnnp_model_t* _imagenet_resnet101_v1d(void)
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(init_conv, MODEL_IO_LIST(input));
 	output = ccv_cnnp_model_apply(_block_layer_new(64, 4, 1, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_block_layer_new(128, 4, 2, 4), MODEL_IO_LIST(output));
-	output = ccv_cnnp_model_apply(_block_layer_new(256, 4, 2, 23), MODEL_IO_LIST(output));
+	output = ccv_cnnp_model_apply(_block_layer_new(256, 4, 2, 6), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(_block_layer_new(512, 4, 2, 3), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_average_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}), MODEL_IO_LIST(output));
 	output = ccv_cnnp_model_apply(ccv_cnnp_flatten(), MODEL_IO_LIST(output));
@@ -119,7 +119,7 @@ static double _accuracy_from_gpu(ccv_nnc_tensor_t* const* const gpu_outputs, ccv
 		}
 		for (j = 0; j < batch_size; j++)
 		{
-			float max = -1;
+			float max = -FLT_MAX;
 			int max_idx = -1;
 			for (k = 0; k < classes; k++)
 			{
@@ -150,9 +150,9 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	// Prepare model.
 	ccv_cnnp_model_t* const imagenet = _imagenet_resnet101_v1d();
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 224, 224);
-	float learn_rate = 0.001;
+	float learn_rate = 0.000001;
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
-	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.9, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_cnnp_model_set_workspace_size(imagenet, 1llu * 1024 * 1024 * 1024);
 	// Prepare training data.
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
@@ -259,9 +259,21 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* outputs[device_count];
 	int epoch = 0;
 	double overall_accuracy = 0;
+	int warmup_epoch = 5;
 	// Start 100 epoch of training.
 	for (t = 0; epoch < 100; t++)
 	{
+		if (epoch < warmup_epoch)
+		{
+			learn_rate = ccv_max(0.000001, 0.002 * t / (epoch_end * 5));
+		} else if (epoch < 40) {
+			learn_rate = 0.002 - (0.002 - 0.0002) * (epoch - 5) / 35;
+		} else if (epoch < 60) {
+			learn_rate = 0.0002 - (0.0002 - 0.00002) * (epoch - 40) / 20;
+		} else {
+			learn_rate = 0.00002 - (0.00002 - 0.000002) * (epoch - 60) / 40;
+		}
+		ccv_cnnp_model_set_minimizer(imagenet, CMD_SGD_FORWARD(learn_rate, 0.9, 0.9, 0.9));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		// Re-layout data for model fitting.
@@ -272,6 +284,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			outputs[i] = (ccv_nnc_tensor_t*)input_fits[device_count + i];
 		}
 		ccv_cnnp_model_fit(imagenet, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
+		ccv_nnc_stream_context_wait(stream_contexts[p]);
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
 		if (t % 50 == 49)
@@ -281,7 +294,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			double accuracy = _accuracy_from_gpu(outputs, cpu_outputs, input_fits[device_count * 2], fit_fp32, outputs_fp32[0], batch_size, 1000, device_count);
 			overall_accuracy = overall_accuracy * 0.5 + accuracy * 0.5;
 			unsigned int elapsed_time = get_current_time() - batch_start_time;
-			PRINT(CCV_CLI_INFO, "Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy %lf%%\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(imagenet) / 1024 / 1024.0 / 1024, 50 * device_count * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100);
+			PRINT(CCV_CLI_INFO, "Epoch %d (%d) %.3lf GiB (%.3f samples per sec), accuracy = %lf%%, lr = %f\n", epoch, t, (unsigned long)ccv_cnnp_model_memory_size(imagenet) / 1024 / 1024.0 / 1024, 50 * device_count * batch_size / ((float)elapsed_time / 1000), overall_accuracy * 100, learn_rate);
 			batch_start_time = get_current_time();
 		}
 		if ((t + 1) % epoch_end == 0)
@@ -410,7 +423,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imagenet(96, train_data, test_data, test_set);
+	train_imagenet(128, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	return 0;

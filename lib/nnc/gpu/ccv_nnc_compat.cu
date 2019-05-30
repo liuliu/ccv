@@ -212,6 +212,8 @@ ccv_nnc_stream_context_t* ccv_nnc_init_stream_context(ccv_nnc_stream_context_t* 
 
 void* ccv_nnc_stream_compat_get_workspace(const ccv_nnc_stream_context_t* const stream_context, const size_t workspace_size, const int mem)
 {
+	if (workspace_size <= 0)
+		return 0;
 	ccv_nnc_stream_context_compat_t* stream_compat = (ccv_nnc_stream_context_compat_t*)stream_context;
 	if (!stream_compat)
 		stream_compat = _ccv_nnc_default_stream_compat();
@@ -263,6 +265,7 @@ void ccv_nnc_stream_compat_drain(ccv_nnc_stream_context_t* const stream_context)
 				stream_compat->_heap_gpus[i].workspace_size = 0;
 			}
 	} else if (stream_compat->_inline_gpu.workspace) {
+		cudaSetDevice(device);
 		cudaFree(stream_compat->_inline_gpu.workspace);
 		stream_compat->_inline_gpu.workspace = 0;
 		stream_compat->_inline_gpu.workspace_size = 0;
@@ -430,7 +433,7 @@ static void* _ccv_nnc_stream_context_get_ones(ONES &device_ones, const int n, cu
 		if (device_ones.data)
 			cudaFree(device_ones.data);
 		device_ones.n = n;
-		cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n);
+		CUDA_ENFORCE(cudaMalloc(&device_ones.data, sizeof(device_ones.data[0]) * n));
 		const int block_x = (n + 255) >> 8;
 		_ones<<<block_x, 256, 0, stream>>>(device_ones.data, n);
 	}
@@ -556,7 +559,7 @@ cudnnDropoutDescriptor_t ccv_nnc_stream_context_get_dropout_descriptor(const ccv
 		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
 #endif
 	} else {
-		cudaMalloc(&device_local->rngs, state_size);
+		CUDA_ENFORCE(cudaMalloc(&device_local->rngs, state_size));
 		stream_compat->seed = (unsigned long long)stream_compat;
 		cudnnSetDropoutDescriptor(desc, cudnn, p, device_local->rngs, state_size, stream_compat->seed);
 	}

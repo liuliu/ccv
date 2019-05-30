@@ -112,7 +112,8 @@ ccv_dense_matrix_t ccv_dense_matrix(int rows, int cols, int type, void* data, ui
 #if CCV_NNC_TENSOR_TFB
 	mat.reserved0 = 0;
 	mat.resides = CCV_TENSOR_CPU_MEMORY;
-	mat.format = CCV_TENSOR_FORMAT_NHWC | CCV_GET_DATA_TYPE(type);
+	mat.format = CCV_TENSOR_FORMAT_NHWC;
+	mat.datatype = CCV_GET_DATA_TYPE(type);
 	mat.channels = CCV_GET_CHANNEL(type);
 	mat.reserved1 = 0;
 #endif

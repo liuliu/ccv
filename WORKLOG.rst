@@ -1,3 +1,14 @@
+2019-05-28
+----------
+Debugging memory related issues is hard. I've been battling against a bug when loading trained ResNet model into memory and continue the training, it will mysteriously halt at certain GPU operations. Debugging GPU related issues is always difficult. It often involves first identifying exactly which CUDA API call failed (that is why you see the codebase littered with ``CUDA_ENFORCE``, ``CUBLAS_ENFORCE``, ``CUDNN_ENFORCE``, ``NCCL_ENFORCE`` to make sure we fail early).
+
+This time it is relatively easy. The fault command is the softmax fused cross entropy loss backward op. However, because it only happens when I enabled parallel mode, I was confident this is somewhat related to I haven't ``cudaSetDevice`` properly in some methods. Furthermore, if I moved weights loading after the data prefetching, it seems all worked. Thus, I've been trying to identify which function call happens on which GPU device for extended time with no progress made. A lot of assertions added but no bug was caught.
+
+Then when searching for 700 error ``cudaErrorIllegalAddress``, I came across `cuda-memcheck`. It is a little nice tool very much like `valgrind`, it is plug-and-play. With `cuda-memcheck`, within minutes, I identified the illegal memory access (related to how we handle fp16 the same as fp32 when copy value over). It also helped me to identify a double-free bug as well.
+
+It seems reasonable to say that I need to include `cuda-memcheck` in the buildbot script to help protect against memory issues from GPU side in the future. Definitely a good learning experience today.
+
+
 2019-05-22
 ----------
 Besides lacking of debugger.
