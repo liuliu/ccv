@@ -1,3 +1,10 @@
+2019-05-31
+----------
+Weight decay as the regularization has to be one of the most non-obvious thing in my implementation. The theoretical background for weight decay is to minimize weights, thus, loss^{wd} = loss + c * sum{||w||^2}. Thus, the selection of c would be important. Somehow in the CIFAR-10 implementation, I choose a very aggressive c. In implementing imageNet, that bites me. Too aggressive c makes the weight too heavily regularized, therefore, cannot converge on larger dataset such as imageNet unfortunately.
+
+I think this is time for me to implement RMSProp or ADAM for faster iteration. Hyperparameters for SGD are too much and not universal.
+
+
 2019-05-28
 ----------
 Debugging memory related issues is hard. I've been battling against a bug when loading trained ResNet model into memory and continue the training, it will mysteriously halt at certain GPU operations. Debugging GPU related issues is always difficult. It often involves first identifying exactly which CUDA API call failed (that is why you see the codebase littered with ``CUDA_ENFORCE``, ``CUBLAS_ENFORCE``, ``CUDNN_ENFORCE``, ``NCCL_ENFORCE`` to make sure we fail early).

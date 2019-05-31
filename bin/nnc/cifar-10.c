@@ -184,7 +184,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
-	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 0.5, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	FILE *w = fopen("cifar-10.dot", "w+");
 	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
@@ -265,9 +265,9 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	for (i = 0; i < 100000 / device_count; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
-		learn_rate = ((i + 1) < 15 * epoch_end ? 0.8 * (i + 1) / (15 * epoch_end) : 0.6 * (35 * epoch_end - (i + 1)) / ((35 - 15) * epoch_end)) / batch_size;
+		learn_rate = ((i + 1) < 5 * epoch_end ? 0.8 * (i + 1) / (5 * epoch_end) : 0.8 * (24 * epoch_end - (i + 1)) / ((24 - 5) * epoch_end)) / batch_size;
 		learn_rate = ccv_max(learn_rate, 0.00001);
-		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.99, 0.9, 0.9));
+		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.5, 0.9, 0.9));
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)
