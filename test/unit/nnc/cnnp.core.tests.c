@@ -249,10 +249,10 @@ TEST_CASE("train model with share weights and L2 loss")
 	int i;
 	for (i = 0; i < 10; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0), 0, 0);
 	for (i = 0; i < 100; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0), 0, 0);
 	for (i = 0; i < 1000; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
 	a0_tensor->data.f32[0] = 2;
@@ -482,10 +482,10 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	int i;
 	for (i = 0; i < 10; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 0.01, 0, 0), 0, 0);
 	for (i = 0; i < 100; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0));
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 0.001, 0, 0), 0, 0);
 	for (i = 0; i < 1000; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
 	a0_tensor->data.f32[0] = 2;
