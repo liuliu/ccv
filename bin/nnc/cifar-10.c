@@ -178,6 +178,25 @@ ccv_cnnp_model_t* _cifar_10_alexnet(void)
 	));
 }
 
+static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const trainable_indexes, const int trainable_index_size, const void* const context)
+{
+	int i;
+	ccv_nnc_cmd_t cmd = *(const ccv_nnc_cmd_t*)context;
+	for (i = 0; i < trainable_index_size; i++)
+	{
+		if (trainable_indexes[i].cmd.cmd == CCV_NNC_BATCH_NORM_FORWARD &&
+			(trainable_indexes[i].index == 1 ||  trainable_indexes[i].index == 2)) // If it is scale / bias of batch norm, remove weight decay.
+			cmd.info.minimize.decay = 0;
+		if (trainable_indexes[i].cmd.cmd == CCV_NNC_GEMM_FORWARD &&
+			trainable_indexes[i].index == 2) // bias in gemm.
+			cmd.info.minimize.decay = 0;
+		if (trainable_indexes[i].cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD &&
+			trainable_indexes[i].index == 2) // bias in convolution.
+			cmd.info.minimize.decay = 0;
+	}
+	return cmd;
+}
+
 static void train_cifar_10(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
 {
 	ccv_cnnp_model_t* const cifar_10 = _cifar_10_dawn();
@@ -267,7 +286,8 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
 		learn_rate = ((i + 1) < 5 * epoch_end ? 0.8 * (i + 1) / (5 * epoch_end) : 0.8 * (24 * epoch_end - (i + 1)) / ((24 - 5) * epoch_end)) / batch_size;
 		learn_rate = ccv_max(learn_rate, 0.00001);
-		ccv_cnnp_model_set_minimizer(cifar_10, CMD_SGD_FORWARD(learn_rate, 0.5, 0.9, 0.9));
+		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 0.5, 0.9, 0.9);
+		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
 		for (j = 0; j < device_count; j++)

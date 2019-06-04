@@ -1298,36 +1298,76 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 	compiled_data->backward.count = 0;
 }
 
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer)
+static void _ccv_cnnp_model_graph_exec_symbol_set(ccv_cnnp_model_t* const model, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_cmd_t cmd)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
+	assert(symbolic_graph);
+	ccv_nnc_graph_exec_arena_t* const graph_exec_arena = compiled_data->graph_exec_arena;
+	ccv_nnc_graph_exec_symbol_set(symbolic_graph, exec_symbol, cmd);
+	ccv_nnc_graph_exec_t const update_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, exec_symbol);
+	if (!CCV_NO_GRAPH_EXEC(update_exec))
+		ccv_nnc_graph_exec_set(update_exec.graph, update_exec, cmd);
+	int i;
+	for (i = 1; i < parallel_count; i++)
+	{
+		ccv_nnc_graph_exec_symbol_t copy_symbol = ccv_nnc_graph_exec_symbol_copy(symbolic_graph, exec_symbol, i);
+		if (copy_symbol.graph)
+			ccv_nnc_graph_exec_symbol_set(symbolic_graph, copy_symbol, cmd);
+		const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, copy_symbol);
+		if (!CCV_NO_GRAPH_EXEC(copy))
+			ccv_nnc_graph_exec_set(copy.graph, copy, cmd);
+	}
+}
+
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_minimizer_set_f minimizer_setter, const void* const context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
 	compiled_data->minimizer = minimizer;
-	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
-	if (compiled_data->update_nodes)
-	{
-		int i, j;
-		const int trainable_size = compiled_data->trainables->rnum;
-		ccv_nnc_graph_exec_symbol_t* const update_nodes = compiled_data->update_nodes;
-		ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
-		assert(symbolic_graph);
-		ccv_nnc_graph_exec_arena_t* const graph_exec_arena = compiled_data->graph_exec_arena;
-		for (i = 0; i < trainable_size; i++)
-		{
-			ccv_nnc_graph_exec_symbol_set(symbolic_graph, update_nodes[i], minimizer);
-			ccv_nnc_graph_exec_t const update_exec = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, update_nodes[i]);
-			if (!CCV_NO_GRAPH_EXEC(update_exec))
-				ccv_nnc_graph_exec_set(update_exec.graph, update_exec, minimizer);
-			for (j = 1; j < parallel_count; j++)
+	if (!compiled_data->update_nodes)
+		return;
+	int i;
+	const int trainable_size = compiled_data->trainables->rnum;
+	ccv_nnc_graph_exec_symbol_t* const update_nodes = compiled_data->update_nodes;
+	ccv_nnc_symbolic_graph_t* const symbolic_graph = model->graph;
+	assert(symbolic_graph);
+	for (i = 0; i < trainable_size; i++)
+		_ccv_cnnp_model_graph_exec_symbol_set(model, update_nodes[i], minimizer);
+	// Use the minimizer to update.
+	if (!minimizer_setter)
+		return;
+	// Collect which trainable exists at which node.
+	const int tensor_symbol_count = ccv_nnc_tensor_symbol_count(symbolic_graph);
+	ccv_array_t** const trainable_pos = (ccv_array_t**)cccalloc(tensor_symbol_count, sizeof(ccv_array_t*));
+	for (i = 0; i < trainable_size; i++)
+		trainable_pos[((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d] = ccv_array_new(sizeof(ccv_cnnp_trainable_index_t), 0, 0);
+	ccv_nnc_symbolic_graph_iter_t* const iter = ccv_nnc_symbolic_graph_iter_new(symbolic_graph, 0, 0, 0, 0);
+	while (ccv_nnc_symbolic_graph_iter_next(iter)) {
+		ccv_nnc_tensor_symbol_t* inputs;
+		int input_size;
+		ccv_nnc_tensor_symbol_io_from_iter(iter, &inputs, &input_size, 0, 0);
+		for (i = 0; i < input_size; i++)
+			if (inputs[i].d >= 0 && trainable_pos[inputs[i].d])
 			{
-				ccv_nnc_graph_exec_symbol_t copy_symbol = ccv_nnc_graph_exec_symbol_copy(symbolic_graph, update_nodes[i], j);
-				if (copy_symbol.graph)
-					ccv_nnc_graph_exec_symbol_set(symbolic_graph, copy_symbol, minimizer);
-				const ccv_nnc_graph_exec_t copy = ccv_nnc_graph_exec_from_symbol(graph_exec_arena, copy_symbol);
-				if (!CCV_NO_GRAPH_EXEC(copy))
-					ccv_nnc_graph_exec_set(copy.graph, copy, minimizer);
+				ccv_nnc_cmd_t cmd;
+				ccv_nnc_graph_exec_symbol_from_iter(iter, &cmd, 0, 0, 0);
+				const ccv_cnnp_trainable_index_t trainable_index = (ccv_cnnp_trainable_index_t){
+					.cmd = cmd,
+					.index = i,
+				};
+				ccv_array_push(trainable_pos[inputs[i].d], &trainable_index);
 			}
-		}
+	}
+	ccv_nnc_symbolic_graph_iter_free(iter);
+	for (i = 0; i < trainable_size; i++)
+	{
+		ccv_array_t* const trainable_indexes = trainable_pos[((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d];
+		const ccv_nnc_cmd_t cmd = minimizer_setter(model, (ccv_cnnp_trainable_index_t*)ccv_array_get(trainable_indexes, 0), trainable_indexes->rnum, context);
+		_ccv_cnnp_model_graph_exec_symbol_set(model, update_nodes[i], cmd);
+		ccv_array_free(trainable_indexes);
 	}
 }
 

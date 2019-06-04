@@ -1152,7 +1152,50 @@ typedef ccv_nnc_cmd_t(*ccv_nnc_symbolic_graph_subst_f)(const ccv_nnc_graph_exec_
  * @return The duplicated symbolic graph.
  */
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_symbolic_graph_subst_f subst);
-
+/**
+ * Number of tensor symbols.
+ * @param graph The symbolic graph.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
+/**
+ * The opaque structure to iterate over graph.
+ */
+typedef struct ccv_nnc_symbolic_graph_iter_s ccv_nnc_symbolic_graph_iter_t;
+/**
+ * Return iterator for graph exec symbols from a graph.
+ * @param graph The symbolic graph.
+ * @return The iterator for the symbolic graph.
+ */
+CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_iter_t*) ccv_nnc_symbolic_graph_iter_new(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+/**
+ * Iterate to the next item.
+ * @param iter The iterator for the symbolic graph.
+ * @return 1 if successful, 0 if reached the end.
+ */
+CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_iter_next(ccv_nnc_symbolic_graph_iter_t* const iter);
+/**
+ * Get the command and the name associated with the exec symbol.
+ * @param iter The iterator for the symbolic graph.
+ * @param command The pointer we are going to write command to.
+ * @param hint The pointer we are going to write hint to.
+ * @param flags The pointer we are going to write flags to.
+ * @param name The pointer we are going to write name to.
+ */
+void ccv_nnc_graph_exec_symbol_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_cmd_t* const cmd, ccv_nnc_hint_t* const hint, int* const flags, char** const name);
+/**
+ * Get the inputs and outputs associated with the exec symbol.
+ * @param iter The iterator for the symbolic graph.
+ * @param inputs The pointer we are going to write input tensor symbols to.
+ * @param input_size The pointer we are going to write input tensor symbol size to.
+ * @param outputs The pointer we are going to write output tensor symbols to.
+ * @param output_size The pointer we are going to write output tensor symbol size to.
+ */
+void ccv_nnc_tensor_symbol_io_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_tensor_symbol_t** const inputs, int* const input_size,  ccv_nnc_tensor_symbol_t** const outputs, int* const output_size);
+/**
+ * Free the iterator structure.
+ * @param iter The iterator for the symbolic graph.
+ */
+void ccv_nnc_symbolic_graph_iter_free(ccv_nnc_symbolic_graph_iter_t* const iter);
 /**
  * For a given tensor symbol, this method resolves to its local reference inside the given graph.
  * This is related to the sub-graph of symbolic graphs. A tensor symbol in the sub-graph can still have a
@@ -2537,13 +2580,35 @@ void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int p
  */
 void ccv_cnnp_model_set_workspace_size(ccv_cnnp_model_t* const model, size_t workspace_size);
 /**
+ * Simple structure for group of command and the index for the variable.
+ */
+typedef struct {
+	const ccv_nnc_cmd_t cmd;
+	const int index; // The input index.
+} ccv_cnnp_trainable_index_t;
+/**
+ * The setter function prototype for ccv_cnnp_model_set_minimizer. This is useful because it helps to
+ * set different minimizer parameters for different trainables. The example would be disable weight decay
+ * for bias / scale variables. If I expand this idea a bit, I can also support for different trainables,
+ * have entirely different minimizer  function. However, I haven't seen anything that can be trained with
+ * different minimizer (most likely due to epoch updates learn rate, therefore, it is hard to manipulate
+ * proper learn rate if different minimizers are used for different trainables at the same time). If
+ * there is a model does that, I can add that (need some thinking though). Because we cannot attach names
+ * to it (hmm, in retrospect, we probably should), the way we identify the trainables is to through which
+ * node it is used (by the command type), and in which position. Also, it is only interesting if the
+ * trainable is the input of some command. Therefore, only show it if it is an input.
+ */
+typedef ccv_nnc_cmd_t(*ccv_cnnp_model_minimizer_set_f)(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const indexes, const int index_size, const void* const context);
+/**
  * Set a new minimizer for the model. This is useful when you need to update learn rate for stochastic
  * gradient descent for example. This method can be called any time during the training process (after
  * compilation).
  * @param model The composed model.
  * @param minimizer The wrapped command that represents a new optimization strategy.
+ * @param minimizer_setter The function to be called to return minimizer for a particular trainable.
+ * @param context The context passed to the minimizer setter function.
  */
-void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer);
+void ccv_cnnp_model_set_minimizer(ccv_cnnp_model_t* const model, const ccv_nnc_cmd_t minimizer, const ccv_cnnp_model_minimizer_set_f minimizer_setter, const void* const context);
 /**
  * Get the default stream from a compiled model. If the model is not compiled, the default stream is
  * 0.

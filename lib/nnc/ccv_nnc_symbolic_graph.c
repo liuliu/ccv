@@ -965,6 +965,99 @@ int ccv_nnc_graph_exec_symbol_count(const ccv_nnc_symbolic_graph_t* const graph)
 	return graph->exec_symbol_info->rnum;
 }
 
+int ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t* const graph)
+{
+	return graph->tensor_symbol_info->rnum;
+}
+
+struct ccv_nnc_symbolic_graph_iter_s {
+	int idx;
+	const ccv_nnc_symbolic_graph_t* graph;
+	ccv_nnc_graph_visit_t* visit;
+	ccv_nnc_tensor_symbol_t* symbol_cache;
+	int symbol_cache_size;
+};
+
+ccv_nnc_symbolic_graph_iter_t* ccv_nnc_symbolic_graph_iter_new(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size)
+{
+	const ccv_nnc_graph_exec_symbol_t* const graph_sources = sources ? sources : (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->sources, 0);
+	const int graph_source_size = source_size ? source_size : graph->sources->rnum;
+	const ccv_nnc_graph_exec_symbol_t* const graph_destinations = destinations ? destinations : (ccv_nnc_graph_exec_symbol_t*)ccv_array_get(graph->destinations, 0);
+	const int graph_destination_size = destination_size ? destination_size : graph->destinations->rnum;
+	ccv_nnc_symbolic_graph_iter_t* const iter = (ccv_nnc_symbolic_graph_iter_t*)cccalloc(1, sizeof(ccv_nnc_symbolic_graph_iter_t));
+	iter->idx = -1;
+	iter->graph = graph;
+	iter->visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(graph->exec_symbol_info, 0), graph->exec_symbol_info->rnum, graph_sources, graph_source_size, graph_destinations, graph_destination_size, 0);
+	return iter;
+}
+
+int ccv_nnc_symbolic_graph_iter_next(ccv_nnc_symbolic_graph_iter_t* const iter)
+{
+	++iter->idx;
+	return (iter->idx < iter->visit->size);
+}
+
+void ccv_nnc_graph_exec_symbol_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_cmd_t* const cmd, ccv_nnc_hint_t* const hint, int* const flags, char** const name)
+{
+	if (iter->idx >= iter->visit->size)
+		return;
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(iter->graph->exec_symbol_info, iter->visit->node[iter->idx].index);
+	if (cmd)
+		*cmd = exec_info->cmd;
+	if (hint)
+		*hint = exec_info->hint;
+	if (flags)
+		*flags = exec_info->flags;
+	if (name)
+		*name = exec_info->name;
+}
+
+void ccv_nnc_tensor_symbol_io_from_iter(ccv_nnc_symbolic_graph_iter_t* const iter, ccv_nnc_tensor_symbol_t** const inputs, int* const input_size,  ccv_nnc_tensor_symbol_t** const outputs, int* const output_size)
+{
+	if (iter->idx >= iter->visit->size)
+		return;
+	const ccv_nnc_graph_exec_symbol_info_t* const exec_info = (ccv_nnc_graph_exec_symbol_info_t*)ccv_array_get(iter->graph->exec_symbol_info, iter->visit->node[iter->idx].index);
+	if (exec_info->input_size + exec_info->output_size > iter->symbol_cache_size)
+	{
+		iter->symbol_cache_size = exec_info->input_size + exec_info->output_size;
+		if (!iter->symbol_cache)
+			iter->symbol_cache = ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * iter->symbol_cache_size);
+		else
+			iter->symbol_cache = ccrealloc(iter->symbol_cache, sizeof(ccv_nnc_tensor_symbol_t) * iter->symbol_cache_size);
+	}
+	int i;
+	if (inputs)
+	{
+		*inputs = iter->symbol_cache;
+		for (i = 0; i < exec_info->input_size; i++)
+			iter->symbol_cache[i] = (ccv_nnc_tensor_symbol_t){
+				.graph = (exec_info->inputs[i] == CCV_NNC_NO_TENSOR_SYMBOL ? 0 : iter->graph),
+				.d = exec_info->inputs[i],
+			};
+	}
+	if (input_size)
+		*input_size = exec_info->input_size;
+	if (outputs)
+	{
+		*outputs = iter->symbol_cache + exec_info->input_size;
+		for (i = 0; i < exec_info->output_size; i++)
+			iter->symbol_cache[i + exec_info->input_size] = (ccv_nnc_tensor_symbol_t){
+				.graph = (exec_info->outputs[i] == CCV_NNC_NO_TENSOR_SYMBOL ? 0 : iter->graph),
+				.d = exec_info->outputs[i],
+			};
+	}
+	if (output_size)
+		*output_size = exec_info->output_size;
+}
+
+void ccv_nnc_symbolic_graph_iter_free(ccv_nnc_symbolic_graph_iter_t* const iter)
+{
+	ccv_nnc_graph_visit_free(iter->visit);
+	if (iter->symbol_cache)
+		ccfree(iter->symbol_cache);
+	ccfree(iter);
+}
+
 static inline void _ccv_nnc_graph_exec_symbol_free(ccv_nnc_graph_exec_symbol_info_t* const symbol_info, const int zeroing)
 {
 	if (symbol_info->name)
