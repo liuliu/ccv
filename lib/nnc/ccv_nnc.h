@@ -1164,6 +1164,10 @@ typedef struct ccv_nnc_symbolic_graph_iter_s ccv_nnc_symbolic_graph_iter_t;
 /**
  * Return iterator for graph exec symbols from a graph.
  * @param graph The symbolic graph.
+ * @param sources The sources for the graph.
+ * @param source_size The size of the sources array. 0 to use default sources.
+ * @param destinations The destinations for the graph.
+ * @param destination_size The size of the destinations array. 0 to use default destinations.
  * @return The iterator for the symbolic graph.
  */
 CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_iter_t*) ccv_nnc_symbolic_graph_iter_new(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
@@ -1176,7 +1180,7 @@ CCV_WARN_UNUSED(int) ccv_nnc_symbolic_graph_iter_next(ccv_nnc_symbolic_graph_ite
 /**
  * Get the command and the name associated with the exec symbol.
  * @param iter The iterator for the symbolic graph.
- * @param command The pointer we are going to write command to.
+ * @param cmd The pointer we are going to write command to.
  * @param hint The pointer we are going to write hint to.
  * @param flags The pointer we are going to write flags to.
  * @param name The pointer we are going to write name to.
