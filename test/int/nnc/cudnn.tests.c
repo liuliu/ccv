@@ -1903,12 +1903,12 @@ TEST_CASE("compare SGD with cudnn")
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < 10; i++)
 		m->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
 	ccv_nnc_tensor_t* const gg = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* const gm = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(gg, ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
 	ccv_nnc_tensor_t* const gbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_t* const gnt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gm), TENSOR_LIST(gbt, gnt), 0);
@@ -1917,17 +1917,17 @@ TEST_CASE("compare SGD with cudnn")
 	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* const gn = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, m), TENSOR_LIST(ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb, gn), TENSOR_LIST(gbt, gnt), 0);
 	REQUIRE_TENSOR_EQ(gbt, b, "cpu result should match");
 	REQUIRE_TENSOR_EQ(gnt, n, "cpu result should match");
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, m), TENSOR_LIST(ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gm), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gm), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb, gm), TENSOR_LIST(gbt, gnt), 0);
 	REQUIRE_TENSOR_EQ(gbt, b, "cpu result should match");
 	REQUIRE_TENSOR_EQ(gnt, n, "cpu result should match");
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, m), TENSOR_LIST(ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gn), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gn), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gn), TENSOR_LIST(gbt, gnt), 0);
 	REQUIRE_TENSOR_EQ(gbt, b, "cpu result should match");
 	REQUIRE_TENSOR_EQ(gnt, n, "cpu result should match");
@@ -1967,13 +1967,13 @@ TEST_CASE("compare SGD with cudnn in half precision")
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < 10; i++)
 		m->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
 	ccv_nnc_tensor_t* const gg = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* const gm = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(g16, a16, m16), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g16, a16, m16), TENSOR_LIST(gg, ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
 	ccv_nnc_tensor_t* const gbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_t* const gnt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_t* const gbt16 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 10), 0);
@@ -1985,7 +1985,7 @@ TEST_CASE("compare SGD with cudnn in half precision")
 	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* const gn = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a16, m16), TENSOR_LIST(ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb, gn), TENSOR_LIST(gbt16, gnt16), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gbt16, gnt16), TENSOR_LIST(gbt, gnt), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, gbt->data.f32, b->data.f32, 10, 1e-3, "cpu result should match");
@@ -2029,13 +2029,13 @@ TEST_CASE("compare SGD with cudnn in mixed precision")
 		a->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 	for (i = 0; i < 10; i++)
 		m->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(g, a, m), TENSOR_LIST(b, n), 0);
 	ccv_nnc_tensor_t* const gg = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 16F, 10), 0);
 	ccv_nnc_tensor_t* const ga = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* const gm = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g), TENSOR_LIST(g16), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(g16, a, m), TENSOR_LIST(gg, ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(ga, gm), 0);
 	ccv_nnc_tensor_t* const gbt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_tensor_t* const gnt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ga, gm), TENSOR_LIST(gbt, gnt), 0);
@@ -2044,7 +2044,7 @@ TEST_CASE("compare SGD with cudnn in mixed precision")
 	ccv_nnc_tensor_t* const gb = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_tensor_t* const gn = ccv_nnc_tensor_new(0, GPU_TENSOR_NHWC(000, 32F, 10), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a, m), TENSOR_LIST(ga, gm), 0);
-	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
+	ccv_nnc_cmd_exec(CMD_SGD_FORWARD(0.9, 0.5, 0.999, 0.9, 0.9), ccv_nnc_no_hint, 0, TENSOR_LIST(gg, ga, gm), TENSOR_LIST(gb, gn), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(gb, gn), TENSOR_LIST(gbt, gnt), 0);
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, gbt->data.f32, b->data.f32, 10, 1e-3, "cpu result should match");
 	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, gnt->data.f32, n->data.f32, 10, 1e-3, "cpu result should match");

@@ -15,10 +15,12 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(output_size == 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
 	const float neg_rate = -cmd.info.minimize.rate;
+	const float scale = cmd.info.minimize.scale;
 	const float decay = cmd.info.minimize.decay;
 	const float momentum = cmd.info.minimize.momentum;
 	const float dampening = cmd.info.minimize.dampening;
 	const float inv_dampening = 1 - dampening;
+	const float inv_dampening_scale = inv_dampening * scale;
 	const float inv_dampening_decay = inv_dampening * decay;
 	assert(inputs[1]->info.datatype == inputs[2]->info.datatype &&
 		inputs[2]->info.datatype == outputs[0]->info.datatype &&
@@ -47,10 +49,10 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	// This is done with float no matter what the datatype inputs / outputs are.
 	cudnnSetOpTensorDescriptor(add, CUDNN_OP_TENSOR_ADD, CUDNN_DATA_FLOAT, CUDNN_PROPAGATE_NAN);
 	if (m.data.f32 == n.data.f32)
-		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &inv_dampening, g.descriptor, g.data.u8, &inv_dampening_decay, a.descriptor, a.data.u8, &momentum, n.descriptor, n.data.u8));
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &inv_dampening_scale, g.descriptor, g.data.u8, &inv_dampening_decay, a.descriptor, a.data.u8, &momentum, n.descriptor, n.data.u8));
 	else {
 		CUDNN_ENFORCE(cudnnAddTensor(cudnn, &momentum, m.descriptor, m.data.u8, &zero, n.descriptor, n.data.u8));
-		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &inv_dampening, g.descriptor, g.data.u8, &inv_dampening_decay, a.descriptor, a.data.u8, &one, n.descriptor, n.data.u8));
+		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &inv_dampening_scale, g.descriptor, g.data.u8, &inv_dampening_decay, a.descriptor, a.data.u8, &one, n.descriptor, n.data.u8));
 	}
 	if (a.data.f32 == b.data.f32)
 	{

@@ -43,6 +43,7 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	ccv_nnc_tensor_view_get_inc(b, binc);
 	ccv_nnc_tensor_view_get_inc(n, ninc);
 	const float rate = cmd.info.minimize.rate;
+	const float scale = cmd.info.minimize.scale;
 	const float decay = cmd.info.minimize.decay;
 	const float momentum = cmd.info.minimize.momentum;
 	const float dampening = cmd.info.minimize.dampening;
@@ -62,7 +63,7 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 			{
 				for (x = 0; x < adim[3]; x++)
 				{
-					np[x] = momentum * mp[x] + inv_dampening * (gp[x] + decay * ap[x]);
+					np[x] = momentum * mp[x] + inv_dampening * (scale * gp[x] + decay * ap[x]);
 					bp[x] = ap[x] - rate * np[x];
 				}
 				gp += ginc[3];

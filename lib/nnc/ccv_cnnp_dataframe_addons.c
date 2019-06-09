@@ -289,44 +289,76 @@ static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_
 			resize_rows = (int)(resize_rows * aspect_ratio + 0.5);
 			resize_cols = (int)(resize_cols / aspect_ratio + 0.5);
 		}
-		ccv_dense_matrix_t* resized = 0;
-		// First, resize.
-		if (input->rows >= resize_rows && input->cols >= resize_cols)
+		const int need_crop = (random_jitter.size.cols > 0 && random_jitter.size.rows > 0 &&
+			((resize_cols != random_jitter.size.cols || resize_rows != random_jitter.size.rows) ||
+			 (random_jitter.offset.x != 0 || random_jitter.offset.y != 0)));
+		int cropped = 0, crop_x = 0, crop_y = 0;
+		ccv_dense_matrix_t* sliced = 0;
+		if (need_crop)
 		{
-			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_AREA);
-			assert(!ccv_any_nan(resized));
-		} else if (input->rows != resize_rows || input->cols != resize_cols) {
-			ccv_resample(input, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_CUBIC);
-			assert(!ccv_any_nan(resized));
+			// Compute crop x, y.
+			crop_x = random_jitter.center_crop ?
+				(resize_cols - random_jitter.size.cols + 1) / 2 : // Otherwise, random select x.
+				(int)(sfmt_genrand_real1(&sfmt[i]) * (resize_cols - random_jitter.size.cols + 1));
+			crop_x = ccv_clamp(crop_x,
+				ccv_min(0, resize_cols - random_jitter.size.cols),
+				ccv_max(0, resize_cols - random_jitter.size.cols));
+			crop_y = random_jitter.center_crop ?
+				(resize_rows - random_jitter.size.rows + 1) / 2 : // Otherwise, random select y.
+				(int)(sfmt_genrand_real1(&sfmt[i]) * (resize_rows - random_jitter.size.rows + 1));
+			crop_y = ccv_clamp(crop_y,
+				ccv_min(0, resize_rows - random_jitter.size.rows),
+				ccv_max(0, resize_rows - random_jitter.size.rows));
+			if (random_jitter.offset.x != 0)
+				crop_x += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.x * 2 - random_jitter.offset.x;
+			if (random_jitter.offset.y != 0)
+				crop_y += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.y * 2 - random_jitter.offset.y;
+			// If we can fill in the whole view (not introducing any 0 padding), we can first crop and then scale down / up.
+			if (resize_cols >= random_jitter.size.cols && resize_rows >= random_jitter.size.rows)
+			{
+				const float scale_x = (float)input->cols / resize_cols;
+				const float scale_y = (float)input->rows / resize_rows;
+				const int slice_cols = (int)(random_jitter.size.cols * scale_x + 0.5);
+				const int slice_rows = (int)(random_jitter.size.rows * scale_y + 0.5);
+				assert(slice_cols <= input->cols);
+				assert(slice_rows <= input->rows);
+				const int x = ccv_clamp((int)(crop_x * scale_x + 0.5), 0, input->cols - slice_cols);
+				const int y = ccv_clamp((int)(crop_y * scale_y + 0.5), 0, input->rows - slice_rows);
+				ccv_slice(input, (ccv_matrix_t**)&sliced, 0, y, x, slice_rows, slice_cols);
+				resize_cols = random_jitter.size.cols;
+				resize_rows = random_jitter.size.rows;
+				cropped = 1;
+			} else
+				sliced = input;
+		} else
+			sliced = input;
+		ccv_dense_matrix_t* resized = 0;
+		// Resize.
+		if (sliced->rows >= resize_rows && sliced->cols >= resize_cols)
+		{
+			// If we can fill in the whole view, we can first crop and then scale down / up.
+			ccv_resample(sliced, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_AREA);
+		} else if (sliced->rows != resize_rows || sliced->cols != resize_cols) {
+			ccv_resample(sliced, &resized, CCV_32F, resize_rows, resize_cols, CCV_INTER_CUBIC);
 		} else {
-			ccv_shift(input, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
-			assert(!ccv_any_nan(resized));
+			ccv_shift(sliced, (ccv_matrix_t**)&resized, CCV_32F, 0, 0); // converting to 32f
 		}
+		if (sliced != input)
+			ccv_matrix_free(sliced);
 		if (random_jitter.symmetric && (sfmt_genrand_uint32(&sfmt[i]) & 1) == 0)
 			ccv_flip(resized, &resized, 0, CCV_FLIP_X);
 		_ccv_cnnp_image_manip(resized, random_jitter, &sfmt[i]);
-		// Apply normalization before slice. Slice will introduce 0 padding, which won't be correct before normalization.
+		// Apply normalization. Slice will introduce 0 padding, which won't be correct before normalization.
 		if (random_jitter.normalize.mean[0] != 0 || random_jitter.normalize.std[0] != 1 ||
 			random_jitter.normalize.mean[1] != 0 || random_jitter.normalize.std[1] != 1 ||
 			random_jitter.normalize.mean[2] != 0 || random_jitter.normalize.std[2] != 1)
 			_ccv_cnnp_normalize(resized, random_jitter.normalize.mean, random_jitter.normalize.std);
-		// Then slice down.
+		// If we haven't cropped in previous step (likely because we have some fill-ins due to the resize down too much).
+		// Do the crop now.
 		ccv_dense_matrix_t* patch = 0;
-		if (random_jitter.size.cols > 0 && random_jitter.size.rows > 0 &&
-			((resized->cols != random_jitter.size.cols || resized->rows != random_jitter.size.rows) ||
-			 (random_jitter.offset.x != 0 || random_jitter.offset.y != 0)))
+		if (!cropped && need_crop)
 		{
-			int x = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->cols - random_jitter.size.cols + 1)),
-						ccv_min(0, resized->cols - random_jitter.size.cols),
-						ccv_max(0, resized->cols - random_jitter.size.cols));
-			int y = ccv_clamp((int)(sfmt_genrand_real1(&sfmt[i]) * (resized->rows - random_jitter.size.rows + 1)),
-					ccv_min(0, resized->rows - random_jitter.size.rows),
-					ccv_max(0, resized->rows - random_jitter.size.rows));
-			if (random_jitter.offset.x != 0)
-				x += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.x * 2 - random_jitter.offset.x;
-			if (random_jitter.offset.y != 0)
-				y += sfmt_genrand_real1(&sfmt[i]) * random_jitter.offset.y * 2 - random_jitter.offset.y;
-			ccv_slice(resized, (ccv_matrix_t**)&patch, CCV_32F, y, x, random_jitter.size.rows, random_jitter.size.cols);
+			ccv_slice(resized, (ccv_matrix_t**)&patch, CCV_32F, crop_y, crop_x, random_jitter.size.rows, random_jitter.size.cols);
 			ccv_matrix_free(resized);
 		} else
 			patch = resized;

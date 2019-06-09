@@ -52,4 +52,4 @@ REGISTER_COMMAND(CCV_NNC_SGD_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SGD_FORWARD)
-#define CMD_SGD_FORWARD(_rate, _decay, _momentum, _dampening) ccv_nnc_cmd(CCV_NNC_SGD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.minimize={.rate=_rate,.decay=_decay,.momentum=_momentum,.dampening=_dampening}}), 0)
+#define CMD_SGD_FORWARD(_rate, _scale, _decay, _momentum, _dampening) ccv_nnc_cmd(CCV_NNC_SGD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.minimize={.rate=_rate,.scale=_scale,.decay=_decay,.momentum=_momentum,.dampening=_dampening}}), 0)

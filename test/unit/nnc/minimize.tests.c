@@ -27,7 +27,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on symbolic g
 	ccv_nnc_tensor_symbol_t updates[1];
 	ccv_nnc_tensor_symbol_map_t aux[1];
 	ccv_nnc_graph_exec_symbol_t update_execs[1];
-	ccv_nnc_symbolic_graph_minimize(symbolic_graph, CMD_SGD_FORWARD(0.001, 0.995, 0.9, 0.9), TENSOR_SYMBOL_LIST(s), TENSOR_SYMBOL_LIST(w), 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), 0, updates, aux, update_execs);
+	ccv_nnc_symbolic_graph_minimize(symbolic_graph, CMD_SGD_FORWARD(0.001, 1, 0.995, 0.9, 0.9), TENSOR_SYMBOL_LIST(s), TENSOR_SYMBOL_LIST(w), 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), 0, updates, aux, update_execs);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;
@@ -57,11 +57,11 @@ TEST_CASE("solve least square sum with stochastic gradient descent on symbolic g
 		bias_tensor->data.f32[0] = 1;
 		bias_tensor->data.f32[1] = -1;
 		if (i == 750)
-			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.000001, 0.995, 0.9, 0.9));
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.000001, 1, 0.995, 0.9, 0.9));
 		else if (i == 500)
-			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.00001, 0.995, 0.9, 0.9));
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.00001, 1, 0.995, 0.9, 0.9));
 		else if (i == 250)
-			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.0001, 0.995, 0.9, 0.9));
+			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0.0001, 1, 0.995, 0.9, 0.9));
 		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
 	}
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-3, "converge for vector 1");
@@ -100,7 +100,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on dynamic gr
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(b, b), TENSOR_VARIABLE_LIST(c));
 		ccv_nnc_tensor_variable_t s = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_REDUCE_SUM_FORWARD(0, 1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(c), TENSOR_VARIABLE_LIST(s));
-		ccv_nnc_dynamic_graph_minimize(graph, CMD_SGD_FORWARD(0.001, 0.995, 0.9, 0.9), TENSOR_VARIABLE_LIST(s), 0, TENSOR_VARIABLE_LIST(w), &aux);
+		ccv_nnc_dynamic_graph_minimize(graph, CMD_SGD_FORWARD(0.001, 1, 0.995, 0.9, 0.9), TENSOR_VARIABLE_LIST(s), 0, TENSOR_VARIABLE_LIST(w), &aux);
 		ccv_nnc_tensor_variable_free(graph, a);
 		ccv_nnc_tensor_variable_free(graph, b);
 		ccv_nnc_tensor_variable_free(graph, bias);

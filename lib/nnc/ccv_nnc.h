@@ -87,6 +87,7 @@ typedef struct {
 		} bnorm;
 		struct {
 			float rate; /**< [minimize.rate] The learning rate. */
+			float scale; /**< [minimize.scale] The scale to be applied to the gradient before doing any minimization. */
 			float decay; /**< [minimize.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */
 			float momentum; /**< [minimize.momentum] For SGD, this follows http://www.cs.toronto.edu/%7Ehinton/absps/momentum.pdf. */
 			float dampening; /**< [minimize.dampening] This usually == momentum, however, it can be changed. */
@@ -2340,6 +2341,7 @@ typedef struct {
 	float aspect_ratio; /**< Stretch aspect ratio between [1 / (1 + asepct_ratio), 1 + aspect_ratio] */
 	int symmetric; /**< Apply random flip on x-axis (around y-axis */
 	int seed; /**< The seed for random generator. */
+	int center_crop; /**< Enable crop to the center (otherwise do random crop). */
 	struct {
 		int min; /**< The minimal dimension of resize */
 		int max; /**< The maximal dimension of resize. The final resize can be computed from min + (max - min) * random_unit */
