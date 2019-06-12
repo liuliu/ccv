@@ -95,7 +95,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		return -1;
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
-	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
@@ -161,12 +161,12 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 30; i++)
+	for (i = 0; epoch < 35; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
-		learn_rate = ((i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end)) / batch_size;
+		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.000001);
-		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 1, 0.99, 0.9, 0.9);
+		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9);
 		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
@@ -305,7 +305,7 @@ TEST_CASE("cifar-10 with dawnnet to > 90% under 3 minutes")
 	int correct = train_cifar_10(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 9000, "accuracy %.2f after 30 epoch should be higher than 90%%", (float)correct / 10000);
+	REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
 }
 
 static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_size, const float mean[3], ccv_array_t* const test_set)
@@ -316,7 +316,7 @@ static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_
 		return -1;
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 16F, batch_size, 3, 32, 32);
 	float learn_rate = 0.001;
-	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(cifar_10, &input, 1, CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_cnnp_model_set_workspace_size(cifar_10, 2llu * 1024 * 1024 * 1024);
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
@@ -392,12 +392,12 @@ static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	for (i = 0; epoch < 30; i++)
+	for (i = 0; epoch < 35; i++)
 	{
 		// Piece-wise linear learning rate: https://www.myrtle.ai/2018/09/24/how_to_train_your_resnet_3/
-		learn_rate = ((i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end)) / batch_size;
+		learn_rate = (i + 1) < 10 * epoch_end ? 0.4 * (i + 1) / (10 * epoch_end) : 0.4 * (35 * epoch_end - (i + 1)) / ((35 - 10) * epoch_end);
 		learn_rate = ccv_max(learn_rate, 0.000001);
-		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 1, 0.99, 0.9, 0.9);
+		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), 0.01, 0.9, 0.9);
 		ccv_cnnp_model_set_minimizer(cifar_10, sgd, _no_wd, &sgd);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
@@ -540,7 +540,7 @@ TEST_CASE("cifar-10 with dawnnet to > 90% under 1 minutes (fp16)")
 	int correct = train_cifar_10_fp16(categorizeds, 256, meanf, tests);
 	fclose(train);
 	fclose(test);
-	REQUIRE(correct > 9000, "accuracy %.2f after 30 epoch should be higher than 90%%", (float)correct / 10000);
+	REQUIRE(correct > 9000, "accuracy %.2f after 35 epoch should be higher than 90%%", (float)correct / 10000);
 }
 
 #include "case_main.h"
