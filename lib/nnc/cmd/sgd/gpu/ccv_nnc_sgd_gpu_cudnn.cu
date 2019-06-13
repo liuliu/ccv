@@ -14,6 +14,7 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	assert(input_size == 3);
 	assert(output_size == 2);
 	cudnnHandle_t cudnn = ccv_nnc_stream_context_get_cudnn(stream_context);
+	const int nesterov = cmd.info.minimize.nesterov;
 	const float neg_rate = -cmd.info.minimize.rate;
 	const float scale = cmd.info.minimize.scale;
 	const float decay = cmd.info.minimize.decay;
@@ -22,6 +23,8 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 	const float inv_dampening = 1 - dampening;
 	const float inv_dampening_scale = inv_dampening * scale;
 	const float inv_dampening_decay = inv_dampening * decay;
+	if (nesterov)
+		{ assert(dampening == 0); }
 	assert(inputs[1]->info.datatype == inputs[2]->info.datatype &&
 		inputs[2]->info.datatype == outputs[0]->info.datatype &&
 		outputs[0]->info.datatype == outputs[1]->info.datatype);
@@ -54,11 +57,23 @@ static int _ccv_nnc_sgd_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint,
 		CUDNN_ENFORCE(cudnnAddTensor(cudnn, &momentum, m.descriptor, m.data.u8, &zero, n.descriptor, n.data.u8));
 		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &inv_dampening_scale, g.descriptor, g.data.u8, &inv_dampening_decay, a.descriptor, a.data.u8, &one, n.descriptor, n.data.u8));
 	}
+	const float neg_rate_scale = neg_rate * scale;
+	const float neg_rate_momentum = neg_rate * momentum;
 	if (a.data.f32 == b.data.f32)
 	{
-		CUDNN_ENFORCE(cudnnAddTensor(cudnn, &neg_rate, n.descriptor, n.data.u8, &one, b.descriptor, b.data.u8));
+		// For nesterov, to avoid allocate additional buffers, use add op. Basically, g += momentum * n, b += -lr * g now becomes
+		// b += -lr * momentum * n - lr * g (note g is rescaled).
+		if (nesterov)
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &neg_rate_momentum, n.descriptor, n.data.u8, &neg_rate_scale, g.descriptor, g.data.u8, &one, b.descriptor, b.data.u8));
+		else
+			CUDNN_ENFORCE(cudnnAddTensor(cudnn, &neg_rate, n.descriptor, n.data.u8, &one, b.descriptor, b.data.u8));
 	} else {
-		CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &neg_rate, n.descriptor, n.data.u8, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
+		if (nesterov)
+		{
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &neg_rate_momentum, n.descriptor, n.data.u8, &neg_rate_scale, g.descriptor, g.data.u8, &zero, b.descriptor, b.data.u8));
+			CUDNN_ENFORCE(cudnnAddTensor(cudnn, &one, a.descriptor, a.data.u8, &one, b.descriptor, b.data.u8));
+		} else
+			CUDNN_ENFORCE(cudnnOpTensor(cudnn, add, &neg_rate, n.descriptor, n.data.u8, &one, a.descriptor, a.data.u8, &zero, b.descriptor, b.data.u8));
 	}
 	ccv_nnc_stream_context_return_op_tensor_descriptor(stream_context, add);
 	ccv_nnc_cudnn_deinit_tensor_view_descriptor(g);

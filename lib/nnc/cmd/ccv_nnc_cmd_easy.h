@@ -31,7 +31,7 @@
 // CCV_NNC_DATATYPE_CONVERSION_BACKWARD
 #define CMD_DATATYPE_CONVERSION_BACKWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_SGD_FORWARD
-#define CMD_SGD_FORWARD(_rate, _scale, _decay, _momentum, _dampening) ccv_nnc_cmd(CCV_NNC_SGD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.minimize={.rate=_rate,.scale=_scale,.decay=_decay,.momentum=_momentum,.dampening=_dampening}}), 0)
+#define CMD_SGD_FORWARD(_nesterov, _rate, _scale, _decay, _momentum, _dampening) ccv_nnc_cmd(CCV_NNC_SGD_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.minimize={.nesterov=_nesterov,.rate=_rate,.scale=_scale,.decay=_decay,.momentum=_momentum,.dampening=_dampening}}), 0)
 // CCV_NNC_RELU_FORWARD
 #define CMD_RELU_FORWARD() ccv_nnc_cmd(CCV_NNC_RELU_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_RELU_BACKWARD

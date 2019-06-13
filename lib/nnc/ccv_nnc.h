@@ -86,6 +86,7 @@ typedef struct {
 			float momentum; /**< [bnorm.momentum] running_mean = running_mean * momentum + mean * (1 - momentum). */
 		} bnorm;
 		struct {
+			int nesterov; /**< [minimize.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [minimize.rate] The learning rate. */
 			float scale; /**< [minimize.scale] The scale to be applied to the gradient before doing any minimization. */
 			float decay; /**< [minimize.decay] This is the weight decay parameter, which represents L2 regularization after momentum applied. */

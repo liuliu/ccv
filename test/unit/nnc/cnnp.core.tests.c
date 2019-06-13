@@ -49,7 +49,7 @@ TEST_CASE("compile simple cifar-10 model")
 {
 	ccv_cnnp_model_t* const sequential = simple_cifar_10();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
-	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
 	dsfmt_t dsfmt;
 	int i;
@@ -89,7 +89,7 @@ TEST_CASE("compile simple cifar-10 model")
 	CNNP_MODEL_GEN(sequential, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(sequential);
 	ccv_cnnp_model_t* const sequential2 = simple_cifar_10();
-	ccv_cnnp_model_compile(sequential2, &input, 1, CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(sequential2, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	// Load from the checkpoint file.
 	ccv_cnnp_model_checkpoint(sequential2, "/tmp/compile_simple_cifar_10_model.checkpoint", 0);
 	remove("/tmp/compile_simple_cifar_10_model.checkpoint");
@@ -142,7 +142,7 @@ TEST_CASE("inception layer for model")
 
 	ccv_cnnp_model_t* inception = ccv_cnnp_model_new(MODEL_IO_LIST(x), MODEL_IO_LIST(output));
 	const ccv_nnc_tensor_param_t input = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
-	ccv_cnnp_model_compile(inception, &input, 1, CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(inception, &input, 1, CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	CNNP_MODEL_GEN(inception, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(inception);
 }
@@ -178,7 +178,7 @@ TEST_CASE("functional model's IO can represent multiple outputs")
 	const ccv_nnc_tensor_param_t a0 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	const ccv_nnc_tensor_param_t a1 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
 	const ccv_nnc_tensor_param_t a2 = GPU_TENSOR_NCHW(000, 32F, 1, 3, 256, 256);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, a2), CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, a2), CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(final);
 }
@@ -194,7 +194,7 @@ TEST_CASE("make sure reuse model enables share weights")
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1), MODEL_IO_LIST(final_output));
 	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1), CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1), CMD_SGD_FORWARD(1, 0.001, 1, 0.99, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_cnnp_model_free(final);
 }
@@ -235,7 +235,7 @@ TEST_CASE("train model with share weights and L2 loss")
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b1 = CPU_TENSOR_NCHW(32F, 1, 1);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
 	ccv_nnc_tensor_t* a1_tensor = ccv_nnc_tensor_new(0, a1, 0);
@@ -249,10 +249,10 @@ TEST_CASE("train model with share weights and L2 loss")
 	int i;
 	for (i = 0; i < 10; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 1, 0.01, 0, 0), 0, 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0);
 	for (i = 0; i < 100; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 1, 0.001, 0, 0), 0, 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0.001, 0, 0), 0, 0);
 	for (i = 0; i < 1000; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
 	a0_tensor->data.f32[0] = 2;
@@ -309,7 +309,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode")
 {
 	ccv_cnnp_model_t* const sequential = simple_cifar_10_no_softmax();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
-	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.001, 1, 0.99, 0.9, 0.9), CMD_NOOP());
+	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0, 0.001, 1, 0.99, 0.9, 0.9), CMD_NOOP());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
 	dsfmt_t dsfmt;
 	int i;
@@ -368,7 +368,7 @@ TEST_CASE("evaluate cifar-10 model in multi-stage mode with gradient accumulated
 {
 	ccv_cnnp_model_t* const sequential = simple_cifar_10_no_softmax();
 	const ccv_nnc_tensor_param_t input = CPU_TENSOR_NHWC(32F, 1, 31, 31, 3);
-	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0.00033, 1, 0.99, 0.9, 0.9), CMD_NOOP());
+	ccv_cnnp_model_compile(sequential, &input, 1, CMD_SGD_FORWARD(0, 0.00033, 1, 0.99, 0.9, 0.9), CMD_NOOP());
 	ccv_nnc_tensor_t* const input_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 31, 31, 3), 0);
 	dsfmt_t dsfmt;
 	int i;
@@ -467,7 +467,7 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	ccv_nnc_tensor_param_t a1 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b0 = CPU_TENSOR_NCHW(32F, 1, 1);
 	ccv_nnc_tensor_param_t b1 = CPU_TENSOR_NCHW(32F, 1, 1);
-	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0, a1, b0, b1), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
 	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
 	ccv_nnc_tensor_t* a1_tensor = ccv_nnc_tensor_new(0, a1, 0);
@@ -482,10 +482,10 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	int i;
 	for (i = 0; i < 10; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.01, 1, 0.01, 0, 0), 0, 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0);
 	for (i = 0; i < 100; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0.001, 1, 0.001, 0, 0), 0, 0);
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0.001, 0, 0), 0, 0);
 	for (i = 0; i < 1000; i++)
 		ccv_cnnp_model_fit(final, TENSOR_LIST(a0_tensor, a1_tensor, b0_tensor, b1_tensor), 0, 0, TENSOR_LIST(o0_tensor), 0);
 	a0_tensor->data.f32[0] = 2;

@@ -276,7 +276,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	const int device_count = ccv_nnc_device_count(CCV_STREAM_CONTEXT_GPU);
 	float learn_rate = 0.0001;
 	const float wd = 0.0001;
-	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0.9), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
+	ccv_cnnp_model_compile(imagenet, &input, 1, CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0), CMD_CATEGORICAL_CROSSENTROPY_FORWARD());
 	FILE *w = fopen("imagenet.dot", "w+");
 	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
@@ -386,7 +386,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	int epoch = 70;
+	int epoch = 73;
 	double overall_accuracy = 0;
 	const int warmup_epoch = 5;
 	// Start 100 epoch of training.
@@ -403,7 +403,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			learn_rate = 0.1 - (0.1 - 0.001) * (epoch - 60) / 40;
 		}
 		learn_rate = ccv_max(learn_rate, 0.0001);
-		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0.9);
+		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0);
 		ccv_cnnp_model_set_minimizer(imagenet, sgd, _no_wd, &sgd);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);
 		ccv_nnc_stream_context_wait(stream_contexts[q]); // Need to wait the other context to finish, we use the same tensor_arena.
