@@ -386,11 +386,11 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	int epoch = 73;
+	int epoch = 120;
 	double overall_accuracy = 0;
 	const int warmup_epoch = 5;
 	// Start 100 epoch of training.
-	for (t = epoch * epoch_end; epoch < 120; t++)
+	for (t = epoch * epoch_end; epoch < 140; t++)
 	{
 		if (epoch < warmup_epoch)
 		{
@@ -399,10 +399,12 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 			learn_rate = 0.4 - (0.4 - 0.2) * (epoch - 5) / 35;
 		} else if (epoch < 60) {
 			learn_rate = 0.2 - (0.2 - 0.1) * (epoch - 40) / 20;
-		} else {
+		} else if (epoch < 100) {
 			learn_rate = 0.1 - (0.1 - 0.001) * (epoch - 60) / 40;
+		} else {
+			learn_rate = 0.001 - (0.001 - 0.00001) * (epoch - 100) / 20;
 		}
-		learn_rate = ccv_max(learn_rate, 0.0001);
+		learn_rate = ccv_max(learn_rate, 0.00004);
 		ccv_nnc_cmd_t sgd = CMD_SGD_FORWARD(1, learn_rate, 1. / (batch_size * device_count), wd, 0.9, 0);
 		ccv_cnnp_model_set_minimizer(imagenet, sgd, _no_wd, &sgd);
 		ccv_cnnp_dataframe_iter_next(iter, (void**)input_fits, device_count * 2 + 1, stream_contexts[p]);

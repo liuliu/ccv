@@ -99,7 +99,11 @@ typedef struct {
 		ccv_nnc_tensor_arena_t* tensor_arena;
 		ccv_nnc_graph_exec_arena_t* graph_exec_arena;
 	} apply_gradients;
-	ccv_nnc_cmd_t minimizer;
+	struct {
+		ccv_nnc_cmd_t minimizer;
+		ccv_cnnp_model_minimizer_set_f setter;
+		const void*context;
+	} minimize;
 	ccv_nnc_cmd_t loss;
 	ccv_nnc_tensor_symbol_t fits[1];
 } ccv_cnnp_compiled_data_t;
