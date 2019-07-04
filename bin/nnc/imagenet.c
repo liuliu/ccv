@@ -386,11 +386,11 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_nnc_tensor_t* input_fit_inputs[device_count];
 	ccv_nnc_tensor_t* input_fit_fits[device_count];
 	ccv_nnc_tensor_t* outputs[device_count];
-	int epoch = 120;
+	int epoch = 0;
 	double overall_accuracy = 0;
 	const int warmup_epoch = 5;
 	// Start 100 epoch of training.
-	for (t = epoch * epoch_end; epoch < 140; t++)
+	for (t = epoch * epoch_end; epoch < 120; t++)
 	{
 		if (epoch < warmup_epoch)
 		{
