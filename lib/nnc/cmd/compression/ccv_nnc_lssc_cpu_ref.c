@@ -62,13 +62,12 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					ccv_float_to_half_precision(bm, bpz16, 2);
 					const float abottom = amin * 7 / 6 - amax / 6;
 					const float ascale = 3 / ccv_max(amax - amin, 1e-6);
-					bpz16[2] = bpz16[3] = 0;
-					for (c = 0; c < 16; c++)
-					{
-						uint16_t id = ccv_clamp((int)((a32[c] - abottom) * ascale), 0, 3);
-						bpz16[2] |= ((id >> 1) << c);
-						bpz16[3] |= ((id & 1) << c);
-					}
+					bpz16[2] = 0;
+					for (c = 0; c < 8; c++)
+						bpz16[2] |= ((ccv_clamp((int)((a32[c] - abottom) * ascale), 0, 3)) << (c << 1));
+					bpz16[3] = 0;
+					for (c = 0; c < 8; c++)
+						bpz16[3] |= ((ccv_clamp((int)((a32[8 + c] - abottom) * ascale), 0, 3)) << (c << 1));
 				}
 			}
 			bp += binc[CCV_NNC_MAX_DIM - 1] * binc[CCV_NNC_MAX_DIM];
@@ -116,8 +115,10 @@ static int _ccv_nnc_lssc_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					bm[3] = bm[1];
 					bm[1] = bm[3] / 3 + bm[0] * 2 / 3;
 					bm[2] = bm[3] * 2 / 3 + bm[0] / 3;
-					for (c = 0; c < 16; c++)
-						a32[c] = bm[(((bpz16[2] >> c) & 1) << 1) | ((bpz16[3] >> c) & 1)];
+					for (c = 0; c < 8; c++)
+						a32[c] = bm[((bpz16[2] >> (c << 1)) & 3)];
+					for (c = 0; c < 8; c++)
+						a32[8 + c] = bm[((bpz16[3] >> (c << 1)) & 3)];
 					ccv_float_to_half_precision(a32, (uint16_t*)a16, 16);
 					ccv_float16_t* apz = ap + i[0] * 4 * ainc[CCV_NNC_MAX_DIM] + i[1] * 4;
 					const int h = ccv_min(i[0] * 4 + 4, adim[1]) - i[0] * 4;
