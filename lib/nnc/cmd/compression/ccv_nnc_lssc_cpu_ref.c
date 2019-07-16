@@ -16,14 +16,14 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	int k;
 	ccv_float16_t a16[16];
 	float a32[16];
-	float bm[4];
+	float bm[2];
 	for (k = 0; k < output_size; k++)
 	{
 		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[k];
 		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[k];
 		int i[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
-		int c, d, k;
+		int c, k;
 		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 		assert(a_nd == CCV_NNC_MAX_DIM + 1 || a_nd == CCV_NNC_MAX_DIM + 2);
 		const int* adim = (a_nd == CCV_NNC_MAX_DIM + 1) ? a->info.dim : a->info.dim + 1;
@@ -60,20 +60,12 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 					ccv_float16_t* bpz = bp + i[0] * binc[CCV_NNC_MAX_DIM] + i[1] * 4;
 					uint16_t* const bpz16 = (uint16_t*)bpz;
 					ccv_float_to_half_precision(bm, bpz16, 2);
-					bm[3] = amax;
-					bm[1] = amax / 3 + amin * 2 / 3;
-					bm[2] = amax * 2 / 3 + amin / 3;
+					const float abottom = amin * 7 / 6 - amax / 6;
+					const float ascale = 3 / ccv_max(amax - amin, 1e-6);
 					bpz16[2] = bpz16[3] = 0;
 					for (c = 0; c < 16; c++)
 					{
-						uint16_t id = 0;
-						float diff = fabs(a32[c] - bm[0]);
-						for (d = 1; d < 4; d++)
-						{
-							const float ddiff = fabs(a32[c] - bm[d]);
-							if (ddiff < diff)
-								id = (uint16_t)d;
-						}
+						uint16_t id = ccv_clamp((int)((a32[c] - abottom) * ascale), 0, 3);
 						bpz16[2] |= ((id >> 1) << c);
 						bpz16[3] |= ((id & 1) << c);
 					}
