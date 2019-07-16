@@ -1,3 +1,11 @@
+2019-07-15
+----------
+Moved to SF. It seems Nesterov is important for ResNet-50. Moving to Nesterov, the final result is much more comprehensible.
+
+I am currently working on a concept called LSSC (Linear Scaling Spatial Compression). The insight is simple. Unlike weights, activations have more spatial redundancy. These activations get used during back propagation. It is conceivable if we can have some way to compress the activation, and during back propagation, decompress these activation back, we can save some amount of memory. Given these kind of compression ratio (Bitmap to JPEG etc.) are surprisingly high, we can expect a big reduction in memory usage if the compression scheme used during training process. Currently, I am prototyping this, the big unknown is the quality of the compression (I am pretty confident about this, because the decompressed activations only used during back propagation anyway), and speed (I am more worried about this, because it is unclear how to implement this efficiently on GPU).
+
+Stay tuned.
+
 2019-05-31
 ----------
 Weight decay as the regularization has to be one of the most non-obvious thing in my implementation. The theoretical background for weight decay is to minimize weights, thus, loss^{wd} = loss + c * sum{||w||^2}. Thus, the selection of c would be important. Somehow in the CIFAR-10 implementation, I choose a very aggressive c. In implementing imageNet, that bites me. Too aggressive c makes the weight too heavily regularized, therefore, cannot converge on larger dataset such as imageNet unfortunately.

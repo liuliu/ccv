@@ -48,6 +48,10 @@
 #define CMD_CONVOLUTION_FORWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
 // CCV_NNC_CONVOLUTION_BACKWARD
 #define CMD_CONVOLUTION_BACKWARD(_groups, _count, ...) ccv_nnc_cmd(CCV_NNC_CONVOLUTION_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}},.convolution={.count=_count,.groups=_groups}}), 0)
+// CCV_NNC_COMPRESSION_LSSC_FORWARD
+#define CMD_COMPRESSION_LSSC_FORWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_COMPRESSION_LSSC_BACKWARD
+#define CMD_COMPRESSION_LSSC_BACKWARD() ccv_nnc_cmd(CCV_NNC_COMPRESSION_LSSC_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_GEMM_FORWARD
 #define CMD_GEMM_FORWARD(_count) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(_count), 0)
 // CCV_NNC_GEMM_BACKWARD
