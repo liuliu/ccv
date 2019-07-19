@@ -34,7 +34,9 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
 		ccv_float16_t* bp = b->data.f16;
 		const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ?  b->inc : b->inc + 1) : bdim;
-		for (k = 0; k < bdim[0]; k++)
+		const int nxc = ccv_nnc_tensor_get_n(a->info) * ccv_nnc_tensor_get_c(a->info);
+		assert(nxc == ccv_nnc_tensor_get_n(b->info) * ccv_nnc_tensor_get_c(b->info));
+		for (k = 0; k < nxc; k++)
 		{
 			for (i[0] = 0; i[0] < bdim[1]; i[0]++)
 			{
@@ -101,7 +103,9 @@ static int _ccv_nnc_lssc_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int* ainc = CCV_IS_TENSOR_VIEW(a) ? ((a_nd == CCV_NNC_MAX_DIM + 1) ?  a->inc : a->inc + 1) : adim;
 		ccv_float16_t* bp = b->data.f16;
 		const int* binc = CCV_IS_TENSOR_VIEW(b) ? ((b_nd == CCV_NNC_MAX_DIM + 1) ?  b->inc : b->inc + 1) : bdim;
-		for (k = 0; k < bdim[0]; k++)
+		const int nxc = ccv_nnc_tensor_get_n(a->info) * ccv_nnc_tensor_get_c(a->info);
+		assert(nxc == ccv_nnc_tensor_get_n(b->info) * ccv_nnc_tensor_get_c(b->info));
+		for (k = 0; k < nxc; k++)
 		{
 			for (i[0] = 0; i[0] < bdim[1]; i[0]++)
 			{
