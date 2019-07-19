@@ -13,14 +13,14 @@
 static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size <= input_size);
-	int k;
+	int n;
 	ccv_float16_t a16[16];
 	float a32[16];
 	float bm[2];
-	for (k = 0; k < output_size; k++)
+	for (n = 0; n < output_size; n++)
 	{
-		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[k];
+		const ccv_nnc_tensor_view_t* a = (ccv_nnc_tensor_view_t*)inputs[n];
+		ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[n];
 		int i[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
 		int c, k;
@@ -80,14 +80,14 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 static int _ccv_nnc_lssc_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size <= input_size);
-	int k;
+	int n;
 	ccv_float16_t a16[16];
 	float a32[16];
 	float bm[4];
-	for (k = 0; k < output_size; k++)
+	for (n = 0; n < output_size; n++)
 	{
-		const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[k];
-		ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[k];
+		const ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)inputs[n];
+		ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)outputs[n];
 		int i[CCV_NNC_MAX_DIM];
 		int j[CCV_NNC_MAX_DIM];
 		int c, k;
