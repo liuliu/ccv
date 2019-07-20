@@ -71,6 +71,16 @@ static void prepare_nchw(const int N, const int C, const int H, const int W, ccv
 	ccv_nnc_tensor_free(c16g);
 }
 
+TEST_CASE("LSSC should give exact result from GPU for 128x512x7x7")
+{
+	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMPRESSION_LSSC_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
+		ccv_nnc_cmd_ok(CCV_NNC_COMPRESSION_LSSC_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
+	ccv_nnc_tensor_t* c;
+	ccv_nnc_tensor_t* cgc;
+	prepare_nchw(128, 512, 7, 7, &c, &cgc);
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, c->data.f32, cgc->data.f32, 128 * 512 * 7 * 7, 1e-3, "GPU and CPU computed result should match");
+}
+
 TEST_CASE("LSSC should give exact result from GPU for 128x512x14x14")
 {
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMPRESSION_LSSC_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&

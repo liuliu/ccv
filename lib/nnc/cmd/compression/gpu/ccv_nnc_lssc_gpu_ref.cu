@@ -95,14 +95,28 @@ __global__ void _ccv_nnc_lssc_nchw_forw_kernel(const int X_H, const int X_W, con
 		const int xh = min(y * 4 + 4, X_H) - y * 4;
 		const int xw = min(x * 4 + 4, X_W) - x * 4;
 #pragma unroll
-		for (int i = 0; i < xh; i++)
+		for (int j = 1; j < xw; j++)
+#if __CUDA_ARCH__ >= 350
+			X16[j] = (float)__ldg(Xpz + j);
+#else
+			X16[j] = (float)Xpz[j];
+#endif
 #pragma unroll
-			for (int j = 0; j < xw; j++)
+		for (int i = 1; i < xh; i++)
+		{
+#if __CUDA_ARCH__ >= 350
+			X16[i * 4] = (float)__ldg(Xpz + i * X_W);
+#else
+			X16[i * 4] = (float)Xpz[i * X_W];
+#endif
+#pragma unroll
+			for (int j = 1; j < xw; j++)
 #if __CUDA_ARCH__ >= 350
 				X16[i * 4 + j] = (float)__ldg(Xpz + i * X_W + j);
 #else
 				X16[i * 4 + j] = (float)Xpz[i * X_W + j];
 #endif
+		}
 #pragma unroll
 		for (int i = 1; i < 16; i++)
 			Xmax = max(Xmax, X16[i]), Xmin = min(Xmin, X16[i]);
@@ -150,10 +164,12 @@ static int _ccv_nnc_lssc_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(n == ccv_nnc_tensor_get_n(b->info));
 		const int c = ccv_nnc_tensor_get_c(a->info);
 		assert(c == ccv_nnc_tensor_get_c(b->info));
+		assert(bdim[CCV_NNC_MAX_DIM] % 4 == 0);
+		const int threadDim = ccv_min(bdim[1] * bdim[CCV_NNC_MAX_DIM] / 4, CUDA_NUM_THREADS);
 		if (adim[1] % 4 == 0 && adim[CCV_NNC_MAX_DIM] % 4 == 0)
-			_ccv_nnc_lssc_nchw_forw_kernel_no_padding<<<n * c, CUDA_NUM_THREADS, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
+			_ccv_nnc_lssc_nchw_forw_kernel_no_padding<<<n * c, threadDim, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
 		else
-			_ccv_nnc_lssc_nchw_forw_kernel<<<n * c, CUDA_NUM_THREADS, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
+			_ccv_nnc_lssc_nchw_forw_kernel<<<n * c, threadDim, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
@@ -246,11 +262,18 @@ __global__ void _ccv_nnc_lssc_nchw_back_kernel(const int Y_H, const int Y_W, con
 		__half* const Xpz = Xp + (x + y * X_W) * 4;
 		const int xh = min(y * 4 + 4, X_H) - y * 4;
 		const int xw = min(x * 4 + 4, X_W) - x * 4;
+		Xpz[0] = X16[0];
 #pragma unroll
-		for (int i = 0; i < xh; i++)
+		for (int j = 1; j < xw; j++)
+			Xpz[j] = X16[j];
 #pragma unroll
-			for (int j = 0; j < xw; j++)
+		for (int i = 1; i < xh; i++)
+		{
+			Xpz[i * X_W] = X16[i * 4];
+#pragma unroll
+			for (int j = 1; j < xw; j++)
 				Xpz[i * X_W + j] = X16[i * 4 + j];
+		}
 	}
 }
 
@@ -275,10 +298,12 @@ static int _ccv_nnc_lssc_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		assert(n == ccv_nnc_tensor_get_n(b->info));
 		const int c = ccv_nnc_tensor_get_c(a->info);
 		assert(c == ccv_nnc_tensor_get_c(b->info));
+		assert(adim[CCV_NNC_MAX_DIM] % 4 == 0);
+		const int threadDim = ccv_min(adim[1] * adim[CCV_NNC_MAX_DIM] / 4, CUDA_NUM_THREADS);
 		if (bdim[1] % 4 == 0 && bdim[CCV_NNC_MAX_DIM] % 4 == 0)
-			_ccv_nnc_lssc_nchw_back_kernel_no_padding<<<n * c, CUDA_NUM_THREADS, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
+			_ccv_nnc_lssc_nchw_back_kernel_no_padding<<<n * c, threadDim, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
 		else
-			_ccv_nnc_lssc_nchw_back_kernel<<<n * c, CUDA_NUM_THREADS, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
+			_ccv_nnc_lssc_nchw_back_kernel<<<n * c, threadDim, 0, stream>>>(adim[1], adim[CCV_NNC_MAX_DIM], bdim[1], bdim[CCV_NNC_MAX_DIM], (__half*)a->data.f16, (__half*)b->data.f16);
 	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
