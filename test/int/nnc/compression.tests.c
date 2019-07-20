@@ -13,7 +13,7 @@ TEST_SETUP()
 
 TEST_CASE("LSSC should give exact result from GPU")
 {
-	const int N = 64;
+	const int N = 128;
 	const int C = 64;
 	GUARD_ELSE_RETURN(ccv_nnc_cmd_ok(CCV_NNC_COMPRESSION_LSSC_FORWARD, CCV_NNC_BACKEND_GPU_REF) &&
 		ccv_nnc_cmd_ok(CCV_NNC_COMPRESSION_LSSC_BACKWARD, CCV_NNC_BACKEND_GPU_REF));
