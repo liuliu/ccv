@@ -406,6 +406,14 @@ void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int p
 		compiled_data->parallel_count = parallel;
 }
 
+void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression)
+{
+	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
+	assert(compiled_data);
+	assert(!compiled_data->graph);
+	compiled_data->memory_compression = memory_compression;
+}
+
 typedef struct {
 	int parallel_count;
 	ccv_nnc_symbolic_graph_t* graph;
@@ -665,6 +673,9 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 					compiled_data->backward.tos[compiled_data->backward.to_size++] = copy;
 			}
 	}
+	// Only use memory compression if we are in gradient trainable mode.
+	if (gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES && compiled_data->memory_compression)
+		ccv_nnc_symbolic_graph_memory_compression(model->graph, SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	compiled_data->backward.to_size = _ccv_nnc_array_dedup_graph_exec_symbols(compiled_data->backward.tos, compiled_data->backward.to_size);
 	compiled_data->gradient_mode = gradient_mode;
 }

@@ -58,6 +58,7 @@ typedef struct {
 	int is_test;
 	int stream_type;
 	int parallel_count; // How many parallel devices.
+	int memory_compression; // Whether to enable memory compression for training phase.
 	size_t workspace_size; // Set the default workspace size.
 	ccv_nnc_graph_t* graph;
 	ccv_nnc_tensor_arena_t* tensor_arena;

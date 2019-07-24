@@ -208,6 +208,7 @@ static void train_cifar_10(ccv_array_t* const training_set, const int batch_size
 	FILE *w = fopen("cifar-10.dot", "w+");
 	ccv_cnnp_model_dot(cifar_10, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
+	ccv_cnnp_model_set_memory_compression(cifar_10, 1);
 	int i, j, k;
 	ccv_nnc_tensor_t* cpu_outputs[device_count];
 	ccv_nnc_tensor_t* cpu_outputs_16f[device_count];

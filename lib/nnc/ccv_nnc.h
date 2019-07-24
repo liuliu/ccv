@@ -1901,6 +1901,18 @@ enum {
  * @param destination_size The size of destination node symbols array.
  */
 void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+
+/**
+ * Apply LSSC memory compression algorithm to the convolution activations. This will compress the activation
+ * layer for convolution, therefore, save the overall memory usage during training time.
+ *
+ * @param graph The symbolic graph.
+ * @param sources The source execution node symbols array.
+ * @param source_size The size of source node symbols array.
+ * @param destinations The destinations execution node symbols array.
+ * @param destination_size The size of destination node symbols array.
+ */
+void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.
@@ -2579,6 +2591,13 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
  * @param parallel Number of devices we want to run on. 0 will use all devices available. 1 will skip.
  */
 void ccv_cnnp_model_set_data_parallel(ccv_cnnp_model_t* const model, const int parallel);
+/**
+ * Apply memory compression to the composed model. The memory compression technique can reduce memory
+ * usage up to 75% comparing with raw mix-precision model during training time.
+ * @param model The composed model.
+ * @param memory_compression Whether to enable the memory compression (1 - enable, 0 - disable (default))
+ */
+void ccv_cnnp_model_set_memory_compression(ccv_cnnp_model_t* const model, const int memory_compression);
 /**
  * This method set the max workspace size. If the graph is already compiled. It will re-run
  * autotune to use the new workspace size to find the best algorithm.
