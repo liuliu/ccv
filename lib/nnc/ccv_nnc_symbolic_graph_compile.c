@@ -280,7 +280,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				}
 				// In case we have a tie, take them all in the array.
 				if (a.size > max_size)
-					ccv_array_clear(opt);
+					ccv_array_clear(opt), max_size = a.size;
 				ccv_array_push(opt, &a);
 			}
 		assert(opt->rnum > 0);
