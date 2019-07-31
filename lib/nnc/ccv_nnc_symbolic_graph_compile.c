@@ -255,7 +255,6 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	for (j = 0; j < allocable_tensor_size;)
 	{
 		// Find the one with largest overlap (in case overlap is the same, larger size), and it is not assigned.
-		int max_oc = 0;
 		uint64_t max_size = 0;
 		ccv_array_clear(opt);
 		int current_type = 0; // Deal with one type at a time.
@@ -280,8 +279,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 					a.oc += adj[companion_ref].oc;
 				}
 				// In case we have a tie, take them all in the array.
-				if (a.size > max_size || (a.size == max_size && a.oc > max_oc))
-					ccv_array_clear(opt), max_oc = a.oc, max_size = a.size;
+				if (a.size > max_size)
+					ccv_array_clear(opt);
 				ccv_array_push(opt, &a);
 			}
 		assert(opt->rnum > 0);

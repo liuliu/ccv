@@ -105,7 +105,7 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 				continue;
 			const int nd = ccv_nnc_tensor_nd(tensor_symbol_info[d].info.dim);
 			const int hw = ccv_nnc_tensor_hw(tensor_symbol_info[d].info, nd);
-			if (tensor_symbol_info[d].info.dim[hw] * tensor_symbol_info[d].info.dim[hw + 1] < 4 * 4 * 4 * 4)
+			if (((tensor_symbol_info[d].info.dim[hw] + 3) / 4) * ((tensor_symbol_info[d].info.dim[hw + 1] + 3) / 4) < 4 * 4)
 				continue;
 			tensor_marked[d >> 5] |= (1u << (d & 0x1f));
 		}
@@ -118,7 +118,7 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 				continue;
 			const int nd = ccv_nnc_tensor_nd(tensor_symbol_info[d].info.dim);
 			const int hw = ccv_nnc_tensor_hw(tensor_symbol_info[d].info, nd);
-			if (tensor_symbol_info[d].info.dim[hw] * tensor_symbol_info[d].info.dim[hw + 1] < 4 * 4 * 4 * 4)
+			if (((tensor_symbol_info[d].info.dim[hw] + 3) / 4) * ((tensor_symbol_info[d].info.dim[hw + 1] + 3) / 4) < 4 * 4)
 				continue;
 			tensor_marked[d >> 5] |= (1u << (d & 0x1f));
 		}
