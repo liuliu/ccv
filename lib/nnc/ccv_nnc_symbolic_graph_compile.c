@@ -68,7 +68,6 @@ enum {
 
 typedef struct {
 	int index;
-	int companion; // The companion node index (the node that doesn't interfere with current one).
 	int oc;
 	int type;
 	uint64_t size;
@@ -181,6 +180,11 @@ typedef struct ccv_nnc_symbolic_graph_prep_s {
 	ccv_array_t* dup_breakpoints; // The noop breakpoints, used to extend the inputs life-cycle for while expr.
 } ccv_nnc_symbolic_graph_prep_t;
 
+typedef struct {
+	int oc;
+	ccv_array_t* itf;
+} ccv_nnc_tensor_block_adjacent_t;
+
 static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_sparse_matrix_t* const exec_dep, const ccv_nnc_tensor_block_t* const tensor_blocks, const int tensor_block_size)
 {
 	// Compute how many dis-continuous buffers are needed.
@@ -201,44 +205,42 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		}
 	ccv_sparse_matrix_t* const tensor_df = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
 	ccv_sparse_matrix_t* const tensor_dt = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_32S | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
-	ccv_sparse_matrix_t* const tensor_itf = ccv_sparse_matrix_new(tensor_block_size, tensor_block_size, CCV_8U | CCV_C1, CCV_SPARSE_ROW_MAJOR, 0);
+	ccv_nnc_tensor_block_adjacent_t* const adj = (ccv_nnc_tensor_block_adjacent_t*)cccalloc(tensor_block_size, sizeof(ccv_nnc_tensor_block_adjacent_t));
 	// Overlap count.
 	for (i = 0; i < tensor_block_size; i++)
-		for (j = i + 1; j < tensor_block_size; j++)
-			if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[j]))
-			{
-				// Check to see if they interfere (default to yes).
-				// If any of the i's head is deterministically later than j's tail
-				// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
-				const uint8_t one = 1;
-				const int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
-				if (i_hop_j > 0)
+		if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]))
+			for (j = i + 1; j < tensor_block_size; j++)
+				if (TENSOR_EXPECT_COMPUTABLE(tensor_blocks[j]))
 				{
-					ccv_set_sparse_matrix_cell(tensor_dt, i, j, &i_hop_j);
-					ccv_set_sparse_matrix_cell(tensor_df, j, i, &i_hop_j);
+					// Check to see if they interfere (default to yes).
+					// If any of the i's head is deterministically later than j's tail
+					// or any of the i's tail is deterministically earlier than j's head, they don't interfere.
+					const int i_hop_j = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[i], tensor_blocks[j]);
+					if (i_hop_j > 0)
+					{
+						ccv_set_sparse_matrix_cell(tensor_dt, i, j, &i_hop_j);
+						ccv_set_sparse_matrix_cell(tensor_df, j, i, &i_hop_j);
+					}
+					const int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
+					if (j_hop_i > 0)
+					{
+						ccv_set_sparse_matrix_cell(tensor_dt, j, i, &j_hop_i);
+						ccv_set_sparse_matrix_cell(tensor_df, i, j, &j_hop_i);
+					}
+					// It cannot be that both i can hop to j can j can hop to i.
+					assert(!(i_hop_j > 0 && j_hop_i > 0));
+					if (!i_hop_j && !j_hop_i && tensor_blocks[i].type == tensor_blocks[j].type)
+					{
+						if (!adj[i].itf)
+							adj[i].itf = ccv_array_new(sizeof(int), 1, 0);
+						ccv_array_push(adj[i].itf, &j);
+						++adj[i].oc;
+						if (!adj[j].itf)
+							adj[j].itf = ccv_array_new(sizeof(int), 1, 0);
+						ccv_array_push(adj[j].itf, &i);
+						++adj[j].oc;
+					}
 				}
-				const int j_hop_i = _ccv_nnc_tensor_block_head_after_tail(exec_dep, tensor_blocks[j], tensor_blocks[i]);
-				if (j_hop_i > 0)
-				{
-					ccv_set_sparse_matrix_cell(tensor_dt, j, i, &j_hop_i);
-					ccv_set_sparse_matrix_cell(tensor_df, i, j, &j_hop_i);
-				}
-				// It cannot be that both i can hop to j can j can hop to i.
-				assert(!(i_hop_j > 0 && j_hop_i > 0));
-				if (!i_hop_j && !j_hop_i)
-					ccv_set_sparse_matrix_cell(tensor_itf, i, j, &one);
-			}
-	int* const oc = (int*)cccalloc(tensor_block_size, sizeof(int));
-	for (i = 0; i < tensor_block_size; i++)
-		for (j = 0; j < tensor_block_size; j++)
-			// If these two tensors are still alive, analyze them.
-			if (i != j && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[j]))
-			{
-				ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(i, j), ccv_max(i, j));
-				// If their life time overlaps, compute how many tensors it overlap.
-				if (cell.u8 && cell.u8[0] == 1)
-					++oc[i];
-			}
 	int* const buf = (int*)ccmalloc(sizeof(int) * tensor_block_size);
 	int* const assigned = (int*)cccalloc(tensor_block_size, sizeof(int));
 	uint64_t* const allocated_offset = (uint64_t*)cccalloc(tensor_block_size, sizeof(uint64_t));
@@ -258,7 +260,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		ccv_array_clear(opt);
 		int current_type = 0; // Deal with one type at a time.
 		for (i = 0; i < tensor_block_size; i++)
-			if (oc[i] >= max_oc &&
+			if (tensor_blocks[i].size >= max_size &&
 				TENSOR_EXPECT_COMPUTABLE(tensor_blocks[i]) && !assigned[i] &&
 				IS_PRIMARY_COMPANION(i, tensor_blocks[i]) &&
 				(!current_type || tensor_blocks[i].type == current_type))
@@ -266,8 +268,7 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				ccv_nnc_tensor_opt_t a = {
 					.size = tensor_blocks[i].size,
 					.index = i,
-					.companion = -1, // If already have a designated companion, use that.
-					.oc = oc[i],
+					.oc = adj[i].oc,
 					.type = tensor_blocks[i].type,
 				};
 				assert(a.type);
@@ -276,48 +277,14 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 				{
 					const int companion_ref = tensor_blocks[i].companion_ref - 1;
 					a.size = ccv_max(a.size, tensor_blocks[companion_ref].size);
-					a.oc += oc[companion_ref];
+					a.oc += adj[companion_ref].oc;
 				}
 				// In case we have a tie, take them all in the array.
-				if (a.oc > max_oc || (a.oc == max_oc && a.size > max_size))
+				if (a.size > max_size || (a.size == max_size && a.oc > max_oc))
 					ccv_array_clear(opt), max_oc = a.oc, max_size = a.size;
 				ccv_array_push(opt, &a);
 			}
 		assert(opt->rnum > 0);
-		// Go through opt array, find all tensors that doesn't interfere with it, and have tensor size larger than it.
-		// Push them with the "companion" into the opt array as well.
-		const int rnum = opt->rnum;
-		for (i = 0; i < rnum; i++)
-		{
-			// Copy it out, because after insertion, it may hold invalid pointer.
-			ccv_nnc_tensor_opt_t a = *(ccv_nnc_tensor_opt_t*)ccv_array_get(opt, i);
-			assert(a.companion == -1);
-			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
-			for (k = 0; k < tensor_block_size; k++)
-				// Find non-overlapping tensor that has larger size (of course, is unassigned and is not one with designated companion).
-				if (k != a.index && !tensor_blocks[k].companion_ref &&
-					TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]) && !assigned[k] &&
-					tensor_blocks[k].size > a.size && tensor_blocks[k].type == a.type)
-				{
-					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(a.index, k), ccv_max(a.index, k));
-					// Good, push to opt array.
-					if (cell.u8 && cell.u8[0] == 1)
-						continue;
-					if (companion_ref >= 0)
-					{
-						assert(companion_ref != k);
-						// Have to make sure k doesn't interfere with the designated companion as well.
-						ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(companion_ref, k), ccv_max(companion_ref, k));
-						if (cell.u8 && cell.u8[0] == 1)
-							continue;
-					}
-					ccv_nnc_tensor_opt_t b = a;
-					b.companion = k;
-					b.oc = a.oc + oc[k];
-					b.size = tensor_blocks[k].size;
-					ccv_array_push(opt, &b);
-				}
-		}
 		// Order opt array by the oc because type and size should be equal at this point.
 		_ccv_nnc_tensor_opt_sort_by_size_and_oc((ccv_nnc_tensor_opt_t*)opt->data, opt->rnum, 0);
 		// Go through opt array again, this time, it is ordered by size, therefore, if we found a place to insert, we are good.
@@ -333,21 +300,9 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			// The earliest one will be called p and the latest one will be called q.
 			int p = a.index;
 			int q = a.index;
-			if (a.companion >= 0)
-			{
-				const ccv_numeric_data_t a_hop_c = ccv_get_sparse_matrix_cell(tensor_dt, a.companion, a.index);
-				const ccv_numeric_data_t c_hop_a = ccv_get_sparse_matrix_cell(tensor_dt, a.index, a.companion);
-				assert((a_hop_c.i32 && a_hop_c.i32[0] > 0 && (c_hop_a.i32 == 0 || c_hop_a.i32[0] == 0)) ||
-						((a_hop_c.i32 == 0 || a_hop_c.i32[0] == 0) && c_hop_a.i32 && c_hop_a.i32[0] > 0));
-				if (a_hop_c.i32 && a_hop_c.i32[0] > 0)
-					q = a.companion;
-				else
-					p = a.companion;
-			}
 			if (tensor_blocks[a.index].companion_ref)
 			{
 				const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
-				assert(a.companion != companion_ref);
 				const ccv_numeric_data_t b_hop_p = ccv_get_sparse_matrix_cell(tensor_dt, p, companion_ref);
 				if (b_hop_p.i32 && b_hop_p.i32[0] > 0)
 					p = companion_ref;
@@ -476,20 +431,8 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 		int strings[3];
 		strings[0] = a.index + 1;
 		int string_size = 1;
-		// Assign out companion as well.
-		if (a.companion >= 0)
-		{
-			const ccv_numeric_data_t a_hop_c = ccv_get_sparse_matrix_cell(tensor_dt, a.companion, a.index);
-			if (a_hop_c.i32 && a_hop_c.i32[0] > 0)
-				strings[1] = a.companion + 1;
-			else {
-				strings[1] = strings[0];
-				strings[0] = a.companion + 1;
-			}
-			++string_size;
-		}
 		// Assign out designated companion if it exist.
-		if (tensor_blocks[a.index].companion_ref && a.companion != tensor_blocks[a.index].companion_ref - 1)
+		if (tensor_blocks[a.index].companion_ref)
 		{
 			const int companion_ref = tensor_blocks[a.index].companion_ref - 1;
 			assert(tensor_blocks[a.index].type == tensor_blocks[companion_ref].type);
@@ -520,12 +463,12 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 			assigned[index] = assign_group;
 			// The offset for this one, should be either 0 (started a new group, when min_i == -1), or the offset on this edge.
 			allocated_offset[index] = min_val[1];
-			for (k = 0; k < tensor_block_size; k++)
-				if (!assigned[k] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[k]))
+			if (adj[index].itf)
+				for (k = 0; k < adj[index].itf->rnum; k++)
 				{
-					ccv_numeric_data_t cell = ccv_get_sparse_matrix_cell(tensor_itf, ccv_min(k, index), ccv_max(k, index));
-					if (cell.u8 && cell.u8[0] == 1)
-						--oc[k];
+					const int d = *(int*)ccv_array_get(adj[index].itf, k);
+					if (!assigned[d] && TENSOR_EXPECT_COMPUTABLE(tensor_blocks[d]))
+						--adj[d].oc;
 				}
 		}
 		uint64_t val[2] = {
@@ -582,7 +525,6 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	ccv_array_free(opt);
 	ccv_matrix_free(tensor_df);
 	ccv_matrix_free(tensor_dt);
-	ccv_matrix_free(tensor_itf);
 #define for_block(y, x, val) do { \
 		if (((uint64_t*)val)[0] > 0 && y > 0 && x < tensor_block_size + 1) \
 		{ \
@@ -594,7 +536,10 @@ static ccv_nnc_tensor_alloc_prep_t* _ccv_nnc_tensor_alloc_prep_new(const ccv_spa
 	CCV_SPARSE_FOREACH(alloc, for_block);
 #undef for_block
 	ccv_matrix_free(alloc);
-	ccfree(oc);
+	for (i = 0; i < tensor_block_size; i++)
+		if (adj[i].itf)
+			ccv_array_free(adj[i].itf);
+	ccfree(adj);
 	ccv_nnc_tensor_alloc_prep_t* alloc_prep = (ccv_nnc_tensor_alloc_prep_t*)ccmalloc(sizeof(ccv_nnc_tensor_alloc_prep_t) + sizeof(alloc_prep->blocks[0]) * available_tensor_size + sizeof(alloc_prep->buffers[0]) * num_assigned + sizeof(int) * tensor_block_size);
 	alloc_prep->alloc_dep = alloc_dep;
 	alloc_prep->vt_block_size = tensor_block_size;
@@ -3142,13 +3087,13 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
 							++ro_anonymous_buffer_size;
 						else
-							++rw_anonymous_buffer_size;
+							rw_anonymous_buffer_size += unroll_count + 1;
 					}
 				} else {
 					if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY)
 						++ro_anonymous_buffer_size;
 					else
-						++rw_anonymous_buffer_size;
+						rw_anonymous_buffer_size += unroll_count + 1;
 				}
 			if (ro_anonymous_buffer_size || rw_anonymous_buffer_size)
 			{
@@ -3169,6 +3114,7 @@ static ccv_nnc_symbolic_graph_prep_t* _ccv_nnc_symbolic_graph_prep_new(const ccv
 					{
 						if (TENSOR_READ_WRITE(s_alloc_prep->buffers[i]) == READ_ONLY) /* If it is read-only, add all sources (destinations) to it. */
 						{
+							assert(tensor_block_size < init_tensor_block_size + rw_anonymous_buffer_size_cap + ro_anonymous_buffer_size_cap);
 							TENSOR_SET_ANONYMOUS(tensor_blocks[tensor_block_size]);
 							TENSOR_SET_READ_WRITE(tensor_blocks[tensor_block_size], TENSOR_READ_WRITE(s_alloc_prep->buffers[i]));
 							tensor_blocks[tensor_block_size].type = s_alloc_prep->buffers[i].type;
