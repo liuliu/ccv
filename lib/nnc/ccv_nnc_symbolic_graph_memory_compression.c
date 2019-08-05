@@ -103,10 +103,6 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 			if (tensor_symbol_info[d].alias_ref || tensor_symbol_info[d].assign_ref || tensor_symbol_info[d].bypass_ref ||
 					tensor_symbol_info[d].r_assign_ref || tensor_symbol_info[d].r_bypass_ref)
 				continue;
-			const int nd = ccv_nnc_tensor_nd(tensor_symbol_info[d].info.dim);
-			const int hw = ccv_nnc_tensor_hw(tensor_symbol_info[d].info, nd);
-			if (((tensor_symbol_info[d].info.dim[hw] + 3) / 4) * ((tensor_symbol_info[d].info.dim[hw + 1] + 3) / 4) < 4 * 4)
-				continue;
 			tensor_marked[d >> 5] |= (1u << (d & 0x1f));
 		}
 		if (node->cmd.cmd == CCV_NNC_CONVOLUTION_FORWARD && node->output_size >= 1 && node->outputs[0] >= 0)
@@ -115,10 +111,6 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 			// If this tensor is alias, or assigned (while loop), or bypassed (case..of), skip.
 			if (tensor_symbol_info[d].alias_ref || tensor_symbol_info[d].assign_ref || tensor_symbol_info[d].bypass_ref ||
 					tensor_symbol_info[d].r_assign_ref || tensor_symbol_info[d].r_bypass_ref)
-				continue;
-			const int nd = ccv_nnc_tensor_nd(tensor_symbol_info[d].info.dim);
-			const int hw = ccv_nnc_tensor_hw(tensor_symbol_info[d].info, nd);
-			if (((tensor_symbol_info[d].info.dim[hw] + 3) / 4) * ((tensor_symbol_info[d].info.dim[hw + 1] + 3) / 4) < 4 * 4)
 				continue;
 			tensor_marked[d >> 5] |= (1u << (d & 0x1f));
 		}

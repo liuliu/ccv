@@ -281,7 +281,7 @@ static void train_imagenet(const int batch_size, ccv_cnnp_dataframe_t* const tra
 	ccv_cnnp_model_dot(imagenet, CCV_NNC_LONG_DOT_GRAPH, &w, 1);
 	fclose(w);
 	ccv_cnnp_model_set_workspace_size(imagenet, 1llu * 1024 * 1024 * 1024);
-	ccv_cnnp_model_set_memory_compression(imagenet, 1);
+	// ccv_cnnp_model_set_memory_compression(imagenet, 1);
 	// Prepare training data.
 	const int read_image_idx = ccv_cnnp_dataframe_read_image(train_data, 0, offsetof(ccv_categorized_t, file) + offsetof(ccv_file_info_t, filename));
 	ccv_cnnp_random_jitter_t random_jitter = {

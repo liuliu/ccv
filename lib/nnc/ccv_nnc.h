@@ -1901,18 +1901,6 @@ enum {
  * @param destination_size The size of destination node symbols array.
  */
 void ccv_nnc_symbolic_graph_data_parallel(ccv_nnc_symbolic_graph_t* const graph, const int parallel, const ccv_nnc_tensor_symbol_t* const broadcasts, const int broadcast_size, const ccv_nnc_tensor_symbol_t* const allreducers, const int allreducer_size, const ccv_nnc_tensor_symbol_t* const reducers, const int reducer_size, const int reduce_op_type, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
-
-/**
- * Apply LSSC memory compression algorithm to the convolution activations. This will compress the activation
- * layer for convolution, therefore, save the overall memory usage during training time.
- *
- * @param graph The symbolic graph.
- * @param sources The source execution node symbols array.
- * @param source_size The size of source node symbols array.
- * @param destinations The destinations execution node symbols array.
- * @param destination_size The size of destination node symbols array.
- */
-void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 /**
  * Get the symbol that is on a device other than the default one. The list will be flushed if the
  * ccv_nnc_symbolic_graph_data_parallel function is called again.
@@ -1931,6 +1919,25 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_symbol_t) ccv_nnc_tensor_symbol_copy(const ccv_nn
  * @return A execution node that is on a different device.
  */
 CCV_WARN_UNUSED(ccv_nnc_graph_exec_symbol_t) ccv_nnc_graph_exec_symbol_copy(const ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t symbol, const int device_id);
+
+/** @} */
+
+/**
+ * @defgroup level_3_5_memory_compression Memory Compression
+ * @{
+ */
+
+/**
+ * Apply LSSC memory compression algorithm to the convolution activations. This will compress the activation
+ * layer for convolution, therefore, save the overall memory usage during training time.
+ *
+ * @param graph The symbolic graph.
+ * @param sources The source execution node symbols array.
+ * @param source_size The size of source node symbols array.
+ * @param destinations The destinations execution node symbols array.
+ * @param destination_size The size of destination node symbols array.
+ */
+void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
 
 /** @} */
 

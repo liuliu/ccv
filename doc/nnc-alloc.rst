@@ -59,15 +59,13 @@ Candidate Selection
 
 A set of candidates are maintained for the graph insertion. Each candidate is a tuple of tensors (max of 3) that doesn't interfere with each other. The candidate selection algorithm like this:
 
-1. Go through all tensors that hasn't been inserted, find the tensor that has the most number of edges in the interfere graph, if multiple tensors have the same number edges, add them all to the set of candidates;
+1. Go through all tensors that hasn't been inserted, find the tensor that has the largest size, if multiple tensors have the same size, add them all to the set of candidates;
 
-2. For each candidate tensor in the set 1, try to find another tensor that doesn't interfere with it and has larger size than the candidate tensor. Making them a tuple and add to the set of candidates;
+2. Order the set of candidates first by the maximum size of the tensor, then by the number of edges on the interference graph of the tensor.
 
-3. Order the set of candidates first by the maximum size of tensors in the tuple, then by the total number of edges on the interference graph of tensors in the tuple.
+3. Go through the ordered set of candidates, try to find an edge on the allocation graph such that the source of the edge and the destination of the edge don't interfere with any tensors and none of the source or the destination of the edge are the dummy source or sink nodes. If such edge is found, we find the candidate.
 
-4. Go through the ordered set of candidates, try to find an edge on the allocation graph such that the source of the edge and the destination of the edge don't interfere with any tensors in the tuple and none of the source or the destination of the edge are the dummy source or sink nodes. If such edge is found, we find the candidate.
-
-5. If none of the candidate can have such edge found in the allocation graph, we select the first candidate.
+4. If none of the candidate can have such edge found in the allocation graph, we select the first candidate.
 
 Insertion
 ---------
@@ -93,11 +91,9 @@ Repeat above until all tensors are connected in the allocation graph.
 Intuition
 ---------
 
-Go with the tensor that has most interference is a common greedy strategy in register allocation. It removes most uncertainty that otherwise needs to branch over.
+Go with the tensor that has most interference is a common greedy strategy in register allocation. It removes most uncertainty that otherwise needs to branch over. However, it is not the most effective one for our use case. Unlike register allocation, in tensor computation graphs, there are less cases that one tensor will span over a large chunk of computations especially in inference stage. Thus, a lot of tensors will have identical number of edges in the interference graph.
 
-However, unlike register allocation, in tensor computation graphs, there are less cases that one tensor will span over a large chunk of computations especially in inference stage. Thus, a lot of tensors will have identical number of edges in the interference graph. For these cases, how to break the tie is crucial.
-
-For our allocation algorithm, the allocation size is used as the the tie-breaker. If applying allocation size naively as the second sorting key, in tensor computation graphs, you may still find a lot of cases that you have tie. It is because the tensors that has similar life-span tends to be of the similar usage, thus, has similar dimensionality. For large class of neural networks, we found that by pairing up the tensor has the most interference with the tensor that has larger size (these two have to not interfere with each other), it is more likely for us to reach the trivial solution.
+For our allocation algorithm, the allocation size is first used, and the interference is only used as the tie-breaker. Our insertion in the allocation graph has the limitation that after insertion, we can never merge the allocated blocks together into a larger block. Therefore, by going with the largest size first, It is more likely for us to reach the trivial solution in the allocation graph.
 
 Loop
 ----
