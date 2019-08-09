@@ -2486,16 +2486,18 @@ CCV_WARN_UNUSED(ccv_cnnp_model_io_t) ccv_cnnp_model_apply(ccv_cnnp_model_t* cons
  * @param input_size The size of inputs array.
  * @param outputs The set of outputs.
  * @param output_size The size of outputs array.
+ * @param name The unique name of the model.
  * @return A composed model that takes inputs, and generate the outputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_model_new(const ccv_cnnp_model_io_t* const inputs, const int input_size, const ccv_cnnp_model_io_t* const outputs, const int output_size, const char* const name);
 /**
  * This method returns a sequential model, which composed from a sequence of models.
  * @param models The list of models, that takes one input, and emit one output, feeding into the subsequent one.
  * @param model_size The size of the list.
+ * @param name The unique name of the model.
  * @return A composed model that applies these models one by one in sequence.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* const* const models, const int model_size, const char* const name);
 /**
  * Prepare the model to be trained, the input specifies the batch size etc.
  * Input size technically is not needed, here is a safety check.
@@ -2681,62 +2683,71 @@ typedef struct {
 } ccv_cnnp_param_t;
 /**
  * Add multiple input tensors together.
+ * @param name The unique name of the model.
  * @return A model that can be applied with multiple inputs, and generate output that is a sum of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_add(const char* const name);
 /**
  * Concatenate input tensors together.
+ * @param name The unique name of the model.
  * @return A model that can be applied with multiple inputs, and generate output that is a concatenation of the inputs.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_concat(const char* const name);
 /**
  * An identity layer that takes input and do nothing pass it as the output. Realistically, we use this
  * because we want to apply some normalization / activation function on top of the input.
  * @param params Parameters (such as hint and activation or norm).
+ * @param name The unique name of the model.
  * @return A model that takes input and pass it as output.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_identity(const ccv_cnnp_param_t params, const char* const name);
 /**
  * A convolution model.
  * @param groups The number of kernel groups in the model.
  * @param filters The total number of filters in the model (filters = groups * per group filters).
  * @param kdim The dimensions of the kernel.
  * @param params Other parameters (such as hint and activation or norm).
+ * @param name The unique name of the model.
  * @return A convolution model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_convolution(const int groups, const int filters, const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
 /**
  * A dense layer model.
  * @param count The output dimension.
  * @param params Other parameters (such as hint and activation or norm).
+ * @param name The unique name of the model.
  * @return A dense layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params, const char* const name);
 /**
  * A max pool model.
  * @param kdim The pooling window dimension.
  * @param params Other parameters (such as hint and activation or norm).
+ * @param name The unique name of the model.
  * @return A max pool model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
 /**
  * An average pool model.
  * @param kdim The pooling window dimension.
  * @param params Other parameters (such as hint and activation or norm).
+ * @param name The unique name of the model.
  * @return An average pool model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const ccv_cnnp_param_t params, const char* const name);
 /**
  * Reshape an input into a different dimension.
  * @param dim The new dimension for the input.
+ * @param name The unique name of the model.
  * @return A reshape layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC]);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const char* const name);
 /**
  * Flatten an input tensor into a one dimensional array.
+ * @param name The unique name of the model.
  * @return A flatten layer model.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(void);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_flatten(const char* const name);
 
 enum {
 	CCV_CNNP_IO, /**< The parameter is a ccv_cnnp_io_t. */
@@ -2764,9 +2775,10 @@ typedef struct {
  * @param outputs A list of types identify each output as ccv_cnnp_io_t or a none tensor.
  * @param output_size The size of the outputs. There is no need to give ccv_cnnp_tensor_param_t for outputs because
  *        all of them are CCV_CNNP_IO type.
+ * @param name The unique name of the model.
  * @return A model based on the given command.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name);
 
 typedef struct {
 	ccv_nnc_tensor_symbol_t symbol; /**< The tensor symbol this is reference to. */
@@ -2787,9 +2799,10 @@ typedef struct {
  * @param input_size The size of the input list.
  * @param outputs The outputs from this graph. We can figure out which ones are outputs, but this gives us the order.
  * @param output_size The size of the output list.
+ * @param name The unique name of the model.
  * @return A model based on the given symbolic graph.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_graph(const ccv_nnc_symbolic_graph_t* const graph, const ccv_cnnp_tensor_symbol_param_t* const tensor_symbol_params, const int tensor_symbol_param_size, ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size, const char* const name);
 
 /** @} */
 

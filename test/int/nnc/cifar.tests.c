@@ -19,11 +19,11 @@ static ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, c
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
 		.hint = HINT((1, 1), (1, 1)),
-	});
+	}, 0);
 	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(conv, MODEL_IO_LIST(input));
 	ccv_cnnp_model_t* pool = ccv_cnnp_max_pool(DIM_ALLOC(strides, strides), (ccv_cnnp_param_t){
 		.hint = HINT((strides, strides), (0, 0)),
-	});
+	}, 0);
 	output = ccv_cnnp_model_apply(pool, MODEL_IO_LIST(output));
 	if (residual)
 	{
@@ -32,18 +32,18 @@ static ccv_cnnp_model_t* _dawn_layer_new(const int filters, const int strides, c
 			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (1, 1)),
-		});
+		}, 0);
 		output = ccv_cnnp_model_apply(res1, MODEL_IO_LIST(output));
 		ccv_cnnp_model_t* res2 = ccv_cnnp_convolution(1, filters, DIM_ALLOC(3, 3), (ccv_cnnp_param_t){
 			.norm = CCV_CNNP_BATCH_NORM,
 			.activation = CCV_CNNP_ACTIVATION_RELU,
 			.hint = HINT((1, 1), (1, 1)),
-		});
+		}, 0);
 		output = ccv_cnnp_model_apply(res2, MODEL_IO_LIST(output));
-		ccv_cnnp_model_t* const add = ccv_cnnp_add();
+		ccv_cnnp_model_t* const add = ccv_cnnp_add(0);
 		output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output, shortcut));
 	}
-	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output));
+	return ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), 0);
 }
 
 static ccv_cnnp_model_t* _cifar_10_dawn(void)
@@ -52,7 +52,7 @@ static ccv_cnnp_model_t* _cifar_10_dawn(void)
 		.norm = CCV_CNNP_BATCH_NORM,
 		.activation = CCV_CNNP_ACTIVATION_RELU,
 		.hint = HINT((1, 1), (1, 1)),
-	});
+	}, 0);
 	ccv_cnnp_model_t* layer1 = _dawn_layer_new(128, 2, 1);
 	ccv_cnnp_model_t* layer2 = _dawn_layer_new(256, 2, 0);
 	ccv_cnnp_model_t* layer3 = _dawn_layer_new(512, 2, 1);
@@ -61,11 +61,11 @@ static ccv_cnnp_model_t* _cifar_10_dawn(void)
 		layer1,
 		layer2,
 		layer3,
-		ccv_cnnp_max_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}),
-		ccv_cnnp_flatten(),
+		ccv_cnnp_max_pool(DIM_ALLOC(0, 0), (ccv_cnnp_param_t){}, 0),
+		ccv_cnnp_flatten(0),
 		ccv_cnnp_dense(10, (ccv_cnnp_param_t){
 			.activation = CCV_CNNP_ACTIVATION_SOFTMAX,
-		})));
+		}, 0)), 0);
 }
 
 static ccv_nnc_cmd_t _no_wd(const ccv_cnnp_model_t* const model, const ccv_cnnp_trainable_index_t* const trainable_indexes, const int trainable_index_size, const void* const context)
