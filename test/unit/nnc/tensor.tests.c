@@ -4,6 +4,8 @@
 #include "ccv_nnc_case.h"
 #include "nnc/ccv_nnc.h"
 #include "nnc/ccv_nnc_easy.h"
+#include "3rdparty/sqlite3/sqlite3.h"
+#include "3rdparty/dsfmt/dSFMT.h"
 
 TEST_SETUP()
 {
@@ -113,6 +115,34 @@ TEST_CASE("hint tensor")
 	REQUIRE_EQ(b.dim[0], 30, "height should be 30");
 	REQUIRE_EQ(b.dim[1], 19, "width should be 19");
 	REQUIRE_EQ(b.dim[2], 128, "channel should be the convolution filter count");
+}
+
+TEST_CASE("tensor persistence")
+{
+	sqlite3* handle;
+	sqlite3_open("tensors.sqlite3", &handle);
+	ccv_nnc_tensor_t* const tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10, 20, 30), 0);
+	int i;
+	dsfmt_t dsfmt;
+	dsfmt_init_gen_rand(&dsfmt, 1);
+	for (i = 0; i < 10 * 20 * 30; i++)
+		tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
+	ccv_nnc_tensor_write(tensor, handle, "x");
+	sqlite3_close(handle);
+	handle = 0;
+	sqlite3_open("tensors.sqlite3", &handle);
+	ccv_nnc_tensor_t* tensor1 = 0;
+	ccv_nnc_tensor_read(handle, "x", &tensor1);
+	ccv_nnc_tensor_t* tensor2 = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 10), 0);
+	ccv_nnc_tensor_read(handle, "x", &tensor2);
+	sqlite3_close(handle);
+	REQUIRE_TENSOR_EQ(tensor1, tensor, "the first tensor should equal to the second");
+	REQUIRE_ARRAY_EQ_WITH_TOLERANCE(float, tensor2->data.f32, tensor->data.f32, 10, 1e-5, "the first 10 element should be equal");
+	REQUIRE(ccv_nnc_tensor_nd(tensor2->info.dim) == 1, "should be 1-d tensor");
+	REQUIRE_EQ(tensor2->info.dim[0], 10, "should be 1-d tensor with 10-element");
+	ccv_nnc_tensor_free(tensor1);
+	ccv_nnc_tensor_free(tensor2);
+	ccv_nnc_tensor_free(tensor);
 }
 
 #include "case_main.h"

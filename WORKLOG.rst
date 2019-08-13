@@ -1,10 +1,18 @@
+2019-08-12
+----------
+Revamp the persistence for networks. Comparing to other solutions such as protobuf, I would rather just use SQLite. But it will be different from previously I do this. Previously, when I use SQLite as persistence, it is not composable. Thus, different algorithm will use SQLite differently, there is not shared schema. The revamped way will have all tensors saved into the "tensors" table, and everything else reference to it by name. For example, for CNNP, there is no persistence other than "tensors", the model itself is not persisted at all. However, for tensor arena / concrete graph, we will persist both the tensor allocation, tensors and the graph. I don't think we want to persist symbolic graph any more. It is likely I will delete that code later.
+
+In this way, one can query the SQLite and navigate the database as if it is just a "workspace" file (in Matlab sense). These data can be easily ported to pandas or other places because you only need to write a tensor loader once, everything else just a naming convention afterwards.
+
+
 2019-07-15
 ----------
-Moved to SF. It seems Nesterov is important for ResNet-50. Moving to Nesterov, the final result is much more comprehensible.
+Moved to SF. It seems Nesterov is important for ResNet-50. Moved to Nesterov, the final result is much more comprehensible.
 
 I am currently working on a concept called LSSC (Linear Scaling Spatial Compression). The insight is simple. Unlike weights, activations have more spatial redundancy. These activations get used during back propagation. It is conceivable if we can have some way to compress the activation, and during back propagation, decompress these activation back, we can save some amount of memory. Given these kind of compression ratio (Bitmap to JPEG etc.) are surprisingly high, we can expect a big reduction in memory usage if the compression scheme used during training process. Currently, I am prototyping this, the big unknown is the quality of the compression (I am pretty confident about this, because the decompressed activations only used during back propagation anyway), and speed (I am more worried about this, because it is unclear how to implement this efficiently on GPU).
 
 Stay tuned.
+
 
 2019-05-31
 ----------

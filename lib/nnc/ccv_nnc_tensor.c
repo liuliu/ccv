@@ -5,6 +5,8 @@
 #include "gpu/ccv_nnc_compat.h"
 #endif
 
+#pragma mark - Level-1 API
+
 const int ccv_nnc_no_ofs[CCV_NNC_MAX_DIM_ALLOC] = {0};
 
 ccv_nnc_tensor_t* ccv_nnc_tensor_new(const void* const ptr, const ccv_nnc_tensor_param_t params, const int flags)

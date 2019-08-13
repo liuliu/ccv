@@ -232,6 +232,22 @@ void ccv_nnc_tensor_zero(void* const tensor);
  * @return 0 if equal, -1 otherwise.
  */
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_eq(const ccv_nnc_tensor_t* const a, const ccv_nnc_tensor_t* const b);
+/**
+ * Write tensor to a SQLite database with a given name.
+ * @param tensor The tensor.
+ * @param handle The SQLite handle.
+ * @param name The name to find the tensor in the database.
+ * @return CCV_IO_FINAL for success, otherwise error.
+ */
+int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handle, const char* const name);
+/**
+ * Read a tensor from a SQLite database with a given name.
+ * @param handle The SQLite handle.
+ * @param name The name to find the tensor in the database.
+ * @param tensor_out The pointer to hold the tensor. If you supply the tensor yourself, we will read the data into the existing tensor.
+ * @return CCV_IO_FINAL for success, otherwise error.
+ */
+int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tensor_t** const tensor_out);
 
 /** @} */
 
