@@ -215,16 +215,16 @@ static void _ccv_cnnp_identity_init_states(ccv_cnnp_model_t* const super, ccv_nn
 			initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->zero_inits, i));
 }
 
-static void _ccv_cnnp_identity_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_identity_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
 	if (self->bias.graph)
-		ccv_array_push(trainables, &self->bias);
+		add_to_array(trainables, self->bias);
 	if (self->scale.graph)
-		ccv_array_push(trainables, &self->scale);
+		add_to_array(trainables, self->scale);
 }
 
-static void _ccv_cnnp_identity_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+static void _ccv_cnnp_identity_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	ccv_cnnp_model_identity_t* const self = (ccv_cnnp_model_identity_t*)super;
 	int i;
@@ -232,7 +232,7 @@ static void _ccv_cnnp_identity_add_to_output(ccv_cnnp_model_t* const super, ccv_
 		for (i = 0; i < self->retainables->rnum; i++)
 		{
 			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
-			ccv_array_push(outputs, &symbol);
+			add_to_array(outputs, symbol);
 		}
 }
 
@@ -415,17 +415,17 @@ static void _ccv_cnnp_convolution_init_states(ccv_cnnp_model_t* const super, ccv
 			initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->zero_inits, i));
 }
 
-static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_convolution_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
-	ccv_array_push(trainables, &self->weights);
+	add_to_array(trainables, self->weights);
 	if (self->bias.graph)
-		ccv_array_push(trainables, &self->bias);
+		add_to_array(trainables, self->bias);
 	if (self->scale.graph)
-		ccv_array_push(trainables, &self->scale);
+		add_to_array(trainables, self->scale);
 }
 
-static void _ccv_cnnp_convolution_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+static void _ccv_cnnp_convolution_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	ccv_cnnp_model_convolution_t* const self = (ccv_cnnp_model_convolution_t*)super;
 	int i;
@@ -433,7 +433,7 @@ static void _ccv_cnnp_convolution_add_to_output(ccv_cnnp_model_t* const super, c
 		for (i = 0; i < self->retainables->rnum; i++)
 		{
 			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
-			ccv_array_push(outputs, &symbol);
+			add_to_array(outputs, symbol);
 		}
 }
 
@@ -608,17 +608,17 @@ static void _ccv_cnnp_dense_init_states(ccv_cnnp_model_t* const super, ccv_nnc_s
 			initializer(context, CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, 0, *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->zero_inits, i));
 }
 
-static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_dense_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
-	ccv_array_push(trainables, &self->weights);
+	add_to_array(trainables, self->weights);
 	if (self->bias.graph)
-		ccv_array_push(trainables, &self->bias);
+		add_to_array(trainables, self->bias);
 	if (self->scale.graph)
-		ccv_array_push(trainables, &self->scale);
+		add_to_array(trainables, self->scale);
 }
 
-static void _ccv_cnnp_dense_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+static void _ccv_cnnp_dense_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	ccv_cnnp_model_dense_t* const self = (ccv_cnnp_model_dense_t*)super;
 	int i;
@@ -626,7 +626,7 @@ static void _ccv_cnnp_dense_add_to_output(ccv_cnnp_model_t* const super, ccv_arr
 		for (i = 0; i < self->retainables->rnum; i++)
 		{
 			const ccv_nnc_tensor_symbol_t symbol = *(ccv_nnc_tensor_symbol_t*)ccv_array_get(self->retainables, i);
-			ccv_array_push(outputs, &symbol);
+			add_to_array(outputs, symbol);
 		}
 }
 
@@ -808,13 +808,13 @@ static void _ccv_cnnp_cmd_exec_init_states(ccv_cnnp_model_t* const super, ccv_nn
 			initializer(context, CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, self->inputs[i].tensor, self->input_symbols[i]);
 }
 
-static void _ccv_cnnp_cmd_exec_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_cmd_exec_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_model_cmd_exec_t* const self = (ccv_cnnp_model_cmd_exec_t*)super;
 	int i;
 	for (i = 0; i < self->input_size; i++)
 		if (self->inputs[i].type == CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE)
-			ccv_array_push(trainables, &self->input_symbols[i]); // Push this as trainable.
+			add_to_array(trainables, self->input_symbols[i]); // Push this as trainable.
 }
 
 static const ccv_cnnp_model_vtab_t ccv_cnnp_cmd_exec_isa = {

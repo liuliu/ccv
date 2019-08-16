@@ -57,20 +57,20 @@ static void _ccv_cnnp_sequential_model_init_states(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_init_states(self->sequence[i], graph, initializer, context);
 }
 
-static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_sequential_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable(self->sequence[i], trainables);
+		ccv_cnnp_model_add_to_trainable(self->sequence[i], add_to_array, trainables);
 }
 
-static void _ccv_cnnp_sequential_model_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+static void _ccv_cnnp_sequential_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	ccv_cnnp_sequential_model_t* const self = (ccv_cnnp_sequential_model_t*)super;
 	int i;
 	for (i = 0; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_output(self->sequence[i], outputs);
+		ccv_cnnp_model_add_to_output(self->sequence[i], add_to_array, outputs);
 }
 
 static void _ccv_cnnp_sequential_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
@@ -176,20 +176,20 @@ static void _ccv_cnnp_functional_model_init_states(ccv_cnnp_model_t* const super
 		ccv_cnnp_model_init_states(self->sequence[i]->model, graph, initializer, context);
 }
 
-static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, ccv_array_t* const trainables)
+static void _ccv_cnnp_functional_model_add_to_trainable(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_trainable(self->sequence[i]->model, trainables);
+		ccv_cnnp_model_add_to_trainable(self->sequence[i]->model, add_to_array, trainables);
 }
 
-static void _ccv_cnnp_functional_model_add_to_output(ccv_cnnp_model_t* const super, ccv_array_t* const outputs)
+static void _ccv_cnnp_functional_model_add_to_output(ccv_cnnp_model_t* const super, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	ccv_cnnp_functional_model_t* const self = (ccv_cnnp_functional_model_t*)super;
 	int i;
 	for (i = self->super.input_size; i < self->sequence_size; i++)
-		ccv_cnnp_model_add_to_output(self->sequence[i]->model, outputs);
+		ccv_cnnp_model_add_to_output(self->sequence[i]->model, add_to_array, outputs);
 }
 
 static void _ccv_cnnp_functional_model_set_is_test(ccv_cnnp_model_t* const super, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context)
@@ -332,6 +332,11 @@ static int _ccv_nnc_array_dedup_graph_exec_symbols(ccv_nnc_graph_exec_symbol_t* 
 	return graph_exec_symbol_size;
 }
 
+static void _ccv_cnnp_add_to_array(void* const context, const ccv_nnc_tensor_symbol_t symbol)
+{
+	ccv_array_push((ccv_array_t*)context, &symbol);
+}
+
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss)
 {
 	assert(input_size == model->input_size);
@@ -344,7 +349,7 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 			model->inputs[i] = ccv_nnc_tensor_symbol_new(model->graph, inputs[i], 0);
 		ccv_cnnp_model_build(model, model->graph, model->inputs, input_size, 0, 0);
 		ccv_array_t* const trainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_cnnp_model_add_to_trainable(model, trainables);
+		ccv_cnnp_model_add_to_trainable(model, _ccv_cnnp_add_to_array, trainables);
 		_ccv_nnc_array_dedup_tensor_symbols(trainables);
 		// Assert no trainable is alias.
 		for (i = 0; i < trainables->rnum; i++)
@@ -354,7 +359,7 @@ void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_
 			assert(alias_to.graph == 0); // Cannot find the one alias to.
 		}
 		ccv_array_t* const retainables = ccv_array_new(sizeof(ccv_nnc_tensor_symbol_t), 0, 0);
-		ccv_cnnp_model_add_to_output(model, retainables);
+		ccv_cnnp_model_add_to_output(model, _ccv_cnnp_add_to_array, retainables);
 		_ccv_nnc_array_dedup_tensor_symbols(retainables);
 		// Assert no retainable is alias.
 		for (i = 0; i < retainables->rnum; i++)
