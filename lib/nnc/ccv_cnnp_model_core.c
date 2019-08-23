@@ -29,6 +29,7 @@ ccv_cnnp_model_t* ccv_cnnp_add(const char* const name)
 	model_add->super.input_size = 1;
 	model_add->super.outputs = &model_add->output;
 	model_add->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_add->super, name);
 	return (ccv_cnnp_model_t*)model_add;
 }
 
@@ -54,6 +55,7 @@ ccv_cnnp_model_t* ccv_cnnp_concat(const char* const name)
 	model_concat->super.input_size = 1;
 	model_concat->super.outputs = &model_concat->output;
 	model_concat->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_concat->super, name);
 	return (ccv_cnnp_model_t*)model_concat;
 }
 
@@ -84,6 +86,7 @@ ccv_cnnp_model_t* ccv_cnnp_reshape(const int dim[CCV_NNC_MAX_DIM_ALLOC], const c
 	model_reshape->super.input_size = 1;
 	model_reshape->super.outputs = &model_reshape->output;
 	model_reshape->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_reshape->super, name);
 	memcpy(model_reshape->dim, dim, sizeof(model_reshape->dim));
 	return (ccv_cnnp_model_t*)model_reshape;
 }
@@ -117,6 +120,7 @@ ccv_cnnp_model_t* ccv_cnnp_flatten(const char* const name)
 	model_flatten->super.input_size = 1;
 	model_flatten->super.outputs = &model_flatten->output;
 	model_flatten->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_flatten->super, name);
 	return (ccv_cnnp_model_t*)model_flatten;
 }
 
@@ -271,6 +275,7 @@ ccv_cnnp_model_t* ccv_cnnp_identity(const ccv_cnnp_param_t params, const char* c
 	model_identity->super.input_size = 1;
 	model_identity->super.outputs = &model_identity->output;
 	model_identity->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_identity->super, name);
 	model_identity->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_identity->bias.graph = 0;
 	model_identity->params = params;
@@ -472,6 +477,7 @@ ccv_cnnp_model_t* ccv_cnnp_convolution(const int groups, const int filters, cons
 	model_convolution->super.input_size = 1;
 	model_convolution->super.outputs = &model_convolution->output;
 	model_convolution->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_convolution->super, name);
 	model_convolution->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_convolution->weights.graph = 0;
 	model_convolution->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
@@ -665,6 +671,7 @@ ccv_cnnp_model_t* ccv_cnnp_dense(const int count, const ccv_cnnp_param_t params,
 	model_dense->super.input_size = 1;
 	model_dense->super.outputs = &model_dense->output;
 	model_dense->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_dense->super, name);
 	model_dense->weights.d = CCV_NNC_NO_TENSOR_SYMBOL;
 	model_dense->weights.graph = 0;
 	model_dense->bias.d = CCV_NNC_NO_TENSOR_SYMBOL;
@@ -714,6 +721,7 @@ ccv_cnnp_model_t* ccv_cnnp_max_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], const
 	model_pool->super.input_size = 1;
 	model_pool->super.outputs = &model_pool->output;
 	model_pool->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_pool->super, name);
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
 	model_pool->params = params;
 	return (ccv_cnnp_model_t*)model_pool;
@@ -750,6 +758,7 @@ ccv_cnnp_model_t* ccv_cnnp_average_pool(const int kdim[CCV_NNC_MAX_DIM_ALLOC], c
 	model_pool->super.input_size = 1;
 	model_pool->super.outputs = &model_pool->output;
 	model_pool->super.output_size = 1;
+	ccv_cnnp_model_copy_name(&model_pool->super, name);
 	memcpy(model_pool->kdim, kdim, sizeof(model_pool->kdim));
 	model_pool->params = params;
 	return (ccv_cnnp_model_t*)model_pool;
@@ -849,6 +858,7 @@ ccv_cnnp_model_t* ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	model_cmd_exec->super.input_size = io_input_size;
 	model_cmd_exec->super.outputs = (ccv_nnc_tensor_symbol_t*)(model_cmd_exec + 1);
 	model_cmd_exec->super.output_size = io_output_size;
+	ccv_cnnp_model_copy_name(&model_cmd_exec->super, name);
 	model_cmd_exec->cmd = cmd;
 	model_cmd_exec->hint = hint;
 	model_cmd_exec->input_size = input_size;

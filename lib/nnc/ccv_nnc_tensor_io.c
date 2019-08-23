@@ -33,7 +33,7 @@ int ccv_nnc_tensor_write(const ccv_nnc_tensor_t* const tensor, void* const handl
 		"$name, $type, $format, $datatype, $dim, $data)";
 	sqlite3_stmt* tensor_insert_stmt = 0;
 	SQLITE_ENFORCE(SQLITE_OK == sqlite3_prepare_v2(conn, tensor_insert_qs, sizeof(tensor_insert_qs), &tensor_insert_stmt, 0));
-	sqlite3_bind_text(tensor_insert_stmt, 1, name, 0, 0);
+	sqlite3_bind_text(tensor_insert_stmt, 1, name, -1, 0);
 	sqlite3_bind_int(tensor_insert_stmt, 2, tensor->info.type);
 	sqlite3_bind_int(tensor_insert_stmt, 3, tensor->info.format);
 	sqlite3_bind_int(tensor_insert_stmt, 4, tensor->info.datatype);
@@ -71,8 +71,9 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 	sqlite3_stmt* tensor_select_stmt = 0;
 	if (SQLITE_OK != sqlite3_prepare_v2(conn, tensor_select_qs, sizeof(tensor_select_qs), &tensor_select_stmt, 0))
 		return CCV_IO_ERROR;
-	sqlite3_bind_text(tensor_select_stmt, 1, name, 0, 0);
-	SQLITE_ENFORCE(SQLITE_ROW == sqlite3_step(tensor_select_stmt));
+	sqlite3_bind_text(tensor_select_stmt, 1, name, -1, 0);
+	if (SQLITE_ROW != sqlite3_step(tensor_select_stmt))
+		return CCV_IO_ERROR;
 	ccv_nnc_tensor_t* tensor = *tensor_out;
 	if (!tensor) // If the tensor is not provided, we need to create one.
 	{
@@ -94,6 +95,7 @@ int ccv_nnc_tensor_read(void* const handle, const char* const name, ccv_nnc_tens
 #else
 	memcpy(tensor->data.u8, data, ccv_min(data_size, sqlite3_column_bytes(tensor_select_stmt, 0)));
 #endif
+	tensor->type &= ~CCV_GARBAGE; // If it is marked as garbage, remove that mark now.
 	sqlite3_reset(tensor_select_stmt);
 	sqlite3_clear_bindings(tensor_select_stmt);
 	sqlite3_finalize(tensor_select_stmt);

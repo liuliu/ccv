@@ -1,3 +1,12 @@
+2019-08-22
+----------
+Implementing named models and proper tensor init seems not so easy. Particularly, for complex training setup, such as: having new model share some weights with simpler models (for example, seed ResNet101 with ResNet50 parameters), or fix the training on certain weights, and continue on the others. The former one requires us to keep some consistency between different models, the second requires us to mark the model somehow while adding trainables.
+
+Thus, we should be able to name a given model (or layer). The trainables weights will be fixed to that name, thus, adding new layers won't impact the old weights, and these can be loaded successfully. To accomplish this, I added the new ``ccv_nnc_tensor_read`` and ``ccv_nnc_tensor_write`` methods to keep tensors. This also marked a departure for how persistence should be done. Rather than ad-hoc with SQLite, it will all be marked, now with tensor and names.
+
+Persistence worth a rethink in general, it starts by just names and tensors. I will remove persisting symbolic graph support. Instead, will enable persisting graph and tensor arena.
+
+
 2019-08-12
 ----------
 Revamp the persistence for networks. Comparing to other solutions such as protobuf, I would rather just use SQLite. But it will be different from previously I do this. Previously, when I use SQLite as persistence, it is not composable. Thus, different algorithm will use SQLite differently, there is not shared schema. The revamped way will have all tensors saved into the "tensors" table, and everything else reference to it by name. For example, for CNNP, there is no persistence other than "tensors", the model itself is not persisted at all. However, for tensor arena / concrete graph, we will persist both the tensor allocation, tensors and the graph. I don't think we want to persist symbolic graph any more. It is likely I will delete that code later.

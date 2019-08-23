@@ -78,6 +78,10 @@ typedef struct {
 		ccv_nnc_tensor_t** accum_gradients;
 	} tensors;
 	struct {
+		ccv_array_t* trainables;
+		ccv_array_t* retainables;
+	} ids;
+	struct {
 		int to_op_size;
 		int to_size;
 		ccv_nnc_graph_exec_t* to_ops;
@@ -118,8 +122,70 @@ struct ccv_cnnp_model_s {
 	ccv_nnc_symbolic_graph_t* graph;
 	ccv_nnc_tensor_symbol_t* inputs; // Unlike outputs, which is not dynamically allocated, inputs is dynamically allocated, and may be 0.
 	ccv_nnc_tensor_symbol_t* outputs;
+	char* name;
 	ccv_cnnp_compiled_data_t* compiled_data;
 };
+
+enum {
+	CCV_CNNP_MODEL_SEQUENCE,
+	CCV_CNNP_MODEL_NAME,
+};
+
+typedef struct {
+	int type;
+	union {
+		const char* name;
+		int sequence;
+	};
+} ccv_cnnp_model_name_t;
+
+typedef struct {
+	int it;
+	ccv_array_t* sequences;
+} ccv_cnnp_model_sequence_t;
+
+static inline void ccv_cnnp_model_push(const ccv_cnnp_model_t* const self, void* const context)
+{
+	ccv_cnnp_model_sequence_t* const model_sequence = (ccv_cnnp_model_sequence_t*)context;
+	// Reset to 0.
+	if (!model_sequence->sequences)
+		model_sequence->sequences = ccv_array_new(sizeof(ccv_cnnp_model_name_t), 1, 0);
+	ccv_cnnp_model_name_t name = {
+		.type = CCV_CNNP_MODEL_SEQUENCE,
+		.sequence = 0,
+	};
+	if (self->name)
+	{
+		name.type = CCV_CNNP_MODEL_NAME;
+		name.name = self->name;
+	}
+	ccv_array_push(model_sequence->sequences, &name);
+	model_sequence->it = 0;
+}
+
+static inline void ccv_cnnp_model_pop(const ccv_cnnp_model_t* const self, void* const context)
+{
+	ccv_cnnp_model_sequence_t* const model_sequence = (ccv_cnnp_model_sequence_t*)context;
+	--model_sequence->sequences->rnum;
+	assert(model_sequence->sequences->rnum >= 0);
+	if (model_sequence->sequences->rnum > 0)
+	{
+		ccv_cnnp_model_name_t* const name = (ccv_cnnp_model_name_t*)ccv_array_get(model_sequence->sequences, model_sequence->sequences->rnum - 1);
+		if (name->type == CCV_CNNP_MODEL_SEQUENCE)
+			++name->sequence;
+	}
+}
+
+static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const char* const name)
+{
+	if (name)
+	{
+		const size_t n = strnlen(name, 63) + 1;
+		self->name = (char*)ccmalloc(n);
+		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
+		strncpy(self->name, name, n);
+	}
+}
 
 static inline void ccv_cnnp_model_build(ccv_cnnp_model_t* const self, ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t* const inputs, const int input_size, ccv_nnc_tensor_symbol_t* const outputs, const int output_size)
 {
@@ -147,13 +213,21 @@ static inline void ccv_cnnp_model_set_is_test(ccv_cnnp_model_t* const self, cons
 static inline void ccv_cnnp_model_add_to_trainable(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const trainables)
 {
 	if (self->isa->add_to_trainable)
+	{
+		ccv_cnnp_model_push(self, trainables);
 		self->isa->add_to_trainable(self, add_to_array, trainables);
+		ccv_cnnp_model_pop(self, trainables);
+	}
 }
 
 static inline void ccv_cnnp_model_add_to_output(ccv_cnnp_model_t* const self, const ccv_cnnp_add_to_array_f add_to_array, void* const outputs)
 {
 	if (self->isa->add_to_output)
+	{
+		ccv_cnnp_model_push(self, outputs);
 		self->isa->add_to_output(self, add_to_array, outputs);
+		ccv_cnnp_model_pop(self, outputs);
+	}
 }
 
 void ccv_cnnp_model_tensors_init(const ccv_nnc_symbolic_graph_t* const graph, ccv_cnnp_compiled_data_t* const compiled_data);
