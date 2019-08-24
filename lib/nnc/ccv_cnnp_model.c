@@ -460,9 +460,18 @@ typedef struct {
 static int _ccv_cnnp_any_to_init(const ccv_cnnp_compiled_data_t* const compiled_data)
 {
 	int i;
-	for (i = 0; i < compiled_data->tensors_init.size; i++)
-		if (!(compiled_data->tensors_init.v[i >> 5] & (1u << (i & 0x1f))))
+	for (i = 0; i < compiled_data->trainables->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d;
+		if (!(compiled_data->tensors_init.v[d >> 5] & (1u << (d & 0x1f))))
 			return 1;
+	}
+	for (i = 0; i < compiled_data->retainables->rnum; i++)
+	{
+		const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retainables, i))->d;
+		if (!(compiled_data->tensors_init.v[d >> 5] & (1u << (d & 0x1f))))
+			return 1;
+	}
 	return 0;
 }
 
@@ -473,9 +482,11 @@ static void _ccv_cnnp_init_states_for_tensors(void* const context, const ccv_nnc
 	ccv_nnc_tensor_t* const output_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, output_symbol);
 	if (!output_tensor)
 		return;
-	assert(output_symbol.d < tensor_init_states->compiled_data->tensors_init.size);
-	if (tensor_init_states->compiled_data->tensors_init.v[output_symbol.d >> 5] & (1u << (output_symbol.d & 0x1f)))
+	const int d = output_symbol.d;
+	assert(d < tensor_init_states->compiled_data->tensors_init.size);
+	if (tensor_init_states->compiled_data->tensors_init.v[d >> 5] & (1u << (d & 0x1f)))
 		return;
+	tensor_init_states->compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
 	ccv_nnc_cmd_exec(cmd, hint, flags, &input, input ? 1 : 0, &output_tensor, 1, 0);
 	const ccv_nnc_symbolic_graph_t* const graph = tensor_init_states->graph;
 	const int parallel_count = tensor_init_states->parallel_count;
