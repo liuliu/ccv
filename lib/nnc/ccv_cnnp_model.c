@@ -909,7 +909,7 @@ static void _ccv_cnnp_model_fit_jit(ccv_cnnp_model_t* const model, ccv_nnc_tenso
 		compiled_data->gradient_mode = CCV_CNNP_COMPILED_DATA_GRADIENT_NONE;
 		_ccv_cnnp_model_gradient_init(model, CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES, fits, fit_size);
 	}
-	const int tensors_init = !!compiled_data->tensors.trainables;
+	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
@@ -1049,7 +1049,7 @@ static void _ccv_cnnp_model_multistage_no_grad_jit(ccv_cnnp_model_t* const model
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	assert(output_size == model->output_size * parallel_count);
 	assert(output_size > 0);
-	const int tensors_init = !!compiled_data->tensors.trainables;
+	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);
@@ -1142,7 +1142,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 		compiled_data->gradient_mode = CCV_CNNP_COMPILED_DATA_GRADIENT_NONE;
 		_ccv_cnnp_model_gradient_init(model, target_gradient_mode, 0, 0); // The type of outputs and fits should be the same. We only use type here.
 	}
-	const int tensors_init = !!compiled_data->tensors.trainables;
+	const int tensors_init = !!compiled_data->tensors_init.v;
 	if (!tensors_init)
 		ccv_cnnp_model_tensors_init(model->graph, compiled_data);
 	ccv_array_t* const tensor_binds = ccv_array_new(sizeof(ccv_nnc_tensor_bind_t), 0, 0);

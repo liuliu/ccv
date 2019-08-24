@@ -21,7 +21,7 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 	sqlite3* conn = 0;
 	if (SQLITE_OK != sqlite3_open(fn, &conn))
 		return;
-	const int tensors_init = !!compiled_data->tensors.trainables;
+	const int tensors_init = !!compiled_data->tensors_init.v;
 	int i, j;
 	const int parallel_count = ccv_max(compiled_data->parallel_count, 1);
 	const int trainable_size = compiled_data->trainables->rnum;
