@@ -72,6 +72,10 @@ typedef struct {
 	ccv_nnc_tensor_symbol_map_t* saved_aux;
 	ccv_array_t* rewindables;
 	struct {
+		int size;
+		uint32_t* v;
+	} tensors_init;
+	struct {
 		ccv_nnc_tensor_t** retainables; // Additional need to retained tensors.
 		ccv_nnc_tensor_t** trainables;
 		ccv_nnc_tensor_t** gradients;

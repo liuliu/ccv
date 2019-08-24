@@ -34,14 +34,22 @@ void ccv_cnnp_model_checkpoint(ccv_cnnp_model_t* const model, const char* const 
 		for (i = 0; i < trainable_size; i++)
 		{
 			const char* const id = *(char**)ccv_array_get(compiled_data->ids.trainables, i);
-			ccv_nnc_tensor_read(conn, id, compiled_data->tensors.trainables + i);
+			if (ccv_nnc_tensor_read(conn, id, compiled_data->tensors.trainables + i) == CCV_IO_FINAL)
+			{
+				const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->trainables, i))->d;
+				compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+			}
 		}
 		for (i = 0; i < parallel_count; i++)
 			for (j = 0; j < retainable_size; j++)
 			{
 				const char* const id = *(char**)ccv_array_get(compiled_data->ids.retainables, j);
 				snprintf(retainable_name, 1024 + 16, "%s(%d)", id, i);
-				ccv_nnc_tensor_read(conn, retainable_name, compiled_data->tensors.retainables + i * retainable_size + j);
+				if (ccv_nnc_tensor_read(conn, retainable_name, compiled_data->tensors.retainables + i * retainable_size + j) == CCV_IO_FINAL)
+				{
+					const int d = ((ccv_nnc_tensor_symbol_t*)ccv_array_get(compiled_data->retainables, i))->d;
+					compiled_data->tensors_init.v[d >> 5] |= (1u << (d & 0x1f));
+				}
 			}
 		sqlite3_close(conn);
 		return;
