@@ -184,10 +184,12 @@ static inline void ccv_cnnp_model_copy_name(ccv_cnnp_model_t* const self, const 
 {
 	if (name)
 	{
-		const size_t n = strnlen(name, 63) + 1;
+		const size_t len = strnlen(name, 63);
+		const size_t n = len + 1;
 		self->name = (char*)ccmalloc(n);
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-		strncpy(self->name, name, n);
+		memcpy(self->name, name, n);
+		self->name[len] = 0;
 	}
 }
 

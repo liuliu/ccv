@@ -37,10 +37,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		if (symbol_info->name)
 		{
 			char* const name = symbol_info->name;
-			const size_t n = strnlen(name, 63) + 1;
+			const size_t len = strnlen(name, 63);
+			const size_t n = len + 1;
 			symbol_info->name = (char*)ccmalloc(n);
 			// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-			strncpy(symbol_info->name, name, n);
+			memcpy(symbol_info->name, name, n);
+			symbol_info->name[len] = 0;
 		}
 		if (symbol_info->s_ref)
 		{
@@ -59,10 +61,12 @@ ccv_nnc_symbolic_graph_t* ccv_nnc_symbolic_graph_dup(const ccv_nnc_symbolic_grap
 		if (symbol_info->name)
 		{
 			char* const name = symbol_info->name;
-			const size_t n = strnlen(name, 63) + 1;
+			const size_t len = strnlen(name, 63);
+			const size_t n = len + 1;
 			symbol_info->name = (char*)ccmalloc(n);
 			// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-			strncpy(symbol_info->name, name, n);
+			memcpy(symbol_info->name, name, n);
+			symbol_info->name[len] = 0;
 		}
 		if (symbol_info->outgoings)
 		{
@@ -163,10 +167,12 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_new(ccv_nnc_symbolic_graph_t* cons
 	};
 	if (name)
 	{
-		size_t n = strnlen(name, 63) + 1;
+		const size_t len = strnlen(name, 63);
+		const size_t n = len + 1;
 		symbol_info.name = (char*)ccmalloc(n);
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-		strncpy(symbol_info.name, name, n);
+		memcpy(symbol_info.name, name, n);
+		symbol_info.name[len] = 0;
 	}
 	if (graph->reuse.tensor >= 0)
 	{
@@ -224,10 +230,12 @@ ccv_nnc_tensor_symbol_t ccv_nnc_tensor_symbol_alias_new(ccv_nnc_symbolic_graph_t
 	};
 	if (name)
 	{
-		size_t n = strnlen(name, 63) + 1;
+		const size_t len = strnlen(name, 63);
+		const size_t n = len + 1;
 		alias_info.name = (char*)ccmalloc(n);
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-		strncpy(alias_info.name, name, n);
+		memcpy(alias_info.name, name, n);
+		alias_info.name[len] = 0;
 	}
 	memcpy(alias_info.ofs, ofs, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
 	memcpy(alias_info.inc, inc, sizeof(int) * CCV_NNC_MAX_DIM_ALLOC);
@@ -828,10 +836,12 @@ ccv_nnc_graph_exec_symbol_t ccv_nnc_graph_exec_symbol_new(ccv_nnc_symbolic_graph
 	};
 	if (name)
 	{
-		size_t n = strnlen(name, 63) + 1;
+		const size_t len = strnlen(name, 63);
+		const size_t n = len + 1;
 		symbol_info.name = (char*)ccmalloc(n);
 		// Don't use strndup because this way I can have custom allocator (for ccmalloc).
-		strncpy(symbol_info.name, name, n);
+		memcpy(symbol_info.name, name, n);
+		symbol_info.name[len] = 0;
 	}
 	_ccv_nnc_graph_exec_symbol_set_io(graph, &symbol_info, inputs, input_size, outputs, output_size);
 	if (graph->reuse.exec >= 0)

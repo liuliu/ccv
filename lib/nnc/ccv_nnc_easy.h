@@ -34,35 +34,12 @@
 #define LIST_COUNT_N(_0,_1,_2,_3,_4,_5,_6,_7,_8,_9,_10,_11,_12,_13,_14,_15,_16,_17,_18,_19,_20,_21,_22,_23,_24,_25,_26,_27,_28,_29,_30,_31,_32,_33,_34,_35,_36,_37,_38,_39,_40,_41,_42,_43,_44,_45,_46,_47,_48,_49,_50,_51,_52,_53,_54,_55,_56,_57,_58,_59,_60,_61,_62,_63,...) (LIST_COUNT_E(_0)+LIST_COUNT_E(_1)+LIST_COUNT_E(_2)+LIST_COUNT_E(_3)+LIST_COUNT_E(_4)+LIST_COUNT_E(_5)+LIST_COUNT_E(_6)+LIST_COUNT_E(_7)+LIST_COUNT_E(_8)+LIST_COUNT_E(_9)+LIST_COUNT_E(_10)+LIST_COUNT_E(_11)+LIST_COUNT_E(_12)+LIST_COUNT_E(_13)+LIST_COUNT_E(_14)+LIST_COUNT_E(_15)+LIST_COUNT_E(_16)+LIST_COUNT_E(_17)+LIST_COUNT_E(_18)+LIST_COUNT_E(_19)+LIST_COUNT_E(_20)+LIST_COUNT_E(_21)+LIST_COUNT_E(_22)+LIST_COUNT_E(_23)+LIST_COUNT_E(_24)+LIST_COUNT_E(_25)+LIST_COUNT_E(_26)+LIST_COUNT_E(_27)+LIST_COUNT_E(_28)+LIST_COUNT_E(_29)+LIST_COUNT_E(_30)+LIST_COUNT_E(_31)+LIST_COUNT_E(_32)+LIST_COUNT_E(_33)+LIST_COUNT_E(_34)+LIST_COUNT_E(_35)+LIST_COUNT_E(_36)+LIST_COUNT_E(_37)+LIST_COUNT_E(_38)+LIST_COUNT_E(_39)+LIST_COUNT_E(_40)+LIST_COUNT_E(_41)+LIST_COUNT_E(_42)+LIST_COUNT_E(_43)+LIST_COUNT_E(_44)+LIST_COUNT_E(_45)+LIST_COUNT_E(_46)+LIST_COUNT_E(_47)+LIST_COUNT_E(_48)+LIST_COUNT_E(_49)+LIST_COUNT_E(_50)+LIST_COUNT_E(_51)+LIST_COUNT_E(_52)+LIST_COUNT_E(_53)+LIST_COUNT_E(_54)+LIST_COUNT_E(_55)+LIST_COUNT_E(_56)+LIST_COUNT_E(_57)+LIST_COUNT_E(_58)+LIST_COUNT_E(_59)+LIST_COUNT_E(_60)+LIST_COUNT_E(_61)+LIST_COUNT_E(_62)+LIST_COUNT_E(_63)-1)
 #define LIST_COUNT(...) LIST_COUNT_N(_0,##__VA_ARGS__,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,)
 
-#define TENSOR_LIST_X(...) (ccv_nnc_tensor_t* []){__VA_ARGS__}
-
-#define TENSOR_PARAM_LIST_X(...) (ccv_nnc_tensor_param_t []){__VA_ARGS__}
-
-#define TENSOR_SYMBOL_LIST_X(...) (ccv_nnc_tensor_symbol_t []){__VA_ARGS__}
-
-#define TENSOR_VARIABLE_LIST_X(...) (ccv_nnc_tensor_variable_t []){__VA_ARGS__}
+#define LIST_X(_type, ...) (_type []){__VA_ARGS__}
 
 #define KV_X(_x, _y, ...) {(_x), (_y)}
 #define KV(...) KV_X(__VA_ARGS__, 0)
-#define TENSOR_BIND_MAP_X(...) (ccv_nnc_tensor_bind_t []){__VA_ARGS__}
 
-#define TENSOR_SYMBOL_MAP_X(...) (ccv_nnc_tensor_symbol_map_t []){__VA_ARGS__}
-
-#define GRAPH_EXEC_LIST_X(...) (ccv_nnc_graph_exec_t []){__VA_ARGS__}
-
-#define GRAPH_EXEC_SYMBOL_LIST_X(...) (ccv_nnc_graph_exec_symbol_t []){__VA_ARGS__}
-
-#define SYMBOLIC_GRAPH_PASSES_X(...) (int []){__VA_ARGS__}
-
-#define MODEL_LIST_X(...)(ccv_cnnp_model_t* []){__VA_ARGS__}
-
-#define MODEL_IO_LIST_X(...)(ccv_cnnp_model_io_t []){__VA_ARGS__}
-
-#define MODEL_CMD_TENSOR_MAP_X(...)(ccv_cnnp_tensor_param_t []){__VA_ARGS__}
-
-#define MODEL_CMD_TENSOR_LIST_X(...)(int []){__VA_ARGS__}
-
-#define COLUMN_ID_LIST_X(...)(int []){__VA_ARGS__}
+#define LIST_SIZEOF_COUNT(_type, ...) (sizeof(LIST_X(_type, __VA_ARGS__)) / sizeof(_type))
 
 /**
  * @defgroup convenience_api Convenience API
@@ -72,12 +49,12 @@
  * Pass a list of tensors to NNC functions that accepts (tensor array, tensor array size).
  * This method effectively gives two parameters as one.
  */
-#define TENSOR_LIST(...) TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define TENSOR_LIST(...) LIST_X(ccv_nnc_tensor_t*, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor parameters to NNC functions that accepts (parameter array, parameter array size).
  * This method effectively gives two parameters as one.
  */
-#define TENSOR_PARAM_LIST(...) TENSOR_PARAM_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define TENSOR_PARAM_LIST(...) LIST_X(ccv_nnc_tensor_param_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * This represents a tensor symbol that is empty (tensor = nil)
  */
@@ -90,34 +67,34 @@
  * Pass a list of tensor symbols to NNC functions that accepts (tensor symbol array, tensor symbol array size).
  * This method effectively gives two parameters as one.
  */
-#define TENSOR_SYMBOL_LIST(...) TENSOR_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define TENSOR_SYMBOL_LIST(...) LIST_X(ccv_nnc_tensor_symbol_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor variables to NNC functions that accepts (tensor variable array, tensor variable array size).
  * This method effectively gives two parameters as one.
  */
-#define TENSOR_VARIABLE_LIST(...) TENSOR_VARIABLE_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define TENSOR_VARIABLE_LIST(...) LIST_X(ccv_nnc_tensor_variable_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of tensor bindings to NNC functions that accepts (tensor binding array, tensor binding array size).
  * This method effectively gives two parameters as one. Since tensor binding requires two: symbol and a tensor,
  * you should use this like: TENSOR_BIND_MAP(KV(symbol1, tensor1), KV(symbol2, tensor2)).
  */
-#define TENSOR_BIND_MAP(...) TENSOR_BIND_MAP_X(__VA_ARGS__), (sizeof(TENSOR_BIND_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_bind_t))
+#define TENSOR_BIND_MAP(...) LIST_X(ccv_nnc_tensor_bind_t, __VA_ARGS__), LIST_SIZEOF_COUNT(ccv_nnc_tensor_bind_t, __VA_ARGS__)
 /**
  * Pass a list of tensor symbol pairs to NNC functions that accepts (tensor symbol pair array, tensor symbol pair array size).
  * This method effectively gives two parameters as one. Since tensor symbol pair requires two: source symbol and destination symbol,
  * you should use this like: TENSOR_SYMBOL_MAP(KV(symbol1, symbol2), KV(symbol3, symbol4)).
  */
-#define TENSOR_SYMBOL_MAP(...) TENSOR_SYMBOL_MAP_X(__VA_ARGS__), (sizeof(TENSOR_SYMBOL_MAP_X(__VA_ARGS__)) / sizeof(ccv_nnc_tensor_symbol_map_t))
+#define TENSOR_SYMBOL_MAP(...) LIST_X(ccv_nnc_tensor_symbol_map_t, __VA_ARGS__), LIST_SIZEOF_COUNT(ccv_nnc_tensor_symbol_map_t, __VA_ARGS__)
 /**
  * Pass a list of execution nodes to NNC functions that accepts (execution node array, execution node array size).
  * This method effectively gives two parameters as one.
  */
-#define GRAPH_EXEC_LIST(...) GRAPH_EXEC_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define GRAPH_EXEC_LIST(...) LIST_X(ccv_nnc_graph_exec_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of execution node symbols to NNC functions that accepts (execution node symbol array, execution node symbol array size).
  * This method effectively gives two parameters as one.
  */
-#define GRAPH_EXEC_SYMBOL_LIST(...) GRAPH_EXEC_SYMBOL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define GRAPH_EXEC_SYMBOL_LIST(...) LIST_X(ccv_nnc_graph_exec_symbol_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass both default sources and default sources size to function that accepts (sources, source size).
  * @param x A given symbolic graph.
@@ -132,32 +109,32 @@
  * Pass a list of simplification passes to NNC functions that accepts (pass array, pass array size).
  * This method effectively gives two parameters as one.
  */
-#define SYMBOLIC_GRAPH_PASSES(...) SYMBOLIC_GRAPH_PASSES_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define SYMBOLIC_GRAPH_PASSES(...) LIST_X(int, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of CNNP models to NNC functions that accepts (model array, model array size).
  * This method effectively gives two parameters as one.
  */
-#define MODEL_LIST(...) MODEL_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define MODEL_LIST(...) LIST_X(ccv_cnnp_model_t*, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of CNNP model IOs to NNC functions that accepts (model IO array, model IO array size).
  * This method effectively gives two parameters as one.
  */
-#define MODEL_IO_LIST(...) MODEL_IO_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define MODEL_IO_LIST(...) LIST_X(ccv_cnnp_model_io_t, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of CNNP tensor params to ccv_cnnp_cmd_exec which accepts (tensor params array, tensor params array size).
  * This method effectively gives two parameters as one.
  */
-#define MODEL_CMD_TENSOR_MAP(...) MODEL_CMD_TENSOR_MAP_X(__VA_ARGS__), (sizeof(MODEL_CMD_TENSOR_MAP_X(__VA_ARGS__)) / sizeof(ccv_cnnp_tensor_param_t))
+#define MODEL_CMD_TENSOR_MAP(...) LIST_X(ccv_cnnp_tensor_param_t, __VA_ARGS__), LIST_SIZEOF_COUNT(ccv_cnnp_tensor_param_t, __VA_ARGS__)
 /**
  * Pass a list of CNNP tensor type to ccv_cnnp_cmd_exec which accepts (tensor type array, tensor type array size).
  * This method effectively gives two parameters as one.
  */
-#define MODEL_CMD_TENSOR_LIST(...) MODEL_CMD_TENSOR_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define MODEL_CMD_TENSOR_LIST(...) LIST_X(int, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 /**
  * Pass a list of dataframe column ids to iteration function that accepts (column id array, column id array size).
  * This method effectively gives two parameters as one.
  */
-#define COLUMN_ID_LIST(...) COLUMN_ID_LIST_X(__VA_ARGS__), LIST_COUNT(__VA_ARGS__)
+#define COLUMN_ID_LIST(...) LIST_X(int, __VA_ARGS__), LIST_COUNT(__VA_ARGS__)
 
 #define TRAVERSE_FULL 0,0,0,0
 
