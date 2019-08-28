@@ -65,7 +65,7 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 	ccv_nnc_tensor_variable_t b1 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b1)->data.f32[0] = 0.1;
 	ccv_nnc_tensor_variable_t x11 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 1), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
-	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x1, w1, b1), TENSOR_VARIABLE_LIST(x11));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x1, w1, b1), TENSOR_VARIABLE_LIST(x11));
 	ccv_nnc_tensor_variable_t x2 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 2));
 	ccv_nnc_tensor_variable_t w2 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 2));
 	ccv_nnc_tensor_from_variable(graph, w2)->data.f32[0] = 0.374;
@@ -73,7 +73,7 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 	ccv_nnc_tensor_variable_t b2 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b2)->data.f32[0] = 0.2;
 	ccv_nnc_tensor_variable_t x21 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 2), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
-	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x2, w2, b2), TENSOR_VARIABLE_LIST(x21));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x2, w2, b2), TENSOR_VARIABLE_LIST(x21));
 	ccv_nnc_tensor_variable_t x3 = ccv_nnc_tensor_variable_alias_new(graph, x, ccv_nnc_no_ofs, DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 3));
 	ccv_nnc_tensor_variable_t w3 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1, 3));
 	ccv_nnc_tensor_from_variable(graph, w3)->data.f32[0] = 0.484;
@@ -82,7 +82,7 @@ TEST_CASE("dynamic graph with dense net (extensive use of alias)")
 	ccv_nnc_tensor_variable_t b3 = ccv_nnc_tensor_variable_new(graph, CPU_TENSOR_NHWC(32F, 1));
 	ccv_nnc_tensor_from_variable(graph, b3)->data.f32[0] = 0.3;
 	ccv_nnc_tensor_variable_t x31 = ccv_nnc_tensor_variable_alias_new(graph, x, DIM_ALLOC(0, 3), DIM_ALLOC(1, 4), CPU_TENSOR_NHWC(32F, 1, 1));
-	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(1), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x3, w3, b3), TENSOR_VARIABLE_LIST(x31));
+	ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(x3, w3, b3), TENSOR_VARIABLE_LIST(x31));
 	DYNAMIC_GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_tensor_t* xt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 4), 0);
 	xt->data.f32[0] = 0.472;

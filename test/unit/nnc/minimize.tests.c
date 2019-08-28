@@ -18,7 +18,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on symbolic g
 	ccv_nnc_tensor_symbol_t w = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "w");
 	ccv_nnc_tensor_symbol_t bias = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2), "bias");
 	ccv_nnc_tensor_symbol_t b = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "b");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(2), TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "gemm");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(a, w, bias), TENSOR_SYMBOL_LIST(b), "gemm");
 	ccv_nnc_tensor_symbol_t c = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 2, 2), "c");
 	ccv_nnc_graph_exec_symbol_new(symbolic_graph, CMD_EWPROD_FORWARD(), TENSOR_SYMBOL_LIST(b, b), TENSOR_SYMBOL_LIST(c), "square");
 	ccv_nnc_tensor_symbol_t s = ccv_nnc_tensor_symbol_new(symbolic_graph, ccv_nnc_tensor_auto, "s");
@@ -95,7 +95,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on dynamic gr
 		bias_tensor->data.f32[0] = 1;
 		bias_tensor->data.f32[1] = -1;
 		ccv_nnc_tensor_variable_t b = ccv_nnc_tensor_variable_new(graph);
-		ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(2), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a, w, bias), TENSOR_VARIABLE_LIST(b));
+		ccv_nnc_dynamic_graph_exec(graph, CMD_GEMM_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(a, w, bias), TENSOR_VARIABLE_LIST(b));
 		ccv_nnc_tensor_variable_t c = ccv_nnc_tensor_variable_new(graph);
 		ccv_nnc_dynamic_graph_exec(graph, CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_VARIABLE_LIST(b, b), TENSOR_VARIABLE_LIST(c));
 		ccv_nnc_tensor_variable_t s = ccv_nnc_tensor_variable_new(graph);

@@ -56,7 +56,7 @@ static ccv_nnc_graph_t* ccv_nnc_simple_graph(ccv_convnet_t* convnet, ccv_nnc_ten
 			memcpy(bias->data.f32, layer->bias, layer->net.full_connect.count * sizeof(float));
 			ccv_array_push(tensors, &w);
 			ccv_array_push(tensors, &bias);
-			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(layer->net.full_connect.count), 0);
+			ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(), 0);
 			// If the input is not what I expected (array), reshape it.
 			if (input->info.dim[0] != ccv_nnc_tensor_count(input->info))
 			{

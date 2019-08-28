@@ -42,7 +42,6 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].datatype = inputs[0].datatype;
 	outputs[0].dim[0] = inputs[0].dim[0]; // batch size.
 	outputs[0].dim[1] = inputs[1].dim[0]; // from the weight matrix.
-	assert(inputs[1].dim[0] == cmd.blas.count);
 }
 
 REGISTER_COMMAND(CCV_NNC_GEMM_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
@@ -60,9 +59,9 @@ REGISTER_COMMAND(CCV_NNC_GEMM_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GEMM_FORWARD)
-#define CMD_GEMM_FORWARD(_count) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(_count), 0)
+#define CMD_GEMM_FORWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_FORWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_GEMM_BACKWARD)
-#define CMD_GEMM_BACKWARD(_count) ccv_nnc_cmd(CCV_NNC_GEMM_BACKWARD, 0, CMD_GEMM(_count), 0)
+#define CMD_GEMM_BACKWARD(...) ccv_nnc_cmd(CCV_NNC_GEMM_BACKWARD, 0, CMD_GEMM(__VA_ARGS__), 0)
 
 static int _ccv_nnc_add_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {

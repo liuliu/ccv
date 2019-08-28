@@ -94,8 +94,9 @@ typedef struct {
 			float dampening; /**< [minimize.dampening] This usually == momentum, however, it can be changed. */
 		} minimize;
 		struct {
+			int transpose_a[2]; /**< [blas.transpose_a[2]] The axis we'd like to transpose for input a. */
+			int transpose_b[2]; /**< [blas.transpose_b[2]] The axis we'd like to transpose for input b. */
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */
-			int count; /**< [blas.count] The number of outputs for blas layer. */
 		} blas;
 		struct {
 			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [reduce.axis[]] The axis selected to reduce. */
