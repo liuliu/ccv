@@ -40,6 +40,9 @@ gpu/libnnc-compat-cuda.o:
 
 dep: .dep.mk
 .dep.mk: $(SRCS)
-	$(CC) $(CFLAGS) -MM $^ > .dep.mk
+	echo '' > .dep.mk
+	for SRC in $^ ; do \
+		$(CC) $(CFLAGS) -MM $$SRC | sed -e 's/^.*\://g' | (echo "$${SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 
 -include .dep.mk

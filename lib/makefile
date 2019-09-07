@@ -43,9 +43,14 @@ nnc/libnnc.o:
 
 dep: .dep.mk
 .dep.mk: $(SRCS) $(CUDA_SRCS)
-	$(CC) $(CFLAGS) -MM $(patsubst %.cu,,$^) > .dep.mk
+	echo '' > .dep.mk
+	for SRC in $(patsubst %.cu,,$^) ; do \
+		$(CC) $(CFLAGS) -MM $$SRC | sed -e 's/^.*\://g' | (echo "$${SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 ifneq ($(CUDA_SRCS),)
-	$(NVCC) $(NVFLAGS) -M $(patsubst %.c,,$^) >> .dep.mk
+	for CUDA_SRC in $(patsubst %.c,,$^) ; do \
+		$(NVCC) $(NVFLAGS) -M $$CUDA_SRC | sed -e 's/^.*\://g' | (echo "$${CUDA_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 endif
 
 -include .dep.mk

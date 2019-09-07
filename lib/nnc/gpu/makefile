@@ -31,6 +31,9 @@ libnnc-compat-cuda.o: $(SRC_OBJS)
 
 dep: .dep.mk
 .dep.mk: $(SRCS)
-	$(NVCC) $(NVFLAGS) -M $(patsubst %.c,,$^) >> .dep.mk
+	echo '' > .dep.mk
+	for SRC in $(patsubst %.c,,$^) ; do \
+		$(NVCC) $(NVFLAGS) -M $$SRC | sed -e 's/^.*\://g' | (echo "$${SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 
 -include .dep.mk

@@ -19,12 +19,18 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	assert(input_size >= 2);
 	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
-	// Copy the most of parameters, but reshape the dimension of a to a vector.
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
-	assert(a->info.dim[2] == 0); // It is a 2-d array.
-	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(b->info.dim[2] == 0); // It is a 2-d array.
+	// Cannot compute if w is not transposed and dimensions are batched.
+	if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(b->info.dim) > 2 ||
+		ccv_nnc_tensor_nd(w->info.dim) > 2 ||
+		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
+		cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
+		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1] ||
+		cmd.info.blas.transpose_c[0] != cmd.info.blas.transpose_c[1])
+		return CCV_NNC_EXEC_INVALID;
+	// Copy the most of parameters, but reshape the dimension of a to a vector.
+	assert(output_size == 1);
 	assert(w->info.dim[2] == 0); // It is a 2-d array
 	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
@@ -63,12 +69,18 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	// outputs: [output gradient], weight updates, bias updates
 	assert(input_size >= 2 && output_size >= 2);
 	const ccv_nnc_tensor_view_t* g = (const ccv_nnc_tensor_view_t*)inputs[0];
-	assert(g->info.dim[2] == 0); // It is a 2-d array.
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[1];
-	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* dw = (ccv_nnc_tensor_view_t*)outputs[1];
-	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	ccv_nnc_tensor_view_t* bias = output_size > 2 ? (ccv_nnc_tensor_view_t*)outputs[2] : 0;
+	// Cannot compute if w is not transposed and dimensions are batched.
+	if (ccv_nnc_tensor_nd(a->info.dim) > 2 || ccv_nnc_tensor_nd(g->info.dim) > 2 ||
+		ccv_nnc_tensor_nd(dw->info.dim) > 2 ||
+		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
+		cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
+		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1] ||
+		cmd.info.blas.transpose_c[0] != cmd.info.blas.transpose_c[1])
+		return CCV_NNC_EXEC_INVALID;
+	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array.
 	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
 	assert(a_nd == 1 || a_nd == 2);

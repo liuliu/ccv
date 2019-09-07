@@ -37,9 +37,14 @@ libnnc-cmd-cuda.o: $(CUDA_CMD_OBJS)
 
 dep: .dep.mk
 .dep.mk: $(CMD_SRCS) $(CUDA_CMD_SRCS)
-	$(CC) $(CFLAGS) -MM $(patsubst %.cu,,$^) > .dep.mk
+	echo '' > .dep.mk
+	for CMD_SRC in $(patsubst %.cu,,$^) ; do \
+		$(CC) $(CFLAGS) -MM $$CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 ifneq ($(CUDA_CMD_SRCS),)
-	$(NVCC) $(NVFLAGS) -M $(patsubst %.c,,$^) >> .dep.mk
+	for CUDA_CMD_SRC in $(patsubst %.c,,$^) ; do \
+		$(NVCC) $(NVFLAGS) -M $$CUDA_CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CUDA_CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
+	done
 endif
 
 -include .dep.mk

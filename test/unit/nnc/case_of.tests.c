@@ -152,8 +152,8 @@ TEST_CASE("symbolic graph case..of when reuse intermediate tensors")
 	ccv_nnc_tensor_symbol_t c0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, CPU_TENSOR_NHWC(32F, 2), "c0");
 	ccv_nnc_tensor_symbol_t y0 = ccv_nnc_tensor_symbol_new(symbolic_graph_0, CPU_TENSOR_NHWC(32F, 2), "y0");
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_0, 0, TENSOR_SYMBOL_MAP(KV(y0, y)));
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(x, u0, b0), TENSOR_SYMBOL_LIST(z0), "mmu");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(z0, w0, c0), TENSOR_SYMBOL_LIST(y0), "mmw");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(x, u0, b0), TENSOR_SYMBOL_LIST(z0), "mmu");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_0, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(z0, w0, c0), TENSOR_SYMBOL_LIST(y0), "mmw");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_0, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph_1 = ccv_nnc_symbolic_graph_new();
 	ccv_nnc_tensor_symbol_t z1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, CPU_TENSOR_NHWC(32F, 2), "z1");
@@ -163,8 +163,8 @@ TEST_CASE("symbolic graph case..of when reuse intermediate tensors")
 	ccv_nnc_tensor_symbol_t c1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, CPU_TENSOR_NHWC(32F, 2), "c1");
 	ccv_nnc_tensor_symbol_t y1 = ccv_nnc_tensor_symbol_new(symbolic_graph_1, CPU_TENSOR_NHWC(32F, 2), "y1");
 	ccv_nnc_symbolic_graph_set_case_of(symbolic_graph, case_of, symbolic_graph_1, 1, TENSOR_SYMBOL_MAP(KV(y1, y)));
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(x, u1, b1), TENSOR_SYMBOL_LIST(z1), "mmu1");
-	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_GEMM_FORWARD(), TENSOR_SYMBOL_LIST(z1, w1, c1), TENSOR_SYMBOL_LIST(y1), "mmw1");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(x, u1, b1), TENSOR_SYMBOL_LIST(z1), "mmu1");
+	ccv_nnc_graph_exec_symbol_new(symbolic_graph_1, CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1)), TENSOR_SYMBOL_LIST(z1, w1, c1), TENSOR_SYMBOL_LIST(y1), "mmw1");
 	ccv_nnc_graph_exec_symbol_autogen(symbolic_graph_1, 0, 0, CCV_NNC_AUTOGEN_ALL_EXECS | CCV_NNC_AUTOGEN_SOURCES_AND_DESTINATIONS);
 	SYMBOLIC_GRAPH_GEN(symbolic_graph, CCV_NNC_LONG_DOT_GRAPH);
 	ccv_nnc_graph_t* graph = 0;

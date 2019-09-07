@@ -94,7 +94,7 @@ TEST_CASE("full connect back propagation")
 		4 - 4 + 2 * 3,
 	};
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(m, CPU_TENSOR_NHWC(32F, 4, 5), 0);
-	ccv_nnc_cmd_t forw_cmd = CMD_GEMM_FORWARD();
+	ccv_nnc_cmd_t forw_cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	float bo[] = {
 		0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4 + 1,
@@ -104,7 +104,7 @@ TEST_CASE("full connect back propagation")
 	};
 	ccv_nnc_tensor_t bot = ccv_nnc_tensor(bo, CPU_TENSOR_NHWC(32F, 4), 0);
 	REQUIRE_TENSOR_EQ(b, &bot, "forward propagation result should match expected value");
-	ccv_nnc_cmd_t back_cmd = CMD_GEMM_BACKWARD();
+	ccv_nnc_cmd_t back_cmd = CMD_GEMM_BACKWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 5), 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 5), 0);
@@ -169,7 +169,7 @@ TEST_CASE("full connect back propagation with batch = 2")
 		4 - 4 + 2 * 3,
 	};
 	ccv_nnc_tensor_t* w = ccv_nnc_tensor_new(m, CPU_TENSOR_NHWC(32F, 4, 5), 0);
-	ccv_nnc_cmd_t forw_cmd = CMD_GEMM_FORWARD();
+	ccv_nnc_cmd_t forw_cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 	ccv_nnc_cmd_exec(forw_cmd, ccv_nnc_no_hint, 0, TENSOR_LIST(a, w, bias), TENSOR_LIST(b), 0);
 	float bo[] = {
 		0.5 * 5 - 0.2 * 3 - 0.3 * 10 + 2 * 11 - 4 + 1,
@@ -183,7 +183,7 @@ TEST_CASE("full connect back propagation with batch = 2")
 	};
 	ccv_nnc_tensor_t bot = ccv_nnc_tensor(bo, CPU_TENSOR_NHWC(32F, 2, 4), 0);
 	REQUIRE_TENSOR_EQ(b, &bot, "forward propagation result should match expected value");
-	ccv_nnc_cmd_t back_cmd = CMD_GEMM_BACKWARD();
+	ccv_nnc_cmd_t back_cmd = CMD_GEMM_BACKWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 	ccv_nnc_tensor_t* gw = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4, 5), 0);
 	ccv_nnc_tensor_t* gbias = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 4), 0);
 	ccv_nnc_tensor_t* h = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 5), 0);

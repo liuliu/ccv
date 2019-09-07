@@ -54,7 +54,7 @@ static ccv_nnc_symbolic_graph_t* ccv_nnc_simple_symbolic_graph(ccv_convnet_t* co
 			w_symbols[i] = w_symbol;
 			ccv_nnc_tensor_symbol_t bias_symbol = ccv_nnc_tensor_symbol_new(symbolic_vgg, CPU_TENSOR_NHWC(32F, layer->net.full_connect.count), 0);
 			bias_symbols[i] = bias_symbol;
-			ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD();
+			ccv_nnc_cmd_t cmd = CMD_GEMM_FORWARD(NO_TRANSPOSE, TRANSPOSE(0, 1));
 			// If the input is not what I expected (array), reshape it.
 			if (input_info.dim[0] != ccv_nnc_tensor_count(input_info))
 				input_symbol = ccv_nnc_tensor_symbol_alias_new(symbolic_vgg, input_symbol, ccv_nnc_no_ofs, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)).dim, CPU_TENSOR_NHWC(32F, ccv_nnc_tensor_count(input_info)), 0);
