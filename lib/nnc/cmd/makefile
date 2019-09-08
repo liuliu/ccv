@@ -41,7 +41,7 @@ dep: .dep.mk
 	for CMD_SRC in $(patsubst %.cu,,$^) ; do \
 		$(CC) $(CFLAGS) -MM $$CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
 	done
-ifneq ($(CUDA_CMD_SRCS),)
+ifneq ($(CUDA_CMD_LIB),)
 	for CUDA_CMD_SRC in $(patsubst %.c,,$^) ; do \
 		$(NVCC) $(NVFLAGS) -M $$CUDA_CMD_SRC | sed -e 's/^.*\://g' | (echo "$${CUDA_CMD_SRC%%.*}.o: \\" && cat) >> .dep.mk ; \
 	done
