@@ -96,7 +96,6 @@ typedef struct {
 		struct {
 			int transpose_a[2]; /**< [blas.transpose_a[2]] The axis we'd like to transpose for input a. */
 			int transpose_b[2]; /**< [blas.transpose_b[2]] The axis we'd like to transpose for input b. */
-			int transpose_c[2]; /**< [blas.transpose_c[2]] The axis we'd like to transpose for output c. */
 			float a[3]; /**< [blas.a[3]] BLAS scalars. */
 		} blas;
 		struct {

@@ -26,8 +26,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_tensor_nd(w->info.dim) > 2 ||
 		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
 		cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
-		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1] ||
-		cmd.info.blas.transpose_c[0] != cmd.info.blas.transpose_c[1])
+		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
 		return CCV_NNC_EXEC_INVALID;
 	// Copy the most of parameters, but reshape the dimension of a to a vector.
 	assert(output_size == 1);
@@ -77,8 +76,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		ccv_nnc_tensor_nd(dw->info.dim) > 2 ||
 		(bias && ccv_nnc_tensor_nd(bias->info.dim) > 1) ||
 		cmd.info.blas.transpose_a[0] != cmd.info.blas.transpose_a[1] ||
-		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1] ||
-		cmd.info.blas.transpose_c[0] != cmd.info.blas.transpose_c[1])
+		cmd.info.blas.transpose_b[0] == cmd.info.blas.transpose_b[1])
 		return CCV_NNC_EXEC_INVALID;
 	assert(dw->info.dim[2] == 0); // It is a 2-d array.
 	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array.

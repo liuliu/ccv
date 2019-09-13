@@ -311,6 +311,20 @@ static inline void ccv_nnc_tensor_set_c(ccv_nnc_tensor_param_t* const params, co
 	}
 }
 
+static inline int ccv_nnc_is_matrix_transpose(const ccv_nnc_tensor_param_t params, const int transpose[2])
+{
+	const int nd = ccv_nnc_tensor_nd(params.dim);
+	assert(nd >= 1 && nd <= 3);
+	if (transpose[0] != transpose[1])
+	{
+		assert(nd > 1);
+		assert(((transpose[0] == (nd == 2) ? 0 : 1) && (transpose[1] == (nd == 2) ? 1 : 2)) ||
+			((transpose[1] == (nd == 2) ? 0 : 1) && (transpose[0] == (nd == 2) ? 1 : 2)));
+		return 1;
+	}
+	return 0;
+}
+
 // Assuming this is batched matrix. Getting relevant parameters.
 static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t params, const int* const inc, const int transpose[2], int* const batch_size_ref, int* const rows_ref, int* const cols_ref, int* const batch_inc_ref, int* const rows_inc_ref, int* const cols_inc_ref)
 {
@@ -319,7 +333,7 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 	*batch_size_ref = nd < 3 ? 1 : params.dim[0];
 	*batch_inc_ref = nd < 3 ? 0 : inc[1] * inc[2];
 	int rows = nd == 1 ? 1 : (nd == 2 ? params.dim[0] : params.dim[1]);
-	int rows_inc = nd < 2 ? 0 : inc[nd - 1];
+	int rows_inc = inc[nd - 1];
 	int cols = nd == 1 ? params.dim[0] :(nd == 2 ? params.dim[1] : params.dim[2]);
 	int cols_inc = 1;
 	if (transpose[0] != transpose[1])
@@ -341,8 +355,8 @@ static inline void ccv_nnc_tensor_get_matrix_params(const ccv_nnc_tensor_param_t
 #define CMD_BLAS(...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={__VA_ARGS__}}})
 #define TRANSPOSE(_X, _Y) ((_X), (_Y))
 #define NO_TRANSPOSE TRANSPOSE(0, 0)
-#define CMD_GEMM_X(_0, _TA, _TB, _TC, ...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.transpose_a={ESCAPE_X _TA},.transpose_b={ESCAPE_X _TB},.transpose_c={ESCAPE_X _TC}}}) // We default to alpha = 1 and beta = 1
-#define CMD_GEMM(...) CMD_GEMM_X(_0, ##__VA_ARGS__, NO_TRANSPOSE, NO_TRANSPOSE, NO_TRANSPOSE)
+#define CMD_GEMM_X(_0, _TA, _TB, ...) ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.blas={.a={1,1},.transpose_a={ESCAPE_X _TA},.transpose_b={ESCAPE_X _TB},}}) // We default to alpha = 1 and beta = 1
+#define CMD_GEMM(...) CMD_GEMM_X(_0, ##__VA_ARGS__, NO_TRANSPOSE, NO_TRANSPOSE)
 #define CMD_GENERIC_X_0() ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}}})
 #define CMD_GENERIC_X_F(...) ("This should not be used, you should have either 0 parameter or 3 parameters for CMD_GENERIC")
 #define CMD_GENERIC_X_3(...) ((ccv_nnc_cmd_param_t){.size={.dim={__VA_ARGS__}}})

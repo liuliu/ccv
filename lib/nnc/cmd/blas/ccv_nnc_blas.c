@@ -48,14 +48,6 @@ static void _ccv_nnc_gemm_tensor_auto_forw(const ccv_nnc_cmd_param_t cmd, const 
 	outputs[0].format = inputs[0].format;
 	outputs[0].datatype = inputs[0].datatype;
 	int b_rows = a_rows, b_cols = w_cols;
-	if (cmd.blas.transpose_c[0] != cmd.blas.transpose_c[1])
-	{
-		assert(a_nd > 1);
-		assert(((cmd.blas.transpose_c[0] == (a_nd == 2) ? 0 : 1) && (cmd.blas.transpose_c[1] == (a_nd == 2) ? 1 : 2)) ||
-			((cmd.blas.transpose_c[1] == (a_nd == 2) ? 0 : 1) && (cmd.blas.transpose_c[0] == (a_nd == 2) ? 1 : 2)));
-		int t;
-		CCV_SWAP(b_rows, b_cols, t);
-	}
 	if (a_nd == 1) {
 		outputs[0].dim[0] = b_cols;
 	} else if (a_nd == 2) {

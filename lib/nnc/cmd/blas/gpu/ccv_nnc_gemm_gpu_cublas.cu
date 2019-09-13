@@ -15,37 +15,61 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	const ccv_nnc_tensor_view_t* a = (const ccv_nnc_tensor_view_t*)inputs[0];
 	const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[1];
 	const ccv_nnc_tensor_view_t* bias = input_size > 2 ? (const ccv_nnc_tensor_view_t*)inputs[2] : 0;
-	assert(a->info.dim[2] == 0); // It is a 2-d array.
 	assert(output_size == 1);
 	ccv_nnc_tensor_view_t* b = (ccv_nnc_tensor_view_t*)outputs[0];
-	assert(b->info.dim[2] == 0); // It is a 2-d array.
-	assert(w->info.dim[2] == 0); // It is a 2-d array
-	assert(!bias || bias->info.dim[1] == 0); // It is a 1-d array
-	const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
-	assert(a_nd == 1 || a_nd == 2);
-	const int* adim = (a_nd == 1) ? a->info.dim : a->info.dim + 1;
-	const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
-	assert(b_nd == 1 || b_nd == 2);
-	const int* bdim = (b_nd == 1) ? b->info.dim : b->info.dim + 1;
-	const int batch_size = a_nd == 1 ? 1 : ccv_max(1, a->info.dim[0]);
-	assert(batch_size == (b_nd == 1) ? 1 : ccv_max(1, b->info.dim[0]));
-	assert(!bias || bdim[0] == bias->info.dim[0]);
-	assert(bdim[0] == w->info.dim[0]);
-	assert(adim[0] == w->info.dim[1]);
-	const int* winc = CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim;
-	const int a_batch_inc = CCV_IS_TENSOR_VIEW(a) ? (a_nd == 1 ? a->inc[0] : a->inc[1]) : adim[0];
-	const int b_batch_inc = CCV_IS_TENSOR_VIEW(b) ? (b_nd == 1 ? b->inc[0] : b->inc[1]) : bdim[0];
-
+	assert(!bias || (bias->info.dim[1] == 0 || bias->info.dim[2] == 0 || bias->info.dim[3] == 0)); // It is a 1-d array
+	int a_batch_size, a_rows, a_cols, a_batch_inc, a_rows_inc, a_cols_inc;
+	int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
+	int b_batch_size, b_rows, b_cols, b_batch_inc, b_rows_inc, b_cols_inc;
+	const static int no_transpose[2] = {};
+	ccv_nnc_tensor_get_matrix_params(a->info, CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim, cmd.info.blas.transpose_a, &a_batch_size, &a_rows, &a_cols, &a_batch_inc, &a_rows_inc, &a_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(w->info, CCV_IS_TENSOR_VIEW(w) ? w->inc : w->info.dim, cmd.info.blas.transpose_b, &w_batch_size, &w_rows, &w_cols, &w_batch_inc, &w_rows_inc, &w_cols_inc);
+	ccv_nnc_tensor_get_matrix_params(b->info, CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim, no_transpose, &b_batch_size, &b_rows, &b_cols, &b_batch_inc, &b_rows_inc, &b_cols_inc);
+	assert(a_batch_size == b_batch_size);
+	assert(a_batch_size == b_batch_size || a_batch_size == 1);
+	if (a_batch_size == 1 && b_batch_size > 1)
+		a_batch_inc = 0;
+	assert(w_batch_size == a_batch_size || w_batch_size == 1);
+	if (w_batch_size == 1 && b_batch_size > 1)
+		w_batch_inc = 0;
+	assert(a_rows == b_rows);
+	assert(a_cols == w_rows);
+	assert(w_cols == b_cols);
 	cublasHandle_t cublas = ccv_nnc_stream_context_get_cublas(stream_context);
 	static const float one = 1;
 	static const float zero = 0;
+	const int transpose_a = ccv_nnc_is_matrix_transpose(a->info, cmd.info.blas.transpose_a);
+	const int transpose_w = ccv_nnc_is_matrix_transpose(w->info, cmd.info.blas.transpose_b);
 	if (bias)
 	{
-		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, batch_size, b->info.datatype);
-		CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bdim[0], batch_size, 1, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bdim[0], device_ones, ccv_nnc_cuda_datatype(b->info.datatype), 1, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_batch_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-		CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, CUBLAS_OP_N, bdim[0], batch_size, adim[0], &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), winc[1], a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), a_batch_inc, &one, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_batch_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
-	} else
-		CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, CUBLAS_OP_N, bdim[0], batch_size, adim[0], &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), winc[1], a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), a_batch_inc, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_batch_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+		int bias_batch_size, bias_rows, bias_cols, bias_batch_inc, bias_rows_inc, bias_cols_inc;
+		ccv_nnc_tensor_get_matrix_params(bias->info, CCV_IS_TENSOR_VIEW(bias) ? bias->inc : bias->info.dim, no_transpose, &bias_batch_size, &bias_rows, &bias_cols, &bias_batch_inc, &bias_rows_inc, &bias_cols_inc);
+		assert(bias_batch_size == b_batch_size || bias_batch_size == 1);
+		if (bias_batch_size == 1 && b_batch_size > 1)
+			bias_batch_inc = 0;
+		assert(bias_cols == b_cols);
+		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, b_rows, b->info.datatype);
+		if (b_batch_size == 1)
+		{
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, device_ones, ccv_nnc_cuda_datatype(b->info.datatype), 1, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			const cublasOperation_t transa = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
+			const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+			const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
+			const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+		} else {
+		}
+	} else {
+		if (b_batch_size == 1)
+		{
+			const cublasOperation_t transa = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
+			const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
+			const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
+			const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+		} else {
+		}
+	}
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
