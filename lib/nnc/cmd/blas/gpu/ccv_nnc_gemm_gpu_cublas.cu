@@ -135,6 +135,12 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				else
 					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
+				const cublasOperation_t transb = transpose_a ? CUBLAS_OP_N : CUBLAS_OP_T;
+				const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				else
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			}
 		} else {
 		}
@@ -161,6 +167,9 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		{
 			if (transpose_h)
 			{
+				const cublasOperation_t transb = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
+				const int ldb_inc = transpose_w ? w_cols_inc : w_rows_inc;
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, &zero, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			} else {
 				const cublasOperation_t transa = transpose_w ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
