@@ -172,6 +172,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 	ccv_nnc_tensor_view_t* h = (ccv_nnc_tensor_view_t*)outputs[0];
 	if (h)
 	{
+		const int zero_h = !(flags & CCV_NNC_ACCUMULATE_OUTPUT); // reset the gradients to 0
 		const ccv_nnc_tensor_view_t* w = (const ccv_nnc_tensor_view_t*)inputs[2];
 		int h_batch_size, h_rows, h_cols, h_batch_inc, h_rows_inc, h_cols_inc;
 		int w_batch_size, w_rows, w_cols, w_batch_inc, w_rows_inc, w_cols_inc;
@@ -196,7 +197,7 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 				float* const hpi = hp + i * h_rows_inc;
 				parallel_for(j, h_cols) {
 					const float* const wpj = wp + j * w_rows_inc;
-					float v = 0;
+					float v = zero_h ? 0 : hpi[j * h_cols_inc];
 					int k;
 					for (k = 0; k < g_cols; k++)
 						v += wpj[k * w_cols_inc] * gpi[k * g_cols_inc];
