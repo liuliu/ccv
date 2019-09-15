@@ -92,6 +92,7 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 #if CUDA_VERSION >= 9100
 			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, w_batch_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, a_batch_inc, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 #else
+			int i;
 			for (i = 0; i < b_batch_size; i++)
 				CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8 + CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8 + CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, b->data.u8 + CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * i * b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 #endif
