@@ -58,12 +58,24 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
 			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 		} else {
+#if CUDA_VERSION >= 9100
 			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, bias_batch_inc, device_ones, ccv_nnc_cuda_datatype(b->info.datatype), 1, 0, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+			int i;
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, device_ones, ccv_nnc_cuda_datatype(b->info.datatype), 1, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			for (i = 1; i < b_batch_size; i++)
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, b_cols, b_rows, 1, &one, bias->data.u8 + CCV_GET_DATA_TYPE_SIZE(bias->info.datatype) * i * bias_batch_inc, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, device_ones, ccv_nnc_cuda_datatype(b->info.datatype), 1, &one, b->data.u8 + CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * i * b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 			const cublasOperation_t transa = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 			const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 			const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
 			const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+#if CUDA_VERSION >= 9100
 			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, w_batch_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, a_batch_inc, &one, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+			for (i = 0; i < b_batch_size; i++)
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8 + CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8 + CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, b->data.u8 + CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * i * b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 		}
 	} else {
 		if (b_batch_size == 1)
@@ -78,7 +90,14 @@ static int _ccv_nnc_gemm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			const cublasOperation_t transb = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 			const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
 			const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+#if CUDA_VERSION >= 9100
 			CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, w_batch_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, a_batch_inc, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, b_batch_inc, b_batch_size, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+			int i;
+			CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, b->data.u8, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			for (i = 1; i < b_batch_size; i++)
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, transb, b_cols, b_rows, a_cols, &one, w->data.u8 + CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, a->data.u8 + CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, b->data.u8 + CCV_GET_DATA_TYPE_SIZE(b->info.datatype) * i * b_batch_inc, ccv_nnc_cuda_datatype(b->info.datatype), b_rows_inc, ccv_nnc_cuda_compute_datatype(b->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 		}
 	}
 	return CCV_NNC_EXEC_SUCCESS;
@@ -111,10 +130,20 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const void* const device_ones = ccv_nnc_stream_context_get_ones(stream_context, g_rows, bias->info.datatype);
 		if (g_batch_size > 1 && bias_batch_size == g_batch_size)
 		{
+#if CUDA_VERSION >= 9100
 			if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, 0, &zero, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, bias_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 			else
 				CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, 0, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, bias_batch_inc, bias_batch_size, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+			if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, &zero, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			else
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, &one, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+			// We cannot use strided batched alternative because on write, the data could race to the same position
+			for (i = 1; i < g_batch_size; i++)
+				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8 + CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, &one, bias->data.u8 + CCV_GET_DATA_TYPE_SIZE(bias->info.datatype) * i * bias_batch_inc, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 		} else {
 			if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 				CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, CUBLAS_OP_N, bias_cols, bias_rows, g_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, device_ones, ccv_nnc_cuda_datatype(bias->info.datatype), g_rows, &zero, bias->data.u8, ccv_nnc_cuda_datatype(bias->info.datatype), bias_rows_inc, ccv_nnc_cuda_compute_datatype(bias->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
@@ -149,17 +178,35 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				const cublasOperation_t transa = transpose_a ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int lda_inc = transpose_a ? a_cols_inc : a_rows_inc;
+#if CUDA_VERSION >= 9100
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, a_batch_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, &zero, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, a_batch_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &zero, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				else
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				for (i = 1; i < g_batch_size; i++)
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_T, dw_rows, dw_cols, a_rows, &one, a->data.u8 + CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a->info.datatype), lda_inc, g->data.u8 + CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &one, dw->data.u8 + CCV_GET_DATA_TYPE_SIZE(dw->info.datatype) * i * dw_batch_inc, ccv_nnc_cuda_datatype(dw->info.datatype), dw_cols_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 			} else {
 				const cublasOperation_t transb = transpose_a ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int ldb_inc = transpose_a ? a_cols_inc : a_rows_inc;
+#if CUDA_VERSION >= 9100
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, a_batch_inc, &zero, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, a_batch_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, dw_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &zero, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				else
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, a->data.u8, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, dw->data.u8, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				for (i = 1; i < g_batch_size; i++)
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_N, transb, dw_cols, dw_rows, a_rows, &one, g->data.u8 + CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, a->data.u8 + CCV_GET_DATA_TYPE_SIZE(a->info.datatype) * i * a_batch_inc, ccv_nnc_cuda_datatype(a->info.datatype), ldb_inc, &one, dw->data.u8 + CCV_GET_DATA_TYPE_SIZE(dw->info.datatype) * i * dw_batch_inc, ccv_nnc_cuda_datatype(dw->info.datatype), dw_rows_inc, ccv_nnc_cuda_compute_datatype(dw->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 			}
 		} else {
 			if (transpose_w)
@@ -208,17 +255,35 @@ static int _ccv_nnc_gemm_back(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			{
 				const cublasOperation_t transb = transpose_w ? CUBLAS_OP_T : CUBLAS_OP_N;
 				const int ldb_inc = transpose_w ? w_cols_inc : w_rows_inc;
+#if CUDA_VERSION >= 9100
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, w_batch_inc, &zero, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, w_batch_inc, &one, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, h_batch_inc, g_batch_size, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, &zero, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				else
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, &one, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				for (i = 1; i < g_batch_size; i++)
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, CUBLAS_OP_T, transb, h_rows, h_cols, g_cols, &one, g->data.u8 + CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, w->data.u8 + CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w->info.datatype), ldb_inc, &one, h->data.u8 + CCV_GET_DATA_TYPE_SIZE(h->info.datatype) * i * h_batch_inc, ccv_nnc_cuda_datatype(h->info.datatype), h_cols_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 			} else {
 				const cublasOperation_t transa = transpose_w ? CUBLAS_OP_N : CUBLAS_OP_T;
 				const int lda_inc = transpose_w ? w_cols_inc : w_rows_inc;
+#if CUDA_VERSION >= 9100
 				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, w_batch_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, &zero, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
 				else
 					CUBLAS_ENFORCE(cublasGemmStridedBatchedEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, w_batch_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, g_batch_inc, &one, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_rows_inc, h_batch_inc, h_batch_size, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#else
+				if (!(flags & CCV_NNC_ACCUMULATE_OUTPUT)) // reset the gradients to 0
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &zero, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				else
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, &one, w->data.u8, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, g->data.u8, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &one, h->data.u8, ccv_nnc_cuda_datatype(h->info.datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+				for (i = 1; i < g_batch_size; i++)
+					CUBLAS_ENFORCE(cublasGemmEx(cublas, transa, CUBLAS_OP_N, h_cols, h_rows, g_cols, &one, w->data.u8 + CCV_GET_DATA_TYPE_SIZE(w->info.datatype) * i * w_batch_inc, ccv_nnc_cuda_datatype(w->info.datatype), lda_inc, g->data.u8 + CCV_GET_DATA_TYPE_SIZE(g->info.datatype) * i * g_batch_inc, ccv_nnc_cuda_datatype(g->info.datatype), g_rows_inc, &one, h->data.u8 + CCV_GET_DATA_TYPE_SIZE(h->info.datatype) * i * h_batch_inc, ccv_nnc_cuda_datatype(h->info.datatype), h_rows_inc, ccv_nnc_cuda_compute_datatype(h->info.datatype), CUBLAS_GEMM_DEFAULT_TENSOR_OP));
+#endif
 			}
 		} else {
 			if (transpose_h)
