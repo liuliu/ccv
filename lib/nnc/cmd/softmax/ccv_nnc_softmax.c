@@ -7,7 +7,7 @@ static int _ccv_nnc_arbitary_inplace(const int input_idx, const int input_size, 
 	return 1;
 }
 
-static int _ccv_nnc_allow_graident_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
+static int _ccv_nnc_allow_gradient_inplace(const int input_idx, const int input_size, const int output_idx, const int output_size)
 {
 	return (input_idx == 0 && output_idx == 0);
 }
@@ -40,7 +40,7 @@ REGISTER_COMMAND(CCV_NNC_SOFTMAX_BACKWARD)(ccv_nnc_cmd_registry_t* const registr
 	registry->flags = CCV_NNC_CMD_ATTR_NULL_IS_ONES;
 	registry->bitmask = _ccv_nnc_softmax_back_bitmask;
 	registry->tensor_auto = ccv_nnc_hint_tensor_auto_backward_from_gradient;
-	registry->allow_inplace = _ccv_nnc_allow_graident_inplace;
+	registry->allow_inplace = _ccv_nnc_allow_gradient_inplace;
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_SOFTMAX_FORWARD)

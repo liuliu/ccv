@@ -171,13 +171,16 @@ void ccv_nnc_tensor_zero(void* const tensor)
 		return;
 	}
 	const int nd = ccv_nnc_tensor_nd(tv->info.dim);
-	const int* tvinc = tv->inc;
+	assert(nd >= 1);
+	const int* const tvinc = tv->inc;
 	// reset it to 0.
 	int c, x, y;
 	int count = 1;
 	int mod[CCV_NNC_MAX_DIM_ALLOC - 3];
 	size_t mod_inc[CCV_NNC_MAX_DIM_ALLOC - 2];
-	mod_inc[nd - 3] = data_size * tvinc[nd - 3] * tvinc[nd - 2] * tvinc[nd - 1];
+	const size_t top_mod_inc = nd > 2 ? data_size * tvinc[nd - 3] * tvinc[nd - 2] * tvinc[nd - 1] : data_size;
+	if (nd > 2)
+		mod_inc[nd - 3] = top_mod_inc;
 	for (c = nd - 4; c >= 0; c--)
 	{
 		// Compute the mod.
@@ -188,21 +191,23 @@ void ccv_nnc_tensor_zero(void* const tensor)
 	for (c = 0; c < nd - 3; c++)
 		mod_inc[c] = mod_inc[c + 1] * (tvinc[c] - tv->info.dim[c]);
 	uint8_t* tvd = tv->data.u8;
-	const size_t tvinc_21 = data_size * tvinc[nd - 2] * tvinc[nd - 1];
 	const size_t tvinc_1 = data_size * tvinc[nd - 1];
+	const size_t tvinc_21 = tvinc_1 * (nd >= 2 ? tvinc[nd - 2] : 1);
 	const size_t tvdim_1 = data_size * tv->info.dim[nd - 1];
+	const int max_y = ccv_max(1, nd >= 3 ? tv->info.dim[nd - 3] : 1);
+	const int max_x = ccv_max(1, nd >= 2 ? tv->info.dim[nd - 2] : 1);
 	for (c = 0; c < count; c++)
 	{
-		for (y = 0; y < ccv_max(1, tv->info.dim[nd - 3]); y++)
+		for (y = 0; y < max_y; y++)
 		{
 			uint8_t* tvp = tvd + y * tvinc_21;
-			for (x = 0; x < ccv_max(1, tv->info.dim[nd - 2]); x++)
+			for (x = 0; x < max_x; x++)
 			{
 				memset(tvp, 0, tvdim_1);
 				tvp += tvinc_1;
 			}
 		}
-		tvd += mod_inc[nd - 3];
+		tvd += top_mod_inc;
 		for (y = nd - 4; y >= 0; y--)
 			if ((c + 1) % mod[y] != 0)
 				break; // cannot be mod, break out.

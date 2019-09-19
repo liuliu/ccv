@@ -112,6 +112,10 @@
 #define CMD_RANDOM_UNIFORM_FORWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_FORWARD, 0, CMD_BLAS(_lb, _ub), 0)
 // CCV_NNC_RANDOM_UNIFORM_BACKWARD
 #define CMD_RANDOM_UNIFORM_BACKWARD(_lb, _ub) ccv_nnc_cmd(CCV_NNC_RANDOM_UNIFORM_BACKWARD, 0, CMD_BLAS(_lb, _ub), 0)
+// CCV_NNC_INDEX_SELECT_FORWARD
+#define CMD_INDEX_SELECT_FORWARD() ccv_nnc_cmd(CCV_NNC_INDEX_SELECT_FORWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_INDEX_SELECT_BACKWARD
+#define CMD_INDEX_SELECT_BACKWARD() ccv_nnc_cmd(CCV_NNC_INDEX_SELECT_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_MAX_POOL_FORWARD
 #define CMD_MAX_POOL_FORWARD(rows, cols) ccv_nnc_cmd(CCV_NNC_MAX_POOL_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={rows, cols,1}}}), 0)
 // CCV_NNC_MAX_POOL_BACKWARD
