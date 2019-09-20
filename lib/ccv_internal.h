@@ -28,7 +28,7 @@ static int _CCV_PRINT_LOOP __attribute__ ((unused)) = 0;
 
 #ifdef USE_OPENMP
 #define OMP_PRAGMA0(x) MACRO_STRINGIFY(omp parallel for private(x) schedule(dynamic))
-#define parallel_for(x, n) { int x; _Pragma(OMP_PRAGMA0(x)) for ((x) = 0; (x) < (n); (x)++) {
+#define parallel_for(x, n) { int x = 0; _Pragma(OMP_PRAGMA0(x)) for ((x) = 0; (x) < (n); (x)++) {
 #define parallel_endfor } }
 #define FOR_IS_PARALLEL (1)
 #else

@@ -584,7 +584,7 @@ static CCV_IMPLEMENT_QSORT(_ccv_bbf_best_qsort, ccv_bbf_gene_t, less_than)
 
 static ccv_bbf_gene_t _ccv_bbf_best_gene(ccv_bbf_gene_t* gene, int pnum, int point_min, unsigned char** posdata, int posnum, unsigned char** negdata, int negnum, ccv_size_t size, double* pw, double* nw)
 {
-	int i;
+	int i = 0;
 	unsigned int timer = _ccv_bbf_time_measure();
 #ifdef USE_OPENMP
 #pragma omp parallel for private(i) schedule(dynamic)
