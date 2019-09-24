@@ -44,13 +44,13 @@ static void _ccv_cnnp_tensor_list_deinit(void* const data, void* const context)
 	ccfree(tensor_list);
 }
 
-static void _ccv_cnnp_copy_to_gpu(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_copy_to_gpu(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_cnnp_copy_to_gpu_context_t* const copy_to_gpu_context = (ccv_cnnp_copy_to_gpu_context_t*)context;
 	int i, j;
 	for (i = 0; i < batch_size; i++)
 	{
-		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + copy_to_gpu_context->tensor_offset;
+		ccv_nnc_tensor_t* const* const inputs = (ccv_nnc_tensor_t* const*)column_data[0][i] + copy_to_gpu_context->tensor_offset;
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
 		{
@@ -94,13 +94,13 @@ typedef struct {
 	ccv_nnc_tensor_param_t output_params[1];
 } ccv_cnnp_cmd_exec_context_t;
 
-static void _ccv_cnnp_dataframe_cmd_exec(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_dataframe_cmd_exec(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_cnnp_cmd_exec_context_t* const cmd_exec_context = (ccv_cnnp_cmd_exec_context_t*)context;
 	int i, j;
 	for (i = 0; i < batch_size; i++)
 	{
-		ccv_nnc_tensor_t** inputs = (ccv_nnc_tensor_t**)column_data[0][i] + cmd_exec_context->input_offset;
+		ccv_nnc_tensor_t* const* const inputs = (ccv_nnc_tensor_t* const*)column_data[0][i] + cmd_exec_context->input_offset;
 		ccv_nnc_tensor_t** outputs = (ccv_nnc_tensor_t**)data[i];
 		if (!outputs)
 		{
@@ -161,13 +161,13 @@ static void _ccv_cnnp_image_deinit(void* const data, void* const context)
 	ccv_matrix_free(data);
 }
 
-static void _ccv_cnnp_read_image(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_read_image(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	parallel_for(i, batch_size) {
 		if (data[i])
 			ccv_matrix_free(data[i]);
 		off_t structof = (off_t)context;
-		char* const filename = *(char**)((char*)column_data[0][i] + structof);
+		const char* const filename = *(char* const*)((const char*)column_data[0][i] + structof);
 		data[i] = 0;
 		ccv_read(filename, (ccv_dense_matrix_t**)&data[i], CCV_IO_ANY_FILE | CCV_IO_RGB_COLOR);
 	} parallel_endfor
@@ -266,7 +266,7 @@ static void _ccv_cnnp_normalize(ccv_dense_matrix_t* const image, const float mea
 	}
 }
 
-static void _ccv_cnnp_random_jitter(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_random_jitter(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	sfmt_t* const sfmt = (sfmt_t*)alloca(sizeof(sfmt_t) * batch_size);
 	ccv_cnnp_random_jitter_context_t* const ctx = (ccv_cnnp_random_jitter_context_t*)context;
@@ -393,7 +393,7 @@ typedef struct {
 	off_t structof;
 } ccv_cnnp_one_hot_context_t;
 
-static void _ccv_cnnp_one_hot(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_one_hot(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_one_hot_context_t* const one_hot = (ccv_cnnp_one_hot_context_t*)context;
 	ccv_nnc_tensor_param_t params = {
@@ -406,7 +406,7 @@ static void _ccv_cnnp_one_hot(void*** const column_data, const int column_size, 
 	};
 	parallel_for(i, batch_size) {
 		int j;
-		const int label = *(int*)((char*)column_data[0][i] + one_hot->structof);
+		const int label = *(const int*)((const char*)column_data[0][i] + one_hot->structof);
 		if (!data[i])
 			data[i] = ccv_nnc_tensor_new(0, params, 0);
 		ccv_nnc_tensor_t* const tensor = (ccv_nnc_tensor_t*)data[i];

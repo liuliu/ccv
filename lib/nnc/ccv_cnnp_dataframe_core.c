@@ -82,7 +82,7 @@ ccv_cnnp_dataframe_t* ccv_cnnp_dataframe_reduce_new(ccv_cnnp_dataframe_t* const 
 
 #pragma mark - Extract
 
-static void _ccv_cnnp_extract_value(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_extract_value(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	const off_t offset = (off_t)(uintptr_t)context;
 	int i;
@@ -105,7 +105,7 @@ static void _ccv_cnnp_tuple_deinit(void* const data, void* const context)
 	ccfree(data);
 }
 
-static void _ccv_cnnp_make_tuple(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_cnnp_make_tuple(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	const ccv_cnnp_dataframe_tuple_t* const tuple = (ccv_cnnp_dataframe_tuple_t*)context;
 	int i, j;

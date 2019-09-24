@@ -2184,7 +2184,7 @@ CCV_WARN_UNUSED(int) ccv_cnnp_dataframe_add(ccv_cnnp_dataframe_t* const datafram
 /**
  * A map function that takes the data from multiple columns and derive new data out of it.
  */
-typedef void (*ccv_cnnp_column_data_map_f)(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
+typedef void (*ccv_cnnp_column_data_map_f)(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Derive a new column out of existing columns in the dataframe.
  * @param dataframe The dataframe object that contains existing columns.
