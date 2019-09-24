@@ -99,7 +99,7 @@ TEST_CASE("iterate through a simple dataframe")
 	ccv_cnnp_dataframe_free(dataframe);
 }
 
-static void _ccv_int_plus_1(void*** const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
+static void _ccv_int_plus_1(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	for (i = 0; i < batch_size; i++)
