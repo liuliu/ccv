@@ -41,26 +41,62 @@ KHASH_MAP_INIT_STR(vocab_map, int)
 typedef struct {
 	khash_t(vocab_map)* vocab;
 	int vocab_size;
+	int max_length;
 } ccv_cnnp_text_context_t;
 
 static void _ccv_cnnp_load_text(void* const* const* const column_data, const int column_size, const int batch_size, void** const data, void* const context, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
+	const ccv_cnnp_text_context_t* const text_context = (ccv_cnnp_text_context_t*)context;
+	const khash_t(vocab_map)* const vocab = text_context->vocab;
+	const int vocab_size = text_context->vocab_size;
+	const int end_flag = vocab_size - 2;
+	const int pad_flag = vocab_size - 1;
+	const int max_length = text_context->max_length;
 	char* const word = (char*)ccmalloc(1024);
 	for (i = 0; i < batch_size; i++)
 	{
+		ccv_nnc_tensor_t* const tensor = data[i] = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32S, max_length), 0);
 		const ccv_categorized_t* const categorized = (const ccv_categorized_t*)column_data[0][i];
 		const char* const filename = categorized->file.filename;
 		FILE* const file = fopen(filename, "r");
+		int t = 0;
 		while (fscanf(file, "%1023s", word) != EOF)
 		{
+			if (t >= max_length)
+				break;
+			int j;
+			for(j = 0; word[j]; j++)
+				word[j] = tolower(word[j]);
+			char* saveptr;
+			const char* token = strtok_r(word, ".,<>/~`@#$%^&*+\\\"", &saveptr);
+			while (token)
+			{
+				if (t >= max_length)
+					break;
+				const khiter_t k = kh_get(vocab_map, vocab, token);
+				if (k != kh_end(vocab))
+					tensor->data.i32[t++] = kh_val(vocab, k);
+				token = strtok_r(0, ".,<>/~`@#$%^&*+\\\"", &saveptr);
+			}
 		}
 		fclose(file);
+		if (t < max_length)
+		{
+			tensor->data.i32[t] = end_flag;
+			for (++t; t < max_length; t++)
+				tensor->data.i32[t] = pad_flag;
+		}
 	}
 	ccfree(word);
 }
 
-static void train_imdb(const int batch_size, const char* const vocab_file, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
+static void _ccv_cnnp_tensor_deinit(void* const data, void* const context)
+{
+	ccv_nnc_tensor_free(data);
+}
+
+static void train_imdb(const int batch_size, const int embedding_size, const int max_length, const char* const vocab_file, ccv_cnnp_dataframe_t* const train_data, ccv_cnnp_dataframe_t* const test_data, ccv_array_t* const test_set)
 {
 	FILE* const vocab_ptr = fopen(vocab_file, "r");
 	khash_t(vocab_map)* const vocab = kh_init(vocab_map);
@@ -68,20 +104,28 @@ static void train_imdb(const int batch_size, const char* const vocab_file, ccv_c
 	char* const word = (char*)ccmalloc(1024);
 	for (i = 0; fscanf(vocab_ptr, "%1023s", word) != EOF; i++)
 	{
-		const khiter_t k = kh_put(vocab_map, vocab, word, &ret);
-		kh_value(vocab, k) = i;
+		const khiter_t k = kh_put(vocab_map, vocab, strdup(word), &ret);
+		kh_val(vocab, k) = i;
 	}
 	ccfree(word);
 	fclose(vocab_ptr);
 	ccv_cnnp_text_context_t context = {
 		.vocab = vocab,
-		.vocab_size = i,
+		.vocab_size = i + 2, // end and padding.
+		.max_length = max_length,
 	};
-	const int load_text = ccv_cnnp_dataframe_map(train_data, _ccv_cnnp_load_text, 0, 0, COLUMN_ID_LIST(0), &context, 0);
+	const int load_text = ccv_cnnp_dataframe_map(train_data, _ccv_cnnp_load_text, 0, _ccv_cnnp_tensor_deinit, COLUMN_ID_LIST(0), &context, 0);
 	ccv_cnnp_dataframe_iter_t* const iter = ccv_cnnp_dataframe_iter_new(train_data, COLUMN_ID_LIST(load_text));
 	ccv_nnc_tensor_t* tensor;
 	ccv_cnnp_dataframe_iter_next(iter, (void**)&tensor, 1, 0);
+	for (i = 0; i < max_length; i++)
+		printf("%d ", tensor->data.i32[i]);
+	printf("\n");
 	ccv_cnnp_dataframe_iter_free(iter);
+	// Free keys.
+	for (khiter_t k = kh_begin(vocab); k != kh_end(vocab); k++)
+		if (kh_exist(vocab, k))
+			free((void*)kh_key(vocab, k));
 	kh_destroy(vocab_map, vocab);
 }
 
@@ -128,7 +172,7 @@ int main(int argc, char** argv)
 	ccv_cnnp_dataframe_t* const train_data = ccv_cnnp_dataframe_from_array_new(train_set);
 	ccv_array_t* const test_set = _array_from_disk_new(test_list, base_dir);
 	ccv_cnnp_dataframe_t* const test_data = ccv_cnnp_dataframe_from_array_new(test_set);
-	train_imdb(128, vocab_file, train_data, test_data, test_set);
+	train_imdb(128, 128, 512, vocab_file, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
 	int i;
