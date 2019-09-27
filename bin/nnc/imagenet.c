@@ -561,5 +561,12 @@ int main(int argc, char** argv)
 	train_imagenet(128, train_data, test_data, test_set);
 	ccv_cnnp_dataframe_free(train_data);
 	ccv_cnnp_dataframe_free(test_data);
+	int i;
+	for (i = 0; i < train_set->rnum; i++)
+		ccfree(((ccv_categorized_t*)ccv_array_get(train_set, i))->file.filename);
+	ccv_array_free(train_set);
+	for (i = 0; i < test_set->rnum; i++)
+		ccfree(((ccv_categorized_t*)ccv_array_get(test_set, i))->file.filename);
+	ccv_array_free(test_set);
 	return 0;
 }
