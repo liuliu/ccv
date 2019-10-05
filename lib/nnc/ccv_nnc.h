@@ -86,6 +86,11 @@ typedef struct {
 			float momentum; /**< [bnorm.momentum] running_mean = running_mean * momentum + mean * (1 - momentum). */
 		} bnorm;
 		struct {
+			int axis[CCV_NNC_MAX_DIM_ALLOC]; /**< [lnorm.axis[]] The axis selected to compute mean / variance. */
+			int count; /**< [lnorm.count] The number of axis selected. */
+			float epsilon; /**< [lnorm.epsilon] The epsilon for standard derivation. */
+		} lnorm;
+		struct {
 			int nesterov; /**< [minimize.nesterov] Nesterov accelerated gradient. */
 			float rate; /**< [minimize.rate] The learning rate. */
 			float scale; /**< [minimize.scale] The scale to be applied to the gradient before doing any minimization. */
