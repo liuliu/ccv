@@ -64,7 +64,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			batch_size *= adim[x];
 		for (x = 0; x < CCV_NNC_MAX_DIM + 2; x++)
 			batch_size /= rdim[x];
-		float inv_batch_size = 1. / batch_size;
+		const float inv_batch_size = 1. / batch_size;
 		_ccv_nnc_reduce_sum_forw_cpu_ref(a, saved_mean);
 		_ccv_nnc_mul_forw_cpu_ref(inv_batch_size, saved_mean, 0, saved_mean);
 		// Copy this into running mean / var.
@@ -103,20 +103,7 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			}
 			ap += (ainc[1] - adim[1]) * ainc[2] * ainc[3];
 		}
-		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
-		{
-			float* const varp0 = varp + i[0] * saved_inv_std_inc[1] * saved_inv_std_inc[2] * saved_inv_std_inc[3];
-			for (i[1] = 0; i[1] < rdim[1]; i[1]++)
-			{
-				float* const varp1 = varp0 + i[1] * saved_inv_std_inc[2] * saved_inv_std_inc[3];
-				for (i[2] = 0; i[2] < rdim[2]; i[2]++)
-				{
-					float* const varp2 = varp1 + i[2] * saved_inv_std_inc[3];
-					for (x = 0; x < rdim[3]; x++)
-						varp2[x] = varp2[x] * inv_batch_size;
-				}
-			}
-		}
+		_ccv_nnc_mul_forw_cpu_ref(inv_batch_size, saved_inv_std, 0, saved_inv_std);
 		_ccv_nnc_add_forw_cpu_ref(cmd.info.bnorm.momentum, 1. - cmd.info.bnorm.momentum, var, saved_inv_std, var);
 		for (i[0] = 0; i[0] < rdim[0]; i[0]++)
 		{
@@ -219,8 +206,8 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			float* bp = b->data.f32;
 			for (i[0] = 0; i[0] < adim[0]; i[0]++)
 			{
-				float* const nscalep0 = rdim[0] == 1 ? nscalep : scalep + i[0] * rdim[1] * rdim[2] * rdim[3];
-				float* const nbiasp0 = rdim[0] == 1 ? nbiasp : biasp + i[0] * rdim[1] * rdim[2] * rdim[3];
+				float* const nscalep0 = rdim[0] == 1 ? nscalep : nscalep + i[0] * rdim[1] * rdim[2] * rdim[3];
+				float* const nbiasp0 = rdim[0] == 1 ? nbiasp : nbiasp + i[0] * rdim[1] * rdim[2] * rdim[3];
 				for (i[1] = 0; i[1] < adim[1]; i[1]++)
 				{
 					float* const nscalep1 = rdim[1] == 1 ? nscalep0 : nscalep0 + i[1] * rdim[2] * rdim[3];
@@ -300,8 +287,8 @@ static int _ccv_nnc_batch_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 		float* bp = b->data.f32;
 		for (i[0] = 0; i[0] < adim[0]; i[0]++)
 		{
-			float* const nscalep0 = rdim[0] == 1 ? nscalep : scalep + i[0] * rdim[1] * rdim[2] * rdim[3];
-			float* const nbiasp0 = rdim[0] == 1 ? nbiasp : biasp + i[0] * rdim[1] * rdim[2] * rdim[3];
+			float* const nscalep0 = rdim[0] == 1 ? nscalep : nscalep + i[0] * rdim[1] * rdim[2] * rdim[3];
+			float* const nbiasp0 = rdim[0] == 1 ? nbiasp : nbiasp + i[0] * rdim[1] * rdim[2] * rdim[3];
 			for (i[1] = 0; i[1] < adim[1]; i[1]++)
 			{
 				float* const nscalep1 = rdim[1] == 1 ? nscalep0 : nscalep0 + i[1] * rdim[2] * rdim[3];

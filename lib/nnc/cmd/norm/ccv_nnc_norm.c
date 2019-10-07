@@ -88,7 +88,7 @@ REGISTER_COMMAND(CCV_NNC_BATCH_NORM_BACKWARD)(ccv_nnc_cmd_registry_t* const regi
 static int _ccv_nnc_layer_norm_forw_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 3 inputs (x, gamma, beta)
-	// 3 outputs (y, saved_mean, saved_inv_var)
+	// 3 outputs (y, saved_mean, saved_inv_std)
 	if (input_bitmasks[0] == 7u && output_bitmasks[0] == 7u)
 		return 1;
 	// 3 inputs (x, gamma, beta)
@@ -101,7 +101,7 @@ static int _ccv_nnc_layer_norm_forw_bitmask(const int input_size, const int outp
 static int _ccv_nnc_layer_norm_back_bitmask(const int input_size, const int output_size, const uint64_t* const input_bitmasks, const int input_bitmask_size, const uint64_t* const output_bitmasks, const int output_bitmask_size)
 {
 	// 0b110011001
-	// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_var)
+	// Inputs (gradient, 0, 0, x, gamma, 0, 0, saved_mean, saved_inv_std)
 	// Output the propagated error, dgamma and dbeta
 	if ((input_bitmasks[0] & 409u) == 409u && (output_bitmasks[0] & 7u) == 7u)
 		return 1;
