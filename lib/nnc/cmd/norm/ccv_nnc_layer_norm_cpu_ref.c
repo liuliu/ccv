@@ -42,6 +42,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	ccv_nnc_tensor_view_get_inc(scale, scale_inc);
 	ccv_nnc_tensor_view_get_inc(bias, bias_inc);
 	ccv_nnc_tensor_view_get_inc(b, binc);
+	// The epsilon is used a little bit differently from batch norm, it is outside of the sqrt in this case.
 	const float epsilon = cmd.info.lnorm.epsilon;
 	int saved_mean_inc[CCV_NNC_MAX_DIM + 2];
 	int saved_inv_std_inc[CCV_NNC_MAX_DIM + 2];
@@ -101,7 +102,7 @@ static int _ccv_nnc_layer_norm_forw(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 			{
 				float* const varp2 = varp1 + i[2] * saved_inv_std_inc[3];
 				for (x = 0; x < rdim[3]; x++)
-					varp2[x] = 1. / sqrtf(varp2[x] * inv_n + epsilon);
+					varp2[x] = 1. / (sqrtf(varp2[x] * inv_n) + epsilon);
 			}
 		}
 	}

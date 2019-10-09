@@ -263,6 +263,8 @@ void _register_command_CCV_NNC_ADD_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv
 void _register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_BATCH_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_BATCH_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
+void _register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_EWSUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(ccv_nnc_cmd_backend_registry_t* const registry);
 void _register_command_CCV_NNC_COMM_ALLREDUCE_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(ccv_nnc_cmd_backend_registry_t* const registry);
@@ -444,6 +446,8 @@ static inline void _ccv_nnc_cmd_init(void)
 	_register_command_CCV_NNC_ADD_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[25].backends[2]));
 	_register_command_CCV_NNC_BATCH_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[34].backends[2]));
 	_register_command_CCV_NNC_BATCH_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[35].backends[2]));
+	_register_command_CCV_NNC_LAYER_NORM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[32].backends[2]));
+	_register_command_CCV_NNC_LAYER_NORM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[33].backends[2]));
 	_register_command_CCV_NNC_EWSUM_FORWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[4].backends[2]));
 	_register_command_CCV_NNC_EWSUM_BACKWARD_backend_CCV_NNC_BACKEND_GPU_CUDNN(&(init_map[5].backends[2]));
 	_register_command_CCV_NNC_COMM_ALLREDUCE_FORWARD_backend_CCV_NNC_BACKEND_GPU_NCCL(&(init_map[64].backends[1]));
