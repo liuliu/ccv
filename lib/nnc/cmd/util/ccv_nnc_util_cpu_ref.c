@@ -336,6 +336,84 @@ REGISTER_COMMAND_BACKEND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, CCV_NNC_BACKEND_CPU_
 	registry->exec = _ccv_nnc_format_transform;
 }
 
+static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+{
+	assert(output_size <= input_size);
+	int k;
+	for (k = 0; k < output_size; k++)
+	{
+		const ccv_nnc_tensor_view_t* const a = (ccv_nnc_tensor_view_t*)inputs[k];
+		ccv_nnc_tensor_view_t* const b = (ccv_nnc_tensor_view_t*)outputs[k];
+		const int a_nd = ccv_nnc_tensor_nd(a->info.dim);
+		const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
+		assert(a_nd == b_nd);
+		assert(a_nd <= CCV_NNC_MAX_DIM + 2); // I can only handle maximum 4.
+		assert(a->info.dim[cmd.info.transpose.axis[0]] == b->info.dim[cmd.info.transpose.axis[1]]);
+		assert(a->info.dim[cmd.info.transpose.axis[1]] == b->info.dim[cmd.info.transpose.axis[0]]);
+		int x;
+		for (x = 0; x < a_nd; x++)
+			if (x != cmd.info.transpose.axis[0] && x != cmd.info.transpose.axis[1])
+				{ assert(a->info.dim[x] == b->info.dim[x]); }
+		size_t astride[CCV_NNC_MAX_DIM + 2];
+		size_t bstride[CCV_NNC_MAX_DIM + 2];
+		int dim[CCV_NNC_MAX_DIM + 2];
+		for (x = b_nd; x < CCV_NNC_MAX_DIM + 2; x++)
+			dim[x] = 1;
+		for (x = 0; x < b_nd; x++)
+			dim[x] = b->info.dim[x];
+		int ainc[CCV_NNC_MAX_DIM + 2];
+		int binc[CCV_NNC_MAX_DIM + 2];
+		ccv_nnc_tensor_view_get_inc(a, ainc);
+		ccv_nnc_tensor_view_get_inc(b, binc);
+		astride[a_nd - 1] = 1;
+		for (x = a_nd - 2; x >= 0; x--)
+			astride[x] = astride[x + 1] * ainc[x + 1];
+		bstride[a_nd - 1] = 1;
+		for (x = b_nd - 2; x >= 0; x--)
+			bstride[x] = bstride[x + 1] * binc[x + 1];
+		const float* const ap = a->data.f32;
+		float* const bp = b->data.f32;
+		int i[CCV_NNC_MAX_DIM + 2];
+		int j[CCV_NNC_MAX_DIM + 2] = {
+			0, 1, 2, 3
+		};
+		CCV_SWAP(j[cmd.info.transpose.axis[0]], j[cmd.info.transpose.axis[1]], x);
+		for (i[0] = 0; i[0] < dim[0]; i[0]++)
+		{
+			float* const bp0 = bp + i[0] * bstride[0];
+			for (i[1] = 0; i[1] < dim[1]; i[1]++)
+			{
+				float* const bp1 = bp0 + i[1] * bstride[1];
+				for (i[2] = 0; i[2] < dim[2]; i[2]++)
+				{
+					float* const bp2 = bp1 + i[2] * bstride[2];
+					for (i[3] = 0; i[3] < dim[3]; i[3]++)
+						bp2[i[3]] = ap[i[j[0]] * astride[0] + i[j[1]] * astride[1] + i[j[2]] * astride[2] + i[j[3]] * astride[3]];
+				}
+			}
+		}
+	}
+	return CCV_NNC_EXEC_SUCCESS;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_FORWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_transpose;
+}
+
+REGISTER_COMMAND_BACKEND(CCV_NNC_TRANSPOSE_BACKWARD, CCV_NNC_BACKEND_CPU_REF)(ccv_nnc_cmd_backend_registry_t* const registry)
+{
+	registry->tensor_formats = CCV_TENSOR_FORMAT_NCHW | CCV_TENSOR_FORMAT_NHWC | CCV_TENSOR_FORMAT_CHWN;
+	registry->tensor_datatypes = CCV_32F;
+	registry->tensor_memory = CCV_TENSOR_CPU_MEMORY;
+	registry->algorithms = 1;
+	registry->exec = _ccv_nnc_transpose;
+}
+
 static int _ccv_nnc_datatype_conversion(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert(output_size <= input_size);

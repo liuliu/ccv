@@ -171,6 +171,36 @@ REGISTER_COMMAND(CCV_NNC_FORMAT_TRANSFORM_BACKWARD)(ccv_nnc_cmd_registry_t* cons
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_FORMAT_TRANSFORM_BACKWARD)
 #define CMD_FORMAT_TRANSFORM_BACKWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
 
+static void _ccv_nnc_transpose_tensor_auto(const ccv_nnc_cmd_param_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	int i;
+	for (i = 0; i < output_size; i++)
+	{
+		outputs[i] = inputs[i];
+		int t;
+		CCV_SWAP(outputs[i].dim[cmd.transpose.axis[0]], outputs[i].dim[cmd.transpose.axis[1]], t);
+	}
+}
+
+REGISTER_COMMAND(CCV_NNC_TRANSPOSE_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, gpu/ccv_nnc_util_gpu_cudnn.cu)
+{
+	registry->bitmask = _ccv_nnc_data_transfer_forw_bitmask;
+	registry->tensor_auto = _ccv_nnc_transpose_tensor_auto;
+}
+
+REGISTER_COMMAND(CCV_NNC_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t* const registry)
+	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, gpu/ccv_nnc_util_gpu_cudnn.cu)
+{
+	registry->bitmask = _ccv_nnc_data_transfer_back_bitmask;
+	registry->tensor_auto = _ccv_nnc_transpose_tensor_auto;
+}
+
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TRANSPOSE_FORWARD)
+#define CMD_TRANSPOSE_FORWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
+//@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TRANSPOSE_BACKWARD)
+#define CMD_TRANSPOSE_BACKWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
+
 REGISTER_COMMAND(CCV_NNC_DATATYPE_CONVERSION_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, gpu/ccv_nnc_util_gpu_ref.cu)
 {

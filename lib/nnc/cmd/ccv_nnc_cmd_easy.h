@@ -26,6 +26,10 @@
 #define CMD_FORMAT_TRANSFORM_FORWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_FORMAT_TRANSFORM_BACKWARD
 #define CMD_FORMAT_TRANSFORM_BACKWARD() ccv_nnc_cmd(CCV_NNC_FORMAT_TRANSFORM_BACKWARD, 0, ccv_nnc_cmd_auto, 0)
+// CCV_NNC_TRANSPOSE_FORWARD
+#define CMD_TRANSPOSE_FORWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
+// CCV_NNC_TRANSPOSE_BACKWARD
+#define CMD_TRANSPOSE_BACKWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
 // CCV_NNC_DATATYPE_CONVERSION_FORWARD
 #define CMD_DATATYPE_CONVERSION_FORWARD() ccv_nnc_cmd(CCV_NNC_DATATYPE_CONVERSION_FORWARD, 0, ccv_nnc_cmd_auto, 0)
 // CCV_NNC_DATATYPE_CONVERSION_BACKWARD

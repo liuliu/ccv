@@ -108,6 +108,9 @@ typedef struct {
 			int count; /**< [reduce.count] The number of axis selected. */
 		} reduce;
 		struct {
+			int axis[2]; /**< [transpose.axis[2]] The axis we'd like to transpose for input. */
+		} transpose;
+		struct {
 			float p; /**< [dropout.p] Dropout probability. */
 		} dropout;
 		void* userdata;
