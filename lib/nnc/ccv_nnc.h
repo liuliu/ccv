@@ -1185,6 +1185,15 @@ CCV_WARN_UNUSED(ccv_nnc_symbolic_graph_t*) ccv_nnc_symbolic_graph_dup(const ccv_
  */
 CCV_WARN_UNUSED(int) ccv_nnc_tensor_symbol_count(const ccv_nnc_symbolic_graph_t* const graph);
 /**
+ * Compute all the tensor shapes within this graph.
+ * @param graph The symbolic graph.
+ * @param sources The sources for the graph.
+ * @param source_size The size of the sources array. 0 to use default sources.
+ * @param destinations The destinations for the graph.
+ * @param destination_size The size of the destinations array. 0 to use default destinations.
+ */
+void ccv_nnc_symbolic_graph_tensor_auto(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t* const sources, const int source_size, const ccv_nnc_graph_exec_symbol_t* const destinations, const int destination_size);
+/**
  * The opaque structure to iterate over graph.
  */
 typedef struct ccv_nnc_symbolic_graph_iter_s ccv_nnc_symbolic_graph_iter_t;
@@ -2534,6 +2543,14 @@ CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_sequential_new(ccv_cnnp_model_t* con
  */
 void ccv_cnnp_model_compile(ccv_cnnp_model_t* const model, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_cmd_t minimizer, const ccv_nnc_cmd_t loss);
 /**
+ * Compute the shape of the output tensor after the model applied to the input.
+ * This can only be called after the model is compiled with proper input parameters.
+ * @param model The model to compute the output shapes.
+ * @param outputs The computed tensor parameters in the output.
+ * @param output_size The size of the output array, it has to match the model's output.
+ */
+void ccv_cnnp_model_tensor_auto(ccv_cnnp_model_t* const model, ccv_nnc_tensor_param_t* const outputs, const int output_size);
+/**
  * Generate output that can be parsed by GraphViz (DOT language).
  * @param model The composed model.
  * @param flags Either CCV_NNC_SHORT_DOT_GRAPH or CCV_NNC_LONG_DOT_GRAPH
@@ -2558,13 +2575,12 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
  * @param stream_context The stream where the fit can be executed upon.
  */
 void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
-
 /**
  * The parameters for how evaluation should behave.
  */
 typedef struct {
 	int requires_grad; /**< Whether we need to keep intermediate results for gradient computations. */
-	int enable_outgrad; /**< Whether we can compute outflow gradients when call ccv_cnnp_model_backward later. */
+	int disable_outgrad; /**< Whether we can compute outflow gradients when call ccv_cnnp_model_backward later. */
 	int is_test; /**< Whether we evaluate it as test, or just as forward pass of the training process. */
 } ccv_cnnp_evaluate_param_t;
 /**
