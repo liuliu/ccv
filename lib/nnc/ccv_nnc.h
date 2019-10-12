@@ -2781,10 +2781,21 @@ enum {
 	CCV_CNNP_INIT_SHARED_TENSOR_AS_TRAINABLE, /**< The parameter is a provided tensor that can be updated. */
 };
 
+typedef void(*ccv_cnnp_state_initializer_f)(void* const context, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const input, const ccv_nnc_tensor_symbol_t output_symbol);
+typedef void(*ccv_cnnp_cmd_exec_init_state_f)(const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_cnnp_state_initializer_f initializer, void* const initializer_context, void* const context);
+typedef void(*ccv_cnnp_cmd_exec_init_state_deinit_f)(void* const context);
+
+typedef struct {
+	ccv_nnc_tensor_param_t info; /**< The tensor parameter for this one. */
+	void* context; /**< The context for which we initialize tensor. */
+	ccv_cnnp_cmd_exec_init_state_f init; /**< The function to init state for a tensor. */
+	ccv_cnnp_cmd_exec_init_state_deinit_f deinit; /**< The function to release the context. */
+} ccv_cnnp_cmd_exec_io_init_state_t;
+
 typedef struct {
 	int type; /**< The type of the parameter, could be CCV_CNNP_IO, NO_TENSOR, INIT_SHARED_TENSOR, or INIT_SHARED_TENSOR_TRAINABLE */
-	ccv_nnc_tensor_t* tensor; /**< The tensor that is going to be used for initialization. */
-} ccv_cnnp_tensor_param_t;
+	ccv_cnnp_cmd_exec_io_init_state_t init_state; /** The set of state to initialize the given tensor. */
+} ccv_cnnp_cmd_exec_io_t;
 /**
  * A generic model based on the command. If the tensors are labeled as ccv_cnnp_io_t, it will participate
  * as the input / output of the model. If it is a init tensor, the model will use this tensor for that parameter.
@@ -2795,7 +2806,7 @@ typedef struct {
  * @param cmd The command to generate this model.
  * @param hint The hint to run the command.
  * @param flags The flags with the command.
- * @param inputs A list of ccv_cnnp_tensor_param_t identify each input as either a init tensor or a ccv_cnnp_io_t.
+ * @param inputs A list of ccv_cnnp_cmd_exec_io_t identify each input as either a init tensor or a ccv_cnnp_io_t.
  * @param input_size The size of input list.
  * @param outputs A list of types identify each output as ccv_cnnp_io_t or a none tensor.
  * @param output_size The size of the outputs. There is no need to give ccv_cnnp_tensor_param_t for outputs because
@@ -2803,12 +2814,27 @@ typedef struct {
  * @param name The unique name of the model.
  * @return A model based on the given command.
  */
-CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_tensor_param_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name);
+CCV_WARN_UNUSED(ccv_cnnp_model_t*) ccv_cnnp_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_cnnp_cmd_exec_io_t* const inputs, const int input_size, const int* const outputs, const int output_size, const char* const name);
+/**
+ * Copy a tensor as initialization for the given parameter.
+ * @param tensor The tensor to copy from.
+ * @return A init_state that can be passed to ccv_cnnp_cmd_exec_io_t
+ */
+CCV_WARN_UNUSED(ccv_cnnp_cmd_exec_io_init_state_t) ccv_cnnp_cmd_exec_io_copy(const ccv_nnc_tensor_t* const tensor);
+/**
+ * Initialize a given parameter with the command.
+ * @param cmd The command to call when need to initialize.
+ * @param hint The hint to accompany the command.
+ * @param flags The flags to accompany the command.
+ * @param params The tensor configuration.
+ * @return A init_state that can be passed to ccv_cnnp_cmd_exec_io_t
+ */
+CCV_WARN_UNUSED(ccv_cnnp_cmd_exec_io_init_state_t) ccv_cnnp_cmd_exec_io_set_by(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_param_t params);
 
 typedef struct {
 	ccv_nnc_tensor_symbol_t symbol; /**< The tensor symbol this is reference to. */
 	int type; /**< The type of the parameter, could be CCV_CNNP_IO, INIT_SHARED_TENSOR, or INIT_SHARED_TENSOR_TRAINABLE */
-	ccv_nnc_tensor_t* tensor; /**< The tensor that is going to be used for initialization. */
+	ccv_cnnp_cmd_exec_io_init_state_t init_state; /** The set of state to initialize the given tensor. */
 } ccv_cnnp_tensor_symbol_param_t;
 /**
  * A generic model based on the symbolic graph we provided. A list of tensor symbols are labeled whether it

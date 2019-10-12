@@ -211,23 +211,23 @@ TEST_CASE("train model with share weights and L2 loss")
 	// Because we don't have L2 loss function available yet, manually create L2 loss.
 	ccv_cnnp_model_io_t diff0 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(output0, fit0));
 	ccv_cnnp_model_io_t sqr0 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff0, diff0));
 	ccv_cnnp_model_io_t diff1 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(output1, fit1));
 	ccv_cnnp_model_io_t sqr1 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(sqr0, sqr1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
@@ -443,23 +443,23 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	// Because we don't have L2 loss function available yet, manually create L2 loss.
 	ccv_cnnp_model_io_t diff0 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(output0, fit0));
 	ccv_cnnp_model_io_t sqr0 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff0, diff0));
 	ccv_cnnp_model_io_t diff1 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_ADD_FORWARD(1, -1), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(output1, fit1));
 	ccv_cnnp_model_io_t sqr1 = ccv_cnnp_model_apply(
 		ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
-			MODEL_CMD_TENSOR_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
-			MODEL_CMD_TENSOR_LIST(CCV_CNNP_IO), 0),
+			MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO), KV(CCV_CNNP_IO)),
+			MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), 0),
 		MODEL_IO_LIST(diff1, diff1));
 	ccv_cnnp_model_io_t final_output = ccv_cnnp_model_apply(ccv_cnnp_add(0), MODEL_IO_LIST(sqr0, sqr1));
 	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input0, input1, fit0, fit1), MODEL_IO_LIST(final_output), 0);
@@ -546,6 +546,40 @@ TEST_CASE("train model with share weights and L2 loss and check out gradients")
 	ccv_nnc_tensor_free(db0_tensor);
 	ccv_nnc_tensor_free(db1_tensor);
 	ccv_nnc_tensor_free(do0_tensor);
+	ccv_cnnp_model_free(final);
+}
+
+TEST_CASE("apply model as forward pass")
+{
+	ccv_cnnp_model_t* mul = ccv_cnnp_cmd_exec(CMD_EWPROD_FORWARD(), ccv_nnc_no_hint, 0,
+		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
+			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_set_by(CMD_SET_FORWARD(2.12), ccv_nnc_no_hint, 0, CPU_TENSOR_NCHW(32F, 1)))),
+		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "mul");
+	ccv_cnnp_model_io_t input = ccv_cnnp_input();
+	ccv_cnnp_model_io_t output = ccv_cnnp_model_apply(mul, MODEL_IO_LIST(input));
+	output = ccv_cnnp_model_apply(mul, MODEL_IO_LIST(output));
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 1), 0);
+	b->data.f32[0] = -1;
+	ccv_cnnp_model_t* add = ccv_cnnp_cmd_exec(CMD_EWSUM_FORWARD(), ccv_nnc_no_hint, 0,
+		MODEL_CMD_EXEC_IO_MAP(KV(CCV_CNNP_IO),
+			KV(CCV_CNNP_INIT_SHARED_TENSOR, ccv_cnnp_cmd_exec_io_copy(b))),
+		MODEL_CMD_EXEC_IO_LIST(CCV_CNNP_IO), "add");
+	output = ccv_cnnp_model_apply(add, MODEL_IO_LIST(output));
+	ccv_cnnp_model_t* const final = ccv_cnnp_model_new(MODEL_IO_LIST(input), MODEL_IO_LIST(output), "final");
+	ccv_nnc_tensor_param_t a0 = CPU_TENSOR_NCHW(32F, 1);
+	ccv_cnnp_model_compile(final, TENSOR_PARAM_LIST(a0), CMD_SGD_FORWARD(0, 0.1, 1, 0.1, 0, 0), CMD_NOOP());
+	CNNP_MODEL_GEN(final, CCV_NNC_LONG_DOT_GRAPH);
+	ccv_nnc_tensor_t* a0_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	ccv_nnc_tensor_t* o0_tensor = ccv_nnc_tensor_new(0, a0, 0);
+	a0_tensor->data.f32[0] = 1.12;
+	o0_tensor->data.f32[0] = 0;
+	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+		.is_test = 1
+	}, TENSOR_LIST(a0_tensor), TENSOR_LIST(o0_tensor), 0);
+	REQUIRE_EQ_WITH_TOLERANCE(o0_tensor->data.f32[0], 1.12 * 2.12 * 2.12 - 1, 1e-5, "all the model building is to compute 1.12 * 2.12 * 2.12 - 1");
+	ccv_nnc_tensor_free(a0_tensor);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(o0_tensor);
 	ccv_cnnp_model_free(final);
 }
 

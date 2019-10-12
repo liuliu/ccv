@@ -1572,5 +1572,7 @@ void ccv_cnnp_model_free(ccv_cnnp_model_t* const model)
 		ccv_nnc_symbolic_graph_free(model->graph);
 	if (model->compiled_data)
 		_ccv_cnnp_compiled_data_free(model->compiled_data);
+	if (model->name)
+		ccfree(model->name);
 	ccfree(model);
 }
