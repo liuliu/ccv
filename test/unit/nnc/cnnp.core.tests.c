@@ -663,7 +663,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
 		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0);
-		ccv_cnnp_model_backward(final, TENSOR_LIST(ingrad), TENSOR_LIST(), 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0);
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
 	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0);
