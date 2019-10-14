@@ -154,7 +154,7 @@ TEST_CASE("format transform between NHWC and NCHW tensor views")
 	ccv_nnc_tensor_free(d);
 }
 
-TEST_CASE("transpose two tensor views")
+TEST_CASE("transpose two 4d tensor views")
 {
 	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5, 4), 0);
 	memset(a->data.f32, 0, sizeof(float) * 7 * 6 * 5 * 4);
@@ -169,7 +169,7 @@ TEST_CASE("transpose two tensor views")
 				for (l = 0; l < 2; l++)
 					a->data.f32[(i + 3) * 6 * 5 * 4 + (j + 2) * 5 * 4 + (k + 1) * 4 + l] = i * 3 * 2 * 2 + j * 2 * 2 + k * 2 + l;
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
-	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 7, 6, 5), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 8, 7, 6, 5), 0);
 	memset(c->data.f32, 0, sizeof(float) * 8 * 7 * 6 * 5);
 	for (i = 0; i < 4; i++)
 		for (j = 0; j < 3; j++)
@@ -183,6 +183,39 @@ TEST_CASE("transpose two tensor views")
 	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, DIM_ALLOC(4, 3, 2, 2), DIM_ALLOC(3, 2, 1, 0), d->info.dim);
 	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(1, 3), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&c_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
 	REQUIRE_TENSOR_EQ(d, a, "4x3x2x2 tensor should be exactly the same.");
+	ccv_nnc_tensor_free(a);
+	ccv_nnc_tensor_free(b);
+	ccv_nnc_tensor_free(c);
+	ccv_nnc_tensor_free(d);
+}
+
+TEST_CASE("transpose two 3d tensor views")
+{
+	ccv_nnc_tensor_t* const a = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	memset(a->data.f32, 0, sizeof(float) * 6 * 5 * 4);
+	ccv_nnc_tensor_view_t a_view = ccv_nnc_tensor_view(a, DIM_ALLOC(3, 2, 2), DIM_ALLOC(2, 1, 0), a->info.dim);
+	ccv_nnc_tensor_t* const b = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5), 0);
+	memset(b->data.f32, 0, sizeof(float) * 7 * 6 * 5);
+	ccv_nnc_tensor_view_t b_view = ccv_nnc_tensor_view(b, DIM_ALLOC(2, 2, 3), DIM_ALLOC(2, 1, 0), b->info.dim);
+	int j, k, l;
+	for (j = 0; j < 3; j++)
+		for (k = 0; k < 2; k++)
+			for (l = 0; l < 2; l++)
+				a->data.f32[(j + 2) * 5 * 4 + (k + 1) * 4 + l] = j * 2 * 2 + k * 2 + l;
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(0, 2), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&a_view), TENSOR_LIST((ccv_nnc_tensor_t*)&b_view), 0);
+	ccv_nnc_tensor_t* c = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 7, 6, 5), 0);
+	memset(c->data.f32, 0, sizeof(float) * 7 * 6 * 5);
+	for (j = 0; j < 3; j++)
+		for (k = 0; k < 2; k++)
+			for (l = 0; l < 2; l++)
+				c->data.f32[(l + 2) * 6 * 5 + (k + 1) * 5 + j] = j * 2 * 2 + k * 2 + l;
+	REQUIRE_TENSOR_EQ(b, c, "2x2x3 tensor view should be exactly the same.");
+	ccv_nnc_tensor_view_t c_view = ccv_nnc_tensor_view(c, DIM_ALLOC(2, 2, 3), DIM_ALLOC(2, 1, 0), c->info.dim);
+	ccv_nnc_tensor_t* d = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 6, 5, 4), 0);
+	memset(d->data.f32, 0, sizeof(float) * 6 * 5 * 4);
+	ccv_nnc_tensor_view_t d_view = ccv_nnc_tensor_view(d, DIM_ALLOC(3, 2, 2), DIM_ALLOC(2, 1, 0), d->info.dim);
+	ccv_nnc_cmd_exec(CMD_TRANSPOSE_FORWARD(0, 2), ccv_nnc_no_hint, 0, TENSOR_LIST((ccv_nnc_tensor_t*)&c_view), TENSOR_LIST((ccv_nnc_tensor_t*)&d_view), 0);
+	REQUIRE_TENSOR_EQ(d, a, "3x2x2 tensor should be exactly the same.");
 	ccv_nnc_tensor_free(a);
 	ccv_nnc_tensor_free(b);
 	ccv_nnc_tensor_free(c);

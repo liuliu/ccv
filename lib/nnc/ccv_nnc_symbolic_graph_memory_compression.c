@@ -335,6 +335,7 @@ void ccv_nnc_symbolic_graph_memory_compression(ccv_nnc_symbolic_graph_t* const g
 						destination_info->inputs[k] = decompressed.d;
 			}
 		}
+	ccv_nnc_graph_visit_free(visit);
 	ccv_array_free(commons);
 	ccv_matrix_free(exec_dep);
 	ccfree(tensor_marked);

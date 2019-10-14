@@ -512,6 +512,7 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 					else {
 						// Do a simple format conversion.
 						const int c = ccv_nnc_tensor_get_c(input->info);
+						assert(c > 0);
 						const size_t hw_count = tensor_count / c;
 						size_t x;
 						int y;
@@ -532,6 +533,7 @@ static void _ccv_cnnp_batching_new(void** const input_data, const int input_size
 					else {
 						// Do a simple format conversion.
 						const int c = ccv_nnc_tensor_get_c(input->info);
+						assert(c > 0);
 						const size_t hw_count = tensor_count / c;
 						size_t x;
 						int y;

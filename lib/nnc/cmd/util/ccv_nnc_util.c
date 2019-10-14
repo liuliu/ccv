@@ -197,9 +197,9 @@ REGISTER_COMMAND(CCV_NNC_TRANSPOSE_BACKWARD)(ccv_nnc_cmd_registry_t* const regis
 }
 
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TRANSPOSE_FORWARD)
-#define CMD_TRANSPOSE_FORWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
+#define CMD_TRANSPOSE_FORWARD(_axis_a, _axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_FORWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={_axis_a, _axis_b}}}), 0)
 //@REGISTER_EASY_COMMAND_MACRO(CCV_NNC_TRANSPOSE_BACKWARD)
-#define CMD_TRANSPOSE_BACKWARD(axis_a, axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={axis_a, axis_b}}}), 0)
+#define CMD_TRANSPOSE_BACKWARD(_axis_a, _axis_b) ccv_nnc_cmd(CCV_NNC_TRANSPOSE_BACKWARD, 0, ((ccv_nnc_cmd_param_t){.size={.dim={1,1,1}},.transpose={.axis={_axis_a, _axis_b}}}), 0)
 
 REGISTER_COMMAND(CCV_NNC_DATATYPE_CONVERSION_FORWARD)(ccv_nnc_cmd_registry_t* const registry)
 	FIND_BACKEND(ccv_nnc_util_cpu_ref.c, gpu/ccv_nnc_util_gpu_ref.cu)

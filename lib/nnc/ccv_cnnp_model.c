@@ -671,6 +671,7 @@ static void _ccv_cnnp_model_set_minimizer_setter(ccv_cnnp_model_t* const model, 
 		_ccv_cnnp_model_graph_exec_symbol_set(model, update_nodes[i], cmd);
 		ccv_array_free(trainable_indexes);
 	}
+	ccfree(trainable_pos);
 }
 
 static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const int gradient_mode, ccv_nnc_tensor_t* const* const fits, const int fit_size)

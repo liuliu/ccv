@@ -348,6 +348,7 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 		const int b_nd = ccv_nnc_tensor_nd(b->info.dim);
 		assert(a_nd == b_nd);
 		assert(a_nd <= CCV_NNC_MAX_DIM + 2); // I can only handle maximum 4.
+		assert(a_nd >= 2 && b_nd >= 2); // You cannot transpose if it is less than 2.
 		assert(a->info.dim[cmd.info.transpose.axis[0]] == b->info.dim[cmd.info.transpose.axis[1]]);
 		assert(a->info.dim[cmd.info.transpose.axis[1]] == b->info.dim[cmd.info.transpose.axis[0]]);
 		int x;
@@ -361,14 +362,17 @@ static int _ccv_nnc_transpose(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint
 			dim[x] = 1;
 		for (x = 0; x < b_nd; x++)
 			dim[x] = b->info.dim[x];
-		int ainc[CCV_NNC_MAX_DIM + 2];
-		int binc[CCV_NNC_MAX_DIM + 2];
-		ccv_nnc_tensor_view_get_inc(a, ainc);
-		ccv_nnc_tensor_view_get_inc(b, binc);
-		astride[a_nd - 1] = 1;
+		// Don't use ccv_nnc_tensor_view_get_inc or get_dim because these will prefill beginning to 1:
+		// for example, if the dimension is [2, 4], it will fill to [1, 1, 2, 4] so the axis index will
+		// be messed up.
+		const int* const ainc = CCV_IS_TENSOR_VIEW(a) ? a->inc : a->info.dim;
+		const int* const binc = CCV_IS_TENSOR_VIEW(b) ? b->inc : b->info.dim;
+		for (x = a_nd - 1; x < CCV_NNC_MAX_DIM + 2; x++)
+			astride[x] = 1;
 		for (x = a_nd - 2; x >= 0; x--)
 			astride[x] = astride[x + 1] * ainc[x + 1];
-		bstride[a_nd - 1] = 1;
+		for (x = b_nd - 1; x < CCV_NNC_MAX_DIM + 2; x++)
+			bstride[x] = 1;
 		for (x = b_nd - 2; x >= 0; x--)
 			bstride[x] = bstride[x + 1] * binc[x + 1];
 		const float* const ap = a->data.f32;
