@@ -658,6 +658,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 	a_tensor->data.f32[0] = 2;
 	f_tensor->data.f32[0] = 10;
 	int i;
+	float old_o = 10;
 	for (i = 0; i < 10; i++)
 	{
 		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
@@ -666,8 +667,11 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 		ccv_cnnp_model_backward(final, TENSOR_LIST(), TENSOR_LIST(), 0);
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
-	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0);
-	for (i = 0; i < 100; i++)
+	REQUIRE_NOT_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], old_o, 1e-5, "after 10 iterations, output should be different");
+	old_o = o_tensor->data.f32[0];
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0, 0, 0), 0, 0); // No decay.
+	ingrad->data.f32[0] = 0; // ingrad is 0, no update at all.
+	for (i = 0; i < 10; i++)
 	{
 		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 			.requires_grad = 1,
@@ -675,6 +679,31 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 		ccv_cnnp_model_backward(final, TENSOR_LIST(ingrad), TENSOR_LIST(outgrad0, outgrad1), 0);
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], old_o, 1e-5, "after 10 iterations, output should be the same because the ingrad");
+	old_o = o_tensor->data.f32[0];
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.01, 1, 0.01, 0, 0), 0, 0);
+	for (i = 0; i < 100; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(0), TENSOR_LIST(outgrad0, outgrad1), 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	REQUIRE_NOT_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], old_o, 1e-5, "after 100 iterations, output should be different");
+	old_o = o_tensor->data.f32[0];
+	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0, 0, 0), 0, 0); // No decay.
+	// Note we still use the old ingrad which is 0.
+	for (i = 0; i < 10; i++)
+	{
+		ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
+			.requires_grad = 1,
+		}, TENSOR_LIST(a_tensor, f_tensor), TENSOR_LIST(o_tensor), 0);
+		ccv_cnnp_model_backward(final, TENSOR_LIST(ingrad), TENSOR_LIST(), 0);
+		ccv_cnnp_model_apply_gradients(final, 0);
+	}
+	REQUIRE_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], old_o, 1e-5, "after 10 iterations, output should be the same because the ingrad");
+	ingrad->data.f32[0] = 1; // ingrad reset to 1.
 	ccv_cnnp_model_set_minimizer(final, CMD_SGD_FORWARD(0, 0.001, 1, 0.001, 0, 0), 0, 0);
 	for (i = 0; i < 1000; i++)
 	{
@@ -684,6 +713,7 @@ TEST_CASE("learn simple math of 2 * x + 1 + 1 = 10, x = 4")
 		ccv_cnnp_model_backward(final, TENSOR_LIST(ingrad), TENSOR_LIST(), 0);
 		ccv_cnnp_model_apply_gradients(final, 0);
 	}
+	REQUIRE_NOT_EQ_WITH_TOLERANCE(o_tensor->data.f32[0], old_o, 1e-5, "after 1000 iterations, output should be different");
 	o_tensor->data.f32[0] = 10;
 	ccv_cnnp_model_evaluate(final, (ccv_cnnp_evaluate_param_t){
 		.is_test = 1,

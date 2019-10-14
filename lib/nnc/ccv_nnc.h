@@ -1033,7 +1033,12 @@ CCV_WARN_UNUSED(ccv_nnc_tensor_t*) ccv_nnc_tensor_from_symbol(const ccv_nnc_tens
  * @param symbol The tensor symbol reference. Because tensor symbol reference is on stack. It can still be used even the original symbolic graph is free'd.
  * @param tensor The new tensor to bind to.
  */
-void ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor);
+void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor);
+/**
+ * Clear existing bindings on the tensor arena.
+ * @param tensor_arena The tensor arena object generated through compilation to clear bindings.
+ */
+void ccv_nnc_tensor_arena_clear_bindings(ccv_nnc_tensor_arena_t* const tensor_arena);
 /**
  * Free the opaque tensor arena structure.
  * @param tensor_arena The tensor arena object generated through compilation.

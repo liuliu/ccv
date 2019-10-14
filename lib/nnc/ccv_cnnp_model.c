@@ -1277,6 +1277,7 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		else
 			_ccv_cnnp_model_multistage_no_grad_jit(model, inputs, input_size, outputs, output_size);
 	} else {
+		ccv_nnc_tensor_arena_clear_bindings(compiled_data->tensor_arena);
 		assert((input_size % parallel_count) == 0);
 		assert((output_size % parallel_count) == 0);
 		const int input_size_per_p = input_size / parallel_count;
@@ -1351,7 +1352,6 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	assert(model->graph);
 	assert(compiled_data->graph);
 	const int trainable_size = compiled_data->trainables->rnum;
-	// TODO: I should reset tensor_arena bind before bind more to it.
 	// If we need to accumulate the gradients now, do jit on accumulator.
 	if (compiled_data->backward.count > 0)
 	{
@@ -1360,6 +1360,7 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 		else {
 			// Otherwise, we need to switch accumulated gradients with gradients (so we can do accumulation properly).
 			int i;
+			ccv_nnc_tensor_arena_clear_bindings(compiled_data->backward.tensor_arena);
 			for (i = 0; i < trainable_size * parallel_count; i++)
 			{
 				ccv_nnc_tensor_t* tensor;
@@ -1496,6 +1497,7 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 		_ccv_cnnp_model_multistage_jit_2(model);
 	else {
 		const int trainable_size = compiled_data->trainables->rnum;
+		ccv_nnc_tensor_arena_clear_bindings(compiled_data->apply_gradients.tensor_arena);
 		// Change to bind accum_gradients if we do gradient accumulation (run backward more than once).
 		if (compiled_data->backward.count > 1)
 			_ccv_cnnp_bind_tensors_to_arena(compiled_data->apply_gradients.tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.accum_gradients, trainable_size, parallel_count);

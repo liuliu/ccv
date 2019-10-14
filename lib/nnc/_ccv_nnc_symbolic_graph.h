@@ -132,6 +132,7 @@ struct ccv_nnc_tensor_arena_s {
 	// This is a table of tensor references to real allocated tensors.
 	int vt_tensor_size;
 	ccv_nnc_tensor_t** vt_tensors;
+	ccv_numeric_data_t* pb_vt_tensors; // pre-bindings for this vt_tensors, this is optional.
 	// This is the allocated non-continuous buffers.
 	int buffer_size;
 	struct {

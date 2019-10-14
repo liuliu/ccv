@@ -1026,6 +1026,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	tensor_arena->buffer_size = alloc_prep->buffer_size;
 	tensor_arena->vt_tensor_size = tensor_symbol_info_size;
 	tensor_arena->vt_tensors = (ccv_nnc_tensor_t**)(tensor_arena->buffers + alloc_prep->buffer_size);
+	tensor_arena->pb_vt_tensors = 0;
 	tensor_arena->sub_arenas = (ccv_nnc_tensor_arena_t**)(tensor_arena->vt_tensors + tensor_symbol_info_size);
 	tensor_arena->sub_arena_size = graph_prep->sub_prep_size;
 	tensor_arena->tensor_metadata = ccv_array_new(16 /* align to 16 bytes */, 0, 0);
@@ -3792,14 +3793,35 @@ static void _ccv_nnc_tensor_arena_free(ccv_nnc_tensor_arena_t* const tensor_aren
 	}
 	ccv_array_free(tensor_arena->tensor_metadata);
 	ccv_array_free(tensor_arena->m_tensor_idx);
+	if (tensor_arena->pb_vt_tensors)
+		ccfree(tensor_arena->pb_vt_tensors);
 	ccfree(tensor_arena);
 }
 
-void ccv_nnc_tensor_bind_symbol(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor)
+void ccv_nnc_tensor_bind_symbol(ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_tensor_symbol_t symbol, const ccv_nnc_tensor_t* const tensor)
 {
 	assert(tensor_arena->graph_ref == (intptr_t)symbol.graph);
 	assert(symbol.d < tensor_arena->vt_tensor_size);
-	tensor_arena->vt_tensors[symbol.d]->data.ptr = tensor->data.ptr;
+	// Only allocate this on-demand because not everyone uses this ccv_nnc_tensor_bind_symbol method.
+	if (!tensor_arena->pb_vt_tensors)
+	{
+		tensor_arena->pb_vt_tensors = (ccv_numeric_data_t*)cccalloc(tensor_arena->vt_tensor_size, sizeof(ccv_numeric_data_t));
+		int i;
+		for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+			if (tensor_arena->vt_tensors[i])
+				tensor_arena->pb_vt_tensors[i] = tensor_arena->vt_tensors[i]->data;
+	}
+	tensor_arena->vt_tensors[symbol.d]->data = tensor->data;
+}
+
+void ccv_nnc_tensor_arena_clear_bindings(ccv_nnc_tensor_arena_t* const tensor_arena)
+{
+	if (!tensor_arena->pb_vt_tensors)
+		return;
+	int i;
+	for (i = 0; i < tensor_arena->vt_tensor_size; i++)
+		if (tensor_arena->vt_tensors[i])
+			tensor_arena->vt_tensors[i]->data = tensor_arena->pb_vt_tensors[i];
 }
 
 uint64_t ccv_nnc_tensor_arena_size(const ccv_nnc_tensor_arena_t* const tensor_arena)
