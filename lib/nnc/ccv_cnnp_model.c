@@ -1083,7 +1083,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		};
 		ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
-	ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, 0, stream_context);
+	ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, tensor_tape, stream_context);
 }
 
 // Compile the graph to run ccv_cnnp_model_evaluate with require_grad = false (MULTISTAGE_MODE_NO_GRAD).
@@ -1297,11 +1297,11 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		ccv_cnnp_model_set_is_test(model, params.is_test, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
-		ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, 0, stream_context);
+		ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, tensor_tape, stream_context);
 	else
 		ccv_nnc_graph_run(compiled_data->graph, 0, 0, 0,
 			compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size,
-			0, stream_context);
+			tensor_tape, stream_context);
 }
 
 // Compile the graph to run ccv_cnnp_model_backward after ccv_cnnp_model_evaluate with requires_grad = true (MULTISTAGE_MODE).
@@ -1416,7 +1416,7 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	if (compiled_data->backward.count <= 1)
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
 	// Run the backward pass.
-	ccv_nnc_graph_run(compiled_data->graph, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0, 0, stream_context);
+	ccv_nnc_graph_run(compiled_data->graph, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0, tensor_tape, stream_context);
 	// If we need to run accumulation round, do that now.
 	if (compiled_data->backward.count > 0)
 		ccv_nnc_graph_run(compiled_data->backward.accum, 0, TRAVERSE_FULL, 0, stream_context);
