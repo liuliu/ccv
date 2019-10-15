@@ -64,7 +64,7 @@ TEST_CASE("run simple graph network")
 	ccv_nnc_graph_exec_t destination_nodes[] = {
 		back_node,
 	};
-	ccv_nnc_graph_run(graph, 0, 0, 0, source_nodes, 1, destination_nodes, 1);
+	ccv_nnc_graph_run(graph, 0, source_nodes, 1, destination_nodes, 1, 0, 0);
 	ccv_nnc_graph_free(graph);
 	/* At this point, do the computation with a different set of tensors and then compare */
 	ccv_nnc_tensor_t* vb = ccv_nnc_tensor_new(0, b->info, 0);

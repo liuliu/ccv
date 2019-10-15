@@ -114,7 +114,7 @@ int main(int argc, char** argv)
 		ccv_array_t* tensors = ccv_array_new(sizeof(ccv_nnc_tensor_t*), 1, 0);
 		ccv_nnc_graph_t* graph = ccv_nnc_simple_graph(convnet, (ccv_nnc_tensor_t*)sliced, c, &source, &dest, tensors);
 		elapsed_time = get_current_time();
-		ccv_nnc_graph_run(graph, 0, 0, 0, &source, 1, &dest, 1);
+		ccv_nnc_graph_run(graph, 0, &source, 1, &dest, 1, 0, 0);
 		printf("ccv_nnc_graph_run %u ms\n", get_current_time() - elapsed_time);
 		int i;
 		for (i = 0; i < 1000; i++)

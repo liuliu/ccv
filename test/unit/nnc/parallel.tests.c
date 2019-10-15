@@ -49,7 +49,7 @@ TEST_CASE("schedule a simple graph for parallel execution")
 	a_tensor->data.f32[0] = 2.2;
 	ccv_nnc_tensor_t* const b_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, b);
 	b_tensor->data.f32[0] = 3.2;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const d2_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, d2);
 	const float dv = 2 * 0.21 / (2.2 + 3.2);
 	REQUIRE_EQ_WITH_TOLERANCE(d2_tensor->data.f32[0], logf(dv) + expf(dv), 1e-5, "result should be equal");

@@ -1046,7 +1046,7 @@ static void _ccv_cnnp_bind_tensors_to_arena(ccv_nnc_tensor_arena_t* const tensor
 	}
 }
 
-void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -1083,7 +1083,7 @@ void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* 
 		};
 		ccv_cnnp_model_set_is_test(model, 0, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
-	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, 0, stream_context);
 }
 
 // Compile the graph to run ccv_cnnp_model_evaluate with require_grad = false (MULTISTAGE_MODE_NO_GRAD).
@@ -1256,7 +1256,7 @@ static void _ccv_cnnp_model_multistage_jit_0(ccv_cnnp_model_t* const model, cons
 	ccv_nnc_graph_autotune(compiled_data->graph, compiled_data->workspace_size, 0, TRAVERSE_FULL);
 }
 
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -1297,10 +1297,11 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
 		ccv_cnnp_model_set_is_test(model, params.is_test, _ccv_cnnp_cmd_update_for_execs, &update);
 	}
 	if (compiled_data->graph_mode == CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD)
-		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(compiled_data->graph, 0, TRAVERSE_FULL, 0, stream_context);
 	else
-		ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, 0, 0,
-			compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size);
+		ccv_nnc_graph_run(compiled_data->graph, 0, 0, 0,
+			compiled_data->evaluate.to_ops, compiled_data->evaluate.to_op_size,
+			0, stream_context);
 }
 
 // Compile the graph to run ccv_cnnp_model_backward after ccv_cnnp_model_evaluate with requires_grad = true (MULTISTAGE_MODE).
@@ -1341,7 +1342,7 @@ static void _ccv_cnnp_model_multistage_jit_1(ccv_cnnp_model_t* const model)
 	ccv_array_free(tensor_binds);
 }
 
-void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_stream_context_t* const stream_context)
+void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_compiled_data_t* const compiled_data = model->compiled_data;
 	assert(compiled_data);
@@ -1415,10 +1416,10 @@ void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* co
 	if (compiled_data->backward.count <= 1)
 		_ccv_cnnp_bind_tensors_to_arena(compiled_data->tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
 	// Run the backward pass.
-	ccv_nnc_graph_run(compiled_data->graph, 0, stream_context, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0);
+	ccv_nnc_graph_run(compiled_data->graph, 0, compiled_data->backward.from_ops, compiled_data->backward.from_op_size, 0, 0, 0, stream_context);
 	// If we need to run accumulation round, do that now.
 	if (compiled_data->backward.count > 0)
-		ccv_nnc_graph_run(compiled_data->backward.accum, 0, stream_context, 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(compiled_data->backward.accum, 0, TRAVERSE_FULL, 0, stream_context);
 	// Update the count, this determines whether we need to accumulate or not.
 	++compiled_data->backward.count;
 }
@@ -1505,7 +1506,7 @@ void ccv_cnnp_model_apply_gradients(ccv_cnnp_model_t* const model, ccv_nnc_strea
 		else
 			_ccv_cnnp_bind_tensors_to_arena(compiled_data->apply_gradients.tensor_arena, model->graph, compiled_data->gradients, compiled_data->tensors.gradients, trainable_size, parallel_count);
 	}
-	ccv_nnc_graph_run(compiled_data->apply_gradients.graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(compiled_data->apply_gradients.graph, 0, TRAVERSE_FULL, 0, stream_context);
 	// Reset backward count to 0.
 	compiled_data->backward.count = 0;
 }

@@ -41,7 +41,7 @@ TEST_CASE("simple graph x * 0.3 + 3 compiled with NUMA")
 	REQUIRE(z_tensor->data.f32 != y_tensor->data.f32, "z cannot be assigned to the same place of y due to NUMA constraint");
 	ccv_nnc_graph_exec_t source = ccv_nnc_graph_exec_source(graph_exec_arena);
 	ccv_nnc_graph_exec_t destination = ccv_nnc_graph_exec_destination(graph_exec_arena);
-	ccv_nnc_graph_run(graph, 0, 0, 0, &source, 1, &destination, 1);
+	ccv_nnc_graph_run(graph, 0, &source, 1, &destination, 1, 0, 0);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.21 * 0.3 + 3, 1e-6, "should be equal to 1.21 * 0.3 + 3");
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);

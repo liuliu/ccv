@@ -47,7 +47,7 @@ TEST_CASE("compare softmax + categorical crossentropy v.s. softmax crossentropy 
 	ccv_nnc_tensor_t* const label_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, label);
 	label_tensor->data.i32[0] = 2;
 	label_tensor->data.i32[1] = 1;
-	ccv_nnc_graph_run(run_graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(run_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const da0_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, da0);
 	ccv_nnc_tensor_t* const da1_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, da1);
 	REQUIRE_TENSOR_EQ(da0_tensor, da1_tensor, "two tensors from combined op and separate ops should be equal");

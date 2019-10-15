@@ -163,7 +163,7 @@ int main(int argc, char** argv)
 			}
 		}
 		elapsed_time = get_current_time();
-		ccv_nnc_graph_run(run_graph, 0, 0, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)));
+		ccv_nnc_graph_run(run_graph, 0, GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, source_symbol)), GRAPH_EXEC_LIST(ccv_nnc_graph_exec_from_symbol(graph_exec_arena, dest_symbol)), 0, 0);
 		printf("ccv_nnc_graph_run %u ms\n", get_current_time() - elapsed_time);
 		for (i = 0; i < 1000; i++)
 			if (fabsf(b->data.f32[i] - c->data.f32[i]) > 1e-4)

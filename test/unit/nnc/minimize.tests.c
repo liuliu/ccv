@@ -62,7 +62,7 @@ TEST_CASE("solve least square sum with stochastic gradient descent on symbolic g
 			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0, 0.00001, 1, 0.995, 0.9, 0.9));
 		else if (i == 250)
 			ccv_nnc_graph_exec_set(graph, sgd, CMD_SGD_FORWARD(0, 0.0001, 1, 0.995, 0.9, 0.9));
-		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	}
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[0] + a_tensor->data.f32[1] * w_tensor->data.f32[1], -1, 1e-3, "converge for vector 1");
 	REQUIRE_EQ_WITH_TOLERANCE(a_tensor->data.f32[0] * w_tensor->data.f32[2] + a_tensor->data.f32[1] * w_tensor->data.f32[3], 1, 1e-3, "converge for vector 1");

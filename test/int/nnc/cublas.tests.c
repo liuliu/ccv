@@ -1562,7 +1562,7 @@ TEST_CASE("random uniform distribution")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100000), 0);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(x_tensor), TENSOR_LIST(xt), 0);
@@ -1598,7 +1598,7 @@ TEST_CASE("random uniform distribution in half precision")
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = 0;
 	ccv_nnc_symbolic_graph_compile(symbolic_graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(symbolic_graph), &graph, &tensor_arena, &graph_exec_arena);
 	GRAPH_GEN(graph, CCV_NNC_LONG_DOT_GRAPH);
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const x_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, x);
 	ccv_nnc_tensor_t* const x16t = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(16F, 100000), 0);
 	ccv_nnc_tensor_t* const xt = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100000), 0);

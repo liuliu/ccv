@@ -48,7 +48,7 @@ TEST_CASE("schedule GPU work on one stream")
 	ccv_nnc_tensor_t* const bias_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, bias);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a_tensor, w_tensor, bias_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
@@ -143,7 +143,7 @@ TEST_CASE("schedule GPU work on multiple streams")
 	ccv_nnc_tensor_t* const biasd_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, biasd);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw1, hbias1, hw2, hbias2, hw3, hbias3, hbiasc, hbiasd), TENSOR_LIST(a_tensor, w1_tensor, bias1_tensor, w2_tensor, bias2_tensor, w3_tensor, bias3_tensor, biasc_tensor, biasd_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* hd = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
@@ -258,7 +258,7 @@ TEST_CASE("schedule GPU work with while loop")
 	ccv_nnc_tensor_t* const biasc_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, biasc);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw1, hbias1, hw2, hbias2, hw3, hbias3, hbiasc), TENSOR_LIST(a_tensor, w1_tensor, bias1_tensor, w2_tensor, bias2_tensor, w3_tensor, bias3_tensor, biasc_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_graph_default_stream(graph);
-	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_tensor_t* hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);
 	ccv_nnc_tensor_pin_memory(hc);
@@ -344,7 +344,7 @@ TEST_CASE("schedule GPU work with case..of")
 	ccv_nnc_tensor_t* const bias_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, bias);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw, hbias), TENSOR_LIST(a_tensor, w_tensor, bias_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* hb = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 2), 0);
@@ -465,7 +465,7 @@ TEST_CASE("schedule GPU work with both while loop and case..of")
 	ccv_nnc_tensor_t* const biasc_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, biasc);
 	ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(ha, hw1, hbias1, hw2, hbias2, hw3, hbias3, hw4, hbias4, hbiasc), TENSOR_LIST(a_tensor, w1_tensor, bias1_tensor, w2_tensor, bias2_tensor, w3_tensor, bias3_tensor, w4_tensor, bias4_tensor, biasc_tensor), 0);
 	ccv_nnc_stream_context_t* const stream_context = ccv_nnc_stream_context_new(CCV_STREAM_CONTEXT_GPU);
-	ccv_nnc_graph_run(graph, 0, stream_context, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, stream_context);
 	ccv_nnc_stream_context_wait(stream_context);
 	ccv_nnc_stream_context_free(stream_context);
 	ccv_nnc_tensor_t* hc = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 1, 1), 0);

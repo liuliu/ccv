@@ -67,8 +67,8 @@ TEST_CASE("implement layer norm with other symbolic graph")
 	ccv_nnc_symbolic_graph_compile(layer_norm_symbolic_graph, 0, 0, 0, 0, SYMBOLIC_GRAPH_SOURCES(layer_norm_symbolic_graph), SYMBOLIC_GRAPH_DESTINATIONS(layer_norm_symbolic_graph), &layer_norm_graph, &layer_norm_tensor_arena, &layer_norm_graph_exec_arena);
 	ccv_nnc_tensor_t* const bx_tensor = ccv_nnc_tensor_from_symbol(layer_norm_tensor_arena, bx);
 	memcpy(bx_tensor->data.f32, x_tensor->data.f32, sizeof(float) * 8 * 4 * 4 * 10);
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
-	ccv_nnc_graph_run(layer_norm_graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_graph_run(layer_norm_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	ccv_nnc_tensor_t* const by_tensor = ccv_nnc_tensor_from_symbol(layer_norm_tensor_arena, by);
 	REQUIRE_TENSOR_EQ(y_tensor, by_tensor, "graph computed result should match batch norm op result");
@@ -150,8 +150,8 @@ TEST_CASE("compare layer norm gradient with other symbolic graph")
 	for (i = 0; i < 8 * 4 * 4 * 10; i++)
 		dby_tensor->data.f32[i] = dy_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt) * 2 - 1;
 	memcpy(bx_tensor->data.f32, x_tensor->data.f32, sizeof(float) * 8 * 4 * 4 * 10);
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
-	ccv_nnc_graph_run(layer_norm_graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
+	ccv_nnc_graph_run(layer_norm_graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const dx_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, dx);
 	ccv_nnc_tensor_t* const dbx_tensor = ccv_nnc_tensor_from_symbol(layer_norm_tensor_arena, dbx);
 	REQUIRE_TENSOR_EQ(dx_tensor, dbx_tensor, "graph computed result should match layer norm op result");

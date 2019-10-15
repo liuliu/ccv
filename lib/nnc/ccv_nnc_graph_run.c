@@ -714,7 +714,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 		stream_context->main = 0;
 }
 
-static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 
 static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc_graph_exec_info_t* const node, const int idx, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags)
 {
@@ -753,12 +753,12 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 			{
 				assert(ref < node->graph_ref_size);
 				ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[ref] - 1);
-				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, stream_context, flags, 0, 0, 0, 0);
+				_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, flags, 0, 0, 0, 0, tensor_tape, stream_context);
 			}
 			_ccv_nnc_graph_exec_unwrap_phi(graph, node, ref);
 		} else if (node->flags & CCV_NNC_GRAPH_EXEC_P_WHILE) {
 			ccv_nnc_graph_t* sub_graph = *(ccv_nnc_graph_t**)ccv_array_get(graph->sub_graphs, CCV_NNC_GRAPH_REF(node)[0] - 1);
-			_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, tensor_tape, stream_context, flags, 0, 0, 0, 0);
+			_ccv_nnc_graph_run(sub_graph, idx, node, inputs, node->input_size, outputs, node->output_size, flags, 0, 0, 0, 0, tensor_tape, stream_context);
 		}
 	} else {
 		PRINT(CCV_CLI_VERBOSE, "%s [%d]: [%d] -> [%d]\n", ccv_nnc_cmd_name(node->cmd.cmd), idx, node->input_size, node->output_size);
@@ -780,7 +780,7 @@ static inline void _ccv_nnc_graph_exec_run(ccv_nnc_graph_t* const graph, ccv_nnc
 	}
 }
 
-static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags)
+static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, const int flags, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i;
 	if (exec && (exec->flags & CCV_NNC_GRAPH_EXEC_P_WHILE))
@@ -850,7 +850,7 @@ static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, co
 	}
 }
 
-static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	int i, j;
 	const ccv_nnc_graph_exec_t* const graph_sources = sources ? sources : (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0);
@@ -937,7 +937,7 @@ static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, co
 #undef visitor
 }
 
-static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, ccv_nnc_graph_exec_info_t* const exec, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	assert((sources == 0 && source_size == 0) || (sources && source_size));
 	assert((destinations == 0 && destination_size == 0) || (destinations && destination_size));
@@ -955,13 +955,13 @@ static int _ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int exec_idx, 
 	// When topsorted is true, there is no memory allocation when run the graph.
 	const int topsorted = (!sources && !destinations && graph->topsorted);
 	if (topsorted)
-		_ccv_nnc_graph_topsorted_run(graph, exec_idx, exec, tensor_tape, stream_context, flags);
+		_ccv_nnc_graph_topsorted_run(graph, exec_idx, exec, flags, tensor_tape, stream_context);
 	else
-		_ccv_nnc_graph_run_slow_path(graph, exec_idx, exec, inputs, input_size, outputs, output_size, tensor_tape, stream_context, flags, sources, source_size, destinations, destination_size);
+		_ccv_nnc_graph_run_slow_path(graph, exec_idx, exec, inputs, input_size, outputs, output_size, flags, sources, source_size, destinations, destination_size, tensor_tape, stream_context);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
-int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size)
+int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context)
 {
 	if (stream_context && graph->topsorted && source_size == 0 && destination_size == 0)
 	{
@@ -978,5 +978,5 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const
 		ccv_nnc_stream_schedule_task(scheduler, task);
 		return CCV_NNC_EXEC_SUCCESS;
 	} else
-		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, tensor_tape, 0 /* In this case, we don't support stream context yet. */, flags, sources, source_size, destinations, destination_size);
+		return _ccv_nnc_graph_run(graph, -1, 0, 0, 0, 0, 0, flags, sources, source_size, destinations, destination_size, tensor_tape, 0 /* In this case, we don't support stream context yet. */);
 }

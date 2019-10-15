@@ -89,7 +89,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		for (i = 0; i < 8 * 8 * 5 * 5; i++)
 			w3_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
-		ccv_nnc_graph_run(graph, 0, ccv_nnc_graph_default_stream(graph), 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, ccv_nnc_graph_default_stream(graph));
 		ccv_nnc_stream_context_wait(ccv_nnc_graph_default_stream(graph));
 		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
 		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
@@ -155,7 +155,7 @@ TEST_CASE("schedule symbolic graph to data parallel with broadcast and reduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_fit), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, label)), 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, bias1), ccv_nnc_tensor_from_symbol(tensor_arena, bias3)), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
-		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 		ccv_nnc_tensor_t* np_updated[4];
 		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
 		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
@@ -268,7 +268,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		for (i = 0; i < 8 * 8 * 5 * 5; i++)
 			w3_tensor->data.f32[i] = dsfmt_genrand_open_close(&dsfmt);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
-		ccv_nnc_graph_run(graph, 0, ccv_nnc_graph_default_stream(graph), 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, ccv_nnc_graph_default_stream(graph));
 		ccv_nnc_stream_context_wait(ccv_nnc_graph_default_stream(graph));
 		updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
 		updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);
@@ -334,7 +334,7 @@ TEST_CASE("schedule symbolic graph to data parallel with allreduce")
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(cpu_fit), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, label)), 0);
 		ccv_nnc_cmd_exec(CMD_SET_FORWARD(0), ccv_nnc_no_hint, 0, TENSOR_LIST(), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, bias1), ccv_nnc_tensor_from_symbol(tensor_arena, bias3)), 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(w1_tensor, w3_tensor), TENSOR_LIST(ccv_nnc_tensor_from_symbol(tensor_arena, w1), ccv_nnc_tensor_from_symbol(tensor_arena, w3)), 0);
-		ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+		ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 		ccv_nnc_tensor_t* np_updated[4];
 		np_updated[0] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8, 3, 5, 5), 0);
 		np_updated[1] = ccv_nnc_tensor_new(0, CPU_TENSOR_NCHW(32F, 8), 0);

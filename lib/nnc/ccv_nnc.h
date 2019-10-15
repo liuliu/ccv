@@ -737,16 +737,16 @@ typedef struct ccv_nnc_tensor_tape_s ccv_nnc_tensor_tape_t;
  * Execute a computation graph with all bells and whistles. Need to supply a tensor tape if it contains backward pass
  * for while loop or branches. With tensor tape, the tensors are versioned, so you can "backpropagate through time".
  * @param graph The concrete graph.
- * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
- * @param stream_context Which stream this graph will be executed upon.
  * @param flags A reserved field for flags.
  * @param sources The source execution nodes array.
  * @param source_size The size of source execution nodes array. 0 uses default sources.
  * @param destinations The destination execution nodes array.
  * @param destination_size The size of destination execution nodes array. 0 uses default destinations.
+ * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
+ * @param stream_context Which stream this graph will be executed upon.
  * @return CCV_NNC_EXEC_SUCCESS if succeed.
  */
-int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size);
+int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_nnc_graph_exec_t* const sources, const int source_size, const ccv_nnc_graph_exec_t* const destinations, const int destination_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 
 /** @} */
 
@@ -2577,9 +2577,10 @@ void ccv_cnnp_model_dot(const ccv_cnnp_model_t* const model, const int flags, FI
  * @param fit_size The size of the target tensors array.
  * @param outputs The actual outputs from the model.
  * @param output_size The size of the outputs array.
+ * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
  * @param stream_context The stream where the fit can be executed upon.
  */
-void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_fit(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const fits, const int fit_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
  * The parameters for how evaluation should behave.
  */
@@ -2596,9 +2597,10 @@ typedef struct {
  * @param input_size The size of the input tensors array.
  * @param outputs The actual outputs from the model.
  * @param output_size The size of the outputs array.
+ * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
  * @param stream_context The stream where the evaluation can be executed upon.
  */
-void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evaluate_param_t params, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Based on the input gradients, compute the output gradients (w.r.t. the inputs). This also adds trainable gradients.
  * @param model The composed model.
@@ -2606,9 +2608,10 @@ void ccv_cnnp_model_evaluate(ccv_cnnp_model_t* const model, const ccv_cnnp_evalu
  * @param ingrad_size The size of the input gradients array.
  * @param outgrads The output gradients (w.r.t. the inputs).
  * @param outgrad_size The size of the output gradients array.
+ * @param tensor_tape An opaque tensor tape object to "backpropagate through time".
  * @param stream_context The stream where the gradient computation can be executed upon.
  */
-void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_stream_context_t* const stream_context);
+void ccv_cnnp_model_backward(ccv_cnnp_model_t* const model, ccv_nnc_tensor_t* const* const ingrads, const int ingrad_size, ccv_nnc_tensor_t* const* const outgrads, const int outgrad_size, ccv_nnc_tensor_tape_t* const tensor_tape, ccv_nnc_stream_context_t* const stream_context);
 /**
  * Apply the computed gradients to the trainable tensors.
  * @param model The composed model.

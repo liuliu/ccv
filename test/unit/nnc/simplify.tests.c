@@ -38,7 +38,7 @@ TEST_CASE("simplify graph (x + y) * (x + y)")
 	x_tensor->data.f32[0] = 10;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 8;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], (10 + 8) * (10 + 8), 1e-5, "result should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
@@ -78,7 +78,7 @@ TEST_CASE("simplify graph with data transfer")
 	z2_tensor->data.f32[0] = 1.2;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 8;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const z_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, z);
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[0], 1.2 + 8, 1e-5, "result should be equal");
 	REQUIRE_EQ_WITH_TOLERANCE(z_tensor->data.f32[1], 1.2, 1e-5, "result should be equal");
@@ -126,7 +126,7 @@ TEST_CASE("simplify graph with softmax + crossentropy")
 	ccv_nnc_tensor_t* const label_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, label);
 	label0_tensor->data.i32[0] = label_tensor->data.i32[0] = 2;
 	label0_tensor->data.i32[1] = label_tensor->data.i32[1] = 1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const loss0_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_tensor_t* const softmax_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 2, 3), 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_CROSSENTROPY_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(a0_tensor, label0_tensor), TENSOR_LIST(loss0_tensor, softmax_tensor), 0);
@@ -201,13 +201,13 @@ TEST_CASE("simplify graph with case..of")
 	x_tensor->data.f32[0] = -2;
 	y_tensor->data.f32[0] = 1.1;
 	z_tensor->data.f32[0] = 2.2;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* q_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, q);
 	REQUIRE_EQ_WITH_TOLERANCE(q_tensor->data.f32[0], (-2 + 1.1) + (-2 + 1.1) * 2.2 + (-2 + 1.1) * 2.2, 1e-5, "q should be equal");
 	x_tensor->data.f32[0] = 1.5;
 	y_tensor->data.f32[0] = 1.1;
 	z_tensor->data.f32[0] = 2.2;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	q_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, q);
 	REQUIRE_EQ_WITH_TOLERANCE(q_tensor->data.f32[0], (1.5 + 1.1) * (1.5 + 1.1) * 2.2, 1e-5, "q should be equal");
 	ccv_nnc_symbolic_graph_free(symbolic_graph);
@@ -257,7 +257,7 @@ TEST_CASE("simplify graph with while, variant 1")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;
@@ -306,7 +306,7 @@ TEST_CASE("simplify graph with while, variant 2")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;
@@ -355,7 +355,7 @@ TEST_CASE("simplify graph with while, variant 3")
 	x_tensor->data.f32[0] = 0.5;
 	ccv_nnc_tensor_t* const y_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, y);
 	y_tensor->data.f32[0] = 1.1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const f_tensor = ccv_nnc_tensor_from_symbol(tensor_arena, f);
 	int i;
 	float r = 0.5;

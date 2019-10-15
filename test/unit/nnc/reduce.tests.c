@@ -91,7 +91,7 @@ TEST_CASE("use reduce for softmax")
 	for (i = 0; i < 100; i++)
 		da_tensor->data.f32[i] = 0;
 	da_tensor->data.f32[88] = 1;
-	ccv_nnc_graph_run(graph, 0, 0, 0, TRAVERSE_FULL);
+	ccv_nnc_graph_run(graph, 0, TRAVERSE_FULL, 0, 0);
 	ccv_nnc_tensor_t* const ta_tensor = ccv_nnc_tensor_new(0, CPU_TENSOR_NHWC(32F, 100), 0);
 	ccv_nnc_cmd_exec(CMD_SOFTMAX_FORWARD(), ccv_nnc_no_hint, 0, TENSOR_LIST(tx_tensor), TENSOR_LIST(ta_tensor), 0);
 	REQUIRE_TENSOR_EQ(a_tensor, ta_tensor, "softmax should match from the graph");

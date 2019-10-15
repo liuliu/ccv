@@ -176,7 +176,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 			input_fit_fits[j] = input_fits[j][1];
 			outputs[j] = (ccv_nnc_tensor_t*)input_fits[device_count + j];
 		}
-		ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
+		ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, 0, stream_contexts[p]);
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
 		if ((i + 1) % epoch_end == 0)
@@ -204,7 +204,7 @@ static int train_cifar_10(ccv_array_t* const training_set, const int batch_size,
 		}
 		ccv_cnnp_model_evaluate(cifar_10, (ccv_cnnp_evaluate_param_t){
 			.is_test = 1
-		}, input_fit_inputs, device_count, outputs, device_count, 0);
+		}, input_fit_inputs, device_count, outputs, device_count, 0, 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs, device_count, 0);
 		for (k = 0; k < ccv_min(test_set->rnum - j, batch_size * device_count); k++)
 		{
@@ -407,7 +407,7 @@ static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_
 			input_fit_fits[j] = input_fits[j][1];
 			outputs[j] = (ccv_nnc_tensor_t*)input_fits[device_count + j];
 		}
-		ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, stream_contexts[p]);
+		ccv_cnnp_model_fit(cifar_10, input_fit_inputs, device_count, input_fit_fits, device_count, outputs, device_count, 0, stream_contexts[p]);
 		// Prefetch the next round.
 		ccv_cnnp_dataframe_iter_prefetch(iter, 1, stream_contexts[q]);
 		if ((i + 1) % epoch_end == 0)
@@ -435,7 +435,7 @@ static int train_cifar_10_fp16(ccv_array_t* const training_set, const int batch_
 		}
 		ccv_cnnp_model_evaluate(cifar_10, (ccv_cnnp_evaluate_param_t){
 			.is_test = 1
-		}, input_fit_inputs, device_count, outputs, device_count, 0);
+		}, input_fit_inputs, device_count, outputs, device_count, 0, 0);
 		ccv_nnc_cmd_exec(CMD_DATA_TRANSFER_FORWARD(), ccv_nnc_no_hint, 0, outputs, device_count, cpu_outputs_16f, device_count, 0);
 		ccv_nnc_cmd_exec(CMD_DATATYPE_CONVERSION_FORWARD(), ccv_nnc_no_hint, 0, cpu_outputs_16f, device_count, cpu_outputs, device_count, 0);
 		for (k = 0; k < ccv_min(test_set->rnum - j, batch_size * device_count); k++)
