@@ -15,9 +15,9 @@ static void _ccv_nnc_unwrap_tensor_wrap(const ccv_nnc_graph_t* const graph, cons
 	ccv_nnc_tensor_t* tensor = tensor_wrap->tensors[tensor_wrap->index];
 	while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
 		   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph ||
-			((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->peer))
+			((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph->pair))
 	{
-		// If the anchor is from the peer, we use the reverse_count instead (we are looking it up).
+		// If the anchor is from the pair, we use the reverse_count instead (we are looking it up).
 		const int i = (int)((((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graph) ? count : reverse_count);
 		ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 		const int off = mv->kind;
@@ -99,7 +99,7 @@ static void _ccv_nnc_rewrap_tensor_wrap(const ccv_nnc_graph_t* const graph, ccv_
 {
 	while (tensor_wrap->index > 0 && CCV_IS_TENSOR_MULTIVIEW(tensor_wrap->tensors[tensor_wrap->index - 1]) &&
 			(((ccv_nnc_tensor_multiview_t*)tensor_wrap->tensors[tensor_wrap->index - 1])->anchor == (intptr_t)graph ||
-			 ((ccv_nnc_tensor_multiview_t*)tensor_wrap->tensors[tensor_wrap->index - 1])->anchor == (intptr_t)graph->peer))
+			 ((ccv_nnc_tensor_multiview_t*)tensor_wrap->tensors[tensor_wrap->index - 1])->anchor == (intptr_t)graph->pair))
 		--tensor_wrap->index;
 }
 
@@ -639,7 +639,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 	{
 		assert(exec->p_while.expr);
 		int64_t count = 0;
-		// This is a forward while loop. Backward while loop will just consult its peering part.
+		// This is a forward while loop. Backward while loop will just consult its pairing part.
 		if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 		{
 			const int graph_breakpoint_size = graph->breakpoint_offset + graph->breakpoint_size;
@@ -674,7 +674,7 @@ static void _ccv_nnc_graph_topsorted_run_coro(ccv_nnc_stream_task_t* const self,
 		} else {
 			// For backward graph, no need to evaluate the while expr.
 			assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD);
-			assert(graph->peer);
+			assert(graph->pair);
 			assert(tensor_tape);
 			count = 0;
 			int64_t reverse_count = graph->while_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
@@ -788,7 +788,7 @@ static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, co
 		assert(!stream_context); // This doesn't work properly with stream context.
 		assert(exec->p_while.expr);
 		int64_t count = 0;
-		// This is a forward while loop. Backward while loop will just consult its peering part.
+		// This is a forward while loop. Backward while loop will just consult its pairing part.
 		if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 		{
 			const int graph_breakpoint_size = graph->breakpoint_offset + graph->breakpoint_size;
@@ -820,7 +820,7 @@ static inline void _ccv_nnc_graph_topsorted_run(ccv_nnc_graph_t* const graph, co
 		} else {
 			// For backward graph, no need to evaluate the while expr.
 			assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD);
-			assert(graph->peer);
+			assert(graph->pair);
 			assert(tensor_tape);
 			count = 0;
 			int64_t reverse_count = graph->while_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){
@@ -864,7 +864,7 @@ static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, co
 		assert(!stream_context); // This doesn't work properly with stream context.
 		assert(exec->p_while.expr);
 		int64_t count = 0;
-		// This is a forward while loop. Backward while loop will just consult its peering part.
+		// This is a forward while loop. Backward while loop will just consult its pairing part.
 		if (exec->cmd.cmd == CCV_NNC_GRAPH_FORWARD)
 		{
 			ccv_array_t* follows = ccv_array_new(sizeof(ccv_nnc_graph_exec_t), graph->breakpoint_size, 0);
@@ -909,7 +909,7 @@ static inline void _ccv_nnc_graph_run_slow_path(ccv_nnc_graph_t* const graph, co
 		} else {
 			// For backward graph, no need to evaluate the while expr.
 			assert(exec->cmd.cmd == CCV_NNC_GRAPH_BACKWARD);
-			assert(graph->peer);
+			assert(graph->pair);
 			assert(tensor_tape);
 			count = 0;
 			int64_t reverse_count = graph->while_count = ccv_nnc_tensor_tape_numbering(tensor_tape, graph->p, (ccv_nnc_graph_exec_t){

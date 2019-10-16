@@ -767,12 +767,12 @@ int ccv_nnc_graph_run(ccv_nnc_graph_t* const graph, const int flags, const ccv_n
  */
 void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const int* const input_flags, const int input_flag_size, const int* const output_flags, const int output_flag_size);
 /**
- * Set the peer reference for exec. In backward pass, an execution node's peer node is the forward pass node.
+ * Set the pair reference for exec. In backward pass, an execution node's pair node is the forward pass node.
  * @param graph The concrete graph.
  * @param exec The execution node reference.
- * @param peer_exec The peer execution node reference.
+ * @param pair_exec The pair execution node reference.
  */
-void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec);
+void ccv_nnc_graph_exec_pair_with(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t pair_exec);
 /**
  * Add tensor pair that can be used to "carry over". (carry over: passing a tensor from current loop to the next loop).
  * @param graph The concrete graph.
@@ -787,7 +787,7 @@ void ccv_nnc_graph_add_carry_over(ccv_nnc_graph_t* const graph, const ccv_nnc_te
  * @param exec The execution node reference.
  * @param update The tensor need to be updated along the execution node.
  */
-void ccv_nnc_graph_exec_add_update(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const update);
+void ccv_nnc_graph_exec_add_as_affected(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const update);
 
 /** @} */
 
@@ -1319,15 +1319,15 @@ typedef void(*ccv_nnc_tensor_symbol_alias_new_hook_f)(void* context, const ccv_n
  */
 void* ccv_nnc_tensor_symbol_alias_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_tensor_symbol_alias_new_hook_f hook, void* context);
 /**
- * Set the peer reference for tensor symbols. Peer reference for tensor symbols has very specific meanings.
+ * Set the pair reference for tensor symbols. Peer reference for tensor symbols has very specific meanings.
  * For a backward pass involves sub-graphs. The commands in the sub-graph could reference to tensor symbols of
  * a different graph (its forward pass graph). That is not allowed (two graph has no ancestral relationship
- * cannot share a tensor symbol). So we create a new tensor symbol, but set the peer reference.
+ * cannot share a tensor symbol). So we create a new tensor symbol, but set the pair reference.
  * @param graph The symbolic graph.
  * @param tensor_symbol The tensor symbol in the current graph.
- * @param peer_tensor_symbol The tensor symbol in the peer graph.
+ * @param pair_tensor_symbol The tensor symbol in the pair graph.
  */
-void ccv_nnc_tensor_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t peer_tensor_symbol);
+void ccv_nnc_tensor_symbol_pair_with(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_tensor_symbol_t tensor_symbol, const ccv_nnc_tensor_symbol_t pair_tensor_symbol);
 /**
  * Function prototype for execution node symbol creation callback.
  */
@@ -1340,13 +1340,13 @@ typedef void(*ccv_nnc_graph_exec_symbol_new_hook_f)(void* context, const ccv_nnc
  */
 void* ccv_nnc_graph_exec_symbol_new_hook(ccv_nnc_symbolic_graph_t* const graph, ccv_nnc_graph_exec_symbol_new_hook_f hook, void* context);
 /**
- * Set the peer reference for exec. This is very similar to the one for concrete graph. A peer reference
+ * Set the pair reference for exec. This is very similar to the one for concrete graph. A pair reference
  * of a backward pass execution node is its forward pass counterpart.
  * @param graph The symbolic graph.
  * @param exec_symbol The execution node symbol in the current graph.
- * @param peer_exec_symbol The peering execution node symbol.
+ * @param pair_exec_symbol The pairing execution node symbol.
  */
-void ccv_nnc_graph_exec_symbol_set_peer(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t peer_exec_symbol);
+void ccv_nnc_graph_exec_symbol_pair_with(ccv_nnc_symbolic_graph_t* const graph, const ccv_nnc_graph_exec_symbol_t exec_symbol, const ccv_nnc_graph_exec_symbol_t pair_exec_symbol);
 
 /** @} */
 
@@ -2069,6 +2069,16 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
  */
 void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_tensor_variable_t f_variable, const ccv_nnc_tensor_variable_t df_optional, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size);
 /**
+ * Apply gradients to the set of parameters to update them with appropriate minimizer.
+ * @param dynamic_graph The dynamic graph.
+ * @param gradients The computed gradients to be applied.
+ * @param gradient_size The size of gradients array.
+ * @param parameters The parameters to update.
+ * @param parameter_size The size of parameters array, should be the same length as gradients.
+ * @param saved_aux The aux variables to faciliate the minimizer. See ccv_nnc_minimizer_saved_aux_size.
+ */
+void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const gradients, const int gradient_size, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux);
+/**
  * Apply one step of minimization (most likely, a gradient descent) to the parameters with a given loss (or
  * losses).
  * @param dynamic_graph The dynamic graph.
@@ -2081,6 +2091,22 @@ void ccv_nnc_dynamic_graph_backward(ccv_nnc_dynamic_graph_t* const dynamic_graph
  * @param saved_aux The aux variables to faciliate the minimizer. See ccv_nnc_minimizer_saved_aux_size.
  */
 void ccv_nnc_dynamic_graph_minimize(ccv_nnc_dynamic_graph_t* const dynamic_graph, const ccv_nnc_cmd_t minimizer, const ccv_nnc_tensor_variable_t* const losses, const int loss_size, const ccv_nnc_tensor_variable_t* const dlosses_optional, ccv_nnc_tensor_variable_t* const parameters, const int parameter_size, ccv_nnc_tensor_variable_t* const saved_aux);
+/**
+ * Read more in Level-5 API section.
+ */
+typedef struct ccv_cnnp_model_s ccv_cnnp_model_t;
+/**
+ * Evaluate a CNNP model on the dynamic graph with set of inputs / outputs.
+ * @param dynamic_graph The dynamic graph.
+ * @param model The CNNP model to be evaluated against. Note that ccv_nnc_dynamic_graph_backward /
+ *              ccv_nnc_dynamic_graph_apply_gradients / ccv_nnc_dynamic_graph_minimize all works with this
+ *              model. It takes over the life-cycle of the model, and now you don't need to free it any more.
+ * @param inputs The input variables.
+ * @param input_size The size of the input variables array.
+ * @param outputs The gradients with respect to the inputs.
+ * @param output_size The size of the outputs array.
+ */
+void ccv_nnc_dynamic_graph_evaluate(ccv_nnc_dynamic_graph_t* const dynamic_graph, ccv_cnnp_model_t* const model, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size, ccv_nnc_tensor_tape_t* const tensor_tape);
 /**
  * Dispose a tensor variable. You cannot do any computation against this tensor variable afterwards.
  * @param graph The dynamic graph.

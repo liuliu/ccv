@@ -19,7 +19,7 @@ ccv_nnc_graph_exec_t ccv_nnc_graph_case_of_new(ccv_nnc_graph_t* const graph, con
 			{
 				ccv_nnc_tensor_t* const mv = (ccv_nnc_tensor_t*)CCV_NNC_MULTIVIEW_DATA((ccv_nnc_tensor_multiview_t*)outputs[i])[j]->alias_ref;
 				if (mv && CCV_IS_TENSOR_MULTIVIEW(mv))
-					ccv_nnc_graph_exec_add_update(graph, exec, mv);
+					ccv_nnc_graph_exec_add_as_affected(graph, exec, mv);
 			}
 	return exec;
 }

@@ -276,19 +276,19 @@ void ccv_nnc_graph_exec_set_io_flags(ccv_nnc_graph_t* const graph, const ccv_nnc
 		memcpy(info->output_flags, output_flags, sizeof(int) * output_flag_size);
 }
 
-void ccv_nnc_graph_exec_set_peer(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t peer_exec)
+void ccv_nnc_graph_exec_pair_with(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, const ccv_nnc_graph_exec_t pair_exec)
 {
 	assert(exec.graph == graph);
 	assert(exec.d >= 0);
 	assert(exec.d < graph->exec_info->rnum);
-	assert(peer_exec.graph == graph || peer_exec.graph == graph->peer);
-	assert(peer_exec.d >= 0);
-	if (peer_exec.graph == graph)
-		{ assert(peer_exec.d < graph->exec_info->rnum); }
+	assert(pair_exec.graph == graph || pair_exec.graph == graph->pair);
+	assert(pair_exec.d >= 0);
+	if (pair_exec.graph == graph)
+		{ assert(pair_exec.d < graph->exec_info->rnum); }
 	else
-		{ assert(peer_exec.d < graph->peer->exec_info->rnum); }
+		{ assert(pair_exec.d < graph->pair->exec_info->rnum); }
 	ccv_nnc_graph_exec_info_t* const exec_info = (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, exec.d);
-	exec_info->peer_ref = peer_exec.d + 1;
+	exec_info->pair_ref = pair_exec.d + 1;
 }
 
 static ccv_nnc_tensor_t* _ccv_nnc_any_tensor_from_tensor_multiview(ccv_nnc_tensor_multiview_t* const mv)
@@ -361,7 +361,7 @@ void ccv_nnc_graph_exec_set_io(ccv_nnc_graph_t* const graph, const ccv_nnc_graph
 	}
 }
 
-void ccv_nnc_graph_exec_add_update(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const update)
+void ccv_nnc_graph_exec_add_as_affected(ccv_nnc_graph_t* const graph, const ccv_nnc_graph_exec_t exec, ccv_nnc_tensor_t* const update)
 {
 	assert(CCV_IS_TENSOR_MULTIVIEW(update));
 	assert(exec.d < graph->exec_info->rnum);
@@ -514,7 +514,7 @@ void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, co
 		for (i = 0; i < graph->breakpoint_size; i++)
 			exec_cvt[graph->breakpoints[i].d] = -2; // Mark this as breakpoints, so we will skip the first round.
 		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
-			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			assert(!node->pair_ref); // If node has a pair ref, we cannot fix it up.
 			if (exec_cvt[idx] == -2) // Skip breakpoint.
 				continue;
 			// Loop over node and push to the array.
@@ -535,7 +535,7 @@ void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, co
 		graph->breakpoint_offset = exec_info->rnum;
 		visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, graph->breakpoints, graph->breakpoint_size, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
 		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
-			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			assert(!node->pair_ref); // If node has a pair ref, we cannot fix it up.
 			// Loop over node and push to the array.
 			ccv_array_push(exec_info, node);
 			// Go to its sub-graph to fix exec_idx
@@ -556,7 +556,7 @@ void ccv_nnc_graph_topsort(ccv_nnc_graph_t* const graph, int* const exec_cvt, co
 	} else {
 		ccv_nnc_graph_visit_t* visit = ccv_nnc_graph_visit_new(graph, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), graph->exec_info->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->sources, 0), graph->sources->rnum, (ccv_nnc_graph_exec_t*)ccv_array_get(graph->destinations, 0), graph->destinations->rnum, 0);
 		ccv_nnc_graph_visit_for(visit, (ccv_nnc_graph_exec_info_t*)ccv_array_get(graph->exec_info, 0), node, idx) {
-			assert(!node->peer_ref); // If node has a peer ref, we cannot fix it up.
+			assert(!node->pair_ref); // If node has a pair ref, we cannot fix it up.
 			// Loop over node and push to the array.
 			ccv_array_push(exec_info, node);
 			// Go to its sub-graph to fix exec_idx

@@ -22,7 +22,7 @@ typedef struct {
 	int p_ref; // Reference to the tensor number in its parent graph. Starts at 1.
 	// End of while loop handling.
 	int alias_ref; // Reference to the tensor. Starts at 1.
-	int peer_ref; // Reference to its peer. Starts at 1.
+	int pair_ref; // Reference to its pair. Starts at 1.
 	int flags;
 	int ofs[CCV_NNC_MAX_DIM_ALLOC];
 	int inc[CCV_NNC_MAX_DIM_ALLOC];
@@ -40,7 +40,7 @@ typedef struct {
 	int output_size;
 	int graph_ref_size;
 	int flags; // Mark this node as dead.
-	int peer_ref; // Reference to its peer. Starts at 1.
+	int pair_ref; // Reference to its pair. Starts at 1.
 	int* inputs;
 	int* outputs;
 	ccv_array_t* outgoings; // Outgoing nodes
@@ -78,7 +78,7 @@ struct ccv_nnc_symbolic_graph_s {
 	// Some extra information piggy-back on symbolic graph struct.
 	// Start for while loop handling
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
-	struct ccv_nnc_symbolic_graph_s* peer; // The peer graph (only useful for backward prop graph).
+	struct ccv_nnc_symbolic_graph_s* pair; // The pair graph (only useful for backward prop graph).
 	struct ccv_nnc_symbolic_graph_s* p; // The parent graph (if current one is a sub-graph).
 	int p_idx; // Reference to the index in its parent graph's sub-graph array, Starts at 1.
 	int exec_idx; // Reference to the index in its parent graph's exec (the graph exec), Starts at 1.

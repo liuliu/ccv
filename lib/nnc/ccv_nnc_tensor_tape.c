@@ -32,7 +32,7 @@ static ccv_nnc_tensor_t* _ccv_nnc_tensor_from_tensor_multiview(const ccv_nnc_gra
 		const int count = (int)graphs[i]->while_count;
 		while (CCV_IS_TENSOR_MULTIVIEW(tensor) &&
 			   (((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i] ||
-				((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i]->peer))
+				((ccv_nnc_tensor_multiview_t*)tensor)->anchor == (intptr_t)graphs[i]->pair))
 		{
 			ccv_nnc_tensor_multiview_t* mv = (ccv_nnc_tensor_multiview_t*)tensor;
 			const int off = mv->kind;
@@ -337,8 +337,8 @@ uint64_t ccv_nnc_tensor_tape_numbering(ccv_nnc_tensor_tape_t* const tape, const 
 {
 	assert(exec.graph == graph);
 	ccv_nnc_graph_exec_info_t* exec_info = ccv_array_get(graph->exec_info, exec.d);
-	if (!exec_info->alias_ref && exec_info->peer_ref)
-		exec_info = ccv_array_get(graph->exec_info, exec_info->peer_ref - 1);
+	if (!exec_info->alias_ref && exec_info->pair_ref)
+		exec_info = ccv_array_get(graph->exec_info, exec_info->pair_ref - 1);
 	ccv_nnc_tape_exec_data_array_t* const data_array = _ccv_nnc_tape_exec_data_array_get(tape->exec_data, (int)exec_info->alias_ref);
 	const ccv_nnc_graph_t* curr_graph = graph;
 	int i;

@@ -1373,7 +1373,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					continue;
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
-				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its peer.
+				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its pair.
 				if (sub_tensor && CCV_IS_TENSOR_MULTIVIEW(sub_tensor) && !TENSOR_EXPECT_UNASSIGNED(tensor_blocks[idx]))
 				{
 					// It cannot be binded tensor.
@@ -1487,7 +1487,7 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 					continue;
 				ccv_nnc_tensor_t* sub_tensor = tensor_arena->sub_arenas[i]->vt_tensors[s_idx];
 				// Only do the replacement if it is a multi-view tensor.
-				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its peer.
+				// sub_tensor can be unassigned if it is a tape variable. It will get fixed up later from its pair.
 				if (sub_tensor && CCV_IS_TENSOR_MULTIVIEW(sub_tensor))
 				{
 					// This is binded tensor, bind it now.
@@ -1501,19 +1501,19 @@ static ccv_nnc_tensor_arena_t* _ccv_nnc_tensor_arena_new(ccv_nnc_symbolic_graph_
 	return tensor_arena;
 }
 
-static ccv_nnc_tensor_t* _ccv_nnc_tensor_arena_find_peer_ref(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph, const int peer_ref)
+static ccv_nnc_tensor_t* _ccv_nnc_tensor_arena_find_pair_ref(const ccv_nnc_tensor_arena_t* const tensor_arena, const ccv_nnc_symbolic_graph_t* const graph, const int pair_ref)
 {
 	assert(graph);
 	if ((intptr_t)graph == tensor_arena->graph_ref)
 	{
-		assert(peer_ref >= 0 && peer_ref < tensor_arena->vt_tensor_size);
-		return tensor_arena->vt_tensors[peer_ref];
+		assert(pair_ref >= 0 && pair_ref < tensor_arena->vt_tensor_size);
+		return tensor_arena->vt_tensors[pair_ref];
 	}
 	int i;
 	for (i = 0; i < tensor_arena->sub_arena_size; i++)
 		if (tensor_arena->sub_arenas[i])
 		{
-			ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_arena_find_peer_ref(tensor_arena->sub_arenas[i], graph, peer_ref);
+			ccv_nnc_tensor_t* const tensor = _ccv_nnc_tensor_arena_find_pair_ref(tensor_arena->sub_arenas[i], graph, pair_ref);
 			if (tensor)
 				return tensor;
 		}
@@ -1533,16 +1533,16 @@ static void _ccv_nnc_tensor_mark_as_tape_var(ccv_nnc_tensor_t* const tensor)
 	}
 }
 
-static void _ccv_nnc_tensor_arena_fixup_peer_ref_and_tape_var(const ccv_nnc_tensor_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_tensor_arena_t* const tensor_arena)
+static void _ccv_nnc_tensor_arena_fixup_pair_ref_and_tape_var(const ccv_nnc_tensor_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_tensor_arena_t* const tensor_arena)
 {
 	assert(tensor_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
 	int i;
 	for (i = 0; i < graph_prep->tensor_symbol_info_size; i++)
 	{
-		if (graph_prep->tensor_symbol_info[i].peer_ref)
+		if (graph_prep->tensor_symbol_info[i].pair_ref)
 		{
-			tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_arena_find_peer_ref(root_arena, graph_prep->symbolic_graph->peer, graph_prep->tensor_symbol_info[i].peer_ref - 1);
-			// No need to continue check this if it is from its peer.
+			tensor_arena->vt_tensors[i] = _ccv_nnc_tensor_arena_find_pair_ref(root_arena, graph_prep->symbolic_graph->pair, graph_prep->tensor_symbol_info[i].pair_ref - 1);
+			// No need to continue check this if it is from its pair.
 			continue;
 		}
 		if ((graph_prep->tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR) && tensor_arena->vt_tensors[i])
@@ -1560,7 +1560,7 @@ static void _ccv_nnc_tensor_arena_fixup_peer_ref_and_tape_var(const ccv_nnc_tens
 	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
-			_ccv_nnc_tensor_arena_fixup_peer_ref_and_tape_var(root_arena, graph_prep->sub_preps[i], tensor_arena->sub_arenas[i]);
+			_ccv_nnc_tensor_arena_fixup_pair_ref_and_tape_var(root_arena, graph_prep->sub_preps[i], tensor_arena->sub_arenas[i]);
 }
 
 static void _ccv_nnc_tensor_block_add_exec(const ccv_sparse_matrix_t* const exec_dep, const int idx, ccv_nnc_tensor_block_t tensor_blocks)
@@ -1925,9 +1925,9 @@ static void _ccv_nnc_exec_dep_and_tensor_blocks_prep(const ccv_nnc_symbolic_grap
 		}
 	for (i = 0; i < symbolic_graph->tensor_symbol_info->rnum; i++)
 	{
-		// If it has a peer reference, we don't need to allocate this tensor at all,
+		// If it has a pair reference, we don't need to allocate this tensor at all,
 		// set it to be unassigned.
-		if (tensor_symbol_info[i].peer_ref)
+		if (tensor_symbol_info[i].pair_ref)
 			TENSOR_EXPECT_SET_UNASSIGNED(tensor_blocks[i]);
 		// If it is a tape variable, set it to be un-foldable as too (otherwise we cannot use tape properly).
 		else if (tensor_symbol_info[i].flags & CCV_NNC_TENSOR_SYMBOL_TAPE_VAR) {
@@ -2276,10 +2276,10 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 			if (dup_tensor_block_ref[alias_ref * unroll_count] < 0)
 			{
 				tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[alias_ref].info, 0);
-				if (tensor_symbol_info[alias_ref].peer_ref)
-					ccv_nnc_tensor_symbol_set_peer(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
-						.d = tensor_symbol_info[alias_ref].peer_ref - 1,
-						.graph = dup_graph->peer
+				if (tensor_symbol_info[alias_ref].pair_ref)
+					ccv_nnc_tensor_symbol_pair_with(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
+						.d = tensor_symbol_info[alias_ref].pair_ref - 1,
+						.graph = dup_graph->pair
 					});
 				ccv_nnc_tensor_symbol_set_flags(dup_graph, tensor_symbol, tensor_symbol_info[alias_ref].flags);
 				dup_tensor_block_ref[alias_ref * unroll_count] = tensor_symbol.d;
@@ -2288,19 +2288,19 @@ static ccv_nnc_tensor_symbol_t _ccv_nnc_dup_tensor_symbol(ccv_nnc_symbolic_graph
 				tensor_symbol.graph = dup_graph;
 			}
 			ccv_nnc_tensor_symbol_t alias_symbol = ccv_nnc_tensor_symbol_alias_new(dup_graph, tensor_symbol, tensor_symbol_info[input].ofs, tensor_symbol_info[input].inc, tensor_symbol_info[input].info, 0);
-			if (tensor_symbol_info[input].peer_ref)
-				ccv_nnc_tensor_symbol_set_peer(dup_graph, alias_symbol, (ccv_nnc_tensor_symbol_t){
-					.d = tensor_symbol_info[input].peer_ref - 1,
-					.graph = dup_graph->peer
+			if (tensor_symbol_info[input].pair_ref)
+				ccv_nnc_tensor_symbol_pair_with(dup_graph, alias_symbol, (ccv_nnc_tensor_symbol_t){
+					.d = tensor_symbol_info[input].pair_ref - 1,
+					.graph = dup_graph->pair
 				});
 			ccv_nnc_tensor_symbol_set_flags(dup_graph, alias_symbol, tensor_symbol_info[input].flags);
 			dup_tensor_block_ref[input * unroll_count] = alias_symbol.d;
 		} else {
 			ccv_nnc_tensor_symbol_t tensor_symbol = ccv_nnc_tensor_symbol_new(dup_graph, tensor_symbol_info[input].info, 0);
-			if (tensor_symbol_info[input].peer_ref)
-				ccv_nnc_tensor_symbol_set_peer(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
-					.d = tensor_symbol_info[input].peer_ref - 1,
-					.graph = dup_graph->peer
+			if (tensor_symbol_info[input].pair_ref)
+				ccv_nnc_tensor_symbol_pair_with(dup_graph, tensor_symbol, (ccv_nnc_tensor_symbol_t){
+					.d = tensor_symbol_info[input].pair_ref - 1,
+					.graph = dup_graph->pair
 				});
 			ccv_nnc_tensor_symbol_set_flags(dup_graph, tensor_symbol, tensor_symbol_info[input].flags);
 			dup_tensor_block_ref[input * unroll_count] = tensor_symbol.d;
@@ -3494,7 +3494,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					for (j = node->case_of.argument.offset; !flag && j < node->case_of.argument.size; j++)
 						flag = (update == max_inputs[j]);
 					if (!flag)
-						ccv_nnc_graph_exec_add_update(graph, graph_execs[idx], update);
+						ccv_nnc_graph_exec_add_as_affected(graph, graph_execs[idx], update);
 				}
 				const int offset = (exec_flags[idx].flags & CCV_NNC_GRAPH_EXEC_ATTR_CASE_OF_NO_BYPASS_IO) ? 1 : 0;
 				ccv_nnc_graph_set_case_of_expr(graph, graph_execs[idx], node->case_of.expr, node->case_of.data, offset);
@@ -3634,7 +3634,7 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 					}
 					// If none is in the flag, it need to be included in the cast.
 					if (!flag)
-						ccv_nnc_graph_exec_add_update(graph, graph_execs[idx], mv);
+						ccv_nnc_graph_exec_add_as_affected(graph, graph_execs[idx], mv);
 				}
 		}
 	}
@@ -3663,33 +3663,33 @@ static ccv_nnc_graph_exec_arena_t* _ccv_nnc_graph_exec_arena_new(const ccv_nnc_s
 	return graph_exec_arena;
 }
 
-static ccv_nnc_graph_t* _ccv_nnc_graph_find_peer(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_t* const peer)
+static ccv_nnc_graph_t* _ccv_nnc_graph_find_pair(const ccv_nnc_symbolic_graph_prep_t* const graph_prep, const ccv_nnc_symbolic_graph_t* const pair)
 {
-	if (graph_prep->symbolic_graph == peer)
+	if (graph_prep->symbolic_graph == pair)
 		return graph_prep->graph;
 	int i;
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
 		{
-			ccv_nnc_graph_t* const graph = _ccv_nnc_graph_find_peer(graph_prep->sub_preps[i], peer);
+			ccv_nnc_graph_t* const graph = _ccv_nnc_graph_find_pair(graph_prep->sub_preps[i], pair);
 			if (graph)
 				return graph;
 		}
 	return 0;
 }
 
-static void _ccv_nnc_graph_fixup_peer(const ccv_nnc_symbolic_graph_prep_t* const root_prep, ccv_nnc_symbolic_graph_prep_t* const graph_prep)
+static void _ccv_nnc_graph_fixup_pair(const ccv_nnc_symbolic_graph_prep_t* const root_prep, ccv_nnc_symbolic_graph_prep_t* const graph_prep)
 {
 	int i;
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
 		{
-			if (graph_prep->sub_preps[i]->symbolic_graph->peer)
-				graph_prep->sub_preps[i]->graph->peer = _ccv_nnc_graph_find_peer(root_prep, graph_prep->sub_preps[i]->symbolic_graph->peer);
+			if (graph_prep->sub_preps[i]->symbolic_graph->pair)
+				graph_prep->sub_preps[i]->graph->pair = _ccv_nnc_graph_find_pair(root_prep, graph_prep->sub_preps[i]->symbolic_graph->pair);
 		}
 }
 
-static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
+static void _ccv_nnc_graph_exec_arena_fixup_pair_ref(const ccv_nnc_graph_exec_arena_t* const root_arena, const ccv_nnc_symbolic_graph_prep_t* const graph_prep, ccv_nnc_graph_exec_arena_t* const graph_exec_arena)
 {
 	assert(graph_exec_arena->graph_ref == (intptr_t)graph_prep->symbolic_graph);
 	int i;
@@ -3697,19 +3697,19 @@ static void _ccv_nnc_graph_exec_arena_fixup_peer_ref(const ccv_nnc_graph_exec_ar
 	{
 		if (CCV_NNC_GRAPH_EXEC_IS_DEAD(graph_prep->exec_symbol_info[i].flags))
 			continue;
-		if (graph_exec_arena->graph_execs[i].graph && graph_prep->exec_symbol_info[i].peer_ref)
+		if (graph_exec_arena->graph_execs[i].graph && graph_prep->exec_symbol_info[i].pair_ref)
 		{
-			ccv_nnc_graph_exec_t peer_exec = ccv_nnc_graph_exec_from_symbol(root_arena, (ccv_nnc_graph_exec_symbol_t){
-				.d = graph_prep->exec_symbol_info[i].peer_ref - 1,
-				.graph = graph_prep->symbolic_graph->peer ? graph_prep->symbolic_graph->peer : graph_prep->symbolic_graph,
+			ccv_nnc_graph_exec_t pair_exec = ccv_nnc_graph_exec_from_symbol(root_arena, (ccv_nnc_graph_exec_symbol_t){
+				.d = graph_prep->exec_symbol_info[i].pair_ref - 1,
+				.graph = graph_prep->symbolic_graph->pair ? graph_prep->symbolic_graph->pair : graph_prep->symbolic_graph,
 			});
-			if (peer_exec.d >= 0)
-				ccv_nnc_graph_exec_set_peer(graph_prep->graph, graph_exec_arena->graph_execs[i], peer_exec);
+			if (pair_exec.d >= 0)
+				ccv_nnc_graph_exec_pair_with(graph_prep->graph, graph_exec_arena->graph_execs[i], pair_exec);
 		}
 	}
 	for (i = 0; i < graph_prep->sub_prep_size; i++)
 		if (graph_prep->sub_preps[i])
-			_ccv_nnc_graph_exec_arena_fixup_peer_ref(root_arena, graph_prep->sub_preps[i], graph_exec_arena->sub_arenas[i]);
+			_ccv_nnc_graph_exec_arena_fixup_pair_ref(root_arena, graph_prep->sub_preps[i], graph_exec_arena->sub_arenas[i]);
 }
 
 static void _ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(ccv_nnc_symbolic_graph_prep_t* const graph_prep)
@@ -3764,16 +3764,16 @@ void ccv_nnc_symbolic_graph_compile(const ccv_nnc_symbolic_graph_t* const symbol
 	ccv_nnc_symbolic_graph_prep_t* graph_prep = _ccv_nnc_symbolic_graph_prep_new(symbolic_graph, tensor_binds, tensor_bind_size, outputs, output_size, sources, source_size, destinations, destination_size, 0, 0, 0, 0);
 	_ccv_nnc_symbolic_graph_prep_while_count_tensor(graph_prep);
 	ccv_nnc_tensor_arena_t* tensor_arena = _ccv_nnc_tensor_arena_new(graph_prep, 0, tensor_binds, tensor_bind_size);
-	_ccv_nnc_tensor_arena_fixup_peer_ref_and_tape_var(tensor_arena, graph_prep, tensor_arena);
+	_ccv_nnc_tensor_arena_fixup_pair_ref_and_tape_var(tensor_arena, graph_prep, tensor_arena);
 	*tensor_arena_ref = tensor_arena;
 	// The above handled tensor allocation, now we need to materialize the graph from symbolic to real.
-	_ccv_nnc_graph_fixup_peer(graph_prep, graph_prep);
+	_ccv_nnc_graph_fixup_pair(graph_prep, graph_prep);
 	// Now tensor allocation is done, if there are any dup_breakpoints, I need to clean it up.
 	_ccv_nnc_symbolic_graph_prep_dup_breakpoints_free(graph_prep);
 	*graph_ref = graph_prep->graph;
 	ccv_nnc_graph_exec_arena_t* graph_exec_arena = _ccv_nnc_graph_exec_arena_new(symbolic_graph, sources, source_size, destinations, destination_size, graph_prep, tensor_arena);
 	_ccv_nnc_graph_exec_arena_topsort(graph_prep->graph, graph_exec_arena);
-	_ccv_nnc_graph_exec_arena_fixup_peer_ref(graph_exec_arena, graph_prep, graph_exec_arena);
+	_ccv_nnc_graph_exec_arena_fixup_pair_ref(graph_exec_arena, graph_prep, graph_exec_arena);
 	*graph_exec_arena_ref = graph_exec_arena;
 	_ccv_nnc_symbolic_graph_prep_free(graph_prep);
 }

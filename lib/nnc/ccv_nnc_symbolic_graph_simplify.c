@@ -378,8 +378,8 @@ static void _ccv_nnc_symbolic_graph_common_subexpression_elimination(ccv_nnc_sym
 					assert(!simplify->tensor_symbol_info[new_d].assign_ref);
 					assert(!simplify->tensor_symbol_info[new_d].r_assign_ref);
 					assert(!simplify->tensor_symbol_info[new_d].bypass_ref);
-					// Ignore if there is a peer_ref (again, peer_ref has side effect that is deeper (using tape))
-					if (simplify->tensor_symbol_info[d].peer_ref)
+					// Ignore if there is a pair_ref (again, pair_ref has side effect that is deeper (using tape))
+					if (simplify->tensor_symbol_info[d].pair_ref)
 						continue;
 					// If both have p_ref, we cannot merge.
 					if (simplify->tensor_symbol_info[d].p_ref && simplify->tensor_symbol_info[new_d].p_ref)

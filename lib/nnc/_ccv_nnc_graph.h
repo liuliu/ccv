@@ -30,7 +30,7 @@ typedef struct {
 	int input_size;
 	int output_size;
 	int flags;
-	int peer_ref; // Reference to its peer. Starts at 1.
+	int pair_ref; // Reference to its pair. Starts at 1.
 	int graph_ref_size;
 	int update_size;
 	int tensor_wraps_ref; // Reference to the tensor_wraps in the graph. Starts at 1.
@@ -124,7 +124,7 @@ struct ccv_nnc_graph_s {
 	ccv_array_t* tensor_wraps_refs; // It contains a ccv_nnc_graph_tensor_wrap_ref_t struct that references to all tensor wraps need to be unwrapped (including all sub-graphs).
 	// Some extra information piggy-back on graph struct.
 	struct ccv_nnc_graph_s* p; // The parent graph (if current one is a sub-graph).
-	struct ccv_nnc_graph_s* peer; // The peer graph (only useful for backward prop graph).
+	struct ccv_nnc_graph_s* pair; // The pair graph (only useful for backward prop graph).
 	ccv_array_t* sub_graphs; // A list of its sub-graphs (for while loop).
 	// Why some of these I choose to be flat * array, some of these I choose to be ccv_array_t?
 	// for flat * array, these are not going to be modified until next time call ccv_nnc_symbolic_graph_backward
