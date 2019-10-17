@@ -116,15 +116,15 @@ int ccv_nnc_cmd_ok(const uint32_t cmd, const uint32_t backend)
 	return !!api_registry.exec;
 }
 
-ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags)
+ccv_nnc_cmd_t ccv_nnc_cmd(const uint32_t _cmd, ccv_nnc_cmd_vtab_t* const isa, const ccv_nnc_cmd_param_t params, const int flags)
 {
 	ccv_nnc_cmd_t cmd;
 	cmd.info = params;
 	cmd.backend = CCV_NNC_NO_BACKEND;
-	assert((_cmd == CCV_NNC_CUSTOM_FORWARD && exec) || (_cmd != CCV_NNC_CUSTOM_FORWARD && !exec));
+	assert((_cmd == CCV_NNC_CUSTOM_FORWARD && isa) || (_cmd != CCV_NNC_CUSTOM_FORWARD && !isa));
 	cmd.cmd = _cmd;
 	cmd.algorithm = -1; // This is default.
-	cmd.exec = exec;
+	cmd.isa = isa;
 	return cmd;
 }
 
@@ -548,7 +548,7 @@ int ccv_nnc_cmd_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const i
 	// If it is a custom command, just apply it directly.
 	if (cmd.cmd == CCV_NNC_CUSTOM_FORWARD || cmd.cmd == CCV_NNC_CUSTOM_BACKWARD)
 	{
-		int ret = cmd.exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
+		int ret = cmd.isa->exec(cmd, hint, flags, inputs, input_size, outputs, output_size, stream_context);
 		if (!stream_context)
 			ccv_nnc_stream_context_drain(stream_context);
 		return ret;

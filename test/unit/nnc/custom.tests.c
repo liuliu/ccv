@@ -43,9 +43,13 @@ static int _ccv_nnc_cmd_custom_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static ccv_nnc_cmd_vtab_t _custom_isa = {
+	.exec = _ccv_nnc_cmd_custom_exec,
+};
+
 TEST_CASE("custom forward operation with dynamic graph")
 {
-	const ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, _ccv_nnc_cmd_custom_exec, (ccv_nnc_cmd_param_t){}, 0);
+	const ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, &_custom_isa, (ccv_nnc_cmd_param_t){}, 0);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "x");
 	const ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y");
@@ -71,7 +75,7 @@ TEST_CASE("custom forward operation with dynamic graph")
 
 TEST_CASE("custom backward operation with dynamic graph")
 {
-	const ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, _ccv_nnc_cmd_custom_exec, (ccv_nnc_cmd_param_t){}, 0);
+	const ccv_nnc_cmd_t cmd = ccv_nnc_cmd(CCV_NNC_CUSTOM_FORWARD, &_custom_isa, (ccv_nnc_cmd_param_t){}, 0);
 	ccv_nnc_symbolic_graph_t* const symbolic_graph = ccv_nnc_symbolic_graph_new();
 	const ccv_nnc_tensor_symbol_t x = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "x");
 	const ccv_nnc_tensor_symbol_t y = ccv_nnc_tensor_symbol_new(symbolic_graph, CPU_TENSOR_NHWC(32F, 1), "y");

@@ -135,16 +135,18 @@ typedef struct {
  */
 typedef struct ccv_nnc_stream_context_s ccv_nnc_stream_context_t;
 
+typedef struct ccv_nnc_cmd_vtab_s ccv_nnc_cmd_vtab_t;
+
 typedef struct ccv_nnc_cmd_s {
 	uint32_t cmd; /**< The identifier for command. */
 	uint32_t backend; /**< The identifier for backend. */
 	int algorithm; /**< The algorithm selector (as defined by backend). */
 	ccv_nnc_cmd_param_t info; /**< The command parameters. */
 	/**
-	 * This has to be the same as the ccv_nnc_cmd_exec_f type.
 	 * This is for type CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD
 	 */
-	int(*exec)(const struct ccv_nnc_cmd_s cmd, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+	ccv_nnc_cmd_vtab_t* isa;
+	void* data;
 } ccv_nnc_cmd_t;
 
 /**
@@ -163,6 +165,12 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
  * @return The selected algorithm.
  */
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
+
+typedef struct ccv_nnc_cmd_vtab_s {
+	ccv_nnc_cmd_exec_f exec;
+	void(*apply_gradients)(const ccv_nnc_cmd_t cmd, ccv_nnc_stream_context_t* const stream_context);
+	void (*deinit)(const ccv_nnc_cmd_t cmd);
+} ccv_nnc_cmd_vtab_t;
 
 /** @} */
 
@@ -288,12 +296,12 @@ CCV_WARN_UNUSED(int) ccv_nnc_cmd_ok(const uint32_t cmd, const uint32_t backend);
 /**
  * Create a wrapped command with parameters.
  * @param cmd The command identifier.
- * @param exec If this is a CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD command, this supplies the custom function.
+ * @param isa If this is a CCV_NNC_CUSTOM_FORWARD / CCV_NNC_CUSTOM_BACKWARD command, this supplies the custom functions.
  * @param params The parameters for the command.
  * @param flags A reserved field for flags.
  * @return A wrapped ccv_nnc_cmd_t structure.
  */
-CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const uint32_t cmd, ccv_nnc_cmd_exec_f exec, const ccv_nnc_cmd_param_t params, const int flags);
+CCV_WARN_UNUSED(ccv_nnc_cmd_t) ccv_nnc_cmd(const uint32_t cmd, ccv_nnc_cmd_vtab_t* const isa, const ccv_nnc_cmd_param_t params, const int flags);
 /**
  * Verify whether a hint is compatible with a given command and a given input tensor parameters / output tensor parameters.
  * @param hint The hint for a given command. Hint defines things such as paddings, strides etc. for a given command.
