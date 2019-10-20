@@ -291,4 +291,8 @@ TEST_CASE("dynamic graph with binded value")
 	ccv_nnc_tensor_free(x_tensor);
 }
 
+TEST_CASE("dynamic graph to evaluate cnnp model")
+{
+}
+
 #include "case_main.h"

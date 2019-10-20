@@ -717,9 +717,9 @@ static void _ccv_cnnp_model_gradient_init(ccv_cnnp_model_t* const model, const i
 		SYMBOLIC_GRAPH_SOURCES(model->graph), SYMBOLIC_GRAPH_DESTINATIONS(model->graph));
 	const int saved_aux_size = ccv_nnc_minimizer_saved_aux_size(compiled_data->minimize.minimizer);
 	const int trainable_size = compiled_data->trainables->rnum;
-	compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size + sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size);
-	compiled_data->updated_trainables = (ccv_nnc_tensor_symbol_t*)(compiled_data->saved_aux + saved_aux_size * trainable_size);
+	compiled_data->updated_trainables = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * trainable_size + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size + sizeof(ccv_nnc_tensor_symbol_map_t) * saved_aux_size * trainable_size);
 	compiled_data->update_nodes = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->updated_trainables + trainable_size);
+	compiled_data->saved_aux = (ccv_nnc_tensor_symbol_map_t*)(compiled_data->update_nodes + trainable_size);
 	const int trainable_size_maybe_more = gradient_mode == CCV_CNNP_COMPILED_DATA_GRADIENT_TRAINABLES ? trainable_size : trainable_size + model->input_size;
 	compiled_data->gradients = (ccv_nnc_tensor_symbol_t*)ccmalloc(sizeof(ccv_nnc_tensor_symbol_t) * trainable_size_maybe_more + sizeof(ccv_nnc_graph_exec_symbol_t) * trainable_size_maybe_more * parallel_count);
 	compiled_data->backward.tos = (ccv_nnc_graph_exec_symbol_t*)(compiled_data->gradients + trainable_size_maybe_more);
@@ -895,9 +895,9 @@ static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->gradients)
 		ccfree(compiled_data->gradients);
 	compiled_data->gradients = 0;
-	if (compiled_data->saved_aux)
-		ccfree(compiled_data->saved_aux);
-	compiled_data->saved_aux = 0;
+	if (compiled_data->updated_trainables)
+		ccfree(compiled_data->updated_trainables);
+	compiled_data->updated_trainables = 0;
 	if (compiled_data->evaluate.tos)
 		ccfree(compiled_data->evaluate.tos);
 	compiled_data->evaluate.tos = 0;

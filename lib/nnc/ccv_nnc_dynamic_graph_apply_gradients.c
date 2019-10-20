@@ -71,6 +71,20 @@ void ccv_nnc_dynamic_graph_apply_gradients(ccv_nnc_dynamic_graph_t* const dynami
 	ccv_nnc_graph_free(graph);
 	ccv_nnc_tensor_arena_free(tensor_arena);
 	ccv_nnc_graph_exec_arena_free(exec_arena);
+	khiter_t k;
+	for (k = kh_begin(dynamic_graph->stateful_execs); k != kh_end(dynamic_graph->stateful_execs); ++k)
+	{
+		if (!kh_exist(dynamic_graph->stateful_execs, k))
+			continue;
+		const int d = kh_key(dynamic_graph->stateful_execs, k);
+		const ccv_nnc_cmd_t cmd = ccv_nnc_graph_exec_symbol_cmd(dynamic_graph->tape, (ccv_nnc_graph_exec_symbol_t){
+			.graph = dynamic_graph->tape,
+			.d = d
+		});
+		const ccv_nnc_stateful_cmd_vtab_t* const isa = (ccv_nnc_stateful_cmd_vtab_t*)cmd.isa;
+		if (isa->apply_gradients)
+			isa->apply_gradients(cmd, minimizer, 0);
+	}
 	for (i = 0; i < symbol_stack->rnum; i++)
 	{
 		const ccv_nnc_tape_symbol_t* const symbol = (ccv_nnc_tape_symbol_t*)ccv_array_get(symbol_stack, i);

@@ -14,6 +14,7 @@ ccv_nnc_dynamic_graph_t* ccv_nnc_dynamic_graph_new(void)
 	graph->vars = ccv_array_new(sizeof(ccv_nnc_tensor_variable_t), 1, 0);
 	graph->binds = ccv_array_new(sizeof(ccv_nnc_tensor_variable_graph_bind_t), 1, 0);
 	graph->tape = ccv_nnc_symbolic_graph_new();
+	graph->stateful_execs = kh_init(stateful_exec);
 	graph->ws = 0;
 	return graph;
 }
@@ -83,6 +84,7 @@ void ccv_nnc_dynamic_graph_free(ccv_nnc_dynamic_graph_t* const graph)
 	ccv_nnc_symbolic_graph_free(graph->tape);
 	if (graph->ws)
 		ccv_array_free(graph->ws);
+	kh_destroy(stateful_exec, graph->stateful_execs);
 	ccfree(graph);
 }
 
@@ -258,7 +260,7 @@ ccv_nnc_tensor_variable_t ccv_nnc_tensor_variable_exchange_new(ccv_nnc_dynamic_g
 	return new_variable;
 }
 
-int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size)
+ccv_nnc_graph_exec_symbol_t ccv_nnc_dynamic_graph_exec_ret(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size)
 {
 	int i, j;
 	for (i = 0; i < input_size; i++)
@@ -334,6 +336,7 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	for (i = 0; i < output_size; i++)
 		output_tensors[i] = outputs[i] ? ccv_nnc_tensor_from_variable(graph, outputs[i]) : 0;
 	ccv_nnc_cmd_exec(cmd, hint, flags, input_tensors, input_size, output_tensors, output_size, 0);
+	ccv_nnc_graph_exec_symbol_t graph_exec = {};
 	if (input_size > 0) // No need to record the execution if there is no input.
 	{
 		ccv_nnc_tensor_symbol_t output_symbols[ccv_max(1, output_size)];
@@ -344,7 +347,7 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 				output_symbols[i] = _ccv_nnc_tensor_symbol_from_variable(graph, outputs[i]);
 			} else
 				output_symbols[i] = NO_TENSOR_SYMBOL;
-		ccv_nnc_graph_exec_symbol_t graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols, input_size, output_symbols, output_size, 0);
+		graph_exec = ccv_nnc_graph_exec_symbol_new(graph->tape, cmd, input_symbols, input_size, output_symbols, output_size, 0);
 		// This needs to be done before we set the new sources on the outputs.
 		for (i = 0; i < input_size; i++)
 		{
@@ -393,6 +396,12 @@ int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_n
 	// Now, able to free some of the reused outputs.
 	for (i = 0; i < freeable_size; i++)
 		ccv_nnc_tensor_variable_free(graph, freeables[i]);
+	return graph_exec;
+}
+
+int ccv_nnc_dynamic_graph_exec(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hint, const int flags, const ccv_nnc_tensor_variable_t* const inputs, const int input_size, ccv_nnc_tensor_variable_t* const outputs, const int output_size)
+{
+	ccv_nnc_dynamic_graph_exec_ret(graph, cmd, hint, flags, inputs, input_size, outputs, output_size);
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
@@ -488,6 +497,15 @@ static void _ccv_nnc_update_bind_sources_destinations_when_free(ccv_nnc_symbolic
 		}
 }
 
+static void _ccv_nnc_stateful_exec_free(khash_t(stateful_exec)* const stateful_execs, const ccv_nnc_graph_exec_symbol_t symbol)
+{
+	assert(symbol.d >= 0);
+	khiter_t k = kh_get(stateful_exec, stateful_execs, symbol.d);
+	if (k == kh_end(stateful_execs))
+		return;
+	kh_del(stateful_exec, stateful_execs, k);
+}
+
 void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const ccv_nnc_tensor_variable_t tensor_variable)
 {
 	// If it contains a symbol, this tensor variable is not a free variable. It is either used as input or output.
@@ -546,6 +564,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						ccv_nnc_graph_exec_symbol_to(graph->tape, symbol, &outgoings, &outgoing_size);
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
+						_ccv_nnc_stateful_exec_free(graph->stateful_execs, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}
@@ -582,6 +601,7 @@ void ccv_nnc_tensor_variable_free(ccv_nnc_dynamic_graph_t* const graph, const cc
 						// It it has outgoings, add that for further inspection.
 						for (j = 0; j < outgoing_size; j++)
 							ccv_array_add_unique_int(ws, outgoings[j]);
+						_ccv_nnc_stateful_exec_free(graph->stateful_execs, symbol);
 						ccv_nnc_graph_exec_symbol_free(graph->tape, symbol);
 					}
 				}

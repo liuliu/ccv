@@ -168,8 +168,6 @@ typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_w
 
 typedef struct ccv_nnc_cmd_vtab_s {
 	ccv_nnc_cmd_exec_f exec;
-	void(*apply_gradients)(const ccv_nnc_cmd_t cmd, ccv_nnc_stream_context_t* const stream_context);
-	void (*deinit)(const ccv_nnc_cmd_t cmd);
 } ccv_nnc_cmd_vtab_t;
 
 /** @} */
