@@ -26,6 +26,14 @@ typedef struct {
 	void (*set_is_test)(ccv_cnnp_model_t* const self, const int is_test, const ccv_cnnp_cmd_updater_f updater, void* const context); /**< This is called when it is switched between test or training. */
 } ccv_cnnp_model_vtab_t;
 
+struct ccv_cnnp_model_io_s {
+	int visit; // Temporary bits stored in the ccv_cnnp_model_io_t object, whoever uses it should clean it up.
+	ccv_cnnp_model_t* model; // Reference back to the model who holds it. This is required because the model is the one whole holds the io.
+	ccv_array_t* incomings; // Array of ccv_cnnp_model_io_t. The order is important because it impacts the order of symbols.
+	ccv_array_t* outgoings; // Array of ccv_cnnp_model_io_t.
+	ccv_nnc_tensor_symbol_t* outputs; // This is different from the outputs from a model. A model could be reused, causing the outputs on that model to be the most recent one. This keeps the outputs of each.
+};
+
 enum {
 	CCV_CNNP_MODEL_GRAPH_FIT_MODE, // This mode computes loss, backprop, and then apply gradients.
 	CCV_CNNP_MODEL_GRAPH_MULTISTAGE_MODE_NO_GRAD, // This mode allows you to only use ccv_cnnp_model_evaluate (others require gradient).
