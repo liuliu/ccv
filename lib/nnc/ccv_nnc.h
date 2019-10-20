@@ -166,8 +166,13 @@ typedef int(*ccv_nnc_cmd_exec_f)(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t h
  */
 typedef int(*ccv_nnc_cmd_autotune_f)(const ccv_nnc_cmd_t cmd, const size_t max_workspace_size, const ccv_nnc_hint_t hint, const int flags, ccv_nnc_tensor_t* const* const inputs, const int input_size, ccv_nnc_tensor_t* const* const outputs, const int output_size, ccv_nnc_stream_context_t* const stream_context);
 
+/**
+ * The function prototype is for automatically deduce tensor shapes.
+ */
+
 typedef struct ccv_nnc_cmd_vtab_s {
 	ccv_nnc_cmd_exec_f exec;
+	void (*tensor_auto)(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size);
 } ccv_nnc_cmd_vtab_t;
 
 /** @} */

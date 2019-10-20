@@ -633,6 +633,8 @@ static void _ccv_cnnp_compiled_data_gradient_free(ccv_cnnp_compiled_data_t* cons
 	if (compiled_data->updated_trainables)
 		ccfree(compiled_data->updated_trainables);
 	compiled_data->updated_trainables = 0;
+	compiled_data->update_nodes = 0;
+	compiled_data->saved_aux = 0;
 	if (compiled_data->evaluate.tos)
 		ccfree(compiled_data->evaluate.tos);
 	compiled_data->evaluate.tos = 0;

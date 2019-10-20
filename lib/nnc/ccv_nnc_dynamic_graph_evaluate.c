@@ -28,6 +28,12 @@ static int _ccv_cnnp_model_exec(const ccv_nnc_cmd_t cmd, const ccv_nnc_hint_t hi
 	return CCV_NNC_EXEC_SUCCESS;
 }
 
+static void _ccv_cnnp_model_tensor_auto(const ccv_nnc_cmd_t cmd, const ccv_nnc_tensor_param_t* const inputs, const int input_size, const ccv_nnc_hint_t hint, ccv_nnc_tensor_param_t* const outputs, const int output_size)
+{
+	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)cmd.data;
+	ccv_cnnp_model_tensor_auto(model, outputs, output_size);
+}
+
 static void _ccv_cnnp_model_apply_gradients(const ccv_nnc_cmd_t cmd, const ccv_nnc_cmd_t minimizer, ccv_nnc_stream_context_t* const stream_context)
 {
 	ccv_cnnp_model_t* const model = (ccv_cnnp_model_t*)cmd.data;
@@ -38,6 +44,7 @@ static void _ccv_cnnp_model_apply_gradients(const ccv_nnc_cmd_t cmd, const ccv_n
 static ccv_nnc_stateful_cmd_vtab_t ccv_cnnp_model_exec_isa = {
 	.super = {
 		.exec = _ccv_cnnp_model_exec,
+		.tensor_auto = _ccv_cnnp_model_tensor_auto,
 	},
 	.apply_gradients = _ccv_cnnp_model_apply_gradients,
 };
